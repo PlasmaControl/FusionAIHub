@@ -23,6 +23,7 @@ import yaml
 from labeler.env import getenv as labeler_getenv
 
 from . import config
+from . import simulate as simulate_pkg
 from .env import getenv
 from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
@@ -1731,7 +1732,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--decode",
         help="comma-separated modalities to decode for the report/panels "
-        "(default: filterscopes,mhr,mirnov,ts_core_density,ts_core_temp)",
+        f"(default: {','.join(simulate_pkg.DEFAULT_DECODE)})",
     )
     p.add_argument("--device", help="cuda | cpu (default: cuda when available)")
     p.add_argument(

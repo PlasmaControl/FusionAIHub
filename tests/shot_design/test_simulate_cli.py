@@ -109,6 +109,8 @@ def fakes(monkeypatch, paths, fake_bundle, tmp_path):
         return {}
 
     def fake_load_codecs(ckpt_dir, names, device):
+        if calls["raise_in"] == "load_codecs":
+            raise ValueError("boom in load_codecs")
         return {}
 
     monkeypatch.setattr(program_mod, "load_program", fake_load_program)
@@ -142,7 +144,7 @@ def test_simulate_writes_running_then_complete_status_and_a_report(paths, fakes)
 @pytest.mark.parametrize(
     "raise_in",
     ["load_program", "export_ignite", "reference", "load_dynamics", "run_paired",
-     "decode_modalities"],
+     "decode_modalities", "load_codecs"],
 )  # fmt: skip
 def test_simulate_leaves_a_failed_status_and_exits_1(paths, fakes, raise_in):
     fakes["raise_in"] = raise_in
@@ -153,6 +155,17 @@ def test_simulate_leaves_a_failed_status_and_exits_1(paths, fakes, raise_in):
     assert f"boom in {raise_in}" in status["error"]
     assert status["report"] is None
     assert status["started"] and status["finished"]
+
+
+def test_simulate_prints_a_traceback_to_stderr_on_failure(paths, fakes, capsys):
+    """A Slurm-run failure only has stderr + status.json to diagnose from;
+    `status["error"]` is just `str(exc)`, so stderr must carry the traceback."""
+    fakes["raise_in"] = "load_program"
+    rc = cli.main(["simulate", IDENT])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Traceback" in err
+    assert "fake_load_program" in err
 
 
 def test_simulate_rejects_k0_plus_n_predict_over_the_seeds_frame_count(paths, fakes):
