@@ -620,6 +620,57 @@ def encode_shot(
     )
 
 
+def production_cache_path(shot: int) -> Path | None:
+    """`model.frame_codes_cache`/<shot>.pt, when the pinned generation's own corpus holds it.
+
+    Read-only: this directory belongs to the training runs, and nothing here ever writes into it.
+    """
+    root = model_cfg().get("frame_codes_cache")
+    if not root:
+        return None
+    path = Path(root) / f"{int(shot)}.pt"
+    return path if path.is_file() else None
+
+
+def _cached_frame_codes(
+    shot: int, codecs: dict[str, tuple[Any, Any, str]], max_frames: int | None
+) -> dict[str, np.ndarray] | None:
+    """Production's own codes for `shot`, or None when they cannot serve this request.
+
+    A generation mismatch RAISES rather than falling back to an encode: a cache whose vocabs are
+    not this checkpoint's is a pin that disagrees with itself, and re-encoding around it would
+    hide exactly the event `validate_cache` and the bundle digest exist to surface. A cache that
+    simply lacks a requested modality is not an error -- it is a narrower corpus -- and the
+    encoder takes over, for ALL of the modalities: half-cached, half-encoded codes would mix two
+    machines' arithmetic inside one frame.
+    """
+    path = production_cache_path(shot)
+    if path is None:
+        return None
+    import torch
+
+    payload = torch.load(path, map_location="cpu", weights_only=True)
+    expected = model_cfg()["production_vocabs"]
+    for name, vocab in payload.get("vocabs", {}).items():
+        want = expected.get(name)
+        if want is not None and int(vocab) != int(want):
+            raise ValueError(
+                f"{path}: {name} vocabulary {int(vocab)} is not the pinned production vocabulary "
+                f"{int(want)} -- this cache was written by another codec generation"
+            )
+    cached = payload.get("codes", {})
+    absent = [n for n in codecs if n not in cached]
+    if absent:
+        _log.info(
+            "shot %s: %s is not in %s, encoding the whole frame instead",
+            shot,
+            ", ".join(absent),
+            path.parent,
+        )
+        return None
+    return {n: cached[n][:max_frames].to(torch.int64).numpy() for n in codecs}
+
+
 def frame_codes(
     shot: int,
     codecs: dict[str, tuple[Any, Any, str]],
@@ -629,6 +680,7 @@ def frame_codes(
     max_frames: int | None = None,
     device: str | None = None,
     workers: int | None = None,
+    use_cache: bool = True,
 ) -> dict[str, np.ndarray]:
     """{modality: (n_frames, n_tok) int64 flat FSQ code index} -- the Phase-B token contract.
 
@@ -636,9 +688,20 @@ def frame_codes(
     the same loader as `encode_shot` with the quantiser applied, which makes it the check that the
     loader is right: the bundle ships the production codes for ten shots, and this must reproduce
     them exactly. It is also what a Phase-5 rollout seeds from.
+
+    PRODUCTION'S CACHE FIRST. The pinned generation was trained on `model.frame_codes_cache`, and
+    for a shot in there its file is returned unchanged: it is both cheaper (no 2-5 GB corpus read,
+    no GPU) and more faithful than re-encoding, because our codes agree with production's bit for
+    bit only on some shots -- changing a BLAS thread count moves a spectro token. `use_cache=False`
+    forces the encode, and is what a parity gate has to pass: a gate comparing production's cache
+    against a copy of production's cache would pass by construction.
     """
     import torch
 
+    if use_cache:
+        cached = _cached_frame_codes(shot, codecs, max_frames)
+        if cached is not None:
+            return cached
     t0_start = float(model_cfg()["t0_start_s"]) if t0_start is None else t0_start
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     data_dir, filled = _resolve_input(shot, paths, data_dir)

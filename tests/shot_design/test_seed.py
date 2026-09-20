@@ -210,9 +210,14 @@ def test_chunk_of_rejects_an_out_of_range_task():
 
 
 def test_wanted_modalities_drops_video_on_request_and_rejects_an_unknown_name():
-    assert len(seed.wanted_modalities()) == 14
+    # The pinned generation decides the list, not a table here: v4 is 15 modalities (v2's 14
+    # plus `mirnov`), and 13 of them are encodable from a processed corpus file.
+    families = ignite.model_cfg()["families"]
+    assert seed.wanted_modalities() == tuple(families)
+    assert len(seed.wanted_modalities()) == 15
+    assert "mirnov" in seed.wanted_modalities()
     without = seed.wanted_modalities(include_video=False)
-    assert len(without) == 12
+    assert len(without) == 13
     assert not set(without) & set(seed.VIDEO_MODALITIES)
     assert seed.wanted_modalities(modalities=["mse", "mse"]) == ("mse",)
     with pytest.raises(ValueError, match="not IGNITE modalities"):
@@ -567,9 +572,14 @@ def test_encode_frame_codes_allows_a_named_partial_run_for_diagnostics(tmp_path,
         calls["codecs"] = tuple(codecs)
         raise RuntimeError("stop here: the codec set is what this test is about")
 
+    # `families` too: the modality list is read off the pinned generation per call, not from a
+    # table in `seed`, so a stub `model_cfg` has to carry it.
+    families = ignite.model_cfg()["families"]
     monkeypatch.setattr(seed.ignite, "bundle_dir", lambda paths: tmp_path / "bundle")
     monkeypatch.setattr(seed.ignite, "frame_codes", fake_frame_codes)
-    monkeypatch.setattr(seed.ignite, "model_cfg", lambda: {"t0_start_s": 0.0})
+    monkeypatch.setattr(
+        seed.ignite, "model_cfg", lambda: {"t0_start_s": 0.0, "families": families}
+    )
     with pytest.raises(RuntimeError, match="stop here"):
         seed.encode_frame_codes(
             999002,
