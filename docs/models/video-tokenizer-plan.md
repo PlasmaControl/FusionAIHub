@@ -1,3 +1,8 @@
+---
+title: "Video Tokenizer Plan"
+sidebar_position: 5
+---
+
 # Video Tokenizer — Implementation Plan (Revised)
 
 **Prerequisites:**
@@ -356,7 +361,7 @@ class VideoOutputHead(nn.Module):
 
 All checkboxes below ticked; Stage 1 + Stage 2 trainers integrate the
 video kind cleanly. Spectrogram integration (Phase B) shipped in the
-same code path on 2026-05-06; see `docs/spectrogram_tokenizer_plan.md`
+same code path on 2026-05-06; see `docs/models/spectrogram-tokenizer-plan.md`
 §"Step 5" / §"Stage 2 trainer integration" for parallel coverage.
 
 **Approach:** Extend DiagnosticConfig with video fields, add `kind="video"` branch.

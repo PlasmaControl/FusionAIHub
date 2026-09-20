@@ -1,3 +1,8 @@
+---
+title: "Stage 2 with Video"
+sidebar_position: 7
+---
+
 # Stage 2 with video — implementation plan
 
 Goal: train video alongside TS modalities through Stage 2's K=10 rollout, with
