@@ -103,8 +103,11 @@ def create_app(
     if db_dir is not None:
         paths = paths.model_copy(update={"db_dir": Path(db_dir)})
     app = FastAPI(title="shot_design", docs_url=None, redoc_url=None, openapi_url=None)
+    from .simulate_routes import default_submit
+
     app.state.paths = paths
     app.state.token = token or secrets.token_hex(16)
+    app.state.submit = default_submit
 
     @app.middleware("http")
     async def gate(request: Request, call_next):
@@ -258,9 +261,11 @@ def create_app(
 
     from .design_routes import router as design_router
     from .assistant_routes import router as assistant_router
+    from .simulate_routes import router as simulate_router
 
     app.include_router(design_router)
     app.include_router(assistant_router)
+    app.include_router(simulate_router)
 
     @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def unknown_api(path: str):

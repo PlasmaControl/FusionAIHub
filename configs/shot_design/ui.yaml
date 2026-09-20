@@ -14,3 +14,6 @@ actuation:
   rdp_tol_frac: 0.03       # Ramer-Douglas-Peucker tolerance as a fraction of the trace's peak-to-peak range
   max_vertices: 12         # met by raising the tolerance, bisected onto this budget; endpoints always kept
   grid_ms: 50              # the median seed's common time grid
+simulate:
+  submit_cmd: "sbatch scripts/slurm_frontier/shot_design_simulate.sh {ident}"
+  poll_s: 15
