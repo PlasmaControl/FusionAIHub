@@ -52,16 +52,50 @@ def actuator_arms(
     the design proposes there -- so `proposed` is forced to agree with `real` over
     that prefix even though `design_seed["actuators"]` already carries the reference
     values there too; only [k0, k0+n_predict) can differ.
+
+    `reference_cache` must already be windowed to the SAME `[context:display_end]`
+    slice the design seed was cut from (`program.py`'s `_evaluate`/`export_ignite`) --
+    this function does not re-align two caches taken over different windows, it only
+    truncates both to `k0+n_predict` frames from index 0.
     """
     total = k0 + n_predict
-    real = reference_cache["actuators"][:total].float()
-    proposed = design_seed["actuators"][:total].float().clone()
+    real_full = reference_cache.get("actuators")
+    if real_full is None:
+        raise ValueError(
+            "reference_cache has no actuators; the real arm needs measured controls"
+        )
+    prop_full = design_seed.get("actuators")
+    if prop_full is None:
+        raise ValueError(
+            "design_seed has no actuators; the proposed arm needs measured controls"
+        )
+    for label, arr in (("reference_cache", real_full), ("design_seed", prop_full)):
+        if arr.shape[0] < total:
+            raise ValueError(
+                f"{label} actuators has {arr.shape[0]} frames; need at least "
+                f"k0+n_predict={total}"
+            )
+    real = real_full[:total].float()
+    proposed = prop_full[:total].float().clone()
     proposed[:k0] = real[:k0]
     return real, proposed
 
 
 def _token_fraction_equal(a: torch.Tensor, b: torch.Tensor) -> float:
     return (a == b).float().mean().item()
+
+
+def _check_frame_counts(codes: dict, names: list[str], needed: int) -> None:
+    for n in names:
+        if n not in codes:
+            raise ValueError(
+                f"codes is missing modality {n!r} required by cfg.modalities"
+            )
+        have = codes[n].shape[0]
+        if have < needed:
+            raise ValueError(
+                f"codes[{n!r}] has {have} frames; need at least k0+n_predict={needed}"
+            )
 
 
 def run_paired(
@@ -83,24 +117,38 @@ def run_paired(
     actuator conditioning -- a paired comparison, not one confounded by sampling noise.
     """
     k0, n_predict = cfg.k0_seed, cfg.n_predict
+    total = k0 + n_predict
     names = [m.name for m in cfg.modalities]
-    # generate_frame reads cfg.maskgit_decode_steps off the model's own bound config;
-    # rollout() takes no decode-step argument, so this is the only way in.
-    cfg.maskgit_decode_steps = decode_steps
+    _check_frame_counts(codes, names, total)
+    if real_act.shape[0] < total or prop_act.shape[0] < total:
+        raise ValueError(
+            f"actuators must cover k0+n_predict={total} frames; got "
+            f"real={real_act.shape[0]}, proposed={prop_act.shape[0]}"
+        )
 
-    gt = {n: codes[n][: k0 + n_predict].long() for n in names}
+    gt = {n: codes[n][:total].long() for n in names}
     seed_codes = {n: codes[n][:k0].long().unsqueeze(0) for n in names}
     real_act = real_act.float().unsqueeze(0)
     prop_act = prop_act.float().unsqueeze(0)
 
-    torch.manual_seed(seed)
-    real_traj = model.rollout(
-        seed_codes, real_act, n_predict=n_predict, temperature=temperature
-    )
-    torch.manual_seed(seed)
-    prop_traj = model.rollout(
-        seed_codes, prop_act, n_predict=n_predict, temperature=temperature
-    )
+    # generate_frame reads cfg.maskgit_decode_steps off the model's own bound config
+    # (model.cfg IS this cfg object); rollout() takes no decode-step argument, so this
+    # is the only way in. Restored in `finally` -- a shared model/cfg (e.g. one loaded
+    # in a long-lived route) must not carry one caller's decode_steps into the next.
+    original_decode_steps = cfg.maskgit_decode_steps
+    cfg.maskgit_decode_steps = decode_steps
+    try:
+        torch.manual_seed(seed)
+        real_traj = model.rollout(
+            seed_codes, real_act, n_predict=n_predict, temperature=temperature
+        )
+        torch.manual_seed(seed)
+        prop_traj = model.rollout(
+            seed_codes, prop_act, n_predict=n_predict, temperature=temperature
+        )
+    finally:
+        cfg.maskgit_decode_steps = original_decode_steps
+
     real = {n: real_traj[n][0] for n in names}
     proposed = {n: prop_traj[n][0] for n in names}
 
