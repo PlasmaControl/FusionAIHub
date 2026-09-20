@@ -302,7 +302,7 @@ def run_design(
         raise ValueError("Describe the design goal in 1 to 4000 characters")
     client = client or LLMClient(paths=paths)
     model_name = client.model(model)
-    if client.cfg.get("provider") == "off":
+    if client.off:
         raise LLMUnavailable(
             "The design assistant needs a configured model (llm.yaml provider)"
         )

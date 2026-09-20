@@ -121,6 +121,20 @@ def test_unknown_provider_raises_llmunavailable_naming_the_known_ones(paths):
         c.chat([{"role": "user", "content": "hi"}])
 
 
+def test_available_names_an_unknown_provider_instead_of_falling_through_to_ollama(
+    paths,
+):
+    """`available()` fell through to the ollama endpoint-file logic for a provider it
+    does not recognise, so a typo'd provider with an endpoint file present reported
+    "available" and then raised `LLMUnavailable` at call time in `chat()` instead --
+    the same misconfiguration `chat()` itself already names specifically."""
+    c = LLMClient({**CFG, "provider": "gemma-cli"}, paths)
+    ok, hint = c.available()
+    assert ok is False
+    assert "unknown llm provider 'gemma-cli'" in hint
+    assert "known providers" in hint or "known:" in hint
+
+
 def test_endpoint_file_is_discovered_and_recached_on_mtime(paths):
     f = paths.data_root / "llm" / "endpoint.json"
     f.parent.mkdir(parents=True)

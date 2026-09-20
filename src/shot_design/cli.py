@@ -679,7 +679,7 @@ def cmd_llm(args) -> int:
     if ep is None:
         # A subprocess provider (agy) has no served endpoint: say what would be called.
         provider = str(client.cfg.get("provider", "?"))
-        binary = str(client.cfg.get(provider, {}).get("bin", provider))
+        binary = str((client.cfg.get(provider) or {}).get("bin", provider))
         models = client.cfg.get("models", {})
         tags = ", ".join(f"{k}={v}" for k, v in models.items()) or client.model()
         print(f"provider {provider}  bin {binary}  models {tags}")
@@ -704,7 +704,7 @@ def _evalsets_prompt(args) -> int:
     path = config.CONFIG_DIR / "evalsets" / f"{args.name}.yaml"
     try:
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except OSError as e:
+    except (OSError, yaml.YAMLError) as e:
         print(f"no evalset {args.name!r} ({path}): {e}", file=sys.stderr)
         return 1
     prompts = (doc or {}).get("prompts") or {}
@@ -716,7 +716,16 @@ def _evalsets_prompt(args) -> int:
             file=sys.stderr,
         )
         return 2
-    text = entry["text"] if isinstance(entry, dict) else entry
+    if isinstance(entry, dict):
+        text = entry.get("text")
+        if text is None:
+            print(
+                f"prompt has no text: {args.slug!r} in evalset {args.name!r}",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        text = entry
     print(str(text).strip())
     return 0
 
@@ -2262,11 +2271,12 @@ def build_parser() -> argparse.ArgumentParser:
         "show", help="the editable revision, or its saved HDF5's references/actuation"
     )
     s.add_argument("ident", help="saved design id (32 hex chars)")
-    s.add_argument(
+    artifact_view = s.add_mutually_exclusive_group()
+    artifact_view.add_argument(
         "--references", action="store_true",
         help="markdown: prompt, references, explanation (from the saved HDF5)",
     )
-    s.add_argument(
+    artifact_view.add_argument(
         "--actuation-csv", action="store_true", dest="actuation_csv",
         help="CSV of the saved physical actuator waveforms (from the saved HDF5)",
     )

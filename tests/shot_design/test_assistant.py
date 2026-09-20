@@ -135,6 +135,25 @@ def test_unavailable_gemma_never_creates_a_fake_success(program_source):
     assert not list((paths.data_root / "outputs").glob("*.h5"))
 
 
+@pytest.mark.parametrize("provider_value", ["None", "FALSE"])
+def test_run_design_treats_every_off_spelling_as_unavailable(
+    program_source, provider_value
+):
+    """`LLMClient.off` already normalises every off spelling (case, "none", "false",
+    blank); `run_design`'s own hand-rolled `== "off"` check missed all but the exact
+    literal, so these fell through to `chat()`'s later, differently-worded refusal
+    instead of `run_design`'s own message."""
+    from shot_design.design import assistant
+    from shot_design.llm.client import LLMUnavailable
+
+    paths, _ = program_source
+    client = LLMClient(paths=paths, cfg={"provider": provider_value})
+    with pytest.raises(
+        LLMUnavailable, match="needs a configured model"
+    ):
+        assistant.run_design("Control ELMs", paths, object(), client=client)
+
+
 def test_model_cannot_choose_a_shot_outside_retrieval(program_source, candidate_search):
     from shot_design.design import assistant
 
