@@ -421,6 +421,32 @@ def test_a_candidate_with_no_mpid_is_not_capped_against_the_others():
     assert len(select.diversify(pool, quotas(n=10, per_run=1000), seed=1)) == 10
 
 
+def test_quotas_for_n_scales_the_floors_and_caps_but_not_the_run_day_caps():
+    q = select.Quotas.for_n(5000)
+    assert q.n == 5000
+    assert q.per_theme == 200
+    assert q.group_min == {"co2": 500, "bes": 500, "tangtv": 300}
+    assert q.preferred_cap == 1500
+    base = select.Quotas()
+    assert (q.per_run, q.per_mpid, q.max_year_frac) == (
+        base.per_run,
+        base.per_mpid,
+        base.max_year_frac,
+    )
+    assert select.Quotas.for_n(500) == base
+    assert select.Quotas.for_n(12) == select.Quotas(n=12)
+
+
+def test_quotas_all_eligible_lets_diversify_admit_every_candidate():
+    # Eight PREFERRED candidates on ONE run day and one year: the default per-run cap of
+    # 3, the 40 % year cap and the preferred ceiling would all bite; the no-budget quotas
+    # must admit all eight.
+    pool = candidates(8, per_run=8, year=2024, preferred=True)
+    chosen = select.diversify(pool, select.Quotas.all_eligible(8), seed=1)
+    assert [c.shot for c in chosen] == [c.shot for c in pool]
+    assert len(select.diversify(pool, select.Quotas(n=8), seed=1)) < 8
+
+
 def test_each_theme_gets_its_quota_when_the_pool_can_supply_it():
     pool = (
         candidates(40, start=190000, per_run=20, theme="rmp_elm")

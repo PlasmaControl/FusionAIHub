@@ -1053,7 +1053,14 @@ def cmd_corpus_select(args) -> int:
             listed, candidates, quotas, seed=seed, measure=measure
         )
     else:
-        quotas = select_mod.Quotas(n=args.n)
+        if args.n >= len(candidates):
+            print(
+                f"only {len(candidates):,} shot(s) are eligible for the {args.n:,} "
+                "asked; taking every eligible shot (no diversity caps)"
+            )
+            quotas = select_mod.Quotas.all_eligible(len(candidates))
+        else:
+            quotas = select_mod.Quotas.for_n(args.n)
         selected = select_mod.diversify(candidates, quotas, seed=seed)
         if verify:
             selected, replacements = select_mod.verify_flattop(

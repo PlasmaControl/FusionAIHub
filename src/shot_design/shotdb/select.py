@@ -267,6 +267,40 @@ class Quotas:
     # thirteen instead of taking the 23 % of the pool they hold.
     exclude_theme: str = FALLBACK_THEME
 
+    @classmethod
+    def for_n(cls, n: int) -> "Quotas":
+        """The §5.7 budget for a list of `n`: the floors and the preferred cap grow with
+        `n / 500` (a 5000-shot list wants >= 200 per theme, not >= 20) and never shrink
+        below the §5.7 values, so a list of 500 or fewer is the budget as written. The
+        per-run and per-mpid caps and the year fraction are properties of a run day, not
+        of the list size, and stay put.
+        """
+        base = cls()
+        scale = max(1.0, n / base.n)
+        return cls(
+            n=n,
+            per_theme=round(base.per_theme * scale),
+            group_min={k: round(v * scale) for k, v in base.group_min.items()},
+            preferred_cap=round(base.preferred_cap * scale),
+        )
+
+    @classmethod
+    def all_eligible(cls, n: int) -> "Quotas":
+        """No budget at all: when the caller asked for at least as many shots as are
+        eligible, every eligible shot is the list and the diversity caps (which exist
+        to choose among a surplus) would only punch holes in it. The fill phase alone
+        admits everything, in shot order.
+        """
+        return cls(
+            n=n,
+            per_run=n,
+            per_mpid=n,
+            per_theme=0,
+            max_year_frac=1.0,
+            group_min={},
+            preferred_cap=n,
+        )
+
 
 # ------------------------------------------------------------------------------ parsing a bundle
 
