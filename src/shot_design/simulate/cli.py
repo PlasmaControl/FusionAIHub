@@ -104,6 +104,16 @@ def run(args) -> int:
 
         device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
         model, cfg, step = core.load_dynamics(paths, device)
+        # cfg.max_frames is a property (k0_seed + n_predict), so it MUST be read before
+        # the assignment below overwrites those fields -- otherwise it silently
+        # recomputes to the new (larger) total, the guard always passes, and the frame
+        # embedding (sized for the checkpoint's trained horizon) indexes out of range.
+        trained = cfg.max_frames
+        if total > trained:
+            raise ValueError(
+                f"--k0 + --n-predict = {total} exceeds the checkpoint's trained "
+                f"horizon {trained}"
+            )
         cfg.k0_seed, cfg.n_predict = args.k0, args.n_predict
 
         real_act, prop_act = core.actuator_arms(
