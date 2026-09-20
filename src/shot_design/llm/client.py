@@ -144,6 +144,14 @@ class LLMClient:
                     "load/install it or set agy.bin in configs/shot_design/llm.yaml"
                 )
             return True, ""
+        if provider not in self._providers:
+            # Mirrors chat()'s own refusal: a typo'd provider must not report
+            # "available" off the back of an unrelated ollama endpoint file, then
+            # raise a differently-worded LLMUnavailable the first time it is used.
+            return False, (
+                f"unknown llm provider {provider!r}; known providers: "
+                f"{', '.join(sorted(self._providers))}"
+            )
         ep = self.endpoint()
         if ep is None:
             return False, start_hint(self.paths)
