@@ -65,6 +65,15 @@ def test_build_wrapper_defaults_to_the_corpus_reader_without_encoding():
     assert "${BUILD_ARGS:---reader corpus --no-encode}" in body
 
 
+def test_build_wrapper_turns_the_llm_off_so_blurbs_wait_for_the_login_node():
+    """Compute nodes see the agy binary on the shared filesystem but have no route to
+    Google: build 5517788 spent its whole hour on 68 blurb calls that each waited ~50 s
+    for an auth timeout. The build writes template blurbs; `blurb_frontier.sh` fills
+    them in from the login node afterwards."""
+    body = (SLURM / "shot_design_build.sh").read_text(encoding="utf-8")
+    assert "export SHOT_DESIGN_LLM_PROVIDER=off" in body
+
+
 def test_simulate_wrapper_does_not_set_debug_qos_so_the_demo_loop_can_submit():
     """Frontier's debug QOS caps `MaxSubmitJobsPU` at 1, so a wrapper that hardcodes
     `-q debug` breaks the moment a second job (the demo loop's next design, or the

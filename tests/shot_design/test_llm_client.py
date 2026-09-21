@@ -431,3 +431,18 @@ def test_loaded_is_empty_when_models_is_null(paths):
         {**CFG, "base_url": "http://llm.test"}, paths, transport=httpx.MockTransport(handler)
     )
     assert c.loaded() == []
+
+
+def test_the_provider_env_override_wins_over_the_yaml(paths, monkeypatch):
+    """A compute node has the agy binary on the shared filesystem but no route to Google,
+    so `available()` says yes and every blurb then waits ~50 s for an auth timeout (build
+    5517788 spent its hour on 68 of them). The Slurm build wrapper exports
+    SHOT_DESIGN_LLM_PROVIDER=off; the login-node `blurb` pass fills the blurbs in later."""
+    monkeypatch.setenv("SHOT_DESIGN_LLM_PROVIDER", "off")
+    c = LLMClient({**CFG, "provider": "agy", "agy": {"bin": "agy"}}, paths)
+    assert c.off is True
+    assert c.available() == (False, "configs/shot_design/llm.yaml has provider: off")
+
+    monkeypatch.setenv("SHOT_DESIGN_LLM_PROVIDER", "  ")
+    c = LLMClient({**CFG, "provider": "agy", "agy": {"bin": "agy"}}, paths)
+    assert c.cfg["provider"] == "agy", "a blank override is no override"
