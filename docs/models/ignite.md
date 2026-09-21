@@ -358,8 +358,12 @@ pixi run --frozen -e shot-design-frontier python -m shot_design model --check
 `--pin` copies every codec (resolving symlinks) plus the dynamics checkpoint
 into `<models_dir>/IGNITE_v4/`, and records each file's sha256 in
 `codecs/MANIFEST.json`; `--check` recomputes those hashes and reports any
-mismatch. `--download` (the v2 Hugging Face path) prints "not used for
-generation v4" for this bundle.
+mismatch. Since 2026-09-21 the same pinned bundle is also published as the private
+Hugging Face repo `nc1/IGNITE-v4` (`model.repo_id`/`model.revision` in
+`ignite_modalities.yaml`), so a machine without the Frontier checkpoints, such as
+Stellar, installs it with `shot_design model --download --full` after `hf auth login`;
+`--check` then verifies the download against the same `codecs/MANIFEST.json`. The v2
+release stays untouched at `nc1/IGNITE`.
 
 ### G-ENC gate
 

@@ -36,5 +36,5 @@ database built from it is what the MCP server below serves.
 Two subcommands added by this port are documented on their own pages:
 [Simulation](./simulation.md) (`simulate`) and
 [Database build](./database-build.md) (`corpus scan`/`select`, `build`,
-`labels join`, `blurb`). `model --pin`/`--check` (the IGNITE v4 bundle) is
-covered in [IGNITE — v4 generation](../models/ignite.md#12-v4-generation).
+`labels join`, `blurb`). `model --pin`/`--check`/`--download` (the IGNITE v4
+bundle) is covered in [IGNITE — v4 generation](../models/ignite.md#12-v4-generation).
