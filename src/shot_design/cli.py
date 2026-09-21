@@ -419,9 +419,11 @@ def cmd_build(args) -> int:
 def cmd_model(args) -> int:
     """Where the IGNITE bundle is, what it holds, and how it is installed.
 
-    Generation v4 is pinned from local checkpoints (`--pin`) and verified by the sha256 manifest
-    that pin wrote (`--check`); generation v2 came from the Hub (`--download`). Which one applies
-    is `model.generation` in ignite_modalities.yaml, never a guess from the paths.
+    `--pin` copies the local checkpoints and writes the sha256 manifest that `--check` re-hashes
+    (how v4 was installed on Frontier, the machine that trained it); `--download` snapshots the
+    pinned Hub revision (`model.repo_id` + `model.revision`; v2 always, v4 since it was published
+    as nc1/IGNITE-v4 on 2026-09-21). The gate is whether a repo_id is pinned in
+    ignite_modalities.yaml, never the generation number or a guess from the paths.
     """
     from .shotdb import ignite
 
@@ -429,8 +431,9 @@ def cmd_model(args) -> int:
     mcfg = ignite.model_cfg()
     target = ignite.bundle_dir(paths)
     generation = mcfg.get("generation", "v2")
+    published = mcfg.get("repo_id") is not None
     if args.download:
-        if generation != "v2":
+        if not published:
             print(
                 f"--download is not used for generation {generation}: its checkpoints are local, "
                 f"not published. Run `shot_design model --pin`.",
@@ -469,7 +472,7 @@ def cmd_model(args) -> int:
         return 1 if bad else 0
     manifest = ignite.codec_manifest(target)
     if not manifest.exists():
-        install = "--download" if generation == "v2" else "--pin"
+        install = "--download" if published else "--pin"
         print(f"no bundle at {target} -- run `shot_design model {install}`")
         return 1
     entries = json.loads(manifest.read_text())["modalities"]
@@ -477,7 +480,7 @@ def cmd_model(args) -> int:
     dyn = target / mcfg["dynamics_file"]
     source = (
         f"{mcfg['repo_id']} @ {mcfg['revision'][:12]}"
-        if generation == "v2"
+        if published
         else f"generation {generation}, pinned locally"
     )
     absent = "not downloaded (--download --full)" if generation == "v2" else "not pinned (--pin)"
@@ -1958,7 +1961,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("model", help="IGNITE bundle status; --pin installs it, --check verifies")
     p.add_argument("--pin", action="store_true", help="copy the local v4 checkpoints + digest them")
     p.add_argument("--check", action="store_true", help="re-hash the pinned files")
-    p.add_argument("--download", action="store_true", help="snapshot the pinned revision once (v2)")
+    p.add_argument("--download", action="store_true", help="snapshot the pinned Hub revision once (model.repo_id)")
     p.add_argument("--full", action="store_true", help="include the 3.5 GB dynamics checkpoint")
     p.set_defaults(func=cmd_model)
 

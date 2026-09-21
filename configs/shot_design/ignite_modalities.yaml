@@ -35,16 +35,21 @@ version: 1
 # `pad_note` says why the source is short. A staged group can also be WIDER than n_channels
 # (cer_ti/cer_rot carry 80 columns for 48 IGNITE channels): the list, not the group, decides.
 model:
-  # The PINNED IGNITE generation. v4 is not published to a Hub: it is trained on this machine and
-  # lives in proj-shared, where `codec_best.pt` is a SYMLINK into whichever run currently holds
-  # the best checkpoint and the run directories keep training. `shot_design model --pin` therefore
-  # makes a real copy into <models_dir>/<local_name> (shotdb/ignite.py:pin_bundle) and records a
-  # sha256 of every copied file in the bundle's own codecs/MANIFEST.json; `--check` re-hashes and
-  # `load_codecs` refuses a bundle that no longer matches. That digest is v4's equivalent of v2's
-  # pinned Hub revision: the weights behind every embedding in the database cannot change without
-  # something here saying so.
+  # The PINNED IGNITE generation. v4 is trained on Frontier and lives in proj-shared, where
+  # `codec_best.pt` is a SYMLINK into whichever run currently holds the best checkpoint and the
+  # run directories keep training. `shot_design model --pin` therefore makes a real copy into
+  # <models_dir>/<local_name> (shotdb/ignite.py:pin_bundle) and records a sha256 of every copied
+  # file in the bundle's own codecs/MANIFEST.json; `--check` re-hashes and `load_codecs` refuses
+  # a bundle that no longer matches. That digest is v4's equivalent of v2's pinned Hub revision:
+  # the weights behind every embedding in the database cannot change without something here
+  # saying so.
   generation: v4
   local_name: IGNITE_v4
+  # The same pinned bundle, published 2026-09-21 (private repo) so a machine without the Frontier
+  # checkpoints installs it with `shot_design model --download --full`. The revision is the
+  # upload commit; a re-upload cannot change what `--download` fetches unless it is changed here.
+  repo_id: nc1/IGNITE-v4
+  revision: d2f12b82d2d0efc236293dbf5372f678f82aa309
   codec_tmpl: /lustre/orion/fus187/proj-shared/models/ignite_codecs_v4/{m}/codec_best.pt
   dynamics_src: /lustre/orion/fus187/proj-shared/models/ignite_prod_v4/runs/mskfull/dynamics_best.pt
   # Layout inside the pinned bundle: codecs/MANIFEST.json + codecs/<modality>/codec_best.pt are
