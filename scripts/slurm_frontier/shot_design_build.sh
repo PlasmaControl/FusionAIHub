@@ -17,5 +17,9 @@
 # sbatch runs a spool COPY of this file, so `dirname "$0"` is not the repo; the submit
 # directory is (every wrapper is submitted from the repo root). Local runs fall back.
 source "${SLURM_SUBMIT_DIR:-$(dirname "$0")/../..}/scripts/slurm_frontier/_shot_design_common.sh"
+# No LLM on the compute node: agy is on PATH there but has no route to Google, so every blurb
+# waits ~50 s for an auth timeout (job 5517788 burnt its hour on 68 shots). The build writes
+# template blurbs; scripts/shot_design/blurb_frontier.sh backfills them from the login node.
+export SHOT_DESIGN_LLM_PROVIDER=off
 srun -n1 -c56 "$PY" -m shot_design build --workers 48 \
     --list "${SHOT_LIST:-recommender_frontier_v1}" ${BUILD_ARGS:---reader corpus --no-encode}

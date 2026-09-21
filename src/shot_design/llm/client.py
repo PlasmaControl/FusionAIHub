@@ -69,7 +69,15 @@ class LLMClient:
         paths: Paths | None = None,
         transport: httpx.BaseTransport | None = None,
     ):
-        self.cfg = cfg or config.load_yaml("llm.yaml")
+        self.cfg = dict(cfg or config.load_yaml("llm.yaml"))
+        # SHOT_DESIGN_LLM_PROVIDER overrides llm.yaml's `provider` for one process. The
+        # Frontier build wrapper sets it to "off": a compute node has the agy binary on the
+        # shared filesystem, so `available()` would say yes, but it has no route to Google
+        # and every blurb then waits ~50 s for an auth timeout. Blurbs are backfilled on the
+        # login node by `shot_design blurb` instead. A blank value is no override.
+        override = os.environ.get("SHOT_DESIGN_LLM_PROVIDER", "").strip()
+        if override:
+            self.cfg["provider"] = override
         self.paths = paths or config.load_paths()
         self._transport = transport
         self._ep_cache: tuple[int, Endpoint | None] | None = None  # (mtime_ns, endpoint)
