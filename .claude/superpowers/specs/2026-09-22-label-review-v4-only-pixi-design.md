@@ -1,6 +1,8 @@
 # Label review rebuild, IGNITE v4 only, pixi tidy
 
 2026-09-22. Supersedes `2026-09-18-verification-ui-design.md` for the review surface.
+Amended the same day while planning (`plans/2026-09-22-label-review-v4-only-pixi.md`): store
+dataset names and attrs, the wheel, the source glob, the Stellar Simulate script.
 Three independent parts, each shippable alone: **0** (IGNITE v4 only), **A** (label review),
 **E** (pixi). IGNITE retraining, the shot_design flow and the paper get their own specs once the
 open decisions in the hand-off message are made.
@@ -39,8 +41,10 @@ fresh, the eight earlier saves move to `review/legacy/`; the stale pixi environm
 4. Design defaults follow v4: the earliest window start is 2.0 s (20 history frames), and
    `n_predict` is derived from the seed frames and the 100-row `frame_embed` (at most 80).
 5. Stellar Simulate: `_stellar_common.sh` stops exporting a generation. The UI's Simulate button
-   submits `scripts/shot_design/simulate_batch.sbatch` on Stellar through a per-cluster
-   `submit_cmd` in `paths.yaml` / `paths.frontier.yaml`.
+   submits a new single-design `scripts/shot_design/simulate.sbatch <ident>` on Stellar (one A100,
+   the Stellar twin of `scripts/slurm_frontier/shot_design_simulate.sh`), through a per-cluster
+   submit command kept beside `paths.yaml` / `paths.frontier.yaml`. Not `simulate_batch.sbatch`:
+   that one sources `_stellar_common.sh`, which refuses the production root the UI runs against.
 6. `scripts/shot_design/g_enc.py`: keep the v4 gate; delete the v2 historical record.
 7. Tests: rewrite the fixtures in the v4 frame (origin 1.0 s) and delete the conftest pin that
    forces `t0_start_s = 0.0`; delete `test_ignite_generation_override.py`; the shipped-cache test
@@ -92,8 +96,10 @@ its `simulation.h5` carries `frame_origin_s = 1.0`.
 | `history.jsonl` | one line per save: `shot, reviewer, saved_at, window, intervals, source` | appended |
 | `legacy/` | the eight per-save CSVs from 2026-09-22, untouched | once, by hand |
 
-- **Source label**: the newest `format/<event>_format_*.csv` (AE: Heidbrink 2026_v1, 0-2000 ms).
-  A shot with no saved label opens on its source label; an event with no format CSV opens empty.
+- **Source label**: the newest `format/*_format_*.csv` by name (AE: Heidbrink 2026_v1, 0-2000 ms;
+  RWM's table is `rwm_format_2026_v1.csv`, hence no event prefix in the glob). Rows shorter than
+  1 ms are ignored: a point event has no span to edit. A shot with no saved label opens on its
+  source label; an event with no format CSV opens on an empty label over the whole record.
 - **States**: *unreviewed* (no rows in `labels.csv`), *confirmed* (saved spans and window equal
   the source's), *changed* (they differ).
 - **Spans carry a category.** Binary events have one (present). `minimum_safety_factor` has four
@@ -114,13 +120,16 @@ its `simulation.h5` carries `frame_origin_s = 1.0`.
 
 `$LABELER_ROOT/spectrograms/<event>/<shot>.h5`, `LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`.
 
-- A file holds rows. An **image** row is `rows/<name>/{0,8,64}`: uint8 `(n_y, n_t/level)`, the
-  time axis max-pooled per level, chunked `(n_y, 512)`, gzip level 1. A **trace** row stores
-  float32 min and max per level instead, `(2, n_channels, n_t/level)`.
-- Row attrs: `kind`, `title`, `t0_ms`, `dt_ms` (level 0), and for images `y0, dy, y_units,
-  db_lo, db_hi` plus an optional `band` (80-250 kHz for AE).
-- File attrs: `event, shot, builder, params` (JSON), `source` (path, size, mtime_ns),
-  `made_at, git_sha`.
+- A file holds rows on one time grid. An **image** row is `rows/<name>/{1,8,64}` (the dataset
+  name is the pooling factor): uint8 `(n_y, ceil(n/level))`, the time axis max-pooled per level,
+  chunked `(n_y, 512)`, gzip level 1. A **trace** row stores float32 min and max per level
+  instead, `(2, n_channels, ceil(n/level))`.
+- File attrs: the grid `t0_ms` (left edge of column 0), `dt_ms`, `n`; `rows` (JSON list, the
+  display order); `event, shot, builder, params` (JSON), `source` (JSON: tier, path, size,
+  mtime_ns), `made_at, git_sha`.
+- Row attr `meta` (JSON): `kind`, `title`, and for images `n_y, y0, dy, y_units, z_lo, z_hi,
+  z_units` plus an optional `band` (80-250 kHz for AE); for traces `n_channels, y_units, legend,
+  hlines`.
 
 **AE builder** -- all 180 roster shots, prebuilt by one CPU job on `pppl` (jobstats-gated):
 
@@ -150,15 +159,15 @@ FastAPI on the loopback behind the existing token and cookie gate; `serve.py` is
 
 | route | returns |
 |---|---|
-| `GET /api/events` | `[{event, n_shots, n_reviewed}]` |
+| `GET /api/events` | `[{event, n_shots, n_reviewed, categories}]` (a bad roster answers `{event, error}`) |
 | `GET /api/queue?event` | `{shots: [{shot, tier, state, saved_at}], resume}` |
 | `GET /api/shot?event&shot` | row metadata, data time range, window, source spans, saved spans, last save; `202` while a non-AE file is being built |
 | `GET /api/rows?event&shot&t0&t1&cols` | binary: image rows as uint8 `n_y x n`, trace rows as float32 `2 x C x n`, in row order; header `X-Grid: {"t0","t1","n"}` |
-| `POST /api/label` | body `{event, shot, window, intervals}`; normalises, writes, returns the queue row |
+| `POST /api/label` | body `{event, shot, window, intervals}`; normalises, writes, returns `{row, saved, last_save}` (`row` is the queue row) |
 
 `/api/rows` takes the coarsest level that still has at least `cols` columns over `[t0, t1]`,
 slices it and pools it down to at most `cols` (max for images, min/max for traces). When zoomed
-in past level 0 it returns fewer than `cols` columns and the page scales them up without
+in past level 1 it returns fewer than `cols` columns and the page scales them up without
 smoothing.
 
 Removed from the current app: `/api/panels` (plotly JSON), `/api/save` (per-save CSVs),
@@ -186,7 +195,9 @@ Removed from the current app: `/api/panels` (plotly JSON), `/api/save` (per-save
 +-------------------------------------------------------------------+
 ```
 
-- One shared time axis. Wheel zooms at the cursor, drag pans, double-click fits the window.
+- One shared time axis. A plain wheel scrolls the rows pane; Ctrl/⌘ + wheel (or any wheel over
+  the axis or the bottom tracks) zooms at the cursor; a horizontal wheel pans; drag pans;
+  double-click fits the window.
 - Label track: drag on empty space adds a span, drag an edge resizes, drag a span moves it,
   Delete removes the selected span. Shift-drag on any spectrogram row also adds a span.
 - Keys: Enter save and next, S save, R revert to source, J/K previous/next shot, U next
