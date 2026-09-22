@@ -15,6 +15,7 @@ corpus; `promote` does, deliberately and by hand.
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -265,6 +266,78 @@ def _holds_record(shot: int, group: str, root: Path) -> bool:
         return False
 
 
+#: What a live fetch has got to, by shot. `progress_for` is the read side;
+#: the browser page polls it while a whole-shot render is in flight, because
+#: the fetch itself is one HTTP request that cannot say anything until it
+#: is finished. An entry exists only WHILE a fetch runs: absent means no
+#: fetch is in progress for that shot, never that one finished.
+_progress: dict[int, dict] = {}
+_progress_guard = threading.Lock()
+
+
+def progress_for(shot: int) -> dict | None:
+    """`{"done", "total", "stage"}` for a fetch in flight, else None."""
+    with _progress_guard:
+        record = _progress.get(int(shot))
+        return None if record is None else dict(record)
+
+
+def _report(shot: int, done: int, total: int, stage: str) -> None:
+    with _progress_guard:
+        _progress[int(shot)] = {"done": int(done), "total": int(total), "stage": stage}
+
+
+def _forget(shot: int) -> None:
+    with _progress_guard:
+        _progress.pop(int(shot), None)
+
+
+#: The archive the fdp wrapper points PTDATA at is reached over the network
+#: (a pelican cache), and a lookup that fails there makes the client fall
+#: back to a live PTSERVER connection, which no stellar node can make. The
+#: message for that is "getservbyname failed for task 'PTSERVER'", and it
+#: has been seen once on a shot that fetched cleanly seconds later. One
+#: retry after a short pause covers that; a shot that really is absent
+#: costs one extra round trip, about ten seconds.
+RETRY_DELAY_S = 2.0
+
+#: How to restart the browser server so a live fetch can work. `fdp_signal`
+#: names the notebook kernel's command in its own hint, which is the wrong
+#: thing to tell someone looking at the browser page.
+FDP_UI_COMMAND = "pixi run -e labelmaker fdp run python -m labeler.events.ui"
+
+
+def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:
+    last: NoDataError | None = None
+    for attempt in (1, 2):
+        try:
+            return fdp_signal(
+                int(shot),
+                list(spec.exprs),
+                tree=spec.tree,
+                via=spec.via,
+                on_progress=lambda done, _n, expr: _report(
+                    shot, done, total, f"fetching {expr}"
+                ),
+            )
+        except NoDataError as error:
+            last = error
+            if attempt == 1:
+                _report(shot, 0, total, "fetch failed, retrying once")
+                time.sleep(RETRY_DELAY_S)
+    # fdp being unreachable, or answering with nothing, is the one failure
+    # here that is about the upstream rather than about this shot not
+    # existing on disk. The kernel hint is cut off and replaced with the
+    # server's own.
+    message = str(last).split(". If this kernel")[0]
+    raise UpstreamError(
+        f"{message} (tried twice). This is usually a passing failure to "
+        f"reach the fdp archive: pick the shot again to retry. If the "
+        f"server was not started under '{FDP_UI_COMMAND}', restart it that "
+        f"way."
+    ) from last
+
+
 def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
     """Fetch one group live, cache the WHOLE record, return the slice.
 
@@ -279,14 +352,16 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
             f"and there is no fetch route for {group!r}; known routes are "
             f"{sorted(FETCH_SPECS)}"
         )
+    # One step per point plus one for writing the cache. The render that
+    # follows is not counted: it is seconds against a fetch of minutes.
+    total = len(spec.exprs) + 1
+    _report(shot, 0, total, f"fetching {group}")
     try:
-        fetched = fdp_signal(int(shot), list(spec.exprs), tree=spec.tree, via=spec.via)
-    except NoDataError as error:
-        # fdp being unreachable, or answering with nothing, is the one
-        # failure here that is about the upstream rather than about this
-        # shot not existing on disk.
-        raise UpstreamError(str(error)) from error
-    write_group(cache_path(shot, paths=paths), group, fetched.x, fetched.y)
+        fetched = _fetch_with_one_retry(shot, spec, total)
+        _report(shot, total - 1, total, "writing the cache")
+        write_group(cache_path(shot, paths=paths), group, fetched.x, fetched.y)
+    finally:
+        _forget(shot)
     array = corpus_signal(
         shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
     )

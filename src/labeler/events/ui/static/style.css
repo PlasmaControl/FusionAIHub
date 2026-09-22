@@ -26,8 +26,15 @@ select { font: inherit; padding: .2rem; max-width: 22rem; }
 .status.note { color: var(--note); font-weight: 600; }
 /* An empty error line must not hold open a gap above the figure. */
 .status.error:empty { min-height: 0; }
+/* Pinned to the top or bottom edge of the viewport, whichever it would
+   otherwise scroll past,
+   so Mark and Save are on screen wherever the reviewer is - reading the
+   roster, the hint, or a spectrogram taller than the window. `sticky`
+   rather than `fixed`: it sits in its own place under the figure whenever
+   that place is visible, and never covers the figure. */
 .controls { display: flex; gap: .5rem; align-items: center; margin: .5rem 0;
-            flex-wrap: wrap; }
+            flex-wrap: wrap; position: sticky; top: 0; bottom: 0; z-index: 5;
+            background: #fff; padding: .4rem 0; border-top: 1px solid var(--rule); }
 button { font: inherit; padding: .35rem .8rem; cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
 .hint { max-width: 62rem; font-size: .85rem; color: var(--quiet); margin: .2rem 0; }
@@ -35,7 +42,7 @@ button:disabled { opacity: .5; cursor: default; }
 .what summary { cursor: pointer; color: var(--quiet); }
 /* The figure is as tall as its panels and the page scrolls to it; a long
    spectrogram is read by scrolling, which is what the reviewer asked for. */
-#figure { min-height: 320px; }
+#figure { min-height: 200px; }
 table { border-collapse: collapse; font-size: .85rem; }
 td, th { border-bottom: 1px solid var(--rule); padding: .25rem .7rem .25rem 0;
          text-align: left; }

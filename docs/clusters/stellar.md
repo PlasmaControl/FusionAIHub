@@ -97,6 +97,16 @@ root), `SHOT_DESIGN_CONFIG_DIR`, `SHOT_DESIGN_HF_ONLINE` (default offline),
 `LABELER_LABEL_TABLES`, `HF_HOME` (leave it alone; see below), and the
 `OLLAMA_*` family set by `scripts/shot_design/serve_llm.sh`.
 
+## IGNITE generation on Stellar
+
+The pinned IGNITE generation (v4) is copied from Frontier's proj-shared training
+directories and is not published, so Stellar runs the v2 Hub snapshot at
+`/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE`. Export
+`SHOT_DESIGN_IGNITE_GENERATION=v2` for any `shot_design` command that touches
+IGNITE (`model`, `encode`, `simulate`, the assistant's seed checks); the batch
+scripts under `scripts/shot_design/` do this themselves. See
+[Simulation, "On Stellar"](../shot-design/simulation.md#on-stellar-the-v2-generation-and-batch-runs).
+
 ## Tests
 
 Run suites through pixi, never the bare `.pixi` interpreter, and do not

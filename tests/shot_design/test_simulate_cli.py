@@ -91,6 +91,7 @@ def fakes(monkeypatch, paths, fake_bundle, tmp_path):
         return SimpleNamespace(), cfg, 4242
 
     def fake_run_paired(model, cfg, codes, real_act, prop_act, *, seed, **kw):
+        calls["run_paired_kw"] = kw
         if calls["raise_in"] == "run_paired":
             raise ValueError("boom in run_paired")
         f = codes["ece"]
@@ -234,6 +235,7 @@ def test_simulate_writes_actuators_into_the_h5(paths, fakes):
         assert "actuators/real" in f and "actuators/proposed" in f
         assert f.attrs["design_id"] == IDENT
         assert f.attrs["codec_generation"]
+        assert f.attrs["frame_origin_s"] == 0.0 and f.attrs["frame_s"] == 0.05
         assert f.attrs["dynamics_step"] == 4242
 
 
@@ -248,3 +250,16 @@ def test_simulate_out_flag_overrides_the_default_directory(paths, fakes, tmp_pat
     assert cli.main(["simulate", IDENT, "--out", str(custom)]) == 0
     assert (custom / "status.json").is_file()
     assert (custom / "report.md").is_file()
+
+
+def test_decode_steps_flag_reaches_run_paired_and_the_h5_meta(paths, fakes):
+    import h5py
+
+    rc = cli.main(["simulate", IDENT, "--decode-steps", "4"])
+    assert rc == 0
+    assert fakes["run_paired_kw"]["decode_steps"] == 4
+    out_dir, _ = _status(paths)
+    with h5py.File(out_dir / "simulation.h5") as f:
+        meta = dict(f.attrs)
+    assert int(meta["decode_steps"]) == 4
+    assert int(meta["k0"]) == 20 and int(meta["n_predict"]) == 80

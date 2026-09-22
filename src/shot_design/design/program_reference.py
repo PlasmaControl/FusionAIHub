@@ -16,7 +16,7 @@ import torch
 
 from ..config import Paths, load_yaml
 from ..env import getenv
-from ..shotdb import build
+from ..shotdb import build, ignite
 from ..shotdb.corpus import CorpusReader
 from ..shotdb.reader import ShotFailed, Unavailable
 from . import actuators as act
@@ -45,6 +45,18 @@ def _source_digest(identity: tuple) -> str:
 
 def _corpus(paths: Paths) -> Path:
     return Path(getenv("SHOT_DESIGN_CORPUS") or paths.foundation_model_processed_dir)
+
+
+def frame_origin_s() -> float:
+    """Shot time, in seconds, of frame 0 of the selected generation's caches.
+
+    `model.t0_start_s` in ignite_modalities.yaml: 0.0 for v2, 1.0 for v4 (the origin the
+    dynamics checkpoint's own frame codes were cut at, see `seed.encode_frame_codes`). Every
+    conversion between a design's seconds and a cache frame index in the design layer goes
+    through this value; before it existed the layer assumed 0.0, so a v4 seed carried codes cut
+    one second later than the actuators drawn beside them (20 frames at 50 ms).
+    """
+    return float(ignite.model_cfg().get("t0_start_s", 0.0))
 
 
 def _cache_path(shot: int, paths: Paths) -> Path | None:
@@ -90,8 +102,11 @@ def validate_cache(cache: dict) -> None:
             "Seed cache must contain codes, actuators, n_frames and vocabs"
         )
     contract = load_yaml("ignite_modalities.yaml")
-    specs = contract["modalities"]
-    expected_vocabs = contract["model"]["production_vocabs"]
+    model = ignite.model_cfg()
+    # The per-modality table lists every generation's modalities (v4 added mirnov); the
+    # selected generation's `families` says which of them THIS cache must carry.
+    specs = {m: contract["modalities"][m] for m in model["families"]}
+    expected_vocabs = model["production_vocabs"]
     codes, vocabs = cache["codes"], cache["vocabs"]
     # THE GENERATION COMES FIRST. Two caches of different codec generations are otherwise
     # indistinguishable -- same four keys, same dtypes, plausible integers -- and `vocabs` is the
@@ -171,10 +186,13 @@ class _MemoryReader:
 
 
 @lru_cache(maxsize=16)
-def _read_controls(shot: int, corpus_identity: tuple, n_frames: int):
+def _read_controls(shot: int, corpus_identity: tuple, n_frames: int, t0_s: float = 0.0):
+    # `t0_s` is part of the cache key on purpose: the same corpus file yields different frame
+    # means under v2 (frame 0 at 0.0 s) and v4 (1.0 s), and the generation can change between
+    # calls in one process (SHOT_DESIGN_IGNITE_GENERATION is read on every model_cfg()).
     corpus_path = Path(corpus_identity[0])
     reader = _MemoryReader(CorpusReader(corpus_path.parent))
-    controls = act.build_actuators(shot, reader, n_frames)
+    controls = act.build_actuators(shot, reader, n_frames, t0_s=t0_s)
     available = np.zeros_like(controls.raw, dtype=bool)
     for spec in act.ACT_SPEC:
         try:
@@ -185,7 +203,7 @@ def _read_controls(shot: int, corpus_identity: tuple, n_frames: int):
         if len(times) < 2:
             continue
         count = act._record_length(times, hi - lo)
-        bounds = act._frame_bounds(times, count, hi - lo, controls.n_frames, 0.05, 0)
+        bounds = act._frame_bounds(times, count, hi - lo, controls.n_frames, 0.05, t0_s)
         # Per-channel availability must precede production's NaN->zero padding.
         for i in range(min(spec.n_channels, values.shape[0])):
             cumulative = np.r_[0, np.cumsum(np.isfinite(values[i]))]
@@ -203,7 +221,9 @@ def comparison_reference(shot: int, paths: Paths, n_frames: int) -> Reference:
     corpus = Path(getenv("SHOT_DESIGN_CORPUS") or paths.foundation_model_processed_dir)
     source = corpus / f"{shot}_processed.h5"
     try:
-        controls, available = _read_controls(shot, file_identity(source), n_frames)
+        controls, available = _read_controls(
+            shot, file_identity(source), n_frames, frame_origin_s()
+        )
     except (OSError, ShotFailed, IndexError, TypeError) as exc:
         raise ValueError(f"Cannot read comparison shot {shot}: {exc}") from exc
     return Reference({}, controls, available, "")
@@ -219,7 +239,9 @@ def _read_reference(
     except Exception as exc:
         raise ValueError(f"Cannot safely load seed cache for {shot}: {exc}") from exc
     validate_cache(cache)
-    controls, available = _read_controls(shot, corpus_identity, cache["n_frames"])
+    controls, available = _read_controls(
+        shot, corpus_identity, cache["n_frames"], frame_origin_s()
+    )
     if (
         file_identity(corpus_path) != corpus_identity
         or file_identity(cache_path) != cache_identity
@@ -247,10 +269,12 @@ def _raw_reference(shot: int, identity: tuple, error: str, missing: bool) -> Ref
             ends.append(hi / 1000)
         except Unavailable:
             continue
-    frames = int(np.floor(max(ends, default=0) / act.FRAME_S + 1e-7))
+    # Frames are counted from the generation's origin, like the cache this stands in for.
+    t0 = frame_origin_s()
+    frames = int(np.floor((max(ends, default=0) - t0) / act.FRAME_S + 1e-7))
     if frames < 21:
         raise ValueError(f"Reference shot {shot} has insufficient actuator history")
-    controls, available = _read_controls(shot, identity, frames)
+    controls, available = _read_controls(shot, identity, frames, t0)
     digest = _source_digest(identity)
     return Reference(None, controls, available, digest, digest, error, missing)
 

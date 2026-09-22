@@ -783,6 +783,13 @@ def cmd_assistant(args) -> int:
     cfg = dict(config.load_yaml("llm.yaml"))
     if args.provider:
         cfg["provider"] = args.provider
+    if getattr(args, "llm_model", None):
+        # Every alias (quality, fast, ...) resolves to this one tag for this run only:
+        # a batch that must outlive one model's quota moves whole, not alias by alias.
+        cfg["models"] = {alias: args.llm_model for alias in cfg.get("models", {})}
+        block = cfg.get(str(cfg.get("provider", "")).strip().lower())
+        if isinstance(block, dict) and block.get("models"):
+            block["models"] = {alias: args.llm_model for alias in block["models"]}
     trace_path = Path(args.trace)
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     trace_path.write_text("")  # start each run with a fresh trace file
@@ -796,7 +803,12 @@ def cmd_assistant(args) -> int:
 
     try:
         result = assistant_mod.run_design(
-            args.prompt, paths, db, client=client, progress=progress
+            args.prompt,
+            paths,
+            db,
+            client=client,
+            progress=progress,
+            ref_shot=args.ref_shot,
         )
     except (ValueError, LLMUnavailable) as e:
         print(f"shot_design assistant: {e}", file=sys.stderr)
@@ -1986,6 +1998,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--k0", type=int, default=20, help="seed frames before prediction")
     p.add_argument("--n-predict", type=int, default=80, help="predicted frames")
     p.add_argument(
+        "--decode-steps",
+        type=int,
+        default=10,
+        help="MaskGIT reveal passes per predicted frame (default 10; each pass is a "
+        "full forward over the whole trajectory, so wall time scales with it)",
+    )
+    p.add_argument(
         "--decode",
         help="comma-separated modalities to decode for the report/panels "
         f"(default: {','.join(simulate_pkg.DEFAULT_DECODE)})",
@@ -2229,8 +2248,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--prompt", required=True, help="the design request, plain language")
     p.add_argument(
+        "--ref-shot", type=int, default=None, metavar="N",
+        help="anchor the retrieval on this stored shot and offer it first as a reference",
+    )
+    p.add_argument(
         "--provider",
         help="override configs/shot_design/llm.yaml's provider: key for this run only",
+    )
+    p.add_argument(
+        "--llm-model",
+        help="resolve every models: alias in llm.yaml to this one provider model tag "
+        "for this run only (e.g. gpt-oss-120b-medium when the Gemini quota is spent)",
     )
     p.add_argument(
         "--trace", required=True,

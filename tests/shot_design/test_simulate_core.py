@@ -3,9 +3,10 @@ import dataclasses
 import pytest
 import torch
 
-from tokamak_foundation_model.ignite import dynamics_config as dc, maskgit
 from shot_design.shotdb import ignite as shotdb_ignite
 from shot_design.simulate import core
+from tokamak_foundation_model.ignite import dynamics_config as dc
+from tokamak_foundation_model.ignite import maskgit
 
 MODS = (
     dc.ModalitySpec("ece", "spectro", 4, 16),
@@ -124,3 +125,14 @@ def test_load_dynamics_reads_the_pinned_bundle_checkpoint(paths):
     torch.save(ck, bundle / shotdb_ignite.model_cfg()["dynamics_file"])
     _, loaded_cfg, step = core.load_dynamics(paths, "cpu")
     assert loaded_cfg.actuator_dim == 88 and step == 7
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA device")
+def test_run_paired_moves_cpu_inputs_to_the_models_device_and_returns_host_tensors():
+    model, cfg = _model()
+    model = model.cuda()
+    codes, real, prop = _codes(5), torch.randn(5, 88), torch.randn(5, 88)
+    arms = core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
+    for table in (arms.real, arms.proposed, arms.gt):
+        assert all(t.device.type == "cpu" for t in table.values())
+    assert all(v.device.type == "cpu" for v in codes.values())  # inputs untouched

@@ -8,7 +8,12 @@ sidebar_position: 4
 `configs/shot_design/llm.yaml` is one shared file for both clusters — unlike
 `paths.yaml`/`paths.frontier.yaml`, there is no per-cluster override, so
 whatever is checked in applies everywhere. Its checked-in default is now
-`provider: agy` (see [Frontier: Gemini Flash via `agy`](#frontier-gemini-flash-via-agy)
+`provider: agy` (see [Frontier: Gemini Flash via `agy`](#frontier-gemini-flash-via-agy);
+house rule: `agy` carries Gemini models only -- Claude goes through Claude Code
+itself (`provider: claude`, `shot_design.llm.claude_cli`, the `claude -p` CLI)
+and GPT through Codex, never through `agy`'s other model ids. On Stellar the
+fallback for the pipeline's own inference when the Gemini quota is spent is
+Gemma via Ollama, not Claude)
 below); `shot_design.llm.client.LLMClient` dispatches purely on that key, so
 a Stellar operator running the Ollama path sets `provider: ollama` in this
 same file. Without an endpoint file, the client is unavailable and builds
@@ -85,6 +90,13 @@ the `blurb_all.sh` wrapper already supplies `--all`.
 ### Operator runbook (after merge)
 
 The existing Ollama 0.33.3 binary and both Gemma models are reused in place.
+The `ollama:` block now also holds its own `models:` map (`gemma4:26b`,
+`gemma4:e4b`), which `LLMClient.models()` uses in place of the top-level Gemini
+ids whenever the provider is ollama, and `reasoning_effort: "none"`, sent only
+with that provider (the client reads a provider block's `reasoning_effort`
+before the top-level key). `serve_llm.sh` warms and publishes those tags.
+`shot_design assistant --llm-model TAG` maps every alias to one tag for a run.
+
 `serve_llm.sh` resolves these three directories itself, from hardcoded
 fallback defaults baked into the script (the literal paths below) — it reads
 each as a FLAT top-level `llm.yaml` key, not through the nested `ollama:`

@@ -148,9 +148,7 @@ def test_run_design_treats_every_off_spelling_as_unavailable(
 
     paths, _ = program_source
     client = LLMClient(paths=paths, cfg={"provider": provider_value})
-    with pytest.raises(
-        LLMUnavailable, match="needs a configured model"
-    ):
+    with pytest.raises(LLMUnavailable, match="needs a configured model"):
         assistant.run_design("Control ELMs", paths, object(), client=client)
 
 
@@ -391,3 +389,52 @@ def test_retrieval_evidence_tells_gemma_which_controls_block_ignite(program_sour
     assert "nbi.total" in packet["ignite_incompatible_channels"]
     assert "ech_power[0]" in packet["ignite_incompatible_channels"]
     assert "pinj[1]" not in packet["ignite_incompatible_channels"]
+
+
+def test_ref_shot_anchors_the_query_and_leads_the_candidates(
+    program_source, monkeypatch
+):
+    from shot_design.design import assistant, program
+
+    paths, _ = program_source
+    seen = {}
+
+    def search(query, db):
+        seen["query"] = query
+        return SimpleNamespace(items=[])  # nothing retrieved: the anchor alone remains
+
+    monkeypatch.setattr(assistant.rank, "search", search)
+    result = assistant.run_design(
+        "Control tearing modes",
+        paths,
+        object(),
+        client=model_client(paths),
+        ref_shot=SHOT,
+    )
+    assert seen["query"].ref_shot == SHOT
+    assert program.load_program(result["design_id"], paths).reference_shot == SHOT
+
+
+def test_scaled_power_vertices_clamp_sub_zero_noise_but_keep_gas_signed():
+    """Measured beam/gyrotron power dips a few hundred W below zero between pulses;
+    scaling it by any factor used to trip `program`'s nonnegative-power rule (69 of
+    the 100 rejected designs in the 2026-09-21 Stellar batch). The scaled vertex is
+    clamped at zero for power channels only -- gas and RMP keep their sign."""
+    from shot_design.design import assistant
+
+    verts = [
+        {"t_s": 1.0, "y": -300.0},
+        {"t_s": 1.5, "y": 2.0e6},
+        {"t_s": 2.0, "y": -50.0},
+    ]
+    for key in ("nbi.total", "ech.total", "pinj[3]", "ech_power[10]"):
+        out = assistant._scaled_vertices(key, verts, 1.3)
+        assert [v.y for v in out] == [0.0, pytest.approx(2.6e6), 0.0]
+        assert [v.t_s for v in out] == [1.0, 1.5, 2.0]
+    signed = assistant._scaled_vertices("rmp[0]", verts, 0.7)
+    assert [v.y for v in signed] == [
+        pytest.approx(-210.0),
+        pytest.approx(1.4e6),
+        pytest.approx(-35.0),
+    ]
+    assert assistant._scaled_vertices("gas_flow[1]", verts, 1.0)[0].y == -300.0

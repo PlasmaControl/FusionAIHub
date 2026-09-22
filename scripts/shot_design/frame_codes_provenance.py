@@ -65,14 +65,20 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="read-only: print the census of what the existing sidecars say",
     )
-    ap.add_argument("--codes-dir", type=Path, default=None, help="default: <data_root>/frame_codes")
-    ap.add_argument("--runs-dir", type=Path, default=None, help="default: <data_root>/runs/encode")
+    ap.add_argument(
+        "--codes-dir", type=Path, default=None, help="default: <data_root>/frame_codes"
+    )
+    ap.add_argument(
+        "--runs-dir", type=Path, default=None, help="default: <data_root>/runs/encode"
+    )
     ap.add_argument(
         "--default-device",
         default="cpu",
         help="what a cache no run manifest names is recorded as (marked 'assumed')",
     )
-    ap.add_argument("--dry-run", action="store_true", help="report what would be written")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="report what would be written"
+    )
     ap.add_argument(
         "--force",
         action="store_true",

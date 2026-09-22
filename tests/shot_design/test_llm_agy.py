@@ -154,3 +154,53 @@ def test_a_real_exit_error_is_not_retried_even_with_retries_configured():
     with pytest.raises(LLMUnavailable, match="boom"):
         agy.AgyProvider(cfg, runner=runner).chat(body)
     assert calls["n"] == 1
+
+
+def test_a_quota_error_is_retried_after_a_backoff(monkeypatch):
+    calls = {"n": 0}
+    slept = []
+    monkeypatch.setattr(agy.time, "sleep", slept.append)
+
+    def runner(cmd, prompt):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise agy.AgyError(
+                "exit 3: error: API error (attempt 1): RESOURCE_EXHAUSTED (code 429): "
+                "You have exhausted your capacity on this model."
+            )
+        return json.dumps({"result": json.dumps({"content": "ok", "tool_calls": []})})
+
+    cfg = {"bin": "agy", "retries": 2, "backoff_s": 5}
+    body = {"messages": [], "model": "m"}
+    r = agy.AgyProvider(cfg, runner=runner).chat(body)
+    assert r.content == "ok" and calls["n"] == 2 and slept == [5.0]
+
+
+def test_an_empty_success_reply_is_retried_without_waiting(monkeypatch):
+    calls = {"n": 0}
+    slept = []
+    monkeypatch.setattr(agy.time, "sleep", slept.append)
+
+    def runner(cmd, prompt):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return json.dumps({"status": "SUCCESS", "response": ""})
+        return json.dumps({"result": json.dumps({"content": "ok", "tool_calls": []})})
+
+    cfg = {"bin": "agy", "retries": 1}
+    body = {"messages": [], "model": "m"}
+    r = agy.AgyProvider(cfg, runner=runner).chat(body)
+    assert r.content == "ok" and calls["n"] == 2 and slept == [0.0]
+
+
+def test_a_garbled_nonempty_reply_is_still_not_retried():
+    calls = {"n": 0}
+
+    def runner(cmd, prompt):
+        calls["n"] += 1
+        return json.dumps({"status": "SUCCESS", "response": "just prose, no json"})
+
+    cfg = {"bin": "agy", "retries": 2}
+    with pytest.raises(LLMUnavailable, match="no usable structured output"):
+        agy.AgyProvider(cfg, runner=runner).chat({"messages": [], "model": "m"})
+    assert calls["n"] == 1

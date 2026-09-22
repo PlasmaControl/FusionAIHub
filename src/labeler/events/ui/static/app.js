@@ -51,7 +51,12 @@ async function getJSON(url, signal) {
 
 // ---------------------------------------------------------------- drawing
 
-const AXIS_GAP = 0.05;
+const AXIS_GAP = 0.06;
+// Half of the original 220: the reviewer asked for the figure compressed
+// twice over vertically, so a whole AE shot - three crosspower panels and
+// the label row - sits on one screen with the controls under it.
+const PANEL_PX = 110;
+const CHROME_PX = 90;
 
 function axisNames(row) {
   // Plotly's first subplot is "x"/"y" with no index, the rest are numbered.
@@ -106,15 +111,15 @@ function draw(payload) {
     title: {
       text: `${payload.event} - shot ${payload.shot}` +
             (payload.note ? ` - ${payload.note}` : ""),
-      font: { size: 14 },
+      font: { size: 13 },
     },
-    height: 220 * panels.length + 130,
+    height: PANEL_PX * panels.length + CHROME_PX,
     dragmode: "select",
     selectdirection: "h",
     showlegend: true,
     // Room on the right only when something is going to be drawn there.
     margin: {
-      l: 64, t: 56, b: 48,
+      l: 64, t: 40, b: 36,
       r: panels.some((panel) => panel.kind !== "heatmap") ? 150 : 24,
     },
     shapes,
@@ -153,7 +158,7 @@ function draw(payload) {
     annotations.push({
       text: panel.title, showarrow: false, xref: "paper",
       yref: `${name.y} domain`, x: 0, y: 1, yanchor: "bottom",
-      xanchor: "left", font: { size: 12 },
+      xanchor: "left", font: { size: 11 },
     });
     // A filled rect over a spectrogram washes the very image under review;
     // darker reads as less power on every sequential colormap, biasing the
@@ -235,13 +240,45 @@ function onRelayout(event) {
 
 let ticker = null;
 
-function waiting(text) {
-  const started = Date.now();
+// Percent, not elapsed seconds: a shot outside the corpus is fetched point
+// by point over PTDATA, and `/api/progress` says how many of those points
+// have landed. Elapsed time said only that the page was still waiting.
+function waiting(text, shot) {
   say(text);
   clearInterval(ticker);
-  ticker = setInterval(() => {
-    say(`${text} - ${Math.round((Date.now() - started) / 1000)}s`);
+  if (shot === undefined) return;
+  let seenFetch = false;
+  let polling = false;
+  ticker = setInterval(async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      const progress = await getJSON(`/api/progress?shot=${shot}`);
+      // A poll that lands after the render did must not overwrite the
+      // finished status line; `ticker` is cleared by then and stale.
+      if (ticker === null) return;
+      if (progress.fraction === null) {
+        // Either the shot is cached and nothing is being fetched, or the
+        // fetch just finished and the render is running. Only the second
+        // is worth saying; the first was said when the load started.
+        if (seenFetch) say(`${text} - fetched, rendering`);
+        return;
+      }
+      seenFetch = true;
+      const percent = Math.round(progress.fraction * 100);
+      say(`${text} - ${percent}% (${progress.stage})`);
+    } catch (error) {
+      // The progress line is a courtesy; the panels request carries the
+      // real answer and its own error, so a failed poll says nothing.
+    } finally {
+      polling = false;
+    }
   }, 1000);
+}
+
+function stopWaiting() {
+  clearInterval(ticker);
+  ticker = null;
 }
 
 async function loadPanels(t0, t1) {
@@ -253,7 +290,7 @@ async function loadPanels(t0, t1) {
   // a status line and a ticker still describing it.
   if (inFlight) inFlight.abort();
   ++generation;
-  clearInterval(ticker);
+  stopWaiting();
   if (currentEvent === null || !Number.isFinite(currentShot)) {
     Plotly.purge($("figure"));
     return;
@@ -265,17 +302,19 @@ async function loadPanels(t0, t1) {
   // sign of it is a null `t_range` in the answer.
   const whole = t0 === undefined || t1 === undefined;
   const query = whole ? "" : `&t0=${t0}&t1=${t1}`;
-  waiting(whole
-    ? "loading the whole shot - a shot not yet cached is fetched over PTDATA "
-      + "and that takes minutes"
-    : `rendering ${Math.round(t0)}-${Math.round(t1)} ms`);
+  if (whole) {
+    waiting("loading the whole shot - a shot not yet cached is fetched over "
+            + "PTDATA and that takes minutes", currentShot);
+  } else {
+    waiting(`rendering ${Math.round(t0)}-${Math.round(t1)} ms`);
+  }
   try {
     const payload = await getJSON(
       `/api/panels?event=${encodeURIComponent(currentEvent)}` +
       `&shot=${currentShot}${query}`, controller.signal);
     if (mine !== generation) return;
     draw(payload);
-    clearInterval(ticker);
+    stopWaiting();
     const span = payload.t_range
       ? `${Math.round(payload.t_range[0])}-${Math.round(payload.t_range[1])} ms`
       : "whole shot";
@@ -285,7 +324,7 @@ async function loadPanels(t0, t1) {
     // A request this page cancelled to make room for a newer one is not a
     // failure to report; the newer one owns the status line now.
     if (error.name === "AbortError" || mine !== generation) return;
-    clearInterval(ticker);
+    stopWaiting();
     say(String(error.message || error), true);
   } finally {
     if (inFlight === controller) inFlight = null;

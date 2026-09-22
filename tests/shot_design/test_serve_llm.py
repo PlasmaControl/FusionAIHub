@@ -118,7 +118,10 @@ def test_serve_endpoint_double_start_and_cleanup(paths, shim_env, replace_endpoi
             doc = _wait_for_endpoint(proc, endpoint)
             assert set(doc) == {"url", "models", "host", "job_id", "started", "version"}
             assert doc["url"] == f"http://127.0.0.1:{port}"
-            assert doc["models"] == list(cfg["models"].values())
+            # the tags the shim was asked to serve: the ollama block's own map when the
+            # yaml has one (the top-level map names agy's Gemini ids), else the top level
+            served = (cfg.get("ollama") or {}).get("models") or cfg["models"]
+            assert doc["models"] == list(dict.fromkeys(served.values()))
             assert doc["host"] and doc["started"] and doc["job_id"] == "12345"
             assert doc["version"] == "ollama version is shim"
             assert not list(endpoint.parent.glob("*.part"))

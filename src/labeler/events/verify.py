@@ -133,6 +133,7 @@ def fdp_signal(
     via: str = "mds",
     t_range: tuple[float, float] | None = None,
     cache: Path | None = None,
+    on_progress=None,
 ) -> FeatureArray:
     """One or more MDSplus or PTDATA points, fetched live or from a cache.
 
@@ -152,6 +153,10 @@ def fdp_signal(
     `cache`, when given, holds the FULL record (never the `t_range` window),
     so widening a window later costs nothing and a shot already on disk is
     never refetched. Nothing is cached when `cache` is None.
+
+    `on_progress(done, total, expr)`, when given, is called once per
+    expression just before it is fetched. It is how a live fetch reports
+    where it is; nothing here depends on what it does.
     """
     if via not in FDP_VIA_ROUTES:
         legal = " or ".join(repr(route) for route in FDP_VIA_ROUTES)
@@ -193,7 +198,12 @@ def fdp_signal(
         times_ms = None
         expected_length = None
         first_expr = exprs[0] if exprs else None
-        for expr in exprs:
+        for index, expr in enumerate(exprs):
+            # Told BEFORE each point goes over the wire, so whoever is
+            # watching sees "3 of 4" while the fourth is still in flight
+            # rather than only after it has landed.
+            if on_progress is not None:
+                on_progress(index, len(exprs), expr)
             try:
                 record = fetch_one(expr)
             except Exception as error:

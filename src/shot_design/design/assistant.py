@@ -19,10 +19,10 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 from ..config import Paths
 from ..llm.client import LLMClient, LLMUnavailable
 from ..retrieval import rank
-from ..schema import QueryState
+from ..schema import QueryState, ResultItem
 from . import actuators as act
 from . import program
-from .program_reference import reference
+from .program_reference import frame_origin_s, reference
 
 STAGES = (
     ("interpret", "The model interprets your request"),
@@ -162,12 +162,48 @@ def _compact(vertices):
     return [vertices[index] for index in sorted(keep)]
 
 
+_POWER_PREFIXES = ("pinj[", "ech_power[")
+_POWER_TOTALS = ("nbi.total", "ech.total")
+
+
+def _is_power_channel(key: str) -> bool:
+    return key.startswith(_POWER_PREFIXES) or key in _POWER_TOTALS
+
+
+def _scaled_vertices(key: str, vertices, factor: float) -> list:
+    """Multiply a measured waveform's vertices by ``factor``; power never goes negative.
+
+    A measured injected-power trace sits a few hundred watts below zero between
+    pulses (amplifier offset), and `program._evaluate` rejects any edited power
+    sample that is negative and differs from the baseline -- so scaling such a
+    waveform by ANY factor used to fail validation ("edited injected power demand
+    must be nonnegative"): 69 of the 100 rejected designs in the 2026-09-21 Stellar
+    batch, and every NBI edit on shot 200729. Clamping the scaled vertex at zero
+    keeps the pulse shape (only sub-zero noise is touched) and passes the rule.
+    Non-power channels (gas, RMP coil current) are left signed.
+    """
+    clamp = _is_power_channel(key)
+    out = []
+    for vertex in vertices:
+        y = vertex["y"] * factor
+        if clamp and y < 0:
+            y = 0.0
+        out.append(program.Vertex(t_s=vertex["t_s"], y=y))
+    return out
+
+
 def _window(intent, ref):
-    start = round(intent.start_s / act.FRAME_S) * act.FRAME_S
+    # The cache starts `frame_origin_s()` into the shot and the rollout needs SEED_FRAMES of
+    # it before the first predicted frame, so a request that starts earlier is moved up to
+    # the first frame a design can start at (2.0 s under v4, 1.0 s under v2) instead of
+    # failing `program._window`'s "must leave 20 earlier reference frames" later.
+    t0 = frame_origin_s()
+    first = round(t0 + program.SEED_FRAMES * act.FRAME_S, 10)
+    start = max(round(intent.start_s / act.FRAME_S) * act.FRAME_S, first)
     end = min(
         round(intent.end_s / act.FRAME_S) * act.FRAME_S,
         start + program.MAX_PREDICTION_FRAMES * act.FRAME_S,
-        ref.controls.n_frames * act.FRAME_S,
+        t0 + ref.controls.n_frames * act.FRAME_S,
     )
     if end <= start:
         raise ValueError(
@@ -287,6 +323,25 @@ def _write_hdf5(path, view, metadata):
     program._atomic(path, write, immutable=True)
 
 
+def _anchor_item(shot: int, db) -> ResultItem:
+    """A candidate row for the requested reference shot, described from the database."""
+    description = f"Requested reference shot {shot}"
+    try:
+        row = db.shots.loc[shot]
+        text = row.get("blurb") or row.get("mp_title") or ""
+        if isinstance(text, str) and text.strip():
+            description = text.strip()
+    except (AttributeError, KeyError, TypeError):
+        pass
+    return ResultItem(
+        id=f"{shot}:flat_top",
+        shot=shot,
+        segment="flat_top",
+        score=1.0,
+        description=description,
+    )
+
+
 def run_design(
     prompt: str,
     paths: Paths,
@@ -295,8 +350,16 @@ def run_design(
     client: LLMClient | None = None,
     model: str = "quality",
     progress: Progress | None = None,
+    ref_shot: int | None = None,
 ) -> dict:
-    """Run two model steps (one JSON repair each); report actual progress."""
+    """Run two model steps (one JSON repair each); report actual progress.
+
+    `ref_shot` anchors the retrieval on one stored shot (the query's `ref_shot` channel) and
+    puts that shot first among the candidates the model chooses from, so a batch that wants
+    "a design starting from shot N" gets N considered whatever its text search returns. The
+    model still picks the reference; a shot with no usable actuator trace is rejected like
+    any other candidate.
+    """
     prompt = prompt.strip()
     if not 1 <= len(prompt) <= 4000:
         raise ValueError("Describe the design goal in 1 to 4000 characters")
@@ -338,10 +401,15 @@ def run_design(
     emit(
         "retrieve", "running", f"Searching the real-shot database: {intent.search_text}"
     )
-    query = QueryState(text=intent.search_text, n=12, prefer_outcome="success")
+    query = QueryState(
+        text=intent.search_text, ref_shot=ref_shot, n=12, prefer_outcome="success"
+    )
     retrieved = rank.search(query, db)
+    items = list(retrieved.items)
+    if ref_shot is not None:
+        items = [_anchor_item(ref_shot, db)] + [i for i in items if i.shot != ref_shot]
     candidates, rejected = [], []
-    for item in retrieved.items:
+    for item in items:
         try:
             candidates.append(_candidate(item, paths, intent))
         except (ValueError, OSError) as exc:
@@ -437,12 +505,7 @@ def run_design(
             )
         if factor == 1:
             continue
-        draft.edits[key] = _compact(
-            [
-                program.Vertex(t_s=vertex["t_s"], y=vertex["y"] * factor)
-                for vertex in channel["vertices"]
-            ]
-        )
+        draft.edits[key] = _compact(_scaled_vertices(key, channel["vertices"], factor))
     emit("propose", "complete", proposal.explanation)
     emit(
         "validate",

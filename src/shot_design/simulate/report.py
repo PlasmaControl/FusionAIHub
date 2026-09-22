@@ -23,7 +23,7 @@ import torch
 from .core import ARM_LABELS, SimulationArms
 
 QUALITATIVE_SENTENCE = (
-    "IGNITE v4 dynamics (step {step}) is an early checkpoint; "
+    "IGNITE {generation} dynamics (step {step}) is an early checkpoint; "
     "treat results as qualitative."
 )
 
@@ -128,7 +128,12 @@ def _render_report(arms: SimulationArms, frac: dict[str, float], meta: dict) -> 
         )
     lines.append("")
     if any_negative_skill:
-        lines.append(QUALITATIVE_SENTENCE.format(step=meta.get("dynamics_step")))
+        lines.append(
+            QUALITATIVE_SENTENCE.format(
+                generation=meta.get("codec_generation", "v4"),
+                step=meta.get("dynamics_step"),
+            )
+        )
     return "\n".join(lines) + "\n"
 
 

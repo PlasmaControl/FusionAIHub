@@ -182,8 +182,12 @@ def is_diagnostic(shots, *, no_video: bool, allow_partial: bool) -> bool:
     `"diagnostic"` field, the stdout notice and the tests cannot drift on what counts.
     """
     return bool(
-        no_video or allow_partial or sorted(int(s) for s in shots) != sorted(DEFAULT_SHOTS)
+        no_video
+        or allow_partial
+        or sorted(int(s) for s in shots) != sorted(DEFAULT_SHOTS)
     )
+
+
 #: float16 holds ~3 decimal digits, so two z traces that round to the same float16 differ by at
 #: most this in the units the model reads. The threshold is absolute because the criterion is
 #: about the model's input, not about relative precision.
@@ -231,7 +235,9 @@ def validate_cache(payload: dict, side: str, expect_frames: int | None = None) -
         )
     act = payload["actuators"]
     if act.dtype != torch.float16:
-        raise ValueError(f"{side}: actuators are {act.dtype}, the shipped layout is float16")
+        raise ValueError(
+            f"{side}: actuators are {act.dtype}, the shipped layout is float16"
+        )
     if tuple(act.shape) != (frames, N_ACTUATOR_CHANNELS):
         raise ValueError(
             f"{side}: actuators are {tuple(act.shape)}, expected "
@@ -240,9 +246,13 @@ def validate_cache(payload: dict, side: str, expect_frames: int | None = None) -
     vocabs = payload["vocabs"]
     for name, codes in payload["codes"].items():
         if codes.dtype != torch.int32:
-            raise ValueError(f"{side}: {name} codes are {codes.dtype}, the shipped layout is int32")
+            raise ValueError(
+                f"{side}: {name} codes are {codes.dtype}, the shipped layout is int32"
+            )
         if codes.dim() != 2:
-            raise ValueError(f"{side}: {name} codes have shape {tuple(codes.shape)}, expected (F, n_tok)")
+            raise ValueError(
+                f"{side}: {name} codes have shape {tuple(codes.shape)}, expected (F, n_tok)"
+            )
         if int(codes.shape[0]) != frames:
             raise ValueError(
                 f"{side}: {name} has {int(codes.shape[0])} frames but n_frames says {frames}"
@@ -258,7 +268,9 @@ def validate_cache(payload: dict, side: str, expect_frames: int | None = None) -
             )
     extra = set(vocabs) - set(payload["codes"])
     if extra:
-        raise ValueError(f"{side}: vocabs name modalities with no codes: {', '.join(sorted(extra))}")
+        raise ValueError(
+            f"{side}: vocabs name modalities with no codes: {', '.join(sorted(extra))}"
+        )
     return frames
 
 
@@ -291,14 +303,18 @@ def compare(
     asked = set(tuple(ref["codes"]) if requested is None else requested)
     unknown = asked - set(ref["codes"]) - set(got["codes"])
     if unknown:
-        raise ValueError(f"requested modalities nobody has: {', '.join(sorted(unknown))}")
+        raise ValueError(
+            f"requested modalities nobody has: {', '.join(sorted(unknown))}"
+        )
 
     modalities = {}
     for name in dict.fromkeys((*ref["codes"], *got["codes"])):
         want, have = ref["codes"].get(name), got["codes"].get(name)
         if name not in asked:
             modalities[name] = {
-                "requested": False, "equal": None, "agreement": None,
+                "requested": False,
+                "equal": None,
+                "agreement": None,
                 "note": "not requested",
             }
             continue
@@ -307,7 +323,9 @@ def compare(
             # to land here with `equal=None`, and `verdict` rejected only `equal is False`, so
             # removing `ece` from an otherwise identical cache PASSED. It is a failure.
             modalities[name] = {
-                "requested": True, "equal": None, "agreement": None,
+                "requested": True,
+                "equal": None,
+                "agreement": None,
                 "note": "not encoded" if have is None else "not in the shipped cache",
             }
             continue
@@ -373,7 +391,9 @@ def verdict(result: dict, video: tuple[str, ...]) -> tuple[bool, list[str]]:
             )
     n_ok = result["actuators"]["within_tol"]
     if n_ok < ACT_MIN_PASS:
-        reasons.append(f"actuators within {ACT_TOL:g} z on {n_ok}/88 channels (< {ACT_MIN_PASS})")
+        reasons.append(
+            f"actuators within {ACT_TOL:g} z on {n_ok}/88 channels (< {ACT_MIN_PASS})"
+        )
     if video:
         reasons.append(f"(video modalities included: {', '.join(video)})")
     return not [r for r in reasons if not r.startswith("(")], reasons
@@ -457,9 +477,13 @@ def encode_one(
     return torch.load(path, weights_only=False, map_location="cpu"), elapsed
 
 
-def print_table(shot: int, result: dict, elapsed: float, ok: bool, reasons: list[str]) -> None:
-    print(f"\n=== {shot}   {result['n_frames']} frames   {elapsed:.1f} s   "
-          f"{'PASS' if ok else 'FAIL'}")
+def print_table(
+    shot: int, result: dict, elapsed: float, ok: bool, reasons: list[str]
+) -> None:
+    print(
+        f"\n=== {shot}   {result['n_frames']} frames   {elapsed:.1f} s   "
+        f"{'PASS' if ok else 'FAIL'}"
+    )
     print(f"{'modality':24s} {'bit-identical':>13s} {'token agreement':>16s}")
     for name, m in result["modalities"].items():
         if not m.get("requested", True):
@@ -509,8 +533,12 @@ def main(argv: list[str] | None = None) -> int:
         "(5 shots present in the production cache)"
     )
     ap.add_argument("--shots", type=int, nargs="+", default=None, help=_shots_help)
-    ap.add_argument("--device", default=None, help="cuda | cpu (default: cuda when available)")
-    ap.add_argument("--workers", type=int, default=None, help="CPU dataloader workers per codec")
+    ap.add_argument(
+        "--device", default=None, help="cuda | cpu (default: cuda when available)"
+    )
+    ap.add_argument(
+        "--workers", type=int, default=None, help="CPU dataloader workers per codec"
+    )
     ap.add_argument(
         "--no-video",
         action="store_true",

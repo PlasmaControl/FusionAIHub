@@ -8,7 +8,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>labeler verify</title>
 <link rel="stylesheet" href="/style.css">
-<script src="/vendor/plotly.min.js"></script>
+<!-- `defer` on both: the 4.8 MB plotly bundle would otherwise block the
+     first paint, and over a slow SSH tunnel that is a blank page for as
+     long as the download takes. Deferred scripts still run in document
+     order, so app.js sees Plotly. -->
+<script defer src="/vendor/plotly.min.js"></script>
 </head>
 <body>
 <header>
@@ -64,6 +68,6 @@
   <table id="roster"><tbody></tbody></table>
 </section>
 
-<script src="/app.js"></script>
+<script defer src="/app.js"></script>
 </body>
 </html>

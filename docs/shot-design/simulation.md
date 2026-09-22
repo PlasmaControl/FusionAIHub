@@ -87,6 +87,85 @@ requiring an operator to run `sbatch` by hand:
 Running the CLI directly (above) or through the sbatch wrapper works the same
 way outside the UI.
 
+## On Stellar: the v2 generation and batch runs
+
+Stellar holds the **v2** IGNITE bundle (the `nc1/IGNITE` Hub snapshot at
+`models_dir/IGNITE`, 14 codecs + `ignite_dynamics_prod_nfullrs2_step13400.pt`)
+and none of the proj-shared sources the pinned **v4** generation copies from,
+so every Stellar `shot_design` process that touches IGNITE exports
+`SHOT_DESIGN_IGNITE_GENERATION=v2`. That selects the `model_generations.v2`
+block of `configs/shot_design/ignite_modalities.yaml` in place of `model:`
+(`shotdb/ignite.py:model_cfg`) -- the whole block, never a merge, and never a
+guess from which bundle is on disk. Unset, or set to the pinned generation,
+nothing changes; an unknown name is refused. The v2 block carries the
+14-modality vocabularies, families and token counts (1017 tokens per frame,
+`t0_start_s` 0.0) that the 500 production frame codes under
+`ideate/frame_codes` were written with.
+
+The Stellar batch scripts under `scripts/shot_design/` run the interpreter
+directly (never `pixi run`, whose activation would re-point the data root at
+production) and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
+`/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/<name>`; the production
+root is refused (`_stellar_common.sh`). A full batch, from a shot list to a
+summary table:
+
+```bash
+export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/stellar_1k
+PY=.pixi/envs/shot-design/bin/python
+# 1. a diverse list (login node, ~20 s); §5.7's per-run-day/per-mpid caps set the ceiling
+$PY -m shot_design corpus select --n 1000 --name stellar_1k --seed 20260920 \
+    --census /scratch/gpfs/EKOLEMEN/nc1514/ideate/db/corpus_coverage.parquet \
+    --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/ideate/frame_codes
+# 2. database + labels join into the batch root (CPU job)
+LIST=stellar_1k sbatch scripts/shot_design/build_batch.sbatch
+# 3. frame codes for the shots that have none (4 GPUs, one job)
+LIST=stellar_1k sbatch scripts/shot_design/encode_batch.sbatch
+# 4. one prompt per shot, then the assistant over all of them (login node: agy needs the network;
+#    when the Gemini quota is spent, Gemma through Ollama on the login GPU -- see below)
+$PY scripts/shot_design/batch_prompts.py --list stellar_1k --out $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl
+$PY scripts/shot_design/batch_design.py --prompts $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl \
+    --out $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl --provider agy --workers 2 --retry-failed
+# 5. paired rollouts, 4 GPUs per job, two jobs (the QOS cap), resumable (complete/failed ids are
+#    skipped). batch_idents.py keeps a theme-stratified, append-only id list growing while step 4
+#    still runs; FOLLOW=1 makes the jobs re-read it until <idents>.final appears.
+$PY scripts/shot_design/batch_idents.py --designs $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl \
+    --prompts $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl --out $SHOT_DESIGN_DATA_ROOT/runs/idents.txt --follow &
+for i in 1 2; do IDENTS=$SHOT_DESIGN_DATA_ROOT/runs/idents.txt FOLLOW=1 sbatch --time=20:00:00 \
+    scripts/shot_design/simulate_batch.sbatch --n-predict 40 --decode-steps 4; done
+# 6. one row per prompt: design, scales, simulation state and the report.md metrics
+$PY scripts/shot_design/batch_collect.py --designs $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl \
+    --out $SHOT_DESIGN_DATA_ROOT/summary
+```
+
+`batch_design.py` passes each prompt's shot as `assistant --ref-shot N`, which
+anchors the retrieval on that shot and offers it first among the candidates;
+the model still chooses the reference, so `batch_collect.py` reports how many
+designs kept their source shot. The `gpu-stellar` QOS runs at most two jobs and
+eight GPUs per user, so a batch is two `simulate_batch` jobs of four GPUs.
+
+**Rollout cost.** `maskgit.rollout` re-runs the full trajectory for every
+reveal pass of every predicted frame (no KV cache), so wall time grows with
+`--n-predict` squared and linearly with `--decode-steps`. Measured on the v2
+bundle: `--k0 20 --n-predict 80` (10 passes) took 86 min on a login-node
+V100S; `--n-predict 40` (10 passes) took 19 min per design on an A100-40GB at
+97 % GPU utilisation. A 768-design batch therefore runs `--n-predict 40
+--decode-steps 4` (about 8 min per design, eight GPUs, roughly 13 h); the
+flag and the `k0`/`n_predict`/`decode_steps` values land in `simulation.h5`'s
+attributes so a summary can say what horizon each row was simulated at.
+
+**LLM on Stellar.** `agy` is for Gemini only (house rule; Claude runs through
+Claude Code itself, GPT through Codex). When the Gemini quota is exhausted
+(`RESOURCE_EXHAUSTED ... Resets in 135h`, seen 2026-09-21 after 23 designs)
+the batch falls back to Gemma through Ollama: start the server on a login GPU
+(`scripts/shot_design/serve_llm.sh`, or `ollama serve` by hand with an
+`llm/endpoint.json` written into the batch root), then `batch_design.py
+--provider ollama`. `llm.yaml`'s `ollama:` block carries its own `models:`
+(gemma4:26b / e4b, used automatically whenever the provider is ollama) and
+`reasoning_effort: "none"`, without which gemma4:26b spends the whole token
+budget on a `reasoning` field and the propose stage fails. Measured: 28 s per
+design, two model calls, about 3 designs per minute with two workers.
+`assistant --llm-model TAG` overrides every alias for one run.
+
 ## Reading the result
 
 Read `report.md` before trusting a skill number: the currently pinned
