@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import warnings
 from pathlib import Path
 
 import h5py
@@ -19,6 +20,16 @@ import yaml
 
 from shot_design import config
 from shot_design.shotdb import ignite
+
+# Two third-party import-time deprecations, silenced once here so `-W error` keeps meaning
+# "this repository's code warned": starlette's test client reads the `anyio.abc.BlockingPortal`
+# alias (deprecated in anyio 4.15) and x_transformers decorates with `torch.jit.script`
+# (deprecated in torch 2.14).
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", "The anyio.abc.BlockingPortal alias", DeprecationWarning)
+    warnings.filterwarnings("ignore", "`torch.jit.script` is deprecated", FutureWarning)
+    import starlette.testclient  # noqa: F401
+    import x_transformers  # noqa: F401
 
 BEAMS = ["15l", "15r", "21l", "21r", "30l", "30r", "33l", "33r"]
 OUR_SCHEMA = "shot-design-raw-v1"  # scripts/fetch_shots.SCHEMA; pinned equal in test_fetch_plan
@@ -831,8 +842,8 @@ def force_ollama_provider():
         config.load_yaml = real_load_yaml
 
 
-@pytest.fixture(autouse=True)
-def _no_real_agy_subprocess(monkeypatch):
+@pytest.fixture(scope="session", autouse=True)
+def _no_real_agy_subprocess():
     """Safety net (2026-09-20 review): `configs/shot_design/llm.yaml`'s checked-in
     default is `provider: agy`, so any test that builds a real `LLMClient`/
     `AgyProvider` from that yaml -- or from a merge of it -- without overriding
@@ -842,6 +853,10 @@ def _no_real_agy_subprocess(monkeypatch):
     succeeding or hanging; a test that wants the (fake) agy path passes `runner=`
     to `AgyProvider`, which bypasses this method entirely and is unaffected.
 
+    Session-scoped so it also covers module-scoped fixtures: as a function fixture it
+    was set up after them, and `test_integration_real.py`'s module-scoped build sat in
+    real agy calls (and their retry sleeps) for minutes.
+
     See also: tests/shot_design/test_blurb.py's module docstring for the specific
     landmine this closes (an httpx-only fake plus the real yaml still reaches agy).
     """
@@ -849,10 +864,10 @@ def _no_real_agy_subprocess(monkeypatch):
     def _forbidden(self, cmd, prompt):
         raise AssertionError("real agy call from a test")
 
-    monkeypatch.setattr("shot_design.llm.agy.AgyProvider._run_subprocess", _forbidden)
-    monkeypatch.setattr(
-        "shot_design.llm.claude_cli.ClaudeCliProvider._run_subprocess", _forbidden
-    )
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("shot_design.llm.agy.AgyProvider._run_subprocess", _forbidden)
+        mp.setattr("shot_design.llm.claude_cli.ClaudeCliProvider._run_subprocess", _forbidden)
+        yield
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -746,7 +746,7 @@ def test_text_source_has_documented_non_diagnostic_empty_coverage(
     assert text.status == "ok" and text.n_events == 1
     assert json.loads(text.intervals) == []
     assert np.isnan(text.t_cov0_s) and np.isnan(text.t_cov1_s)
-    docs = Path(__file__).resolve().parents[2] / "docs/LABELER.md"
+    docs = Path(__file__).resolve().parents[2] / "docs/labeler/overview.md"
     assert "The `text` source is non-diagnostic and carries no coverage" in docs.read_text()
 
 

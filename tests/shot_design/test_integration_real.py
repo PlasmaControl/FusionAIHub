@@ -62,6 +62,7 @@ def real_db(real_paths):
     """One CLI build of two staged shots, shared by the tests below."""
     with pytest.MonkeyPatch.context() as mp:
         _stub_embeddings(mp)
+        mp.setenv("SHOT_DESIGN_LLM_PROVIDER", "off")  # template blurbs: no model call from a test
         assert cli.main(["build", "--shots", str(SHOT), str(OTHER), "--workers", "1", "--no-encode"]) == 0
     # The stub is undone before the tests run: it must not leak into the MiniLM test below.
     return real_paths

@@ -20,11 +20,19 @@ event layer is measured against.
 from __future__ import annotations
 
 import os
+import warnings
 
 import numpy as np
 import pytest
 
 from labeler.env import getenv
+
+# Starlette's test client still reads `anyio.abc.BlockingPortal`, an alias anyio 4.15
+# deprecates. Importing it once here with that one warning silenced keeps `-W error`
+# meaning "this repository's code warned".
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", "The anyio.abc.BlockingPortal alias", DeprecationWarning)
+    import starlette.testclient  # noqa: F401
 
 #: Environment switch, equivalent to `--run-live`.
 LIVE_ENV = "LABELER_FDP"

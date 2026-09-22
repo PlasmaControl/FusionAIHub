@@ -248,6 +248,7 @@ wandb/
 data/*
 !data/events/
 runs/
+.tmp/*
 
 # Conda env (21GB)
 envs/

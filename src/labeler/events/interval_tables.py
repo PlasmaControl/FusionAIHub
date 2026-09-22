@@ -187,7 +187,8 @@ def write_label_grid(
 
 def read_label_grid(path: Path) -> dict:
     """Reconstruct actual sampled values; NaN marks missing/unknown cells."""
-    with np.load(path, allow_pickle=False) as data:
+    # Our own handle: np.load leaks its file when the archive is corrupt.
+    with open(path, "rb") as stream, np.load(stream, allow_pickle=False) as data:
         shape = tuple(data["shape"])
         labels = np.zeros(shape, dtype=float)
         indices = data["indices"]
