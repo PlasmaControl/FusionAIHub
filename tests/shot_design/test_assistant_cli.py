@@ -40,9 +40,11 @@ def _install_fake_run_design(monkeypatch, *, use_client=False, fail=None):
     calls = []
 
     def fake_run_design(
-        prompt, paths, db, *, client=None, model="quality", progress=None
+        prompt, paths, db, *, client=None, model="quality", progress=None, ref_shot=None
     ):
-        calls.append({"prompt": prompt, "client": client, "model": model})
+        calls.append(
+            {"prompt": prompt, "client": client, "model": model, "ref_shot": ref_shot}
+        )
         if fail is not None:
             raise fail
         for key, label in assistant_mod.STAGES:
@@ -143,3 +145,63 @@ def test_a_failed_run_is_reported_on_stderr_with_exit_1(
 
     assert rc == 1
     assert "no usable references" in capsys.readouterr().err
+
+
+def test_ref_shot_flag_reaches_run_design(tmp_path, paths, monkeypatch, capsys):
+    calls = _install_fake_run_design(monkeypatch)
+    trace = tmp_path / "t.jsonl"
+
+    rc = cli.main(
+        ["assistant", "--prompt", "x", "--trace", str(trace), "--ref-shot", "190736"]
+    )
+
+    assert rc == 0
+    assert calls[0]["ref_shot"] == 190736
+
+
+def test_llm_model_flag_resolves_every_alias_to_that_tag(
+    tmp_path, paths, monkeypatch, capsys
+):
+    calls = _install_fake_run_design(monkeypatch)
+    trace = tmp_path / "t.jsonl"
+
+    rc = cli.main(
+        [
+            "assistant",
+            "--prompt",
+            "x",
+            "--trace",
+            str(trace),
+            "--llm-model",
+            "gpt-oss-120b-medium",
+        ]
+    )
+
+    assert rc == 0
+    models = calls[0]["client"].cfg["models"]
+    assert set(models) == set(config.load_yaml("llm.yaml")["models"])
+    assert set(models.values()) == {"gpt-oss-120b-medium"}
+
+
+def test_llm_model_flag_also_overrides_the_provider_blocks_own_map(
+    tmp_path, paths, monkeypatch, capsys
+):
+    calls = _install_fake_run_design(monkeypatch)
+    trace = tmp_path / "t.jsonl"
+
+    rc = cli.main(
+        [
+            "assistant",
+            "--prompt",
+            "x",
+            "--trace",
+            str(trace),
+            "--provider",
+            "ollama",
+            "--llm-model",
+            "gemma4:e4b",
+        ]
+    )
+
+    assert rc == 0
+    assert calls[0]["client"].model("quality") == "gemma4:e4b"

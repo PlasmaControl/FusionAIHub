@@ -231,6 +231,88 @@ def test_a_miss_fetches_and_fills_the_cache(roots, monkeypatch):
     assert np.allclose(second.y, first.y)
 
 
+def test_a_live_fetch_reports_progress_only_while_it_runs(roots, monkeypatch):
+    """`progress_for` counts points landed out of points plus the cache
+    write, and is None before the fetch, and None again after it."""
+    snapshots = []
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, on_progress=None):
+        snapshots.append(raw.progress_for(shot))
+        for index, expr in enumerate(exprs):
+            on_progress(index, len(exprs), expr)
+            snapshots.append(raw.progress_for(shot))
+        times = np.arange(50.0)
+        return FeatureArray(
+            x=times, y=np.zeros((len(exprs), 50), "float32"), attrs={"units": "ms"}
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    assert raw.progress_for(9) is None
+    raw.raw_signal(9, "co2", paths=roots)
+    assert raw.progress_for(9) is None, "a finished fetch leaves no entry"
+
+    total = len(raw.FETCH_SPECS["co2"].exprs) + 1
+    assert snapshots[0] == {"done": 0, "total": total, "stage": "fetching co2"}
+    assert [s["done"] for s in snapshots[1:]] == list(range(total - 1))
+    assert all(s["total"] == total for s in snapshots)
+    assert snapshots[1]["stage"] == f"fetching {raw.FETCH_SPECS['co2'].exprs[0]}"
+
+
+def test_a_fetch_that_fails_once_is_retried_and_succeeds(roots, monkeypatch):
+    """The archive lookup can fail in passing; one retry covers it."""
+    calls = []
+
+    def flaky_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        calls.append(shot)
+        if len(calls) == 1:
+            raise NoDataError(
+                "shot 178879 'DENR0UF' failed to fetch over fdp: getservbyname "
+                "failed for task 'PTSERVER'. If this kernel was not started "
+                "under 'x', restart it that way first."
+            )
+        return FeatureArray(
+            x=np.arange(50.0), y=np.zeros((4, 50), "float32"), attrs={"units": "ms"}
+        )
+
+    slept = []
+    monkeypatch.setattr(raw, "fdp_signal", flaky_fdp_signal)
+    monkeypatch.setattr(raw.time, "sleep", slept.append)
+    got = raw.raw_signal(178879, "co2", paths=roots)
+    assert got.attrs["tier"] == "fetch"
+    assert calls == [178879, 178879]
+    assert slept == [raw.RETRY_DELAY_S]
+
+
+def test_a_fetch_that_fails_twice_names_the_server_command(roots, monkeypatch):
+    def dead_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        raise NoDataError(
+            "shot 9 'DENR0UF' failed to fetch over fdp: getservbyname failed. "
+            "If this kernel was not started under 'jupyter lab', restart it."
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", dead_fdp_signal)
+    monkeypatch.setattr(raw.time, "sleep", lambda _s: None)
+    with pytest.raises(raw.UpstreamError) as caught:
+        raw.raw_signal(9, "co2", paths=roots)
+    message = str(caught.value)
+    assert "getservbyname failed" in message
+    assert "tried twice" in message
+    assert raw.FDP_UI_COMMAND in message
+    assert "jupyter" not in message and "kernel" not in message
+    assert raw.progress_for(9) is None
+
+
+def test_a_failed_fetch_leaves_no_progress_behind(roots, monkeypatch):
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        assert raw.progress_for(shot) is not None
+        raise NoDataError("ptserver went away")
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    with pytest.raises(raw.UpstreamError):
+        raw.raw_signal(9, "co2", paths=roots)
+    assert raw.progress_for(9) is None
+
+
 def test_a_fetch_honours_channels_and_t_range_after_caching_everything(
     roots, monkeypatch
 ):

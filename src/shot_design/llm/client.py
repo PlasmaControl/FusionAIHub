@@ -80,10 +80,12 @@ class LLMClient:
             self.cfg["provider"] = override
         self.paths = paths or config.load_paths()
         self._transport = transport
-        self._ep_cache: tuple[int, Endpoint | None] | None = None  # (mtime_ns, endpoint)
+        self._ep_cache: tuple[int, Endpoint | None] | None = (
+            None  # (mtime_ns, endpoint)
+        )
         # Local import: shot_design.llm.agy imports Reply/ToolCall/LLMUnavailable back
         # from this module, so importing it at module scope would be circular.
-        from shot_design.llm import agy
+        from shot_design.llm import agy, claude_cli
 
         # Every provider takes the already-built request `body` and returns a Reply;
         # `chat` owns discovery, cache and body-building so a provider only has to speak
@@ -95,13 +97,20 @@ class LLMClient:
             # different base_url/API key -- see the module docstring.
             "openai_compatible": lambda body: self._chat_openai(body, self.endpoint()),
             "agy": agy.AgyProvider(self.cfg.get("agy", {})).chat,
+            # Claude through Claude Code's own CLI (never through agy: house rule).
+            "claude": claude_cli.ClaudeCliProvider(self.cfg.get("claude", {})).chat,
         }
 
     # ------------------------------------------------------------------ discovery
 
     @property
     def off(self) -> bool:
-        return str(self.cfg.get("provider", "off")).strip().lower() in ("", "off", "none", "false")
+        return str(self.cfg.get("provider", "off")).strip().lower() in (
+            "",
+            "off",
+            "none",
+            "false",
+        )
 
     def _ollama_cfg(self, key: str, default=None):
         """`base_url`/`endpoint_file`/`ollama_*_dir` moved under an `ollama:` block; a
@@ -142,14 +151,14 @@ class LLMClient:
         if self.off:
             return False, "configs/shot_design/llm.yaml has provider: off"
         provider = str(self.cfg.get("provider", "")).strip().lower()
-        if provider == "agy":
-            # agy is a CLI, not a server: "available" means the binary is on PATH, not
-            # that any endpoint file/base_url exists -- those are ollama-only concepts.
-            bin_name = str((self.cfg.get("agy") or {}).get("bin", "agy"))
+        if provider in ("agy", "claude"):
+            # agy and claude are CLIs, not servers: "available" means the binary is on
+            # PATH, not that any endpoint file/base_url exists -- ollama-only concepts.
+            bin_name = str((self.cfg.get(provider) or {}).get("bin", provider))
             if shutil.which(bin_name) is None:
                 return False, (
-                    f"the agy CLI ({bin_name!r}) is not installed or not on PATH; "
-                    "load/install it or set agy.bin in configs/shot_design/llm.yaml"
+                    f"the {provider} CLI ({bin_name!r}) is not installed or not on PATH; "
+                    f"load/install it or set {provider}.bin in configs/shot_design/llm.yaml"
                 )
             return True, ""
         if provider not in self._providers:
@@ -191,8 +200,18 @@ class LLMClient:
             if isinstance(m, dict) and (m.get("name") or m.get("model"))
         ]
 
+    def models(self) -> dict:
+        """The alias -> tag map in force: the provider block's own `models:` when it has
+        one (llm.yaml's top-level map names agy's Gemini ids, which mean nothing to an
+        Ollama server), else the top-level map."""
+        provider = str(self.cfg.get("provider", "")).strip().lower()
+        own = (self.cfg.get(provider) or {}).get("models") if provider else None
+        if isinstance(own, dict) and own:
+            return dict(own)
+        return dict(self.cfg.get("models", {}))
+
     def model(self, key: str | None = None) -> str:
-        models = self.cfg.get("models", {})
+        models = self.models()
         key = key or self.cfg.get("default", "quality")
         return str(models.get(key, key))  # an unknown key is taken as a literal tag
 
@@ -224,9 +243,17 @@ class LLMClient:
         # A reasoning model otherwise spends the whole max_tokens budget thinking and returns
         # empty content (configs/shot_design/llm.yaml says what was measured); absent or null,
         # nothing is sent.
-        if self.cfg.get("reasoning_effort") is not None:
-            body["reasoning_effort"] = self.cfg["reasoning_effort"]
-        use_cache = (self.cfg.get("cache", True) if cache is None else cache) and temperature == 0.0
+        provider_block = self.cfg.get(str(self.cfg.get("provider", "")).strip().lower())
+        effort = (
+            provider_block.get("reasoning_effort", self.cfg.get("reasoning_effort"))
+            if isinstance(provider_block, dict)
+            else self.cfg.get("reasoning_effort")
+        )
+        if effort is not None:
+            body["reasoning_effort"] = effort
+        use_cache = (
+            self.cfg.get("cache", True) if cache is None else cache
+        ) and temperature == 0.0
         key = (
             hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
             if use_cache
@@ -265,13 +292,18 @@ class LLMClient:
         timeout = httpx.Timeout(float(self.cfg.get("timeout_s", 120)), connect=5.0)
         try:
             with httpx.Client(transport=self._transport, timeout=timeout) as http:
-                r = http.post(f"{ep.url}/v1/chat/completions", json=body, headers=headers)
+                r = http.post(
+                    f"{ep.url}/v1/chat/completions", json=body, headers=headers
+                )
         except (httpx.ConnectError, httpx.ConnectTimeout) as e:
             raise LLMUnavailable(
-                f"cannot reach the language model at {ep.url} ({e}); " + start_hint(self.paths)
+                f"cannot reach the language model at {ep.url} ({e}); "
+                + start_hint(self.paths)
             ) from e
         except httpx.HTTPError as e:
-            raise LLMUnavailable(f"cannot reach the language model at {ep.url}: {e}") from e
+            raise LLMUnavailable(
+                f"cannot reach the language model at {ep.url}: {e}"
+            ) from e
         if r.status_code != 200:
             raise LLMUnavailable(
                 f"language model at {ep.url} answered {r.status_code}: {r.text[:200]}"
@@ -324,9 +356,13 @@ def _parse(data: dict, model: str) -> Reply:
                 args = {"_raw": raw, "_error": "arguments are not a JSON object"}
         calls.append(
             ToolCall(
-                id=str(tc.get("id") or f"call_{i}"), name=str(fn.get("name", "")), arguments=args
+                id=str(tc.get("id") or f"call_{i}"),
+                name=str(fn.get("name", "")),
+                arguments=args,
             )
         )
     return Reply(
-        content=msg.get("content") or "", tool_calls=calls, model=str(data.get("model") or model)
+        content=msg.get("content") or "",
+        tool_calls=calls,
+        model=str(data.get("model") or model),
     )

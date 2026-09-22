@@ -10,8 +10,20 @@ provider: agy   # "ollama" for the Stellar endpoint; "off" disables all calls
 agy:
   bin: agy
   timeout_s: 300
-  retries: 2
+  retries: 2               # timeouts, empty exits, empty SUCCESS replies and 429 quota errors
+  backoff_s: 20            # first wait after a 429; doubles per retry (20 s, 40 s)
   extra_args: ["--disable-slash-commands"]
+# Claude through Claude Code's own CLI (house rule: agy is Gemini-only, Claude never goes
+# through agy, GPT only through Codex). Available, not the fallback: when agy is out of
+# quota on Stellar the pipeline falls back to Gemma via Ollama (`--provider ollama`).
+# extra_args strip the CLI's context to the bare model call (no tools/MCP/project
+# settings, no session file): ~13 k cached system tokens per call instead of ~54 k.
+claude:
+  bin: claude
+  timeout_s: 300
+  retries: 2
+  backoff_s: 20
+  extra_args: ["--tools", "none", "--strict-mcp-config", "--setting-sources", "user", "--no-session-persistence"]
 models:                    # replaces the gemma4 entries; `agy models` lists the ids
   quality: gemini-3.8-flash-high
   fast: gemini-3.8-flash-low
@@ -44,6 +56,14 @@ blurb:
                                   # and spelled-out numerals.
 # Stellar only; kept readable for one release. None of this exists on Frontier.
 ollama:
+  models:                   # tags served by serve_llm.sh; override the top-level gemini ids
+    quality: gemma4:26b     # whenever provider is ollama (`--provider ollama`, or here)
+    fast: gemma4:e4b
+  # gemma4:26b is a reasoning model: through /v1/chat/completions it spends the whole
+  # max_tokens budget on a `reasoning` field and returns content "" (re-measured
+  # 2026-09-21: 1,500 generated tokens, empty content, the assistant's propose stage
+  # fails). "none" turns that off; the key travels only with provider ollama.
+  reasoning_effort: "none"
   base_url: null            # e.g. http://127.0.0.1:11434, bypasses the endpoint file
   endpoint_file: llm/endpoint.json  # paths.data_root-relative; serve_llm.sh writes it
   ollama_bin_dir: null            # not installed on Frontier; Stellar-only

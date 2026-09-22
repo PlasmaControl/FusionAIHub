@@ -102,6 +102,13 @@ def _check_frame_counts(codes: dict, names: list[str], needed: int) -> None:
             )
 
 
+def _model_device(model) -> torch.device:
+    """The device the model's weights live on; cpu for a model with no parameters."""
+    for p in model.parameters():
+        return p.device
+    return torch.device("cpu")
+
+
 def run_paired(
     model,
     cfg: DynamicsConfig,
@@ -131,9 +138,15 @@ def run_paired(
         )
 
     gt = {n: codes[n][:total].long() for n in names}
-    seed_codes = {n: codes[n][:k0].long().unsqueeze(0) for n in names}
-    real_act = real_act.float().unsqueeze(0)
-    prop_act = prop_act.float().unsqueeze(0)
+    # The seed and the actuators arrive on cpu (torch.load of the design seed and the
+    # reference cache); the model sits wherever `load_dynamics` put it, and `rollout`
+    # does not move its inputs. Everything that meets the model goes to its device and
+    # the trajectories come back to cpu, so the report and the codec decode see plain
+    # host tensors whatever `--device` was.
+    dev = _model_device(model)
+    seed_codes = {n: codes[n][:k0].long().unsqueeze(0).to(dev) for n in names}
+    real_act = real_act.float().unsqueeze(0).to(dev)
+    prop_act = prop_act.float().unsqueeze(0).to(dev)
 
     # generate_frame reads cfg.maskgit_decode_steps off the model's own bound config
     # (model.cfg IS this cfg object); rollout() takes no decode-step argument, so this
@@ -153,8 +166,8 @@ def run_paired(
     finally:
         cfg.maskgit_decode_steps = original_decode_steps
 
-    real = {n: real_traj[n][0] for n in names}
-    proposed = {n: prop_traj[n][0] for n in names}
+    real = {n: real_traj[n][0].detach().cpu() for n in names}
+    proposed = {n: prop_traj[n][0].detach().cpu() for n in names}
 
     divergence_vs_real, token_accuracy, persistence_accuracy = {}, {}, {}
     for n in names:

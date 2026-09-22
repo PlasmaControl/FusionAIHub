@@ -37,7 +37,8 @@ print(config.load_paths().data_root)
 print(cfg.get("ollama_bin_dir", root + "/bin/ollama"))
 print(cfg.get("ollama_models_dir", root + "/models/ollama"))
 print(cfg.get("ollama_home_dir", root + "/ollama_home"))
-for tag in dict.fromkeys(cfg["models"].values()):
+models = (cfg.get("ollama") or {}).get("models") or cfg["models"]
+for tag in dict.fromkeys(models.values()):
     print(tag)
 ')"
 mapfile -t SETTINGS <<<"$PYOUT"

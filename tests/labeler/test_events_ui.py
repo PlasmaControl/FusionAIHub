@@ -130,6 +130,30 @@ def test_the_right_token_sets_the_cookie(app):
     assert "samesite=lax" in cookie_header.lower()
 
 
+def test_the_right_token_also_sets_a_cookie_a_framed_page_can_keep(app):
+    """VS Code's Simple Browser frames the page; a Lax cookie is dropped
+    there. The second cookie is SameSite=None and Secure, which 127.0.0.1
+    over http is allowed to keep, and the gate accepts it alone."""
+    from labeler.events.ui.app import FRAMED_COOKIE
+
+    response = TestClient(app).get("/?token=secret", follow_redirects=False)
+    assert response.status_code == 303
+    framed = [
+        h for h in response.headers.get_list("set-cookie") if FRAMED_COOKIE in h
+    ]
+    assert len(framed) == 1
+    assert "samesite=none" in framed[0].lower()
+    assert "secure" in framed[0].lower()
+    assert "HttpOnly" in framed[0]
+
+    transport = TestClient(app)
+    transport.cookies.set(FRAMED_COOKIE, "secret")
+    assert transport.get("/api/events").status_code == 200
+    wrong = TestClient(app)
+    wrong.cookies.set(FRAMED_COOKIE, "wrong")
+    assert wrong.get("/api/events").status_code == 401
+
+
 def test_an_authorized_response_is_not_cached(client):
     response = client.get("/api/events")
     assert response.status_code == 200
@@ -536,6 +560,66 @@ def test_panels_appends_the_label_row_when_there_is_one(client, co2, tables):
     assert (
         "NaN" not in client.get("/api/panels?event=alfven_eigenmode&shot=178642").text
     )
+
+
+def test_every_request_is_logged_by_path_and_never_by_token(app, caplog):
+    """The request log is how a reviewer tells an unreachable server from a
+    slow one. It carries the path and the status, and never the query
+    string, because the token rides there."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="labeler.events.ui.app")
+    with TestClient(app) as client:
+        client.get(f"/api/shots?event=alfven_eigenmode&token={app.state.token}")
+        client.get("/api/shots?event=alfven_eigenmode")
+        TestClient(app).get("/api/events")
+    lines = [r.getMessage() for r in caplog.records if " -> " in r.getMessage()]
+    assert any(line.startswith("GET /api/shots -> 303") for line in lines)
+    assert any(line.startswith("GET /api/shots -> 200") for line in lines)
+    assert any(line.startswith("GET /api/events -> 401") for line in lines)
+    assert all(app.state.token not in line for line in lines)
+    assert all("token=" not in line and "event=" not in line for line in lines)
+
+
+def test_progress_is_null_when_nothing_is_being_fetched(client):
+    """A cached shot, or one nobody asked for: no number to report, and the
+    page must not be handed one to invent a percentage from."""
+    response = client.get("/api/progress?shot=178642")
+    assert response.status_code == 200
+    assert response.json() == {"shot": 178642, "fraction": None, "stage": None}
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_progress_reports_the_fetch_in_flight(client, monkeypatch):
+    from labeler.events import raw
+
+    raw._report(178642, 3, 5, "fetching DENV3UF")
+    try:
+        body = client.get("/api/progress?shot=178642").json()
+    finally:
+        raw._forget(178642)
+    assert body == {"shot": 178642, "fraction": 0.6, "stage": "fetching DENV3UF"}
+    # Another shot's fetch is not this shot's progress.
+    assert client.get("/api/progress?shot=1").json()["fraction"] is None
+
+
+def test_progress_is_behind_the_gate(app):
+    response = TestClient(app).get("/api/progress?shot=178642")
+    assert response.status_code == 401
+    assert response.json() == {"error": NO_TOKEN}
+
+
+def test_progress_refuses_a_shot_that_is_not_a_number(client):
+    response = client.get("/api/progress?shot=soon")
+    assert response.status_code == 422
+    assert "shot" in response.json()["error"]
+
+
+def test_the_page_polls_progress_and_not_a_clock(client):
+    """The status line reports percent of the fetch, not seconds elapsed."""
+    script = client.get("/app.js").text
+    assert "/api/progress?shot=" in script
+    assert "Date.now()" not in script
 
 
 def test_panels_for_an_unknown_event_is_not_found(client):

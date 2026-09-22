@@ -197,6 +197,37 @@ def test_fdp_signal_returns_expressions_in_order(monkeypatch):
     assert got.x[-1] == pytest.approx(20.0)
 
 
+def test_fdp_signal_reports_progress_before_each_fetch(monkeypatch):
+    """`on_progress(done, total, expr)` fires once per point, ahead of it,
+    so a watcher sees "1 of 2" while the second is still on the wire."""
+    n = 4
+    ms = np.linspace(0.0, 6.0, n)
+    record = {"data": np.zeros(n, "float32"), "dim0": ms,
+              "units": {"data": "keV", "dim0": "ms"}}
+    order = []
+
+    def fetch(expr, tree, shot, dims=None):
+        order.append(("fetch", expr))
+        return record
+
+    monkeypatch.setattr("labeler.features.resolve_fdp._fetch_mds", fetch)
+    fdp_signal(
+        178640, ["a", "b"],
+        on_progress=lambda done, total, expr: order.append((done, total, expr)),
+    )
+    assert order == [(0, 2, "a"), ("fetch", "a"), (1, 2, "b"), ("fetch", "b")]
+
+
+def test_fdp_signal_without_a_progress_hook_is_unchanged(monkeypatch):
+    n = 3
+    record = {"data": np.zeros(n, "float32"), "dim0": np.arange(n, dtype=float),
+              "units": {"data": "keV", "dim0": "ms"}}
+    monkeypatch.setattr(
+        "labeler.features.resolve_fdp._fetch_mds", lambda *a, **k: record
+    )
+    assert fdp_signal(178640, ["a"]).y.shape == (1, n)
+
+
 def test_fdp_signal_t_range_slices_to_the_window(monkeypatch):
     n = 100
     ms = np.linspace(0.0, 990.0, n)

@@ -20,6 +20,7 @@ import logging
 import math
 import os
 import secrets
+import time
 import warnings
 import zipfile
 from pathlib import Path
@@ -27,6 +28,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -34,7 +36,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...config import Paths
 from .. import panels as registry
 from .. import rosters
-from ..raw import UpstreamError, WindowEmptyError
+from ..raw import UpstreamError, WindowEmptyError, progress_for
 from ..verify import (
     NoDataError,
     correction_path,
@@ -45,6 +47,16 @@ from ..verify import (
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
+#: The same token, set a second time for a page that is FRAMED - VS Code's
+#: Simple Browser renders every page inside an iframe of its own origin.
+#: A `SameSite=Lax` cookie is neither stored nor sent in that cross-site
+#: context, so the redirect lands on a 401 and the reviewer sees a JSON
+#: refusal instead of the page. `SameSite=None` needs `Secure`, and Chromium
+#: and Firefox both treat 127.0.0.1 as a secure origin over plain http, so
+#: the cookie takes. Kept SEPARATE from the Lax cookie rather than replacing
+#: it: a browser that does not grant 127.0.0.1 that status would drop a
+#: `Secure` cookie and lock the ordinary top-level page out.
+FRAMED_COOKIE = "labeler_verify_token_framed"
 NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
 
@@ -264,25 +276,51 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     )
     app.state.paths = paths
     app.state.token = token or secrets.token_hex(16)
+    # The page reaches the browser over an SSH tunnel, and the plotly bundle
+    # is 4.8 MB that gzips to about a third of that. Panel JSON - a whole
+    # shot's heatmaps run to a few MB - compresses about as well.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     @app.middleware("http")
     async def gate(request: Request, call_next):
+        # One line per request, PATH ONLY: the token rides in the query
+        # string and must never reach a terminal or anything capturing it,
+        # which is also why uvicorn's own access log is off. What this
+        # buys is the ability to tell "the browser never reached the server"
+        # from "the server took a minute to answer" while watching the
+        # terminal the server runs in.
+        started = time.monotonic()
+
+        def told(response: Response) -> Response:
+            log.info(
+                "%s %s -> %d in %.1fs",
+                request.method,
+                request.url.path,
+                response.status_code,
+                time.monotonic() - started,
+            )
+            return response
+
         expected = app.state.token.encode("utf-8")
         given = request.query_params.get("token")
         if given is not None:
             if not secrets.compare_digest(given.encode("utf-8"), expected):
-                return _unauthorized(BAD_TOKEN)
+                return told(_unauthorized(BAD_TOKEN))
             url = request.url.remove_query_params("token")
             path = url.path if not url.path.startswith("//") else "/"
             response = RedirectResponse(
                 path + (f"?{url.query}" if url.query else ""), 303
             )
             response.set_cookie(COOKIE, app.state.token, httponly=True, samesite="lax")
-            return response
-        cookie = request.cookies.get(COOKIE, "")
+            response.set_cookie(
+                FRAMED_COOKIE, app.state.token, httponly=True, samesite="none",
+                secure=True,
+            )
+            return told(response)
+        cookie = request.cookies.get(COOKIE) or request.cookies.get(FRAMED_COOKIE, "")
         if not cookie or not secrets.compare_digest(cookie.encode("utf-8"), expected):
-            return _unauthorized(NO_TOKEN)
-        response = await call_next(request)
+            return told(_unauthorized(NO_TOKEN))
+        response = told(await call_next(request))
         # `setdefault`, not assignment: every answer built from label data
         # stays uncached, but a route that has already said how its bytes may
         # be held keeps that. Only `/vendor/plotly.min.js` does, and it is
@@ -356,6 +394,27 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 }
             )
         return _json({"event": event, "shots": rows})
+
+    @app.get("/api/progress")
+    async def progress(shot: int):
+        """Where a live fetch of this shot has got to, for the page to poll.
+
+        `fraction` is null when no fetch is in flight, which is also what a
+        cached shot answers: the page then has nothing to count and says so
+        rather than inventing a number. `async` on purpose: `/api/panels` is
+        a sync route and holds a threadpool worker for the whole fetch, and
+        this one must answer while it does.
+        """
+        record = progress_for(shot)
+        if record is None:
+            return _json({"shot": shot, "fraction": None, "stage": None})
+        return _json(
+            {
+                "shot": shot,
+                "fraction": record["done"] / record["total"],
+                "stage": record["stage"],
+            }
+        )
 
     @app.get("/api/panels")
     def panels_for(

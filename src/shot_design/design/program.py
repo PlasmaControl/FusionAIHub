@@ -21,7 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator
 
 from ..config import Paths, load_yaml
 from . import actuators as act
-from .program_reference import comparison_reference, prepare_reference, reference
+from .program_reference import (
+    comparison_reference,
+    frame_origin_s,
+    prepare_reference,
+    reference,
+)
 
 SEED_FRAMES = 20
 MAX_PREDICTION_FRAMES = 80
@@ -154,7 +159,10 @@ def _catalog() -> dict:
 
 
 def _window(program, frames, errors):
-    start, end = program.start_s / act.FRAME_S, program.end_s / act.FRAME_S
+    # Cache frame indices, not shot seconds: frame 0 is `frame_origin_s()` into the shot.
+    t0 = frame_origin_s()
+    start = (program.start_s - t0) / act.FRAME_S
+    end = (program.end_s - t0) / act.FRAME_S
     if not np.isfinite([start, end]).all():
         errors.append("Prediction window exceeds finite reference time bounds")
         return SEED_FRAMES, min(frames, 100)
@@ -169,14 +177,16 @@ def _window(program, frames, errors):
         errors.append("Prediction window must contain 1 to 80 frames")
     if start >= frames or end > frames:
         errors.append(
-            f"Prediction window exceeds reference cache bounds ({frames * 0.05:g} s)"
+            f"Prediction window exceeds reference cache bounds "
+            f"({t0 + frames * act.FRAME_S:g} s)"
         )
     return start, end
 
 
 def _points(values, indices):
+    t0 = frame_origin_s()
     return [
-        {"t_s": round(int(i) * act.FRAME_S, 10), "y": float(y)}
+        {"t_s": round(t0 + int(i) * act.FRAME_S, 10), "y": float(y)}
         for i, y in zip(indices, values, strict=True)
         if np.isfinite(y)
     ]
@@ -243,7 +253,9 @@ def _evaluate(program: DesignProgram, paths: Paths):
     context = display_start - SEED_FRAMES
     # Use the same decimal frame coordinates returned by _points, so an
     # unchanged vertex is sampled exactly even beside a steep power transition.
-    times = np.round(np.arange(display_start, display_end) * act.FRAME_S, 10)
+    times = np.round(
+        frame_origin_s() + np.arange(display_start, display_end) * act.FRAME_S, 10
+    )
     prediction = ref.controls.raw[:, display_start:display_end].copy()
     proposal_curves = {}
     if program.proposal is not None:

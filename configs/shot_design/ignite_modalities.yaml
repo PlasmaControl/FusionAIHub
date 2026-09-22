@@ -296,3 +296,25 @@ modalities:
     pad_note: "staged d_alpha holds fs01-fs05 of IGNITE's 104 channels (plus an fs00 IGNITE does not use); a fetched shot adds fs06-fs08; the 96 PMT channels always pad."
     fetch: {kind: mds, tree: spectroscopy, nodes: {template: "\\SPECTROSCOPY::FS{:02d}", range: [1, 8]}}
     measured: {shot: 161172, ratio: 1.0, seconds_per_channel: 7.8}
+
+# Other generations a cluster can run when the pinned one is not installed there. Selected ONLY
+# by `SHOT_DESIGN_IGNITE_GENERATION=<key>` (shotdb/ignite.py:model_cfg): nothing here infers a
+# generation from which bundle happens to be on disk. Stellar has the v2 Hub snapshot and none of
+# v4's proj-shared sources, so its simulate wrapper exports `SHOT_DESIGN_IGNITE_GENERATION=v2`.
+# Same keys as `model:`; the values are the ones `model:` held before the v4 pin (commit 51035b6),
+# plus the `families` / `n_tok` / `frame_tokens` table the v4 pin introduced, read off the v2
+# bundle's own codecs/MANIFEST.json (14 modalities, no mirnov; n_tok sums to 1017).
+model_generations:
+  v2:
+    generation: v2
+    repo_id: nc1/IGNITE
+    revision: d0cfe4f73d0287d5e12d724f8d77ed651fcfa47a   # Hub main, uploaded 2026-09-05 00:23 UTC
+    local_name: IGNITE
+    dynamics_file: ignite_dynamics_prod_nfullrs2_step13400.pt
+    frame_tokens: 1017
+    t0_start_s: 0.0
+    window_ms: 250
+    production_vocabs: {ece: 32768, bes: 64000, mhr: 32768, co2: 32768, tangtv_lower: 64000, tangtv_upper: 64000, ts_core_density: 1000, ts_core_temp: 1000, ts_tangential_density: 1000, ts_tangential_temp: 1000, cer_ti: 1000, cer_rot: 1000, mse: 1000, filterscopes: 1000}
+    families: {ece: spectro, bes: spectro, mhr: spectro, co2: spectro, tangtv_lower: video, tangtv_upper: video, ts_core_density: slowts, ts_core_temp: slowts, ts_tangential_density: slowts, ts_tangential_temp: slowts, cer_ti: slowts, cer_rot: slowts, mse: slowts, filterscopes: fastts}
+    n_tok: {ece: 192, bes: 192, mhr: 192, co2: 192, tangtv_lower: 108, tangtv_upper: 108, ts_core_density: 4, ts_core_temp: 4, ts_tangential_density: 4, ts_tangential_temp: 4, cer_ti: 4, cer_rot: 4, mse: 4, filterscopes: 5}
+    processed_dir_layout: "<shot>_processed.h5, one group per modality, {xdata: (n,) s, ydata: (ch, n)}"

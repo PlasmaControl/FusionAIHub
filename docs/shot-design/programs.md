@@ -112,6 +112,13 @@ success or certify a PCS command sequence.
 Newly requested NBI/ECH power cannot be negative. This bound applies to power
 totals and individual power channels; signed torque and coil currents retain
 their physical meaning. Unedited reference measurements are preserved.
+When the assistant scales a measured power waveform, it clamps the scaled
+handles at zero: a beam or gyrotron trace sits a few hundred watts below zero
+between pulses, and without the clamp every scale factor on such a channel
+failed this bound (69 of the 100 rejected designs in the 2026-09-21 Stellar
+batch). Only the sub-zero noise is touched; the pulse shape and the member
+split are unchanged. A total whose split would drive an individual member
+negative is still rejected.
 
 Waveforms describe values on IGNITE's 50 ms frame grid. Each point is the mean
 control value for that frame; interpolation between handles supplies those

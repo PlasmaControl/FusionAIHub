@@ -74,8 +74,13 @@ def test_llm_yaml_matches_the_shape_the_client_reads():
         "bin": "agy",
         "timeout_s": 300,
         "retries": 2,
+        "backoff_s": 20,
         "extra_args": ["--disable-slash-commands"],
     }
+    # Stellar fallback: Gemma through Ollama, with its own tags and the reasoning
+    # switch that keeps gemma4:26b from spending max_tokens on a `reasoning` field.
+    assert cfg["ollama"]["models"] == {"quality": "gemma4:26b", "fast": "gemma4:e4b"}
+    assert cfg["ollama"]["reasoning_effort"] == "none"
     assert cfg["blurb"]["model"] == "fast"
     assert cfg["blurb"]["max_words"] == 90 and cfg["blurb"]["prompt_version"] == 6
     assert cfg["ollama"]["endpoint_file"] == "llm/endpoint.json"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import socket
 from urllib.parse import urlencode
 
 DEFAULT_PORT = 8811
@@ -23,8 +24,16 @@ FDP_MARKERS = ("PTDATA_LIBRARY", "default_tree_path")
 
 
 def _run(app, host: str, port: int) -> int:
+    import logging
+
     import uvicorn
 
+    # The app's own request log (`labeler.events.ui.app`: method, path,
+    # status, seconds - never the query string) has nowhere to go unless the
+    # root logger has a handler; uvicorn configures only its own loggers.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
     # `access_log=False` is load-bearing, not tidiness: the token rides in the
     # query string, so every fresh link open would otherwise write the live
     # credential to stdout and into anything capturing this terminal.
@@ -52,7 +61,10 @@ def main(
     app = create_app(token=token)
     query = urlencode({"token": app.state.token})
     print(f"verify: http://127.0.0.1:{port}/?{query}", flush=True)
-    print(f"ssh -L {port}:localhost:{port} stellar", flush=True)
+    # The node this process is on, not the cluster alias: `ssh stellar` can
+    # land on a different login node, where nothing listens and the browser
+    # shows an empty page.
+    print(f"ssh -L {port}:localhost:{port} {socket.gethostname()}", flush=True)
     if not _under_fdp():
         print(
             "note: this process is not under the fdp wrapper. A shot outside "

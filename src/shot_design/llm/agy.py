@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from collections.abc import Callable
 
 from .client import LLMUnavailable, Reply, ToolCall
@@ -62,6 +63,17 @@ def _is_retryable(message: str) -> bool:
     if message.startswith("agy timed out after"):
         return True
     if message.startswith("exit ") and message.split(":", 1)[-1].strip() == "":
+        return True
+    # A quota bump (RESOURCE_EXHAUSTED / HTTP 429) clears on its own within seconds to a
+    # minute; a SUCCESS payload whose `response` is the empty string is agy returning
+    # nothing at all (seen in bursts under load), not a bad prompt. Both come back fine
+    # on the next launch, so both are worth the configured retries.
+    if "RESOURCE_EXHAUSTED" in message or "(code 429)" in message:
+        return True
+    if (
+        message.startswith("no usable structured output")
+        and '"response": ""' in message
+    ):
         return True
     return False
 
@@ -201,10 +213,18 @@ class AgyProvider:
             raise AgyError(f"exit {result.returncode}: {tail}")
         return result.stdout
 
-    def chat(self, body: dict) -> Reply:
-        model = str(body.get("model") or "")
-        prompt = render_prompt(body.get("messages") or [], body.get("tools"))
-        cmd = [
+    def _backoff_s(self, message: str, attempt: int) -> float:
+        """Seconds to wait before retry `attempt` (0-based). Quota errors back off
+        geometrically from `backoff_s` (default 20 s); other transients retry at once."""
+        if "RESOURCE_EXHAUSTED" in message or "(code 429)" in message:
+            return float(self.cfg.get("backoff_s", 20.0)) * (2**attempt)
+        return 0.0
+
+    # The three hooks a sibling CLI provider (llm/claude_cli.py) overrides: how the
+    # binary is invoked, how its stdout becomes a Reply, and which failures are
+    # transient. `chat` itself -- render, launch, retry with backoff -- is shared.
+    def _command(self, model: str, prompt: str) -> list[str]:
+        return [
             str(self.cfg.get("bin", "agy")),
             "--model",
             model,
@@ -215,6 +235,17 @@ class AgyProvider:
             *[str(a) for a in self.cfg.get("extra_args", [])],
             f"-p={prompt}",
         ]
+
+    def _parse(self, raw: str, model: str) -> Reply:
+        return _parse_output(raw, model)
+
+    def _retryable(self, message: str) -> bool:
+        return _is_retryable(message)
+
+    def chat(self, body: dict) -> Reply:
+        model = str(body.get("model") or "")
+        prompt = render_prompt(body.get("messages") or [], body.get("tools"))
+        cmd = self._command(model, prompt)
         retries = int(self.cfg.get("retries", 0))
         attempts_left = max(1, retries + 1)
         last_error: AgyError | None = None
@@ -222,14 +253,12 @@ class AgyProvider:
             attempts_left -= 1
             try:
                 raw = self._runner(cmd, prompt)
+                return self._parse(raw, model)
             except AgyError as e:
                 last_error = e
-                if attempts_left and _is_retryable(str(e)):
+                if attempts_left and self._retryable(str(e)):
+                    time.sleep(self._backoff_s(str(e), retries - attempts_left))
                     continue
-                raise LLMUnavailable(str(e)) from e
-            try:
-                return _parse_output(raw, model)
-            except AgyError as e:
                 raise LLMUnavailable(str(e)) from e
         # Unreachable: the loop above always returns (parse success) or raises
         # (a non-retryable failure, or the last of `attempts_left`).

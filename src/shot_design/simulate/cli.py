@@ -59,8 +59,9 @@ def _windowed_real_actuators(ref_cache: dict, prog, design_seed: dict) -> dict:
     validation error -- one `export_ignite` would already have raised before
     this function is ever reached.
     """
-    context = round(prog.start_s / act.FRAME_S) - program.SEED_FRAMES
-    display_end = round(prog.end_s / act.FRAME_S)
+    t0 = program_reference.frame_origin_s()
+    context = round((prog.start_s - t0) / act.FRAME_S) - program.SEED_FRAMES
+    display_end = round((prog.end_s - t0) / act.FRAME_S)
     return {"actuators": ref_cache["actuators"][context:display_end]}
 
 
@@ -120,7 +121,13 @@ def run(args) -> int:
             reference_cache, design_seed, args.k0, args.n_predict
         )
         arms = core.run_paired(
-            model, cfg, design_seed["codes"], real_act, prop_act, seed=args.seed
+            model,
+            cfg,
+            design_seed["codes"],
+            real_act,
+            prop_act,
+            seed=args.seed,
+            decode_steps=int(getattr(args, "decode_steps", None) or 10),
         )
 
         names = [n.strip() for n in (args.decode or "").split(",") if n.strip()]
@@ -139,7 +146,15 @@ def run(args) -> int:
             ),
             "codec_generation": mcfg.get("generation", "v2"),
             "window_s": [prog.start_s, prog.end_s],
+            # Shot time of rollout frame i is frame_origin_s + (context + i) * frame_s, with
+            # context = round((window_s[0] - frame_origin_s) / frame_s) - k0. Recorded so a
+            # reader never has to know which generation's origin (0.0 s v2, 1.0 s v4) applied.
+            "frame_origin_s": program_reference.frame_origin_s(),
+            "frame_s": act.FRAME_S,
             "dynamics_step": step,
+            "k0": args.k0,
+            "n_predict": args.n_predict,
+            "decode_steps": int(getattr(args, "decode_steps", None) or 10),
         }
         report.write(
             out_dir,

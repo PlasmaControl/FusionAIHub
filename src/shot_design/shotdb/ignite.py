@@ -47,8 +47,41 @@ def model_cfg() -> dict:
     generation v4 is a local copy taken with `pin_bundle` from `codec_tmpl`/`dynamics_src` and
     verified by the sha256 table in its own manifest. `generation` says which, and it is the only
     key that decides: nothing here infers the generation from the shape of the table.
+
+    `SHOT_DESIGN_IGNITE_GENERATION=<key>` swaps in `model_generations.<key>` from the same file --
+    the whole block, never a merge -- for a cluster that holds another generation's bundle
+    (Stellar: the v2 Hub snapshot). Absent or equal to the pinned generation, `model:` is returned.
     """
-    return load_yaml("ignite_modalities.yaml")["model"]
+    return _select_model_cfg(
+        load_yaml("ignite_modalities.yaml"),
+        os.environ.get("SHOT_DESIGN_IGNITE_GENERATION", "").strip(),
+    )
+
+
+def _select_model_cfg(doc: dict, want: str) -> dict:
+    """`model:` unless `want` names another entry of `model_generations` (see model_cfg)."""
+    pinned = doc["model"]
+    if not want or want == pinned.get("generation", "v2"):
+        return pinned
+    others = doc.get("model_generations") or {}
+    if want not in others:
+        raise KeyError(
+            f"SHOT_DESIGN_IGNITE_GENERATION={want!r} names no entry of "
+            f"`model_generations` in ignite_modalities.yaml (pinned: "
+            f"{pinned.get('generation', 'v2')}; available: "
+            f"{', '.join(sorted(others)) or 'none'})"
+        )
+    if want not in _GENERATION_NOTED:
+        _GENERATION_NOTED.add(want)
+        _log.warning(
+            "IGNITE generation %s selected by SHOT_DESIGN_IGNITE_GENERATION (pinned: %s)",
+            want,
+            pinned.get("generation", "v2"),
+        )
+    return others[want]
+
+
+_GENERATION_NOTED: set[str] = set()
 
 
 def bundle_dir(paths: Paths) -> Path:
