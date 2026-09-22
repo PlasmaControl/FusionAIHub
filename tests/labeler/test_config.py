@@ -101,7 +101,7 @@ def test_the_label_tables_root_is_the_repo_and_is_overridable(
     # /scratch and the root moves with it.
     default = Paths().label_tables
     assert default.name == "events" and default.parent.name == "data"
-    assert (default / "tables.yaml").is_file()
+    assert (default / "events.yaml").is_file()
     tables = tmp_path / "elsewhere"
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
     assert Paths.from_env().label_tables == tables

@@ -104,8 +104,9 @@ def database_sources(root, category, producer):
         return set()
     manifest = yaml.safe_load(path.read_text())
     rows = [r for r in manifest["format_datasets"] if r["name"] == category]
-    sources = {f"database:{stem}" for row in rows for stem in row["sources"]}
-    sources.update(f"database:{Path(row['raw_path']).stem}" for row in rows)
+    # A run loads the format table; the raw `sources` it was made from are provenance and
+    # never appear as tables or event sources.
+    sources = {f"database:{Path(row['raw_path']).stem}" for row in rows}
     return sources if producer in CATEGORY_PHENOMENA[category] else sources & {producer}
 
 
@@ -240,11 +241,13 @@ def export(args) -> Path:
             run["settings"]["label_tables"], args.category, args.producer
         )
         totals = run["totals"]
+        # Per table: other tables in the same run may name these shots (NTM does for some of
+        # recommender_v1), and that says nothing about the tables being exported.
+        by_source = totals.get("events_by_source", {})
         if (
             not relevant
             or not relevant.issubset(totals["tables"])
-            or totals["n_events"] != 0
-            or totals["n_source_records"] != 0
+            or any(by_source.get(table, 0) for table in relevant)
         ):
             raise ValueError(
                 f"{run_path}: not a zero-event scan of the selected tables"

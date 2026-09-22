@@ -290,7 +290,9 @@ def test_copy_stream_pool_matches_full_probability_reference():
         coh, tra = expected >= masks.PROB_THRESHOLD
         assert np.array_equal(compact.coh_packed, masks.pack(coh))
         assert np.array_equal(compact.tra_packed, masks.pack(tra))
-        assert np.array_equal(compact.coh_values, expected[0][coh])
+        # torch's vectorised CPU sigmoid rounds a few values 1 ulp differently when the batch
+        # composition changes (torch 2.14: 11 of 913k); the masks above stay bit-identical.
+        np.testing.assert_allclose(compact.coh_values, expected[0][coh], rtol=0, atol=1e-7)
         assert np.array_equal(compact.row_lit, coh.mean(axis=1).astype(np.float32))
         assert np.array_equal(compact.col_act, tra.mean(axis=0).astype(np.float32))
 
