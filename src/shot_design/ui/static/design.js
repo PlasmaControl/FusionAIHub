@@ -898,5 +898,9 @@
     await previewNow({ resetBaseline: true });
   }
 
-  scope.ShotDesign = { initDesign, openDesign, openSavedDesign: reopenDesign };
+  async function simulateDesign(id = state.program?.id) {
+    if (id === state.program?.id) await state.simulation.submit();
+  }
+
+  scope.ShotDesign = { initDesign, openDesign, openSavedDesign: reopenDesign, simulateDesign };
 })(globalThis);

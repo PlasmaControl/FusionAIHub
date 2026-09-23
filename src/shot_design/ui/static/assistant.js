@@ -23,6 +23,9 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
   const state = {
     api: null,
     onOpenDesign: null,
+    onSimulateDesign: null,
+    onJobId: null,
+    restoring: false,
     initialized: false,
     busy: false,
     generation: 0,
@@ -71,8 +74,10 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
   function renderResult(result) {
     state.result = result;
     const comparisons = result.comparison_shots || [];
-    node("summary").textContent = `Reference shots: ${[result.reference_shot, ...comparisons].join(", ")}` +
-      ` · ${result.reference_shot} supplies the initial state`;
+    const shots = [result.reference_shot, ...comparisons];
+    node("summary").replaceChildren("Reference shots: ", ...shots.flatMap((shot, index) => [
+      index ? ", " : "", element("a", { href: `#shot/${encodeURIComponent(shot)}` }, String(shot)),
+    ]), ` · ${result.reference_shot} supplies the initial state`);
     node("explanation").textContent = result.explanation || "";
     const checks = result.checks || {};
     const list = element("ul", { class: "assistant-checks-list" });
@@ -88,7 +93,8 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     node("download").setAttribute("href", `/api/design-assistant/${encodeURIComponent(state.jobId)}/hdf5`);
     node("download").hidden = checks.hdf5_valid === false;
     if (checks.hdf5_valid === false) node("download").removeAttribute("href");
-    node("edit").disabled = !state.onOpenDesign;
+    node("edit").textContent = canSimulate() ? "Simulate" : "Open in actuator editor";
+    node("edit").disabled = !(canSimulate() ? state.onSimulateDesign : state.onOpenDesign);
     node("result").hidden = false;
   }
 
@@ -99,7 +105,12 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
       !Array.isArray(snapshot.stages) || (state.jobId && snapshot.id !== state.jobId)) {
       throw new Error("The server returned an invalid design status. Retry to check the workflow.");
     }
-    state.jobId = snapshot.id;
+    if (state.jobId !== snapshot.id) {
+      state.jobId = snapshot.id;
+      state.onJobId?.(snapshot.id);
+    }
+    if (state.restoring && snapshot.prompt) node("prompt").value = snapshot.prompt;
+    state.restoring = false;
     renderStages(snapshot.stages);
     node("error").textContent = "";
     node("retry").hidden = true;
@@ -131,8 +142,30 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
         { signal: state.controller.signal });
       receive(data, generation);
     } catch (error) {
-      fail(error.message || String(error), generation, "poll");
+      if (generation !== state.generation) return;
+      if (error.status === 404) {
+        clearResult();
+        node("status").textContent = "Assistant job unavailable.";
+        node("error").textContent = "This assistant job is no longer on the server. Start a new design.";
+        node("retry").hidden = true;
+        state.retryMode = null;
+        setBusy(false);
+      } else fail(error.message || String(error), generation, "poll");
     }
+  }
+
+  async function attach(jobId) {
+    if (jobId === state.jobId && (state.busy || state.result)) return;
+    const generation = newRequest();
+    clearResult();
+    state.jobId = jobId;
+    state.restoring = true;
+    node("stages").replaceChildren();
+    node("error").textContent = "";
+    node("retry").hidden = true;
+    node("status").textContent = "Reconnecting to your design…";
+    setBusy(true);
+    await poll(generation);
   }
 
   function fail(message, generation, retryMode) {
@@ -170,6 +203,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     }
     const generation = newRequest();
     state.jobId = null;
+    state.restoring = false;
     state.retryMode = null;
     clearResult();
     node("stages").replaceChildren();
@@ -200,14 +234,19 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     return poll(generation);
   }
 
+  function canSimulate() {
+    return Boolean(state.result?.design_id && state.result.checks?.can_export && state.onSimulateDesign);
+  }
+
   async function openDesign(event) {
     event.preventDefault();
-    if (!state.result?.design_id || !state.onOpenDesign || node("edit").disabled) return;
+    const action = canSimulate() ? state.onSimulateDesign : state.onOpenDesign;
+    if (!state.result?.design_id || !action || node("edit").disabled) return;
     const generation = state.generation;
     node("edit").disabled = true;
     node("error").textContent = "";
     try {
-      await state.onOpenDesign(state.result.design_id);
+      await action(state.result.design_id);
     } catch (error) {
       if (generation !== state.generation) return;
       node("error").textContent = `${error.message || String(error)}. You can retry opening the saved revision.`;
@@ -232,12 +271,15 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     node("examples").replaceChildren(...state.examples);
   }
 
-  function init({ api, onOpenDesign }) {
+  function init({ api, onOpenDesign, onSimulateDesign, onJobId }) {
     if (!node("form")) return;
     newRequest();
     state.api = api;
     state.onOpenDesign = onOpenDesign;
+    state.onSimulateDesign = onSimulateDesign;
+    state.onJobId = onJobId;
     state.jobId = null;
+    state.restoring = false;
     state.retryMode = null;
     clearResult();
     node("stages").replaceChildren();
@@ -258,5 +300,5 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     node("edit").addEventListener("click", openDesign);
   }
 
-  scope.ShotDesignAssistant = { init };
+  scope.ShotDesignAssistant = { init, attach };
 })(globalThis);
