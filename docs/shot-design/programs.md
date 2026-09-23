@@ -9,6 +9,18 @@ The Shot Designer's **Actuator editor** starts with real reference shots, lets y
 edit their actuator waveforms, and saves inputs for IGNITE inference. The first
 listed reference supplies the initial state and default actuation.
 
+## Start with the assistant
+
+In **Design a shot**, describe the experiment and submit it. Reference shot numbers
+in the result link to **Shot**. A saved design ready for simulation offers
+**Simulate**, which opens the saved revision and submits it through the editor.
+A design that still needs preparation offers **Open in actuator editor**.
+
+The assistant job ID stays in the URL. Reload reattaches to that job without
+starting another one. Jobs currently live in the server's memory; if a restart or
+history eviction removed the job, the page says it is no longer on the server.
+Saved design revisions remain available from the editor.
+
 ## Design a program
 
 1. Run `pixi run -e shot-design shot_design serve` and open its token link.

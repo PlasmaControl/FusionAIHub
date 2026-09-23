@@ -1,7 +1,7 @@
 // Ported from shot-recommender-system's shotrec/ui/static/app.js.
 // Keep shotrec's DOM helpers and API-driven presentation. No retrieval or physics here.
 const $ = (selector) => document.querySelector(selector);
-const S = { shot: null, shotRequest: 0, eventRequest: 0 };
+const S = { shot: null, shotRequest: 0, eventRequest: 0, assistantJob: null };
 const FORECAST_TITLE = "Forecasts (model estimates)";
 // Categorical colours identify the supplied evidence_kind, never quality or severity.
 const COLOURS = { detector: "#4b74a8", heuristic: "#688591", forecast: "#827299", database: "#87817a" };
@@ -215,8 +215,12 @@ function collapsible(content) {
 async function api(path, options = {}) {
   const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
   const data = JSON.parse(await response.text());
-  if (!response.ok) throw new Error(response.status === 401 ?
-    "401: reopen the token link printed by shot_design serve." : display(data.error ?? data.detail));
+  if (!response.ok) {
+    const error = new Error(response.status === 401 ?
+      "401: reopen the token link printed by shot_design serve." : display(data.error ?? data.detail));
+    error.status = response.status;
+    throw error;
+  }
   return { data, notes: JSON.parse(response.headers.get("X-Ideate-Caveats") || "[]") };
 }
 
@@ -727,9 +731,28 @@ function renderScoring(data) {
       'Build SHA':data.db.git_sha, 'Built':data.db.built})));
 }
 
+function rememberAssistantJob(id) {
+  S.assistantJob = id;
+  if (!location.hash || /^#create(?:\/|$)/.test(location.hash)) {
+    history.replaceState(null, "", `#create/${encodeURIComponent(id)}`);
+  }
+}
+
+async function simulateAssistantDesign(id) {
+  const hash = `#design-revision/${encodeURIComponent(id)}`;
+  history.pushState(null, "", hash);
+  showView("design");
+  await globalThis.ShotDesign.openSavedDesign(id);
+  if (location.hash === hash) await globalThis.ShotDesign.simulateDesign(id);
+}
+
 async function route() {
   const hash = location.hash.slice(1) || "create";
-  if (hash.startsWith("shot/")) {
+  if (hash.startsWith("create/")) {
+    showView("create");
+    S.assistantJob = decodeURIComponent(hash.slice("create/".length));
+    await globalThis.ShotDesignAssistant.attach(S.assistantJob);
+  } else if (hash.startsWith("shot/")) {
     const [path, query] = hash.split("?");
     const params = new URLSearchParams(query);
     const shot = Number(path.split("/")[1]);
@@ -761,7 +784,10 @@ async function route() {
 }
 
 async function init() {
-  for (const button of document.querySelectorAll("[data-view]")) button.addEventListener("click", () => { location.hash = button.dataset.view; });
+  for (const button of document.querySelectorAll("[data-view]")) button.addEventListener("click", () => {
+    location.hash = button.dataset.view === "create" && S.assistantJob ?
+      `create/${encodeURIComponent(S.assistantJob)}` : button.dataset.view;
+  });
   const [{ data: meta }, { data: registry }] = await Promise.all([api("/api/meta"), api("/api/phenomena")]);
   notes($("#global-notes"), meta);
   if (meta.db) $("#dbinfo").textContent = `${display(meta.db.n_shots, "n")} shots · ${meta.db.shot_range?.map((s) => display(s, "shot")).join("–") || "—"}`;
@@ -778,6 +804,8 @@ async function init() {
   if (globalThis.ShotDesign) await globalThis.ShotDesign.initDesign({ api, pollMs: meta.simulate_poll_s * 1000 });
   if (globalThis.ShotDesignAssistant) globalThis.ShotDesignAssistant.init({ api,
     onOpenDesign: (id) => { location.hash = `design-revision/${encodeURIComponent(id)}`; },
+    onSimulateDesign: simulateAssistantDesign,
+    onJobId: rememberAssistantJob,
   });
   initSearchFilters(meta);
   bindForm("#search-form", "#search-notes", async (form) => {
