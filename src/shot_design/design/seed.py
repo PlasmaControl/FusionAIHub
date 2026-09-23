@@ -116,7 +116,7 @@ def encode_frame_codes(
 
     `reader` is a `shotdb.corpus.CorpusReader`: its `corpus_dir` is the directory of
     `<shot>_processed.h5` files the codecs stream from, and it is also what the actuator block
-    reads its traces through. `n_frames` caps the cache (a full shot is 239 frames); without it
+    reads its traces through. `n_frames` caps the cache (a full shot is 219 frames); without it
     every modality is encoded to the end of its own record and the cache is trimmed to the
     SHORTEST, which is production's rule and the only one that keeps the frame index meaning the
     same instant in every modality.
@@ -322,7 +322,7 @@ def encode_many(
 ) -> dict:
     """Encode every shot into `out_dir`, one process, codecs loaded once.
 
-    Loading the fourteen codecs costs ~5 s and 0.5 GB of GPU memory, so they are loaded once and
+    Load the codecs once and
     reused for the whole list -- which is the entire reason this is a batch entry point rather
     than a loop over `encode_frame_codes` in a shell script. A shot that fails is logged and the
     run continues: a corpus file that will not open (2.3 % of them) is a fact about that shot,

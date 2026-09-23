@@ -127,7 +127,7 @@ def compare(
 
     Raises `ValueError` when either side is not a well-formed frame-code cache, or when the two
     do not cover the same number of frames. Comparing `min(got, ref)` frames would let a SHORT
-    encode compare its own prefix: a cache holding 4 of 239 frames agrees with the shipped file
+    encode compare its own prefix: a cache holding 4 of 219 frames agrees with the shipped file
     on all four and would be declared bit-identical.
     """
     import torch

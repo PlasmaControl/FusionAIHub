@@ -36,10 +36,10 @@ def _design_seed() -> dict:
 
 
 def _program() -> SimpleNamespace:
-    # start_s=1.0 -> start_frame 20 -> context 0 (SEED_FRAMES=20);
-    # end_s=5.0 -> display_end 100 == N_FRAMES, so the windowed reference cache
+    # start_s=2.0 -> start_frame 20 -> context 0 (SEED_FRAMES=20);
+    # end_s=6.0 -> display_end 100 == N_FRAMES, so the windowed reference cache
     # lines up with the design seed exactly.
-    return SimpleNamespace(id=IDENT, reference_shot=1, start_s=1.0, end_s=5.0)
+    return SimpleNamespace(id=IDENT, reference_shot=1, start_s=2.0, end_s=6.0)
 
 
 @pytest.fixture
@@ -199,10 +199,10 @@ def test_simulate_rejects_k0_plus_n_predict_over_the_checkpoints_trained_horizon
     monkeypatch.setattr(
         program_mod, "export_ignite", lambda prog, paths_arg: big_seed_path
     )
-    # end_s=7.0 -> display_end 140, so the windowed reference cache also has 140
+    # end_s=8.0 -> display_end 140, so the windowed reference cache also has 140
     # frames -- comfortably past k0+n_predict=120, so actuator_arms's own guard
     # cannot be what raises here.
-    big_prog = SimpleNamespace(id=IDENT, reference_shot=1, start_s=1.0, end_s=7.0)
+    big_prog = SimpleNamespace(id=IDENT, reference_shot=1, start_s=2.0, end_s=8.0)
     monkeypatch.setattr(program_mod, "load_program", lambda ident, paths_arg: big_prog)
 
     def fake_reference(shot, paths_arg):
@@ -235,7 +235,7 @@ def test_simulate_writes_actuators_into_the_h5(paths, fakes):
         assert "actuators/real" in f and "actuators/proposed" in f
         assert f.attrs["design_id"] == IDENT
         assert f.attrs["codec_generation"]
-        assert f.attrs["frame_origin_s"] == 0.0 and f.attrs["frame_s"] == 0.05
+        assert f.attrs["frame_origin_s"] == 1.0 and f.attrs["frame_s"] == 0.05
         assert f.attrs["dynamics_step"] == 4242
 
 

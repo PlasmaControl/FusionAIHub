@@ -3,7 +3,7 @@
 v4 was pinned from local checkpoints on Frontier (`--pin`) and, since 2026-09-21, is also
 published as the private Hub repo `nc1/IGNITE-v4`, so a machine without the Frontier
 checkpoints (Stellar) installs it with `--download --full`. The gate is therefore "is a
-repo_id pinned", never "is this v2".
+repo_id pinned".
 """
 
 from __future__ import annotations

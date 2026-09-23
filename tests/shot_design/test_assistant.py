@@ -31,8 +31,8 @@ def model_client(
         {
             "search_text": "tearing mode ECCD control",
             "goal": "Control tearing",
-            "start_s": 1,
-            "end_s": 5,
+            "start_s": 2,
+            "end_s": 6,
         },
         {
             "reference_shot": shot,
@@ -104,7 +104,7 @@ def test_grounded_plan_saves_physical_hdf5_and_editable_revision(
     assert "nbi.total" in saved.edits
     with h5py.File(result["artifact_path"], "r") as f:
         assert f["actuators"].shape == (80, 88)
-        np.testing.assert_allclose(f["time_s"][:3], [1.0, 1.05, 1.1])
+        np.testing.assert_allclose(f["time_s"][:3], [2.0, 2.05, 2.1])
         np.testing.assert_allclose(f["actuators"][:2, 12], [120, 240])
         assert f["channel_names"].asstr()[12] == "pinj[0]"
         assert f["channel_units"].asstr()[12] == "W"
@@ -276,8 +276,8 @@ def test_generated_flat_edit_has_two_handles_and_matching_hdf5(
     )
     saved = program.load_program(result["design_id"], paths)
     assert len(saved.edits["ech.total"]) == 2
-    assert saved.edits["ech.total"][0].t_s == 1
-    assert saved.edits["ech.total"][-1].t_s == 4.95
+    assert saved.edits["ech.total"][0].t_s == 2
+    assert saved.edits["ech.total"][-1].t_s == 5.95
     with h5py.File(result["artifact_path"], "r") as file:
         np.testing.assert_allclose(file["actuators"][:, :12], 3.3)
         metadata = json.loads(file["metadata"].asstr()[()])

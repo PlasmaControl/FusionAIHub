@@ -1,6 +1,6 @@
 """The IGNITE v4 generation: a locally pinned bundle, verified by its own sha256 manifest.
 
-v2 came from the Hugging Face Hub and was pinned by a git revision. v4 is copied out of a
+The v4 bundle can be copied out of a
 proj-shared training directory whose files are live symlinks into run directories, so the pin has
 to be a real copy plus a digest of what was copied -- otherwise the weights behind every
 embedding in the database can change without anything here noticing.
@@ -238,8 +238,8 @@ def test_cache_path_prefers_the_production_v4_cache(paths, prod_cache):
     assert pr._cache_path(190001, paths) is None
 
 
-def test_validate_cache_rejects_a_v2_vocabulary(prod_cache):
-    """A v2 cache and a v4 one are otherwise indistinguishable, and the generation has to be
+def test_validate_cache_rejects_another_bundles_vocabulary(prod_cache):
+    """Caches from different bundles can share shapes, so their vocabularies must be
     reported BEFORE the structural checks -- 'actuators must be float16' would send the reader
     looking for a bug in a file whose only fault is that it is a generation old."""
     from shot_design.design import program_reference as pr
