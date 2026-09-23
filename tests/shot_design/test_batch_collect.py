@@ -1,5 +1,6 @@
-"""Simulation summaries require the recorded frame origin."""
+"""A batch summary: the recorded frame origin and the scores from metrics.json."""
 
+import json
 import runpy
 from pathlib import Path
 
@@ -30,18 +31,18 @@ def test_collect_requires_recorded_origin(tmp_path):
         _design("abc", tmp_path)
 
 
-@pytest.mark.parametrize("with_real", [False, True])
-def test_collect_staticness_from_report_columns(tmp_path, with_real):
+def test_collect_reads_the_scores_from_metrics_json(tmp_path):
     sim = tmp_path / "outputs" / "abc" / "simulation"
     sim.mkdir(parents=True)
-    header = "| modality | frac_static | token_acc | persistence_acc | skill | divergence_vs_real |"
-    row = "| mse | 0.25 | 0.8 | 0.5 | 0.3 | 0.1 |"
-    if with_real:
-        header += " frac_static_real |"
-        row += " 1.0 |"
-    (sim / "report.md").write_text(header + "\n" + row + "\n")
-    collected = _design("abc", tmp_path)
-    assert collected["mse.frac_static"] == 0.25
-    assert collected["mse.token_acc"] == 0.8
-    if with_real:
-        assert collected["mse.frac_static_real"] == 1.0
+    mse = {
+        "family": "slowts", "feature": "intra-frame mean",
+        "nrmse": {"real": 0.8, "persistence": 1.1, "seed_mean": 1.3},
+        "crps": {"real": 0.2, "persistence": 0.3}, "skill": 0.33, "spread_error": None,
+        "effect": 0.5, "noise": 0.1, "effect_to_noise": 5.0, "resolved": True,
+    }  # fmt: skip
+    doc = {"modalities": {"mse": mse, "co2": {"held": True}}}
+    (sim / "metrics.json").write_text(json.dumps(doc))
+    row = _design("abc", tmp_path)
+    assert row["mse.skill"] == 0.33 and row["mse.nrmse_persistence"] == 1.1
+    assert row["mse.spread_error"] is None and row["mse.resolved"] is True
+    assert not any(k.startswith("co2.") for k in row)
