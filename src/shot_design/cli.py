@@ -1993,7 +1993,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("ident", help="saved design id (32 hex chars)")
     p.add_argument("--seed", type=int, default=0, help="RNG seed shared by both arms")
     p.add_argument("--k0", type=int, default=20, help="seed frames before prediction")
-    p.add_argument("--n-predict", type=int, default=80, help="predicted frames")
+    p.add_argument(
+        "--n-predict", type=int, default=None,
+        help="predicted frames (default: all the seed and the checkpoint allow)",
+    )
     p.add_argument(
         "--decode-steps",
         type=int,
