@@ -30,7 +30,7 @@ import numpy as np
 import torch
 
 from tokamak_foundation_model.ignite import eval_dynamics
-from tokamak_foundation_model.ignite.config import STFT_FS
+from tokamak_foundation_model.ignite.config import STFT_FS, STFT_N_FFT
 
 from .core import ARM_LABELS, SimulationArms
 
@@ -39,30 +39,20 @@ _BANDED_SPECTRO = ("mhr", "mirnov")
 _DEFAULT_BAND_KHZ = (10.0, 60.0)
 
 
-def freq_axis_khz(cfg) -> np.ndarray | None:
-    """A spectro codec's per-bin center frequency (kHz), low->high, or None.
+def freq_axis_khz(cfg) -> np.ndarray:
+    """The centre frequency (kHz) of each row a spectro codec decodes, low to high.
 
-    ``ignite.data.log_power_stft`` builds the codec's input by STFT-ing at
-    `STFT_FS` (500 kHz), dropping the DC bin (bin 0), then keeping the LOW
-    `cfg.freq_bins` of the remaining bins unchanged (`_crop_pad_freq_time`:
-    "cropped from the low end ... ordered low->high"). So array index ``i``
-    (0-indexed) is raw STFT bin ``i + 1``, at frequency
-    ``(i + 1) * STFT_FS / cfg.stft_n_fft``.
-
-    That 1:1 index<->bin mapping breaks once ``cfg.band_pool > 0``
-    (`log_power_stft` mean-pools ``freq_bins`` STFT bins into ``band_pool``
-    unevenly-sized bands as the LAST step) -- there is no way to recover which
-    physical band a pooled bin covers from ``cfg`` alone, so this returns None
-    and callers fall back to a full-band reduction.
+    ``ignite.data.log_power_stft`` drops the DC bin and keeps the low ``cfg.freq_bins``
+    bins, so row ``i`` is STFT bin ``i + 1``, at ``(i + 1) * STFT_FS / n_fft``. With
+    ``cfg.band_pool > 0`` it then mean-pools them into ``band_pool`` equal bands, and each
+    band sits at the mean frequency of its bins.
     """
-    n_fft = getattr(cfg, "stft_n_fft", None)
-    freq_bins = getattr(cfg, "freq_bins", None)
-    band_pool = getattr(cfg, "band_pool", 0)
-    if not n_fft or not freq_bins or band_pool:
-        return None
-    bin_hz = STFT_FS / float(n_fft)
-    idx = np.arange(1, int(freq_bins) + 1, dtype=np.float64)
-    return idx * bin_hz / 1000.0
+    n_fft = int(getattr(cfg, "stft_n_fft", STFT_N_FFT))
+    hz = np.arange(1, int(cfg.freq_bins) + 1) * STFT_FS / n_fft
+    pool = int(getattr(cfg, "band_pool", 0) or 0)
+    if pool > 0:
+        hz = hz.reshape(pool, -1).mean(axis=1)
+    return hz / 1000.0
 
 
 def band_power(
@@ -72,10 +62,8 @@ def band_power(
 ) -> np.ndarray:
     """``(F, C, Fr, Tb)`` decoded spectrogram -> ``(F, C)`` mean z in a band.
 
-    Falls back to the FULL frequency axis (every bin, i.e. an ordinary
-    signed mean) when ``freq_khz`` is None (see :func:`freq_axis_khz`) or
-    ``band`` is None, or when a given band selects no bin at all (a
-    too-coarse ``freq_khz`` for the requested band).
+    The full frequency axis (an ordinary signed mean) when ``band`` is None, or when
+    the band holds no row of ``freq_khz``.
     """
     if freq_khz is None or band is None:
         mask = np.ones(dec.shape[2], dtype=bool)
