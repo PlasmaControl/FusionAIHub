@@ -1104,8 +1104,8 @@ def train(cache_dir, out_dir, steps: int = 200_000, batch_size: int = 8, lr: flo
         # MaskGITDynamics._scheduled_sample_context.
         cfg.ss_ramp_final_frac = float(ss_final_frac)
     if ss_ramp_steps is not None:
-        # MUST be set relative to the run length: the 40k default on a 20k-step run only ever
-        # reaches HALF the requested fraction, so the arm silently tests a weaker schedule.
+        # MUST be set relative to the run length: a ramp longer than the run only ever reaches
+        # part of the requested fraction, so the arm silently tests a weaker schedule.
         cfg.ss_ramp_steps = int(ss_ramp_steps)
     if gen_mask_p is not None:
         cfg.gen_mask_p = float(gen_mask_p)
@@ -1897,9 +1897,8 @@ def build_arg_parser():
                         "point stays visible and unscored, target frames ride the reveal ladder "
                         "including a full cold start. 0 = historical scheme (bit-identical).")
     p.add_argument("--ss_ramp_steps", type=int, default=None,
-                   help="override DynamicsConfig.ss_ramp_steps (default 40000). Set this to the "
-                        "run length: the default on a 20000-step run reaches only HALF of "
-                        "--ss_final_frac.")
+                   help="override DynamicsConfig.ss_ramp_steps (default 2000). A ramp longer "
+                        "than the run reaches only part of --ss_final_frac.")
     p.add_argument("--precompute", action="store_true",
                    help="run the distributed frame-code precompute (build the cache) then exit")
     p.add_argument("--data_dir", default=None,

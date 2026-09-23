@@ -951,6 +951,7 @@ def _gs_cfg(**kw):
     return FastTSCodecConfig(**base)
 
 
+@pytest.mark.skipif(not PROD_FASTTS_CKPT.exists(), reason="production checkpoint not present")
 def test_gain_shape_off_is_bit_identical_on_the_shipped_checkpoint():
     """THE no-op proof: defaults OFF => same params, same forward, bit for bit.
 

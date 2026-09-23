@@ -36,11 +36,8 @@ source scripts/slurm_frontier/_frontier_settings.sh
 #  * OBJECTIVE = GENIE (GEN_MASK_P=0.0). The plain cosine-prior-on-every-frame MaskGIT objective
 #    beat the split-point / generation-mode objective at a COMMON condition: 0.1563 vs 0.1693 CE,
 #    and it got there in 14k steps instead of 51k. gen_mask_p > 0 is therefore OFF in production.
-#  * SS_FINAL_FRAC=0.75 / SS_RAMP_STEPS=2000. 0.75 is the best single scheduled-sampling setting
-#    measured (CE 0.1053, token acc 0.9792); SS=1.0 COLLAPSES (no teacher signal left), so this is
-#    a peak, not a monotone knob — do not "round it up". The 2000-step ramp reaches the requested
-#    fraction early; the config default (40k) only ever reaches HALF of it on a short leg, which
-#    silently tests a weaker schedule than the one that was chosen.
+#  * Scheduled sampling 0.75 over 2000 steps is DynamicsConfig's default (the reason is recorded
+#    there) and is not restated here; SS_FINAL_FRAC / SS_RAMP_STEPS override it when set.
 #  * LR=1e-3 with MIN_LR_RATIO=1.0 (flat, no cosine decay), WEIGHT_DECAY=0, BETA2=0.9,
 #    WARMUP_STEPS=100. 1e-3 is the rate EVERY converged arm used. 2e-3 bought 27% fewer epochs at
 #    d512xL16/N=8 but has NOT been validated at d1024 scale, so it is not the production default.
@@ -88,8 +85,6 @@ BETA2="${BETA2-0.9}"
 WEIGHT_DECAY="${WEIGHT_DECAY-0}"
 # Objective + rollout-drift schedule (see the LOCKED block above).
 GEN_MASK_P="${GEN_MASK_P:-0.0}"
-SS_FINAL_FRAC="${SS_FINAL_FRAC:-0.75}"
-SS_RAMP_STEPS="${SS_RAMP_STEPS:-2000}"
 CKPT_EVERY="${CKPT_EVERY:-500}"   # in OPTIMIZER steps (accumulation-independent); must be
                                   # < steps-per-leg so a 12 h leg checkpoints before its wall
 PRECOMPUTE="${PRECOMPUTE:-0}"     # 1 = build the frame-code cache (each rank a shot-shard) then exit
@@ -250,8 +245,8 @@ else
 cache=${CACHE_DIR} out=${OUT_DIR} depth=${DEPTH} d_model=${D_MODEL} n_heads=${N_HEADS} \
 k0=${K0} n_predict=${N_PREDICT} steps=${STEPS} bs=${BATCH_SIZE} accum=${ACCUM_STEPS} \
 grad_ckpt=${GRAD_CKPT} lr=${LR} warmup=${WARMUP_STEPS} min_lr_ratio=${MIN_LR_RATIO} \
-beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC} \
-ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT}"
+beta2=${BETA2} wd=${WEIGHT_DECAY} gen_mask_p=${GEN_MASK_P} ss_final=${SS_FINAL_FRAC:-config} \
+ss_ramp=${SS_RAMP_STEPS:-config} mask_absent=${MASK_ABSENT}"
   srun -N "$SLURM_JOB_NUM_NODES" -n "$SLURM_NTASKS" -c "$SLURM_CPUS_PER_TASK" \
        --gpus-per-task=1 --gpu-bind=closest \
        scripts/slurm_frontier/_srun_rank_wrapper.sh \
@@ -265,8 +260,8 @@ ss_ramp=${SS_RAMP_STEPS} mask_absent=${MASK_ABSENT}"
        --lr "${LR}" \
        --num_workers "${NUM_WORKERS}" \
        --ckpt_every "${CKPT_EVERY}" \
-       --ss_final_frac "${SS_FINAL_FRAC}" \
-       --ss_ramp_steps "${SS_RAMP_STEPS}" \
+       ${SS_FINAL_FRAC:+--ss_final_frac "$SS_FINAL_FRAC"} \
+       ${SS_RAMP_STEPS:+--ss_ramp_steps "$SS_RAMP_STEPS"} \
        --gen_mask_p "${GEN_MASK_P}" \
        --grad_ckpt "${GRAD_CKPT}" \
        --best_metric "${BEST_METRIC:-masked}" \

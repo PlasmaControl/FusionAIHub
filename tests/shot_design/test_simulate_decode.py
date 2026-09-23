@@ -18,12 +18,12 @@ def test_freq_axis_khz_matches_stft_bin_math():
     np.testing.assert_allclose(axis, expected)
 
 
-def test_freq_axis_khz_none_when_band_pooled():
-    # band_pool > 0 mean-pools bins unevenly from the codec's perspective -- the
-    # axis is no longer recoverable from freq_bins/stft_n_fft alone, so the
-    # fallback is None.
-    cfg = SimpleNamespace(stft_n_fft=1024, freq_bins=4, band_pool=8)
-    assert decode.freq_axis_khz(cfg) is None
+def test_freq_axis_khz_puts_a_pooled_band_at_its_bins_mean_frequency():
+    # band_pool=2 over 4 bins: bands {1, 2} and {3, 4} at 1.5 and 3.5 bin widths.
+    cfg = SimpleNamespace(stft_n_fft=1024, freq_bins=4, band_pool=2)
+    np.testing.assert_allclose(
+        decode.freq_axis_khz(cfg), np.array([1.5, 3.5]) * (500_000.0 / 1024) / 1000.0
+    )
 
 
 def test_band_power_reduces_within_band_to_F_C():
