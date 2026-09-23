@@ -56,3 +56,19 @@ def test_download_is_refused_when_no_repo_is_pinned(paths, monkeypatch, capsys):
     rc = cli.cmd_model(_args(download=True))
     err = capsys.readouterr().err
     assert rc == 1 and "not published" in err and "--pin" in err
+
+
+def test_model_status_shows_both_dynamics_install_methods(paths, monkeypatch, capsys):
+    import json
+
+    monkeypatch.setattr(ignite, "model_cfg", lambda: dict(V4))
+    monkeypatch.setattr(cli.config, "load_paths", lambda: paths)
+    manifest = ignite.codec_manifest(ignite.bundle_dir(paths))
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"modalities": {
+        "ece": {"family": "spectro", "n_tok": 192, "codebook_size": 1000},
+    }}))
+    assert cli.cmd_model(_args()) == 0
+    out = capsys.readouterr().out
+    assert "not installed (--download --full or --pin)" in out
+    assert "192 tok" in out

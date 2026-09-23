@@ -1380,12 +1380,7 @@ def _carry_over(
     dims = [int(codecs[n][1].d_model) for n in codecs]
     if dims != list(old.get("dims", [])) or list(codecs) != list(old.get("modalities", [])):
         raise RuntimeError("model changed since the database was built (modalities/dims differ)")
-    # v2 identified the weights by a pinned Hub revision. A pinned bundle has
-    # none, and its own sha256 table does not answer this question either:
-    # re-pinning rewrites the codecs and the manifest together, so a re-pinned
-    # bundle passes `load_codecs` above. The digest OF the manifest separates
-    # one pin from the next, and mixing two pins in one matrix is exactly what
-    # this guard exists to prevent.
+    # Re-pinning rewrites the manifest too; its digest prevents mixing pins in one matrix.
     changed = ignite.check_same_bundle(old.get("model", {}), paths)
     if changed:
         raise RuntimeError(changed)
