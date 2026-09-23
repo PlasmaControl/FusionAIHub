@@ -16,7 +16,7 @@ import h5py
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402 (must follow matplotlib.use("Agg"))
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -110,8 +110,8 @@ def _render_report(arms: SimulationArms, frac: dict[str, float], meta: dict) -> 
     lines = [
         "# Simulation report",
         "",
-        "| modality | frac_static | token_acc | persistence_acc | skill "
-        "| divergence_vs_real |",
+        ("| modality | frac_static | token_acc | persistence_acc | skill "
+         "| divergence_vs_real |"),
         "|---|---|---|---|---|---|",
     ]
     any_negative_skill = False
@@ -130,7 +130,7 @@ def _render_report(arms: SimulationArms, frac: dict[str, float], meta: dict) -> 
     if any_negative_skill:
         lines.append(
             QUALITATIVE_SENTENCE.format(
-                generation=meta.get("codec_generation", "v4"),
+                generation=meta["codec_generation"],
                 step=meta.get("dynamics_step"),
             )
         )
@@ -152,6 +152,7 @@ def write(
     defaulting to None and the group being skipped then). Returns
     ``out_dir`` -- the root all three artifacts are written under.
     """
+    meta = {**meta, "frame_origin_s": float(meta["frame_origin_s"])}
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 

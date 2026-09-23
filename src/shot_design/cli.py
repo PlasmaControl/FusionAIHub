@@ -421,8 +421,7 @@ def cmd_model(args) -> int:
 
     `--pin` copies the local checkpoints and writes the sha256 manifest that `--check` re-hashes
     (how v4 was installed on Frontier, the machine that trained it); `--download` snapshots the
-    pinned Hub revision (`model.repo_id` + `model.revision`; v2 always, v4 since it was published
-    as nc1/IGNITE-v4 on 2026-09-21). The gate is whether a repo_id is pinned in
+    pinned Hub revision (`model.repo_id` + `model.revision`, nc1/IGNITE-v4). The gate is whether a repo_id is pinned in
     ignite_modalities.yaml, never the generation number or a guess from the paths.
     """
     from .shotdb import ignite
@@ -430,7 +429,7 @@ def cmd_model(args) -> int:
     paths = config.load_paths()
     mcfg = ignite.model_cfg()
     target = ignite.bundle_dir(paths)
-    generation = mcfg.get("generation", "v2")
+    generation = mcfg["generation"]
     published = mcfg.get("repo_id") is not None
     if args.download:
         if not published:
@@ -483,7 +482,7 @@ def cmd_model(args) -> int:
         if published
         else f"generation {generation}, pinned locally"
     )
-    absent = "not downloaded (--download --full)" if generation == "v2" else "not pinned (--pin)"
+    absent = "not installed (--download --full or --pin)"
     print(f"bundle: {target}  ({source})")
     print(f"codecs: {len(have)}/{len(entries)} present -- {', '.join(have)}")
     print(
@@ -491,9 +490,7 @@ def cmd_model(args) -> int:
     )
     for n, e in entries.items():
         mark = " " if n in have else "!"
-        # v2 manifests carry `channels`; a pinned v4 manifest carries the token count instead,
-        # which is what the frame layout is made of.
-        size = f"{e['channels']:3d} ch" if "channels" in e else f"{e.get('n_tok', 0):4d} tok"
+        size = f"{e['n_tok']:4d} tok"
         print(f"  {mark} {n:24s} {e['family']:8s} {size}  vocab {e['codebook_size']}")
     return 0
 

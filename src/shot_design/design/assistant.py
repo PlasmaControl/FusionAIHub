@@ -195,7 +195,7 @@ def _scaled_vertices(key: str, vertices, factor: float) -> list:
 def _window(intent, ref):
     # The cache starts `frame_origin_s()` into the shot and the rollout needs SEED_FRAMES of
     # it before the first predicted frame, so a request that starts earlier is moved up to
-    # the first frame a design can start at (2.0 s under v4, 1.0 s under v2) instead of
+    # the first frame a design can start at (2.0 s) instead of
     # failing `program._window`'s "must leave 20 earlier reference frames" later.
     t0 = frame_origin_s()
     first = round(t0 + program.SEED_FRAMES * act.FRAME_S, 10)

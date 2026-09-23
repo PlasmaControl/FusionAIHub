@@ -108,3 +108,10 @@ def test_raw_reference_counts_frames_from_the_cache_origin(origin, monkeypatch, 
     ref = program_reference._raw_reference(1, program_reference.file_identity(source), "e", True)
     assert ref.controls.n_frames == 80  # (5.0 - 1.0) / 0.05, not 100
     assert ref.controls.t0_s == 1.0
+
+
+def test_frame_origin_requires_the_model_origin(monkeypatch):
+    cfg = {k: v for k, v in ignite.model_cfg().items() if k != "t0_start_s"}
+    monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
+    with pytest.raises(KeyError, match="t0_start_s"):
+        program_reference.frame_origin_s()

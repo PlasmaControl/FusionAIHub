@@ -144,11 +144,10 @@ def run(args) -> int:
             "bundle_manifest_sha256": (
                 shotdb_ignite.bundle_identity(paths).get("manifest_sha256") or ""
             ),
-            "codec_generation": mcfg.get("generation", "v2"),
+            "codec_generation": mcfg["generation"],
             "window_s": [prog.start_s, prog.end_s],
             # Shot time of rollout frame i is frame_origin_s + (context + i) * frame_s, with
-            # context = round((window_s[0] - frame_origin_s) / frame_s) - k0. Recorded so a
-            # reader never has to know which generation's origin (0.0 s v2, 1.0 s v4) applied.
+            # context = round((window_s[0] - frame_origin_s) / frame_s) - k0.
             "frame_origin_s": program_reference.frame_origin_s(),
             "frame_s": act.FRAME_S,
             "dynamics_step": step,

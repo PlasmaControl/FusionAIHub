@@ -12,11 +12,9 @@ and `ignite_infer.validate_shot` refuses a rollout unless they line up with the 
                  filterscopes         fastts     5 tok   vocab  1000
     actuators  (F, 88) float16  the control trajectory, ALREADY per-shot z-scored
     n_frames   int              F; 219 for a full shot of generation v4, whose frame 0 is at
-                                shot time 1.0 s (v2 started at 0.0 and gave 239)
-    vocabs     {modality: int}  codebook size per modality -- the field that tells a v2 cache
-                                from a v4 one, which are otherwise indistinguishable and which
-                                the model reinterprets silently. v4 is 1000 everywhere over 15
-                                modalities; v2 mixed 32768 / 64000 / 1000 over 14.
+                                shot time 1.0 s
+    vocabs     {modality: int}  codebook size per modality, 1000 for all 15 modalities;
+                                checked before reusing a cache with this bundle.
 
 Nothing else. A fifth key would be dropped by nobody and read by nobody, so provenance for a
 cache written here lives beside it in the run log and in the G-ENC gate's JSON, not inside the
@@ -33,23 +31,11 @@ a codec's output on a placeholder is a finite, meaningless number and NaN is the
 A frame-code cache is the opposite case -- production encoded the placeholder anyway, and the
 checkpoint's modality table requires all 15 slots -- so the placeholders are topped up here
 through the same loader with the presence test bypassed, which reproduces the shipped constant
-codes exactly (bes = 51210, co2 = 312 on 190090). Dropping them instead would produce a cache
+codes. Dropping them instead would produce a cache
 `validate_shot` rejects.
 
-VERIFIED, ON GENERATION v2. `scripts/shot_design/g_enc.py` compares freshly encoded shots with
-the caches shipped in the bundle (it passes `use_cache=False`, or it would be comparing
-production's cache with a copy of itself). Every measurement in this paragraph was taken against
-the v2 bundle and its fourteen modalities; v4 has not been through the gate. Over all ten, on a V100S against production's MI250X: nine of the fourteen
-modalities are bit-identical on every shot, `mhr` on 8/10, `co2` on 4/10 and `ece` on 3/10 (the
-misses agree on >= 99.2 % of tokens), the two video modalities on 8/10 and 6/10, and the 88
-actuator channels are bit-identical in float16 on 8/10. The two exceptions are 190735 and
-190736, at 78/88 and 77/88 within 2e-3 z; on those two shots the actuator block is pure NumPy
-arithmetic that disagrees by 1.8-2.4 z, which is the one place the disagreement cannot be this
-module's codec arithmetic -- output disagreement, not a demonstrated input difference, which
-would need matched input hashes nobody has. Everywhere else the residual is a scatter of isolated single tokens at
-the quantiser's bin boundaries, consistent with a cross-vendor numerics difference and not
-attributed to anything stronger -- no production input was ever compared. The gate's docstring
-carries the measurements and the limits of what they support.
+`scripts/shot_design/g_enc.py` compares fresh encodes (`use_cache=False`) against
+`model.frame_codes_cache`, the cache used to train the pinned dynamics checkpoint.
 """
 
 from __future__ import annotations
@@ -71,10 +57,7 @@ from . import provenance as prov
 _log = logging.getLogger(__name__)
 
 #: The checkpoint's modality table, in the bundle's own order (`frame_codes/*.pt`'s `codes`).
-#: Read off the PINNED generation instead of written out here: v4 added `mirnov` to v2's
-#: fourteen, and a second copy of the list is a second thing to forget. The yaml key order IS
-#: the canonical token order -- `model.families` in configs/shot_design/ignite_modalities.yaml
-#: is itself taken from the pinned bundle's codecs/MANIFEST.json.
+#: The yaml key order comes from the pinned bundle's codecs/MANIFEST.json.
 MODALITIES: tuple[str, ...] = tuple(ignite.model_cfg()["families"])
 VIDEO_MODALITIES: tuple[str, ...] = tuple(
     n for n, family in ignite.model_cfg()["families"].items() if family == "video"

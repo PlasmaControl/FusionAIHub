@@ -115,6 +115,7 @@ def _design(ident: str, root: Path) -> dict:
         try:
             with h5py.File(h5s, "r") as f:
                 rec["codec_generation"] = f.attrs.get("codec_generation")
+                rec["frame_origin_s"] = float(f.attrs["frame_origin_s"])
                 rec["dynamics_step"] = int(f.attrs.get("dynamics_step", -1))
                 rec["window_s"] = [float(x) for x in f.attrs.get("window_s", [])]
         except OSError:
