@@ -775,7 +775,7 @@ async function init() {
     select.replaceChildren(...(select.dataset.all ? [el("option", { value: "" }, "All phenomena")] : []),
       ...registry.map((p) => el("option", { value: p.id }, `${p.title} (${p.id})${p.covering_sources.length ? "" : " — no detector"}`)));
   }
-  if (globalThis.ShotDesign) await globalThis.ShotDesign.initDesign({ api });
+  if (globalThis.ShotDesign) await globalThis.ShotDesign.initDesign({ api, pollMs: meta.simulate_poll_s * 1000 });
   if (globalThis.ShotDesignAssistant) globalThis.ShotDesignAssistant.init({ api,
     onOpenDesign: (id) => { location.hash = `design-revision/${encodeURIComponent(id)}`; },
   });

@@ -69,6 +69,7 @@ const ids = [
   'design-legend', 'design-prepare', 'design-feedback', 'design-prepare-status',
   'design-delete-point', 'design-simplify', 'design-merge', 'design-merge-status',
   'design-simulate', 'design-simulate-status', 'design-simulate-report',
+  'design-simulation-results',
 ];
 const targets = Object.fromEntries(ids.map(id => [`#${id}`, new Element('div', id)]));
 for (const id of ['design-reference', 'design-start',
@@ -106,6 +107,7 @@ context.globalThis = context;
 context.window = context;
 vm.createContext(context);
 vm.runInContext(fs.readFileSync(process.argv[1].replace(/(?:design|app)\.js$/, 'assistant.js'), 'utf8'), context);
+vm.runInContext(fs.readFileSync(process.argv[1].replace('design.js', 'simulation.js'), 'utf8'), context);
 vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), context);
 const run = source => vm.runInContext(source, context);
 """

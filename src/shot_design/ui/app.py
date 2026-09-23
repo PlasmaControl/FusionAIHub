@@ -168,6 +168,7 @@ def create_app(
         def summary():
             info = {
                 "segments": list(tools.SEGMENTS),
+                "simulate_poll_s": config.load_yaml("ui.yaml")["simulate"]["poll_s"],
                 "phenomena": [
                     {"id": ph["id"], "title": ph["title"],
                      "has_detector": bool(ph["covering_sources"])}

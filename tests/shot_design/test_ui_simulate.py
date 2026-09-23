@@ -182,7 +182,7 @@ def test_panel_name_validation_rejects_anything_else(client, paths, name):
 )
 def test_malformed_idents_are_404_not_filesystem_paths(client, ident):
     routes = [
-        ("get", ""), ("post", ""), ("get", "/report"), ("get", "/panels/mhr.png"),
+        ("get", ""), ("post", ""), ("get", "/report"), ("get", "/metrics"), ("get", "/panels/mhr.png"),
     ]
     for method, suffix in routes:
         resp = getattr(client, method)(f"/api/design/{ident}/simulate{suffix}")
@@ -195,6 +195,7 @@ def test_all_simulate_routes_require_authentication(client):
         ("post", f"/api/design/{IDENT}/simulate"),
         ("get", f"/api/design/{IDENT}/simulate"),
         ("get", f"/api/design/{IDENT}/simulate/report"),
+        ("get", f"/api/design/{IDENT}/simulate/metrics"),
         ("get", f"/api/design/{IDENT}/simulate/panels/mhr.png"),
     ]:
         assert getattr(client, method)(path).status_code == 401
@@ -232,3 +233,50 @@ def test_default_submit_runs_subprocess_from_the_repo_root(monkeypatch):
 def test_cluster_paths_select_the_simulate_script(name, script):
     paths = sd_config.load_paths(sd_config.CONFIG_DIR / name)
     assert paths.simulate_submit_cmd == f"sbatch {script} {{ident}}"
+
+
+def test_metrics_returns_exact_f6_schema(client, paths):
+    from .test_ui_metrics import METRICS
+
+    (_sim_dir(paths) / 'metrics.json').write_text(json.dumps(METRICS))
+    response = client.get(f'/api/design/{IDENT}/simulate/metrics')
+    assert response.status_code == 200
+    assert response.json() == METRICS
+    assert response.headers['content-type'] == 'application/json'
+
+
+def test_metrics_missing_is_plain_404(client):
+    response = client.get(f'/api/design/{IDENT}/simulate/metrics')
+    assert response.status_code == 404
+    assert response.json()['detail'] == 'No simulation metrics for this design yet'
+
+
+def test_submission_can_be_reattached_before_worker_starts(client):
+    client.post(f'/api/design/{IDENT}/simulate')
+    status = client.get(f'/api/design/{IDENT}/simulate').json()
+    assert status['state'] == 'queued'
+    assert status['job_id'] == '4242'
+    assert status['submitted']
+
+
+def test_rerun_does_not_look_complete_until_new_worker_starts(client, paths):
+    from datetime import UTC, datetime, timedelta
+
+    out = _sim_dir(paths)
+    old = {'state': 'complete', 'started': '2026-01-01T00:00:00+00:00'}
+    (out / 'status.json').write_text(json.dumps(old))
+    client.post(f'/api/design/{IDENT}/simulate')
+    assert client.get(f'/api/design/{IDENT}/simulate').json()['state'] == 'queued'
+    running = {'state': 'running',
+               'started': (datetime.now(UTC) + timedelta(seconds=1)).isoformat()}
+    (out / 'status.json').write_text(json.dumps(running))
+    assert client.get(f'/api/design/{IDENT}/simulate').json() == running
+
+
+def test_panel_names_include_numbered_modalities(client, paths):
+    out = _sim_dir(paths)
+    (out / 'panels').mkdir()
+    (out / 'panels' / 'co2.png').write_bytes(b'\x89PNG\r\n\x1a\n')
+    response = client.get(f'/api/design/{IDENT}/simulate/panels/co2.png')
+    assert response.status_code == 200
+    assert response.headers['content-type'] == 'image/png'
