@@ -117,3 +117,27 @@ def test_report_requires_bundle_and_frame_metadata(tmp_path, missing):
     del meta[missing]
     with pytest.raises(KeyError, match=missing):
         report.write(tmp_path, _arms(), _decoded(), meta)
+
+
+@pytest.mark.parametrize("static_arm", ["real", "proposed"])
+def test_report_records_staticness_for_each_arm(tmp_path, static_arm):
+    arms = _arms()
+    changing = torch.arange(5, dtype=torch.int32)[:, None].repeat(1, 2)
+    arms.real["mse"] = changing.clone()
+    arms.proposed["mse"] = changing.clone()
+    getattr(arms, static_arm)["mse"].zero_()
+    report.write(tmp_path, arms, _decoded(), {
+        "codec_generation": "v4", "frame_origin_s": 1.0, "dynamics_step": 3200,
+    })
+    lines = (tmp_path / "report.md").read_text().splitlines()
+    header = next(line for line in lines if line.startswith("| modality"))
+    row = next(line for line in lines if line.startswith("| mse"))
+    values = dict(zip(
+        [s.strip() for s in header.strip("|").split("|")],
+        [s.strip() for s in row.strip("|").split("|")], strict=True,
+    ))
+    assert float(values["frac_static_real"]) == (static_arm == "real")
+    assert float(values["frac_static"]) == (static_arm == "proposed")
+    with h5py.File(tmp_path / "simulation.h5") as f:
+        assert "mean z" in f.attrs["reduction"]
+        assert "band-power" not in f.attrs["reduction"]
