@@ -457,7 +457,7 @@ def filled_channels(processed: Path) -> dict[str, int]:
 
     This is the presence test the encoder trusts. The codec datasets do NOT refuse a placeholder
     group: measured on 185601, whose `bes` is the (64, 1) all-NaN placeholder, CodecPairDataset
-    still yields 239 frames of a constant (std 0.0) spectrogram, which the codec would happily
+    still yields frames of a constant (std 0.0) spectrogram, which the codec would happily
     encode into a meaningless but finite feature. Absence has to be decided from the file.
 
     Not every top-level group is a signal in this sense: the text-embedding campaign's
@@ -507,13 +507,9 @@ def _frames(
     point: a spectro codec does not consume a waveform but a log-power spectrogram, and the STFT
     parameters, standardisation, channel selection and window origin that produced the model's
     training inputs live in those classes. Reproducing them by hand would be an unverifiable
-    guess. Verified instead: with t0_start=0.0 this path reproduces the production frame-code
-    cache shipped in the bundle BIT FOR BIT on shot 190090 -- all 239 frames of all 12 non-video
-    modalities (tests/test_ignite.py keeps a slice of that check).
+    guess. G-ENC verifies this path against the configured production cache.
 
-    Frames go through a DataLoader with CPU workers because the per-frame STFT of 500 kHz data is
-    the cost, not the GPU: 239 co2 frames took 38 s single-process and 1.0 s with 8 workers, with
-    identical codes.
+    Frames use a DataLoader with CPU workers for the per-frame STFT of 500 kHz data.
     """
     import torch
     from torch.utils.data import DataLoader, Subset

@@ -300,9 +300,7 @@ def frame_codes_dirs(paths: config.Paths) -> tuple[Path, ...]:
     (`model.frame_codes_cache` in configs/shot_design/ignite_modalities.yaml): it is
     thousands of shots the v4 dynamics checkpoint was actually trained on, read-only,
     and cheaper than a re-encode. `<data_root>/frame_codes` is where
-    `design.encode_frame_codes` writes shots nobody encoded yet, and
-    `<models_dir>/<local_name>/frame_codes` is the pinned bundle's own directory (empty
-    for v4, which ships no frame codes -- see `shotdb/ignite.py:bundle_dir`). `build`
+    `design.encode_frame_codes` writes shots nobody encoded yet. `build`
     (the `has_frame_codes` column), `corpus select` (its preference for shots already
     encoded) and `design.program_reference._cache_path` all read this one function, so
     they cannot disagree about the same shot the way `build` and `corpus select` used to
@@ -316,7 +314,6 @@ def frame_codes_dirs(paths: config.Paths) -> tuple[Path, ...]:
     production = ignite.model_cfg().get("frame_codes_cache")
     dirs = [Path(production)] if production else []
     dirs.append(Path(paths.data_root) / "frame_codes")
-    dirs.append(ignite.bundle_dir(paths) / "frame_codes")
     return tuple(dirs)
 
 

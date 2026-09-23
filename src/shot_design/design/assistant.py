@@ -39,8 +39,8 @@ class Intent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     search_text: str = Field(min_length=1, max_length=1500)
     goal: str = Field(min_length=1, max_length=2000)
-    start_s: FiniteFloat = Field(default=1.0, ge=1.0, le=20.0)
-    end_s: FiniteFloat = Field(default=5.0, gt=1.0, le=24.0)
+    start_s: FiniteFloat = Field(default=2.0, ge=1.0, le=20.0)
+    end_s: FiniteFloat = Field(default=6.0, gt=1.0, le=24.0)
 
 
 class Proposal(BaseModel):

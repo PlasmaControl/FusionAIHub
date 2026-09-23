@@ -1,9 +1,4 @@
-"""`shotdb.build.frame_codes_dirs`: production's cache first, then our own writes, then
-the pinned v4 bundle -- one source of truth `build`'s `has_frame_codes` column, `corpus
-select`'s preferred-shots set and `program_reference._cache_path` all read, so they
-cannot disagree about the same shot (see the controller amendment in task-C3-brief.md's
-Step 0).
-"""
+"""Frame-code discovery uses the configured training cache and local encodes."""
 
 from __future__ import annotations
 
@@ -12,7 +7,7 @@ from pathlib import Path
 from shot_design.shotdb import build, ignite
 
 
-def test_frame_codes_dirs_production_cache_first_then_v4_bundle(paths, monkeypatch):
+def test_frame_codes_dirs_production_cache_first_then_local_encodes(paths, monkeypatch):
     # Evaluated BEFORE the patch and captured by closure -- `lambda: ignite.model_cfg()`
     # inside its own replacement would recurse forever once `ignite.model_cfg` names
     # this lambda.
@@ -21,8 +16,7 @@ def test_frame_codes_dirs_production_cache_first_then_v4_bundle(paths, monkeypat
     dirs = build.frame_codes_dirs(paths)
     assert dirs[0] == Path("/prod/frame_codes")
     assert dirs[1] == Path(paths.data_root) / "frame_codes"
-    assert dirs[2] == ignite.bundle_dir(paths) / "frame_codes"
-    assert Path(paths.models_dir) / "IGNITE" / "frame_codes" not in dirs
+    assert len(dirs) == 2
 
 
 def test_frame_codes_dirs_without_a_production_cache(paths, monkeypatch):
@@ -31,7 +25,6 @@ def test_frame_codes_dirs_without_a_production_cache(paths, monkeypatch):
     dirs = build.frame_codes_dirs(paths)
     assert dirs == (
         Path(paths.data_root) / "frame_codes",
-        ignite.bundle_dir(paths) / "frame_codes",
     )
 
 
@@ -44,3 +37,10 @@ def test_tests_never_see_the_production_cache():
     `conftest.py` as a test file.)
     """
     assert "frame_codes_cache" not in ignite.model_cfg()
+
+
+def test_bundle_frame_code_samples_are_not_used(paths):
+    bundled = ignite.bundle_dir(paths) / "frame_codes"
+    bundled.mkdir(parents=True)
+    (bundled / "123.pt").write_bytes(b"obsolete sample")
+    assert build.frame_codes_path(123, paths) is None
