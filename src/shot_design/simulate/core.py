@@ -1,14 +1,17 @@
-"""Seed assembly and paired real/proposed IGNITE rollout.
+"""Seed assembly and ensembles of IGNITE rollouts for one design.
 
-A design proposal only changes actuators; the plasma-state seed (the K0 real frames a
-rollout starts from) and the ground truth to score against both come from the shot's own
-frame-code cache. This module pairs two rollouts of the SAME dynamics model from the
-SAME seed frames, one conditioned on the reference shot's measured actuators (`real`)
-and one on the design's proposed actuators (`proposed`), so any divergence between them
-is attributable to the actuator edit alone rather than to sampling noise: both draw from
-an identical RNG stream (`torch.manual_seed(seed)` reset before each rollout), which
-`MaskGITDynamics.rollout` consumes an identical number of draws from regardless of the
-actuator conditioning.
+A design only changes actuators: the plasma-state seed (the K0 measured frames a rollout
+starts from) and the measurement to score against both come from the shot's own frame-code
+cache. `run_ensemble` rolls the dynamics model out several times per arm from those seed
+frames.
+
+Arms given the same seed share their random numbers. MaskGIT samples by Gumbel-max over
+exponential variates, so two such arms draw the same token wherever their distributions are
+close, and they part only where the actuators moved a distribution far enough. After that
+the rollout carries any difference forward and amplifies it, so arms can also diverge for
+reasons an edit did not cause. The null arm, the real actuators on fresh random numbers,
+measures how far that alone moves an ensemble; an edit is resolved only when it moves the
+ensemble mean well beyond it.
 """
 
 from __future__ import annotations
@@ -20,24 +23,19 @@ import torch
 
 from tokamak_foundation_model.ignite import eval_dynamics
 from tokamak_foundation_model.ignite.dynamics_config import DynamicsConfig
+from tokamak_foundation_model.ignite.maskgit import placeholders
 
 from ..shotdb import ignite as shotdb_ignite
 
-# The three arms every SimulationArms field keyed by modality carries, in the fixed
-# order `decode.py` and `report.py` both iterate/write them in (real, proposed, gt).
-ARM_LABELS = ("real", "proposed", "gt")
-
 
 @dataclass
-class SimulationArms:
-    seed_frames: int  # k0, default 20
-    predict_frames: int  # default 80
-    real: dict[str, torch.Tensor]  # {m: (F, n_tok)}, predicted with reference actuators
-    proposed: dict[str, torch.Tensor]  # same shape, proposed actuators
-    gt: dict[str, torch.Tensor]  # reference cache codes over the same frames
-    divergence_vs_real: dict[str, float]  # fraction of differing tokens, predicted only
-    token_accuracy: dict[str, float]  # vs gt, predicted region only
-    persistence_accuracy: dict[str, float]  # last seed frame repeated, vs gt
+class Ensemble:
+    k0: int  # seed frames; frames [k0, F) are predicted
+    gt: dict[str, torch.Tensor]  # {m: (F, n_tok)} the measured codes
+    arms: dict[str, dict[str, torch.Tensor]]  # {arm: {m: (M, F, n_tok)}}
+    seeds: dict[str, int]  # {arm: seed}; arms with one seed share random numbers
+    held: tuple[str, ...]  # modalities held at their placeholder code
+    batch: int  # members per batched rollout
 
 
 def load_dynamics(paths, device) -> tuple[torch.nn.Module, DynamicsConfig, int]:
@@ -85,8 +83,79 @@ def actuator_arms(
     return real, proposed
 
 
-def _token_fraction_equal(a: torch.Tensor, b: torch.Tensor) -> float:
-    return (a == b).float().mean().item()
+def members_per_pass(cfg: DynamicsConfig, device, bf16: bool = False) -> int:
+    """How many members one batched rollout can hold on ``device``.
+
+    The KV cache dominates: 2 x depth x tokens per frame x frames x d_model values per
+    member (15 GiB for v4 in fp32), next to 1-2 GiB of weights and activations.
+    """
+    device = torch.device(device)
+    if device.type != "cuda":
+        return 1
+    per = 2 * cfg.depth * cfg.tokens_per_frame * cfg.max_frames * cfg.d_model
+    per *= 2 if bf16 else 4
+    free, _ = torch.cuda.mem_get_info(device)
+    return max(1, int(0.9 * free / (1.05 * per)))
+
+
+def run_ensemble(
+    model,
+    cfg: DynamicsConfig,
+    codes: dict,
+    arms: dict[str, tuple[torch.Tensor, int]],
+    members: int = 8,
+    *,
+    sampler=None,
+    batch: int | None = None,
+    bf16: bool = False,
+) -> Ensemble:
+    """``members`` rollouts per arm from the same K0 seed frames.
+
+    ``arms`` maps a name to ``(actuators (F, A), seed)``. Members go through the model
+    ``batch`` at a time, the j-th batch on a generator seeded ``seed + j * batch``, so arms
+    with the same seed and batch share every random number. Modalities whose seed frames
+    never change are held at that placeholder code (`maskgit.placeholders`). The rollouts
+    use the exact KV cache; ``bf16`` runs them under bfloat16 autocast.
+    """
+    k0, n_predict = cfg.k0_seed, cfg.n_predict
+    total = k0 + n_predict
+    names = [m.name for m in cfg.modalities]
+    _check_frame_counts(codes, names, total)
+    dev = _model_device(model)
+    seed_codes = {n: codes[n][:k0].long().unsqueeze(0).to(dev) for n in names}
+    held = placeholders(seed_codes)
+    batch = batch or min(members, members_per_pass(cfg, dev, bf16))
+    out = {}
+    for arm, (act, seed) in arms.items():
+        if act.shape[0] < total:
+            raise ValueError(
+                f"the {arm} actuators cover {act.shape[0]} frames; need k0+n_predict={total}"
+            )
+        act = act[:total].float().unsqueeze(0).to(dev)
+        rolls = []
+        for i0 in range(0, members, batch):
+            b = min(batch, members - i0)
+            gen = torch.Generator(dev).manual_seed(seed + i0)
+            with torch.autocast(dev.type, dtype=torch.bfloat16, enabled=bf16):
+                traj = model.rollout(
+                    {n: c.expand(b, -1, -1) for n, c in seed_codes.items()},
+                    act.expand(b, -1, -1),
+                    n_predict=n_predict,
+                    generator=gen,
+                    sampler=sampler,
+                    kv_cache=True,
+                    hold={n: r.expand(b) for n, r in held.items()},
+                )
+            rolls.append({n: traj[n].cpu() for n in names})
+        out[arm] = {n: torch.cat([r[n] for r in rolls]) for n in names}
+    return Ensemble(
+        k0=k0,
+        gt={n: codes[n][:total].long() for n in names},
+        arms=out,
+        seeds={arm: seed for arm, (_, seed) in arms.items()},
+        held=tuple(held),
+        batch=batch,
+    )
 
 
 def _check_frame_counts(codes: dict, names: list[str], needed: int) -> None:
@@ -107,83 +176,3 @@ def _model_device(model) -> torch.device:
     for p in model.parameters():
         return p.device
     return torch.device("cpu")
-
-
-def run_paired(
-    model,
-    cfg: DynamicsConfig,
-    codes: dict,
-    real_act: torch.Tensor,
-    prop_act: torch.Tensor,
-    *,
-    seed: int,
-    temperature: float = 1.0,
-    decode_steps: int = 10,
-) -> SimulationArms:
-    """Roll out the real and proposed actuator arms from the same seed frames + RNG.
-
-    Both rollouts consume an identical number of RNG draws (`rollout`'s decode loop is a
-    fixed number of multinomial calls per frame), so resetting `torch.manual_seed(seed)`
-    immediately before each call makes the two trajectories differ ONLY through the
-    actuator conditioning -- a paired comparison, not one confounded by sampling noise.
-    """
-    k0, n_predict = cfg.k0_seed, cfg.n_predict
-    total = k0 + n_predict
-    names = [m.name for m in cfg.modalities]
-    _check_frame_counts(codes, names, total)
-    if real_act.shape[0] < total or prop_act.shape[0] < total:
-        raise ValueError(
-            f"actuators must cover k0+n_predict={total} frames; got "
-            f"real={real_act.shape[0]}, proposed={prop_act.shape[0]}"
-        )
-
-    gt = {n: codes[n][:total].long() for n in names}
-    # The seed and the actuators arrive on cpu (torch.load of the design seed and the
-    # reference cache); the model sits wherever `load_dynamics` put it, and `rollout`
-    # does not move its inputs. Everything that meets the model goes to its device and
-    # the trajectories come back to cpu, so the report and the codec decode see plain
-    # host tensors whatever `--device` was.
-    dev = _model_device(model)
-    seed_codes = {n: codes[n][:k0].long().unsqueeze(0).to(dev) for n in names}
-    real_act = real_act.float().unsqueeze(0).to(dev)
-    prop_act = prop_act.float().unsqueeze(0).to(dev)
-
-    # generate_frame reads cfg.maskgit_decode_steps off the model's own bound config
-    # (model.cfg IS this cfg object); rollout() takes no decode-step argument, so this
-    # is the only way in. Restored in `finally` -- a shared model/cfg (e.g. one loaded
-    # in a long-lived route) must not carry one caller's decode_steps into the next.
-    original_decode_steps = cfg.maskgit_decode_steps
-    cfg.maskgit_decode_steps = decode_steps
-    try:
-        torch.manual_seed(seed)
-        real_traj = model.rollout(
-            seed_codes, real_act, n_predict=n_predict, temperature=temperature
-        )
-        torch.manual_seed(seed)
-        prop_traj = model.rollout(
-            seed_codes, prop_act, n_predict=n_predict, temperature=temperature
-        )
-    finally:
-        cfg.maskgit_decode_steps = original_decode_steps
-
-    real = {n: real_traj[n][0].detach().cpu() for n in names}
-    proposed = {n: prop_traj[n][0].detach().cpu() for n in names}
-
-    divergence_vs_real, token_accuracy, persistence_accuracy = {}, {}, {}
-    for n in names:
-        r_pred, p_pred, g_pred = real[n][k0:], proposed[n][k0:], gt[n][k0:]
-        divergence_vs_real[n] = 1.0 - _token_fraction_equal(r_pred, p_pred)
-        token_accuracy[n] = _token_fraction_equal(r_pred, g_pred)
-        persisted = gt[n][k0 - 1].unsqueeze(0).expand_as(g_pred)
-        persistence_accuracy[n] = _token_fraction_equal(persisted, g_pred)
-
-    return SimulationArms(
-        seed_frames=k0,
-        predict_frames=n_predict,
-        real=real,
-        proposed=proposed,
-        gt=gt,
-        divergence_vs_real=divergence_vs_real,
-        token_accuracy=token_accuracy,
-        persistence_accuracy=persistence_accuracy,
-    )

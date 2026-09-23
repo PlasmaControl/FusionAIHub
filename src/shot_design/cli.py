@@ -24,7 +24,6 @@ import yaml
 from labeler.env import getenv as labeler_getenv
 
 from . import config
-from . import simulate as simulate_pkg
 from .env import getenv
 from .retrieval import describe as describe_mod
 from .retrieval import rank as rank_mod
@@ -613,7 +612,7 @@ def cmd_encode(args) -> int:
 
 
 def cmd_simulate(args) -> int:
-    """Paired real/proposed IGNITE rollout for one design; writes status.json.
+    """IGNITE rollout ensembles for one design; writes status.json.
 
     Delegates entirely to `simulate.cli.run`, imported here rather than at
     module top: `simulate.cli` pulls in the dynamics/codec loading machinery
@@ -1988,26 +1987,38 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser(
         "simulate",
-        help="paired real/proposed IGNITE rollout for one design (writes status.json)",
+        help="IGNITE rollout ensembles for one design: real, proposed, null (writes status.json)",
     )
     p.add_argument("ident", help="saved design id (32 hex chars)")
-    p.add_argument("--seed", type=int, default=0, help="RNG seed shared by both arms")
+    p.add_argument(
+        "--members", type=int, default=8, help="rollouts per arm (default 8)"
+    )
+    p.add_argument(
+        "--seed", type=int, default=0,
+        help="RNG seed; real and proposed share it, null takes seed + members",
+    )
     p.add_argument("--k0", type=int, default=20, help="seed frames before prediction")
     p.add_argument(
         "--n-predict", type=int, default=None,
         help="predicted frames (default: all the seed and the checkpoint allow)",
     )
     p.add_argument(
-        "--decode-steps",
-        type=int,
-        default=10,
-        help="MaskGIT reveal passes per predicted frame (default 10; each pass is a "
-        "full forward over the whole trajectory, so wall time scales with it)",
+        "--decode-steps", type=int, default=10,
+        help="MaskGIT reveal passes per predicted frame (default 10)",
+    )
+    p.add_argument(
+        "--temperature", type=float, default=1.0, help="sampling temperature (default 1)"
+    )
+    p.add_argument(
+        "--batch", type=int,
+        help="members per batched rollout (default: as many as the GPU holds)",
+    )
+    p.add_argument(
+        "--bf16", action="store_true", help="run the rollouts under bfloat16 autocast"
     )
     p.add_argument(
         "--decode",
-        help="comma-separated modalities to decode for the report/panels "
-        f"(default: {','.join(simulate_pkg.DEFAULT_DECODE)})",
+        help="comma-separated modalities to score and plot (default: every modality)",
     )
     p.add_argument("--device", help="cuda | cpu (default: cuda when available)")
     p.add_argument(

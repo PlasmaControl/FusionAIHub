@@ -26,7 +26,12 @@ def test_confirmed_hyperparams():
     assert cfg.depth == 24            # start value; configurable for the depth study
     assert cfg.k0_seed == 20
     assert cfg.maskgit_decode_steps == 10
-    assert cfg.ss_ramp_final_frac == pytest.approx(0.15)
+    assert cfg.ss_ramp_final_frac == pytest.approx(0.75) and cfg.ss_ramp_steps == 2000
+
+
+def test_the_actuator_width_is_the_actuator_specs():
+    from tokamak_foundation_model.ignite.train_dynamics import _ACT_SPEC
+    assert DynamicsConfig().actuator_dim == sum(n for _, n in _ACT_SPEC) == 88
 
 
 def test_depth_is_a_free_knob():

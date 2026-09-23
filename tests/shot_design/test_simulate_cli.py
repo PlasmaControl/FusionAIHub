@@ -1,10 +1,8 @@
-"""shot_design simulate: the CLI's own orchestration and status-file contract.
+"""shot_design simulate: the CLI's orchestration and its status-file contract.
 
-Every heavy dependency (D1/D2's functions, and program/program_reference's real
-corpus + IGNITE reads) is a small fake here -- the dynamics rollout and the
-decode/report pipeline each have their own suite (test_simulate_core.py,
-test_simulate_decode.py, test_simulate_report.py). `report.write` itself is NOT
-faked: status.json and report.md are real files, read back from tmp_path.
+The heavy steps (the dynamics checkpoint, the rollouts, the codecs) are small fakes; each
+has its own suite. `report.write` is real, so status.json, metrics.json and the h5 file
+are read back from disk.
 """
 
 from __future__ import annotations
@@ -12,6 +10,8 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import h5py
+import numpy as np
 import pytest
 import torch
 
@@ -23,29 +23,36 @@ from shot_design.simulate import core as core_mod
 from shot_design.simulate import decode as decode_mod
 
 IDENT = "a" * 32
-N_FRAMES = 100  # k0(20) + n_predict(80) default, exactly matching the design seed
+N_FRAMES = 100  # k0 (20) + n_predict (80), exactly the design seed
 
 
-def _design_seed() -> dict:
+def _design_seed(n_frames: int = N_FRAMES) -> dict:
     return {
-        "codes": {"ece": torch.zeros(N_FRAMES, 4, dtype=torch.int32)},
-        "actuators": torch.zeros(N_FRAMES, 88, dtype=torch.float16),
-        "n_frames": N_FRAMES,
+        "codes": {"ece": torch.zeros(n_frames, 4, dtype=torch.int32)},
+        "actuators": torch.zeros(n_frames, 88, dtype=torch.float16),
+        "n_frames": n_frames,
         "vocabs": {"ece": 1000},
     }
 
 
-def _program() -> SimpleNamespace:
-    # start_s=2.0 -> start_frame 20 -> context 0 (SEED_FRAMES=20);
-    # end_s=6.0 -> display_end 100 == N_FRAMES, so the windowed reference cache
-    # lines up with the design seed exactly.
-    return SimpleNamespace(id=IDENT, reference_shot=1, start_s=2.0, end_s=6.0)
+class _Config(SimpleNamespace):
+    @property
+    def max_frames(self):
+        return self.k0_seed + self.n_predict
+
+
+def _cfg(trained: int = 100) -> _Config:
+    return _Config(
+        k0_seed=20,
+        n_predict=trained - 20,
+        maskgit_decode_steps=10,
+        modalities=(SimpleNamespace(name="ece"),),
+    )
 
 
 @pytest.fixture
 def fake_bundle(paths):
-    """A real (tiny) codecs/MANIFEST.json -- `bundle_identity` hashes real bytes
-    off it, without needing an actual codec checkpoint."""
+    """A real (tiny) codecs/MANIFEST.json, so `bundle_identity` hashes real bytes."""
     bundle = shotdb_ignite.bundle_dir(paths)
     (bundle / "codecs").mkdir(parents=True)
     (bundle / "codecs" / "MANIFEST.json").write_text(json.dumps({"modalities": {}}))
@@ -54,215 +61,160 @@ def fake_bundle(paths):
 
 @pytest.fixture
 def fakes(monkeypatch, paths, fake_bundle, tmp_path):
-    """Install the brief's Step-1 fakes; return a dict of mutable knobs the
-    individual tests flip (`raise_in`) to exercise the failure path."""
-    calls: dict = {"mid_state": None, "raise_in": None}
-
+    """Install the fakes; tests flip ``raise_in`` to take the failure path and read
+    back what each step was called with."""
+    calls: dict = {"mid_state": None, "raise_in": None, "cfg": _cfg()}
     seed_path = tmp_path / "seed.pt"
     torch.save(_design_seed(), seed_path)
 
-    def fake_load_program(ident, paths_arg):
-        if calls["raise_in"] == "load_program":
-            raise ValueError("boom in load_program")
-        # status.json must already say "running" by the time the first real
-        # step runs -- wherever `run()` decided to put it (default or --out,
-        # which may sit outside data_root entirely).
+    def step(name, result):
+        def fake(*args, **kwargs):
+            if calls["raise_in"] == name:
+                raise ValueError(f"boom in {name}")
+            calls[name] = (args, kwargs)
+            return result(*args, **kwargs)
+
+        return fake
+
+    def load_program(ident, paths_arg):
+        # status.json already says "running" when the first real step runs
         [status_path] = tmp_path.rglob("status.json")
         calls["mid_state"] = json.loads(status_path.read_text())["state"]
-        return _program()
+        return SimpleNamespace(id=IDENT, reference_shot=1, start_s=2.0, end_s=6.0)
 
-    def fake_export_ignite(prog, paths_arg):
-        if calls["raise_in"] == "export_ignite":
-            raise ValueError("boom in export_ignite")
-        return seed_path
+    def reference(shot, paths_arg):
+        return SimpleNamespace(cache={"actuators": torch.ones(200, 88)})
 
-    def fake_reference(shot, paths_arg):
-        if calls["raise_in"] == "reference":
-            raise ValueError("boom in reference")
-        cache = {"actuators": torch.ones(N_FRAMES, 88, dtype=torch.float16)}
-        return SimpleNamespace(cache=cache)
-
-    def fake_load_dynamics(paths_arg, device):
-        if calls["raise_in"] == "load_dynamics":
-            raise ValueError("boom in load_dynamics")
-        cfg = SimpleNamespace(
-            k0_seed=20, n_predict=80, maskgit_decode_steps=10, max_frames=100
-        )
-        return SimpleNamespace(), cfg, 4242
-
-    def fake_run_paired(model, cfg, codes, real_act, prop_act, *, seed, **kw):
-        calls["run_paired_kw"] = kw
-        if calls["raise_in"] == "run_paired":
-            raise ValueError("boom in run_paired")
-        f = codes["ece"]
-        return core_mod.SimulationArms(
-            seed_frames=cfg.k0_seed,
-            predict_frames=cfg.n_predict,
-            real={"ece": f.clone()},
-            proposed={"ece": f.clone()},
-            gt={"ece": f.clone()},
-            divergence_vs_real={"ece": 0.0},
-            token_accuracy={"ece": 1.0},
-            persistence_accuracy={"ece": 1.0},
+    def run_ensemble(model, cfg, codes, arms, members, **kw):
+        total = cfg.k0_seed + cfg.n_predict
+        gt = codes["ece"][:total].long()
+        return core_mod.Ensemble(
+            k0=cfg.k0_seed,
+            gt={"ece": gt},
+            arms={a: {"ece": gt.expand(members, -1, -1).clone()} for a in arms},
+            seeds={a: seed for a, (_, seed) in arms.items()},
+            held=(),
+            batch=kw.get("batch") or 1,
         )
 
-    def fake_decode_modalities(codecs, arms, names):
-        if calls["raise_in"] == "decode_modalities":
-            raise ValueError("boom in decode_modalities")
-        return {}
+    def decode_ensemble(codecs, ens):
+        rng = np.random.default_rng(0)
+        f, m = ens.gt["ece"].shape[0], ens.arms["real"]["ece"].shape[0]
+        per = {"gt": rng.normal(size=(f, 2)).astype(np.float32)}
+        return {"ece": per | {a: rng.normal(size=(m, f, 2)).astype(np.float32)
+                              for a in ens.arms}}
 
-    def fake_load_codecs(ckpt_dir, names, device):
-        if calls["raise_in"] == "load_codecs":
-            raise ValueError("boom in load_codecs")
-        return {}
-
-    monkeypatch.setattr(program_mod, "load_program", fake_load_program)
-    monkeypatch.setattr(program_mod, "export_ignite", fake_export_ignite)
-    monkeypatch.setattr(program_reference_mod, "reference", fake_reference)
-    monkeypatch.setattr(core_mod, "load_dynamics", fake_load_dynamics)
-    monkeypatch.setattr(core_mod, "run_paired", fake_run_paired)
-    monkeypatch.setattr(decode_mod, "decode_modalities", fake_decode_modalities)
-    monkeypatch.setattr(shotdb_ignite, "load_codecs", fake_load_codecs)
+    monkeypatch.setattr(program_mod, "load_program", step("load_program", load_program))
+    monkeypatch.setattr(program_mod, "export_ignite", step("export_ignite", lambda *a: seed_path))
+    monkeypatch.setattr(program_reference_mod, "reference", step("reference", reference))
+    monkeypatch.setattr(
+        core_mod, "load_dynamics",
+        step("load_dynamics", lambda *a: (object(), calls["cfg"], 4242)),
+    )
+    monkeypatch.setattr(core_mod, "run_ensemble", step("run_ensemble", run_ensemble))
+    monkeypatch.setattr(
+        shotdb_ignite, "load_codecs",
+        step("load_codecs", lambda *a: {"ece": (None, None, "spectro")}),
+    )
+    monkeypatch.setattr(decode_mod, "decode_ensemble", step("decode_ensemble", decode_ensemble))
     return calls
 
 
-def _status(paths, ident=IDENT):
-    out_dir = paths.data_root / "outputs" / ident / "simulation"
-    return out_dir, json.loads((out_dir / "status.json").read_text())
+def _out(paths, ident=IDENT):
+    return paths.data_root / "outputs" / ident / "simulation"
 
 
-def test_simulate_writes_running_then_complete_status_and_a_report(paths, fakes):
-    rc = cli.main(["simulate", IDENT])
-    assert rc == 0
+def _status(paths):
+    return json.loads((_out(paths) / "status.json").read_text())
+
+
+def _metrics(paths):
+    return json.loads((_out(paths) / "metrics.json").read_text())
+
+
+def test_simulate_writes_running_then_complete_status_and_its_outputs(paths, fakes):
+    assert cli.main(["simulate", IDENT]) == 0
     assert fakes["mid_state"] == "running"
-    out_dir, status = _status(paths)
-    assert status["state"] == "complete"
-    assert status["report"] == "report.md"
-    assert status["error"] is None
-    assert status["started"] and status["finished"]
-    assert (out_dir / "report.md").is_file()
-    assert (out_dir / "simulation.h5").is_file()
+    status = _status(paths)
+    assert status["state"] == "complete" and status["report"] == "report.md"
+    assert status["error"] is None and status["started"] and status["finished"]
+    for name in ("report.md", "metrics.json", "simulation.h5", "panels/ece.png"):
+        assert (_out(paths) / name).is_file(), name
 
 
 @pytest.mark.parametrize(
     "raise_in",
-    ["load_program", "export_ignite", "reference", "load_dynamics", "run_paired",
-     "decode_modalities", "load_codecs"],
+    ["load_program", "export_ignite", "reference", "load_dynamics", "run_ensemble",
+     "load_codecs", "decode_ensemble"],
 )  # fmt: skip
 def test_simulate_leaves_a_failed_status_and_exits_1(paths, fakes, raise_in):
     fakes["raise_in"] = raise_in
-    rc = cli.main(["simulate", IDENT])
-    assert rc == 1
-    _, status = _status(paths)
-    assert status["state"] == "failed"
-    assert f"boom in {raise_in}" in status["error"]
-    assert status["report"] is None
-    assert status["started"] and status["finished"]
+    assert cli.main(["simulate", IDENT]) == 1
+    status = _status(paths)
+    assert status["state"] == "failed" and f"boom in {raise_in}" in status["error"]
+    assert status["report"] is None and status["started"] and status["finished"]
 
 
 def test_simulate_prints_a_traceback_to_stderr_on_failure(paths, fakes, capsys):
-    """A Slurm-run failure only has stderr + status.json to diagnose from;
-    `status["error"]` is just `str(exc)`, so stderr must carry the traceback."""
+    """A Slurm job leaves only stderr and status.json; status["error"] is str(exc)."""
     fakes["raise_in"] = "load_program"
-    rc = cli.main(["simulate", IDENT])
-    assert rc == 1
+    assert cli.main(["simulate", IDENT]) == 1
     err = capsys.readouterr().err
-    assert "Traceback" in err
-    assert "fake_load_program" in err
+    assert "Traceback" in err and "boom in load_program" in err
 
 
-def test_simulate_rejects_k0_plus_n_predict_over_the_seeds_frame_count(paths, fakes):
-    rc = cli.main(["simulate", IDENT, "--k0", "50", "--n-predict", "80"])
-    assert rc == 1
-    _, status = _status(paths)
-    assert status["state"] == "failed"
-    assert "130" in status["error"] and "100" in status["error"]
-
-
-def test_simulate_rejects_k0_plus_n_predict_over_the_checkpoints_trained_horizon(
-    paths, fakes, monkeypatch, tmp_path
+def test_real_and_proposed_share_the_seed_and_null_takes_fresh_random_numbers(
+    paths, fakes
 ):
-    """`cfg.max_frames` is a property that recomputes from k0+n_predict, so reading it
-    only AFTER `cfg.k0_seed, cfg.n_predict = args.k0, args.n_predict` always finds the
-    guard trivially satisfied (100 == 100) no matter how far past the checkpoint's
-    actual trained horizon the request goes -- the frame embedding then indexes out of
-    range downstream (a device-side assert on GPU). The design seed and reference
-    window here are both made large enough (200/140 frames) that neither of the
-    OTHER two guards (design-seed frame count, actuator_arms's own length check)
-    fires first, so only the checkpoint-horizon guard can be what stops this."""
-    big_seed = _design_seed()
-    big_seed["n_frames"] = 200
-    big_seed["codes"] = {"ece": torch.zeros(200, 4, dtype=torch.int32)}
-    big_seed["actuators"] = torch.zeros(200, 88, dtype=torch.float16)
-    big_seed_path = tmp_path / "big_seed.pt"
-    torch.save(big_seed, big_seed_path)
-    monkeypatch.setattr(
-        program_mod, "export_ignite", lambda prog, paths_arg: big_seed_path
-    )
-    # end_s=8.0 -> display_end 140, so the windowed reference cache also has 140
-    # frames -- comfortably past k0+n_predict=120, so actuator_arms's own guard
-    # cannot be what raises here.
-    big_prog = SimpleNamespace(id=IDENT, reference_shot=1, start_s=2.0, end_s=8.0)
-    monkeypatch.setattr(program_mod, "load_program", lambda ident, paths_arg: big_prog)
-
-    def fake_reference(shot, paths_arg):
-        cache = {"actuators": torch.ones(200, 88, dtype=torch.float16)}
-        return SimpleNamespace(cache=cache)
-
-    monkeypatch.setattr(program_reference_mod, "reference", fake_reference)
-
-    def fake_load_dynamics(paths_arg, device):
-        cfg = SimpleNamespace(
-            k0_seed=20, n_predict=80, maskgit_decode_steps=10, max_frames=100
-        )
-        return SimpleNamespace(), cfg, 4242
-
-    monkeypatch.setattr(core_mod, "load_dynamics", fake_load_dynamics)
-
-    rc = cli.main(["simulate", IDENT, "--k0", "20", "--n-predict", "100"])
-    assert rc == 1
-    _, status = _status(paths)
-    assert status["state"] == "failed"
-    assert "120" in status["error"] and "100" in status["error"]
+    assert cli.main(["simulate", IDENT, "--members", "3", "--seed", "5"]) == 0
+    (_, _, _, arms, members), _ = fakes["run_ensemble"]
+    assert members == 3
+    assert {a: seed for a, (_, seed) in arms.items()} == {"real": 5, "proposed": 5, "null": 8}
+    assert torch.equal(arms["real"][0], arms["null"][0])  # the same measured actuators
+    assert (arms["real"][0][20:] == 1).all() and (arms["proposed"][0][20:] == 0).all()
+    assert torch.equal(arms["proposed"][0][:20], arms["real"][0][:20])
 
 
-def test_simulate_writes_actuators_into_the_h5(paths, fakes):
+def test_sampling_flags_reach_the_rollouts_and_the_records(paths, fakes):
+    argv = ["--decode-steps", "4", "--temperature", "0.7", "--batch", "2", "--bf16"]
+    assert cli.main(["simulate", IDENT, *argv]) == 0
+    _, kw = fakes["run_ensemble"]
+    assert kw["sampler"].temperature == 0.7 and kw["batch"] == 2 and kw["bf16"]
+    assert fakes["cfg"].maskgit_decode_steps == 4
+    doc = _metrics(paths)
+    assert doc["decode_steps"] == 4 and doc["temperature"] == 0.7
+    with h5py.File(_out(paths) / "simulation.h5") as f:
+        assert f.attrs["precision"] == "bf16" and f.attrs["members"] == 8
+
+
+def test_every_modality_is_decoded_unless_some_are_named(paths, fakes):
     assert cli.main(["simulate", IDENT]) == 0
-    import h5py
+    assert fakes["load_codecs"][0][1] == ["ece"]
+    assert cli.main(["simulate", IDENT, "--decode", "mhr, ece"]) == 0
+    assert fakes["load_codecs"][0][1] == ["mhr", "ece"]
 
-    out_dir = paths.data_root / "outputs" / IDENT / "simulation"
-    with h5py.File(out_dir / "simulation.h5") as f:
+
+def test_the_h5_records_the_bundle_the_window_and_the_actuators(paths, fakes):
+    assert cli.main(["simulate", IDENT]) == 0
+    with h5py.File(_out(paths) / "simulation.h5") as f:
         assert "actuators/real" in f and "actuators/proposed" in f
-        assert f.attrs["design_id"] == IDENT
-        assert f.attrs["codec_generation"]
+        assert f.attrs["design_id"] == IDENT and f.attrs["codec_generation"]
         assert f.attrs["frame_origin_s"] == 1.0 and f.attrs["frame_s"] == 0.05
         assert f.attrs["dynamics_step"] == 4242
+        assert json.loads(f.attrs["seeds"]) == {"real": 0, "proposed": 0, "null": 8}
 
 
-def test_simulate_default_out_dir_is_data_root_outputs_ident_simulation(paths, fakes):
-    assert cli.main(["simulate", IDENT]) == 0
-    out_dir = paths.data_root / "outputs" / IDENT / "simulation"
-    assert (out_dir / "status.json").is_file()
+@pytest.mark.parametrize(("k0", "t0_s"), [(20, 2.0), (10, 1.5)])
+def test_t0_is_the_shot_time_of_the_first_predicted_frame(paths, fakes, k0, t0_s):
+    # the seed starts 20 frames before the 2.0 s window, at the 1.0 s frame origin
+    assert cli.main(["simulate", IDENT, "--k0", str(k0), "--n-predict", "80"]) == 0
+    assert _metrics(paths)["t0_s"] == pytest.approx(t0_s)
 
 
 def test_simulate_out_flag_overrides_the_default_directory(paths, fakes, tmp_path):
     custom = tmp_path / "custom_out"
     assert cli.main(["simulate", IDENT, "--out", str(custom)]) == 0
-    assert (custom / "status.json").is_file()
-    assert (custom / "report.md").is_file()
-
-
-def test_decode_steps_flag_reaches_run_paired_and_the_h5_meta(paths, fakes):
-    import h5py
-
-    rc = cli.main(["simulate", IDENT, "--decode-steps", "4"])
-    assert rc == 0
-    assert fakes["run_paired_kw"]["decode_steps"] == 4
-    out_dir, _ = _status(paths)
-    with h5py.File(out_dir / "simulation.h5") as f:
-        meta = dict(f.attrs)
-    assert int(meta["decode_steps"]) == 4
-    assert int(meta["k0"]) == 20 and int(meta["n_predict"]) == 80
+    assert (custom / "status.json").is_file() and (custom / "metrics.json").is_file()
 
 
 @pytest.mark.parametrize(
@@ -271,49 +223,35 @@ def test_decode_steps_flag_reaches_run_paired_and_the_h5_meta(paths, fakes):
 def test_default_prediction_fits_seed_and_checkpoint(
     paths, fakes, monkeypatch, tmp_path, n_frames, trained, expected
 ):
-    import h5py
-
-    seed = _design_seed()
-    seed.update(
-        n_frames=n_frames,
-        codes={"ece": torch.zeros(n_frames, 4, dtype=torch.int32)},
-        actuators=torch.zeros(n_frames, 88, dtype=torch.float16),
-    )
     seed_path = tmp_path / "sized_seed.pt"
-    torch.save(seed, seed_path)
+    torch.save(_design_seed(n_frames), seed_path)
     monkeypatch.setattr(program_mod, "export_ignite", lambda *a: seed_path)
-
-    class Config(SimpleNamespace):
-        @property
-        def max_frames(self):
-            return self.k0_seed + self.n_predict
-
-    cfg = Config(k0_seed=20, n_predict=trained - 20, maskgit_decode_steps=10)
-    monkeypatch.setattr(core_mod, "load_dynamics", lambda *a: (object(), cfg, 3200))
+    fakes["cfg"] = _cfg(trained)
     assert cli.main(["simulate", IDENT]) == 0
-    assert cfg.n_predict == expected
-    out_dir, _ = _status(paths)
-    with h5py.File(out_dir / "simulation.h5") as f:
+    assert fakes["cfg"].n_predict == expected
+    with h5py.File(_out(paths) / "simulation.h5") as f:
         assert f.attrs["n_predict"] == expected
         assert f["actuators/real"].shape[0] == expected + 20
-        assert f["actuators/proposed"].shape[0] == expected + 20
 
 
-@pytest.mark.parametrize("n_predict", [0, -1])
-def test_simulate_rejects_nonpositive_prediction(paths, fakes, n_predict):
-    assert cli.main(["simulate", IDENT, "--n-predict", str(n_predict)]) == 1
-    _, status = _status(paths)
-    assert "does not fit" in status["error"]
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--k0", "50", "--n-predict", "80"],  # past the design seed's 100 frames
+        ["--n-predict", "0"],
+        ["--n-predict", "-1"],
+        ["--k0", "100"],  # no room left to predict
+    ],
+)
+def test_a_horizon_that_does_not_fit_fails(paths, fakes, argv):
+    assert cli.main(["simulate", IDENT, *argv]) == 1
+    assert "does not fit" in _status(paths)["error"]
 
 
-def test_bad_explicit_horizon_fails_before_loading_dynamics(paths, fakes):
-    fakes["raise_in"] = "load_dynamics"
-    assert cli.main(["simulate", IDENT, "--n-predict", "81"]) == 1
-    _, status = _status(paths)
-    assert "design seed" in status["error"]
-
-
-def test_default_prediction_rejects_a_seed_with_no_prediction_room(paths, fakes):
-    assert cli.main(["simulate", IDENT, "--k0", "100"]) == 1
-    _, status = _status(paths)
-    assert "--n-predict 0" in status["error"]
+def test_a_horizon_past_the_checkpoints_is_refused(paths, fakes, monkeypatch, tmp_path):
+    """The design seed (200 frames) has room; the checkpoint (100) does not."""
+    seed_path = tmp_path / "big_seed.pt"
+    torch.save(_design_seed(200), seed_path)
+    monkeypatch.setattr(program_mod, "export_ignite", lambda *a: seed_path)
+    assert cli.main(["simulate", IDENT, "--n-predict", "100"]) == 1
+    assert "checkpoint's 100" in _status(paths)["error"]

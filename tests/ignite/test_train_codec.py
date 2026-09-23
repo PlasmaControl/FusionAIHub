@@ -559,6 +559,9 @@ def test_main_dispatches_filterscopes_to_fastts_trainer(tmp_path, monkeypatch):
                 "best_step": 0}
 
     monkeypatch.setattr(ft, "train_fastts_codec", _stub_train_fastts_codec)
+    # the default stats file lives on Frontier; the dispatch does not depend on its values
+    monkeypatch.setattr(ft, "load_fastts_channel_stats",
+                        lambda path, modality: ([0.0] * 8, [1.0] * 8))
 
     # main() writes summary.json into out_dir (the real trainer creates it); the stub does not,
     # so pre-create it here — this test only asserts the DISPATCH, not the trainer's own I/O.

@@ -24,15 +24,22 @@ def _model():
         grad_checkpointing=False,
         k0_seed=2,
         n_predict=3,
+        maskgit_decode_steps=2,
     )
+    torch.manual_seed(0)
     return maskgit.MaskGITDynamics(cfg).eval(), cfg
 
 
 def _codes(F):
+    g = torch.Generator().manual_seed(1)
     return {
-        "ece": torch.randint(0, 16, (F, 4), dtype=torch.int32),
-        "mse": torch.randint(0, 16, (F, 2), dtype=torch.int32),
+        "ece": torch.randint(0, 16, (F, 4), dtype=torch.int32, generator=g),
+        "mse": torch.randint(0, 16, (F, 2), dtype=torch.int32, generator=g),
     }
+
+
+def _arms(**seeds):
+    return {arm: (torch.zeros(5, 88), seed) for arm, seed in seeds.items()}
 
 
 def test_actuator_arms_share_the_seed_frames():
@@ -44,49 +51,54 @@ def test_actuator_arms_share_the_seed_frames():
     assert not torch.equal(real[2:], prop[2:])
 
 
-def test_run_paired_is_deterministic_and_reports_token_metrics():
+def test_an_ensemble_has_every_member_of_every_arm_from_the_measured_seed():
+    model, cfg = _model()
+    codes = _codes(6)
+    ens = core.run_ensemble(model, cfg, codes, _arms(real=0, null=4), members=3)
+    assert set(ens.arms) == {"real", "null"} and ens.k0 == 2 and ens.batch == 1
+    assert ens.seeds == {"real": 0, "null": 4} and ens.held == ()
+    for tokens in ens.arms.values():
+        assert tokens["ece"].shape == (3, 5, 4) and tokens["mse"].shape == (3, 5, 2)
+        assert (tokens["ece"][:, :2] == codes["ece"][:2]).all()
+    assert torch.equal(ens.gt["ece"], codes["ece"][:5].long())
+
+
+def test_arms_on_one_seed_share_random_numbers_and_the_null_arm_does_not():
+    model, cfg = _model()
+    ens = core.run_ensemble(model, cfg, _codes(5), _arms(real=0, same=0, null=3), 3)
+    assert torch.equal(ens.arms["real"]["ece"], ens.arms["same"]["ece"])
+    assert not torch.equal(ens.arms["real"]["ece"], ens.arms["null"]["ece"])
+
+
+def test_members_differ_within_an_arm_and_batching_keeps_the_shapes():
+    model, cfg = _model()
+    ens = core.run_ensemble(model, cfg, _codes(5), _arms(real=0), 3, batch=2)
+    ece = ens.arms["real"]["ece"]
+    assert ece.shape == (3, 5, 4) and ens.batch == 2
+    assert not torch.equal(ece[0], ece[1])
+
+
+def test_a_diagnostic_absent_from_the_seed_is_held_at_its_placeholder():
     model, cfg = _model()
     codes = _codes(5)
-    real = torch.zeros(5, 88)
-    prop = torch.ones(5, 88)
-    a = core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    b = core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    assert torch.equal(a.real["ece"], b.real["ece"])
-    assert a.real["ece"].shape == (5, 4) and a.proposed["mse"].shape == (5, 2)
-    assert set(a.divergence_vs_real) == {"ece", "mse"}
-    assert 0 <= a.token_accuracy["ece"] <= 1
-    # seed frames are copied through
-    assert torch.equal(a.real["ece"][:2], codes["ece"][:2])
+    codes["mse"][:] = 7  # the codec's constant null code in every seed frame
+    ens = core.run_ensemble(model, cfg, codes, _arms(real=0), 2)
+    assert ens.held == ("mse",)
+    assert (ens.arms["real"]["mse"] == 7).all()
 
 
-def test_run_paired_restores_the_shared_cfgs_decode_steps():
+def test_windows_shorter_than_k0_plus_n_predict_are_refused():
     model, cfg = _model()
-    codes = _codes(5)
-    real = torch.zeros(5, 88)
-    prop = torch.ones(5, 88)
-    original = cfg.maskgit_decode_steps
-    core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    assert cfg.maskgit_decode_steps == original
+    with pytest.raises(ValueError, match="has 4 frames"):
+        core.run_ensemble(model, cfg, _codes(4), _arms(real=0), 1)
+    short = {"real": (torch.zeros(4, 88), 0)}
+    with pytest.raises(ValueError, match="real actuators cover 4 frames"):
+        core.run_ensemble(model, cfg, _codes(5), short, 1)
 
 
-def test_run_paired_rejects_code_windows_shorter_than_k0_plus_n_predict():
-    model, cfg = _model()
-    codes = _codes(4)  # k0+n_predict is 5; one frame short
-    real = torch.zeros(5, 88)
-    prop = torch.ones(5, 88)
-    with pytest.raises(ValueError) as exc:
-        core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    assert "4" in str(exc.value) and "5" in str(exc.value)
-
-
-def test_run_paired_rejects_actuator_windows_shorter_than_k0_plus_n_predict():
-    model, cfg = _model()
-    codes = _codes(5)
-    real = torch.zeros(4, 88)  # k0+n_predict is 5; the real arm is one frame short
-    prop = torch.ones(5, 88)
-    with pytest.raises(ValueError, match="actuators must cover") as exc:
-        core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    assert "real=4" in str(exc.value) and "5" in str(exc.value)
+def test_one_member_per_pass_on_the_cpu():
+    _, cfg = _model()
+    assert core.members_per_pass(cfg, "cpu") == 1
 
 
 def test_actuator_arms_rejects_actuator_windows_shorter_than_k0_plus_n_predict():
@@ -128,11 +140,10 @@ def test_load_dynamics_reads_the_pinned_bundle_checkpoint(paths):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA device")
-def test_run_paired_moves_cpu_inputs_to_the_models_device_and_returns_host_tensors():
+def test_an_ensemble_on_the_gpu_returns_host_tensors_and_leaves_its_inputs():
     model, cfg = _model()
-    model = model.cuda()
-    codes, real, prop = _codes(5), torch.randn(5, 88), torch.randn(5, 88)
-    arms = core.run_paired(model, cfg, codes, real, prop, seed=1, decode_steps=2)
-    for table in (arms.real, arms.proposed, arms.gt):
-        assert all(t.device.type == "cpu" for t in table.values())
-    assert all(v.device.type == "cpu" for v in codes.values())  # inputs untouched
+    codes = _codes(5)
+    ens = core.run_ensemble(model.cuda(), cfg, codes, _arms(real=0), 2, bf16=True)
+    for tokens in (ens.gt, *ens.arms.values()):
+        assert all(t.device.type == "cpu" for t in tokens.values())
+    assert all(v.device.type == "cpu" for v in codes.values())
