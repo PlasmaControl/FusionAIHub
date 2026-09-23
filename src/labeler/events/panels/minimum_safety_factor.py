@@ -13,12 +13,6 @@ from ..verify import Panel
 #: is a line, so `hlines` draws one.
 THRESHOLDS = [0.95, 1.5, 2.0]
 
-GUIDANCE = (
-    "<b>What you are looking for:</b> where the qmin trace crosses 0.95, 1.5 "
-    "and 2.0 (the dashed lines), and whether the label boundary sits on the "
-    "crossing. The q profile below is on normalized psi, <b>not rho</b>."
-)
-
 
 def panels(shot, *, t_range=None, paths=None):
     paths = Paths.from_env() if paths is None else paths

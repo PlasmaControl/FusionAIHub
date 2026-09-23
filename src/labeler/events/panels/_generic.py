@@ -12,14 +12,6 @@ from ...config import Paths
 from ...features.store import read_feature
 from ..verify import Panel
 
-GUIDANCE = (
-    "<b>These are generic panels.</b> <code>ip</code>, <code>betan</code> and "
-    "<code>pinj_total</code> show that the shot exists and that its labels sit "
-    "inside the discharge. They do not show whether this phenomenon actually "
-    "happened. Until someone adds a builder for this event under "
-    "<code>labeler/events/panels/</code>, treat a review here as provisional."
-)
-
 TRACES = (("ip", "A"), ("betan", ""), ("pinj_total", "kW"))
 
 
