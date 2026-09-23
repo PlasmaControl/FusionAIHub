@@ -4,6 +4,8 @@ from html.parser import HTMLParser
 
 import pytest
 
+from shot_design.design import program
+
 from .test_ui1_browser import APP, run_dom, run_js
 
 
@@ -39,6 +41,15 @@ def test_numeric_form_fields_are_text_with_explicit_keyboard_modes():
             assert field["pattern"] == "[0-9]*" and field["autocomplete"] == "off"
     assert not any(field.get("type") == "number" for field in forms.fields.values())
     assert forms.tabs == ["create", "search", "shot", "locate", "design", "info"]
+
+
+def test_design_window_fields_start_at_the_program_defaults():
+    # A new design reads these two fields before any program exists.
+    forms = Forms()
+    forms.feed(APP.with_name("index.html").read_text())
+    defaults = program.DesignProgram.model_fields
+    for name in ("start_s", "end_s"):
+        assert float(forms.fields["design-form", name]["value"]) == defaults[name].default
 
 
 @pytest.mark.parametrize("prefix", ["", "context-"])
