@@ -169,7 +169,7 @@ def test_form_submission_parses_values_reports_errors_and_never_rewrites_typing(
 // Minimal form controls around the real init/bindForm/route/loadEvents functions.
 const form = (id, values) => {
   const node = targets[id] = new Element('form');
-  node.elements = Object.fromEntries(Object.entries(values).map(([name,value]) => [name,{value}]));
+  node.elements = Object.fromEntries(Object.entries(values).map(([name,value]) => [name,Object.assign(new Element('input'), {value})]));
   node.button = new Element('button'); node.error = new Element('p');
   node.querySelector = sel => sel === '.form-error' ? node.error : node.button;
   return node;
@@ -181,8 +181,10 @@ const events = form('#events-form', {phenomenon:'tearing',t0_s:'-1.25',t1_s:'2.5
 const locate = form('#locate-form', {phenomenon:'tearing',segment:'flat_top',n:'7',min_confidence:'.625',avoid:''});
 context.FormData = class extends Map {
   constructor(form) { super(Object.entries(form.elements).map(([key,field]) => [key,field.value])); }
+  getAll(name) { return this.get(name) ? [this.get(name)] : []; }
 };
 context.location = {hash:'#search'};
+context.history = {pushState(_state, _title, hash) { context.location.hash = hash; }};
 context.window = {addEventListener(){}};
 context.document.querySelectorAll = () => [];
 const calls = [];

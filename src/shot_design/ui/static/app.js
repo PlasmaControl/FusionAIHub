@@ -6,18 +6,7 @@ const FORECAST_TITLE = "Forecasts (model estimates)";
 // Categorical colours identify the supplied evidence_kind, never quality or severity.
 const COLOURS = { detector: "#4b74a8", heuristic: "#688591", forecast: "#827299", database: "#87817a" };
 
-function el(tag, attrs = {}, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    if (value === null || value === undefined || value === false) continue;
-    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else node.setAttribute(key, value === true ? "" : String(value));
-  }
-  for (const child of children.flat()) {
-    if (child !== null && child !== undefined) node.append(child instanceof Node ? child : String(child));
-  }
-  return node;
-}
+const el = globalThis.ShotDesignDOM;
 
 // Measurements: 4 significant digits, no trailing zeros. Use scientific notation
 // for |x| >= 1e5 or 0 < |x| < 1e-3 (thresholds use the original magnitude).
@@ -223,16 +212,9 @@ function collapsible(content) {
   return root;
 }
 
-function parseWire(text) {
-  // json.dumps(default=str) may emit bare non-finite floats. Preserve quoted text,
-  // replacing only these numeric tokens with null for the browser's missing-value display.
-  return JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|-?Infinity|NaN/g,
-    (token) => token.startsWith('"') ? token : "null"));
-}
-
 async function api(path, options = {}) {
   const response = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
-  const data = parseWire(await response.text());
+  const data = JSON.parse(await response.text());
   if (!response.ok) throw new Error(response.status === 401 ?
     "401: reopen the token link printed by shot_design serve." : display(data.error ?? data.detail));
   return { data, notes: JSON.parse(response.headers.get("X-Ideate-Caveats") || "[]") };
@@ -338,37 +320,117 @@ function blurbText(row, { cell = false } = {}) {
           title: "Summary written by hand from the shot's own text; no model" }, "hand") : null);
 }
 
-function resultsTable(rows, segment) {
-  return el("div", { class: "table-wrap" }, el("table", {},
-    el("thead", {}, el("tr", {}, ["Shot", "Score", "Run / mini-proposal", "Summary", "Caveats"].map((t) => el("th", {}, t)))),
-    el("tbody", {}, rows.map((row) => {
-      const open = () => { location.hash = shotLink(row.shot, "", row.segment || segment); };
-      const title = el("td", { class: "prose-cell" }, cellText([display(row.run_id, "run_id"), "Loading title…"]));
-      const noteItems = [...(row.caveats || []).map(caption), ...(row.flags || []).map(formatFlag)];
-      const rowNotes = el("td", { class: "prose-cell" }, cellText(noteItems));
-      const refreshNotes = () => rowNotes.replaceChildren(cellText([...new Set(noteItems)]));
-      // Titles are absent from search's ResultItem. Read the existing describe route;
-      // its caveats/errors remain visible in this same row, and scores stay untouched.
-      api(`/api/shot/${row.shot}?${new URLSearchParams({ segment: row.segment || segment })}`)
-        .then(({ data }) => {
-          const human = data.record?.human;
-          title.replaceChildren(cellText([display(row.run_id, "run_id"), human?.run_title, human?.mp_title]));
-          if (data.error) noteItems.push(data.error);
-          noteItems.push(...(data.caveats || []).map(caption));
-          refreshNotes();
-        }).catch((error) => {
-          title.replaceChildren(cellText([display(row.run_id, "run_id"), "—"]));
-          noteItems.push(error.message);
-          refreshNotes();
-        });
-      return el("tr", { class: "clickable", onclick: open },
-        el("td", { class: "shot-number" }, el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot")),
+const CHANNEL_NAMES = { scalar_knn: "Measurements", text_knn: "Similar text",
+  bm25: "Matching words", ignite_knn: "Plasma patterns", phenomenon: "Phenomena" };
+
+function explanationText(explanation = {}) {
+  return [...(explanation.matched_constraints || []), explanation.text_highlight,
+    ...[["top_similar", "Similar"], ["top_different", "Different"]].flatMap(([key, label]) =>
+      (explanation[key] || []).map(([field, actual, reference]) =>
+        `${label}: ${field} ${display(actual)} (reference ${display(reference)})`))].filter(Boolean);
+}
+
+function resultsTable(rows, segment, queryText = "") {
+  const selected = new Set(), checkboxes = [];
+  const action = el("button", { type: "button", onclick: () => {
+    const [reference, ...comparisons] = selected;
+    location.hash = `#design/${reference}?${new URLSearchParams({
+      comparisons: comparisons.join(","), notes: queryText })}`;
+  } }, "Design from selected");
+  action.disabled = true;
+  const selection = el("p", { class: "small muted", role: "status" }, "Select up to six shots. First selected is the reference.");
+  return el("div", { class: "table-wrap" }, el("div", { class: "design-actions" }, action, selection), el("table", {},
+    el("thead", {}, el("tr", {}, ["Shot", "Rank", "Why this shot", "Summary", "Caveats"].map(t => el("th", {}, t)))),
+    el("tbody", {}, rows.map((row, index) => {
+      const checkbox = el("input", { type: "checkbox", "aria-label": `Select shot ${row.shot}`,
+        onclick: event => event.stopPropagation(), onchange: () => {
+          if (checkbox.checked) selected.add(row.shot); else selected.delete(row.shot);
+          for (const [shot, box] of checkboxes) box.disabled = selected.size >= 6 && !selected.has(shot);
+          action.disabled = !selected.size;
+          selection.textContent = selected.size ?
+            `Reference: ${[...selected][0]} · ${selected.size} selected` : "Select up to six shots. First selected is the reference.";
+        } });
+      checkboxes.push([row.shot, checkbox]);
+      const explanation = row.explanation || {};
+      const channels = Object.entries(explanation.channel_ranks || {}).filter(([, rank]) => rank !== null);
+      return el("tr", {},
+        el("td", { class: "shot-number" }, checkbox,
+          el("a", { href: shotLink(row.shot, "", row.segment || segment) }, display(row.shot, "shot")),
           useReferenceButton(row.shot)),
-        el("td", { class: "numeric" }, display(row.score)),
-        title,
+        el("td", { class: "numeric" }, String(index + 1)),
+        el("td", { class: "prose-cell" }, el("div", { class: "retrieval-channels" }, channels.map(([name]) =>
+          el("span", { class: "retrieval-channel" }, CHANNEL_NAMES[name] || name))),
+          cellText([row.run_id, ...explanationText(explanation)])),
         el("td", { class: "summary-cell prose-cell" }, blurbText(row, { cell: true })),
-        rowNotes);
+        el("td", { class: "prose-cell" }, cellText([...(row.caveats || []).map(caption),
+          ...(row.flags || []).map(formatFlag), ...(row.proposal_flags || []).map(formatFlag)])));
     }))));
+}
+
+const searchState = { fields: [], constraints: [], request: 0 };
+
+function addConstraint(field = "", range = {}) {
+  const select = el("select", { "aria-label": "Field" }, el("option", { value: "" }, "Choose field"),
+    searchState.fields.map(item => el("option", { value: item.name }, `${item.name}${item.units ? ` (${item.units})` : ""}`)));
+  select.value = field;
+  const lo = el("input", { type: "text", inputmode: "decimal", placeholder: "Min", "aria-label": "Minimum" });
+  const hi = el("input", { type: "text", inputmode: "decimal", placeholder: "Max", "aria-label": "Maximum" });
+  lo.value = range.lo == null ? "" : String(range.lo);
+  hi.value = range.hi == null ? "" : String(range.hi);
+  const item = { select, lo, hi };
+  item.row = el("div", { class: "constraint-row" }, select, lo, hi,
+    el("button", { type: "button", onclick: () => {
+      searchState.constraints = searchState.constraints.filter(other => other !== item);
+      $("#search-constraints").replaceChildren(...searchState.constraints.map(other => other.row));
+    } }, "Remove"));
+  searchState.constraints.push(item);
+  $("#search-constraints").append(item.row);
+}
+
+function readConstraints() {
+  const result = {};
+  for (const { select, lo, hi } of searchState.constraints) {
+    if (!select.value && !lo.value.trim() && !hi.value.trim()) continue;
+    if (!select.value) throw Error("Choose a constraint field");
+    if (select.value in result) throw Error("Use one row per constraint field");
+    const minimum = parseNumberField(lo.value, "Minimum"), maximum = parseNumberField(hi.value, "Maximum");
+    if (minimum === null && maximum === null) throw Error("Enter a minimum or maximum");
+    if (minimum !== null && maximum !== null && maximum < minimum) throw Error("Maximum must be at least minimum");
+    result[select.value] = { ...(minimum !== null ? { lo: minimum } : {}), ...(maximum !== null ? { hi: maximum } : {}) };
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+function initSearchFilters(meta) {
+  searchState.fields = meta.constraint_fields || [];
+  for (const name of ["require_labels", "avoid_labels"]) {
+    $("#search-form").elements[name].replaceChildren(...(meta.labels || []).map(label => el("option", { value: label }, label)));
+  }
+  $("#search-add-constraint").addEventListener("click", () => addConstraint());
+}
+
+function searchHash(body) {
+  return `#search?${new URLSearchParams({ q: JSON.stringify(body) })}`;
+}
+
+function restoreSearch(body) {
+  const fields = $("#search-form").elements;
+  for (const name of ["text", "ref_shot", "segment", "n"]) fields[name].value = String(body[name] ?? "");
+  for (const name of ["require_labels", "avoid_labels"]) {
+    for (const option of fields[name].children) option.selected = (body[name] || []).includes(option.getAttribute("value"));
+  }
+  searchState.constraints = [];
+  $("#search-constraints").replaceChildren();
+  for (const [field, range] of Object.entries(body.constraints || {})) addConstraint(field, range);
+}
+
+async function search(body) {
+  const request = ++searchState.request;
+  $("#search-results").replaceChildren(el("p", {}, "Searching…"));
+  const { data } = await api("/api/search", { method: "POST", body: JSON.stringify(body) });
+  if (request !== searchState.request) return;
+  notes($("#search-notes"), data, (data.proposal_flags || []).map(formatFlag));
+  $("#search-results").replaceChildren(data.error ? el("p") : resultsTable(data.results || [], body.segment, body.text));
 }
 
 // Only finite recorded times can place a mark. Axis interpolation is display geometry.
@@ -677,8 +739,19 @@ async function route() {
     await globalThis.ShotDesign?.openSavedDesign(hash.split("/")[1]);
   } else if (hash === "design" || hash.startsWith("design/")) {
     showView("design");
-    const shot = Number(hash.split("/")[1]);
-    if (Number.isSafeInteger(shot)) await globalThis.ShotDesign?.openDesign(shot);
+    const [path, query] = hash.split("?");
+    const shot = Number(path.split("/")[1]);
+    const params = new URLSearchParams(query);
+    if (Number.isSafeInteger(shot)) await globalThis.ShotDesign?.openDesign(shot,
+      tokens(params.get("comparisons")).map(Number), params.get("notes") || "");
+  } else if (hash === "search" || hash.startsWith("search?")) {
+    showView("search");
+    const query = new URLSearchParams(hash.split("?")[1]).get("q");
+    if (query) {
+      const body = JSON.parse(query);
+      restoreSearch(body);
+      await search(body);
+    }
   } else if (hash === 'info') {
     showView('info');
     $('#info-content').replaceChildren(el('p', {}, 'Loading…'));
@@ -706,16 +779,14 @@ async function init() {
   if (globalThis.ShotDesignAssistant) globalThis.ShotDesignAssistant.init({ api,
     onOpenDesign: (id) => { location.hash = `design-revision/${encodeURIComponent(id)}`; },
   });
+  initSearchFilters(meta);
   bindForm("#search-form", "#search-notes", async (form) => {
-    const constraints = form.get("constraints").trim();
-    const body = { text: form.get("text"), ref_shot: parseNumberField(form.get("ref_shot"), 'Reference shot', {identifier:true}),
-      segment: form.get("segment"), n: parseNumberField(form.get("n"), 'Results', {required:true, integer:true, min:1}),
-      constraints: constraints ? JSON.parse(constraints) : null,
-      require_labels: tokens(form.get("require_labels")), avoid_labels: tokens(form.get("avoid_labels")) };
-    $("#search-results").replaceChildren(el("p", {}, "Searching…"));
-    const { data } = await api("/api/search", { method: "POST", body: JSON.stringify(body) });
-    notes($("#search-notes"), data);
-    $("#search-results").replaceChildren(data.error ? el("p") : resultsTable(data.results || [], body.segment));
+    const body = { text: form.get("text"), ref_shot: parseNumberField(form.get("ref_shot"), "Reference shot", { identifier: true }),
+      segment: form.get("segment"), n: parseNumberField(form.get("n"), "Results", { required: true, integer: true, min: 1 }),
+      constraints: readConstraints(), require_labels: form.getAll("require_labels"), avoid_labels: form.getAll("avoid_labels") };
+    // Push history without a second hashchange request or rewriting the user's typing.
+    history.pushState(null, "", searchHash(body));
+    await search(body);
   });
   bindForm("#shot-form", "#shot-notes", async (form) => {
     const hash = shotLink(parseNumberField(form.get("shot"), 'Shot', {required:true, identifier:true}), $("#events-form").elements.phenomenon.value, form.get("segment"));

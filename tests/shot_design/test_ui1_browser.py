@@ -102,6 +102,7 @@ const context = {input: JSON.parse(fs.readFileSync(0, 'utf8'))};
 let code = fs.readFileSync(process.argv[1], 'utf8');
 code = code.slice(0, code.lastIndexOf('\\ninit().catch'));
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1].replace('app.js', 'assistant.js'), 'utf8'), context);
 vm.runInContext(code, context);
 process.stdout.write(JSON.stringify(vm.runInContext(process.argv[2], context)));
 """
@@ -160,6 +161,7 @@ class Element {
     }};
   }
   get id() { return this.attrs.id; }
+  getAttribute(k) { return this.attrs[k] ?? null; }
   setAttribute(k, v) { this.attrs[k] = v; }
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
@@ -173,7 +175,9 @@ const context = {Node: Element, URLSearchParams, document: {
 }};
 let code = fs.readFileSync(process.argv[1], 'utf8');
 code = code.slice(0, code.lastIndexOf('init().catch'));
-vm.createContext(context); vm.runInContext(code, context);
+vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1].replace('app.js', 'assistant.js'), 'utf8'), context); vm.runInContext(code, context);
+context.ShotDesignAssistant = undefined;
 const run = (code) => vm.runInContext(code, context);
 const all = (el) => el instanceof Element ? [el, ...el.children.flatMap(all)] : [];
 const text = (el) => el instanceof Element ? el.children.map(text).join('') : String(el);
@@ -190,15 +194,12 @@ def run_dom(script):
     assert result.returncode == 0, result.stderr
 
 
-def test_cells_have_one_toggle_for_all_items_including_async_notes():
+def test_cells_have_one_toggle_for_explanation_summary_and_notes():
     run_dom(r"""
-run(`api = async () => ({data: {record: {human: {
-  run_title: 'Run title '.repeat(40), mp_title: 'MP title '.repeat(40)}},
-  caveats: ['API caveat '.repeat(40)], error: 'Partial title data'}})`);
 const table = run(`resultsTable([{shot:199607, score:.03062, run_id:'r2026',
+  explanation:{matched_constraints:['Explanation '.repeat(40)]},
   blurb:'Summary '.repeat(60), caveats:['First caveat '.repeat(40), 'Second caveat '.repeat(40)],
   flags:[{message:'Flag detail '.repeat(40)}]}], 'flat_top')`);
-await new Promise(resolve => setImmediate(resolve));
 const cells = all(table).filter(n => n.tag === 'td');
 assert.equal(cells.length, 5);
 let stopped = 0;
@@ -215,19 +216,10 @@ for (const cell of cells.slice(2)) {
   assert(!text(cell).includes('…'));
 }
 assert.equal(stopped, 3);
-assert(text(cells[2]).includes('r2026\n' + 'Run title '.repeat(40) + '\n' + 'MP title '.repeat(40)));
-for (const expected of ['First caveat ', 'Second caveat ', 'Flag detail ', 'API caveat ']) {
+assert(text(cells[2]).includes('Explanation '.repeat(40)));
+for (const expected of ['First caveat ', 'Second caveat ', 'Flag detail ']) {
   assert(text(cells[4]).includes(expected.repeat(40)));
 }
-assert(text(cells[4]).includes('Partial title data'));
-run(`api = async () => { throw new Error('Title request failed'); }`);
-const failed = run(`resultsTable([{shot:199607, caveats:['Existing note '.repeat(40)]}], 'flat_top')`);
-await new Promise(resolve => setImmediate(resolve));
-const noteCell = all(failed).filter(n => n.tag === 'td')[4];
-assert.equal(byClass(noteCell, 'text-toggle').length, 1);
-byClass(noteCell, 'text-toggle')[0].events.click({stopPropagation() {}});
-assert(text(noteCell).includes('Title request failed'));
-assert(text(noteCell).includes('Existing note '.repeat(40)));
 """)
 
 
@@ -311,7 +303,7 @@ run(`api = async () => ({data:{}})`);
 const table = run(`resultsTable([{shot:199607, score:.03062}], 'flat_top')`);
 assert.equal(table.attrs.class, 'table-wrap');
 const cells = all(table).filter(n => n.tag === 'td');
-assert.equal(text(cells[1]), '0.03062');
+assert.equal(text(cells[1]), '1');
 assert.equal(byClass(cells[1], 'numeric').length, 1);
 const hit = run(`renderHit({shot:199607, score:.03062}, 'flat_top')`);
 assert(byClass(hit, 'numeric').some(n => text(n) === 'score 0.03062'));
@@ -420,7 +412,7 @@ assert.equal(byClass(shot, 'summary-block').length, 0);
 run(`api = async () => ({data: {record: {human: {}}}})`);
 const results = run(`resultsTable([{shot:199607, score:.945678, blurb:'Offline summary', blurb_source:'llm', caveats:[]}], 'flat_top')`);
 assert(text(results).includes('Summary')); assert(!text(results).includes('Quote'));
-assert(text(results).includes('199607')); assert(text(results).includes('0.9457'));
+assert(text(results).includes('199607')); assert(!text(results).includes('0.9457'));
 assert(text(results).includes('Offline summary')); assert.equal(byClass(results, 'blurb-auto').length, 0);
 for (const source of ['llm', 'template', null, undefined, '']) {
   const row = JSON.stringify({shot:199607, blurb:'Stored summary', blurb_source:source, segments:[]});

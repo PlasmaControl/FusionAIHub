@@ -354,3 +354,24 @@ def test_serve_cli_prints_link_and_forwards_options(shot_design_db, monkeypatch,
     assert app.state.paths.db_dir == shot_design_db / "db"
     with pytest.raises(SystemExit):
         cli.build_parser().parse_args(["serve", "--host", "0.0.0.0"])
+
+
+def test_search_filter_metadata_comes_from_server_vocabulary(client):
+    meta = client.get('/api/meta').json()
+    fields = {field['name'] for field in meta['constraint_fields']}
+    assert 'ip_mean' in fields
+    assert not fields.intersection({'shot', 'segment', 'record_json', 'run_id'})
+    assert {'H', 'L', 'QH', 'phenomenon:elm'} <= set(meta['labels'])
+    assert len(meta['labels']) == len(set(meta['labels']))
+
+
+def test_json_transport_preserves_text_and_turns_nonfinite_numbers_into_null(
+    client, monkeypatch,
+):
+    payload = {'results': [], 'values': [float('nan'), float('inf'),
+                                       {'value': -float('inf')}], 'text': 'NaN Infinity'}
+    monkeypatch.setattr(tools, 'search_shots', lambda **kw: payload)
+    response = client.post('/api/search', json={})
+    parsed = json.loads(response.text, parse_constant=lambda value: pytest.fail(value))
+    assert parsed['values'] == [None, None, {'value': None}]
+    assert parsed['text'] == 'NaN Infinity'
