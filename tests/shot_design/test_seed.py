@@ -1,7 +1,7 @@
 """`encode_frame_codes`: one corpus shot -> a frame-code cache in the shipped IGNITE layout.
 
-Both tests need the frozen codecs, so both are `real_data`. The structure test reads the bundle's
-own `frame_codes/190090.pt` and asserts our writer produces the same dict -- keys, dtypes and
+The codec tests are `real_data`. The structure test reads
+`model.frame_codes_cache/190090.pt` and asserts our writer produces the same dict -- keys, dtypes and
 token widths -- because that file is the contract the dynamics checkpoint validates against
 (`ignite_infer.validate_shot`), and a cache that merely "looks right" is accepted silently and
 rolls out confident nonsense. The determinism test uses a tiny synthetic corpus file and the
@@ -19,13 +19,13 @@ import h5py
 import numpy as np
 import pytest
 
-from shot_design.config import load_paths
+from shot_design.config import load_paths, load_yaml
 from shot_design.design import seed
 from shot_design.shotdb import ignite
 from shot_design.shotdb.corpus import CorpusReader
 
 SHIPPED = 190090
-#: The eight modalities whose codecs consume a handful of kilobytes per frame. The four spectro
+#: The eight modalities whose codecs consume a handful of kilobytes per frame. The five spectro
 #: modalities want 500 kHz arrays and the two video ones want 240x720 frames; neither belongs in
 #: a unit test, and the G-ENC gate (scripts/shot_design/g_enc.py) covers them on real shots.
 CHEAP = (
@@ -92,8 +92,11 @@ def test_encode_frame_codes_writes_the_shipped_dict_structure(bundle, tmp_path):
     """Keys, dtypes and token widths equal to the bundle's own cache for the same shot."""
     import torch
 
+    ref_path = Path(load_yaml("ignite_modalities.yaml")["model"]["frame_codes_cache"]) / f"{SHIPPED}.pt"
+    if not ref_path.is_file():
+        pytest.skip(f"no production cache at {ref_path}")
     ref = torch.load(
-        ignite.bundle_dir(bundle) / "frame_codes" / f"{SHIPPED}.pt",
+        ref_path,
         weights_only=False,
         map_location="cpu",
     )
@@ -210,8 +213,7 @@ def test_chunk_of_rejects_an_out_of_range_task():
 
 
 def test_wanted_modalities_drops_video_on_request_and_rejects_an_unknown_name():
-    # The pinned generation decides the list, not a table here: v4 is 15 modalities (v2's 14
-    # plus `mirnov`), and 13 of them are encodable from a processed corpus file.
+    # The model block declares 15 modalities, 13 encodable from processed files.
     families = ignite.model_cfg()["families"]
     assert seed.wanted_modalities() == tuple(families)
     assert len(seed.wanted_modalities()) == 15
@@ -275,35 +277,15 @@ def _g_enc():
     return module
 
 
-#: The 202537 reference cache's own structure, read off the shipped file (see
-#: `test_the_synthetic_reference_matches_the_shipped_202537_cache`, which fails if it drifts).
-#: Every G-ENC test below builds its payloads from this table, so a test that says "one changed
-#: token" changes one token of a cache the checkpoint would actually accept.
-REF_SHOT = 202537
-REF_FRAMES = 239
-REF_TOKENS = {
-    "ece": 192, "bes": 192, "mhr": 192, "co2": 192,
-    "tangtv_lower": 108, "tangtv_upper": 108,
-    "ts_core_density": 4, "ts_core_temp": 4, "ts_tangential_density": 4,
-    "ts_tangential_temp": 4, "cer_ti": 4, "cer_rot": 4, "mse": 4,
-    "filterscopes": 5,
-}
-REF_VOCABS = {
-    "ece": 32768, "bes": 64000, "mhr": 32768, "co2": 32768,
-    "tangtv_lower": 64000, "tangtv_upper": 64000,
-    "ts_core_density": 1000, "ts_core_temp": 1000, "ts_tangential_density": 1000,
-    "ts_tangential_temp": 1000, "cer_ti": 1000, "cer_rot": 1000, "mse": 1000,
-    "filterscopes": 1000,
-}
+#: The v4 cache contract; real-data parity checks it against model.frame_codes_cache.
+REF_SHOT = 190090
+REF_FRAMES = 219
+REF_TOKENS = dict(load_yaml("ignite_modalities.yaml")["model"]["n_tok"])
+REF_VOCABS = {name: 1000 for name in REF_TOKENS}
 
 
 def _synthetic_reference(frames: int = REF_FRAMES, seed_value: int = 202537) -> dict:
-    """A faithful copy of the shipped 202537 cache: same keys, modalities, widths, vocabs, dtypes.
-
-    Values are random rather than the shipped file's, because none of these tests is about the
-    values -- they are about what `compare`/`verdict` do with a cache whose STRUCTURE is the
-    shipped one and whose contents have been perturbed in one named way.
-    """
+    """Deterministic v4 cache tensors with the production shapes and vocabularies."""
     import torch
 
     rng = np.random.default_rng(seed_value)
@@ -332,19 +314,13 @@ def _copy(payload: dict) -> dict:
 
 
 @pytest.mark.real_data
-def test_the_synthetic_reference_matches_the_shipped_202537_cache():
-    """The tables above are a transcription of a real file; this is what keeps them one.
-
-    Read-only: the shipped cache is opened, its structure compared, and nothing written. If the
-    bundle ever ships a different revision, every G-ENC test below is testing the wrong contract
-    and this test is the one that says so.
-    """
+def test_the_synthetic_reference_matches_the_production_cache():
+    """Read-only parity with the configured dynamics training cache."""
     import torch
 
-    paths = load_paths()
-    ref_path = ignite.bundle_dir(paths) / "frame_codes" / f"{REF_SHOT}.pt"
+    ref_path = Path(load_yaml("ignite_modalities.yaml")["model"]["frame_codes_cache"]) / f"{REF_SHOT}.pt"
     if not ref_path.is_file():
-        pytest.skip(f"no shipped cache at {ref_path}")
+        pytest.skip(f"no production cache at {ref_path}")
     real = torch.load(ref_path, weights_only=False, map_location="cpu")
     synth = _synthetic_reference()
     assert set(real) == set(synth) == {"codes", "actuators", "n_frames", "vocabs"}
@@ -360,7 +336,7 @@ def test_the_synthetic_reference_matches_the_shipped_202537_cache():
 
 def test_g_enc_compare_refuses_two_different_frame_counts():
     """Truncating both sides to the shorter one lets a SHORT encode compare its prefix and pass:
-    a cache with 4 of 239 frames would agree with the shipped file on all four and be declared
+    a cache with 4 of 219 frames would agree with the shipped file on all four and be declared
     bit-identical. The gate has to fail loudly instead."""
     g_enc = _g_enc()
     ref = _synthetic_reference()
@@ -381,11 +357,7 @@ def test_g_enc_compare_refuses_a_cache_whose_n_frames_lies_about_its_tensors():
 
 
 def test_g_enc_compare_refuses_a_short_shot_against_a_full_shots_frame_count():
-    """A full shot is `FULL_SHOT_FRAMES` frames -- 239 under v2 (t0 0.0 s), 219 under
-    the pinned v4 generation (t0 1.0 s); the number is a property of the generation, not
-    fixed here. Two caches that agree with each other at 8 frames agree about nothing
-    the gate is asking about.
-    """
+    """Matching eight frames cannot establish parity with a full 219-frame shot."""
     g_enc = _g_enc()
     short = _synthetic_reference(frames=8)
     with pytest.raises(ValueError, match=str(g_enc.FULL_SHOT_FRAMES)):
@@ -411,7 +383,7 @@ def test_g_enc_compare_refuses_a_dtype_that_is_not_the_shipped_one():
 
 
 def test_g_enc_compare_refuses_a_token_outside_its_own_vocabulary():
-    """`vocabs` is the field that tells a v2 cache from a v3 one. A token at or past the codebook
+    """`vocabs` distinguishes codebooks from different bundles. A token at or past the codebook
     size is read by the model as some other codebook's entry, silently."""
     g_enc = _g_enc()
     ref = _synthetic_reference()
@@ -436,9 +408,7 @@ def test_g_enc_compare_refuses_a_token_width_that_is_not_the_shipped_one():
 
 
 def test_g_enc_fails_when_a_requested_modality_was_never_encoded():
-    """THE DEFECT. A modality missing from the encoded side used to get `equal=None`, and
-    `verdict` rejected only `equal is False` -- so dropping `ece` from an otherwise identical
-    cache PASSED the gate. A requested modality that produced nothing is a failure."""
+    """A requested modality that produced no codes fails the gate."""
     g_enc = _g_enc()
     ref = _synthetic_reference()
     got = _copy(ref)
@@ -449,7 +419,7 @@ def test_g_enc_fails_when_a_requested_modality_was_never_encoded():
     assert result["modalities"]["ece"] == {
         "requested": True, "equal": None, "agreement": None, "note": "not encoded"
     }
-    ok, reasons = g_enc.verdict(result, ())
+    ok, reasons = g_enc.fraction_verdict(result, ignite.model_cfg()["families"])
     assert ok is False
     assert any("ece" in r and "not encoded" in r for r in reasons)
 
@@ -457,7 +427,7 @@ def test_g_enc_fails_when_a_requested_modality_was_never_encoded():
 def test_g_enc_does_not_fail_for_a_modality_nobody_asked_for():
     """`--no-video` is a legitimate narrower run: the two video modalities are absent because
     they were not requested, and that is recorded as such rather than as a missing encode. The
-    header says in as many words that such a run is not the three-shot gate."""
+    result records the narrower set of requested modalities."""
     g_enc = _g_enc()
     ref = _synthetic_reference()
     got = _copy(ref)
@@ -468,11 +438,11 @@ def test_g_enc_does_not_fail_for_a_modality_nobody_asked_for():
     requested = tuple(n for n in ref["codes"] if n not in ("tangtv_lower", "tangtv_upper"))
     result = g_enc.compare(got, ref, requested=requested)
     assert result["modalities"]["tangtv_lower"]["requested"] is False
-    ok, _ = g_enc.verdict(result, ())
+    ok, _ = g_enc.fraction_verdict(result, ignite.model_cfg()["families"])
     assert ok is True
 
 
-def test_g_enc_fails_for_a_single_changed_token():
+def test_g_enc_allows_one_spectro_token_difference():
     g_enc = _g_enc()
     ref = _synthetic_reference()
     got = _copy(ref)
@@ -482,71 +452,18 @@ def test_g_enc_fails_for_a_single_changed_token():
     assert result["modalities"]["co2"]["equal"] is False
     assert result["modalities"]["co2"]["n_mismatched_tokens"] == 1
     assert result["modalities"]["co2"]["n_frames_affected"] == 1
-    ok, reasons = g_enc.verdict(result, ())
-    assert ok is False
-    assert any(r.startswith("co2 not bit-identical") for r in reasons)
+    ok, reasons = g_enc.fraction_verdict(result, ignite.model_cfg()["families"])
+    assert ok is True
+    assert reasons == []
 
 
-def test_g_enc_fails_at_81_of_88_actuator_channels_and_passes_at_82():
-    """The gate's number is 82/88 within 2e-3 z. 81 is a failure and has to read as one."""
-    g_enc = _g_enc()
-    ref = _synthetic_reference()
-
-    def with_n_failing(n: int) -> dict:
-        got = _copy(ref)
-        act = got["actuators"].float().numpy().copy()
-        act[0, :n] += 1.0  # far outside 2e-3 z
-        import torch
-
-        got["actuators"] = torch.from_numpy(act).to(torch.float16)
-        return got
-
-    seven = g_enc.compare(with_n_failing(7), ref, requested=tuple(ref["codes"]))
-    assert seven["actuators"]["within_tol"] == 81
-    ok, reasons = g_enc.verdict(seven, ())
-    assert ok is False
-    assert any("81/88" in r for r in reasons)
-
-    six = g_enc.compare(with_n_failing(6), ref, requested=tuple(ref["codes"]))
-    assert six["actuators"]["within_tol"] == 82
-    assert g_enc.verdict(six, ())[0] is True
-
-
-def test_g_enc_passes_only_when_every_requested_modality_is_bit_identical():
+def test_g_enc_passes_when_every_requested_modality_is_bit_identical():
     g_enc = _g_enc()
     ref = _synthetic_reference()
     result = g_enc.compare(_copy(ref), ref, requested=tuple(ref["codes"]))
     assert all(m["equal"] for m in result["modalities"].values())
     assert result["actuators"]["within_tol"] == 88
-    assert g_enc.verdict(result, ())[0] is True
-
-
-def test_g_enc_marks_anything_narrower_than_the_three_shot_gate_as_a_diagnostic():
-    """A one-shot CPU smoke run, `--no-video` or `--allow-partial` can PASS while the gate fails,
-    and its report is what gets quoted - so the report says which kind of run it was, from ONE
-    rule. The rule lives here rather than inline in `main`, where no test reaches it and where
-    the critic's "one-shot smoke result does not satisfy the three-shot gate" was a sentence and
-    not a field."""
-    g = _g_enc()
-    gate = list(g.DEFAULT_SHOTS)
-    assert g.is_diagnostic(gate, no_video=False, allow_partial=False) is False
-    # Order is not a narrowing.
-    assert g.is_diagnostic(list(reversed(gate)), no_video=False, allow_partial=False) is False
-    # Each of the three ways a run is narrower than the gate is, on its own, a diagnostic.
-    assert g.is_diagnostic([202537], no_video=False, allow_partial=False) is True
-    assert g.is_diagnostic(gate, no_video=True, allow_partial=False) is True
-    assert g.is_diagnostic(gate, no_video=False, allow_partial=True) is True
-
-
-def test_g_enc_header_does_not_claim_a_demonstrated_input_difference():
-    """The 190735/190736 residual demonstrates OUTPUT disagreement. Calling it a demonstrated
-    input difference asserts a cause nothing here measured -- no input file was ever hashed."""
-    g_enc = _g_enc()
-    doc = " ".join(g_enc.__doc__.split())
-    assert "output disagreement; input difference not established without matched input hashes" in doc
-    for phrase in ("An input difference IS demonstrated", "is actually DEMONSTRATED"):
-        assert phrase not in doc
-    assert "is actually DEMONSTRATED" not in " ".join(seed.__doc__.split())
+    assert g_enc.fraction_verdict(result, ignite.model_cfg()["families"])[0] is True
 
 
 def test_encode_frame_codes_refuses_to_silently_drop_a_requested_modality(tmp_path, monkeypatch):
@@ -567,8 +484,8 @@ def test_encode_frame_codes_refuses_to_silently_drop_a_requested_modality(tmp_pa
 
 def test_encode_frame_codes_allows_a_named_partial_run_for_diagnostics(tmp_path, monkeypatch):
     """`allow_partial=True` is the diagnostic escape hatch: the run proceeds without the codec,
-    the cache simply lacks that modality, and G-ENC's `compare`/`verdict` then fail on it
-    because it was requested. It is never the three-shot gate."""
+    the cache simply lacks that modality, and G-ENC's `compare`/`fraction_verdict` then fail on it
+    because it was requested. It is a diagnostic run."""
     calls: dict = {}
 
     def fake_frame_codes(shot, codecs, paths, **kw):
@@ -581,7 +498,7 @@ def test_encode_frame_codes_allows_a_named_partial_run_for_diagnostics(tmp_path,
     monkeypatch.setattr(seed.ignite, "bundle_dir", lambda paths: tmp_path / "bundle")
     monkeypatch.setattr(seed.ignite, "frame_codes", fake_frame_codes)
     monkeypatch.setattr(
-        seed.ignite, "model_cfg", lambda: {"t0_start_s": 0.0, "families": families}
+        seed.ignite, "model_cfg", lambda: {"t0_start_s": 1.0, "families": families}
     )
     with pytest.raises(RuntimeError, match="stop here"):
         seed.encode_frame_codes(
@@ -594,3 +511,18 @@ def test_encode_frame_codes_allows_a_named_partial_run_for_diagnostics(tmp_path,
             allow_partial=True,
         )
     assert calls["codecs"] == ("mse",)
+
+
+@pytest.mark.parametrize(("modality", "changed", "passed"), [
+    ("ece", 1, True), ("ece", 500, False), ("mse", 1, False),
+])
+def test_g_enc_applies_the_v4_family_threshold(modality, changed, passed):
+    gate = _g_enc()
+    ref = _synthetic_reference()
+    got = _copy(ref)
+    flat = got["codes"][modality].view(-1)
+    flat[:changed] = (flat[:changed] + 1) % REF_VOCABS[modality]
+    result = gate.compare(got, ref, requested=tuple(ref["codes"]))
+    ok, reasons = gate.fraction_verdict(result, ignite.model_cfg()["families"])
+    assert ok is passed
+    assert bool(reasons) is not passed

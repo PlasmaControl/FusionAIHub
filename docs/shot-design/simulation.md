@@ -31,28 +31,35 @@ sampling noise. Three metrics come out per modality:
   score: does the model beat "nothing changes" at all.
 
 `src/shot_design/simulate/decode.py` turns the predicted/real/gt token
-triples back into physical units for a handful of modalities (band power
-for spectro modalities, raw values for slow/fast time series), and
+triples into normalized reconstruction values. Spectrograms use signed mean z
+in the selected frequency band; slow/fast time series use the intra-frame mean.
+Then
 `src/shot_design/simulate/report.py` writes `simulation.h5` (tokens for all
 three arms, decoded series, and the `real`/`proposed` actuator trajectories,
 plus provenance attributes `design_id`, `bundle_manifest_sha256`,
-`codec_generation`, `window_s`, `dynamics_step`), one
+`codec_generation`, `frame_origin_s`, `frame_s`, `window_s`, `dynamics_step`), one
 `panels/<modality>.png` three-line plot per decoded modality, and a
 `report.md` with a `modality | frac_static | token_acc | persistence_acc |
-skill | divergence_vs_real` table.
+skill | divergence_vs_real | frac_static_real` table. `frac_static` measures
+repeated predicted tokens in the proposed arm; `frac_static_real` applies the
+same calculation to the real arm. Both remain visible in the report.
 
 ## Running it
 
 ```bash
 python -m shot_design simulate <design-ident> \
-    --seed 0 --k0 20 --n-predict 80 \
+    --seed 0 --k0 20 \
     --decode filterscopes,mhr,mirnov,ts_core_density,ts_core_temp \
     --device cuda --out <data_root>/outputs/<ident>/simulation
 ```
 
-`--k0` (seed frames) and `--n-predict` (predicted frames) default to 20 and
-80; `--decode` defaults to the same five-modality list shown above. Output
-defaults to `<data_root>/outputs/<ident>/simulation`.
+`--k0` defaults to 20 seed frames. Without `--n-predict`, prediction uses
+`min(seed_frames_available, checkpoint_max_frames) - k0`: at most 80 frames
+with the pinned checkpoint's 100-row frame embedding. An explicit horizon
+must fit both the seed and checkpoint. Frame 0 is at 1.0 s, so the earliest
+design start is 2.0 s; a new design defaults to 2–6 s. `--decode` defaults
+to the five modalities shown above. Output defaults to
+`<data_root>/outputs/<ident>/simulation`.
 
 The command writes `status.json` in that directory **first and last** —
 before doing any work, with `state: "running"`, and again on every exit
@@ -60,7 +67,7 @@ path, success or failure, with `state: "complete"` (plus `report:
 "report.md"`) or `state: "failed"` (plus the exception text in `error`). The
 write is atomic (temp file + `os.replace`), so a poller reading the file
 mid-run never sees a half-written document. That contract exists because the
-Frontier path (below) submits this command through `sbatch` and has nothing
+cluster wrapper (below) submits this command through `sbatch` and has nothing
 else to poll.
 
 ## On Frontier
@@ -74,9 +81,9 @@ correctly when `sbatch` is invoked from there). The design's Actuator editor
 UI submits this same job and polls its `status.json` over HTTP instead of
 requiring an operator to run `sbatch` by hand:
 
-- `POST /api/design/{ident}/simulate` runs `configs/shot_design/ui.yaml`'s
-  `simulate.submit_cmd` (`sbatch scripts/slurm_frontier/shot_design_simulate.sh
-  {ident}`) and returns `{ident, job_id, status_url}`.
+- `POST /api/design/{ident}/simulate` runs the app's cluster paths file's
+  `simulate_submit_cmd` (`sbatch scripts/slurm_frontier/shot_design_simulate.sh
+  {ident}` on Frontier) and returns `{ident, job_id, status_url}`.
 - `GET /api/design/{ident}/simulate` reads back `status.json`
   (`{"state": "not_started"}` before the job has written one); the UI polls
   it every `simulate.poll_s` (15) seconds.
@@ -87,20 +94,23 @@ requiring an operator to run `sbatch` by hand:
 Running the CLI directly (above) or through the sbatch wrapper works the same
 way outside the UI.
 
-## On Stellar: the v2 generation and batch runs
+## On Stellar
 
-Stellar holds the **v2** IGNITE bundle (the `nc1/IGNITE` Hub snapshot at
-`models_dir/IGNITE`, 14 codecs + `ignite_dynamics_prod_nfullrs2_step13400.pt`)
-and none of the proj-shared sources the pinned **v4** generation copies from,
-so every Stellar `shot_design` process that touches IGNITE exports
-`SHOT_DESIGN_IGNITE_GENERATION=v2`. That selects the `model_generations.v2`
-block of `configs/shot_design/ignite_modalities.yaml` in place of `model:`
-(`shotdb/ignite.py:model_cfg`) -- the whole block, never a merge, and never a
-guess from which bundle is on disk. Unset, or set to the pinned generation,
-nothing changes; an unknown name is refused. The v2 block carries the
-14-modality vocabularies, families and token counts (1017 tokens per frame,
-`t0_start_s` 0.0) that the 500 production frame codes under
-`ideate/frame_codes` were written with.
+Stellar runs IGNITE v4 from
+`/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE_v4`, the
+sha256-pinned `nc1/IGNITE-v4` bundle at revision `d2f12b82`.
+Every reader uses `model:` in `configs/shot_design/ignite_modalities.yaml`:
+15 codecs with 1000 codes each, 1209 tokens per frame and 219 frames per shot.
+
+The UI uses `paths.yaml`'s `simulate_submit_cmd` to submit a single design:
+
+```bash
+sbatch scripts/shot_design/simulate.sbatch <ident>
+```
+
+This wrapper requests one A100, 4 GB host memory and three hours. It runs
+against the configured data root and does not source `_stellar_common.sh`.
+Size memory and wall time from the first v4 pilot's measured usage.
 
 The Stellar batch scripts under `scripts/shot_design/` run the interpreter
 directly (never `pixi run`, whose activation would re-point the data root at
@@ -110,19 +120,19 @@ root is refused (`_stellar_common.sh`). A full batch, from a shot list to a
 summary table:
 
 ```bash
-export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/stellar_1k
+export SHOT_DESIGN_DATA_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/stellar_v4_batch
 PY=.pixi/envs/shot-design/bin/python
 # 1. a diverse list (login node, ~20 s); §5.7's per-run-day/per-mpid caps set the ceiling
-$PY -m shot_design corpus select --n 1000 --name stellar_1k --seed 20260920 \
+$PY -m shot_design corpus select --n 1000 --name stellar_v4_batch --seed 20260920 \
     --census /scratch/gpfs/EKOLEMEN/nc1514/ideate/db/corpus_coverage.parquet \
     --frame-codes /scratch/gpfs/EKOLEMEN/nc1514/ideate/frame_codes
 # 2. database + labels join into the batch root (CPU job)
-LIST=stellar_1k sbatch scripts/shot_design/build_batch.sbatch
+LIST=stellar_v4_batch sbatch scripts/shot_design/build_batch.sbatch
 # 3. frame codes for the shots that have none (4 GPUs, one job)
-LIST=stellar_1k sbatch scripts/shot_design/encode_batch.sbatch
+LIST=stellar_v4_batch sbatch scripts/shot_design/encode_batch.sbatch
 # 4. one prompt per shot, then the assistant over all of them (login node: agy needs the network;
 #    when the Gemini quota is spent, Gemma through Ollama on the login GPU -- see below)
-$PY scripts/shot_design/batch_prompts.py --list stellar_1k --out $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl
+$PY scripts/shot_design/batch_prompts.py --list stellar_v4_batch --out $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl
 $PY scripts/shot_design/batch_design.py --prompts $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl \
     --out $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl --provider agy --workers 2 --retry-failed
 # 5. paired rollouts, 4 GPUs per job, two jobs (the QOS cap), resumable (complete/failed ids are
@@ -145,13 +155,11 @@ eight GPUs per user, so a batch is two `simulate_batch` jobs of four GPUs.
 
 **Rollout cost.** `maskgit.rollout` re-runs the full trajectory for every
 reveal pass of every predicted frame (no KV cache), so wall time grows with
-`--n-predict` squared and linearly with `--decode-steps`. Measured on the v2
-bundle: `--k0 20 --n-predict 80` (10 passes) took 86 min on a login-node
-V100S; `--n-predict 40` (10 passes) took 19 min per design on an A100-40GB at
-97 % GPU utilisation. A 768-design batch therefore runs `--n-predict 40
---decode-steps 4` (about 8 min per design, eight GPUs, roughly 13 h); the
-flag and the `k0`/`n_predict`/`decode_steps` values land in `simulation.h5`'s
-attributes so a summary can say what horizon each row was simulated at.
+the trajectory length and linearly with `--decode-steps`. The single-design
+wrapper's initial sizing assumes roughly 70–130 minutes for 80 predicted
+frames and 10 passes on an A100; this is an estimate awaiting a v4 pilot.
+The `k0`, resolved `n_predict`, and `decode_steps` values are recorded in
+`simulation.h5`.
 
 **LLM on Stellar.** `agy` is for Gemini only (house rule; Claude runs through
 Claude Code itself, GPT through Codex). When the Gemini quota is exhausted

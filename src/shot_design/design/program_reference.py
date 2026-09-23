@@ -48,15 +48,8 @@ def _corpus(paths: Paths) -> Path:
 
 
 def frame_origin_s() -> float:
-    """Shot time, in seconds, of frame 0 of the selected generation's caches.
-
-    `model.t0_start_s` in ignite_modalities.yaml: 0.0 for v2, 1.0 for v4 (the origin the
-    dynamics checkpoint's own frame codes were cut at, see `seed.encode_frame_codes`). Every
-    conversion between a design's seconds and a cache frame index in the design layer goes
-    through this value; before it existed the layer assumed 0.0, so a v4 seed carried codes cut
-    one second later than the actuators drawn beside them (20 frames at 50 ms).
-    """
-    return float(ignite.model_cfg().get("t0_start_s", 0.0))
+    """Shot time of frame 0: `model.t0_start_s`, 1.0 for v4."""
+    return float(ignite.model_cfg()["t0_start_s"])
 
 
 def _cache_path(shot: int, paths: Paths) -> Path | None:
@@ -103,17 +96,11 @@ def validate_cache(cache: dict) -> None:
         )
     contract = load_yaml("ignite_modalities.yaml")
     model = ignite.model_cfg()
-    # The per-modality table lists every generation's modalities (v4 added mirnov); the
-    # selected generation's `families` says which of them THIS cache must carry.
+    # The model block defines the cache's modality order.
     specs = {m: contract["modalities"][m] for m in model["families"]}
     expected_vocabs = model["production_vocabs"]
     codes, vocabs = cache["codes"], cache["vocabs"]
-    # THE GENERATION COMES FIRST. Two caches of different codec generations are otherwise
-    # indistinguishable -- same four keys, same dtypes, plausible integers -- and `vocabs` is the
-    # only field that tells them apart, which is why it is checked before anything structural.
-    # Reported the other way round, a v2 cache meeting a v4 checkpoint complains about its
-    # actuator dtype or its token width and sends the reader hunting for a bug in a file whose
-    # only fault is its age.
+    # Check vocabularies before shapes so a cache from another bundle fails clearly.
     if not isinstance(vocabs, dict) or set(vocabs) != set(expected_vocabs):
         only_one_side = set(expected_vocabs) ^ set(vocabs if isinstance(vocabs, dict) else {})
         raise ValueError(
@@ -186,10 +173,8 @@ class _MemoryReader:
 
 
 @lru_cache(maxsize=16)
-def _read_controls(shot: int, corpus_identity: tuple, n_frames: int, t0_s: float = 0.0):
-    # `t0_s` is part of the cache key on purpose: the same corpus file yields different frame
-    # means under v2 (frame 0 at 0.0 s) and v4 (1.0 s), and the generation can change between
-    # calls in one process (SHOT_DESIGN_IGNITE_GENERATION is read on every model_cfg()).
+def _read_controls(shot: int, corpus_identity: tuple, n_frames: int, t0_s: float):
+    # Include the frame origin in the key: it determines the actuator sampling grid.
     corpus_path = Path(corpus_identity[0])
     reader = _MemoryReader(CorpusReader(corpus_path.parent))
     controls = act.build_actuators(shot, reader, n_frames, t0_s=t0_s)

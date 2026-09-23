@@ -1,9 +1,9 @@
-"""Submit, poll, and read back one design's Frontier simulation.
+"""Submit, poll, and read back one design's cluster simulation.
 
 D3's ``python -m shot_design simulate <ident>`` writes ``status.json``, ``report.md``
 and ``panels/<m>.png`` under ``paths.data_root / "outputs" / <ident> / "simulation"``
 (see ``shot_design/simulate/cli.py``). These routes never run that command directly --
-Frontier compute nodes are not this process -- they submit it through ``sbatch`` (via
+They submit the command from the cluster's paths file through ``sbatch`` (via
 ``app.state.submit``, mockable in tests) and read back whatever that job wrote.
 """
 
@@ -18,7 +18,6 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
-from .. import config
 from ..design import program as service
 
 router = APIRouter(prefix="/api/design")
@@ -33,7 +32,7 @@ _PANEL_NAME = re.compile(r"^[a-z_]+\.png$")
 def default_submit(cmd: str) -> str:
     """Production ``app.state.submit``: run ``cmd`` from the repo root via sbatch.
 
-    The wrapper locates ``_shot_design_common.sh`` through ``$SLURM_SUBMIT_DIR``, so
+    The cluster wrapper locates the repository through ``$SLURM_SUBMIT_DIR``, so
     ``sbatch`` must be invoked with the repo root as its working directory.
     """
     result = subprocess.run(
@@ -54,13 +53,7 @@ def _simulation_dir(ident: str, request: Request) -> Path:
 @router.post("/{ident}/simulate", status_code=202)
 def submit(ident: str, request: Request):
     _check_ident(ident)
-    try:
-        simulate_cfg = config.load_yaml("ui.yaml")["simulate"]
-    except KeyError as exc:
-        raise HTTPException(
-            500, "configs/shot_design/ui.yaml is missing its simulate: block"
-        ) from exc
-    cmd = simulate_cfg["submit_cmd"].format(ident=ident)
+    cmd = request.app.state.paths.simulate_submit_cmd.format(ident=ident)
     try:
         output = request.app.state.submit(cmd)
     except subprocess.CalledProcessError as exc:

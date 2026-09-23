@@ -71,6 +71,7 @@ class Paths(BaseModel):
     qh_database_csv: Path
     foundation_model_processed_dir: Path
     fdp_project_dir: Path
+    simulate_submit_cmd: str = "sbatch scripts/shot_design/simulate.sbatch {ident}"
     sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
 

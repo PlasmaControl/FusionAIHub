@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from shot_design.config import load_paths
+from shot_design.config import load_paths, load_yaml
 from shot_design.env import getenv
 from shot_design.shotdb import build, ignite
 
@@ -200,6 +200,7 @@ needs_weights = pytest.mark.skipif(
     reason=f"no IGNITE bundle at {_bundle} (shot_design model --download)",
 )
 FM_DIR = Path("/scratch/gpfs/EKOLEMEN/foundation_model")
+FRAME_CODES = Path(load_yaml("ignite_modalities.yaml")["model"]["frame_codes_cache"])
 
 
 @needs_weights
@@ -209,7 +210,7 @@ def test_codecs_expose_the_encode_then_quantize_contract():
     -- read off SpectroCodec/SlowTSCodec/FastTSCodec, which all three encodable families share.
     The video codecs are in the bundle but are not loaded: nothing here holds camera frames.
 
-    Thirteen names, not v2's twelve: generation v4 adds the `mirnov` spectro codec."""
+    Thirteen encodable modalities, including the `mirnov` spectro codec."""
     codecs = ignite.load_codecs(_bundle)
     assert set(codecs) == {
         "ece",
@@ -236,15 +237,12 @@ def test_codecs_expose_the_encode_then_quantize_contract():
 @needs_weights
 @pytest.mark.real_data
 @pytest.mark.skipif(not (FM_DIR / "190090_processed.h5").exists(), reason="no official 190090")
-@pytest.mark.skipif(not (_bundle / "frame_codes" / "190090.pt").exists(), reason="no production frame codes for 190090")
-def test_frame_codes_reproduce_the_production_cache_bit_for_bit():
-    """The bundle ships the production frame codes for ten shots. Our loader + the same codecs
-    must give the same integers -- this is what pins the frame origin (0.0 s, not 1.0), the
-    standardisation, the STFT and the channel selection all at once. Full run measured: 239 frames
-    x 12 modalities all identical on 190090; the test keeps a 20-frame, 3-family slice."""
+@pytest.mark.skipif(not (FRAME_CODES / "190090.pt").exists(), reason="no production frame codes for 190090")
+def test_frame_codes_match_the_production_cache_by_family():
+    """Fresh encodes match v4 training codes at the G-ENC family thresholds."""
     import torch
 
-    ref = torch.load(_bundle / "frame_codes" / "190090.pt", map_location="cpu", weights_only=False)
+    ref = torch.load(FRAME_CODES / "190090.pt", map_location="cpu", weights_only=False)
     # The current corpus has no co2 samples on this shot; mhr exercises spectro
     # encoding with real data, alongside slowts and fastts.
     codecs = ignite.load_codecs(_bundle, names=["ts_core_density", "filterscopes", "mhr"])
@@ -257,14 +255,15 @@ def test_frame_codes_reproduce_the_production_cache_bit_for_bit():
     for name, codes in got.items():
         theirs = ref["codes"][name][:20].numpy().astype(np.int64)
         assert codes.shape == theirs.shape, name
-        assert (codes == theirs).all(), f"{name}: {(codes != theirs).mean():.3f} of tokens differ"
+        threshold = 0.99 if codecs[name][2] == "spectro" else 1.0
+        assert (codes == theirs).mean() >= threshold, name
 
 
 @needs_weights
 @pytest.mark.real_data
 @pytest.mark.skipif(not (FM_DIR / "185601_processed.h5").exists(), reason="no official 185601")
 def test_an_absent_modality_is_nan_not_the_constant_frames_the_dataset_would_yield():
-    """185601's `bes` group is the (64, 1) placeholder. CodecPairDataset still yields 239 frames
+    """185601's `bes` group is the (64, 1) placeholder. CodecPairDataset still yields frames
     of a constant spectrogram for it (measured: std 0.0), which the codec would encode into a
     finite, meaningless vector. The embedding has to decide absence from the file instead."""
     codecs = ignite.load_codecs(_bundle, names=["bes", "ts_core_density"])

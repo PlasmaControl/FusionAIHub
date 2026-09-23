@@ -20,3 +20,4 @@ qh_database_csv: /scratch/gpfs/EKOLEMEN/big_d3d_data/0labeled_data/QH_Database.c
 foundation_model_processed_dir: /scratch/gpfs/EKOLEMEN/foundation_model   # <shot>_processed.h5 (IGNITE inputs)
 fdp_project_dir: /scratch/gpfs/nc1514/fdp
 sentence_transformers_model: sentence-transformers/all-MiniLM-L6-v2
+simulate_submit_cmd: sbatch scripts/shot_design/simulate.sbatch {ident}

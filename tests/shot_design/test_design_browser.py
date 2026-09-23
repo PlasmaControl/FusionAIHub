@@ -114,8 +114,8 @@ FIXTURE = r"""
 const preview = (overrides = {}) => ({
   program: {
     schema_version: 'shot-design/1', id: null, created: null,
-    reference_shot: 199607, comparison_shots: [199608], start_s: 1,
-    end_s: 1.15, notes: 'Initial plan', reference_digest: 'digest-a', edits: {},
+    reference_shot: 199607, comparison_shots: [199608], start_s: 2.0,
+    end_s: 2.15, notes: 'Initial plan', reference_digest: 'digest-a', edits: {},
     units: {'pinj[0]': 'kW', 'nbi.total': 'kW'},
     ...(overrides.program || {}),
   },
@@ -123,19 +123,19 @@ const preview = (overrides = {}) => ({
     key: 'pinj[0]', label: 'Neutral beam 1', units: 'kW', editable: true,
     reason: null,
     reference: [
-      {t_s: 0, y: 80}, {t_s: .95, y: 90}, {t_s: 1, y: 100},
-      {t_s: 1.05, y: 110}, {t_s: 1.1, y: 100},
+      {t_s: 1.0, y: 80}, {t_s: 1.95, y: 90}, {t_s: 2.0, y: 100},
+      {t_s: 2.05, y: 110}, {t_s: 2.1, y: 100},
     ],
-    vertices: [{t_s: 1, y: 100}, {t_s: 1.05, y: 110}, {t_s: 1.1, y: 100}],
+    vertices: [{t_s: 2.0, y: 100}, {t_s: 2.05, y: 110}, {t_s: 2.1, y: 100}],
     comparisons: [{shot: 199608, vertices: [
-      {t_s: 1, y: 95}, {t_s: 1.05, y: 105}, {t_s: 1.1, y: 115},
+      {t_s: 2.0, y: 95}, {t_s: 2.05, y: 105}, {t_s: 2.1, y: 115},
     ]}],
   }, {
     key: 'nbi.total', label: 'NBI total', units: 'kW', editable: false,
     reason: 'No active member channels', reference: [], vertices: [], comparisons: [],
   }],
   validation: {errors: [], warnings: ['Provisional check'], can_export: true},
-  context_start_s: 0, seed_frames: 20, frame_s: .05,
+  context_start_s: 1.0, seed_frames: 20, frame_s: .05,
   ...overrides,
 });
 """
@@ -174,7 +174,7 @@ assert.equal(prevented, 1);
 assert.equal(targets['#design-point-value'].value, '100');
 assert.equal(targets['#design-point-value'].disabled, false);
 byClass(targets['#design-svg'], 'design-point')[1].events.click({stopPropagation() {}});
-assert.equal(targets['#design-point-time'].value, '1.05');
+assert.equal(targets['#design-point-time'].value, '2.05');
 assert.equal(targets['#design-point-value'].value, '110');
 assert.equal(targets['#design-point-time'].disabled, false);
 assert.equal(targets['#design-point-value'].disabled, false);
@@ -191,7 +191,7 @@ const body = JSON.parse(calls.filter(([path]) => path === '/api/design/preview')
 assert.deepEqual(Object.keys(body.edits), ['pinj[0]']);
 assert.deepEqual(body.units, {'pinj[0]': 'kW', 'nbi.total': 'kW'});
 assert.equal(body.edits['pinj[0]'][1].y, 175.5);
-assert.equal(body.edits['pinj[0]'][1].t_s, 1.05);
+assert.equal(body.edits['pinj[0]'][1].t_s, 2.05);
 assert.equal(targets['#design-json'].hidden, true);
 assert.equal(targets['#design-json'].getAttribute('href'), null);
 assert.equal(targets['#design-ignite'].hidden, true);
@@ -216,8 +216,8 @@ const api = async (path, options = {}) => {
 };
 await context.ShotDesign.initDesign({api});
 targets['#design-reference'].value = '199607, 199608';
-targets['#design-start'].value = '1';
-targets['#design-end'].value = '5';
+targets['#design-start'].value = '2';
+targets['#design-end'].value = '6';
 await targets['#design-preview'].events.click({preventDefault() {}});
 assert.equal(requests[0].reference_shot, 199607);
 assert.deepEqual(requests[0].comparison_shots, [199608]);
@@ -256,12 +256,12 @@ const api = async (path, options = {}) => {
   calls.push([path, options]);
   if (path === '/api/design' && options.method === 'POST') return {data: saved};
   if (path === '/api/design') return {data: [{id: 'design-abc', reference_shot: 199607,
-    created: '2026-09-18T12:00:00Z', start_s: 1, end_s: 1.15}]};
+    created: '2026-09-18T12:00:00Z', start_s: 2.0, end_s: 2.15}]};
   if (path === '/api/design/design-abc') return {data: saved};
   return {data: preview()};
 };
 await context.ShotDesign.initDesign({api});
-assert(text(targets['#design-revisions']).includes('Shot 199607 · 1–1.15 s · design-a'));
+assert(text(targets['#design-revisions']).includes('Shot 199607 · 2–2.15 s · design-a'));
 await context.ShotDesign.openDesign(199607);
 targets['#design-notes'].value = 'Saved plan';
 targets['#design-notes'].events.input({});
@@ -419,7 +419,7 @@ assert.equal(targets['#design-apply-point'].disabled, true,
 
 def test_reset_reopened_edited_revision_restores_reference_vertices():
     run_design(r"""
-const editedVertices = [{t_s: 1, y: 135}, {t_s: 1.05, y: 145}, {t_s: 1.1, y: 155}];
+const editedVertices = [{t_s: 2.0, y: 135}, {t_s: 2.05, y: 145}, {t_s: 2.1, y: 155}];
 const base = preview();
 const edited = preview({
   program: {...base.program, id: 'design-edited', created: '2026-09-18T14:00:00Z',
@@ -429,7 +429,7 @@ const edited = preview({
 const previewBodies = [];
 const api = async (path, options = {}) => {
   if (path === '/api/design') return {data: [{id: 'design-edited', reference_shot: 199607,
-    created: '2026-09-18T14:00:00Z', start_s: 1, end_s: 1.15}]};
+    created: '2026-09-18T14:00:00Z', start_s: 2.0, end_s: 2.15}]};
   if (path === '/api/design/design-edited') return {data: edited};
   if (path === '/api/design/preview') {
     const body = JSON.parse(options.body);
@@ -488,7 +488,7 @@ await targets['#design-svg'].events.pointerup({pointerId: 1});
 assert.equal(targets['#design-svg'].hasPointerCapture(1), false);
 const edit = requests.at(-1).edits['pinj[0]'][1];
 assert(edit.y > 120, 'value follows pointer beyond the plotted reference range');
-assert.equal(edit.t_s, 1.05);
+assert.equal(edit.t_s, 2.05);
 const count = requests.length;
 const nextPoint = byClass(targets['#design-svg'], 'design-point')[0];
 nextPoint.events.pointerdown({pointerId: 2, clientX: 100, clientY: 100,
@@ -682,14 +682,14 @@ assert.equal(targets['#design-prepare'].disabled, false);
 
 def test_flat_and_linear_reference_runs_have_only_corner_handles():
     run_design(r"""
-const points = Array.from({length: 80}, (_, i) => ({t_s: 1+i*.05,
+const points = Array.from({length: 80}, (_, i) => ({t_s: 2.0+i*.05,
   y: i < 30 ? 100 + (i % 2)*.1 : i < 50 ? 100+(i-30)*5 : 200}));
 let savedBody;
 const api = async (path, options = {}) => {
   if (path === '/api/design' && !options.method) return {data: []};
   if (path === '/api/design' && options.method) savedBody = JSON.parse(options.body);
   const p = preview();
-  return {data: preview({program: {...p.program, end_s: 5}, channels: [
+  return {data: preview({program: {...p.program, end_s: 6.0}, channels: [
     {...p.channels[0], reference: points, vertices: points},
   ]})};
 };
@@ -705,27 +705,27 @@ def test_click_adds_joint_delete_removes_it_and_history_stays_locked():
     run_design(r"""
 const sent = [];
 const p = preview();
-const flat = Array.from({length: 80}, (_, i) => ({t_s: 1+i*.05,y:100}));
+const flat = Array.from({length: 80}, (_, i) => ({t_s: 2.0+i*.05,y:100}));
 const api = async (path, options = {}) => {
   if (path === '/api/design') return {data: []};
   const body = JSON.parse(options.body);
   sent.push(body);
-  return {data: preview({program: {...p.program,...body}, context_start_s:0,
+  return {data: preview({program: {...p.program,...body}, context_start_s:1.0,
     channels:[{...p.channels[0],reference:flat,vertices:body.edits?.['pinj[0]'] || flat}]})};
 };
 await context.ShotDesign.initDesign({api});
-// Normal controls loaded for a 1–5 second prediction.
+// Normal controls loaded for a 2–6 second prediction.
 targets['#design-reference'].value='199607';
-targets['#design-start'].value='1'; targets['#design-end'].value='5';
+targets['#design-start'].value='2'; targets['#design-end'].value='6';
 await targets['#design-preview'].events.click({preventDefault() {}});
 assert.equal(byClass(targets['#design-svg'], 'design-point').length,2);
 const svg=targets['#design-svg'];
-// Synthetic DOM SVG is 600x260; x=370 maps to interior shot time ~3s.
+// Synthetic DOM SVG is 600x260; x=370 maps to interior shot time ~4s.
 await svg.events.click({clientX:370,clientY:110,preventDefault(){}});
 assert.equal(byClass(svg,'design-point').length,3);
 assert.equal(Object.keys(sent.at(-1).edits).length,1);
 const inserted=sent.at(-1).edits['pinj[0]'][1];
-assert(inserted.t_s>1 && inserted.t_s<4.95);
+assert(inserted.t_s>2 && inserted.t_s<5.95);
 assert.equal(targets['#design-delete-point'].disabled,false);
 await targets['#design-delete-point'].events.click({preventDefault(){}});
 assert.equal(sent.at(-1).edits['pinj[0]'].length,2);
@@ -762,7 +762,7 @@ assert.equal(targets['#design-reference'].value,'199608, 199607, 199609');
 
 def test_saved_collinear_joints_survive_and_keyboard_delete_keeps_anchors():
     run_design(r"""
-const points=[{t_s:1,y:100},{t_s:1.05,y:100},{t_s:1.1,y:100}];
+const points=[{t_s:2.0,y:100},{t_s:2.05,y:100},{t_s:2.1,y:100}];
 const revision=preview({program:{...preview().program,id:'saved',edits:{'pinj[0]':points}},
   channels:[{...preview().channels[0],vertices:points}]});
 let body;
@@ -786,7 +786,7 @@ assert.equal(body.edits['pinj[0]'].length,2);
 def test_merging_references_replaces_edits_and_reset_keeps_average_baseline():
     run_design(r"""
 const calls=[];
-const mean=[{t_s:1,y:150},{t_s:1.1,y:150}];
+const mean=[{t_s:2.0,y:150},{t_s:2.1,y:150}];
 let program=preview().program;
 const api=async(path,options={})=>{
   if(path==='/api/design')return {data:[]};

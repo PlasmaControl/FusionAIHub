@@ -19,7 +19,7 @@ IDENT = "0" * 32
 
 
 @pytest.fixture
-def app(paths):  # noqa: F811 - shared pytest fixture from conftest.py
+def app(paths):
     application = create_app(paths=paths, token="secret")
     application.state.submit = lambda cmd: "Submitted batch job 4242"
     return application
@@ -48,7 +48,12 @@ def test_submit_returns_job_id_and_status_url(client):
     }
 
 
-def test_submit_runs_the_configured_command_with_ident_filled_in(paths):
+@pytest.mark.parametrize("submit_cmd", [
+    "sbatch scripts/shot_design/simulate.sbatch {ident}",
+    "sbatch scripts/slurm_frontier/shot_design_simulate.sh {ident}",
+])
+def test_submit_runs_the_configured_command_with_ident_filled_in(paths, submit_cmd):
+    paths = paths.model_copy(update={"simulate_submit_cmd": submit_cmd})
     received = {}
 
     def fake_submit(cmd):
@@ -61,7 +66,7 @@ def test_submit_runs_the_configured_command_with_ident_filled_in(paths):
         client.cookies.set(COOKIE, "secret")
         resp = client.post(f"/api/design/{IDENT}/simulate")
     assert resp.status_code == 202
-    expected = f"sbatch scripts/slurm_frontier/shot_design_simulate.sh {IDENT}"
+    expected = submit_cmd.format(ident=IDENT)
     assert received["cmd"] == expected
 
 
@@ -100,7 +105,7 @@ def test_sbatch_not_on_path_maps_to_502(app):
     assert "sbatch" in resp.json()["detail"]
 
 
-def test_missing_simulate_block_in_ui_yaml_is_500(client, monkeypatch):
+def test_submission_uses_paths_without_the_ui_simulate_block(client, monkeypatch):
     orig_load_yaml = sd_config.load_yaml
 
     def fake_load_yaml(name):
@@ -111,7 +116,7 @@ def test_missing_simulate_block_in_ui_yaml_is_500(client, monkeypatch):
 
     monkeypatch.setattr(sd_config, "load_yaml", fake_load_yaml)
     resp = client.post(f"/api/design/{IDENT}/simulate")
-    assert resp.status_code == 500
+    assert resp.status_code == 202
 
 
 def test_status_is_not_started_when_no_status_file_exists(client):
@@ -218,3 +223,12 @@ def test_default_submit_runs_subprocess_from_the_repo_root(monkeypatch):
     ]
     assert calls["kwargs"]["cwd"] == REPO_ROOT
     assert calls["kwargs"]["check"] is True
+
+
+@pytest.mark.parametrize(("name", "script"), [
+    ("paths.yaml", "scripts/shot_design/simulate.sbatch"),
+    ("paths.frontier.yaml", "scripts/slurm_frontier/shot_design_simulate.sh"),
+])
+def test_cluster_paths_select_the_simulate_script(name, script):
+    paths = sd_config.load_paths(sd_config.CONFIG_DIR / name)
+    assert paths.simulate_submit_cmd == f"sbatch {script} {{ident}}"

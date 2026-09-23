@@ -88,12 +88,13 @@ def run(args) -> int:
         seed_path = program.export_ignite(prog, paths)
         design_seed = torch.load(seed_path, map_location="cpu", weights_only=True)
 
-        total = args.k0 + args.n_predict
-        if total > design_seed["n_frames"]:
-            raise ValueError(
-                f"--k0 {args.k0} + --n-predict {args.n_predict} = {total} exceeds "
-                f"the design seed's {design_seed['n_frames']} frames"
-            )
+        if args.n_predict is not None:
+            total = args.k0 + args.n_predict
+            if total > design_seed["n_frames"]:
+                raise ValueError(
+                    f"--k0 {args.k0} + --n-predict {args.n_predict} = {total} exceeds "
+                    f"the design seed's {design_seed['n_frames']} frames"
+                )
 
         ref = program_reference.reference(prog.reference_shot, paths)
         if ref.cache is None:
@@ -110,15 +111,22 @@ def run(args) -> int:
         # recomputes to the new (larger) total, the guard always passes, and the frame
         # embedding (sized for the checkpoint's trained horizon) indexes out of range.
         trained = cfg.max_frames
-        if total > trained:
+        n_frames = design_seed["n_frames"]
+        n_predict = (
+            args.n_predict
+            if args.n_predict is not None
+            else min(n_frames, trained) - args.k0
+        )
+        total = args.k0 + n_predict
+        if n_predict < 1 or total > n_frames or total > trained:
             raise ValueError(
-                f"--k0 + --n-predict = {total} exceeds the checkpoint's trained "
-                f"horizon {trained}"
+                f"--k0 {args.k0} + --n-predict {n_predict} = {total} does not fit the "
+                f"design seed's {n_frames} frames and the checkpoint's {trained}"
             )
-        cfg.k0_seed, cfg.n_predict = args.k0, args.n_predict
+        cfg.k0_seed, cfg.n_predict = args.k0, n_predict
 
         real_act, prop_act = core.actuator_arms(
-            reference_cache, design_seed, args.k0, args.n_predict
+            reference_cache, design_seed, args.k0, n_predict
         )
         arms = core.run_paired(
             model,
@@ -144,16 +152,15 @@ def run(args) -> int:
             "bundle_manifest_sha256": (
                 shotdb_ignite.bundle_identity(paths).get("manifest_sha256") or ""
             ),
-            "codec_generation": mcfg.get("generation", "v2"),
+            "codec_generation": mcfg["generation"],
             "window_s": [prog.start_s, prog.end_s],
             # Shot time of rollout frame i is frame_origin_s + (context + i) * frame_s, with
-            # context = round((window_s[0] - frame_origin_s) / frame_s) - k0. Recorded so a
-            # reader never has to know which generation's origin (0.0 s v2, 1.0 s v4) applied.
+            # context = round((window_s[0] - frame_origin_s) / frame_s) - k0.
             "frame_origin_s": program_reference.frame_origin_s(),
             "frame_s": act.FRAME_S,
             "dynamics_step": step,
             "k0": args.k0,
-            "n_predict": args.n_predict,
+            "n_predict": n_predict,
             "decode_steps": int(getattr(args, "decode_steps", None) or 10),
         }
         report.write(
