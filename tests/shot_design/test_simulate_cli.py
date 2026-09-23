@@ -153,7 +153,7 @@ def test_simulate_leaves_a_failed_status_and_exits_1(paths, fakes, raise_in):
     fakes["raise_in"] = raise_in
     rc = cli.main(["simulate", IDENT])
     assert rc == 1
-    out_dir, status = _status(paths)
+    _, status = _status(paths)
     assert status["state"] == "failed"
     assert f"boom in {raise_in}" in status["error"]
     assert status["report"] is None
@@ -263,3 +263,57 @@ def test_decode_steps_flag_reaches_run_paired_and_the_h5_meta(paths, fakes):
         meta = dict(f.attrs)
     assert int(meta["decode_steps"]) == 4
     assert int(meta["k0"]) == 20 and int(meta["n_predict"]) == 80
+
+
+@pytest.mark.parametrize(
+    ("n_frames", "trained", "expected"), [(60, 100, 40), (200, 100, 80), (100, 70, 50)]
+)
+def test_default_prediction_fits_seed_and_checkpoint(
+    paths, fakes, monkeypatch, tmp_path, n_frames, trained, expected
+):
+    import h5py
+
+    seed = _design_seed()
+    seed.update(
+        n_frames=n_frames,
+        codes={"ece": torch.zeros(n_frames, 4, dtype=torch.int32)},
+        actuators=torch.zeros(n_frames, 88, dtype=torch.float16),
+    )
+    seed_path = tmp_path / "sized_seed.pt"
+    torch.save(seed, seed_path)
+    monkeypatch.setattr(program_mod, "export_ignite", lambda *a: seed_path)
+
+    class Config(SimpleNamespace):
+        @property
+        def max_frames(self):
+            return self.k0_seed + self.n_predict
+
+    cfg = Config(k0_seed=20, n_predict=trained - 20, maskgit_decode_steps=10)
+    monkeypatch.setattr(core_mod, "load_dynamics", lambda *a: (object(), cfg, 3200))
+    assert cli.main(["simulate", IDENT]) == 0
+    assert cfg.n_predict == expected
+    out_dir, _ = _status(paths)
+    with h5py.File(out_dir / "simulation.h5") as f:
+        assert f.attrs["n_predict"] == expected
+        assert f["actuators/real"].shape[0] == expected + 20
+        assert f["actuators/proposed"].shape[0] == expected + 20
+
+
+@pytest.mark.parametrize("n_predict", [0, -1])
+def test_simulate_rejects_nonpositive_prediction(paths, fakes, n_predict):
+    assert cli.main(["simulate", IDENT, "--n-predict", str(n_predict)]) == 1
+    _, status = _status(paths)
+    assert "does not fit" in status["error"]
+
+
+def test_bad_explicit_horizon_fails_before_loading_dynamics(paths, fakes):
+    fakes["raise_in"] = "load_dynamics"
+    assert cli.main(["simulate", IDENT, "--n-predict", "81"]) == 1
+    _, status = _status(paths)
+    assert "design seed" in status["error"]
+
+
+def test_default_prediction_rejects_a_seed_with_no_prediction_room(paths, fakes):
+    assert cli.main(["simulate", IDENT, "--k0", "100"]) == 1
+    _, status = _status(paths)
+    assert "--n-predict 0" in status["error"]
