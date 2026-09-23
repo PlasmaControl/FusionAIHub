@@ -16,15 +16,6 @@ CHANNEL_ROWS = (
     (32, 33, 34, 35),
 )
 
-GUIDANCE = (
-    "<b>What you are looking for:</b> a sawtooth ramp on the inner channels "
-    "that collapses abruptly while the outer channels jump up at the same "
-    "instant - the inversion across the q = 1 surface. A rise or fall that "
-    "moves every channel the same way is not a sawtooth."
-    "<br><br>A shot outside the corpus is fetched live, 48 ECE channels over "
-    "MDSplus, which is slow the first time and cached afterwards."
-)
-
 
 def panels(shot, *, t_range=None, paths=None):
     built = []

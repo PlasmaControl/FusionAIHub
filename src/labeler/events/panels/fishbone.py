@@ -14,13 +14,6 @@ NPERSEG = 4096
 MAX_HZ = 40_000.0
 FISHBONE_BAND = (2.0, 30.0)
 
-GUIDANCE = (
-    "<b>What you are looking for:</b> bursts in 2-30 kHz (the shaded band) "
-    "that chirp DOWNWARD over a few milliseconds, with a cross-phase that "
-    "stays flat across the burst - that flatness is what says the two probes "
-    "are seeing one coherent mode rather than two patches of turbulence."
-)
-
 
 def panels(shot, *, t_range=None, paths=None):
     mhr = raw_signal(
@@ -30,7 +23,7 @@ def panels(shot, *, t_range=None, paths=None):
     # than raising: `scipy.signal.spectrogram` then runs with `fs=nan`,
     # returns `freq=[nan]`, and `freq <= MAX_HZ` is all-False since nan
     # comparisons are always False - a 0-row heatmap that renders blank
-    # instead of erroring. Mirror alfven_eigenmode.crosspower's guard.
+    # instead of erroring.
     if mhr.x.shape[0] < 2 or mhr.x[-1] == mhr.x[0]:
         raise ValueError(
             "fishbone needs a time vector spanning more than one instant; "

@@ -1,0 +1,232 @@
+"""One label per shot, kept as a format table.
+
+`review/labels.csv` holds the current label of every reviewed shot in the format
+schema (`shot, category, t_start, t_end, confidence`, ms): a shot's rows tile its
+window, each span with its category and the gaps as category 0. `history.jsonl`
+gets one line per save. A shot nobody has saved opens on its source label, the
+newest `format/*_format_*.csv`.
+"""
+
+from __future__ import annotations
+
+import getpass
+import json
+import math
+import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from functools import lru_cache
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from ...config import atomic_path
+from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
+
+LONGEST_WINDOW_MS = 20_000
+REVIEW = "review"
+_write_lock = threading.Lock()
+
+
+@dataclass(frozen=True)
+class Label:
+    """A reviewed window and the categorised spans inside it, in whole ms."""
+
+    window: tuple[int, int]
+    intervals: tuple[tuple[int, int, int], ...] = ()
+
+    def as_json(self) -> dict:
+        return {
+            "window": list(self.window),
+            "intervals": [list(span) for span in self.intervals],
+        }
+
+    def rows(self, shot: int) -> list[list]:
+        """Format-table rows tiling the window; the gaps are category 0."""
+        lo = self.window[0]
+        cells = _paint(self.window, self.intervals)
+        return [[int(shot), c, lo + a, lo + b, ""] for a, b, c in _runs(cells)]
+
+
+def categories(event: str) -> dict[int, str]:
+    """The categories a span can carry; 0 (absent) is the gaps."""
+    return {int(k): v for k, v in category_labels(event).items() if k != "0"}
+
+
+def _ms(t) -> int:
+    """Whole ms, halves up (JavaScript's `Math.floor(t + 0.5)`, so the page agrees)."""
+    return math.floor(float(t) + 0.5)
+
+
+def normalise(window, intervals, known: set[int] | None = None) -> Label:
+    """Snap to whole ms, grow the window over every span, merge, and clip.
+
+    Later spans paint over earlier ones, so a category-0 span erases.
+    """
+    lo, hi = _ms(window[0]), _ms(window[1])
+    spans = []
+    for a, b, c in intervals:
+        a, b, c = _ms(a), _ms(b), int(c)
+        if b < a:
+            raise ValueError(f"span {a}-{b} ms runs backwards")
+        if known is not None and c and c not in known:
+            raise ValueError(f"category {c} is not one of {sorted(known)}")
+        if b > a:
+            spans.append((a, b, c))
+    painted = [span for span in spans if span[2]]
+    if painted:
+        lo = min(lo, *(a for a, _, _ in painted))
+        hi = max(hi, *(b for _, b, _ in painted))
+    if not 0 < hi - lo <= LONGEST_WINDOW_MS:
+        raise ValueError(f"window {lo}-{hi} ms is not 1 to {LONGEST_WINDOW_MS} ms long")
+    runs = _runs(_paint((lo, hi), spans))
+    return Label((lo, hi), tuple((lo + a, lo + b, c) for a, b, c in runs if c))
+
+
+def _paint(window, spans) -> np.ndarray:
+    """One cell per ms of the window, holding the category painted there last."""
+    lo, hi = window
+    cells = np.zeros(hi - lo, dtype=np.int64)
+    for a, b, c in spans:
+        start, stop = max(a, lo) - lo, min(b, hi) - lo
+        if stop > start:
+            cells[start:stop] = c
+    return cells
+
+
+def _runs(cells) -> list[tuple[int, int, int]]:
+    """(start, stop, category) of each run of equal cells, as offsets."""
+    if not len(cells):
+        return []
+    edges = np.flatnonzero(np.diff(cells)) + 1
+    starts = np.concatenate([[0], edges])
+    stops = np.concatenate([edges, [len(cells)]])
+    return [(int(a), int(b), int(cells[a])) for a, b in zip(starts, stops)]
+
+
+def labels_path(event_dir) -> Path:
+    return Path(event_dir) / REVIEW / "labels.csv"
+
+
+def history_path(event_dir) -> Path:
+    return Path(event_dir) / REVIEW / "history.jsonl"
+
+
+def source_path(event_dir) -> Path | None:
+    """The newest format table by name. `*_format_*`: RWM's has no event prefix."""
+    tables = Path(event_dir).glob("format/*_format_*.csv")
+    return max(tables, key=lambda path: path.name, default=None)
+
+
+def read_source(event_dir) -> dict[int, Label]:
+    return _table(source_path(event_dir))
+
+
+def read_saved(event_dir) -> dict[int, Label]:
+    return _table(labels_path(event_dir))
+
+
+def _table(path) -> dict[int, Label]:
+    if path is None or not path.is_file():
+        return {}
+    stat = path.stat()
+    return _read_table(path, stat.st_mtime_ns, stat.st_ino, stat.st_size)
+
+
+@lru_cache(maxsize=64)
+def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
+    """One label per shot of a format table; cached per file version, never mutate."""
+    frame = validate_intervals(pd.read_csv(path))
+    frame = frame[frame.t_end - frame.t_start >= 1]  # a point event has no span to edit
+    found = {}
+    for shot, rows in frame.groupby("shot", sort=False):
+        spans = rows[rows.category != 0]
+        found[int(shot)] = normalise(
+            (rows.t_start.min(), rows.t_end.max()),
+            zip(spans.t_start, spans.t_end, spans.category),
+        )
+    return found
+
+
+def read_history(event_dir) -> list[dict]:
+    path = history_path(event_dir)
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
+    """Replace one shot's rows in `labels.csv` and append the save to the history."""
+    with _write_lock:
+        saved = dict(read_saved(event_dir))  # a copy: the cached dict is shared
+        saved[int(shot)] = label
+        frame = pd.DataFrame(
+            [row for s in sorted(saved) for row in saved[s].rows(s)],
+            columns=list(INTERVAL_COLUMNS),
+        )
+        validate_intervals(frame)
+        with atomic_path(labels_path(event_dir)) as tmp:
+            frame.to_csv(tmp, index=False)
+        entry = {
+            "shot": int(shot),
+            "reviewer": getpass.getuser(),
+            "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            **label.as_json(),
+            "source": source,
+        }
+        with history_path(event_dir).open("a") as stream:
+            stream.write(json.dumps(entry) + "\n")
+    return entry
+
+
+def state(saved: Label | None, source: Label | None) -> str:
+    if saved is None:
+        return "unreviewed"
+    if source is None:
+        return "confirmed" if not saved.intervals else "changed"
+    return "confirmed" if saved == source else "changed"
+
+
+def queue(event_dir, roster: pd.DataFrame) -> dict:
+    """The roster in order, each shot's state and last save, and where to resume."""
+    saved, source = read_saved(event_dir), read_source(event_dir)
+    history = read_history(event_dir)
+    saved_at = {entry["shot"]: entry["saved_at"] for entry in history}
+    shots = [
+        {
+            "shot": int(row.shot),
+            "tier": row.tier,
+            "state": state(saved.get(int(row.shot)), source.get(int(row.shot))),
+            "saved_at": saved_at.get(int(row.shot)),
+        }
+        for row in roster.itertuples()
+    ]
+    return {"shots": shots, "resume": resume(shots, history)}
+
+
+def resume(shots: list[dict], history: list[dict]) -> int | None:
+    """The first unreviewed shot after the newest save, wrapping; else that save."""
+    if not shots:
+        return None
+    order = [row["shot"] for row in shots]
+    last = history[-1]["shot"] if history else None
+    start = order.index(last) + 1 if last in order else 0
+    for row in shots[start:] + shots[:start]:
+        if row["state"] == "unreviewed":
+            return row["shot"]
+    return last if last in order else order[0]
+
+
+def shot_labels(event_dir, shot: int) -> dict:
+    shot = int(shot)
+    saved = read_saved(event_dir).get(shot)
+    source = read_source(event_dir).get(shot)
+    history = read_history(event_dir)
+    last = next((entry for entry in reversed(history) if entry["shot"] == shot), None)
+    return {
+        "source": None if source is None else source.as_json(),
+        "saved": None if saved is None else saved.as_json(),
+        "state": state(saved, source),
+        "last_save": last,
+    }
