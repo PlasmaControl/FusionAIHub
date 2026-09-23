@@ -1,14 +1,4 @@
-"""``shot_design.simulate.decode`` -- band-power frequency reduction and codec decode.
-
-Per controller ruling on task D2: the brief left ``decode_modalities`` untested.
-This file covers the pure-numpy band-power reduction (the piece the brief
-specifically calls out: "10-60 kHz mean-abs reduction returns (F, C)") plus the
-frequency-axis derivation it depends on, and a decode-through-a-real-codec smoke
-test built on a TINY (freq_bins=16, d_model=64, depth=1) SpectroCodec -- cheap
-enough to construct untrained in a unit test (no checkpoint, no GPU; see
-decode.py's ``freq_axis_khz`` docstring for why the mapping needs
-``cfg.band_pool == 0`` to be valid).
-"""
+"""Signed spectrogram reduction, frequency axes and codec decoding."""
 
 from types import SimpleNamespace
 
@@ -38,17 +28,17 @@ def test_freq_axis_khz_none_when_band_pooled():
 
 def test_band_power_reduces_within_band_to_F_C():
     # (F=2, C=1, Fr=4, Tb=3): freq bins at 5, 15, 35, 65 kHz. The 10-60 kHz band
-    # keeps only bins 1 and 2 (15, 35 kHz); band power is their mean |value|
+    # keeps only bins 1 and 2 (15, 35 kHz); the reduction is their signed mean
     # over those bins and time.
     freq_khz = np.array([5.0, 15.0, 35.0, 65.0])
     dec = np.zeros((2, 1, 4, 3), dtype=np.float32)
     dec[:, :, 1, :] = 2.0   # 15 kHz bin
-    dec[:, :, 2, :] = -6.0  # 35 kHz bin (abs -> 6.0)
+    dec[:, :, 2, :] = -6.0  # 35 kHz bin
     dec[:, :, 0, :] = 100.0  # outside the band -- must be excluded
     dec[:, :, 3, :] = -100.0
     out = decode.band_power(dec, freq_khz, (10.0, 60.0))
     assert out.shape == (2, 1)
-    np.testing.assert_allclose(out, np.full((2, 1), (2.0 + 6.0) / 2.0))
+    np.testing.assert_allclose(out, np.full((2, 1), (2.0 - 6.0) / 2.0))
 
 
 def test_band_power_falls_back_to_full_band_when_axis_unrecoverable():
@@ -178,3 +168,8 @@ def test_decode_modalities_skips_names_without_a_codec():
     codecs = {"mhr": (codec, cfg, "spectro")}
     out = decode.decode_modalities(codecs, arms, ["mhr", "not_loaded"])
     assert set(out) == {"mhr"}
+
+
+def test_spectrogram_reduction_preserves_below_mean_values():
+    dec = np.full((2, 3, 4, 5), -2.0, dtype=np.float32)
+    np.testing.assert_array_equal(decode.band_power(dec, None, None), -2.0)
