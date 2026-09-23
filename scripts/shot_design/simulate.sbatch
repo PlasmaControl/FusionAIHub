@@ -7,15 +7,16 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=4G
 #SBATCH --gres=gpu:1
-#SBATCH --time=03:00:00
+#SBATCH --time=01:00:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%j.out
-# One design's paired real/proposed IGNITE v4 rollout on one A100: what the UI's Simulate
-# button submits on Stellar (paths.yaml: simulate_submit_cmd). The Stellar twin of
-# scripts/slurm_frontier/shot_design_simulate.sh.
+# One design's ensemble of IGNITE v4 rollouts (real, proposed and null arms) on one A100:
+# what the UI's Simulate button submits on Stellar (paths.yaml: simulate_submit_cmd). The
+# Stellar twin of scripts/slurm_frontier/shot_design_simulate.sh.
 #   sbatch scripts/shot_design/simulate.sbatch <ident> [simulate args]
-# Sizing is a pilot guess (v4, 80 frames x 10 passes, estimated 70-130 min on an A100):
-# resize --mem and --time from the first run's MaxRSS and elapsed time.
+# Sized from pilot 2939099 at the defaults (8 members x 3 arms, 80 frames x 10 passes, fp32,
+# two members per pass): 28:50 elapsed, MaxRSS 3.2 GiB; jobstats CPU 98.9 %, CPU-mem 72.5 %,
+# GPU 97.9 %, GPU-mem 98.4 %. Time grows about linearly with --members and --n-predict.
 set -euo pipefail
 REPO="${SLURM_SUBMIT_DIR:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV="$REPO/.pixi/envs/shot-design"

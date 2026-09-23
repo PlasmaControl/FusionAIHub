@@ -122,9 +122,12 @@ The UI uses `paths.yaml`'s `simulate_submit_cmd` to submit a single design:
 sbatch scripts/shot_design/simulate.sbatch <ident>
 ```
 
-This wrapper requests one A100, 4 GB host memory and three hours. It runs
+This wrapper requests one A100, 4 GB host memory and one hour. It runs
 against the configured data root and does not source `_stellar_common.sh`.
-Size memory and wall time from the first v4 pilot's measured usage.
+At the defaults (8 members × 3 arms, 80 frames, 10 passes, fp32) the pilot,
+job 2939099, took 29 minutes at a 3.2 GiB host peak and passed all four
+utilisation gates. Time grows about linearly with `--members` and
+`--n-predict`.
 
 The Stellar batch scripts under `scripts/shot_design/` run the interpreter
 directly and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
@@ -170,7 +173,8 @@ eight GPUs per user, so a batch is two `simulate_batch` jobs of four GPUs.
 only the new frame's 1,209 tokens, so a pass costs the same late in a rollout as early.
 On a V100S in fp32 one 80-frame, 10-pass member takes 106 s at a 16.6 GiB peak; the
 uncached path it replaced took 75 minutes for one real and one proposed rollout on an A100
-(job 2939073). The `k0`, resolved `n_predict`, `members`, `decode_steps`, `temperature`
+(job 2939073). On an A100 the default ensemble, 24 such members two at a time plus their
+decoding, takes 29 minutes (job 2939099). The `k0`, resolved `n_predict`, `members`, `decode_steps`, `temperature`
 and precision are recorded in `simulation.h5`.
 
 **LLM on Stellar.** `agy` is for Gemini only (house rule; Claude runs through
