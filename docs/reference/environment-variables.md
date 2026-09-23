@@ -15,7 +15,7 @@ wires its own values in.
 | Variable | Purpose | Stellar value | Frontier value |
 |---|---|---|---|
 | `SHOT_DESIGN_DATA_ROOT` | the `shot_design` workstream root (database, frame codes, caches, outputs) | `/scratch/gpfs/EKOLEMEN/nc1514/ideate` | `/lustre/orion/fus187/proj-shared/nchen/shot_design` |
-| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models) | `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
+| `LABELER_ROOT` | the `labeler` workstream root (detector features, masks, labels, models, the review page's rows in `spectrograms/`, the fetch cache in `raw/`) | `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker` | `/lustre/orion/fus187/proj-shared/nchen/labeler` |
 | `SHOT_DESIGN_CORPUS` | the read-only DIII-D per-shot HDF5 corpus | `/scratch/gpfs/EKOLEMEN/foundation_model` | `/lustre/orion/fus187/proj-shared/foundation_model` |
 
 An explicit `SHOT_DESIGN_DATA_ROOT` always wins over whatever a paths file
@@ -38,8 +38,9 @@ for the paths-file convention itself.
 
 | Variable | Fallback for |
 |---|---|
-| `LABELER_CORPUS`, `LABELER_LOGS_JSONL`, `LABELER_RAW_CACHE`, `LABELER_TEXT_ROOT` | narrower overrides of paths that would otherwise come from `LABELER_ROOT` / the paths file |
-| `LABELER_LABEL_TABLES` | overrides which label tables `labeler` reads |
+| `LABELER_CORPUS`, `LABELER_LOGS_JSONL`, `LABELER_TEXT_ROOT` | narrower overrides of paths that would otherwise come from `LABELER_ROOT` / the paths file |
+| `LABELER_RAW_CACHE` | where fetched raw signals park (default `$LABELER_ROOT/raw`) |
+| `LABELER_LABEL_TABLES` | the label-table directory (default `data/events` in the checkout): what `labeler` reads, and where the review page saves (`<event>/review/`) |
 | `SHOT_DESIGN_TEXT_ROOT` | overrides the text-corpus root independent of `SHOT_DESIGN_CORPUS` |
 
 Legacy `IDEATE_*`/`LABELMAKER_*` names (from before the 2026-09-15 package
