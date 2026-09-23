@@ -134,6 +134,19 @@ try {
   await until(`S.view[1] - S.view[0] < ${before / 2} && S.data.t1 - S.data.t0 < ${before}`);
   check("ctrl-wheel zooms in and fetches the rows it shows", true, await js("[S.view, S.data.n]"));
 
+  // Out again, drawn before any rows can be asked for: the overview fills what the zoomed ones miss.
+  const pixel = await js(`new Promise((done) => {
+    S.view = [S.overview.t0, S.overview.t1];
+    render();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const t = S.overview.t0 + 0.03 * (S.overview.t1 - S.overview.t0);
+      const canvas = $("rows").children[0];
+      const x = Math.round((px(t) * canvas.width) / canvas.clientWidth);
+      done([t < S.data.t0, [...canvas.getContext("2d").getImageData(x, 20, 1, 1).data]]);
+    }));
+  })`);
+  check("a zoom-out shows the overview until its own rows arrive", pixel[0] && pixel[1][3] > 0, pixel);
+
   await press("Enter");
   await opened(170816);
   check("enter saves and opens the next unreviewed shot", true);

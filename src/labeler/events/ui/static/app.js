@@ -137,9 +137,9 @@ const S = {
   label: null, // the label being edited, always normalised
   selected: -1,
   view: [0, 1], // the ms on screen
-  data: null, // the last /api/rows: {t0, t1, n, rows}
+  data: null, // the last /api/rows: {t0, t1, n, rows, bitmaps}
+  overview: null, // the widest /api/rows of this shot, drawn under `data`
   asked: "", // the last /api/rows query sent
-  bitmaps: new Map(),
   lo: 0,
   lut: lut(0),
   undo: [],
@@ -311,7 +311,7 @@ function contrast(delta) {
   S.lo = clamp(S.lo + delta, 0, 192);
   S.lut = lut(S.lo);
   store("labeler:contrast", String(S.lo));
-  S.bitmaps.clear();
+  for (const data of [S.data, S.overview]) data?.bitmaps.clear();
   render();
 }
 
@@ -394,8 +394,7 @@ async function openShot(shot) {
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
-    Object.assign(S, { shot, meta, data: null, asked: "", undo: [], selected: -1 });
-    S.bitmaps.clear();
+    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1 });
     S.label = draft(shot) || baseline();
     buildRows();
     arrive();
@@ -405,7 +404,7 @@ async function openShot(shot) {
   } catch (error) {
     if (ticket !== S.ticket) return;
     // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
-    Object.assign(S, { shot, meta: null, data: null, label: null, undo: [], selected: -1 });
+    Object.assign(S, { shot, meta: null, data: null, overview: null, label: null, undo: [], selected: -1 });
     const note = document.createElement("p");
     note.className = "failure";
     note.textContent = `${shot} has nothing to show: ${error.message}. K opens the next shot.`;
@@ -472,8 +471,8 @@ async function loadRows() {
     const grid = JSON.parse(response.headers.get("X-Grid"));
     const buffer = await response.arrayBuffer();
     if (ticket !== S.ticket || query !== S.asked) return;
-    S.data = { ...grid, rows: unpack(buffer, grid.n) };
-    S.bitmaps.clear();
+    S.data = { ...grid, rows: unpack(buffer, grid.n), bitmaps: new Map() };
+    if (!S.overview || grid.t1 - grid.t0 > S.overview.t1 - S.overview.t0) S.overview = S.data;
     render();
   } catch (error) {
     if (ticket === S.ticket) say(error.message, true);
@@ -584,7 +583,7 @@ function drawRows() {
     g.beginPath();
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
-    if (values && row.kind === "image") drawImage(g, row, values, i, h);
+    if (row.kind === "image") drawImage(g, row, i, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
     g.restore();
@@ -606,18 +605,22 @@ function imageRange(row) {
   return [row.y0 + (first - 0.5) * row.dy, row.y0 + (stop - 0.5) * row.dy];
 }
 
-function drawImage(g, row, values, i, h) {
+function drawImage(g, row, i, h) {
   const [first, stop] = bandBins(row);
-  const [x0, x1] = [px(S.data.t0), px(S.data.t1)];
   g.imageSmoothingEnabled = false;
-  g.drawImage(bitmap(row, values, i), 0, row.n_y - stop, S.data.n, stop - first, x0, 0, x1 - x0, h - 1);
+  // The overview goes first, so a zoom-out shows it where its own rows have not arrived.
+  for (const data of new Set([S.overview, S.data])) {
+    if (!data) continue;
+    const [x0, x1] = [px(data.t0), px(data.t1)];
+    g.drawImage(bitmap(row, data, i), 0, row.n_y - stop, data.n, stop - first, x0, 0, x1 - x0, h - 1);
+  }
 }
 
 /** A row's image at the current contrast: a pixel per column and bin, top bin first. */
-function bitmap(row, values, i) {
-  let canvas = S.bitmaps.get(i);
+function bitmap(row, data, i) {
+  let canvas = data.bitmaps.get(i);
   if (canvas) return canvas;
-  const n = S.data.n;
+  const [n, values] = [data.n, data.rows[i]];
   canvas = document.createElement("canvas");
   [canvas.width, canvas.height] = [n, row.n_y];
   const g = canvas.getContext("2d");
@@ -628,7 +631,7 @@ function bitmap(row, values, i) {
     for (let x = 0; x < n; x++) pixels[y * n + x] = S.lut[values[from + x]];
   }
   g.putImageData(image, 0, 0);
-  S.bitmaps.set(i, canvas);
+  data.bitmaps.set(i, canvas);
   return canvas;
 }
 
