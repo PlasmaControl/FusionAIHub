@@ -1,15 +1,9 @@
 """One way to get a raw signal, whatever tier it happens to live on.
 
-Three places are tried in order: the corpus, the project's fetch cache, and
-a live fetch that writes the cache. A caller cannot tell which one answered
-except by looking at `attrs["tier"]`, which exists for diagnostics and for
-the promote command, not for branching.
-
-The split between the two on-disk roots is about what the storage is FOR.
-EKOLEMEN holds the long-term bulk raw record and has the capacity for it.
-The project directory has room but is meant for temporary and smaller
-things, so a fetch lands there as scratch. Nothing here ever writes the
-corpus; `promote` does, deliberately and by hand.
+Three places are tried in order: the corpus, the fetch cache (`$LABELER_ROOT/raw`),
+and a live fetch that writes the cache. A caller cannot tell which one answered
+except by `attrs["tier"]`, which exists for diagnostics, not for branching.
+Nothing here writes the corpus.
 """
 
 from __future__ import annotations
@@ -107,17 +101,6 @@ def cache_path(shot: int, *, paths: Paths | None = None) -> Path:
     return paths.raw_cache / f"{int(shot)}_processed.h5"
 
 
-def groups_in(path) -> set[str]:
-    """The group names one corpus-layout file holds; empty if it is absent."""
-    import h5py
-
-    path = Path(path)
-    if not path.is_file():
-        return set()
-    with h5py.File(path, "r") as f:
-        return set(f.keys())
-
-
 def write_group(path, group: str, times_ms, values) -> None:
     """Add one group to a corpus-layout file, atomically and additively.
 
@@ -131,11 +114,11 @@ def write_group(path, group: str, times_ms, values) -> None:
     process, not separate processes - `co2` and `ece` for the same shot can
     land on different threads at once. This function serializes those
     threads against each other (see `_lock_for`), so the additivity promise
-    above actually holds. It does NOT serialize across separate OS
-    processes: this module's own CLI running alongside the server, or a
-    future multi-worker deployment, could still race. No file locking is
-    used to close that gap - this deployment is single-process, and adding
-    it now would guard against a case that doesn't exist yet.
+    above actually holds. It does NOT serialize separate OS processes: the
+    store build hands each shot to one worker process, so its workers never
+    share a file, but the server fetching a shot the build is fetching at
+    the same moment could race. That is rare enough to go without file
+    locking.
 
     `times_ms` arrives in milliseconds, the convention `corpus_signal` and
     `fdp_signal` both return, and is stored in SECONDS, the convention the
@@ -249,8 +232,8 @@ def _holds_record(shot: int, group: str, root: Path) -> bool:
     the corpus's record does not cover but the cache's does would raise
     WindowEmptyError here instead of falling through to the tier that could
     have answered it. Unreachable today - `write_group` always writes a
-    whole record and `promote` moves whole files, never partial ones - but
-    a future partial-record cache would need to guard against this.
+    whole record - but a future partial-record cache would need to guard
+    against this.
     """
     import h5py
 
@@ -366,153 +349,3 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
         shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
     )
     return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": "fetch"})
-
-
-#: The 32 groups a complete corpus shot holds - measured by opening a real
-#: corpus file, `/scratch/gpfs/EKOLEMEN/foundation_model/185601_processed.h5`,
-#: and listing its groups, which match the `signals:` keys in
-#: `src/tokamak_foundation_model/data/config/modalities/modalities.yaml`.
-#: `promote` compares against this to decide whether a cache entry is a
-#: whole shot or a verification fetch of one diagnostic. No EFIT scalars
-#: (ip, betan, q95, ...) belong here: the corpus holds raw diagnostics and
-#: actuators only, never equilibrium or fitted-profile quantities - see
-#: `src/labeler/features/resolve_corpus.py`'s docstring.
-CORPUS_GROUPS: tuple[str, ...] = (
-    "beam_voltage", "bes", "bolo", "cer_rot", "cer_ti", "co2", "ece",
-    "ech_pol_angle", "ech_polarization", "ech_power", "ech_tor_angle",
-    "filterscopes", "gas_flow", "gas_raw", "i_coil", "ich", "irtv",
-    "langmuir", "mhr", "mirnov", "mse", "neutron_rate", "pinj", "rmp",
-    "sxr", "tangtv", "tinj", "ts_core_density", "ts_core_temp",
-    "ts_tangential_density", "ts_tangential_temp", "vib",
-)
-
-
-def promote(shot: int, *, partial: bool = False, paths: Paths | None = None) -> Path:
-    """Move a cached shot into the corpus, where it lives long-term.
-
-    Manual and separate from anything the reviewer clicks: this moves
-    hundreds of megabytes, and a Save that did it as a side effect would be
-    a Save that can half-fail.
-
-    The default refuses an incomplete shot. Training loaders glob
-    `*_processed.h5` in the corpus root, and a verification fetch
-    materialises the one group a panel asked for - so a partial file there
-    is one those globs hand to training with the rest of the groups
-    missing.
-    """
-    paths = Paths.from_env() if paths is None else paths
-    source = cache_path(shot, paths=paths)
-    if not source.is_file():
-        raise FileNotFoundError(f"shot {int(shot)} is not in {paths.raw_cache}")
-    target = paths.corpus / source.name
-    if target.exists():
-        raise FileExistsError(
-            f"{target} already exists; promote never overwrites a corpus "
-            f"shot. Inspect both and remove one by hand."
-        )
-    present = groups_in(source)
-    # WHICH groups are missing, computed before branching, not just how
-    # many. A shot can hold 32 groups that aren't the right 32 - e.g. a
-    # cache polluted by a differently-shaped fetch - and a count-only check
-    # would wave that through.
-    missing = sorted(set(CORPUS_GROUPS) - present)
-    if not partial and missing:
-        raise ValueError(
-            f"shot {int(shot)} holds {len(present)} of {len(CORPUS_GROUPS)} "
-            f"groups; missing {', '.join(missing)}. Training globs "
-            f"*_processed.h5 in the corpus root and would read this as a "
-            f"whole shot. Pass --partial if that is what you want."
-        )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    import os
-    import shutil
-
-    # The `exists()` check above is only the friendly early message for the
-    # common case; it cannot BE the no-clobber guarantee because a second
-    # `promote` for the same shot can pass it before this one finishes. The
-    # guarantee actually lives here: `os.link` stakes the target name
-    # atomically and raises `FileExistsError` itself on collision, straight
-    # from the filesystem, so there is no gap between checking and acting.
-    try:
-        os.link(source, target)
-    except FileExistsError:
-        raise FileExistsError(
-            f"{target} already exists; promote never overwrites a corpus "
-            f"shot. Inspect both and remove one by hand."
-        ) from None
-    except OSError:
-        # `os.link`, like `replace`, cannot cross filesystems - which the
-        # cache and the corpus may well be. Copy to a scratch name IN
-        # `target.parent` first, so the commit step below lands on one
-        # filesystem: a `shutil.copy2` straight to `target` would leave a
-        # truncated `*_processed.h5` sitting exactly where the training
-        # glob looks for a whole shot if it died partway - full disk,
-        # killed process, flaky network filesystem are all realistic on
-        # this cross-filesystem path.
-        scratch = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
-        try:
-            shutil.copy2(source, scratch)
-            # Same guarantee as the direct-link branch above, just staked
-            # on the scratch copy instead of `source`.
-            try:
-                os.link(scratch, target)
-            except FileExistsError:
-                raise FileExistsError(
-                    f"{target} already exists; promote never overwrites a "
-                    f"corpus shot. Inspect both and remove one by hand."
-                ) from None
-        finally:
-            scratch.unlink(missing_ok=True)
-    source.unlink()
-    return target
-
-
-def clean(*, paths: Paths | None = None) -> int:
-    """Delete the whole fetch cache; return the bytes recovered."""
-    import shutil
-
-    paths = Paths.from_env() if paths is None else paths
-    root = paths.raw_cache
-    if not root.is_dir():
-        return 0
-    freed = sum(p.stat().st_size for p in root.rglob("*") if p.is_file())
-    shutil.rmtree(root)
-    return freed
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """`python -m labeler.events.raw promote 178642 [--partial]` / `clean`."""
-    import argparse
-
-    parser = argparse.ArgumentParser(prog="labeler.events.raw")
-    sub = parser.add_subparsers(dest="command", required=True)
-    move = sub.add_parser("promote", help="move a cached shot into the corpus")
-    move.add_argument("shot", type=int)
-    move.add_argument(
-        "--partial", action="store_true",
-        help="promote a shot that does not hold all 32 groups",
-    )
-    sub.add_parser("clean", help="delete the whole fetch cache")
-    args = parser.parse_args(argv)
-
-    paths = Paths.from_env()
-    if args.command == "clean":
-        freed = clean(paths=paths)
-        print(f"removed {freed / 1e9:.2f} GB from {paths.raw_cache}")
-        return 0
-    try:
-        landed = promote(args.shot, partial=args.partial, paths=paths)
-    # OSError covers FileExistsError and FileNotFoundError already, plus
-    # the plain OSErrors the copy/unlink fallback and `clean`'s rmtree can
-    # raise on the destructive paths - disk full, permission denied, a
-    # stale NFS handle - which deserve `error: ...` and exit 1, not a
-    # traceback.
-    except (ValueError, OSError) as error:
-        print(f"error: {error}")
-        return 1
-    print(f"promoted {args.shot} -> {landed}")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

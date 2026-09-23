@@ -42,13 +42,6 @@ DEFAULT_LOGS_JSONL = Path(
 #: package and `LABELER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
-#: Where a live fetch parks a shot's raw record. Deliberately the PROJECT
-#: directory and not the corpus: EKOLEMEN is the long-term home for bulk raw
-#: signal data and has the capacity for it, while this directory is meant for
-#: temporary and smaller things. A fetch lands here as scratch and stays
-#: scratch until `raw.promote` moves it. `.cache` is gitignored, and deleting
-#: this directory at any time is safe - the next read refetches.
-DEFAULT_RAW_CACHE = Path(__file__).resolve().parents[2] / ".cache" / "raw"
 
 
 @dataclass(frozen=True)
@@ -60,21 +53,26 @@ class Paths:
     text_root: Path = DEFAULT_TEXT
     logs_jsonl: Path = DEFAULT_LOGS_JSONL
     label_tables: Path = DEFAULT_LABEL_TABLES
-    raw_cache: Path = DEFAULT_RAW_CACHE
+    #: Where a live fetch parks a shot's raw record. None means `<root>/raw`, beside the
+    #: prefetched AE shots; deleting it is safe, the next read refetches.
+    raw_cache: Path | None = None
+
+    def __post_init__(self) -> None:
+        if self.raw_cache is None:
+            object.__setattr__(self, "raw_cache", self.root / "raw")
 
     @classmethod
     def from_env(cls) -> Paths:
+        raw_cache = getenv("LABELER_RAW_CACHE")
         return cls(
             root=Path(getenv("LABELER_ROOT", str(DEFAULT_ROOT))),
             corpus=Path(getenv("LABELER_CORPUS", str(DEFAULT_CORPUS))),
-            text_root=Path(getenv("LABELER_TEXT_ROOT",
-                                          str(DEFAULT_TEXT))),
-            logs_jsonl=Path(getenv("LABELER_LOGS_JSONL",
-                                           str(DEFAULT_LOGS_JSONL))),
-            label_tables=Path(getenv("LABELER_LABEL_TABLES",
-                                             str(DEFAULT_LABEL_TABLES))),
-            raw_cache=Path(getenv("LABELER_RAW_CACHE",
-                                          str(DEFAULT_RAW_CACHE))),
+            text_root=Path(getenv("LABELER_TEXT_ROOT", str(DEFAULT_TEXT))),
+            logs_jsonl=Path(getenv("LABELER_LOGS_JSONL", str(DEFAULT_LOGS_JSONL))),
+            label_tables=Path(
+                getenv("LABELER_LABEL_TABLES", str(DEFAULT_LABEL_TABLES))
+            ),
+            raw_cache=Path(raw_cache) if raw_cache else None,
         )
 
     @property
@@ -174,6 +172,14 @@ class Paths:
 
     def text_file(self, shot: int) -> Path:
         return self.text_root / f"shot_{shot}.txt"
+
+    @property
+    def spectrograms(self) -> Path:
+        """The review store: one rows file per shot, `<event>/<shot>.h5`."""
+        return self.root / "spectrograms"
+
+    def spectrogram_file(self, event: str, shot: int) -> Path:
+        return self.spectrograms / event / f"{int(shot)}.h5"
 
     def mkdirs(self) -> None:
         for d in (self.features, self.labels, self.models, self.runs,
