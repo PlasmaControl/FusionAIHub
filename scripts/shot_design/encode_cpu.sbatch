@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=14G
+#SBATCH --mem=10G
 #SBATCH --time=01:50:00
 #SBATCH --array=0-9%10
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/ideate/runs/slurm/%A_%a.out
@@ -109,6 +109,21 @@
 #   Per-shot wall at 4 cpus: 57-68 s mean per task (vs 60 s at 5 cpus): the work is I/O-bound and
 #   the fifth core was idle. The 500 recommender_v1 caches were completed by these runs; 14G is for
 #   the next corpus (iteration 4), where a cold pilot on a compute node should confirm it first.
+# MEASURED FOR IGNITE v4 (array 2938824, 2026-09-22, 4 cpus / 14G: the 500 caches re-encoded after
+#   the v2 ones were moved aside). jobstats CPU / CPU-mem, sacct MaxRSS, elapsed, node:
+#     _0 78.1 % / 54.3 % (8.59 GiB) 43 min k09n1     _5 63.3 % / 50.7 % (8.28 GiB) 79 min i01n18
+#     _1 73.0 % / 52.9 % (8.25 GiB) 47 min i01n1     _6 63.3 % / 52.1 % (8.34 GiB) 75 min i01n18
+#     _2 61.5 % / 45.7 % (8.43 GiB) 66 min i01n18    _7 64.3 % / 51.4 % (8.02 GiB) 76 min i01n18
+#     _3 76.5 % / 59.3 % (8.74 GiB) 62 min k09n1     _8 63.8 % / 47.9 % (8.20 GiB) 75 min i01n18
+#     _4 63.4 % / 50.7 % (8.39 GiB) 78 min i01n18    _9 63.7 % / 50.7 % (8.56 GiB) 77 min i01n18
+#   GATE MISSED. CPU-mem on every task: v4's peak is 8.0-8.7 GiB against the 9.2-10.6 GB 14G was
+#   sized for, so the request is now --mem=10G (8.74 / 10 = 87 % of the largest peak; jobstats'
+#   own samples, 6.4-8.3 GB, project 64-83 %). CPU on the seven tasks SLURM packed onto
+#   stellar-i01n18: 61.5-64.3 % and 66-79 min, against 73-78 % and 43-62 min for the three that
+#   ran alone on their nodes -- same code, 50 shots each, same threads. That is the shared node's
+#   read bandwidth, not the request; fewer cores would raise the percentage without making the
+#   reads faster. OMP_NUM_THREADS stays 4 so that a shot added to this corpus gets the same tokens
+#   (READ THIS FIRST below); a future encode of a WHOLE corpus can move to 3 cpus and 3 threads.
 set -euo pipefail
 # REPO may point at a clean worktree snapshot (the controller runs the job from one while the
 # branch is under review); the pixi environment always lives in the main checkout.
