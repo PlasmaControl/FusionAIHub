@@ -2,9 +2,7 @@
 # Sourced by simulate_batch.sbatch, encode_batch.sbatch and build_batch.sbatch
 # under scripts/shot_design/. The Stellar twin of
 # scripts/slurm_frontier/_shot_design_common.sh: the interpreter is called directly ($PY),
-# never through `pixi run`, because pixi's activation would silently replace an exported
-# SHOT_DESIGN_DATA_ROOT with the production root (docs/shot-design/overview.md, "Scratch
-# databases and the pixi activation env").
+# with the roots exported here, so a job does not depend on pixi's activation.
 #
 # SHOT_DESIGN_DATA_ROOT is REQUIRED from the caller: a batch run writes a database, frame
 # codes, designs and simulations, and none of that may land in the production root

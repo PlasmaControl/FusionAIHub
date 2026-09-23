@@ -153,8 +153,7 @@ the `llm` command prints discovery metadata and does not probe the server.
 
 The Slurm script binds `$(hostname -s):11434` and uses the default data root in its
 literal `#SBATCH -o` directive. For another root, override `sbatch --output` and
-create its `llm` directory first; account for Pixi activation overriding
-`SHOT_DESIGN_DATA_ROOT` as described above. Endpoint JSON contains `url`, `models`,
+create its `llm` directory first. Endpoint JSON contains `url`, `models`,
 `host`, `job_id`, `started` and `version`, and is published with an atomic rename.
 An answering port is refused before any write. On exit, the script removes the
 endpoint only if its URL and start time still match this run, then stops its child.

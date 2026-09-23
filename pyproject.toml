@@ -53,6 +53,7 @@ path = "src/faith/__init__.py"
 # `import labeler` (and now `import shot_design`) fails in every pixi env.
 packages = ["src/faith", "src/tokamak_foundation_model", "src/labeler", "src/shot_design"]
 
+# Why each pixi block below is the way it is: docs/reference/pixi-environments.md.
 [tool.pixi.workspace]
 channels = ["conda-forge", "ga-fdp"]
 platforms = ["linux-64", "win-64", "osx-arm64"]
@@ -85,34 +86,12 @@ line_profiler = ">=5.0.2,<6"
 [tool.pixi.feature.fdp]
 platforms = ["linux-64"]
 
-# MEASURED 2026-09-04 (Task 16b): `import torch` binds the SYSTEM
-# `/lib64/libstdc++.so.6`, which lacks `GLIBCXX_3.4.29`. Every compiled
-# extension in this feature that needs that symbol then fails to import
-# after torch does - `toksearch_d3d` (via `fdp` -> `pyxrootd`) and `scipy` -
-# with a bare `ImportError`, which `resolve_fdp.available()` swallowed into
-# an indistinguishable `ToksearchUnavailable` and silently disabled the
-# whole fdp scaling path. The pixi env ships its OWN
-# `lib/libstdc++.so.6.0.36`, which DOES have the symbol; it is just not
-# first on the loader's path. `LD_LIBRARY_PATH` (rather than `LD_PRELOAD`) is
-# sufficient: verified that with it set, `torch` followed by `fdp`,
-# `toksearch`, `toksearch_d3d` and `scipy` all import, which means torch's
-# extensions carry `DT_RUNPATH` (which `LD_LIBRARY_PATH` overrides), not
-# `DT_RPATH` (which it would not). Scoped to this feature - not the shared
-# workspace - because it is `fdp`'s own packages (toksearch/toksearch_d3d,
-# via pyxrootd) that need the symbol; both the `fdp` and `labelmaker`
-# environments include this feature, so both are covered. Prepended, never
-# overwritten: an inherited `LD_LIBRARY_PATH` (e.g. from a module-loaded
-# library on a SLURM node) must still take effect first for anything it
-# already covers.
+# torch binds the system libstdc++, which lacks GLIBCXX_3.4.29; the env's own copy goes first.
 [tool.pixi.feature.fdp.target.unix.activation.env]
 LD_LIBRARY_PATH = "$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
 
 [tool.pixi.feature.fdp.dependencies]
-# Versions match Nathan's working fetch env (/scratch/gpfs/nc1514/fdp/pixi.toml)
-# rather than floating. `fdp` itself is REQUIRED, not optional: `toksearch_d3d`
-# imports it at module scope, so leaving it out resolved an env where
-# `import toksearch_d3d` raised ModuleNotFoundError while `toksearch` imported
-# fine - the fdp path was unreachable and nothing said so.
+# The working fetch env's versions; `fdp` is required, toksearch_d3d imports it.
 fdp = { version = ">=0.5.1,<0.6", channel = "ga-fdp" }
 toksearch = { version = ">=2.8.1,<3", channel = "ga-fdp" }
 toksearch_d3d = { version = ">=0.10.1,<0.11", channel = "ga-fdp" }
@@ -121,197 +100,70 @@ toksearch_d3d = { version = ">=0.10.1,<0.11", channel = "ga-fdp" }
 platforms = ["linux-64"]
 
 [tool.pixi.feature.labelmaker.tasks]
-# `pixi run -e labelmaker label 187199`: every implemented model on one shot ->
-# labels as HDF5 + npz, a JSON summary and one figure (scripts/labeler/label_shot.sh).
-label = "bash scripts/labeler/label_shot.sh"
-# `pixi run -e labelmaker labeler-raw promote 178642 --partial`: move a
-# fetched shot out of the project's .cache/raw and into EKOLEMEN, which is
-# where bulk raw signal data lives long-term.
-labeler-raw = "python -m labeler.events.raw"
-# `pixi run -e labelmaker fdp run python -m labeler.events.ui`: the browser
-# review surface, on the loopback behind a token. The bare task below is the
-# corpus-only form; the fdp wrapper is what lets a shot outside the corpus
-# fetch, and `fdp run` execs a program, not a pixi task.
-labeler-verify = "python -m labeler.events.ui"
+label = { cmd = "bash scripts/labeler/label_shot.sh", description = "Every labeler model on the given shots: labels, a summary and a figure per shot" }
+labeler-verify = { cmd = "fdp run python -m labeler.events.ui", description = "The label review page, under the fdp wrapper so any shot can be fetched" }
+labeler-spectrograms = { cmd = "python -m labeler.events.review.build", description = "Build the review page's row store: --event EVENT [--shots ...] [--force]" }
+labeler-test = { cmd = "python -m pytest tests/labeler -q -W error", description = "The labeler suite, in the checkout that holds this manifest" }
 
 [tool.pixi.feature.labelmaker.dependencies]
-# labels_index.parquet. pandas 3 can write parquet only through pyarrow,
-# and the default env does not have it.
+# pandas 3 writes parquet only through pyarrow.
 pyarrow = ">=17,<22"
-# registry.py parses every model card's YAML front matter. `yaml` currently
-# reaches this environment only transitively, via hydra-core -> omegaconf,
-# and hydra-core is declared in [project] for IGNITE's benefit, not
-# labeler's - anyone tidying IGNITE's dependencies would silently break
-# every card read in this package. Declare it directly.
+# Model cards' front matter; declared rather than left to arrive through hydra-core.
 pyyaml = ">=6,<7"
-# Solving `labelmaker` (labelmaker + fdp + the implicit default feature)
-# against live conda-forge picks up protobuf 7.35.1, published to
-# conda-forge sometime after pixi.lock's other environments were last
-# solved (2026-07-31, per `git log -- pixi.lock`). The shared
-# [project.dependencies] pin `wandb>=0.25.1,<0.26` needs
-# protobuf>4.21.0,!=5.28.0,!=5.29.0,<7, so the two are unsatisfiable
-# together:
-#
-#   Because wandb==0.25.1 depends on one of:
-#       protobuf>4.21.0,<5.28.0 / >5.28.0,<5.29.0 / >5.29.0,<7
-#   and protobuf==7.35.1, we can conclude that wandb==0.25.1 cannot be used.
-#   help: protobuf==7.35.1 has been pinned by the conda solve.
-#
-# This is channel drift, not a toksearch/torch conflict (the brief's
-# anticipated failure mode and documented CPU-wheel-drop fallback, tried
-# first, did not change this error). It reproduced identically with and
-# without the two pypi-dependencies lines below and with pyarrow removed
-# entirely, isolating the cause to protobuf's rolling conda-forge version
-# rather than to either of those. The already-locked `fdp`/`default`
-# environments are unaffected since they stay pinned to their 2026-07-31
-# solve (libprotobuf/protobuf 6.31.1) until someone reruns `pixi update`.
-# Pinning protobuf here, scoped to this feature only, keeps the new
-# environment on the same already-known-good major version, the same way
-# `feature.cuda` pins torch's index rather than editing [project].
+# conda-forge's protobuf 7 cannot satisfy wandb's protobuf<7.
 protobuf = "<7"
-# `labeler-verify`: the browser review surface is a FastAPI app on the
-# loopback, reached over an SSH forward. Same ranges as feature.shot-design,
-# which runs shot_design's UI, so an environment holding both cannot want
-# two different majors.
+# The review page's server; the same ranges as feature.shot-design.
 fastapi = ">=0.115,<1"
 uvicorn = ">=0.30,<1"
 
 [tool.pixi.feature.labelmaker.pypi-dependencies]
-# The workspace installs `faith` editable into every environment, which
-# drags torch in. Labelmaker never uses a GPU (its heaviest model is 12k
-# parameters evaluated in torch on CPU, see models/runners/keras_h5.py), so
-# take the CPU wheels and save ~3 GB in an environment that would otherwise
-# duplicate cu124.
+# CPU wheels: labeler never uses a GPU.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
-# NOT a dead dependency once the notebooks go: the browser verification
-# surface (`labeler.events.ui`) serves plotly.js to the page out of this
-# package's own `package_data/plotly.min.js`. The review node has no route
-# off the cluster, so a CDN link cannot work, and a vendored copy would
-# drift from whatever version this environment pins. `plotly` otherwise
-# reaches this environment only transitively, so declare it.
+# The verification notebooks' figures (verify.py) and their widget.
 plotly = ">=6.9,<7"
-# `FigureWidget` imports `anywidget` at construction time, so a bare
-# `import plotly` succeeding says nothing about whether the widget works.
-# That widget is the notebooks' surface only - the browser app never builds
-# one - so this pin lives and dies with them.
 anywidget = ">=0.9,<1"
 
 [tool.pixi.feature.shot-design]
 platforms = ["linux-64"]
 
 [tool.pixi.feature.shot-design.tasks]
-# `pixi run -e shot-design shot_design search --text "..."`: the shot analysis and
-# experiment-design CLI (phenomenon search, events, IGNITE what-if).
-shot_design = "python -m shot_design"
-# The MCP server, stdio transport, for an assistant to connect to.
-shot_design-mcp = "python -m shot_design.mcp"
-shot_design-test = "pytest tests/shot_design -q"
+shot_design = { cmd = "python -m shot_design", description = "The shot analysis and experiment-design CLI" }
+shot_design-mcp = { cmd = "python -m shot_design.mcp", description = "The MCP server, stdio transport" }
+shot_design-test = { cmd = "python -m pytest tests/shot_design -q -W error", description = "The shot_design suite, in the checkout that holds this manifest" }
 
 [tool.pixi.feature.shot-design.dependencies]
-# shot_design is ported from the shot-recommender-system repo
-# (/scratch/gpfs/nc1514/shot-recommender-system), which pins its runtime
-# through a uv.lock. Every range here was checked on 2026-09-07 against the
-# versions that lock actually resolves - pydantic 2.13.5, fastapi 0.141.1,
-# sentence-transformers 6.0.1, httpx 0.28.1, pypdf 6.16.2, scikit-learn
-# 1.9.0 - so none of them had to be widened; a range that excluded the
-# running version would produce a port that passes here and fails there.
-# `mcp` and `duckdb` have no counterpart in that lock (the MCP server and
-# the DuckDB-backed store are new in this port).
-#
-# Everything below is a CONDA dependency: conda-forge carries current builds
-# of the whole set (`mcp` 2.1.1 was published there on 2026-08-26), and the
-# conda solver is the one that also chooses this environment's python. The
-# single exception is `sentence-transformers`, which has to come from pypi -
-# see the [feature.shot-design.pypi-dependencies] block below for why.
-
-# shots.parquet and the per-segment tables. Same range as feature.labelmaker
-# so the two packages cannot end up wanting different pyarrow majors in an
-# environment that includes both; shotrec only asks for `pyarrow>=16`.
+# Ranges checked against shot-recommender-system's uv.lock; all conda but sentence-transformers.
 pyarrow = ">=17,<22"
-# phenomena.yaml, actuators.yaml and the model cards shot_design reads. Declared
-# directly for the same reason feature.labelmaker declares it: `yaml`
-# otherwise arrives only transitively through hydra-core -> omegaconf, which
-# is in [project] for IGNITE's sake and could be tidied away at any time.
 pyyaml = ">=6,<7"
-# The schema layer (PhenomenonHit, DesignReport, CircumstanceReport, ...).
-# >=2.12 is also conda-forge `mcp`'s own floor, so this is not a free choice.
+# >=2.12 is conda-forge mcp's own floor.
 pydantic = ">=2.12,<3"
-# Signal processing behind the segment finder and the circumstances stats.
-# Unpinned to match [project], which also lists a bare `scipy`.
 scipy = "*"
 scikit-learn = ">=1.5,<2"
-# Corpus reads: the DIII-D shot HDF5 files under $SHOT_DESIGN_CORPUS.
 h5py = ">=3.15,<4"
 tqdm = ">=4.66,<5"
-# Miniproposal PDFs -> the text that phenomenon search quotes from.
 pypdf = ">=4,<7"
-# summary.html -> the per-shot text bundles. `shot_design logs import` re-runs
-# d3dlogfetching's own composition (shotdb/logs.py) over a synced runs/ tree,
-# and that composition parses the session summary with BeautifulSoup; the
-# output has to be byte-identical to the 22,950 bundles already in the
-# corpus, so the parser is not a free choice. 4.x is what the tool pins.
+# The log bundles must stay byte-identical to d3dlogfetching's, so its parser.
 beautifulsoup4 = ">=4.12,<5"
 httpx = ">=0.27,<1"
-# `shot_design serve`: the browser UI. Kept in the base feature rather than a
-# separate one because the MCP server and the UI share the same query layer.
 fastapi = ">=0.115,<1"
 uvicorn = ">=0.30,<1"
-# `from mcp.server import MCPServer`. 2.x only: FastMCP, the 1.x entry point,
-# is gone, so a solve that fell back to mcp 1.x would import-error rather
-# than merely behave differently.
+# 2.x only: FastMCP, the 1.x entry point, is gone.
 mcp = ">=2.1,<3"
 pytest = ">=9,<10"
-# Same channel-drift pin, and the same reason, as feature.labelmaker: a live
-# conda-forge solve picks up protobuf 7.x, which the shared [project] pin
-# `wandb>=0.25.1,<0.26` (protobuf<7) cannot satisfy. Scoped to this feature;
-# the already-locked environments stay on their own solve.
+# The same protobuf pin as feature.labelmaker.
 protobuf = "<7"
-# The shot/segment/label store shot_design queries. conda-forge ships the Python
-# bindings as `duckdb`.
 duckdb = ">=1.1,<2"
 
 [tool.pixi.feature.shot-design.pypi-dependencies]
-# MiniLM text embeddings (sentence-transformers/all-MiniLM-L6-v2, 384-d).
-# The 6.x major is what shotrec runs; 5.x renamed enough of the encode path
-# that a lower floor would not be the code that was ported.
-#
-# This is the ONE package of the set that is taken from pypi rather than
-# conda-forge, and it is the fallback the spec anticipated. conda-forge does
-# publish it (6.0.1), but its recipe depends on `pytorch >=1.11.0`, so adding
-# it to [feature.shot-design.dependencies] makes the conda solver choose torch -
-# it picks the newest, 2.12.0 - and pixi then hands that as a PINNED version
-# to the pypi solve, where it collides head-on with feature.cuda:
-#
-#   x failed to solve the pypi requirements of environment 'shot-design'
-#   `-> Because you require torch>=2.5.1,<2.11 and torch==2.12.0, we can
-#       conclude that your requirements are unsatisfiable.
-#   help: torch==2.12.0 has been pinned by the conda solve.
-#
-# The cu124 range in feature.cuda is not ours to widen (cu124 is what ships
-# sm_70 kernels for the V100S cards these environments run on), and neither
-# environment wants a second copy of torch. Taking sentence-transformers from
-# pypi keeps torch entirely on the pypi side, where feature.cuda and
-# feature.shot-design-cpu already decide which wheel each environment gets.
+# From pypi, so that torch stays on the pypi side.
 sentence-transformers = ">=6,<7"
 
-# Absolute paths rather than repo-relative ones: the corpus and the label
-# store live outside this checkout, on /scratch/gpfs/EKOLEMEN, and the same
-# environment is used from a login node, a SLURM job and an MCP client
-# launched by an assistant, none of which share a working directory.
-# HF_HUB_OFFLINE: sentence-transformers reaches into huggingface_hub on every
-# model load even when the MiniLM checkpoint is already cached, and on a
-# compute node with no outbound route that call does not fail - it HANGS,
-# for minutes, inside httpx.connect_tcp (measured in shotrec, see the same
-# note at the top of its cli.py). The checkpoint is in
-# ~/.cache/huggingface/hub, so offline is the correct and much faster mode.
-# TOKENIZERS_PARALLELISM: the corpus build forks worker processes after a
-# tokenizer has been used; without this, every fork prints the HuggingFace
-# deadlock warning and the fast tokenizer disables its own threads anyway.
+# Stellar roots as defaults: a root the caller exports wins. Offline, or the MiniLM load hangs.
 [tool.pixi.feature.shot-design.target.unix.activation.env]
-SHOT_DESIGN_DATA_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/ideate"
-LABELER_ROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"
-SHOT_DESIGN_CORPUS = "/scratch/gpfs/EKOLEMEN/foundation_model"
+SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/ideate}"
+LABELER_ROOT = "${LABELER_ROOT:-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker}"
+SHOT_DESIGN_CORPUS = "${SHOT_DESIGN_CORPUS:-/scratch/gpfs/EKOLEMEN/foundation_model}"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
 
@@ -319,14 +171,7 @@ TOKENIZERS_PARALLELISM = "false"
 platforms = ["linux-64"]
 
 [tool.pixi.feature.shot-design-cpu.pypi-dependencies]
-# A CPU-only twin of the `shot-design` environment, exactly as feature.labelmaker
-# does it. The workspace installs `faith` editable everywhere, which drags
-# torch in, and the cu124 wheels are ~3 GB that a laptop-shaped run of
-# shot_design - phenomenon search, the events tables, the MiniLM encoder - never
-# touches. Only `design_rollout` needs a GPU, and that is what the `shot-design`
-# environment is for. Split into its own feature (rather than putting the
-# cpu index on `shot-design` itself) so the two environments can differ in the
-# one line that separates them.
+# The CPU twin of `shot-design`: only design_rollout needs a GPU.
 torch = { version = ">=2.5.1", index = "https://download.pytorch.org/whl/cpu" }
 torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/cpu" }
 
@@ -334,45 +179,30 @@ torchvision = { version = ">=0.20.1", index = "https://download.pytorch.org/whl/
 platforms = ["linux-64"]
 
 [tool.pixi.feature.frontier.dependencies]
-# pip is needed for the `setup-flash-attn` task below to install flash-attn
-# from a git URL with --no-build-isolation. The PyTorch wheels we pull from
-# the rocm7.1 index don't drag pip in transitively.
+# pip for the setup-flash-attn task; ninja for aiter's build at the first `import flash_attn`.
 pip = "*"
-# ninja: aiter (a transitive dep of flash_attn on ROCm) JIT-compiles a small
-# C++ extension at first `import flash_attn`. It calls `ninja` from PATH.
 ninja = "*"
 
 [tool.pixi.feature.frontier.pypi-dependencies]
-# rocm7.1 index ships torch 2.10.0 + torchvision 0.25-0.26 only.
+# rocm7.1 ships torch 2.10 only; uv does not find triton-rocm unless it is listed.
 torch       = { version = ">=2.10,<2.11",   index = "https://download.pytorch.org/whl/rocm7.1" }
 torchvision = { version = ">=0.25,<0.27",   index = "https://download.pytorch.org/whl/rocm7.1" }
-# torch 2.10 declares triton-rocm as a dep; uv won't auto-discover it
-# through the per-package `index = ...` above, so list it explicitly.
 triton-rocm = { version = "*",              index = "https://download.pytorch.org/whl/rocm7.1" }
 # Evaluation suite (scripts/evaluation/): latent-space analyses + probes.
 scikit-learn = ">=1.5,<2"
 umap-learn   = ">=0.5.7,<0.6"
-# Flash-Attention 2 (gfx90a / MI250X) is NOT listed here intentionally:
-# the build needs `module load rocm/7.1.1` + `FLASH_ATTENTION_TRITON_AMD_ENABLE=TRUE`,
-# which pixi/uv can't set. Install via the `setup-flash-attn` task below; we use
-# the AMD Triton backend (not Composable Kernel) per the AMD docs at
-# rocm.docs.amd.com/.../model-acceleration-libraries.html — Triton skips the
-# multi-hour CK template/hipcc compile and builds in ~10-15 min.
+# flash-attn comes from the setup-flash-attn task: its build needs `module load rocm/7.1.1`.
 
 [tool.pixi.feature.frontier.tasks]
 setup-flash-attn = { cmd = "bash scripts/slurm_frontier/setup_frontier_env.sh", description = "Build & install flash-attn 2 into the frontier pixi env on a Frontier compute node (gfx90a). Auto-salloc's if run from a login node." }
 verify-flash-attn = { cmd = "python scripts/slurm_frontier/verify_flash_attn.py", description = "Smoke-test flash_attn on the local MI250X." }
 
-# The `shot-design` environment on Frontier: feature.shot-design's conda set (pyarrow,
-# duckdb, fastapi, ...) plus ROCm torch instead of feature.cuda's cu124 wheels.
-# It is a third torch source beside feature.cuda and feature.shot-design-cpu for the
-# same reason those two are separate: the index is the one line that differs.
+# `shot-design` on Frontier: feature.shot-design's conda set plus ROCm torch.
 [tool.pixi.feature.shot-design-frontier]
 platforms = ["linux-64"]
 
 [tool.pixi.feature.shot-design-frontier.pypi-dependencies]
-# Same rocm7.1 pins as feature.frontier, so the two environments on this
-# machine run the same torch and a checkpoint written by one loads in the other.
+# The same rocm7.1 pins as feature.frontier.
 torch       = { version = ">=2.10,<2.11", index = "https://download.pytorch.org/whl/rocm7.1" }
 torchvision = { version = ">=0.25,<0.27", index = "https://download.pytorch.org/whl/rocm7.1" }
 triton-rocm = { version = "*",            index = "https://download.pytorch.org/whl/rocm7.1" }
@@ -380,35 +210,20 @@ x-transformers = "*"
 vector-quantize-pytorch = "*"
 einops = "*"
 loguru = "*"
-# `labeler.events.ui`, and so the whole of tests/labeler at COLLECTION time. On Stellar the
-# labeler runs in its own `labelmaker` environment, which pins it; on Frontier there is one
-# environment for both packages, so the pin is repeated here rather than the suite being split.
+# tests/labeler imports plotly; Frontier has one environment for both packages.
 plotly = ">=6.9,<7"
 
-# feature.shot-design's own activation block sets the three roots to their STELLAR
-# values, so one of the two blocks has to win. MEASURED 2026-09-19 with pixi 0.73:
-# the FIRST feature listed for the environment wins, not the last -- with
-# `shot-design-frontier = ["shot-design", "shot-design-frontier"]` the environment
-# came up with `/scratch/gpfs/EKOLEMEN/nc1514/ideate`, the Stellar root. That is why
-# [tool.pixi.environments] below lists `shot-design-frontier` FIRST; reordering it
-# silently sends every job at the Stellar paths, which do not exist here.
-# SHOT_DESIGN_PATHS selects the Frontier paths file (configs/shot_design/
-# paths.frontier.yaml); feature.shot-design does not set it, because on Stellar the
-# default paths.yaml is already the right file.
-# HDF5_USE_FILE_LOCKING: the corpus lives on Lustre, where h5py's default
-# locking fails to open a read-only file the way it does on GPFS.
+# Frontier roots and paths file as defaults; this feature is listed first, and the first wins.
 [tool.pixi.feature.shot-design-frontier.target.unix.activation.env]
-SHOT_DESIGN_PATHS     = "/lustre/orion/fus187/scratch/nchen/FusionAIHub/configs/shot_design/paths.frontier.yaml"
-SHOT_DESIGN_DATA_ROOT = "/lustre/orion/fus187/proj-shared/nchen/shot_design"
-LABELER_ROOT          = "/lustre/orion/fus187/proj-shared/nchen/labeler"
-SHOT_DESIGN_CORPUS    = "/lustre/orion/fus187/proj-shared/foundation_model"
+SHOT_DESIGN_PATHS     = "${SHOT_DESIGN_PATHS:-/lustre/orion/fus187/scratch/nchen/FusionAIHub/configs/shot_design/paths.frontier.yaml}"
+SHOT_DESIGN_DATA_ROOT = "${SHOT_DESIGN_DATA_ROOT:-/lustre/orion/fus187/proj-shared/nchen/shot_design}"
+LABELER_ROOT          = "${LABELER_ROOT:-/lustre/orion/fus187/proj-shared/nchen/labeler}"
+SHOT_DESIGN_CORPUS    = "${SHOT_DESIGN_CORPUS:-/lustre/orion/fus187/proj-shared/foundation_model}"
 HF_HUB_OFFLINE = "1"
 TOKENIZERS_PARALLELISM = "false"
 HDF5_USE_FILE_LOCKING = "FALSE"
 
-# Dash form, not `shot_design`: pixi rejects underscores in an environment name
-# ("please use only lowercase letters, numbers and dashes"). The python package
-# these environments install is still `shot_design`.
+# Dashes: pixi rejects underscores in an environment name.
 [tool.pixi.environments]
 default = ["cuda"]
 fdp = ["fdp", "cuda"]
@@ -416,8 +231,7 @@ frontier = ["frontier"]
 labelmaker = ["labelmaker", "fdp"]
 shot-design = ["shot-design", "cuda"]
 shot-design-cpu = ["shot-design", "shot-design-cpu"]
-# `shot-design-frontier` first: the first feature wins the activation env, and its
-# roots are the Frontier ones (see feature.shot-design-frontier above).
+# First: the first feature listed wins the activation env.
 shot-design-frontier = ["shot-design-frontier", "shot-design"]
 
 [tool.pytest.ini_options]

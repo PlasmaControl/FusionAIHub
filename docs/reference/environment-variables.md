@@ -4,9 +4,10 @@ sidebar_position: 1
 ---
 
 Every environment variable `shot_design`, `labeler` and the Frontier SLURM
-wrappers read, gathered in one place. Most are set by a pixi activation
-block (`shot-design`, `shot-design-cpu`, `shot-design-frontier` in
-`pyproject.toml`) rather than by hand — see
+wrappers read, gathered in one place. Most get their value from a pixi
+activation block (`shot-design`, `shot-design-cpu`, `shot-design-frontier` in
+`pyproject.toml`) rather than by hand. The roots there are defaults, so a value
+you export wins ([Pixi environments](./pixi-environments.md)). See
 [Adding a cluster](../clusters/adding-a-cluster.md) for how a new cluster
 wires its own values in.
 
@@ -20,9 +21,8 @@ wires its own values in.
 
 An explicit `SHOT_DESIGN_DATA_ROOT` always wins over whatever a paths file
 (below) would resolve `data_root` to — this is what lets a scratch build
-never touch production by accident, and also what makes it dangerous to run
-`pixi run` (which re-asserts the pixi activation values) against a scratch
-target: use the environment's interpreter directly instead.
+never touch production by accident. `pixi run` keeps a root you exported: the
+activation blocks set the roots only as defaults (`${SHOT_DESIGN_DATA_ROOT:-...}`).
 
 ## Paths file selection
 

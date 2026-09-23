@@ -15,12 +15,12 @@ FusionAIHub (FAITH) develops multimodal models and analysis tools for tokamak pl
 
 Run commands from the repository root. Pixi manages Python 3.11 and installs the project in editable mode.
 
-- `pixi install`: install the default CUDA environment.
-- `pixi install -e frontier`: install the Frontier environment; follow `README.md` for FlashAttention setup.
-- `pixi run pytest tests/e2e/test_lora.py -q`: run a focused model test.
-- `pixi run -e labelmaker pytest tests/labelmaker -q`: run labeling tests with their environment dependencies.
-- `pixi run -e shot-design shot_design-test`: run the Shot Designer suite.
-- `pixi run -e shot-design shot_design --help`: inspect the analysis CLI.
+- `pixi install --frozen`: install the default CUDA environment. Always `--frozen`: pixi 0.76 calls the lock out of date, and without it re-solves every environment.
+- `pixi install --frozen -e frontier`: install the Frontier environment; follow `README.md` for FlashAttention setup.
+- `pixi run --frozen pytest tests/e2e/test_lora.py -q`: run a focused model test.
+- `pixi run --frozen -e labelmaker labeler-test`: run the labeler suite.
+- `pixi run --frozen -e shot-design-cpu shot_design-test`: run the Shot Designer suite.
+- `pixi run --frozen -e shot-design shot_design --help`: inspect the analysis CLI.
 
 ## Coding Style & Naming Conventions
 

@@ -113,8 +113,7 @@ against the configured data root and does not source `_stellar_common.sh`.
 Size memory and wall time from the first v4 pilot's measured usage.
 
 The Stellar batch scripts under `scripts/shot_design/` run the interpreter
-directly (never `pixi run`, whose activation would re-point the data root at
-production) and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
+directly and REQUIRE `SHOT_DESIGN_DATA_ROOT` to name a batch root such as
 `/scratch/gpfs/EKOLEMEN/nc1514/ideate/experiments/<name>`; the production
 root is refused (`_stellar_common.sh`). A full batch, from a shot list to a
 summary table:
