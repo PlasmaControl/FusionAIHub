@@ -1,7 +1,7 @@
 """Paths resolve from the environment and nothing else hard-codes a root."""
 from pathlib import Path
 
-from labeler.config import DEFAULT_RAW_CACHE, Paths, git_sha
+from labeler.config import Paths, git_sha
 
 
 def test_default_root_is_group_storage():
@@ -110,13 +110,18 @@ def test_the_label_tables_root_is_the_repo_and_is_overridable(
     assert not tables.exists()
 
 
-def test_raw_cache_defaults_under_the_repo():
-    # Label DATA lives under data/events for the same reason: a run from a
-    # SLURM scratch directory must find the same place a run from the repo
-    # does, so this resolves off this file, never off cwd.
-    assert Paths().raw_cache == DEFAULT_RAW_CACHE
-    assert DEFAULT_RAW_CACHE.name == "raw"
-    assert DEFAULT_RAW_CACHE.parent.name == ".cache"
+def test_raw_cache_follows_the_root(tmp_path):
+    # Beside the 181 prefetched AE shots, on group storage, not in the repository.
+    assert Paths().raw_cache == Paths().root / "raw"
+    assert Paths(root=tmp_path).raw_cache == tmp_path / "raw"
+
+
+def test_spectrograms_live_under_the_root(tmp_path):
+    paths = Paths(root=tmp_path)
+    assert paths.spectrograms == tmp_path / "spectrograms"
+    assert paths.spectrogram_file("alfven_eigenmode", 170790) == (
+        tmp_path / "spectrograms" / "alfven_eigenmode" / "170790.h5"
+    )
 
 
 def test_raw_cache_honours_the_environment(monkeypatch, tmp_path):
