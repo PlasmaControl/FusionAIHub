@@ -45,6 +45,17 @@ def test_a_perfect_ensemble_mean_has_no_spread_error_ratio():
     assert score.spread_error(members, np.zeros((4, 2))) is None
 
 
+def test_nrmse_is_one_for_each_channels_own_mean():
+    # Channels at very different levels: a standard deviation pooled over channels would
+    # count the offsets between them as variation and flatter every forecast.
+    rng = np.random.default_rng(6)
+    obs = rng.normal(size=(40, 3)) + np.array([0.0, 10.0, -5.0])
+    channel_mean = np.broadcast_to(obs.mean(axis=0), obs.shape)
+    assert score.nrmse(channel_mean, obs) == pytest.approx(1.0)
+    assert score.nrmse(obs, obs) == 0.0
+    assert score.nrmse(np.zeros((40, 1)), np.ones((40, 1))) is None  # a flat channel
+
+
 def _arms(gt, rng, edit=0.0, noise=0.1, m=6):
     def arm(offset=0.0):
         return gt + offset + rng.normal(0.0, noise, (m, *gt.shape))

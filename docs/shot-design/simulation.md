@@ -35,8 +35,9 @@ and profiles. `src/shot_design/simulate/score.py` then scores frames `[k0, F)`:
 
 - `skill`: 1 − CRPS / CRPS(persistence). CRPS is the fair (unbiased for any ensemble size)
   estimator; persistence holds the last seed frame. Above 0 the ensemble beats it.
-- `nrmse`: the ensemble mean's RMSE over the measured standard deviation of the predicted
-  frames, next to the same for persistence and the seed mean.
+- `nrmse`: the ensemble mean's RMSE in units of each channel's measured standard deviation
+  over the predicted frames (1 is no better than knowing each channel's own mean there),
+  next to the same for persistence and the seed mean.
 - `spread_error`: ensemble spread over the ensemble mean's error, with the finite-ensemble
   correction; 1 is calibrated, below 1 overconfident.
 - `effect`, `noise`, `effect_to_noise`, `resolved`: the RMS gap between the `proposed` and
