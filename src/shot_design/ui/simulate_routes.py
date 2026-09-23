@@ -13,6 +13,7 @@ import json
 import re
 import shlex
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -26,7 +27,7 @@ router = APIRouter(prefix="/api/design")
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _JOB_ID = re.compile(r"Submitted batch job (\d+)")
-_PANEL_NAME = re.compile(r"^[a-z_]+\.png$")
+_PANEL_NAME = re.compile(r"^[a-z0-9_]+\.png$")
 
 
 def default_submit(cmd: str) -> str:
@@ -54,6 +55,7 @@ def _simulation_dir(ident: str, request: Request) -> Path:
 def submit(ident: str, request: Request):
     _check_ident(ident)
     cmd = request.app.state.paths.simulate_submit_cmd.format(ident=ident)
+    submitted = datetime.now(UTC).isoformat()
     try:
         output = request.app.state.submit(cmd)
     except subprocess.CalledProcessError as exc:
@@ -63,6 +65,12 @@ def submit(ident: str, request: Request):
     match = _JOB_ID.search(output)
     if not match:
         raise HTTPException(502, output)
+    directory = _simulation_dir(ident, request)
+    directory.mkdir(parents=True, exist_ok=True)
+    pending = directory / "submission.json.tmp"
+    pending.write_text(json.dumps({"state": "queued", "submitted": submitted,
+                                   "job_id": match.group(1)}))
+    pending.replace(directory / "submission.json")
     return {
         "ident": ident,
         "job_id": match.group(1),
@@ -73,11 +81,30 @@ def submit(ident: str, request: Request):
 @router.get("/{ident}/simulate")
 def status(ident: str, request: Request):
     _check_ident(ident)
-    status_path = _simulation_dir(ident, request) / "status.json"
-    if not status_path.exists():
-        return {"state": "not_started"}
-    return json.loads(status_path.read_text())
+    directory = _simulation_dir(ident, request)
+    status_path = directory / "status.json"
+    result = (json.loads(status_path.read_text()) if status_path.exists()
+              else {"state": "not_started"})
+    submission = directory / "submission.json"
+    if submission.exists():
+        queued = json.loads(submission.read_text())
+        if not result.get("started") or (
+            datetime.fromisoformat(result["started"])
+            < datetime.fromisoformat(queued["submitted"])
+        ):
+            result = queued
+    if (directory / "metrics.json").exists() or (directory / "report.md").exists():
+        result["has_result"] = True
+    return result
 
+
+@router.get("/{ident}/simulate/metrics")
+def metrics(ident: str, request: Request):
+    _check_ident(ident)
+    path = _simulation_dir(ident, request) / "metrics.json"
+    if not path.exists():
+        raise HTTPException(404, "No simulation metrics for this design yet")
+    return FileResponse(path, media_type="application/json")
 
 @router.get("/{ident}/simulate/report")
 def report(ident: str, request: Request):

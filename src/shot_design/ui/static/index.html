@@ -60,9 +60,13 @@
         <label>Reference shot<input name="ref_shot" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off"></label>
         <label>Segment<select name="segment" class="segment"></select></label>
         <label>Results<input name="n" type="text" inputmode="decimal" value="10" required></label>
-        <label>Constraints (JSON)<textarea name="constraints" rows="5" placeholder='{"ip_mean": {"lo": 1000000}}'></textarea></label>
-        <label>Require labels (comma separated)<input name="require_labels" placeholder="H"></label>
-        <label>Avoid labels (comma separated)<input name="avoid_labels" placeholder="dud"></label>
+        <fieldset class="search-constraints"><legend>Constraints</legend>
+          <div id="search-constraints"></div>
+          <button id="search-add-constraint" type="button">Add constraint</button>
+        </fieldset>
+        <label>Require labels<select name="require_labels" multiple size="5"></select></label>
+        <label>Avoid labels<select name="avoid_labels" multiple size="5"></select></label>
+        <p class="small muted">Use Ctrl or Command to select more than one label.</p>
         <p class="form-error" aria-live="polite"></p>
         <button class="primary" type="submit">Search</button>
       </form>
@@ -229,6 +233,7 @@
         <div id="design-errors" aria-live="assertive"></div>
         <div id="design-warnings" aria-live="polite"></div>
       </section>
+      <section id="design-simulation-results" class="simulation-results" aria-live="polite" hidden></section>
     </section>
   </div>
   <div id="view-info" class="view" hidden>
@@ -236,8 +241,9 @@
     <div id="info-content"><p class="muted">Loading…</p></div>
   </div>
 </main>
-<script src="design.js"></script>
 <script src="assistant.js"></script>
+<script src="simulation.js"></script>
+<script src="design.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

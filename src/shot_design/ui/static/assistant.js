@@ -1,3 +1,15 @@
+// Shared DOM factory for the three page controllers. Text is always appended as text.
+globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
+  const result = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (name.startsWith("on")) result.addEventListener(name.slice(2), value);
+    else result.setAttribute(name, value === true ? "" : String(value));
+  }
+  result.append(...children.flat().filter(child => child !== null && child !== undefined));
+  return result;
+};
+
 // Natural-language shot design. Progress comes exclusively from the server job.
 (function (scope) {
   "use strict";
@@ -11,6 +23,9 @@
   const state = {
     api: null,
     onOpenDesign: null,
+    onSimulateDesign: null,
+    onJobId: null,
+    restoring: false,
     initialized: false,
     busy: false,
     generation: 0,
@@ -23,12 +38,7 @@
   };
   const node = (id) => document.querySelector(`#assistant-${id}`);
 
-  function element(tag, text, className) {
-    const result = document.createElement(tag);
-    result.textContent = text;
-    if (className) result.setAttribute("class", className);
-    return result;
-  }
+  const element = scope.ShotDesignDOM;
 
   function setBusy(busy) {
     state.busy = busy;
@@ -50,13 +60,13 @@
   function renderStages(stages) {
     node("stages").replaceChildren();
     for (const stage of stages || []) {
-      const row = element("li", "", "assistant-stage");
+      const row = element("li", { class: "assistant-stage" });
       row.setAttribute("data-state", stage.status);
-      const heading = element("div", "", "assistant-stage-heading");
-      heading.append(element("strong", stage.label),
-        element("span", stage.status, "assistant-stage-state"));
+      const heading = element("div", { class: "assistant-stage-heading" });
+      heading.append(element("strong", {}, stage.label),
+        element("span", { class: "assistant-stage-state" }, stage.status));
       row.append(heading);
-      if (stage.detail) row.append(element("p", stage.detail, "assistant-stage-detail"));
+      if (stage.detail) row.append(element("p", { class: "assistant-stage-detail" }, stage.detail));
       node("stages").append(row);
     }
   }
@@ -64,25 +74,27 @@
   function renderResult(result) {
     state.result = result;
     const comparisons = result.comparison_shots || [];
-    node("summary").textContent = `Reference shots: ${[result.reference_shot, ...comparisons].join(", ")}` +
-      ` · ${result.reference_shot} supplies the initial state`;
+    const shots = [result.reference_shot, ...comparisons];
+    node("summary").replaceChildren("Reference shots: ", ...shots.flatMap((shot, index) => [
+      index ? ", " : "", element("a", { href: `#shot/${encodeURIComponent(shot)}` }, String(shot)),
+    ]), ` · ${result.reference_shot} supplies the initial state`);
     node("explanation").textContent = result.explanation || "";
     const checks = result.checks || {};
-    const list = element("ul", "", "assistant-checks-list");
-    for (const error of checks.errors || []) list.append(element("li", error, "assistant-error"));
-    for (const warning of checks.warnings || []) list.append(element("li", warning, "assistant-warning"));
+    const list = element("ul", { class: "assistant-checks-list" });
+    for (const error of checks.errors || []) list.append(element("li", { class: "assistant-error" }, error));
+    for (const warning of checks.warnings || []) list.append(element("li", { class: "assistant-warning" }, warning));
     if (Number.isFinite(checks.available_channels) && Number.isFinite(checks.total_channels)) {
-      list.append(element("li", `${checks.available_channels} of ${checks.total_channels} actuator channels available.`));
+      list.append(element("li", {}, `${checks.available_channels} of ${checks.total_channels} actuator channels available.`));
     }
-    if (checks.hdf5_valid) list.append(element("li", "HDF5 saved and checked.", "assistant-ok"));
-    if (checks.needs_seed) list.append(element("li",
-      "IGNITE simulation export still needs a prepared seed. Open the waveform editor to prepare it.",
-      "assistant-warning"));
+    if (checks.hdf5_valid) list.append(element("li", { class: "assistant-ok" }, "HDF5 saved and checked."));
+    if (checks.needs_seed) list.append(element("li", { class: "assistant-warning" },
+      "IGNITE simulation export still needs a prepared seed. Open the waveform editor to prepare it."));
     node("checks").replaceChildren(list);
     node("download").setAttribute("href", `/api/design-assistant/${encodeURIComponent(state.jobId)}/hdf5`);
     node("download").hidden = checks.hdf5_valid === false;
     if (checks.hdf5_valid === false) node("download").removeAttribute("href");
-    node("edit").disabled = !state.onOpenDesign;
+    node("edit").textContent = canSimulate() ? "Simulate" : "Open in actuator editor";
+    node("edit").disabled = !(canSimulate() ? state.onSimulateDesign : state.onOpenDesign);
     node("result").hidden = false;
   }
 
@@ -93,7 +105,12 @@
       !Array.isArray(snapshot.stages) || (state.jobId && snapshot.id !== state.jobId)) {
       throw new Error("The server returned an invalid design status. Retry to check the workflow.");
     }
-    state.jobId = snapshot.id;
+    if (state.jobId !== snapshot.id) {
+      state.jobId = snapshot.id;
+      state.onJobId?.(snapshot.id);
+    }
+    if (state.restoring && snapshot.prompt) node("prompt").value = snapshot.prompt;
+    state.restoring = false;
     renderStages(snapshot.stages);
     node("error").textContent = "";
     node("retry").hidden = true;
@@ -125,8 +142,30 @@
         { signal: state.controller.signal });
       receive(data, generation);
     } catch (error) {
-      fail(error.message || String(error), generation, "poll");
+      if (generation !== state.generation) return;
+      if (error.status === 404) {
+        clearResult();
+        node("status").textContent = "Assistant job unavailable.";
+        node("error").textContent = "This assistant job is no longer on the server. Start a new design.";
+        node("retry").hidden = true;
+        state.retryMode = null;
+        setBusy(false);
+      } else fail(error.message || String(error), generation, "poll");
     }
+  }
+
+  async function attach(jobId) {
+    if (jobId === state.jobId && (state.busy || state.result)) return;
+    const generation = newRequest();
+    clearResult();
+    state.jobId = jobId;
+    state.restoring = true;
+    node("stages").replaceChildren();
+    node("error").textContent = "";
+    node("retry").hidden = true;
+    node("status").textContent = "Reconnecting to your design…";
+    setBusy(true);
+    await poll(generation);
   }
 
   function fail(message, generation, retryMode) {
@@ -164,6 +203,7 @@
     }
     const generation = newRequest();
     state.jobId = null;
+    state.restoring = false;
     state.retryMode = null;
     clearResult();
     node("stages").replaceChildren();
@@ -194,14 +234,19 @@
     return poll(generation);
   }
 
+  function canSimulate() {
+    return Boolean(state.result?.design_id && state.result.checks?.can_export && state.onSimulateDesign);
+  }
+
   async function openDesign(event) {
     event.preventDefault();
-    if (!state.result?.design_id || !state.onOpenDesign || node("edit").disabled) return;
+    const action = canSimulate() ? state.onSimulateDesign : state.onOpenDesign;
+    if (!state.result?.design_id || !action || node("edit").disabled) return;
     const generation = state.generation;
     node("edit").disabled = true;
     node("error").textContent = "";
     try {
-      await state.onOpenDesign(state.result.design_id);
+      await action(state.result.design_id);
     } catch (error) {
       if (generation !== state.generation) return;
       node("error").textContent = `${error.message || String(error)}. You can retry opening the saved revision.`;
@@ -213,7 +258,7 @@
   function renderExamples() {
     if (!node("examples")) return;
     state.examples = EXAMPLES.map(([label, prompt]) => {
-      const button = element("button", label, "assistant-example");
+      const button = element("button", { class: "assistant-example" }, label);
       button.setAttribute("type", "button");
       button.addEventListener("click", () => {
         if (state.busy) return;
@@ -226,12 +271,15 @@
     node("examples").replaceChildren(...state.examples);
   }
 
-  function init({ api, onOpenDesign }) {
+  function init({ api, onOpenDesign, onSimulateDesign, onJobId }) {
     if (!node("form")) return;
     newRequest();
     state.api = api;
     state.onOpenDesign = onOpenDesign;
+    state.onSimulateDesign = onSimulateDesign;
+    state.onJobId = onJobId;
     state.jobId = null;
+    state.restoring = false;
     state.retryMode = null;
     clearResult();
     node("stages").replaceChildren();
@@ -252,5 +300,5 @@
     node("edit").addEventListener("click", openDesign);
   }
 
-  scope.ShotDesignAssistant = { init };
+  scope.ShotDesignAssistant = { init, attach };
 })(globalThis);

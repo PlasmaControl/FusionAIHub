@@ -9,12 +9,25 @@ The Shot Designer's **Actuator editor** starts with real reference shots, lets y
 edit their actuator waveforms, and saves inputs for IGNITE inference. The first
 listed reference supplies the initial state and default actuation.
 
+## Start with the assistant
+
+In **Design a shot**, describe the experiment and submit it. Reference shot numbers
+in the result link to **Shot**. A saved design ready for simulation offers
+**Simulate**, which opens the saved revision and submits it through the editor.
+A design that still needs preparation offers **Open in actuator editor**.
+
+The assistant job ID stays in the URL. Reload reattaches to that job without
+starting another one. Jobs currently live in the server's memory; if a restart or
+history eviction removed the job, the page says it is no longer on the server.
+Saved design revisions remain available from the editor.
+
 ## Design a program
 
 1. Run `pixi run -e shot-design shot_design serve` and open its token link.
-2. Choose **Use as reference** on a search result or shot, or open **Actuator editor**
-   and enter up to six reference shots separated by commas. The first supplies
-   IGNITE's seed. **Average reference actuation** creates an equal physical-unit
+2. Select up to six search results and choose **Design from selected**, or choose
+   **Use as reference** on a shot. You can also enter comma-separated shot numbers
+   in **Actuator editor**. The first supplies IGNITE's seed; the rest are comparisons.
+   Search selection carries your query into Notes. **Average reference actuation** creates an equal physical-unit
    average at matching shot times across compatible channels, replacing current
    edits. Channels missing from any reference retain the first shot's values.
 3. Set the prediction start and end in seconds. Times must lie on the 50 ms
@@ -45,6 +58,26 @@ changed source data requires fresh preparation. Original corpus files and existi
 caches are not modified. Missing actuator measurements remain unavailable for editing.
 Cache token shapes and vocabulary sizes must match the pinned production model;
 caches from another codec generation cannot be exported.
+
+## Simulate a saved revision
+
+**Simulate** becomes available once a revision is saved and can export. The editor
+fetches its simulation status when reopened, including jobs still in the queue.
+Queued and running jobs show elapsed time. Editing keeps the last result visible,
+labelled with its saved revision; the edits are not included in that result.
+Save the changes before submitting another simulation.
+
+Once a result exists, **Run again** asks for confirmation. Results appear under the
+waveform: one table and plot per simulated diagnostic. The error columns compare
+the mean prediction and hold-last-frame baseline with measurements, scaled by
+measured variation. Skill compares the ensemble with that baseline; negative skill
+means worse than holding the last frame. An edit effect below twice the run-to-run
+noise is marked **No — unresolved**. Absent diagnostics appear once as
+**not simulated (diagnostic absent)**, without scores or plots.
+
+The editor reads `/api/design/{id}/simulate/metrics` and the corresponding
+`panels/{modality}.png` routes. A run without `metrics.json` shows a plain message;
+its markdown report remains available through **View simulation report**.
 
 ## What is saved
 
