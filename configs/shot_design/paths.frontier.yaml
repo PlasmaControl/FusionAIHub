@@ -23,3 +23,4 @@ qh_database_csv: ${data_root}/external/QH_Database.csv
 foundation_model_processed_dir: /lustre/orion/fus187/proj-shared/foundation_model   # <shot>_processed.h5 (IGNITE inputs)
 fdp_project_dir: ${data_root}/fdp                                                 # MDSplus unreachable from OLCF
 sentence_transformers_model: sentence-transformers/all-MiniLM-L6-v2
+simulate_submit_cmd: sbatch scripts/slurm_frontier/shot_design_simulate.sh {ident}

@@ -10,10 +10,7 @@ from shot_design.design.actuators import build_actuators
 from shot_design.shotdb.corpus import CorpusReader
 
 SHOT = 990091
-# Generation v4: verified against ignite_prod_v4/runs/mskfull/dynamics_best.pt's own `modalities`
-# tuple (step 3200) -- 15 modalities, every codebook_size 1000. (v2's step13400 checkpoint had 14
-# and mixed 32768/64000/1000; a seed cache written for it is not readable by this generation,
-# which is exactly what program_reference's vocabulary check exists to catch.)
+# The pinned v4 checkpoint has 15 modalities with 1000 codes each.
 PRODUCTION_VOCABS = {
     "ece": 1000,
     "bes": 1000,
@@ -40,7 +37,7 @@ def program_source(paths, monkeypatch):
     root = paths.foundation_model_processed_dir
     root.mkdir(parents=True)
     # 120 complete frames, 50 samples/frame. Mean=150, std=50 for pinj[0].
-    x = np.arange(6001) / 1000
+    x = 1.0 + np.arange(6001) / 1000
     wave = np.repeat(np.tile([100.0, 200.0], 60), 50)
     wave = np.r_[wave, wave[-1]]
     with h5py.File(root / f"{SHOT}_processed.h5", "w") as f:
@@ -51,7 +48,7 @@ def program_source(paths, monkeypatch):
         }.items():
             g = f.create_group(group)
             g["xdata"], g["ydata"] = x, y
-    raw = build_actuators(SHOT, CorpusReader(root), 120)
+    raw = build_actuators(SHOT, CorpusReader(root), 120, t0_s=1.0)
     codes = {
         name: torch.arange(120 * spec["n_tok"], dtype=torch.int32).reshape(
             120, spec["n_tok"]
@@ -83,7 +80,7 @@ def draft(**kwargs):
 
 def vertices(factor=1.2, scale=1):
     return [
-        {"t_s": i * 0.05, "y": factor * scale * (100 if i % 2 == 0 else 200)}
+        {"t_s": 1.0 + i * 0.05, "y": factor * scale * (100 if i % 2 == 0 else 200)}
         for i in range(20, 100)
     ]
 
@@ -112,7 +109,7 @@ def test_average_uses_physical_values_and_keeps_first_reference_seed(averaging_s
     assert got["program"]["proposal"]["shots"] == [SHOT, SHOT + 1]
     channels = {c["key"]: c for c in got["channels"]}
     assert channels["pinj[0]"]["vertices"][:2] == [
-        {"t_s": 1.0, "y": 200.0}, {"t_s": 1.05, "y": 400.0}
+        {"t_s": 2.0, "y": 200.0}, {"t_s": 2.05, "y": 400.0}
     ]
     assert channels["gas_raw[0]"]["vertices"][0]["y"] == 200
     assert channels["nbi.total"]["vertices"][0]["y"] == 3700
@@ -168,8 +165,8 @@ def test_average_missing_donor_channel_retains_first_and_reports_skip(averaging_
     {"comparison_shots": []},
     {"comparison_shots": [SHOT]},
     {"comparison_shots": [SHOT + 9]},
-    {"comparison_shots": [SHOT + 1], "start_s": 0.5},
-    {"comparison_shots": [SHOT + 1], "end_s": 5.01},
+    {"comparison_shots": [SHOT + 1], "start_s": 1.5},
+    {"comparison_shots": [SHOT + 1], "end_s": 6.01},
 ])
 def test_average_rejects_invalid_sources_and_windows(averaging_source, kwargs):
     paths, _, _ = averaging_source
@@ -180,8 +177,8 @@ def test_average_rejects_invalid_sources_and_windows(averaging_source, kwargs):
 @pytest.mark.parametrize("updates", [
     {"reference_shot": SHOT + 1},
     {"comparison_shots": [SHOT + 2]},
-    {"start_s": 1.05},
-    {"end_s": 4.95},
+    {"start_s": 2.05},
+    {"end_s": 5.95},
 ])
 def test_average_snapshot_cannot_be_reused_for_other_sources_or_window(
     averaging_source, updates
@@ -228,13 +225,13 @@ def test_average_covers_all_88_native_channels_with_equal_three_shot_weights(
             offset = 0
             for group, width in groups:
                 g = f.create_group(group)
-                g["xdata"] = np.arange(6001) / 1000
+                g["xdata"] = 1.0 + np.arange(6001) / 1000
                 g["ydata"] = (
                     np.arange(offset + 1, offset + width + 1)[:, None] * wave * factor
                 )
                 offset += width
     cache["actuators"] = torch.tensor(build_actuators(
-        SHOT, CorpusReader(paths.foundation_model_processed_dir), 120
+        SHOT, CorpusReader(paths.foundation_model_processed_dir), 120, t0_s=1.0
     ).z.T, dtype=torch.float16)
     torch.save(cache, paths.data_root / "frame_codes" / f"{SHOT}.pt")
     got = service().average_references(
@@ -262,11 +259,11 @@ def test_average_aligns_absolute_times_with_shifted_prediction_and_donor(
     with h5py.File(donor, "a") as f:
         f["pinj/xdata"][:] -= 0.05
     got = service().average_references(
-        draft(comparison_shots=[SHOT + 1], start_s=2.0, end_s=3.0), paths
+        draft(comparison_shots=[SHOT + 1], start_s=3.0, end_s=4.0), paths
     )
     assert got["validation"]["can_export"]
     points = got["program"]["proposal"]["curves"]["pinj[0]"]
-    assert points[:2] == [{"t_s": 2.0, "y": 350}, {"t_s": 2.05, "y": 250}]
+    assert points[:2] == [{"t_s": 3.0, "y": 350}, {"t_s": 3.05, "y": 250}]
     out = torch.load(service().export_ignite(
         service().DesignProgram(**got["program"]), paths
     ), weights_only=True)
@@ -301,7 +298,7 @@ def test_average_skips_changed_negative_power_without_clipping(averaging_source)
     assert "pinj[0]" not in proposal["curves"]
     assert "negative" in proposal["skipped_channels"]["pinj[0]"]
     points = next(c for c in got["channels"] if c["key"] == "pinj[0]")["vertices"]
-    assert points[:2] == [{"t_s": 1.0, "y": 100}, {"t_s": 1.05, "y": 200}]
+    assert points[:2] == [{"t_s": 2.0, "y": 100}, {"t_s": 2.05, "y": 200}]
 
 
 def test_average_short_donor_retains_full_first_reference_channel(averaging_source):
@@ -339,7 +336,7 @@ def test_reference_replay_and_edit_preserve_complete_reference_stats(program_sou
 def test_shifted_window_slices_tokens_and_context_together(program_source):
     paths, cache = program_source
     out = torch.load(
-        service().export_ignite(draft(start_s=2, end_s=6), paths), weights_only=True
+        service().export_ignite(draft(start_s=3.0, end_s=7), paths), weights_only=True
     )
     assert torch.equal(out["actuators"], cache["actuators"][20:120])
     assert torch.equal(out["codes"]["ece"], cache["codes"]["ece"][20:120])
@@ -358,13 +355,13 @@ def test_total_preserves_member_ratio(program_source):
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({"start_s": 0.5}, "20"),
-        ({"end_s": 5.01}, "50 ms"),
-        ({"end_s": 6}, "80"),
-        ({"start_s": 3, "end_s": 7}, "reference"),
+        ({"start_s": 1.5}, "20"),
+        ({"end_s": 6.01}, "50 ms"),
+        ({"end_s": 7.0}, "80"),
+        ({"start_s": 4.0, "end_s": 8.0}, "reference"),
         ({"edits": {"unknown": vertices()}}, "Unknown"),
         ({"edits": {"nbi.total": vertices(), "pinj[0]": vertices()}}, "overlap"),
-        ({"edits": {"pinj[0]": [{"t_s": 2, "y": 100}]}}, "cover"),
+        ({"edits": {"pinj[0]": [{"t_s": 3.0, "y": 100}]}}, "cover"),
         ({"edits": {"ech_power[0]": vertices()}}, "zero-spread"),
         ({"edits": {"i_coil[0]": vertices()}}, "missing"),
         ({"edits": {"gas_raw[1]": vertices()}}, "missing"),
@@ -542,7 +539,7 @@ def test_total_cannot_turn_on_idle_reference_members(program_source):
         f["pinj/ydata"][:, 1000:1050] = 0
     cache["actuators"] = torch.tensor(
         build_actuators(
-            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120
+            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120, t0_s=1.0
         ).z.T,
         dtype=torch.float16,
     )
@@ -598,13 +595,15 @@ def test_token_changes_invalidate_saved_reference(program_source):
     assert "changed" in " ".join(got["validation"]["errors"])
 
 
-def test_bundle_fallback_and_comparison_overlays(program_source):
+def test_production_cache_and_comparison_overlays(program_source, monkeypatch, tmp_path):
     import shutil
 
-    from shot_design.shotdb.ignite import bundle_dir
+    from shot_design.shotdb import ignite
 
     paths, cache = program_source
-    fallback = bundle_dir(paths) / "frame_codes"
+    fallback = tmp_path / "production_cache"
+    cfg = {**ignite.model_cfg(), "frame_codes_cache": str(fallback)}
+    monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
     fallback.mkdir(parents=True)
     (paths.data_root / "frame_codes" / f"{SHOT}.pt").rename(fallback / f"{SHOT}.pt")
     torch.save(cache, fallback / f"{SHOT + 1}.pt")
@@ -648,7 +647,7 @@ def test_extreme_member_edits_cannot_create_nonfinite_json(program_source):
 
     paths, _ = program_source
     edits = {
-        f"pinj[{i}]": [{"t_s": 1, "y": 1e308}, {"t_s": 4.95, "y": 1e308}]
+        f"pinj[{i}]": [{"t_s": 2.0, "y": 1e308}, {"t_s": 5.95, "y": 1e308}]
         for i in range(8)
     }
     got = service().preview(draft(edits=edits), paths)
@@ -757,7 +756,7 @@ def test_rmp_subset_inherits_configured_coil_cap(program_source, monkeypatch):
         group["ydata"] = np.vstack([low_high, low_high / 2] + [low_high] * 10)
     cache["actuators"] = torch.tensor(
         build_actuators(
-            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120
+            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120, t0_s=1.0
         ).z.T,
         dtype=torch.float16,
     )
@@ -821,7 +820,7 @@ def test_comparison_with_nonfinite_pad_time_is_only_a_warning(program_source):
 def test_changed_negative_power_demand_cannot_export(program_source, key):
     paths, _ = program_source
     got = service().preview(
-        draft(edits={key: [{"t_s": 1, "y": -100}, {"t_s": 4.95, "y": -100}]}), paths
+        draft(edits={key: [{"t_s": 2.0, "y": -100}, {"t_s": 5.95, "y": -100}]}), paths
     )
     assert not got["validation"]["can_export"]
     assert any(
@@ -829,7 +828,7 @@ def test_changed_negative_power_demand_cannot_export(program_source, key):
     )
     with pytest.raises(service().ProgramValidationError):
         service().export_ignite(
-            draft(edits={key: [{"t_s": 1, "y": -100}, {"t_s": 4.95, "y": -100}]}), paths
+            draft(edits={key: [{"t_s": 2.0, "y": -100}, {"t_s": 5.95, "y": -100}]}), paths
         )
 
 
@@ -845,7 +844,7 @@ def test_unchanged_negative_baseline_power_does_not_block_other_edits(
         f["pinj/ydata"][:, 1150:1200] = -1
     cache["actuators"] = torch.tensor(
         build_actuators(
-            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120
+            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120, t0_s=1.0
         ).z.T,
         dtype=torch.float16,
     )
@@ -884,7 +883,7 @@ def test_total_split_cannot_change_negative_member_noise(
         f[f"{group}/ydata"][0, 1000:1050] = -100
     cache["actuators"] = torch.tensor(
         build_actuators(
-            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120
+            SHOT, CorpusReader(paths.foundation_model_processed_dir), 120, t0_s=1.0
         ).z.T,
         dtype=torch.float16,
     )
@@ -912,9 +911,7 @@ def test_total_split_cannot_change_negative_member_noise(
         service().export_ignite(changed_noise, paths)
 
 
-# Vocabularies that are NOT generation v4's (which is 1000 everywhere). 32768/64000 are v2's
-# spectro and video sizes: a v2-era seed cache is exactly the mistake this check has to catch,
-# and its token values are in range for both generations, so only the metadata gives it away.
+# Vocabularies from another bundle must fail even when the tokens fit both codebooks.
 @pytest.mark.parametrize(
     ("modality", "wrong_vocab"),
     [

@@ -52,8 +52,8 @@ This is the layout `dummy_model.py`'s `MultiModalTokamakModel` and
 `compute_preprocessing_stats()` computes normalization statistics for
 (saved to `data/preprocessing_stats.pt`). The IGNITE dynamics model (see
 [IGNITE](../models/ignite.md)) reads a different, tokenized view of a
-mostly-overlapping signal set — its modality table (14 modalities in the v2
-generation, 15 with `mirnov` in v4) is defined independently in
+mostly-overlapping signal set — its v4 modality table (15 modalities, including
+`mirnov`) is defined independently in
 `configs/shot_design/ignite_modalities.yaml`, not derived from this table.
 
 ## Where it lives

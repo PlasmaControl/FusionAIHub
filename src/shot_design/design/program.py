@@ -78,8 +78,8 @@ class DesignProgram(BaseModel):
     created: str | None = None
     reference_shot: Shot
     comparison_shots: list[Shot] = Field(default_factory=list, max_length=5)
-    start_s: FiniteFloat = 1.0
-    end_s: FiniteFloat = 5.0
+    start_s: FiniteFloat = 2.0
+    end_s: FiniteFloat = 6.0
     notes: str = Field(default="", max_length=100_000)
     reference_digest: Digest | None = None
     proposal: ProposalBaseline | None = None

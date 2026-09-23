@@ -1,146 +1,12 @@
 #!/usr/bin/env python
-"""G-ENC: re-encode shots from the corpus and compare with a reference frame-code cache.
+"""G-ENC: compare fresh IGNITE v4 encodes against `model.frame_codes_cache`.
 
     python scripts/shot_design/g_enc.py --device cuda --out runs/genc_v4.json
 
-THE DEFAULT RUN, GENERATION v4. `main` re-encodes `--shots` (default:
-`DEFAULT_V4_SHOTS`, five shots verified present in the production cache) from
-`<shot>_processed.h5` with `shot_design.design.seed.encode_frame_codes` and compares
-each against production's own `--cache-dir` (default `model.frame_codes_cache` in
-`ignite_modalities.yaml` -- the corpus the pinned v4 dynamics checkpoint was actually
-trained on). The v4 bundle ships no `frame_codes/` of its own the way v2's did, so
-this is the only reference available. `fraction_verdict` is the pass bar: EXACT match
-on the eight slow/fast time-series modalities, >= 99% of tokens on the five spectro
-and two video ones (`FRACTION_THRESHOLD_STRICT`/`FRACTION_THRESHOLD_LOOSE`) -- the
-same bar the measurements below already showed v2 actually clears, now written down
-as the criterion instead of an aside. Per-shot, per-modality results and the run's
-overall pass/fail go to `--out` (default `<data_root>/gates/g_enc_v4.json`).
-
-HISTORICAL RECORD, GENERATION v2. Everything below -- the STRICT bit-identical
-`compare`/`verdict` pair, `DEFAULT_SHOTS`, `is_diagnostic`, `ACT_TOL`/`ACT_MIN_PASS`
--- is the ORIGINAL three-shot gate against the v2 bundle's own ten shipped
-`frame_codes/<shot>.pt` files. `main` no longer calls it (the v4 bundle has nothing
-at `<bundle>/frame_codes` to compare against), but the functions and their
-measurements are kept: they are what `fraction_verdict`'s per-family bar is built
-from, and `tests/shot_design/test_seed.py` still pins their exact behaviour.
-
-    # v2, unused by main() below:
-    python scripts/shot_design/g_enc.py --shots 190090 202537 204346 --device cuda
-
-The bundle ships ten production `frame_codes/<shot>.pt` files. This gate rebuilds three of them
-from `<shot>_processed.h5` with `shot_design.design.seed.encode_frame_codes` and asserts:
-
-* every non-actuator modality's codes are BIT-IDENTICAL (`torch.equal`), and
-* the 88 actuator channels agree within float16 tolerance (max |dz| <= 2e-3) on >= 82 of 88,
-  the failures listed by name.
-
-That is a strong claim and it is the point: it says our encoder is the production encoder, not
-something that merely resembles it, which is what makes a Phase-5 rollout on a NEW shot mean
-anything at all. It earned its keep immediately -- see the trailing-pad bug at the end of this
-docstring, worth ~0.04 z on twelve channels and undetectable any other way.
-
-WHAT REPRODUCES AND WHAT DOES NOT (all ten shipped shots, 2026-09-07, V100S / CUDA 12.4 /
-torch 2.6.0, against production's MI250X / ROCm 7.1 / torch 2.10):
-
-    bit-identical on 10/10 shots   bes, ts_core_density, ts_core_temp, ts_tangential_density,
-                                   ts_tangential_temp, cer_ti, cer_rot, mse, filterscopes
-    bit-identical on  8/10         mhr (the two misses agree on >= 99.98 % of tokens)
-    bit-identical on  4/10         co2 (misses >= 99.20 %)
-    bit-identical on  3/10         ece (misses >= 99.991 %)
-    bit-identical on  8/10, 6/10   tangtv_lower, tangtv_upper
-    actuators, 88/88 bit-identical in float16 on 8/10; 78/88 and 77/88 within 2e-3 z on
-    190735 and 190736, the residual on rmp[11] and i_coil[0:6]
-
-WHAT WAS MEASURED ABOUT THE RESIDUAL -- AND WHAT WAS NOT. No production INPUT was ever compared
-against anything. The corpus production encoded from lives on Frontier and is not reachable from
-here; no hash and no value comparison of an input file is part of this evidence. Everything
-below is a statement about our own arithmetic and about the SHAPE of the disagreement, and it is
-deliberately weaker than the first draft of this docstring, which asserted a cause it had not
-measured.
-
-*The video codecs are wildly unstable and the spectro codecs are stable ONLY ON SOME SHOTS.*
-Video first: float64 instead of float32 moves 0.39 % of tangtv_lower's tokens on one GPU, cuda
-versus cpu moves 0.42 % / 0.88 %, and batch sizes 1 / 2 / 4 / 32 give four different code sets.
-|f64 - f32| on the pre-FSQ features reaches 0.061 where the features themselves are ~3.06: a
-deep 3-D conv stack into a 64000-code quantiser puts tokens on bin boundaries, and a code that
-flips when the arithmetic is made MORE accurate cannot be bit-reproduced across GPU vendors by
-any means available here.
-
-The spectro codecs looked stable -- on 190090 / 202537 / 204346, ece / mhr / co2 give identical
-codes on cuda and on cpu, identical codes in float32 and float64, and not one flipped token when
-the codec input is perturbed by 1e-6 or 1e-5 relative (1e-4 moves <= 0.03 %). That invariance is
-SHOT-SPECIFIC, and this was measured afterwards on two other shots (2026-09-07, same login
-node):
-
-    185786   cuda == cpu(4 threads) == cpu(8 threads)      14/14 modalities bit-identical
-    185955   cuda vs cpu(4 threads)   bes 1 token, mhr 4 tokens   (one per affected frame)
-             cuda vs cpu(8 threads)   bes 4 tokens, mhr 4 tokens
-             cpu(4)  vs cpu(8)        bes 3 tokens  -- SAME machine, SAME device, SAME input;
-                                                       only OMP_NUM_THREADS changed
-
-Changing a BLAS thread count reorders a reduction at the 1e-7 level and flips spectro tokens.
-So the spectro codes are marginal in exactly the way the video codes are, just more rarely --
-and the eliminative argument that once concluded "the spectro residual cannot be our arithmetic,
-therefore it is the input" does not survive its own test being run on a second pair of shots.
-(The 88 actuator channels are bit-identical in every one of those pairings; they are NumPy
-arithmetic with no codec, which is why they are the half of this gate that can be trusted to
-reproduce.)
-
-*The spectro disagreement is a scatter of ISOLATED SINGLE TOKENS -- the bin-boundary signature.*
-Diffing our re-encoded 204346 against the shipped file, token by token:
-
-    ece      4 mismatched tokens of 45888, in  4 frames of 239   (one per frame: 17/115/139/221)
-    mhr      9 mismatched tokens of 45888, in  9 frames of 239   (one per frame)
-    co2    367 mismatched tokens of 45888, in 88 frames of 239   (median 2 per affected frame,
-                                                                  75 of the 88 at <= 4)
-    190090 tangtv_lower 145 tokens / 63 frames, tangtv_upper 161 / 45 -- the same scatter
-
-A differently fetched signal perturbs contiguous regions or whole frames; four isolated tokens
-spread over eleven seconds of shot do not look like that. It is the same shape as the 185955
-thread-count flips above, which are unambiguously arithmetic. And the perturbation sweep locates
-the scale rather than excluding it: 1e-4 relative moves <= 0.03 % of tokens, i.e. ~14 of 45888 --
-the same order as the 4 and 9 actually observed. So the margin sits at ~1e-4, comfortably inside
-what an MI250X/ROCm FFT and conv stack differs from a V100S/CUDA one. That is CONSISTENT WITH a
-cross-vendor numerics difference. It is not a demonstration of one, and no claim stronger than
-that is supported by anything measured here.
-
-*The 190735 / 190736 residual is OUTPUT disagreement that no vendor difference explains -- and
-that is as far as it goes.* On those two shots the ACTUATOR block disagrees by 1.8-2.4 z on
-rmp[11]. That block is pure NumPy arithmetic on raw HDF5 values: no codec, no GPU, no quantiser,
-nothing a cross-vendor FFT can reach, so whatever moved it is upstream of this module's
-arithmetic. Their tangtv_upper agrees on only 0.04 % / 0.10 % of tokens as well. A different
-corpus file is the readiest explanation and it is the one this docstring used to assert; the
-assertion is withdrawn. It is output disagreement; input difference not established
-without matched input hashes and the preprocessing provenance of both sides, and neither exists
--- production's corpus is on Frontier and no input file was ever hashed or compared (see the
-paragraph above). What the residual DOES rule out is this module's own codec arithmetic. The
-observation does not transfer to 204346 either way: its actuator block is 88/88 bit-identical to
-the shipped cache, and nothing measured here justifies distrusting 204346's data.
-
-One real bug did surface here and is fixed in `design.actuators`: `CorpusReader.read` strips the
-corpus's trailing all-NaN pad sample, production averaged it in as a zero, and the shortened
-divisor moved all twelve `rmp` channels of 190090 by ~0.04 z. Small, systematic, and invisible
-without this comparison -- which is the argument for the gate.
-
-`--no-video` restricts the run to the twelve non-video modalities under v2's fourteen
-(thirteen under v4's fifteen -- the same flag, read by both `main` and the historical
-`compare`/`verdict` pair). The default keeps the criterion as written, so a shot that
-does not reproduce fails visibly.
-
-WHAT COUNTED AS THE v2 GATE, AND WHAT DID NOT. That historical gate was the three
-shots 190090 / 202537 / 204346 with all fourteen modalities and the 88 actuator
-channels. Anything narrower -- one shot, `--no-video`, `--allow-partial` -- was a
-DIAGNOSTIC: useful, cheap, and able to PASS while the gate failed, which is exactly
-how a one-shot CPU smoke run got quoted as if it were the gate. `is_diagnostic` names
-the rule; `DEFAULT_SHOTS` is that three-shot set, unrelated to `DEFAULT_V4_SHOTS`
-above. The v2 gate's standing verdict was `gates/g_enc.json`, FAILED (190090, 204346)
-and never re-run since the v4 migration superseded it.
-
-Every REQUESTED modality had to be present on both sides and bit-identical under that
-gate. A modality that was asked for and produced nothing is a FAILURE there too, not
-an abstention -- see `compare`/`verdict`. `fraction_verdict`, the v4 default's pass
-function, keeps that same rule for a modality that produced nothing; it only loosens
-the bar for one that DID produce codes.
+Five reference shots cover all 15 modalities: exact match for slow/fast time series,
+at least 99% token agreement for spectro/video. Requested modalities that produce
+no codes fail. Actuator differences are reported per channel at float16 tolerance.
+The v4 bundle ships no frame-code samples; `--cache-dir` selects the training cache.
 """
 
 from __future__ import annotations
@@ -164,44 +30,16 @@ from shot_design.design import seed
 from shot_design.shotdb import ignite
 from shot_design.shotdb.corpus import CorpusReader
 
-DEFAULT_SHOTS = (190090, 202537, 204346)
-
-#: `main`'s default `--shots` against the v4 PRODUCTION cache
-#: (`model.frame_codes_cache`), not the v2 bundle-shipped three. Verified present in
-#: `frame_codes_cache` on 2026-09-19: 190000, 190090, 204346, 190735, 190736. 199597
-#: was considered and dropped -- it is not in that cache.
 DEFAULT_V4_SHOTS = (190000, 190090, 204346, 190735, 190736)
-
-
-def is_diagnostic(shots, *, no_video: bool, allow_partial: bool) -> bool:
-    """Whether a run is narrower than the gate - and so may PASS while the gate fails.
-
-    The G-ENC gate is `DEFAULT_SHOTS`, all fourteen modalities, no codec skipped. A run over a
-    different shot set, without the video codecs, or allowed to proceed with a codec missing is
-    a DIAGNOSTIC: useful, cheap, and not a verdict on the gate. One rule, here, so the report's
-    `"diagnostic"` field, the stdout notice and the tests cannot drift on what counts.
-    """
-    return bool(
-        no_video
-        or allow_partial
-        or sorted(int(s) for s in shots) != sorted(DEFAULT_SHOTS)
-    )
 
 
 #: float16 holds ~3 decimal digits, so two z traces that round to the same float16 differ by at
 #: most this in the units the model reads. The threshold is absolute because the criterion is
 #: about the model's input, not about relative precision.
 ACT_TOL = 2e-3
-ACT_MIN_PASS = 82  # of 88; the known residuals are i_coil[0:6]-shaped and shot-specific
 
 
-#: A full shot's frame count is a property of the pinned generation's `t0_start_s`, not
-#: a constant: v2 started frame 0 at shot time 0.0 s and ran 239 frames; the pinned v4
-#: generation starts at 1.0 s and runs 219 (measured on 190000, 190090, 204346). This
-#: is the FALLBACK for when a cache's own `n_frames` cannot be read; `main` prefers the
-#: reference cache's `n_frames` over this constant. Two caches that agree with each
-#: other over the first 8 frames agree about nothing this gate asks;
-#: `compare(..., expect_frames=None)` skips that check for a diagnostic.
+#: Full-shot v4 caches begin at 1.0 s and hold 219 frames.
 FULL_SHOT_FRAMES = 219
 N_ACTUATOR_CHANNELS = 88
 #: The four keys `ignite_infer.validate_shot` requires, and the dtypes it requires them in.
@@ -289,7 +127,7 @@ def compare(
 
     Raises `ValueError` when either side is not a well-formed frame-code cache, or when the two
     do not cover the same number of frames. Comparing `min(got, ref)` frames would let a SHORT
-    encode compare its own prefix: a cache holding 4 of 239 frames agrees with the shipped file
+    encode compare its own prefix: a cache holding 4 of 219 frames agrees with the shipped file
     on all four and would be declared bit-identical.
     """
     import torch
@@ -320,7 +158,7 @@ def compare(
             continue
         if have is None or want is None:
             # THE DEFECT this gate shipped with: a requested modality that produced nothing used
-            # to land here with `equal=None`, and `verdict` rejected only `equal is False`, so
+            # to land here with `equal=None`, so
             # removing `ece` from an otherwise identical cache PASSED. It is a failure.
             modalities[name] = {
                 "requested": True,
@@ -374,53 +212,13 @@ def compare(
     }
 
 
-def verdict(result: dict, video: tuple[str, ...]) -> tuple[bool, list[str]]:
-    """`(passed, reasons)`. Every REQUESTED modality must be bit-identical -- including one that
-    was not encoded at all, which is the failure this gate used to pass."""
-    reasons = []
-    for name, m in result["modalities"].items():
-        if not m.get("requested", True):
-            continue
-        if m["equal"] is None:
-            reasons.append(f"{name} was requested and {m['note'] or 'is missing'}")
-        elif m["equal"] is False:
-            reasons.append(
-                f"{name} not bit-identical ({m['agreement']:.4%} of tokens agree; "
-                f"{m['n_mismatched_tokens']} tokens in {m['n_frames_affected']} frames, "
-                f"max {m['max_per_frame']} per frame)"
-            )
-    n_ok = result["actuators"]["within_tol"]
-    if n_ok < ACT_MIN_PASS:
-        reasons.append(
-            f"actuators within {ACT_TOL:g} z on {n_ok}/88 channels (< {ACT_MIN_PASS})"
-        )
-    if video:
-        reasons.append(f"(video modalities included: {', '.join(video)})")
-    return not [r for r in reasons if not r.startswith("(")], reasons
-
-
-#: Per-family pass bar for the v4 production-cache gate (`main`'s default flow,
-#: `fraction_verdict` below) -- distinct from `verdict`'s "every requested modality
-#: bit-identical", which is what the historical three-shot v2 gate against the bundle's
-#: own shipped samples still asks. Spectro and video codecs flip an isolated token at a
-#: quantiser bin boundary under cross-vendor float arithmetic (see the module
-#: docstring's measurements); the design spec for the v4 migration
-#: (`.claude/superpowers/specs/2026-09-19-recommender-frontier-port-design.md` section
-#: 3) sets the same bar G-ENC's own measurements already showed v2 actually clears:
-#: exact match for the eight slow/fast time-series modalities, >= 99% of tokens for the
-#: five spectro and two video ones.
+# Spectro/video quantiser boundaries tolerate small numerical differences.
 FRACTION_THRESHOLD_LOOSE = 0.99  # spectro, video
 FRACTION_THRESHOLD_STRICT = 1.0  # slowts, fastts
 
 
 def fraction_verdict(result: dict, families: dict[str, str]) -> tuple[bool, list[str]]:
-    """`(passed, reasons)` for the v4 cache gate: per-modality EXACT-MATCH FRACTION
-    against a threshold that depends on the modality's family, not `verdict`'s "every
-    requested modality must be bit-identical" (which a spectro/video codec is not
-    expected to clear on every shot). A modality that was requested and produced nothing
-    is still an unconditional failure, same as `verdict` -- there is no fraction to
-    compare it against.
-    """
+    """Per-family token agreement; a missing requested modality always fails."""
     reasons = []
     for name, m in result["modalities"].items():
         if not m.get("requested", True):
@@ -506,18 +304,7 @@ def print_table(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """The v4 gate: fresh-encode each `--shots` entry and compare it against
-    production's own `--cache-dir` (the corpus the pinned dynamics checkpoint was
-    trained on), one shot at a time. Unlike the historical three-shot gate above
-    (`compare`/`verdict`, still exercised by the unit tests in
-    `tests/shot_design/test_seed.py`), which requires bit-identity on every requested
-    modality, this default run applies `fraction_verdict`'s per-family bar: exact match
-    for the eight slow/fast time-series modalities, >= 99% of tokens for the five
-    spectro and two video ones -- see
-    `FRACTION_THRESHOLD_LOOSE`/`FRACTION_THRESHOLD_STRICT` for why. The v4 bundle ships
-    no `frame_codes/` of its own (unlike v2's ten shipped shots), so the reference has
-    to come from somewhere production actually wrote, which is what `--cache-dir` names.
-    """
+    """Fresh-encode each shot and compare it with the dynamics training cache."""
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -542,8 +329,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--no-video",
         action="store_true",
-        help="skip tangtv_lower/tangtv_upper, whose codes are not reproducible across float "
-        "precisions or GPU vendors (see the module docstring)",
+        help="skip tangtv_lower/tangtv_upper (diagnostic only)",
     )
     ap.add_argument(
         "--allow-partial",
@@ -579,7 +365,6 @@ def main(argv: list[str] | None = None) -> int:
     bundle = ignite.bundle_dir(paths)
     families = ignite.model_cfg()["families"]
     names = seed.wanted_modalities(include_video=not args.no_video)
-    video = () if args.no_video else seed.VIDEO_MODALITIES
     codecs = ignite.load_codecs(bundle, names=list(names), device=args.device)
 
     report = {
@@ -588,7 +373,7 @@ def main(argv: list[str] | None = None) -> int:
         "torch": torch.__version__,
         "gpu": torch.cuda.get_device_name(0) if args.device == "cuda" else None,
         "bundle": str(bundle),
-        "generation": ignite.model_cfg().get("generation"),
+        "generation": ignite.model_cfg()["generation"],
         "cache_dir": str(cache_dir),
         "corpus": str(paths.foundation_model_processed_dir),
         "include_video": not args.no_video,

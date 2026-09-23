@@ -13,7 +13,7 @@ Three codec families decode to three different tensor shapes, and each is reduce
 a single `(F, C)` (or `(F, 1)` for video) series per arm for the panel/report -- a
 per-frame scalar per channel is what a line plot and a markdown table both want:
 
-  * spectro   -> `(F, C, freq_bins, time_frames)`, reduced to mean |value| in a
+  * spectro   -> `(F, C, freq_bins, time_frames)`, reduced to mean z in a
                  frequency band (`band_power`); `mhr`/`mirnov` use the 10-60 kHz band
                  the brief names, every other spectro modality gets the full band
                  (no named band exists for it).
@@ -70,10 +70,10 @@ def band_power(
     freq_khz: np.ndarray | None,
     band: tuple[float, float] | None,
 ) -> np.ndarray:
-    """``(F, C, Fr, Tb)`` decoded spectrogram -> ``(F, C)`` mean |value| in a band.
+    """``(F, C, Fr, Tb)`` decoded spectrogram -> ``(F, C)`` mean z in a band.
 
     Falls back to the FULL frequency axis (every bin, i.e. an ordinary
-    band-power mean) when ``freq_khz`` is None (see :func:`freq_axis_khz`) or
+    signed mean) when ``freq_khz`` is None (see :func:`freq_axis_khz`) or
     ``band`` is None, or when a given band selects no bin at all (a
     too-coarse ``freq_khz`` for the requested band).
     """
@@ -85,7 +85,7 @@ def band_power(
         if not mask.any():
             mask = np.ones(dec.shape[2], dtype=bool)
     sub = dec[:, :, mask, :]
-    return np.mean(np.abs(sub), axis=(2, 3)).astype(np.float32)
+    return np.mean(sub, axis=(2, 3)).astype(np.float32)
 
 
 def _reduce_video(dec: np.ndarray) -> np.ndarray:

@@ -4,7 +4,7 @@
 One row per prompt of the batch: the source shot and theme, the design the assistant saved
 (reference / comparison shots, which channels it scaled and by how much, its explanation),
 and the simulation's state plus its per-modality metrics scraped from ``report.md`` --
-``frac_static``, ``token_acc``, ``persistence_acc``, ``skill`` (= token_acc - persistence_acc)
+``frac_static`` (proposed), ``frac_static_real``, ``token_acc``, ``persistence_acc``, ``skill`` (= token_acc - persistence_acc)
 and ``divergence_vs_real`` (fraction of predicted tokens that differ between the real and the
 proposed arm). Nothing is computed here that the pipeline did not already write; a design
 without a simulation, or a failed one, keeps its row with the state and the error.
@@ -24,27 +24,35 @@ from pathlib import Path
 import h5py
 import pandas as pd
 
-METRICS = ("frac_static", "token_acc", "persistence_acc", "skill", "divergence_vs_real")
+METRICS = (
+    "frac_static", "frac_static_real", "token_acc", "persistence_acc", "skill",
+    "divergence_vs_real",
+)
 
 
 def _table(report: Path) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     if not report.exists():
         return out
+    metrics = []
     for line in report.read_text().splitlines():
         if (
             not line.startswith("|")
-            or line.startswith("| modality")
             or set(line) <= {"|", "-", " "}
         ):
             continue
         cells = [c.strip() for c in line.strip("|").split("|")]
-        if len(cells) != 6:
+        if cells[0] == "modality":
+            metrics = cells[1:]
+            continue
+        if not metrics or len(cells) != len(metrics) + 1:
             continue
         try:
-            out[cells[0]] = dict(
-                zip(METRICS, (float(c) for c in cells[1:]), strict=True)
-            )
+            out[cells[0]] = {
+                key: float(value)
+                for key, value in zip(metrics, cells[1:], strict=True)
+                if key in METRICS
+            }
         except ValueError:
             continue
     return out
@@ -115,6 +123,7 @@ def _design(ident: str, root: Path) -> dict:
         try:
             with h5py.File(h5s, "r") as f:
                 rec["codec_generation"] = f.attrs.get("codec_generation")
+                rec["frame_origin_s"] = float(f.attrs["frame_origin_s"])
                 rec["dynamics_step"] = int(f.attrs.get("dynamics_step", -1))
                 rec["window_s"] = [float(x) for x in f.attrs.get("window_s", [])]
         except OSError:

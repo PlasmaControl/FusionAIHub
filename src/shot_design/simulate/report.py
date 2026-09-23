@@ -16,7 +16,7 @@ import h5py
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402 (must follow matplotlib.use("Agg"))
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
@@ -31,7 +31,7 @@ QUALITATIVE_SENTENCE = (
 # decoded array reaches this file -- most pressingly that video is NOT raw frames.
 _REDUCTION_NOTE = (
     "decoded/<m> arrays are per-frame reductions of the codec's decoded output, "
-    "not raw decoder output: spectro -> band-power mean|value| over frequency "
+    "not raw decoder output: spectro -> mean z over frequency "
     "(10-60 kHz for mhr/mirnov, full band otherwise), video -> per-frame "
     "channel/space/time mean (F, 1) (raw frames are not stored), slowts/fastts -> "
     "mean over the intra-frame time axis (F, C)."
@@ -41,19 +41,11 @@ _ARM_COLORS = {"gt": "black", "real": "tab:blue", "proposed": "tab:orange"}
 
 
 def frac_static(
-    proposed: dict[str, torch.Tensor], seed_frames: int
+    rollout: dict[str, torch.Tensor], seed_frames: int
 ) -> dict[str, float]:
-    """Frame-to-frame staticness of the PROPOSED rollout's predicted region.
-
-    The fraction of tokens at predicted frame f (``seed_frames <= f < F``)
-    equal to the token at the SAME position in frame f-1. 1.0 = the rollout
-    froze solid from the seed onward (every predicted frame repeats its
-    predecessor); 0.0 = every predicted frame changed at every token
-    position. Defined on ``proposed`` alone -- it describes what the
-    design's own rollout did, not a comparison against ``real`` or ``gt``.
-    """
+    """Fraction of predicted tokens equal to the same position in the previous frame."""
     out: dict[str, float] = {}
-    for m, codes in proposed.items():
+    for m, codes in rollout.items():
         f_total = codes.shape[0]
         if seed_frames <= 0 or seed_frames >= f_total:
             out[m] = float("nan")
@@ -106,13 +98,15 @@ def _write_panel(path: Path, per_arm: dict[str, np.ndarray], seed_frames: int) -
     plt.close(fig)
 
 
-def _render_report(arms: SimulationArms, frac: dict[str, float], meta: dict) -> str:
+def _render_report(
+    arms: SimulationArms, frac: dict[str, dict[str, float]], meta: dict
+) -> str:
     lines = [
         "# Simulation report",
         "",
-        "| modality | frac_static | token_acc | persistence_acc | skill "
-        "| divergence_vs_real |",
-        "|---|---|---|---|---|---|",
+        ("| modality | frac_static | token_acc | persistence_acc | skill "
+         "| divergence_vs_real | frac_static_real |"),
+        "|---|---|---|---|---|---|---|",
     ]
     any_negative_skill = False
     for m in sorted(arms.token_accuracy):
@@ -120,17 +114,18 @@ def _render_report(arms: SimulationArms, frac: dict[str, float], meta: dict) -> 
         persistence_acc = arms.persistence_accuracy[m]
         skill = token_acc - persistence_acc
         any_negative_skill = any_negative_skill or skill < 0
-        fs = frac.get(m, float("nan"))
+        fs = frac["proposed"].get(m, float("nan"))
+        fs_real = frac["real"].get(m, float("nan"))
         divergence = arms.divergence_vs_real.get(m, float("nan"))
         lines.append(
             f"| {m} | {fs:.2f} | {token_acc:.2f} | {persistence_acc:.2f} | "
-            f"{skill:.2f} | {divergence:.2f} |"
+            f"{skill:.2f} | {divergence:.2f} | {fs_real:.2f} |"
         )
     lines.append("")
     if any_negative_skill:
         lines.append(
             QUALITATIVE_SENTENCE.format(
-                generation=meta.get("codec_generation", "v4"),
+                generation=meta["codec_generation"],
                 step=meta.get("dynamics_step"),
             )
         )
@@ -152,6 +147,7 @@ def write(
     defaulting to None and the group being skipped then). Returns
     ``out_dir`` -- the root all three artifacts are written under.
     """
+    meta = {**meta, "frame_origin_s": float(meta["frame_origin_s"])}
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -175,7 +171,10 @@ def write(
             f.attrs[k] = v
         f.attrs["reduction"] = _REDUCTION_NOTE
 
-    frac = frac_static(arms.proposed, arms.seed_frames)
+    frac = {
+        arm: frac_static(getattr(arms, arm), arms.seed_frames)
+        for arm in ("real", "proposed")
+    }
 
     panel_dir = out_dir / "panels"
     for m, per_arm in decoded.items():

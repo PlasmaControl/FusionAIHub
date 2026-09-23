@@ -91,10 +91,6 @@ def _no_production_frame_codes_cache(monkeypatch):
     `tests/shot_design/test_ignite_v4.py`'s `prod_cache` fixture).
     """
     cfg = {k: v for k, v in ignite.model_cfg().items() if k != "frame_codes_cache"}
-    # The fixtures below (seed caches, corpus groups, saved designs) are written in the v2 frame
-    # coordinate, frame 0 at 0.0 s. Pin the origin there so they stay valid whatever generation
-    # is pinned; tests/shot_design/test_frame_origin.py exercises the 1.0 s (v4) origin itself.
-    cfg["t0_start_s"] = 0.0
     monkeypatch.setattr(ignite, "model_cfg", lambda: cfg)
 
 

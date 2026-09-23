@@ -3,7 +3,7 @@
 v4 was pinned from local checkpoints on Frontier (`--pin`) and, since 2026-09-21, is also
 published as the private Hub repo `nc1/IGNITE-v4`, so a machine without the Frontier
 checkpoints (Stellar) installs it with `--download --full`. The gate is therefore "is a
-repo_id pinned", never "is this v2".
+repo_id pinned".
 """
 
 from __future__ import annotations
@@ -56,3 +56,19 @@ def test_download_is_refused_when_no_repo_is_pinned(paths, monkeypatch, capsys):
     rc = cli.cmd_model(_args(download=True))
     err = capsys.readouterr().err
     assert rc == 1 and "not published" in err and "--pin" in err
+
+
+def test_model_status_shows_both_dynamics_install_methods(paths, monkeypatch, capsys):
+    import json
+
+    monkeypatch.setattr(ignite, "model_cfg", lambda: dict(V4))
+    monkeypatch.setattr(cli.config, "load_paths", lambda: paths)
+    manifest = ignite.codec_manifest(ignite.bundle_dir(paths))
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(json.dumps({"modalities": {
+        "ece": {"family": "spectro", "n_tok": 192, "codebook_size": 1000},
+    }}))
+    assert cli.cmd_model(_args()) == 0
+    out = capsys.readouterr().out
+    assert "not installed (--download --full or --pin)" in out
+    assert "192 tok" in out

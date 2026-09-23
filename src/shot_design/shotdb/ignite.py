@@ -41,47 +41,13 @@ class CheckpointMissing(RuntimeError):
 
 
 def model_cfg() -> dict:
-    """The pinned IGNITE generation: `model:` in configs/shot_design/ignite_modalities.yaml.
+    """The IGNITE bundle: `model:` in configs/shot_design/ignite_modalities.yaml (v4).
 
-    Generation v2 was a Hugging Face snapshot (`repo_id` + `revision`, `download_bundle`);
-    generation v4 is a local copy taken with `pin_bundle` from `codec_tmpl`/`dynamics_src` and
-    verified by the sha256 table in its own manifest. `generation` says which, and it is the only
-    key that decides: nothing here infers the generation from the shape of the table.
-
-    `SHOT_DESIGN_IGNITE_GENERATION=<key>` swaps in `model_generations.<key>` from the same file --
-    the whole block, never a merge -- for a cluster that holds another generation's bundle
-    (Stellar: the v2 Hub snapshot). Absent or equal to the pinned generation, `model:` is returned.
+    A local copy taken with `pin_bundle` from `codec_tmpl`/`dynamics_src`, or a snapshot of
+    `repo_id` @ `revision` taken with `download_bundle`; either way verified by the sha256
+    table in its own manifest.
     """
-    return _select_model_cfg(
-        load_yaml("ignite_modalities.yaml"),
-        os.environ.get("SHOT_DESIGN_IGNITE_GENERATION", "").strip(),
-    )
-
-
-def _select_model_cfg(doc: dict, want: str) -> dict:
-    """`model:` unless `want` names another entry of `model_generations` (see model_cfg)."""
-    pinned = doc["model"]
-    if not want or want == pinned.get("generation", "v2"):
-        return pinned
-    others = doc.get("model_generations") or {}
-    if want not in others:
-        raise KeyError(
-            f"SHOT_DESIGN_IGNITE_GENERATION={want!r} names no entry of "
-            f"`model_generations` in ignite_modalities.yaml (pinned: "
-            f"{pinned.get('generation', 'v2')}; available: "
-            f"{', '.join(sorted(others)) or 'none'})"
-        )
-    if want not in _GENERATION_NOTED:
-        _GENERATION_NOTED.add(want)
-        _log.warning(
-            "IGNITE generation %s selected by SHOT_DESIGN_IGNITE_GENERATION (pinned: %s)",
-            want,
-            pinned.get("generation", "v2"),
-        )
-    return others[want]
-
-
-_GENERATION_NOTED: set[str] = set()
+    return load_yaml("ignite_modalities.yaml")["model"]
 
 
 def bundle_dir(paths: Paths) -> Path:
@@ -115,7 +81,7 @@ def pin_bundle(
 ) -> Path:
     """Copy one generation's codecs + dynamics checkpoint into <models_dir> and digest them.
 
-    This is generation v4's replacement for `download_bundle`. The sources are training
+    The sources are training
     directories, not a published snapshot: `codec_tmpl.format(m=name)` is typically a SYMLINK into
     whichever run currently holds the best checkpoint, and those runs keep training. So the copy
     is a real copy of the RESOLVED file (`shutil.copy2` after `Path.resolve()`, never a symlink
@@ -123,9 +89,9 @@ def pin_bundle(
     `check_bundle` re-hashes them, which makes "the weights behind the database changed" a
     detectable event rather than a silent one.
 
-    The manifest is the same shape the v2 Hub bundle shipped -- `modalities` maps each name to its
+    The manifest's `modalities` maps each name to its
     family, n_tok and codebook_size, in canonical token order -- so `load_codecs` and
-    `dynamics_config.modalities_from_manifest` read either generation unchanged.
+    `dynamics_config.modalities_from_manifest` share the same layout.
     """
     cfg = model_cfg()
     families, n_tok, vocabs = cfg["families"], cfg["n_tok"], cfg["production_vocabs"]
@@ -275,8 +241,7 @@ def bundle_identity(paths: Paths) -> dict:
     """What identifies the weights a database was built with: the generation
     and the digest of the bundle's codec manifest.
 
-    v2 used the Hub `revision`; a pinned bundle has none, and its own sha256
-    table cannot serve either -- re-pinning rewrites the codecs, the dynamics
+    The bundle's own sha256 table cannot identify a pin -- re-pinning rewrites the codecs, the dynamics
     file AND the manifest together, so a re-pinned bundle passes its own check.
     What separates one pin from the next is the digest OF the manifest, which
     `design.provenance._bundle_identity` already computes for the encode
@@ -287,7 +252,7 @@ def bundle_identity(paths: Paths) -> dict:
 
     _, manifest_sha, revision = _bundle_identity(bundle_dir(paths))
     return {
-        "generation": model_cfg().get("generation", "v2"),
+        "generation": model_cfg()["generation"],
         "revision": revision,
         "manifest_sha256": manifest_sha,
     }
@@ -301,7 +266,7 @@ def check_same_bundle(old_model: dict, paths: Paths) -> str | None:
         ("revision", "model revision"),
         ("manifest_sha256", "codec manifest digest"),
     ):
-        was = old_model.get(key, "v2" if key == "generation" else None)
+        was = old_model.get(key)
         if was != now[key]:
             return f"{label} changed since the database was built ({was} -> {now[key]})"
     return None
@@ -311,9 +276,8 @@ def download_bundle(paths: Paths, full: bool = False, revision: str | None = Non
     """Copy the model bundle from the Hub into <models_dir>, once.
 
     The Hub is the source of the copy, never a runtime dependency: everything else in this module
-    reads the local directory only. By default the 3.5 GB dynamics checkpoint is left out -- the
-    retrieval embedding needs the 14 codecs (453 MB) and `ignite_min`; `full=True` adds the
-    dynamics model for the Phase-5 rollout. `snapshot_download` skips files already present, so
+    reads the local directory only. By default the dynamics checkpoint is left out;
+    `full=True` adds it for rollouts. `snapshot_download` skips files already present, so
     re-running is a no-op check. The revision is pinned in configs/shot_design/ignite_modalities.yaml so
     a re-upload cannot silently change every embedding in the database.
     """
@@ -357,8 +321,8 @@ def load_codecs(
 ) -> dict[str, tuple[Any, Any, str]]:
     """Load the frozen Phase-A codecs from the LOCAL bundle -> {name: (codec, cfg, family)}.
 
-    `ckpt_dir` is the pinned bundle (`pin_bundle`, or `download_bundle` for v2):
-    `codecs/MANIFEST.json` names the generation's modalities (v4: 15) and their family, plus a
+    `ckpt_dir` is the pinned bundle (`pin_bundle` or `download_bundle`):
+    `codecs/MANIFEST.json` names the 15 modalities and their family, plus a
     sha256 per copied file, and each codec is `codecs/<modality>/codec_best.pt`, a
     torch.save dict carrying `cfg` (the codec's own config dataclass, with the per-channel
     standardisation statistics the trainer injected) and `codec` (the state dict). The dataclass
@@ -372,9 +336,9 @@ def load_codecs(
     if not ckpt_dir.is_dir():
         raise CheckpointMissing(
             f"no IGNITE bundle at {ckpt_dir}. Install it once with\n"
-            f"    shot_design model --pin        (generation v4: copies the local checkpoints)\n"
-            f"    shot_design model --download   (generation v2: Hugging Face snapshot)\n"
-            f"whichever `generation` ignite_modalities.yaml pins; the location is "
+            f"    shot_design model --pin        (copies the local checkpoints)\n"
+            f"    shot_design model --download   (pinned Hugging Face snapshot)\n"
+            f"the location is "
             f"paths.yaml:models_dir / ignite_modalities.yaml:model.local_name."
         )
     # Look for the weights BEFORE importing FusionAIHub. The common case by far is "the bundle
@@ -386,7 +350,7 @@ def load_codecs(
         raise CheckpointMissing(
             f"{ckpt_dir} exists but holds no codec checkpoints: expected "
             f"codecs/MANIFEST.json and codecs/<modality>/codec_best.pt. Re-run "
-            f"`shot_design model --pin` (or `--download` for generation v2)."
+            f"`shot_design model --pin` (or `--download`)."
         )
     man = json.loads(manifest.read_text())
     entries = man["modalities"]
@@ -493,7 +457,7 @@ def filled_channels(processed: Path) -> dict[str, int]:
 
     This is the presence test the encoder trusts. The codec datasets do NOT refuse a placeholder
     group: measured on 185601, whose `bes` is the (64, 1) all-NaN placeholder, CodecPairDataset
-    still yields 239 frames of a constant (std 0.0) spectrogram, which the codec would happily
+    still yields frames of a constant (std 0.0) spectrogram, which the codec would happily
     encode into a meaningless but finite feature. Absence has to be decided from the file.
 
     Not every top-level group is a signal in this sense: the text-embedding campaign's
@@ -543,13 +507,9 @@ def _frames(
     point: a spectro codec does not consume a waveform but a log-power spectrogram, and the STFT
     parameters, standardisation, channel selection and window origin that produced the model's
     training inputs live in those classes. Reproducing them by hand would be an unverifiable
-    guess. Verified instead: with t0_start=0.0 this path reproduces the production frame-code
-    cache shipped in the bundle BIT FOR BIT on shot 190090 -- all 239 frames of all 12 non-video
-    modalities (tests/test_ignite.py keeps a slice of that check).
+    guess. G-ENC verifies this path against the configured production cache.
 
-    Frames go through a DataLoader with CPU workers because the per-frame STFT of 500 kHz data is
-    the cost, not the GPU: 239 co2 frames took 38 s single-process and 1.0 s with 8 workers, with
-    identical codes.
+    Frames use a DataLoader with CPU workers for the per-frame STFT of 500 kHz data.
     """
     import torch
     from torch.utils.data import DataLoader, Subset
@@ -862,8 +822,7 @@ def manifest_block(
         "modalities": names,
         "dims": [int(codecs[n][1].d_model) for n in names],
         "model": {
-            # v2 identified the weights by a Hub revision; a pinned bundle is
-            # identified by the digest of its codec manifest, which is what
+            # A pinned bundle is identified by its codec manifest digest, which is what
             # `check_same_bundle` compares on an incremental add so that two
             # pins cannot end up in one matrix.
             **bundle_identity(paths),

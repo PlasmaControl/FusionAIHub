@@ -97,15 +97,19 @@ root), `SHOT_DESIGN_CONFIG_DIR`, `SHOT_DESIGN_HF_ONLINE` (default offline),
 `LABELER_LABEL_TABLES`, `HF_HOME` (leave it alone; see below), and the
 `OLLAMA_*` family set by `scripts/shot_design/serve_llm.sh`.
 
-## IGNITE generation on Stellar
+## IGNITE v4 on Stellar
 
-The pinned IGNITE generation (v4) is copied from Frontier's proj-shared training
-directories and is not published, so Stellar runs the v2 Hub snapshot at
-`/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE`. Export
-`SHOT_DESIGN_IGNITE_GENERATION=v2` for any `shot_design` command that touches
-IGNITE (`model`, `encode`, `simulate`, the assistant's seed checks); the batch
-scripts under `scripts/shot_design/` do this themselves. See
-[Simulation, "On Stellar"](../shot-design/simulation.md#on-stellar-the-v2-generation-and-batch-runs).
+Stellar runs the pinned v4 bundle at
+`/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE_v4`.
+`model:` in `configs/shot_design/ignite_modalities.yaml` is the only model
+configuration: 15 codecs, 1000 codes each, 1209 tokens per 50 ms frame,
+frame 0 at 1.0 s. The same bundle is published as `nc1/IGNITE-v4` at
+revision `d2f12b82`; install with `shot_design model --download --full`
+and verify with `shot_design model --check`.
+
+The UI submits `scripts/shot_design/simulate.sbatch <ident>` on one A100
+through `paths.yaml`'s `simulate_submit_cmd`. See
+[Simulation on Stellar](../shot-design/simulation.md#on-stellar).
 
 ## Tests
 
