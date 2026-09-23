@@ -33,6 +33,20 @@ def rmse(pred: np.ndarray, obs: np.ndarray) -> float:
     return float(np.sqrt(np.mean((pred - obs) ** 2)))
 
 
+def nrmse(pred: np.ndarray, obs: np.ndarray) -> float | None:
+    """RMSE in units of each channel's standard deviation over the scored frames.
+
+    1 is no better than knowing each channel's own mean there. A standard deviation
+    pooled over channels would count the offsets between them as variation. Channels
+    that never vary are left out; with none left there is no score.
+    """
+    std = obs.std(axis=0)
+    keep = std > 0
+    if not keep.any():
+        return None
+    return rmse(pred[..., keep] / std[keep], obs[..., keep] / std[keep])
+
+
 def spread_error(members: np.ndarray, obs: np.ndarray) -> float | None:
     """Ensemble spread over the error of the ensemble mean; 1 for a reliable ensemble.
 
@@ -53,23 +67,21 @@ def modality_scores(gt: np.ndarray, arms: dict[str, np.ndarray], k0: int) -> dic
     """One modality's entry in ``metrics.json``.
 
     ``gt`` (F, C) covers the whole window and ``arms`` {name: (M, F, C)} the same frames;
-    frames [k0, F) are scored. Persistence holds the last seed frame, the seed mean holds
-    the seed's average, and nRMSE divides by the measured standard deviation over the
-    predicted frames (1 is no better than knowing the window's own mean). With a
-    ``proposed`` and a ``null`` arm, the edit's effect is set against the noise floor.
+    frames [k0, F) are scored. Persistence holds the last seed frame and the seed mean
+    holds the seed's average. With a ``proposed`` and a ``null`` arm, the edit's effect
+    is set against the noise floor.
     """
     obs = gt[k0:]
     persistence = np.broadcast_to(gt[k0 - 1], obs.shape)
     seed_mean = np.broadcast_to(gt[:k0].mean(axis=0), obs.shape)
     real = arms["real"][:, k0:]
-    scale = float(obs.std())
     crps_real = float(crps(real, obs).mean())
     crps_persistence = float(np.abs(persistence - obs).mean())
     out = {
         "nrmse": {
-            "real": _ratio(rmse(real.mean(axis=0), obs), scale),
-            "persistence": _ratio(rmse(persistence, obs), scale),
-            "seed_mean": _ratio(rmse(seed_mean, obs), scale),
+            "real": nrmse(real.mean(axis=0), obs),
+            "persistence": nrmse(persistence, obs),
+            "seed_mean": nrmse(seed_mean, obs),
         },
         "crps": {"real": crps_real, "persistence": crps_persistence},
         "skill": _skill(crps_real, crps_persistence),
