@@ -64,16 +64,7 @@
     return [...keep].sort((a, b) => a - b).map((i) => points[i]);
   }
 
-  function element(tag, attrs = {}, ...children) {
-    const result = document.createElement(tag);
-    for (const [name, value] of Object.entries(attrs)) {
-      if (value === null || value === undefined || value === false) continue;
-      if (name.startsWith("on")) result.addEventListener(name.slice(2), value);
-      else result.setAttribute(name, value === true ? "" : String(value));
-    }
-    result.append(...children.flat().filter((child) => child !== null && child !== undefined));
-    return result;
-  }
+  const element = scope.ShotDesignDOM;
 
   function svgElement(tag, attrs = {}) {
     const result = document.createElementNS(SVG_NS, tag);
@@ -947,12 +938,12 @@
     catch (error) { setMessage(node("design-errors"), [error.message], "design-error-list"); }
   }
 
-  async function openDesign(referenceShot) {
+  async function openDesign(referenceShot, comparisons = [], notes = "") {
     const shot = Number(referenceShot);
     if (!Number.isSafeInteger(shot) || shot < 0) throw new Error("Reference must be a whole shot number");
     cancelPendingPreview();
     state.draft += 1;
-    state.program = emptyProgram(shot);
+    state.program = { ...emptyProgram(shot), comparison_shots: comparisons, notes };
     state.response = null;
     state.selectedKey = null;
     state.selectedIndex = null;

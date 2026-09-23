@@ -181,3 +181,11 @@ dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wr
   .design-point-editor { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .design-point-editor button { width: 100%; }
 }
+
+.retrieval-channels { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.retrieval-channel { background: var(--soft); border: 1px solid var(--line); border-radius: 12px; padding: 2px 7px; font-size: 12px; }
+.search-constraints { border: 1px solid var(--line); min-width: 0; padding: 8px; margin: 12px 0; }
+.constraint-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.constraint-row select { grid-column: 1 / -1; }
+.constraint-row input { min-width: 0; }
+.shot-number input[type=checkbox] { width: auto; margin-right: 8px; }

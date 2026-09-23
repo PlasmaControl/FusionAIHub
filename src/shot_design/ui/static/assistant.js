@@ -1,3 +1,15 @@
+// Shared DOM factory for the three page controllers. Text is always appended as text.
+globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
+  const result = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (name.startsWith("on")) result.addEventListener(name.slice(2), value);
+    else result.setAttribute(name, value === true ? "" : String(value));
+  }
+  result.append(...children.flat().filter(child => child !== null && child !== undefined));
+  return result;
+};
+
 // Natural-language shot design. Progress comes exclusively from the server job.
 (function (scope) {
   "use strict";
@@ -23,12 +35,7 @@
   };
   const node = (id) => document.querySelector(`#assistant-${id}`);
 
-  function element(tag, text, className) {
-    const result = document.createElement(tag);
-    result.textContent = text;
-    if (className) result.setAttribute("class", className);
-    return result;
-  }
+  const element = scope.ShotDesignDOM;
 
   function setBusy(busy) {
     state.busy = busy;
@@ -50,13 +57,13 @@
   function renderStages(stages) {
     node("stages").replaceChildren();
     for (const stage of stages || []) {
-      const row = element("li", "", "assistant-stage");
+      const row = element("li", { class: "assistant-stage" });
       row.setAttribute("data-state", stage.status);
-      const heading = element("div", "", "assistant-stage-heading");
-      heading.append(element("strong", stage.label),
-        element("span", stage.status, "assistant-stage-state"));
+      const heading = element("div", { class: "assistant-stage-heading" });
+      heading.append(element("strong", {}, stage.label),
+        element("span", { class: "assistant-stage-state" }, stage.status));
       row.append(heading);
-      if (stage.detail) row.append(element("p", stage.detail, "assistant-stage-detail"));
+      if (stage.detail) row.append(element("p", { class: "assistant-stage-detail" }, stage.detail));
       node("stages").append(row);
     }
   }
@@ -68,16 +75,15 @@
       ` · ${result.reference_shot} supplies the initial state`;
     node("explanation").textContent = result.explanation || "";
     const checks = result.checks || {};
-    const list = element("ul", "", "assistant-checks-list");
-    for (const error of checks.errors || []) list.append(element("li", error, "assistant-error"));
-    for (const warning of checks.warnings || []) list.append(element("li", warning, "assistant-warning"));
+    const list = element("ul", { class: "assistant-checks-list" });
+    for (const error of checks.errors || []) list.append(element("li", { class: "assistant-error" }, error));
+    for (const warning of checks.warnings || []) list.append(element("li", { class: "assistant-warning" }, warning));
     if (Number.isFinite(checks.available_channels) && Number.isFinite(checks.total_channels)) {
-      list.append(element("li", `${checks.available_channels} of ${checks.total_channels} actuator channels available.`));
+      list.append(element("li", {}, `${checks.available_channels} of ${checks.total_channels} actuator channels available.`));
     }
-    if (checks.hdf5_valid) list.append(element("li", "HDF5 saved and checked.", "assistant-ok"));
-    if (checks.needs_seed) list.append(element("li",
-      "IGNITE simulation export still needs a prepared seed. Open the waveform editor to prepare it.",
-      "assistant-warning"));
+    if (checks.hdf5_valid) list.append(element("li", { class: "assistant-ok" }, "HDF5 saved and checked."));
+    if (checks.needs_seed) list.append(element("li", { class: "assistant-warning" },
+      "IGNITE simulation export still needs a prepared seed. Open the waveform editor to prepare it."));
     node("checks").replaceChildren(list);
     node("download").setAttribute("href", `/api/design-assistant/${encodeURIComponent(state.jobId)}/hdf5`);
     node("download").hidden = checks.hdf5_valid === false;
@@ -213,7 +219,7 @@
   function renderExamples() {
     if (!node("examples")) return;
     state.examples = EXAMPLES.map(([label, prompt]) => {
-      const button = element("button", label, "assistant-example");
+      const button = element("button", { class: "assistant-example" }, label);
       button.setAttribute("type", "button");
       button.addEventListener("click", () => {
         if (state.busy) return;
