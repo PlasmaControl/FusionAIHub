@@ -1,55 +1,193 @@
-:root { --ink: #1a1a1a; --quiet: #666; --rule: #ddd; --warn: #b2182b;
-        --present: #1b7837; --absent: #777; --note: #7a5c00; }
+:root {
+  --paper: #eceeec;
+  --panel: #fff;
+  --ink: #1b211e;
+  --muted: #69736e;
+  --rule: #cdd3cf;
+  --label: #0e8a8c;
+  --confirmed: #0e8a8c;
+  --unsaved: #d69a00;
+  --changed: #6b4fa0;
+  --unreviewed: #d3d8d5;
+  --error: #b3261e;
+  --veil: rgba(236, 238, 236, 0.62);
+  --gutter: 96px;
+  color-scheme: light;
+  font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #151a18;
+    --panel: #1d2321;
+    --ink: #e4e8e6;
+    --muted: #9aa4a0;
+    --rule: #333b38;
+    --label: #2bb3b1;
+    --confirmed: #2bb3b1;
+    --changed: #9b7fd0;
+    --unreviewed: #3a423f;
+    --error: #f2b8b5;
+    --veil: rgba(21, 26, 24, 0.62);
+    color-scheme: dark;
+  }
+}
+
 * { box-sizing: border-box; }
+
 body {
-  margin: 0; padding: 1rem 1.5rem; color: var(--ink);
-  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  margin: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--paper);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
-header { display: flex; gap: 1rem; align-items: baseline; flex-wrap: wrap; }
-h1 { font-size: 1.1rem; margin: 0 1rem 0 0; font-weight: 600; }
-h2 { font-size: .95rem; margin: 1.5rem 0 .5rem; font-weight: 600; }
-label { font-size: .85rem; color: var(--quiet); }
-select { font: inherit; padding: .2rem; max-width: 22rem; }
-.tag {
-  font-size: .8rem; color: var(--quiet); border: 1px solid var(--rule);
-  border-radius: 3px; padding: 0 .4rem;
+
+button, select, input {
+  font: inherit;
+  color: inherit;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 3px 8px;
 }
-.tag:empty { display: none; }
-.guidance {
-  max-width: 62rem; border-left: 3px solid var(--rule);
-  padding-left: .8rem; color: #333;
+
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.5; }
+:focus-visible { outline: 2px solid var(--label); outline-offset: 1px; }
+kbd { font: inherit; font-size: 11px; opacity: 0.7; }
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
+  overflow: hidden;
 }
-.status { min-height: 1.5rem; color: var(--quiet); }
-.status.error { color: var(--warn); font-weight: 600; }
-/* Something the render wants said about the data - that this shot has no
-   label row - reads as information, not as the failure red is reserved for. */
-.status.note { color: var(--note); font-weight: 600; }
-/* An empty error line must not hold open a gap above the figure. */
-.status.error:empty { min-height: 0; }
-/* Pinned to the top or bottom edge of the viewport, whichever it would
-   otherwise scroll past,
-   so Mark and Save are on screen wherever the reviewer is - reading the
-   roster, the hint, or a spectrogram taller than the window. `sticky`
-   rather than `fixed`: it sits in its own place under the figure whenever
-   that place is visible, and never covers the figure. */
-.controls { display: flex; gap: .5rem; align-items: center; margin: .5rem 0;
-            flex-wrap: wrap; position: sticky; top: 0; bottom: 0; z-index: 5;
-            background: #fff; padding: .4rem 0; border-top: 1px solid var(--rule); }
-button { font: inherit; padding: .35rem .8rem; cursor: pointer; }
-button:disabled { opacity: .5; cursor: default; }
-.hint { max-width: 62rem; font-size: .85rem; color: var(--quiet); margin: .2rem 0; }
-.what { max-width: 62rem; margin: 1rem 0; color: #333; }
-.what summary { cursor: pointer; color: var(--quiet); }
-/* The figure is as tall as its panels and the page scrolls to it; a long
-   spectrogram is read by scrolling, which is what the reviewer asked for. */
-#figure { min-height: 200px; }
-table { border-collapse: collapse; font-size: .85rem; }
-td, th { border-bottom: 1px solid var(--rule); padding: .25rem .7rem .25rem 0;
-         text-align: left; }
-tr.current { font-weight: 600; }
-code { background: #f4f4f4; padding: 0 .2rem; }
-.mark-list { display: flex; gap: .4rem; flex-wrap: wrap; }
-.mark { font-size: .8rem; border: 1px solid var(--rule); border-radius: 3px;
-        padding: 0 .4rem; }
-.mark.present { border-color: var(--present); color: var(--present); }
-.mark.absent { border-color: var(--absent); color: var(--absent); }
+
+#shot { width: 7em; margin-left: 4px; }
+#count, #tier, #saved { color: var(--muted); }
+#dirty { color: var(--unsaved); font-size: 16px; line-height: 1; }
+#status { margin-left: auto; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+#status.error { color: var(--error); }
+#help { width: 28px; padding: 3px 0; }
+
+.pill { padding: 1px 9px; border-radius: 999px; background: var(--unreviewed); }
+.pill:empty { display: none; }
+.pill.confirmed { background: var(--confirmed); color: #fff; }
+.pill.changed { background: var(--changed); color: #fff; }
+
+#top {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  background: var(--panel);
+}
+
+canvas { display: block; width: 100%; }
+#rows canvas { cursor: grab; }
+#rows canvas:active { cursor: grabbing; }
+
+#rows .failure { margin: 0; padding: 40px 12px 40px var(--gutter); color: var(--muted); }
+body.busy #rows, body.busy .track canvas { opacity: 0.35; pointer-events: none; }
+
+#axis-row {
+  position: sticky;
+  bottom: 0;
+  height: 24px;
+  background: var(--panel);
+  border-top: 1px solid var(--rule);
+}
+
+#bottom {
+  max-height: 42vh;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding-bottom: 10px;
+  border-top: 1px solid var(--rule);
+}
+
+.track { position: relative; margin-top: 6px; }
+.track .name {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+#source-track { height: 22px; }
+#label-track { height: 40px; cursor: crosshair; touch-action: none; }
+
+#controls, #queue { padding: 0 12px 0 var(--gutter); }
+#controls { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+#swatches { display: flex; gap: 6px; margin-right: auto; }
+.swatch { display: inline-flex; align-items: center; gap: 6px; }
+.swatch::before { content: ""; width: 11px; height: 11px; border-radius: 2px; background: var(--c); }
+.swatch[aria-pressed="true"] { border-color: var(--ink); }
+button.primary { background: var(--label); border-color: var(--label); color: #fff; }
+
+#queue {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 68px; /* three rows of chips */
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+}
+.chip {
+  position: relative;
+  height: 20px;
+  padding: 0 6px;
+  scroll-snap-align: start;
+  font-size: 12px;
+  border-color: transparent;
+  border-radius: 3px;
+  background: var(--unreviewed);
+}
+.chip.confirmed { background: var(--confirmed); color: #fff; }
+.chip.changed { background: var(--changed); color: #fff; }
+.chip.current { border-color: var(--ink); }
+.chip.dirty::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--unsaved);
+}
+
+#cursor {
+  position: fixed;
+  width: 1px;
+  background: var(--ink);
+  opacity: 0.5;
+  pointer-events: none;
+}
+#cursor-time {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  padding: 0 4px;
+  font-size: 11px;
+  background: var(--panel);
+  white-space: nowrap;
+}
+
+dialog {
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.3); }
+dialog td { padding: 2px 16px 2px 0; }
+dialog form { margin-top: 10px; text-align: right; }
