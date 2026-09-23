@@ -11,6 +11,12 @@ rollouts on Stellar. It builds on the earlier
 [IGNITE Rollout Quality Plan](./ignite-rollout-quality-plan.md), which was written against an
 older run. The design itself is in the [IGNITE design note](./ignite.md).
 
+**Update, 2026-09-22 (iteration 2).** Stage 1 is in code: the exact KV cache, the placeholder
+clamp, fixes for B1, B3, B5, B6, B8 and B11, and `shot_design simulate` rewritten to score
+ensembles against persistence with a null arm ([Simulation](../shot-design/simulation.md)).
+The decode-settings sweep and the held-out multi-shot evaluation were not run; the owner
+asked for the ideas, not a full evaluation or a new architecture.
+
 ## The answer
 
 v4 rollouts do not beat persistence in any modality in decoded space, and their paired
@@ -46,7 +52,7 @@ and 3 retrain, which needs the decisions listed at the end.
 | objective | cosine-prior masked CE over all 100 frames, seed frames included; scheduled sampling 0; `gen_mask_p` 0; dropout 0; weight decay 0; flat lr 1e-3; AdamW β = (0.9, 0.9); equal weight per modality, so 8/15 of the loss sits on 33 of the 1,209 tokens |
 | selection | best masked CE, 2.169 at step 3,200 (generation CE 2.728) |
 | data | 8,752 shots, 190000–204999 |
-| rollout | each new frame starts fully masked; every position sampled with `torch.multinomial` at T = 1 on every pass; the top-k by p(sampled) revealed on a cosine schedule; Gumbel reveal off (`IGNITE_MASKGIT_GUMBEL` = 0); no KV cache, so every pass re-encodes the whole past; fp32. The 16 v4 rollouts used 4 passes (the default is 10) |
+| rollout | each new frame starts fully masked; every position sampled with `torch.multinomial` at T = 1 on every pass; the top-k by p(sampled) revealed on a cosine schedule; Gumbel reveal off (now `SamplerConfig.gumbel`, default 0); no KV cache, so every pass re-encodes the whole past (the exact cache is now opt-in, `rollout(kv_cache=True)`); fp32. The 16 v4 rollouts used 4 passes (the default is 10) |
 
 The v2 production run it replaced used scheduled sampling 0.75 and dropout 0.3 and was selected
 on generation CE. v4 turned all three off. The trainer's argv, split and loss history are only
@@ -156,35 +162,41 @@ average (Frontier job 5218866), which is the chaotic sensitivity of item 3 above
 
 | id | where | what | status |
 |---|---|---|---|
-| B1 | `ignite/eval_dynamics.py:298-305` | `rollout_shot` reads an undefined `shot` whenever `IGNITE_ACT_GLOBAL` is set (NameError) and overwrites the caller's `cache["actuators"]` | open |
+| B1 | `ignite/eval_dynamics.py:298-305` | `rollout_shot` reads an undefined `shot` whenever `IGNITE_ACT_GLOBAL` is set (NameError) and overwrites the caller's `cache["actuators"]` | fixed: `shot` is a parameter and the cache is left alone |
 | B2 | shot_design, `_stellar_common.sh`, `ignite_modalities.yaml` | silent fallbacks to the retired v2 generation and its 0.0 s frame origin | fixed (v4 only) |
-| B3 | `ignite/eval_dynamics.py:146-185` | `load_model` cannot restore `lag_embed_k` or tell CTF and self-forcing arms apart | open |
+| B3 | `ignite/eval_dynamics.py:146-185` | `load_model` cannot restore `lag_embed_k` or tell CTF and self-forcing arms apart | fixed: shapes come from the weights, every saved `cfg_*` field is restored |
 | B4 | the pinned `dynamics_best.pt` | selected as the best infiller (`best_metric 'masked'`) | Stage 2 |
-| B5 | `shot_design/simulate/decode.py` | `freq_axis_khz` is `None` when `band_pool > 0`, which silently gives the full band | open |
-| B6 | `shot_design/simulate/core.py:1-11, 125-128` | the docstrings say the arms differ only through the actuators; only the random draw counts are matched | open |
-| B8 | `DynamicsConfig`, `train_dynamics.sh`, the mskfull run | three different scheduled-sampling defaults (0.15 over 40 k steps, 0.75 over 2 k, 0.0) | open |
+| B5 | `shot_design/simulate/decode.py` | `freq_axis_khz` is `None` when `band_pool > 0`, which silently gives the full band | fixed: a pooled band sits at its bins' mean frequency |
+| B6 | `shot_design/simulate/core.py:1-11, 125-128` | the docstrings say the arms differ only through the actuators; only the random draw counts are matched | fixed: the arms share random numbers (Gumbel-max), and a null arm measures what sampling alone does |
+| B8 | `DynamicsConfig`, `train_dynamics.sh`, the mskfull run | three different scheduled-sampling defaults (0.15 over 40 k steps, 0.75 over 2 k, 0.0) | fixed: one default, 0.75 over 2 k steps, in `DynamicsConfig` |
 | B9 | `simulate/decode.py:88` and the paper's decode scripts | `np.abs` of signed standardised log-power folded values below the mean onto values above it (BES 54 %, CO2 86 % of in-band values are negative); it inverted the draft's BES "rise" | fixed |
 | B10 | `simulate/report.py` and the paper's figure script | `frac_static` computed on the proposed arm only, so a hallucinated placeholder passed the static filter and a frozen proposed arm was dropped | fixed: the report gives both arms; the figures drop a modality only when its *measured* tokens are static (a placeholder), never on an arm |
-| B11 | `ignite/dynamics_config.py:182` | `actuator_dim` defaults to 70; v4 needs 88 (`load_model` infers it, and every v4 log prints `actuator_dim 70 -> 88`) | open |
+| B11 | `ignite/dynamics_config.py:182` | `actuator_dim` defaults to 70; v4 needs 88 (`load_model` infers it, and every v4 log prints `actuator_dim 70 -> 88`) | fixed: 88, the actuator spec's width |
 
 ## What to change
 
 ### Stage 1: no retraining (days, Stellar)
 
-- **Exact KV cache.** It is exact because a past frame never attends to the new one: spatial
-  attention stays within a frame, temporal attention is causal, and actuators are added per
-  frame. Cache each committed frame's keys and values per layer and run the S passes over the
-  1,209 new tokens only. Estimated 17–73× fewer FLOPs per rollout, which is what makes ensembles
-  and 10+ passes affordable.
-- **Clamp placeholders** (H8).
-- **An evaluation harness that can say no.** N-member ensembles per arm; decoded-space RMSE,
+- **Exact KV cache** (done). It is exact because a past frame never attends to the new one:
+  spatial attention stays within a frame, temporal attention is causal, and actuators are added
+  per frame. Each committed frame's keys and values are cached per layer and the S passes run
+  over the 1,209 new tokens only. Measured on the pinned v4 checkpoint (V100S, fp32): logits
+  agree with the uncached path to 4e-5 (total variation 6e-6); 3 frames × 10 passes take 4.6 s
+  instead of 42.2 s; an 80-frame, 10-pass member takes 106 s at a 16.6 GiB peak, about 30×
+  less than the uncached path. `rollout(..., kv_cache=True)`; the default path is unchanged.
+- **Clamp placeholders** (H8, done). `rollout(..., hold=placeholders(seed))` keeps a modality
+  whose seed codes never change at that code.
+- **An evaluation harness that can say no.** Per design, done: `shot_design simulate` runs
+  ensembles of real, proposed and null arms and reports CRPS skill against persistence,
+  spread/error and effect against noise. Not built: the multi-shot held-out harness with
+  climatology and analog baselines. N-member ensembles per arm; decoded-space RMSE,
   CRPS and energy score against persistence, climatology and a nearest-analog shot; seed-spread
   intervals on every paired effect; the null-edit and seed-only controls (H3) reported beside
   every real edit; the codec-only ceiling (H1) per modality.
 - **The decode-settings sweep** (H7), plus the Halton reveal order, which replaces the confidence
-  order without retraining.
-- **Fix** B1, B3, B5, B6, B8 and B11; recover the v4 trainer's argv, split and loss history
-  from Frontier.
+  order without retraining. Not run.
+- **Fix** B1, B3, B5, B6, B8 and B11 (done); recover the v4 trainer's argv, split and loss
+  history from Frontier (not done).
 
 Stage 1 will not make v4 skilful, and it is not meant to. It measures how far the codecs and the
 recipe are from skill, and it keeps unsupported effect sizes out of the paper.
