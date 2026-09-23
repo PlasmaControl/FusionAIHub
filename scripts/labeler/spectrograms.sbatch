@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=15G
+#SBATCH --mem=13G
 #SBATCH --time=00:15:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -27,7 +27,9 @@
 #                       5.63 GB, i.e. 1.41 GB per worker; the parent holds ~0.1 GB
 #   The work is CPU-bound: a 312 MB raw file reads in well under a second.
 #   cpus-per-task=8   8 workers; the idle start and the last round cost a few percent.
-#   mem=15G           8 x 1.41 + 0.1 = 11.4 GB if every worker peaks at once; x 1.3 -> 15G.
+#   pilot 2939069     8 shots, 8 workers: 13 s wall, MaxRSS 9.84 GiB (1.23 per worker), i.e.
+#                     65.6 % of the 15G it asked for; too short for jobstats to give a CPU number.
+#   mem=13G           the pilot's 9.84 GiB peak x 1.3 (76 % of it at that peak).
 #   time=00:15:00     180 x 7.5 s / 8 = 169 s; x 2 for cold reads and contention, plus start.
 #   The pilot runs at this same shape, so its MaxRSS is the peak the full run will meet.
 set -euo pipefail
