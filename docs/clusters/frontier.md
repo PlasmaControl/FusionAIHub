@@ -105,8 +105,14 @@ contract (tool-call emulation, error handling) and the blurb backfill.
 
 ## IGNITE model pins
 
+`model:` in `configs/shot_design/ignite_modalities.yaml` is the model
+configuration on both Frontier and Stellar. Frontier's
+`paths.frontier.yaml` sets `simulate_submit_cmd` to
+`sbatch scripts/slurm_frontier/shot_design_simulate.sh {ident}`;
+Stellar uses its own single-A100 wrapper with the same v4 bundle.
+
 The dynamics model pinned for this port is the **v4 generation**: 15
-modalities (the 14 of v2 plus `mirnov`), a 1000-entry vocabulary per
+modalities including `mirnov`, a 1000-entry vocabulary per
 modality, 1209 tokens per frame, `t0_start_s: 1.0`, 219 frames per full
 shot, and 88 actuators. The dynamics checkpoint is
 `ignite_prod_v4/runs/mskfull/dynamics_best.pt` at step 3200 — an early

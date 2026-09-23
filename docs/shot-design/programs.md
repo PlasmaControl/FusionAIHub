@@ -86,7 +86,7 @@ bundle directory on Python's module search path:
 ```python
 from ignite_infer import load_dynamics, load_shot, rollout
 
-model, cfg = load_dynamics("/path/to/IGNITE/ignite_dynamics_prod_nfullrs2_step13400.pt")
+model, cfg = load_dynamics("/path/to/IGNITE_v4/ignite_dynamics_prod_v4_mskfull_step3200.pt")
 program = load_shot("/path/to/design-export.pt")
 result = rollout(model, cfg, program, seed=0)
 ```
