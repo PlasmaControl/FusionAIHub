@@ -13,7 +13,7 @@ import math
 import secrets
 import threading
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, get_args
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -30,8 +30,41 @@ COOKIE = "shot_design_token"
 _LOCATE_LOCK = threading.Lock()
 
 
+def _finite_json(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {key: _finite_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite_json(item) for item in value]
+    return value
+
+
 def _json(value, **kwargs) -> Response:
-    return Response(json.dumps(value, default=str), media_type="application/json", **kwargs)
+    return Response(
+        json.dumps(_finite_json(value), default=str, allow_nan=False),
+        media_type="application/json", **kwargs,
+    )
+
+
+def _search_filters(db) -> dict:
+    """Filter choices from the same tables and registry used by ShotDB.mask."""
+    columns = sorted(set(db.segments_base.select_dtypes(include="number"))
+                     - {"shot", "t0_ms", "t1_ms"})
+    units = scalar_units(columns)
+    labels = set(get_args(schema.Regime))
+    for operational in db.shots["operational"]:
+        labels.update(operational)
+    labels.update(f"phenomenon:{pid}" for pid in phenomena.registry())
+    labels.update(f"label:{row.slug}/{row.label}"
+                  for row in db.labels_wide.itertuples())
+    for column in ("source", "evidence_kind"):
+        labels.update(f"source:{value}" for value in db.events[column].dropna().unique())
+    return {
+        "constraint_fields": [{"name": col, "units": units.get(col, "")}
+                              for col in columns],
+        "labels": sorted(labels),
+    }
 
 
 def _registry() -> list[dict]:
@@ -135,6 +168,7 @@ def create_app(
         def summary():
             info = {
                 "segments": list(tools.SEGMENTS),
+                "simulate_poll_s": config.load_yaml("ui.yaml")["simulate"]["poll_s"],
                 "phenomena": [
                     {"id": ph["id"], "title": ph["title"],
                      "has_detector": bool(ph["covering_sources"])}
@@ -146,6 +180,7 @@ def create_app(
                 return {**info, **error}
             return {
                 "db": _db_summary(db),
+                **_search_filters(db),
                 **info,
             }
 
@@ -259,8 +294,8 @@ def create_app(
         # CLI stderr becomes a header; the bare hit list adds only UI domains.
         return _json(payload, headers={"X-Ideate-Caveats": json.dumps(notes)})
 
-    from .design_routes import router as design_router
     from .assistant_routes import router as assistant_router
+    from .design_routes import router as design_router
     from .simulate_routes import router as simulate_router
 
     app.include_router(design_router)

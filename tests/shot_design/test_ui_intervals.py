@@ -31,6 +31,7 @@ const context = {Node: Element, document: {
 let code = fs.readFileSync(process.argv[1], 'utf8');
 code = code.slice(0, code.lastIndexOf('\ninit().catch'));
 vm.createContext(context);
+vm.runInContext(fs.readFileSync(process.argv[1].replace('app.js', 'assistant.js'), 'utf8'), context);
 vm.runInContext(code, context);
 vm.runInContext(`renderEvents({status: 'observed', domain: {t0_s:-2, t1_s:8, source:'full segment'}, coverage: {sources: [
   {source: 'elm_clock', status: 'ok', t_cov0_s: 0, t_cov1_s: 4,

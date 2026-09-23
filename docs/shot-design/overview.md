@@ -428,10 +428,16 @@ without that cookie receive 401. `--db-dir PATH` selects another built database;
 `--token TOKEN` supplies a token instead of generating one. There are no external
 browser assets or tunnel services.
 
-Search supports text, a reference shot, segment, result count, JSON constraints,
-and require/avoid labels. Search scores come from `search_shots`; titles come from
-`describe_shot`. The results table has a Summary column in place of the quote.
-Both replies' caveats stay available in the result row.
+Search supports text, a reference shot, segment, result count, field/minimum/maximum
+constraints, and require/avoid label pickers. Fields and label choices come from
+`/api/meta`, using the database and label registry. Results show rank, contributing
+retrieval channels, explanations, summaries and flags from `search_shots`; there
+are no extra requests for each row.
+
+Select up to six shots, then choose **Design from selected**. The first selected
+shot supplies the reference; the others become comparisons. The search text
+becomes the editor's Notes. The URL hash keeps all submitted search fields, so
+Back or reload restores the filters and reruns the search.
 
 All numeric form fields are text inputs, so mouse-wheel scrolling and ArrowUp /
 ArrowDown do not increment their values. Shot and Reference shot use
