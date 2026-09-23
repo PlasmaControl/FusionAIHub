@@ -3,63 +3,76 @@ title: Simulation
 sidebar_position: 6
 ---
 
-`shot_design simulate` runs one saved design's paired real/proposed IGNITE
-rollout: what the dynamics model predicts if the reference shot's own
-actuators had continued (`real`), against what it predicts under the
-design's proposed actuators (`proposed`), both compared to the reference
-shot's own recorded codes (`gt`). It is the way a proposed shot design gets
-a rollout-based sanity check before anyone runs it on the machine.
+`shot_design simulate` rolls IGNITE out from a saved design's seed frames many times
+over and scores the result against what the reference shot actually did. It answers two
+questions: does the model forecast this shot better than holding the last measured frame,
+and does the design's actuator change move the forecast by more than the model's own
+run-to-run variation?
 
 ## What it computes
 
-`src/shot_design/simulate/core.py` builds two actuator arms that share their
-first `k0` frames (the seed, using the reference shot's measured controls)
-and diverge for the predicted frames — `real` keeps the reference's own
-actuators, `proposed` substitutes the design's. Both arms are rolled out
-from the same pinned IGNITE v4 dynamics checkpoint
-(`core.load_dynamics`/`core.run_paired`), with the same RNG seed, so any
-difference between them is attributable to the actuator change and not to
-sampling noise. Three metrics come out per modality:
+`src/shot_design/simulate/core.py` rolls out three arms from the same `k0` measured seed
+frames, `--members` times each (default 8), with the exact KV cache:
 
-- `divergence_vs_real` — fraction of predicted tokens that differ between
-  the `proposed` and `real` rollouts (a measure of *did the actuator change
-  do anything*).
-- `token_accuracy` — predicted tokens matching the reference shot's own
-  ground-truth codes (`gt`) over the predicted region.
-- `persistence_accuracy` — a trivial baseline (the last seed frame repeated)
-  compared to `gt`, so `token_accuracy - persistence_accuracy` is a *skill*
-  score: does the model beat "nothing changes" at all.
+- `real`: the reference shot's measured actuators.
+- `proposed`: the design's actuators (identical to `real` over the seed frames), on the
+  same random numbers as `real`.
+- `null`: the real actuators again, on fresh random numbers.
 
-`src/shot_design/simulate/decode.py` turns the predicted/real/gt token
-triples into normalized reconstruction values. Spectrograms use signed mean z
-in the selected frequency band; slow/fast time series use the intra-frame mean.
-Then
-`src/shot_design/simulate/report.py` writes `simulation.h5` (tokens for all
-three arms, decoded series, and the `real`/`proposed` actuator trajectories,
-plus provenance attributes `design_id`, `bundle_manifest_sha256`,
-`codec_generation`, `frame_origin_s`, `frame_s`, `window_s`, `dynamics_step`), one
-`panels/<modality>.png` three-line plot per decoded modality, and a
-`report.md` with a `modality | frac_static | token_acc | persistence_acc |
-skill | divergence_vs_real | frac_static_real` table. `frac_static` measures
-repeated predicted tokens in the proposed arm; `frac_static_real` applies the
-same calculation to the real arm. Both remain visible in the report.
+MaskGIT samples by Gumbel-max, so `real` and `proposed` draw the same token wherever their
+distributions are close; they part only where the actuators moved a distribution far
+enough. After that a rollout carries the difference forward, and it can also grow for
+reasons the edit did not cause. The `null` arm measures how far fresh random numbers alone
+move an ensemble, and an edit counts only when it moves the ensemble mean well beyond that.
+A diagnostic that was absent from the seed (its codes identical in every seed frame, the
+codec's placeholder) is held at that code and not scored.
+
+`src/shot_design/simulate/decode.py` decodes every trajectory through the modality's own
+frozen codec and reduces it to one feature per frame and channel, in the codec's
+normalised space: mean z over 10–60 kHz for `mhr` and `mirnov` and over the full band for
+the other spectrograms, the frame mean for cameras, the intra-frame mean for time series
+and profiles. `src/shot_design/simulate/score.py` then scores frames `[k0, F)`:
+
+- `skill`: 1 − CRPS / CRPS(persistence). CRPS is the fair (unbiased for any ensemble size)
+  estimator; persistence holds the last seed frame. Above 0 the ensemble beats it.
+- `nrmse`: the ensemble mean's RMSE over the measured standard deviation of the predicted
+  frames, next to the same for persistence and the seed mean.
+- `spread_error`: ensemble spread over the ensemble mean's error, with the finite-ensemble
+  correction; 1 is calibrated, below 1 overconfident.
+- `effect`, `noise`, `effect_to_noise`, `resolved`: the RMS gap between the `proposed` and
+  `real` ensemble means, the same for `null` against `real`, their ratio, and whether the
+  ratio is at least 2.
+
+`src/shot_design/simulate/report.py` writes, from the same arrays:
+
+- `simulation.h5`: `tokens/{gt,real,proposed,null}/<m>` (members × frames × tokens),
+  `features/<m>/{gt,real,proposed,null}`, `actuators/{real,proposed}`, and attributes
+  `design_id`, `bundle_manifest_sha256`, `codec_generation`, `dynamics_step`, `window_s`,
+  `frame_origin_s`, `frame_s`, `t0_s`, `k0`, `n_predict`, `members`, `decode_steps`,
+  `temperature`, `precision`, `held`, `seeds`, `batch`.
+- `metrics.json` (`schema: "shot-design-simulation-metrics-v1"`): the scores above per
+  modality, `{"held": true}` for a held one; an undefined score is `null`.
+- `report.md`: one table (skill, spread / error, edit effect / noise) in plain words.
+- `panels/<m>.png`: shot time on x, each arm's ensemble mean with its 10–90 % band, the
+  measurement in black.
 
 ## Running it
 
 ```bash
-python -m shot_design simulate <design-ident> \
-    --seed 0 --k0 20 \
-    --decode filterscopes,mhr,mirnov,ts_core_density,ts_core_temp \
-    --device cuda --out <data_root>/outputs/<ident>/simulation
+python -m shot_design simulate <design-ident> --members 8 --seed 0 --device cuda
 ```
 
 `--k0` defaults to 20 seed frames. Without `--n-predict`, prediction uses
 `min(seed_frames_available, checkpoint_max_frames) - k0`: at most 80 frames
 with the pinned checkpoint's 100-row frame embedding. An explicit horizon
 must fit both the seed and checkpoint. Frame 0 is at 1.0 s, so the earliest
-design start is 2.0 s; a new design defaults to 2–6 s. `--decode` defaults
-to the five modalities shown above. Output defaults to
-`<data_root>/outputs/<ident>/simulation`.
+design start is 2.0 s; a new design defaults to 2–6 s. `--decode-steps` (10) sets the
+MaskGIT reveal passes per frame and `--temperature` (1) the sampling temperature.
+`--batch` sets how many members share one batched rollout (default: as many as the GPU's
+free memory holds, about 16 GB each in fp32 for 80 frames), and `--bf16` runs the rollouts
+under bfloat16 autocast. `--decode` limits scoring to a comma-separated list; every
+modality is scored by default. `real` and `proposed` share `--seed`; `null` takes
+`seed + members`. Output defaults to `<data_root>/outputs/<ident>/simulation`.
 
 The command writes `status.json` in that directory **first and last** —
 before doing any work, with `state: "running"`, and again on every exit
@@ -87,9 +100,10 @@ requiring an operator to run `sbatch` by hand:
 - `GET /api/design/{ident}/simulate` reads back `status.json`
   (`{"state": "not_started"}` before the job has written one); the UI polls
   it every `simulate.poll_s` (15) seconds.
-- `GET /api/design/{ident}/simulate/report` and
-  `GET /api/design/{ident}/simulate/panels/{name}` serve `report.md` and a
-  `panels/<modality>.png` once they exist, 404 until then.
+- `GET /api/design/{ident}/simulate/report`,
+  `GET /api/design/{ident}/simulate/metrics` and
+  `GET /api/design/{ident}/simulate/panels/{name}` serve `report.md`,
+  `metrics.json` and a `panels/<modality>.png` once they exist, 404 until then.
 
 Running the CLI directly (above) or through the sbatch wrapper works the same
 way outside the UI.
@@ -134,14 +148,14 @@ LIST=stellar_v4_batch sbatch scripts/shot_design/encode_batch.sbatch
 $PY scripts/shot_design/batch_prompts.py --list stellar_v4_batch --out $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl
 $PY scripts/shot_design/batch_design.py --prompts $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl \
     --out $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl --provider agy --workers 2 --retry-failed
-# 5. paired rollouts, 4 GPUs per job, two jobs (the QOS cap), resumable (complete/failed ids are
+# 5. rollout ensembles, 4 GPUs per job, two jobs (the QOS cap), resumable (complete/failed ids are
 #    skipped). batch_idents.py keeps a theme-stratified, append-only id list growing while step 4
 #    still runs; FOLLOW=1 makes the jobs re-read it until <idents>.final appears.
 $PY scripts/shot_design/batch_idents.py --designs $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl \
     --prompts $SHOT_DESIGN_DATA_ROOT/prompts/prompts.jsonl --out $SHOT_DESIGN_DATA_ROOT/runs/idents.txt --follow &
 for i in 1 2; do IDENTS=$SHOT_DESIGN_DATA_ROOT/runs/idents.txt FOLLOW=1 sbatch --time=20:00:00 \
     scripts/shot_design/simulate_batch.sbatch --n-predict 40 --decode-steps 4; done
-# 6. one row per prompt: design, scales, simulation state and the report.md metrics
+# 6. one row per prompt: design, scales, simulation state and the metrics.json scores
 $PY scripts/shot_design/batch_collect.py --designs $SHOT_DESIGN_DATA_ROOT/designs/designs.jsonl \
     --out $SHOT_DESIGN_DATA_ROOT/summary
 ```
@@ -152,13 +166,12 @@ the model still chooses the reference, so `batch_collect.py` reports how many
 designs kept their source shot. The `gpu-stellar` QOS runs at most two jobs and
 eight GPUs per user, so a batch is two `simulate_batch` jobs of four GPUs.
 
-**Rollout cost.** `maskgit.rollout` re-runs the full trajectory for every
-reveal pass of every predicted frame (no KV cache), so wall time grows with
-the trajectory length and linearly with `--decode-steps`. The single-design
-wrapper's initial sizing assumes roughly 70–130 minutes for 80 predicted
-frames and 10 passes on an A100; this is an estimate awaiting a v4 pilot.
-The `k0`, resolved `n_predict`, and `decode_steps` values are recorded in
-`simulation.h5`.
+**Rollout cost.** With the KV cache the seed is encoded once and each reveal pass runs
+only the new frame's 1,209 tokens, so a pass costs the same late in a rollout as early.
+On a V100S in fp32 one 80-frame, 10-pass member takes 106 s at a 16.6 GiB peak; the
+uncached path it replaced took 75 minutes for one real and one proposed rollout on an A100
+(job 2939073). The `k0`, resolved `n_predict`, `members`, `decode_steps`, `temperature`
+and precision are recorded in `simulation.h5`.
 
 **LLM on Stellar.** `agy` is for Gemini only (house rule; Claude runs through
 Claude Code itself, GPT through Codex). When the Gemini quota is exhausted
@@ -175,10 +188,9 @@ design, two model calls, about 3 designs per minute with two workers.
 
 ## Reading the result
 
-Read `report.md` before trusting a skill number: the currently pinned
-dynamics checkpoint is `mskfull/dynamics_best.pt` at step 3200, an early
-checkpoint (see [IGNITE — v4 generation](../models/ignite.md#12-v4-generation)).
-A `report.md` generated from it is evidence that the v4 rollout stack runs
-end to end for a real design, not a validated accuracy claim — a negative
-skill score does not necessarily mean the proposed actuators were bad, and a
-positive one does not yet mean they were good.
+Start with `skill`: the pinned dynamics checkpoint (`mskfull` step 3200) is an early one
+(see [IGNITE — v4 generation](../models/ignite.md#12-v4-generation) and
+[the diagnosis](../models/ignite-v4-diagnosis.md)), and a signal it forecasts worse than
+persistence tells you nothing about an edit. Where skill is positive, read
+`effect_to_noise`: an unresolved edit is one the model cannot tell apart from rerunning the
+same actuators, whatever the panels seem to show.

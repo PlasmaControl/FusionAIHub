@@ -3,11 +3,11 @@
 
 One row per prompt of the batch: the source shot and theme, the design the assistant saved
 (reference / comparison shots, which channels it scaled and by how much, its explanation),
-and the simulation's state plus its per-modality metrics scraped from ``report.md`` --
-``frac_static`` (proposed), ``frac_static_real``, ``token_acc``, ``persistence_acc``, ``skill`` (= token_acc - persistence_acc)
-and ``divergence_vs_real`` (fraction of predicted tokens that differ between the real and the
-proposed arm). Nothing is computed here that the pipeline did not already write; a design
-without a simulation, or a failed one, keeps its row with the state and the error.
+and the simulation's state plus its per-modality scores from ``metrics.json``: ``skill``
+(1 - CRPS / CRPS of persistence), ``nrmse`` and ``nrmse_persistence``, ``spread_error``,
+the edit's ``effect`` against the null arm's ``noise``, and whether it is ``resolved``.
+Nothing is computed here that the pipeline did not already write; a design without a
+simulation, or a failed one, keeps its row with the state and the error.
 
     SHOT_DESIGN_DATA_ROOT=<batch root> python scripts/shot_design/batch_collect.py \
         --designs <root>/designs/designs.jsonl --out <root>/summary
@@ -24,37 +24,22 @@ from pathlib import Path
 import h5py
 import pandas as pd
 
-METRICS = (
-    "frac_static", "frac_static_real", "token_acc", "persistence_acc", "skill",
-    "divergence_vs_real",
+SCORES = (
+    "skill", "nrmse", "nrmse_persistence", "spread_error", "effect", "noise",
+    "effect_to_noise", "resolved",
 )
 
 
-def _table(report: Path) -> dict[str, dict[str, float]]:
-    out: dict[str, dict[str, float]] = {}
-    if not report.exists():
-        return out
-    metrics = []
-    for line in report.read_text().splitlines():
-        if (
-            not line.startswith("|")
-            or set(line) <= {"|", "-", " "}
-        ):
-            continue
-        cells = [c.strip() for c in line.strip("|").split("|")]
-        if cells[0] == "modality":
-            metrics = cells[1:]
-            continue
-        if not metrics or len(cells) != len(metrics) + 1:
-            continue
-        try:
-            out[cells[0]] = {
-                key: float(value)
-                for key, value in zip(metrics, cells[1:], strict=True)
-                if key in METRICS
-            }
-        except ValueError:
-            continue
+def _scores(metrics: Path) -> dict:
+    """``{"<modality>.<score>": value}`` from a simulation's ``metrics.json``."""
+    if not metrics.exists():
+        return {}
+    out = {}
+    for m, e in json.loads(metrics.read_text())["modalities"].items():
+        if not e.get("held"):
+            nrmse = e["nrmse"]
+            e = e | {"nrmse": nrmse["real"], "nrmse_persistence": nrmse["persistence"]}
+            out |= {f"{m}.{k}": e[k] for k in SCORES}
     return out
 
 
@@ -128,9 +113,7 @@ def _design(ident: str, root: Path) -> dict:
                 rec["window_s"] = [float(x) for x in f.attrs.get("window_s", [])]
         except OSError:
             pass
-    for m, vals in _table(sim / "report.md").items():
-        for k, v in vals.items():
-            rec[f"{m}.{k}"] = v
+    rec.update(_scores(sim / "metrics.json"))
     panels = sorted((sim / "panels").glob("*.png")) if (sim / "panels").exists() else []
     rec["panels"] = [str(p) for p in panels]
     return rec
@@ -197,14 +180,16 @@ def main() -> int:
     if done:
         mods = sorted({c.split(".")[0] for c in df.columns if c.endswith(".skill")})
         lines += [
-            "| modality | median token_acc | median persistence_acc | median skill | median divergence |",
+            "| modality | median skill | median spread / error | median effect / noise | resolved |",
             "|---|---|---|---|---|",
         ]
         ok = df[df["sim_state"] == "complete"]
         for m in mods:
+            col = {k: ok[f"{m}.{k}"] for k in SCORES}
             lines.append(
-                f"| {m} | {ok[f'{m}.token_acc'].median():.3f} | {ok[f'{m}.persistence_acc'].median():.3f} | "
-                f"{ok[f'{m}.skill'].median():.3f} | {ok[f'{m}.divergence_vs_real'].median():.3f} |"
+                f"| {m} | {col['skill'].median():.3f} | {col['spread_error'].median():.3f} | "
+                f"{col['effect_to_noise'].median():.3f} | "
+                f"{int(col['resolved'].eq(True).sum())}/{len(ok)} |"
             )
         lines.append("")
     if "theme" in df:

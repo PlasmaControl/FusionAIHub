@@ -116,8 +116,11 @@ class DynamicsConfig:
     maskgit_mask_schedule: str = "cosine"  # tokens-kept-per-step schedule
 
     # --- scheduled sampling (rollout-drift mitigation; ramp over training) -------------------
-    ss_ramp_final_frac: float = 0.15       # final own-sampled-code substitution fraction
-    ss_ramp_steps: int = 40_000            # linear ramp 0 -> final over this many steps
+    # 0.75 is the best single setting measured (CE 0.1053, token acc 0.9792). It is a peak, not a
+    # monotone knob: 1.0 collapses, leaving no teacher signal. The 2,000-step ramp reaches it
+    # early; a ramp longer than the run only ever reaches part of it. (v4 trained with 0.)
+    ss_ramp_final_frac: float = 0.75       # final own-sampled-code substitution fraction
+    ss_ramp_steps: int = 2_000             # linear ramp 0 -> final over this many steps
 
     # --- complete-context training (CTF; MAGI arXiv 2501.12389) -------------------------------
     # Fraction of training windows that use the ROLLOUT's conditional structure: a clean
@@ -179,7 +182,7 @@ class DynamicsConfig:
     act_cross_attn: bool = False
 
     # --- actuator conditioning (additive; causal) --------------------------------------------
-    actuator_dim: int = 70                 # 7 modalities / 70 channels
+    actuator_dim: int = 88                 # train_dynamics._ACT_SPEC: 8 groups, 88 channels
 
     # --- per-shot text conditioning (precomputed embedding; additive like actuators) ---
     # 0 = off (original behaviour, bit-identical: no module constructed, no RNG draws).

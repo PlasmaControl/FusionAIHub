@@ -20,6 +20,7 @@ See docs/IGNITE_DESIGN.md §5 for the frame layout / rollout contract.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 from pathlib import Path
@@ -29,7 +30,7 @@ import numpy as np
 import torch
 
 from .train_dynamics import load_frozen_codecs
-from .dynamics_config import DynamicsConfig, FROZEN_MODALITIES  # noqa: F401 (FROZEN_MODALITIES: API contract)
+from .dynamics_config import DynamicsConfig, FROZEN_MODALITIES, ModalitySpec  # noqa: F401 (FROZEN_MODALITIES: API contract)
 from .maskgit import MaskGITDynamics
 from .sampling import SamplerConfig
 from .scoring import best_of_n as _best_of_n
@@ -143,45 +144,39 @@ def decode_flat_chunked(codec, flat: torch.Tensor, device, chunk: int = _DECODE_
 # --------------------------------------------------------------------------------------------- #
 # load + rollout
 # --------------------------------------------------------------------------------------------- #
+# payload key -> DynamicsConfig field, where the two names differ
+_PAYLOAD_FIELDS = {"cfg_k0": "k0_seed", "cfg_ss_final_frac": "ss_ramp_final_frac"}
+
+
 def load_model(ckpt_path: Path, device) -> Tuple[MaskGITDynamics, DynamicsConfig, int]:
+    """The checkpoint's model and config, and its training step.
+
+    Every ``cfg_*`` field the payload saved is restored, so an eval can tell a CTF or
+    self-forcing arm from the baseline. The shapes come from the weights, never from a
+    default: ``actuator_dim`` grew 70 -> 88 when i_coil was added (a default of 70 took
+    down job 5329757), and ``lag_embed_k`` and ``act_cross_attn`` failed the same way.
+    """
     ck = torch.load(ckpt_path, map_location=device, weights_only=False)
-    kw = dict(depth=int(ck["cfg_depth"]), d_model=int(ck["cfg_d_model"]))
-    if "modalities" in ck:
-        # checkpoints since 2026-08-08 carry the trained frame layout (v6 codecs change
-        # n_tok/vocab vs the static table) + heads/horizon; older ckpts fall back to defaults.
-        from .dynamics_config import ModalitySpec
-        kw["modalities"] = tuple(ModalitySpec(*t) for t in ck["modalities"])
-    for src, dst in (("cfg_n_heads", "n_heads"), ("cfg_k0", "k0_seed"),
-                     ("cfg_n_predict", "n_predict")):
-        if src in ck:
-            kw[dst] = int(ck[src])
-    if "cfg_text_embed_dim" in ck:
-        kw["text_embed_dim"] = int(ck["cfg_text_embed_dim"])
-    if "cfg_text_dropout_p" in ck:
-        kw["text_dropout_p"] = float(ck["cfg_text_dropout_p"])
-    cfg = DynamicsConfig(**kw)
-    cfg.grad_checkpointing = False                        # inference: no recompute
-    # ARCHITECTURE FROM THE WEIGHTS, never from a default. _ACT_SPEC grew 70 -> 88 channels when
-    # i_coil was added, so a DynamicsConfig default of 70 fails to load an 88-channel checkpoint
-    # with "size mismatch for backbone.act_embed.weight" and takes the whole eval down (job
-    # 5329757, all 4 checkpoints, 2026-08-23). Same class of failure as act_cross_attn and
-    # lag_embed_k before it: read the shape rather than trusting a config three files away.
     sd = ck["model"]
-    if "backbone.act_embed.weight" in sd:
-        adim = int(sd["backbone.act_embed.weight"].shape[1])
-        if adim != int(getattr(cfg, "actuator_dim", -1)):
-            print(f"[eval] actuator_dim {getattr(cfg, 'actuator_dim', '?')} -> {adim} "
-                  f"(inferred from backbone.act_embed.weight)", flush=True)
-            cfg.actuator_dim = adim
-    for flag, key in (("act_cross_attn", "cfg_act_cross_attn"),
-                      ("dropout", "cfg_dropout")):
-        if key in ck:
-            setattr(cfg, flag, type(getattr(cfg, flag))(ck[key]))
-    cfg.dropout = 0.0                                     # inference: dropout off regardless
+    fields = {f.name for f in dataclasses.fields(DynamicsConfig)}
+    kw = {}
+    for key, value in ck.items():
+        name = _PAYLOAD_FIELDS.get(key, key[len("cfg_"):])
+        if key.startswith("cfg_") and name in fields:
+            kw[name] = value
+    if "modalities" in ck:          # since 2026-08-08: the trained frame layout
+        kw["modalities"] = tuple(ModalitySpec(*t) for t in ck["modalities"])
+    kw["actuator_dim"] = int(sd["backbone.act_embed.weight"].shape[1])
+    kw["lag_embed_k"] = len({k.split(".")[4] for k in sd
+                             if k.startswith("backbone.tok.lag_embed.")})
+    kw["act_cross_attn"] = any(k.startswith("backbone.act_cross.") for k in sd)
+    text = sd.get("backbone.text_embed.weight")
+    kw["text_embed_dim"] = 0 if text is None else int(text.shape[1])
+    cfg = DynamicsConfig(**kw)
+    cfg.grad_checkpointing, cfg.dropout = False, 0.0     # inference
     model = MaskGITDynamics(cfg).to(device).eval()
-    model.load_state_dict(ck["model"])
-    step = int(ck.get("step", 0))
-    return model, cfg, step
+    model.load_state_dict(sd)
+    return model, cfg, int(ck.get("step", 0))
 
 
 def load_shot_cache(cache_dir: Path, shot: str) -> Dict:
@@ -261,11 +256,25 @@ def apply_actuator_mode(act: torch.Tensor, mode: str, K0: int, cache_dir=None,
     raise ValueError(f"unknown actuator_mode {mode!r}; expected one of {ACTUATOR_MODES}")
 
 
+def _actuators(cache: Dict, shot) -> torch.Tensor:
+    """The cache's actuators, or under ``IGNITE_ACT_GLOBAL`` the dataset-normalised ones: an arm
+    trained on those must be scored on them, never on the per-shot z-score it never saw."""
+    root = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
+    if not root:
+        return cache["actuators"]
+    path = Path(root) / f"{shot}.pt"
+    if not path.exists():
+        raise FileNotFoundError(f"IGNITE_ACT_GLOBAL={root} has no entry for shot {shot}")
+    width = cache["actuators"].shape[-1]
+    return torch.load(path, map_location="cpu", weights_only=False)["actuators_global"][:, :width]
+
+
 @torch.no_grad()
 def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: int,
                  temperature: float, generator: torch.Generator, device,
                  actuator_mode: str = "real", cache_dir=None,
-                 sampler=None, best_of: int = 1, text_vec: torch.Tensor = None
+                 sampler=None, best_of: int = 1, text_vec: torch.Tensor = None,
+                 shot: str = None
                  ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor], int, int]:
     """Seed K0 real frames, roll out, return (gt_codes, pred_codes, K0, F) as cpu long tensors.
 
@@ -283,6 +292,8 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
     > 1 does NOT: it rolls out that many independent trajectories and keeps the most
     self-consistent one, which consumes a different RNG stream — never combine it with an
     actuator counterfactual arm.
+
+    ``shot`` names the cache; ``IGNITE_ACT_GLOBAL`` needs it. ``cache`` is not modified.
     """
     F = min(cfg.max_frames, int(cache["n_frames"]))
     if F <= K0:
@@ -292,18 +303,7 @@ def rollout_shot(model: MaskGITDynamics, cfg: DynamicsConfig, cache: Dict, K0: i
 
     codes = cache["codes"]
     seed_codes = {n: codes[n][:K0].long().unsqueeze(0).to(device) for n in names}   # (1, K0, n_tok)
-    # Must match TRAINING: if the arm trained on dataset-wide-normalised actuators, scoring it
-    # with the per-shot z-scored column feeds the model a different input distribution than it
-    # ever saw. Same hard-error policy as the training path.
-    _agd = os.environ.get("IGNITE_ACT_GLOBAL", "").strip()
-    if _agd:
-        _agp = Path(_agd) / f"{shot}.pt"
-        if not _agp.exists():
-            raise FileNotFoundError(f"IGNITE_ACT_GLOBAL={_agd} has no entry for shot {shot}")
-        _w = cache["actuators"].shape[-1]
-        cache["actuators"] = torch.load(_agp, map_location="cpu",
-                                        weights_only=False)["actuators_global"][:, :_w]
-    act = cache["actuators"][:F].float()                                            # (F, 70)
+    act = _actuators(cache, shot)[:F].float()                                       # (F, 88)
     act = apply_actuator_mode(act, actuator_mode, K0, cache_dir=cache_dir, F=F)
     actuators = act.unsqueeze(0).to(device)                                         # (1, F, 70)
 
@@ -1308,7 +1308,7 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                                                        actuator_mode=actuator_mode,
                                                        cache_dir=cache_dir,
                                                        sampler=sampler, best_of=best_of,
-                                                       text_vec=text_vecs.get(sh))
+                                                       text_vec=text_vecs.get(sh), shot=sh)
             # ACTUATOR COUNTERFACTUAL: the effect size is the divergence from the SAME rollout
             # under real actuators, not the divergence from GT. Re-seed so the two runs share an
             # identical RNG stream — the rollout draws the same number of samples either way, so
@@ -1323,7 +1323,7 @@ def run(ckpt: str, shot: str, cache_dir: str, out_dir: str,
                                                        actuator_mode="real",
                                                        cache_dir=cache_dir,
                                                        sampler=sampler, best_of=best_of,
-                                                       text_vec=text_vecs.get(sh))
+                                                       text_vec=text_vecs.get(sh), shot=sh)
         tok_acc = {n: float((pred_codes[n][K0:F] == gt_codes[n][K0:F]).float().mean())
                    for n in gt_codes}
         # persistence baseline in CODE space: fraction of tokens that simply do not change
@@ -1579,6 +1579,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--top_p", type=float, default=None)
     p.add_argument("--revision_rounds", type=int, default=0)
     p.add_argument("--cfg_scale", type=float, default=1.0)
+    p.add_argument("--gumbel", type=float, default=0.0,
+                   help="annealed Gumbel noise on the MaskGIT reveal order (0 = greedy)")
     # PAIRING CAVEAT: rollout_shot guarantees that actuator counterfactual arms consume an
     # IDENTICAL number of RNG draws, so the comparison is exactly paired. --revision_rounds
     # and --cfg_scale preserve that (fixed extra draws per frame); --best_of_n does NOT, since
@@ -1620,7 +1622,7 @@ def main(argv=None):
     sampler = SamplerConfig(temperature=args.temperature, top_p=args.top_p,
                             global_pool=args.global_pool,
                             revision_rounds=args.revision_rounds,
-                            cfg_scale=args.cfg_scale)
+                            cfg_scale=args.cfg_scale, gumbel=args.gumbel)
     # Cross-check the CLI's --text_key / --text_embed_path against what the checkpoint was
     # TRAINED with (train_dynamics stamps both into the payload) — silently evaluating with a
     # different conditioning text than training would be a confusing, undetected mismatch.

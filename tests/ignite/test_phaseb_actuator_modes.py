@@ -167,3 +167,18 @@ def test_every_mode_produces_a_full_trajectory(mode):
     pred = _roll(cfg, model, cache, mode)
     for m in cfg.modalities:
         assert pred[m.name].shape == (cfg.max_frames, m.n_tok)
+
+
+def test_global_actuators_are_read_for_the_named_shot_and_the_cache_is_left_alone(
+        tmp_path, monkeypatch):
+    cfg, model, cache = _tiny_setup()
+    before = cache["actuators"].clone()
+    torch.save({"actuators_global": torch.zeros(cfg.max_frames, 70)}, tmp_path / "123.pt")
+    monkeypatch.setenv("IGNITE_ACT_GLOBAL", str(tmp_path))
+    gen = torch.Generator().manual_seed(0)
+    _gt, pred, _k, _f = ed.rollout_shot(model, cfg, cache, cfg.k0_seed, 0.9, gen,
+                                        torch.device("cpu"), shot="123")
+    assert torch.equal(cache["actuators"], before)
+    zeroed = dict(cache, actuators=torch.zeros(cfg.max_frames, 70))
+    monkeypatch.delenv("IGNITE_ACT_GLOBAL")
+    assert _same(pred, _roll(cfg, model, zeroed, "real"))

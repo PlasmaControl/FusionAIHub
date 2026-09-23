@@ -34,11 +34,10 @@ def test_points_carry_shot_seconds_not_frame_indices():
     assert [p["t_s"] for p in pts] == [1.0, 2.0]
 
 
-def test_windowed_real_actuators_slices_by_cache_frame():
+def test_the_simulated_window_counts_cache_frames_from_the_origin():
+    # the seed's 20 frames start at 1.0 s, the frame origin; 5.0 s is frame 80
     prog = program.DesignProgram(reference_shot=1, start_s=2.0, end_s=5.0)
-    ref_cache = {"actuators": np.arange(100)[:, None]}
-    out = simulate_cli._windowed_real_actuators(ref_cache, prog, {})
-    assert out["actuators"][0, 0] == 0 and out["actuators"].shape[0] == 80
+    assert simulate_cli._window(prog) == (0, 80)
 
 
 def test_read_controls_builds_actuators_at_the_cache_origin(monkeypatch, tmp_path):

@@ -1,15 +1,12 @@
-"""Write ``simulation.h5``, per-modality panels, and the honest ``report.md``.
+"""Write a simulation's ``simulation.h5``, ``metrics.json``, ``report.md`` and panels.
 
-The three artifacts share one source of truth (`arms` + `decoded` + `meta`) so the
-numbers in the table match the arrays a reader can pull out of the h5 file. The
-report is deliberately "honest": IGNITE v4's dynamics checkpoint is an early one
-(see `QUALITATIVE_SENTENCE`), so whenever the rollout does WORSE than the
-do-nothing persistence baseline for any modality (`skill < 0`), the report says so
-in plain language instead of letting a reader infer it from a table of numbers.
+All four come from one `Ensemble`, its decoded features and the run's metadata, so every
+number in the report can be recomputed from the h5 file.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import h5py
@@ -20,165 +17,144 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from .core import ARM_LABELS, SimulationArms
+from . import score
+from .core import Ensemble
+from .decode import feature_name
 
-QUALITATIVE_SENTENCE = (
-    "IGNITE {generation} dynamics (step {step}) is an early checkpoint; "
-    "treat results as qualitative."
+SCHEMA = "shot-design-simulation-metrics-v1"
+# Okabe-Ito blue and vermillion; the measurement is black
+_COLORS = {"real": "#0072B2", "proposed": "#D55E00"}
+_REDUCTION = (
+    "features/<m> are per-frame reductions of the codec's decoded output: spectro -> mean z "
+    "over 10-60 kHz for mhr/mirnov and over the full band otherwise, video -> frame mean "
+    "(F, 1), slowts/fastts -> mean over the intra-frame time axis. Arms are (M, F, C), the "
+    "measurement (gt) is (F, C)."
 )
 
-# Discloses the per-modality reductions `decode.decode_modalities` applies before a
-# decoded array reaches this file -- most pressingly that video is NOT raw frames.
-_REDUCTION_NOTE = (
-    "decoded/<m> arrays are per-frame reductions of the codec's decoded output, "
-    "not raw decoder output: spectro -> mean z over frequency "
-    "(10-60 kHz for mhr/mirnov, full band otherwise), video -> per-frame "
-    "channel/space/time mean (F, 1) (raw frames are not stored), slowts/fastts -> "
-    "mean over the intra-frame time axis (F, C)."
-)
 
-_ARM_COLORS = {"gt": "black", "real": "tab:blue", "proposed": "tab:orange"}
-
-
-def frac_static(
-    rollout: dict[str, torch.Tensor], seed_frames: int
-) -> dict[str, float]:
-    """Fraction of predicted tokens equal to the same position in the previous frame."""
-    out: dict[str, float] = {}
-    for m, codes in rollout.items():
-        f_total = codes.shape[0]
-        if seed_frames <= 0 or seed_frames >= f_total:
-            out[m] = float("nan")
-            continue
-        pred = codes[seed_frames:]
-        prev = codes[seed_frames - 1 : -1]
-        out[m] = (pred == prev).float().mean().item()
-    return out
-
-
-def _to_numpy(x, dtype) -> np.ndarray:
-    if torch.is_tensor(x):
-        x = x.detach().cpu().numpy()
-    return np.asarray(x, dtype=dtype)
-
-
-def _write_panel(path: Path, per_arm: dict[str, np.ndarray], seed_frames: int) -> None:
-    """Three-line (gt, real, proposed) plot of a decoded array over time.
-
-    A judgment call on the brief's "per channel or channel mean": a
-    single-channel ``(F, 1)`` array is plotted as-is, but a multi-channel
-    ``(F, C>1)`` array is collapsed to its per-frame MEAN across channels --
-    one line per arm, not one line per channel -- so the panel stays a
-    three-line comparison regardless of how many channels a modality has.
-    """
-    fig, ax = plt.subplots(figsize=(6.0, 3.5))
-    for arm_name in ("gt", "real", "proposed"):
-        arr = per_arm.get(arm_name)
-        if arr is None:
-            continue
-        arr = np.asarray(arr, dtype=np.float64)
-        if arr.ndim > 1 and arr.shape[1] > 1:
-            series = arr.mean(axis=1)
-        else:
-            series = arr.reshape(-1)
-        ax.plot(series, label=arm_name, color=_ARM_COLORS.get(arm_name))
-    ax.axvline(
-        seed_frames - 0.5,
-        color="gray",
-        linestyle="--",
-        linewidth=1,
-        label="seed/predict boundary",
-    )
-    ax.set_xlabel("frame")
-    ax.set_ylabel("decoded value (channel mean)")
-    ax.legend(loc="best", fontsize=8)
-    fig.tight_layout()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=110)
-    plt.close(fig)
-
-
-def _render_report(
-    arms: SimulationArms, frac: dict[str, dict[str, float]], meta: dict
-) -> str:
-    lines = [
-        "# Simulation report",
-        "",
-        ("| modality | frac_static | token_acc | persistence_acc | skill "
-         "| divergence_vs_real | frac_static_real |"),
-        "|---|---|---|---|---|---|---|",
-    ]
-    any_negative_skill = False
-    for m in sorted(arms.token_accuracy):
-        token_acc = arms.token_accuracy[m]
-        persistence_acc = arms.persistence_accuracy[m]
-        skill = token_acc - persistence_acc
-        any_negative_skill = any_negative_skill or skill < 0
-        fs = frac["proposed"].get(m, float("nan"))
-        fs_real = frac["real"].get(m, float("nan"))
-        divergence = arms.divergence_vs_real.get(m, float("nan"))
-        lines.append(
-            f"| {m} | {fs:.2f} | {token_acc:.2f} | {persistence_acc:.2f} | "
-            f"{skill:.2f} | {divergence:.2f} | {fs_real:.2f} |"
-        )
-    lines.append("")
-    if any_negative_skill:
-        lines.append(
-            QUALITATIVE_SENTENCE.format(
-                generation=meta["codec_generation"],
-                step=meta.get("dynamics_step"),
-            )
-        )
-    return "\n".join(lines) + "\n"
+def metrics(ens: Ensemble, feats: dict, families: dict[str, str], meta: dict) -> dict:
+    """The ``metrics.json`` document."""
+    mods: dict[str, dict] = {m: {"held": True} for m in ens.held}
+    for m, per in feats.items():
+        mods[m] = {
+            "family": families[m],
+            "feature": feature_name(m, families[m]),
+            **score.modality_scores(per["gt"], {a: per[a] for a in ens.arms}, ens.k0),
+        }
+    return {
+        "schema": SCHEMA,
+        "members": int(meta["members"]),
+        "k0": ens.k0,
+        "n_predict": int(meta["n_predict"]),
+        "frame_s": float(meta["frame_s"]),
+        "t0_s": float(meta["t0_s"]),
+        "decode_steps": int(meta["decode_steps"]),
+        "temperature": float(meta["temperature"]),
+        "held": sorted(ens.held),
+        "modalities": dict(sorted(mods.items())),
+    }
 
 
 def write(
     out_dir: Path,
-    arms: SimulationArms,
-    decoded: dict[str, dict[str, np.ndarray]],
+    ens: Ensemble,
+    feats: dict,
+    families: dict[str, str],
     meta: dict,
-    actuators: dict[str, np.ndarray] | None = None,
-) -> Path:
-    """Write ``simulation.h5``, ``panels/<m>.png`` and ``report.md`` under ``out_dir``.
+    actuators: dict[str, torch.Tensor] | None = None,
+) -> dict:
+    """Write the four outputs under ``out_dir`` and return the metrics document.
 
-    ``actuators``, when given, supplies the ``real``/``proposed`` actuator
-    trajectories for the ``actuators/{real,proposed}`` h5 group (D3 has
-    these; the brief's own report table test does not, hence the keyword
-    defaulting to None and the group being skipped then). Returns
-    ``out_dir`` -- the root all three artifacts are written under.
+    ``feats`` is `decode.decode_ensemble`'s output, ``families`` maps each modality to
+    its codec family, and ``meta`` must carry members, n_predict, frame_s, t0_s (the shot
+    time of the first predicted frame), decode_steps and temperature.
     """
-    meta = {**meta, "frame_origin_s": float(meta["frame_origin_s"])}
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    doc = metrics(ens, feats, families, meta)
     with h5py.File(out_dir / "simulation.h5", "w") as f:
-        arms_by_label = ((label, getattr(arms, label)) for label in ARM_LABELS)
-        for arm_name, codes in arms_by_label:
-            grp = f.create_group(f"tokens/{arm_name}")
-            for m, t in codes.items():
-                grp.create_dataset(m, data=_to_numpy(t, np.int64))
-        for m, per_arm in decoded.items():
-            grp = f.create_group(f"decoded/{m}")
-            for arm_name, arr in per_arm.items():
-                grp.create_dataset(arm_name, data=_to_numpy(arr, np.float32))
-        if actuators is not None:
-            grp = f.create_group("actuators")
-            for arm_name in ("real", "proposed"):
-                if arm_name in actuators:
-                    data = _to_numpy(actuators[arm_name], np.float32)
-                    grp.create_dataset(arm_name, data=data)
-        for k, v in meta.items():
-            f.attrs[k] = v
-        f.attrs["reduction"] = _REDUCTION_NOTE
+        for arm, tokens in {"gt": ens.gt, **ens.arms}.items():
+            for m, t in tokens.items():
+                f.create_dataset(f"tokens/{arm}/{m}", data=t.numpy().astype(np.int16))
+        for m, per in feats.items():
+            for label, arr in per.items():
+                f.create_dataset(f"features/{m}/{label}", data=arr.astype(np.float32))
+        for arm, a in (actuators or {}).items():
+            f.create_dataset(f"actuators/{arm}", data=a.float().numpy())
+        f.attrs.update(meta)
+        f.attrs["held"] = sorted(ens.held)
+        f.attrs["seeds"] = json.dumps(ens.seeds)
+        f.attrs["batch"] = ens.batch
+        f.attrs["reduction"] = _REDUCTION
+    text = json.dumps(doc, indent=1, allow_nan=False)
+    (out_dir / "metrics.json").write_text(text + "\n")
+    for m, per in feats.items():
+        _panel(out_dir / "panels" / f"{m}.png", m, doc, per)
+    (out_dir / "report.md").write_text(_markdown(doc, meta))
+    return doc
 
-    frac = {
-        arm: frac_static(getattr(arms, arm), arms.seed_frames)
-        for arm in ("real", "proposed")
-    }
 
-    panel_dir = out_dir / "panels"
-    for m, per_arm in decoded.items():
-        _write_panel(panel_dir / f"{m}.png", per_arm, arms.seed_frames)
+def _panel(path: Path, name: str, doc: dict, per: dict[str, np.ndarray]) -> None:
+    """Shot time on x; each arm's ensemble mean and 10-90 % band; the measurement in
+    black. A feature with several channels is drawn as its channel mean."""
+    t = doc["t0_s"] + (np.arange(per["gt"].shape[0]) - doc["k0"]) * doc["frame_s"]
+    fig, ax = plt.subplots(figsize=(6.0, 3.2))
+    for arm, color in _COLORS.items():
+        if arm in per:
+            series = per[arm].mean(axis=-1)  # (M, F)
+            lo, hi = np.percentile(series, [10, 90], axis=0)
+            ax.fill_between(t, lo, hi, color=color, alpha=0.2, linewidth=0)
+            ax.plot(t, series.mean(axis=0), color=color, linewidth=1.4, label=arm)
+    ax.plot(t, per["gt"].mean(axis=-1), color="black", linewidth=1.0, label="measured")
+    ax.axvline(doc["t0_s"], color="0.5", linestyle="--", linewidth=0.8)
+    ax.set_xlabel("shot time (s)")
+    ax.set_ylabel("codec z")
+    ax.set_title(f"{name}, {doc['modalities'][name]['feature']}", fontsize=10)
+    ax.legend(loc="best", fontsize=8, frameon=False)
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=130)
+    plt.close(fig)
 
-    (out_dir / "report.md").write_text(_render_report(arms, frac, meta))
-    return out_dir
+
+def _fmt(x) -> str:
+    return "n/a" if x is None else f"{x:.2f}"
+
+
+def _markdown(doc: dict, meta: dict) -> str:
+    scored = {m: e for m, e in doc["modalities"].items() if not e.get("held")}
+    lines = [
+        "# Simulation",
+        "",
+        (
+            f"{doc['members']} rollouts per arm from {doc['k0']} measured frames, "
+            f"{doc['n_predict']} frames predicted from {doc['t0_s']:.2f} s. IGNITE "
+            f"{meta.get('codec_generation', '?')} step {meta.get('dynamics_step', '?')}, "
+            f"{doc['decode_steps']} decode passes, temperature {doc['temperature']:g}."
+        ),
+        "",
+        "| signal | skill vs persistence | spread / error | edit effect / noise |",
+        "|---|---|---|---|",
+    ]
+    for m, e in scored.items():
+        resolved = " (resolved)" if e.get("resolved") else ""
+        lines.append(
+            f"| {m}, {e['feature']} | {_fmt(e['skill'])} | {_fmt(e['spread_error'])} "
+            f"| {_fmt(e.get('effect_to_noise'))}{resolved} |"
+        )
+    lines += [
+        "",
+        (
+            "Skill is 1 - CRPS / CRPS(persistence): above 0 the rollouts beat holding the "
+            "last measured frame. Spread / error is 1 for a calibrated ensemble, below 1 "
+            "for an overconfident one. An edit is resolved when it moves the ensemble mean "
+            f"at least {score.RESOLVED:g} times as far as rerunning the real actuators on "
+            "fresh random numbers does."
+        ),
+    ]
+    worse = [m for m, e in scored.items() if e["skill"] is not None and e["skill"] < 0]
+    if worse:
+        lines += ["", f"Worse than persistence: {', '.join(worse)}."]
+    if doc["held"]:
+        lines += ["", f"Absent from the seed, held at the placeholder: {', '.join(doc['held'])}."]
+    return "\n".join(lines) + "\n"

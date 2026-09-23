@@ -502,7 +502,7 @@ def main() -> None:
                 gt, pred, K0, F = rollout_shot(
                     model, cfg, cache, k0, args.temperature,
                     torch.Generator(device=device).manual_seed(args.seed), device,
-                    sampler=sampler, best_of=args.best_of_n)
+                    sampler=sampler, best_of=args.best_of_n, shot=shot)
                 for name in pred:
                     per_tok[name].append(token_metrics(gt[name], pred[name], K0, F))
                     if geom is None:

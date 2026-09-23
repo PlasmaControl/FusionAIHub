@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from shot_design.simulate import core, decode
@@ -18,12 +19,12 @@ def test_freq_axis_khz_matches_stft_bin_math():
     np.testing.assert_allclose(axis, expected)
 
 
-def test_freq_axis_khz_none_when_band_pooled():
-    # band_pool > 0 mean-pools bins unevenly from the codec's perspective -- the
-    # axis is no longer recoverable from freq_bins/stft_n_fft alone, so the
-    # fallback is None.
-    cfg = SimpleNamespace(stft_n_fft=1024, freq_bins=4, band_pool=8)
-    assert decode.freq_axis_khz(cfg) is None
+def test_freq_axis_khz_puts_a_pooled_band_at_its_bins_mean_frequency():
+    # band_pool=2 over 4 bins: bands {1, 2} and {3, 4} at 1.5 and 3.5 bin widths.
+    cfg = SimpleNamespace(stft_n_fft=1024, freq_bins=4, band_pool=2)
+    np.testing.assert_allclose(
+        decode.freq_axis_khz(cfg), np.array([1.5, 3.5]) * (500_000.0 / 1024) / 1000.0
+    )
 
 
 def test_band_power_reduces_within_band_to_F_C():
@@ -41,11 +42,12 @@ def test_band_power_reduces_within_band_to_F_C():
     np.testing.assert_allclose(out, np.full((2, 1), (2.0 - 6.0) / 2.0))
 
 
-def test_band_power_falls_back_to_full_band_when_axis_unrecoverable():
-    dec = np.full((2, 1, 4, 3), 3.0, dtype=np.float32)
-    out = decode.band_power(dec, None, (10.0, 60.0))
-    assert out.shape == (2, 1)
-    np.testing.assert_allclose(out, np.full((2, 1), 3.0))
+@pytest.mark.parametrize("band", [None, (200.0, 300.0)])
+def test_band_power_is_the_full_band_without_a_band_or_rows_inside_it(band):
+    dec = np.full((2, 3, 4, 5), -2.0, dtype=np.float32)
+    dec[:, :, 0] = 2.0
+    out = decode.band_power(dec, np.array([5.0, 15.0, 35.0, 65.0]), band)
+    np.testing.assert_allclose(out, np.full((2, 3), -1.0))
 
 
 def _tiny_spectro_codec():
@@ -60,33 +62,68 @@ def _tiny_spectro_codec():
     return SpectroCodec(cfg).eval(), cfg
 
 
-def test_decode_modalities_reduces_spectro_to_F_C():
+def _ensemble(n_tok, codebook, members=3, frames=5, held=()):
+    g = torch.Generator().manual_seed(0)
+
+    def codes(*shape):
+        return torch.randint(0, codebook, (*shape, frames, n_tok), generator=g)
+
+    names = ("mhr", "co2")
+    return core.Ensemble(
+        k0=2,
+        gt={m: codes() for m in names},
+        arms={arm: {m: codes(members) for m in names} for arm in ("real", "null")},
+        seeds={"real": 0, "null": members},
+        held=held,
+        batch=1,
+    )
+
+
+def test_an_ensemble_decodes_to_one_feature_per_member_frame_and_channel():
     codec, cfg = _tiny_spectro_codec()
     n_tok = (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
-    codebook = codec.quantizer.codebook_size
-    F = 5
-
-    def flat():
-        return torch.randint(0, codebook, (F, n_tok), dtype=torch.int64)
-
-    # "mhr" exercises the 10-60 kHz banded path; "co2" (not in the banded set)
-    # exercises the full-band fallback -- both from the SAME tiny codec, aliased
-    # under two names.
+    ens = _ensemble(n_tok, codec.quantizer.codebook_size)
+    # "mhr" takes the 10-60 kHz band, "co2" the full band; one codec serves both
     codecs = {"mhr": (codec, cfg, "spectro"), "co2": (codec, cfg, "spectro")}
-    arms = core.SimulationArms(
-        seed_frames=2, predict_frames=3,
-        real={"mhr": flat(), "co2": flat()},
-        proposed={"mhr": flat(), "co2": flat()},
-        gt={"mhr": flat(), "co2": flat()},
-        divergence_vs_real={}, token_accuracy={}, persistence_accuracy={},
-    )
-    out = decode.decode_modalities(codecs, arms, ["mhr", "co2"])
+    out = decode.decode_ensemble(codecs, ens)
     assert set(out) == {"mhr", "co2"}
-    for m in ("mhr", "co2"):
-        assert set(out[m]) == {"real", "proposed", "gt"}
-        for arr in out[m].values():
-            assert arr.shape == (F, cfg.channels)
-            assert arr.dtype == np.float32
+    for per in out.values():
+        assert set(per) == {"gt", "real", "null"}
+        assert per["gt"].shape == (5, cfg.channels)
+        assert per["real"].shape == per["null"].shape == (3, 5, cfg.channels)
+        assert per["real"].dtype == np.float32
+
+
+def test_a_feature_is_the_same_whether_decoded_alone_or_in_a_stack():
+    codec, cfg = _tiny_spectro_codec()
+    n_tok = (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
+    ens = _ensemble(n_tok, codec.quantizer.codebook_size, frames=20)  # > one chunk
+    tokens = ens.arms["real"]["co2"]
+    stacked = decode.features(codec, cfg, "spectro", "co2", tokens)
+    alone = decode.features(codec, cfg, "spectro", "co2", tokens[1])
+    np.testing.assert_allclose(stacked[1], alone, rtol=1e-5, atol=1e-6)
+
+
+def test_held_modalities_and_those_without_a_codec_are_skipped():
+    codec, cfg = _tiny_spectro_codec()
+    n_tok = (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
+    ens = _ensemble(n_tok, codec.quantizer.codebook_size, held=("co2",))
+    codecs = {"co2": (codec, cfg, "spectro"), "mhr": (codec, cfg, "spectro")}
+    assert set(decode.decode_ensemble(codecs, ens)) == {"mhr"}
+    assert set(decode.decode_ensemble({"co2": codecs["co2"]}, ens)) == set()
+
+
+@pytest.mark.parametrize(
+    ("name", "family", "feature"),
+    [
+        ("mhr", "spectro", "10-60 kHz band power"),
+        ("ece", "spectro", "band power"),
+        ("tangtv_lower", "video", "frame mean"),
+        ("mse", "slowts", "intra-frame mean"),
+    ],
+)
+def test_each_feature_has_a_name(name, family, feature):
+    assert decode.feature_name(name, family) == feature
 
 
 def test_reduce_video_returns_per_frame_mean():
@@ -117,59 +154,3 @@ def test_reduce_series_passes_through_when_already_F_C():
     dec = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
     out = decode._reduce_series(dec)
     np.testing.assert_allclose(out, dec)
-
-
-def test_decode_modalities_uses_the_codecs_device_not_the_arms_device(monkeypatch):
-    # Per controller ruling (fix round 1, finding 1): the codec's own device drives
-    # the decode, since `load_codecs` can place a codec on a different device than
-    # wherever a caller's arms tensors happen to live (e.g. D4 --device cuda). This
-    # is made to actually discriminate the old (arms-derived) vs new (codec-derived)
-    # behavior WITHOUT a real GPU by putting the arms tensors on torch's "meta"
-    # device (always available, no CUDA needed) while the codec stays on cpu: the
-    # old `_device_of(arms)` would report "meta", the fixed one reports "cpu".
-    codec, cfg = _tiny_spectro_codec()
-    codec_device = next(codec.parameters()).device
-    assert codec_device == torch.device("cpu")  # sanity: this test's codec is on cpu
-
-    seen_devices = []
-
-    def _fake_decode_flat_chunked(codec_arg, flat, device, *a, **k):
-        seen_devices.append(device)
-        f = flat.shape[0]
-        return np.zeros((f, cfg.channels, cfg.freq_bins, cfg.time_frames), np.float32)
-
-    monkeypatch.setattr(
-        decode.eval_dynamics, "decode_flat_chunked", _fake_decode_flat_chunked
-    )
-
-    codes = torch.zeros(5, 4, dtype=torch.int64, device="meta")
-    arms = core.SimulationArms(
-        seed_frames=2, predict_frames=3,
-        real={"mhr": codes}, proposed={"mhr": codes}, gt={"mhr": codes},
-        divergence_vs_real={}, token_accuracy={}, persistence_accuracy={},
-    )
-    codecs = {"mhr": (codec, cfg, "spectro")}
-    decode.decode_modalities(codecs, arms, ["mhr"])
-
-    assert len(seen_devices) == 3  # real, proposed, gt
-    assert all(d == codec_device for d in seen_devices)
-
-
-def test_decode_modalities_skips_names_without_a_codec():
-    codec, cfg = _tiny_spectro_codec()
-    n_tok = (cfg.freq_bins // cfg.patch_f) * (cfg.time_frames // cfg.patch_t)
-    codebook = codec.quantizer.codebook_size
-    codes = torch.randint(0, codebook, (5, n_tok), dtype=torch.int64)
-    arms = core.SimulationArms(
-        seed_frames=2, predict_frames=3,
-        real={"mhr": codes}, proposed={"mhr": codes}, gt={"mhr": codes},
-        divergence_vs_real={}, token_accuracy={}, persistence_accuracy={},
-    )
-    codecs = {"mhr": (codec, cfg, "spectro")}
-    out = decode.decode_modalities(codecs, arms, ["mhr", "not_loaded"])
-    assert set(out) == {"mhr"}
-
-
-def test_spectrogram_reduction_preserves_below_mean_values():
-    dec = np.full((2, 3, 4, 5), -2.0, dtype=np.float32)
-    np.testing.assert_array_equal(decode.band_power(dec, None, None), -2.0)
