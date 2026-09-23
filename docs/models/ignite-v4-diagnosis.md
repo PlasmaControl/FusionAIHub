@@ -164,7 +164,7 @@ average (Frontier job 5218866), which is the chaotic sensitivity of item 3 above
 | B6 | `shot_design/simulate/core.py:1-11, 125-128` | the docstrings say the arms differ only through the actuators; only the random draw counts are matched | open |
 | B8 | `DynamicsConfig`, `train_dynamics.sh`, the mskfull run | three different scheduled-sampling defaults (0.15 over 40 k steps, 0.75 over 2 k, 0.0) | open |
 | B9 | `simulate/decode.py:88` and the paper's decode scripts | `np.abs` of signed standardised log-power folded values below the mean onto values above it (BES 54 %, CO2 86 % of in-band values are negative); it inverted the draft's BES "rise" | fixed |
-| B10 | `simulate/report.py` and the paper's figure script | `frac_static` computed on the proposed arm only, so a hallucinated placeholder passed the static filter and a frozen proposed arm was dropped | fixed: the report gives both arms, the figures filter on the real one |
+| B10 | `simulate/report.py` and the paper's figure script | `frac_static` computed on the proposed arm only, so a hallucinated placeholder passed the static filter and a frozen proposed arm was dropped | fixed: the report gives both arms; the figures drop a modality only when its *measured* tokens are static (a placeholder), never on an arm |
 | B11 | `ignite/dynamics_config.py:182` | `actuator_dim` defaults to 70; v4 needs 88 (`load_model` infers it, and every v4 log prints `actuator_dim 70 -> 88`) | open |
 
 ## What to change
