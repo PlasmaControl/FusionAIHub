@@ -189,3 +189,9 @@ dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wr
 .constraint-row select { grid-column: 1 / -1; }
 .constraint-row input { min-width: 0; }
 .shot-number input[type=checkbox] { width: auto; margin-right: 8px; }
+
+.simulation-results { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 12px; }
+.simulation-results > p { overflow-wrap: anywhere; }
+.simulation-modality { margin-top: 18px; }
+.simulation-modality th { white-space: normal; min-width: 90px; }
+.simulation-modality img { display: block; width: 100%; height: auto; margin-top: 10px; }

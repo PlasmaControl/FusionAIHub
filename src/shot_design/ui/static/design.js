@@ -21,8 +21,7 @@
     drag: null,
     preparing: false,
     suppressChartClick: false,
-    simulateIdent: null,
-    simulateTimer: null,
+    simulation: null,
   };
 
   const node = (id) => document.querySelector(`#${id}`);
@@ -122,13 +121,12 @@
       link.hidden = true;
       link.removeAttribute("href");
     }
-    stopSimulatePolling();
-    state.simulateIdent = null;
-    node("design-simulate").disabled = true;
-    node("design-simulate-status").textContent = "";
-    const report = node("design-simulate-report");
-    report.hidden = true;
-    report.removeAttribute("href");
+    updateSimulation();
+  }
+
+  function updateSimulation() {
+    state.simulation?.update({ savedId: state.program?.id, dirty: state.dirty,
+      canExport: state.response?.validation?.can_export === true });
   }
 
   function markDirty() {
@@ -161,69 +159,7 @@
       const ignite = node("design-ignite");
       ignite.setAttribute("href", `/api/design/${encodeURIComponent(id)}/ignite`);
       ignite.hidden = false;
-      node("design-simulate").disabled = false;
-      state.simulateIdent = id;
-    }
-  }
 
-  // Mirrors configs/shot_design/ui.yaml's simulate.poll_s; there is no route that
-  // exposes ui.yaml to the browser, so this is a fixed client-side echo of it.
-  const SIMULATE_POLL_MS = 15000;
-
-  function stopSimulatePolling() {
-    if (state.simulateTimer !== null) {
-      clearTimeout(state.simulateTimer);
-      state.simulateTimer = null;
-    }
-  }
-
-  async function pollSimulateStatus(id) {
-    const button = node("design-simulate");
-    const statusLine = node("design-simulate-status");
-    try {
-      const { data } = await state.api(`/api/design/${encodeURIComponent(id)}/simulate`);
-      if (state.simulateIdent !== id) return; // a different design took over meanwhile
-      if (data.state === "running" || data.state === "not_started") {
-        statusLine.textContent = data.state === "running" ?
-          `Running since ${data.started}…` : "Queued…";
-        state.simulateTimer = setTimeout(() => pollSimulateStatus(id), SIMULATE_POLL_MS);
-        return;
-      }
-      button.disabled = false;
-      if (data.state === "complete") {
-        statusLine.textContent = "Simulation complete.";
-        const report = node("design-simulate-report");
-        report.setAttribute("href", `/api/design/${encodeURIComponent(id)}/simulate/report`);
-        report.hidden = false;
-      } else if (data.state === "failed") {
-        statusLine.textContent = `Simulation failed: ${data.error}`;
-      }
-    } catch (error) {
-      if (state.simulateIdent !== id) return;
-      statusLine.textContent = `Status check failed: ${error.message}`;
-      button.disabled = false;
-    }
-  }
-
-  async function simulateDesign() {
-    const button = node("design-simulate");
-    const id = state.simulateIdent;
-    if (!id || button.disabled) return;
-    stopSimulatePolling();
-    button.disabled = true;
-    node("design-simulate-status").textContent = "Submitting…";
-    node("design-simulate-report").hidden = true;
-    try {
-      const { data } = await state.api(`/api/design/${encodeURIComponent(id)}/simulate`, {
-        method: "POST",
-      });
-      if (state.simulateIdent !== id) return;
-      node("design-simulate-status").textContent = `Submitted batch job ${data.job_id}.`;
-      pollSimulateStatus(id);
-    } catch (error) {
-      if (state.simulateIdent !== id) return;
-      node("design-simulate-status").textContent = `Submit failed: ${error.message}`;
-      button.disabled = false;
     }
   }
 
@@ -747,6 +683,7 @@
       });
       if (draft !== state.draft) return;
       acceptPreview(data, { saved: true });
+      await state.simulation.select(state.program.id);
       await loadRevisions(state.program.id);
     } catch (error) {
       node("design-status").textContent = "Save failed";
@@ -818,6 +755,7 @@
     state.selectedKey = null;
     state.selectedIndex = null;
     acceptPreview(data, { saved: true, resetBaseline: true });
+    await state.simulation.select(id);
   }
 
   async function refreshFromForm() {
@@ -880,6 +818,9 @@
   async function initDesign(options = {}) {
     if (options.api) state.api = options.api;
     if (!state.api) throw new Error("ShotDesign.initDesign requires an API function");
+    if (!state.simulation) state.simulation = scope.ShotDesignSimulation.create({
+      api: (...args) => state.api(...args), pollMs: options.pollMs,
+    });
     if (!state.initialized) {
       node("design-preview").addEventListener("click", (event) => {
         event.preventDefault();
@@ -899,7 +840,7 @@
       });
       node("design-simulate").addEventListener("click", (event) => {
         event.preventDefault();
-        return simulateDesign();
+        return state.simulation.submit();
       });
       node("design-channel").addEventListener("change", () => {
         state.selectedKey = node("design-channel").value;
@@ -944,6 +885,7 @@
     cancelPendingPreview();
     state.draft += 1;
     state.program = { ...emptyProgram(shot), comparison_shots: comparisons, notes };
+    state.simulation.select(null);
     state.response = null;
     state.selectedKey = null;
     state.selectedIndex = null;
