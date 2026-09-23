@@ -1579,6 +1579,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument("--top_p", type=float, default=None)
     p.add_argument("--revision_rounds", type=int, default=0)
     p.add_argument("--cfg_scale", type=float, default=1.0)
+    p.add_argument("--gumbel", type=float, default=0.0,
+                   help="annealed Gumbel noise on the MaskGIT reveal order (0 = greedy)")
     # PAIRING CAVEAT: rollout_shot guarantees that actuator counterfactual arms consume an
     # IDENTICAL number of RNG draws, so the comparison is exactly paired. --revision_rounds
     # and --cfg_scale preserve that (fixed extra draws per frame); --best_of_n does NOT, since
@@ -1620,7 +1622,7 @@ def main(argv=None):
     sampler = SamplerConfig(temperature=args.temperature, top_p=args.top_p,
                             global_pool=args.global_pool,
                             revision_rounds=args.revision_rounds,
-                            cfg_scale=args.cfg_scale)
+                            cfg_scale=args.cfg_scale, gumbel=args.gumbel)
     # Cross-check the CLI's --text_key / --text_embed_path against what the checkpoint was
     # TRAINED with (train_dynamics stamps both into the payload) — silently evaluating with a
     # different conditioning text than training would be a confusing, undetected mismatch.

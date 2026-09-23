@@ -15,7 +15,8 @@ fresh-model-code rule.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 import torch
 import torch.utils.checkpoint
@@ -48,11 +49,20 @@ class _MHA(nn.Module):
         self.attn_drop = nn.Dropout(dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # (B, L, d)
+        q, k, v = self.project(x)
+        o = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)   # dropout_p=0: see __init__
+        return self.out(o)
+
+    def project(self, x: torch.Tensor):
+        """(B, L, d) -> q, k, v, each (B, h, L, dh)."""
         B, L, d = x.shape
         qkv = self.qkv(x).reshape(B, L, 3, self.h, self.dh).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]                       # (B, h, L, dh)
-        o = F.scaled_dot_product_attention(q, k, v, is_causal=self.causal)   # dropout_p=0: see __init__
-        return self.attn_drop(self.proj(o.transpose(1, 2).reshape(B, L, d)))
+        return qkv[0], qkv[1], qkv[2]
+
+    def out(self, o: torch.Tensor) -> torch.Tensor:
+        """(B, h, L, dh) attention output -> (B, L, d)."""
+        B, h, L, dh = o.shape
+        return self.attn_drop(self.proj(o.transpose(1, 2).reshape(B, L, h * dh)))
 
 
 class _FFN(nn.Module):
@@ -97,6 +107,45 @@ class FactorizedSTBlock(nn.Module):
         xf = xf + self.ffn(self.fn(xf))
         x = xf.reshape(B, Fr, N, d)
         return x
+
+    def prefill(self, x: torch.Tensor):
+        """``forward`` that also returns the temporal keys and values, each (B*N, h, F, dh)."""
+        B, Fr, N, d = x.shape
+        xs = x.reshape(B * Fr, N, d)
+        xs = xs + self.spatial(self.sn(xs))
+        xt = xs.reshape(B, Fr, N, d).permute(0, 2, 1, 3).reshape(B * N, Fr, d)
+        q, k, v = self.temporal.project(self.tn(xt))
+        xt = xt + self.temporal.out(F.scaled_dot_product_attention(q, k, v, is_causal=True))
+        xf = xt.reshape(B, N, Fr, d).permute(0, 2, 1, 3).reshape(B * Fr * N, d)
+        return (xf + self.ffn(self.fn(xf))).reshape(B, Fr, N, d), k, v
+
+    def step(self, x: torch.Tensor, k_buf: torch.Tensor, v_buf: torch.Tensor,
+             n: int) -> torch.Tensor:
+        """One new frame ``x`` (B, N, d) at frame index ``n``: its keys and values go to slot
+        ``n`` of the buffers, and it attends over slots [0, n]."""
+        B, N, d = x.shape
+        x = x + self.spatial(self.sn(x))
+        xt = x.reshape(B * N, 1, d)
+        q, k, v = self.temporal.project(self.tn(xt))
+        k_buf[:, :, n:n + 1], v_buf[:, :, n:n + 1] = k, v
+        o = F.scaled_dot_product_attention(q, k_buf[:, :, :n + 1], v_buf[:, :, :n + 1])
+        xf = (xt + self.temporal.out(o)).reshape(B * N, d)
+        return (xf + self.ffn(self.fn(xf))).reshape(B, N, d)
+
+
+@dataclass
+class KVCache:
+    """Every block's temporal keys and values for the frames committed so far.
+
+    Incremental decoding with it is exact: spatial attention stays inside a frame, temporal
+    attention is causal, and actuators and text are added per frame, so a committed frame's
+    keys and values never change when a later frame arrives. ``k[i]``/``v[i]`` are block i's
+    (B*N, h, max_frames, dh) buffers; slots [0, n) hold the committed frames.
+    """
+
+    k: List[torch.Tensor]
+    v: List[torch.Tensor]
+    n: int
 
 
 class ActuatorCrossAttention(nn.Module):
@@ -172,10 +221,11 @@ class DynamicsBackbone(nn.Module):
         self.blocks = nn.ModuleList([FactorizedSTBlock(cfg) for _ in range(cfg.depth)])
         self.out_norm = nn.LayerNorm(cfg.d_model)
 
-    def encode(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
-               drop_actuators: bool = False, text: Optional[torch.Tensor] = None,
-               drop_text: bool = False) -> torch.Tensor:
-        """→ hidden states (B, F, tokens_per_frame, d_model).
+    def embed_frames(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
+                     frame_offset: int = 0, drop_actuators: bool = False,
+                     text: Optional[torch.Tensor] = None,
+                     drop_text: bool = False) -> torch.Tensor:
+        """Token, actuator and text embeddings → the blocks' input (B, F, tokens_per_frame, d).
 
         ``drop_actuators`` zeroes the actuator contribution for the whole batch — the
         unconditional branch used by classifier-free guidance at inference.
@@ -184,7 +234,7 @@ class DynamicsBackbone(nn.Module):
         frame (time-invariant conditioning) when ``cfg.text_embed_dim > 0``. ``drop_text``
         zeroes it (the CFG unconditional branch).
         """
-        x = self.tok.embed(codes)                              # (B, F, N, d)
+        x = self.tok.embed(codes, frame_offset=frame_offset)   # (B, F, N, d)
         B, Fr, N, d = x.shape
         if actuators.shape != (B, Fr, self.cfg.actuator_dim):
             raise ValueError(
@@ -228,6 +278,14 @@ class DynamicsBackbone(nn.Module):
             x = x + t.view(B, 1, 1, d)                                 # broadcast over frames and tokens
         elif text is not None:
             raise ValueError("text passed but cfg.text_embed_dim == 0")
+        return x
+
+    def encode(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
+               drop_actuators: bool = False, text: Optional[torch.Tensor] = None,
+               drop_text: bool = False) -> torch.Tensor:
+        """→ hidden states (B, F, tokens_per_frame, d_model). See :meth:`embed_frames`."""
+        x = self.embed_frames(codes, actuators, drop_actuators=drop_actuators, text=text,
+                              drop_text=drop_text)
         use_ckpt = self.training and getattr(self.cfg, "grad_checkpointing", False) and x.requires_grad
         for blk in self.blocks:
             if use_ckpt:
@@ -250,3 +308,33 @@ class DynamicsBackbone(nn.Module):
     def forward(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
                 text: Optional[torch.Tensor] = None):
         return self.tok.logits(self.encode(codes, actuators, text=text))
+
+    # ------------------------------------------------------------------ incremental decode ---
+    def prefill(self, codes: Dict[str, torch.Tensor], actuators: torch.Tensor, max_frames: int,
+                text: Optional[torch.Tensor] = None) -> KVCache:
+        """Run the committed frames once and keep every block's temporal keys and values."""
+        if self.tok.lag_k:
+            raise ValueError("the KV cache does not support lag_embed_k > 0")
+        x = self.embed_frames(codes, actuators, text=text)
+        n = x.shape[1]
+        keys, values = [], []
+        for blk in self.blocks:
+            x, k, v = blk.prefill(x)
+            pad = (*k.shape[:2], max_frames - n, k.shape[-1])
+            keys.append(torch.cat([k, k.new_empty(pad)], dim=2))
+            values.append(torch.cat([v, v.new_empty(pad)], dim=2))
+        return KVCache(keys, values, n)
+
+    def step(self, cache: KVCache, codes: Dict[str, torch.Tensor], actuators: torch.Tensor,
+             text: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Hidden states (B, tokens_per_frame, d) of frame ``cache.n``.
+
+        ``codes`` {name: (B, n_tok)} and ``actuators`` (B, actuator_dim) are that frame's. Its
+        keys and values are written to slot ``cache.n``; the caller commits the frame by running
+        this once more with the final codes and then advancing ``cache.n``.
+        """
+        x = self.embed_frames({n: c.unsqueeze(1) for n, c in codes.items()},
+                              actuators.unsqueeze(1), frame_offset=cache.n, text=text)[:, 0]
+        for blk, k_buf, v_buf in zip(self.blocks, cache.k, cache.v):
+            x = blk.step(x, k_buf, v_buf, cache.n)
+        return self.out_norm(x)

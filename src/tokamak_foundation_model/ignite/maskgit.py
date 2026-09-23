@@ -15,14 +15,13 @@ deterministic and resume is reproducible (main scripts pass one; Date/rand globa
 from __future__ import annotations
 
 import math
-import os as _os
 from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .dynamics import DynamicsBackbone
+from .dynamics import DynamicsBackbone, KVCache
 from .dynamics_config import DynamicsConfig
 from .sampling import SamplerConfig, apply_top_p, norm_log_confidence
 from .selfforce import rollout_context
@@ -36,9 +35,19 @@ def _cosine_keep_fractions(n_steps: int) -> list:
     return [math.cos(math.pi / 2 * (i + 1) / n_steps) for i in range(n_steps)]
 
 
-# Reveal-order noise scale for generate_frame (0 = the historical greedy reveal, so every
-# existing run and queued job is byte-identical unless this is set). See generate_frame.
-_GUMBEL_SCALE = float(_os.environ.get("IGNITE_MASKGIT_GUMBEL", "0"))
+def placeholders(seed_codes: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """{name: (B,) bool} for the rows whose seed frames all carry identical codes.
+
+    An absent diagnostic encodes to one constant frame, so a modality that does not change once
+    in K0 real frames is a placeholder; ``rollout(hold=...)`` keeps it at that code instead of
+    sampling a signal that was never measured. Modalities with no such row are left out.
+    """
+    out = {}
+    for name, c in seed_codes.items():
+        rows = (c == c[:, :1]).flatten(1).all(dim=1)
+        if bool(rows.any()):
+            out[name] = rows
+    return out
 
 
 class MaskGITDynamics(nn.Module):
@@ -426,26 +435,50 @@ class MaskGITDynamics(nn.Module):
                        temperature: float = 1.0,
                        generator: Optional[torch.Generator] = None,
                        sampler: Optional[SamplerConfig] = None,
-                       text: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+                       text: Optional[torch.Tensor] = None,
+                       cache: Optional[KVCache] = None,
+                       hold: Optional[Dict[str, torch.Tensor]] = None) -> Dict[str, torch.Tensor]:
         """Generate ONE next frame's committed codes given committed past frames.
 
         past_codes[.]: (B, P, n_tok) real codes for P past frames. actuators: (B, P+1, actuator_dim)
         (through the frame being generated — causal). Returns {name: (B, n_tok)} committed codes.
+
+        ``cache`` (from ``backbone.prefill`` over the same P frames) runs each pass over the new
+        frame only, and appends the committed frame to it. ``hold`` {name: (B,) bool} keeps those
+        rows of a modality at their last past frame's codes; they are still sampled, so the RNG
+        stream is the same with or without it.
         """
         cfg = self.cfg
         sampler = SamplerConfig(temperature=temperature) if sampler is None else sampler
         ref = past_codes[cfg.modalities[0].name]
         B, P, _ = ref.shape
         dev = ref.device
+        if cache is None:
+            def logits_of(cur):
+                seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
+                return self._decode_logits(seq, actuators, sampler, text=text)
+        else:
+            if sampler.cfg_scale != 1.0:
+                raise ValueError("the KV cache supports cfg_scale == 1 only")
+            if cache.n != P:
+                raise ValueError(f"the cache holds {cache.n} frames; past_codes has {P}")
+
+            def logits_of(cur):
+                h = self.backbone.step(cache, cur, actuators[:, -1], text=text)
+                return self.backbone.tok.logits_last(h.unsqueeze(1))
         # start the new frame fully masked, append it to the past
         cur = {m.name: torch.full((B, m.n_tok), self.backbone.tok.mask_ids[m.name],
                                   dtype=torch.long, device=dev) for m in cfg.modalities}
         revealed = {m.name: torch.zeros((B, m.n_tok), dtype=torch.bool, device=dev)
                     for m in cfg.modalities}
+        fixed = {}
+        for name, rows in (hold or {}).items():
+            fixed[name] = rows.view(B, 1).expand_as(revealed[name])
+            cur[name] = torch.where(fixed[name], past_codes[name][:, -1], cur[name])
+            revealed[name] = fixed[name].clone()
         keep_masked = _cosine_keep_fractions(cfg.maskgit_decode_steps)
         for step, frac in enumerate(keep_masked):
-            seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            logits = self._decode_logits(seq, actuators, sampler, text=text)  # {name:(B, n_tok, vocab)}
+            logits = logits_of(cur)                                            # {name:(B, n_tok, vocab)}
             # Three passes — sample all / decide reveals / commit. Splitting the old
             # single-pass loop lets the reveal POLICY see every modality's confidence at once
             # while leaving the sampling RNG order untouched (same multinomial calls, same
@@ -463,7 +496,7 @@ class MaskGITDynamics(nn.Module):
                 samp[m.name] = s
                 c = prob.gather(-1, s.unsqueeze(-1)).squeeze(-1)   # (B, n_tok)
                 # ANNEALED-GUMBEL REVEAL (canonical MaskGIT; opt-in via
-                # IGNITE_MASKGIT_GUMBEL). Ranking purely on p(sampled) is
+                # SamplerConfig.gumbel). Ranking purely on p(sampled) is
                 # deterministic-greedy: the tokens revealed first are those whose
                 # sample happened to land on the MARGINAL MODE, and the remaining
                 # steps then condition on that seed. Measured 2026-08-13 on the
@@ -482,10 +515,10 @@ class MaskGITDynamics(nn.Module):
                 # clamp keeps the exponent inside fp32 for a large scale setting.
                 # Default 0 draws no rand at all, so the historical greedy path
                 # stays bit-identical (same RNG stream).
-                if _GUMBEL_SCALE > 0.0:
+                if sampler.gumbel > 0.0:
                     u = torch.rand(c.shape, generator=generator,
                                    device=dev).clamp_(1e-9, 1 - 1e-9)
-                    ann = _GUMBEL_SCALE * (1.0 - step / max(1, len(keep_masked)))
+                    ann = sampler.gumbel * (1.0 - step / max(1, len(keep_masked)))
                     g = -torch.log(-torch.log(u))
                     c = (c.clamp_min(1e-12).log() + ann * g).clamp_(max=80.0).exp()
                 conf[m.name] = c
@@ -502,8 +535,7 @@ class MaskGITDynamics(nn.Module):
         # so an incoherent early commit is permanent. Re-mask the least-confident fraction
         # and re-decode it against the tokens that survived.
         for _ in range(int(sampler.revision_rounds)):
-            seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-            logits = self._decode_logits(seq, actuators, sampler, text=text)
+            logits = logits_of(cur)
             samp, conf = {}, {}
             for m in cfg.modalities:
                 lg = logits[m.name].float() / max(sampler.temp_for(m.name), 1e-6)
@@ -521,15 +553,18 @@ class MaskGITDynamics(nn.Module):
                 weakest = conf[m.name].argsort(dim=-1)[:, :k]          # lowest confidence
                 redo = torch.zeros_like(revealed[m.name])
                 redo.scatter_(1, weakest, True)
+                if m.name in fixed:
+                    redo &= ~fixed[m.name]
                 cur[m.name] = torch.where(redo, samp[m.name], cur[m.name])
-        # any still-masked (numeric edge) -> final argmax
+        # any still-masked (numeric edge, or zero decode steps) -> final argmax
         for m in cfg.modalities:
             still = ~revealed[m.name]
             if bool(still.any()):
-                seq = {n: torch.cat([past_codes[n], cur[n].unsqueeze(1)], dim=1) for n in cur}
-                h = self.backbone.encode(seq, actuators, text=text)
-                lg = self.backbone.tok.logits_last(h)[m.name]
+                lg = logits_of(cur)[m.name]
                 cur[m.name] = torch.where(still, lg.argmax(-1), cur[m.name])
+        if cache is not None:
+            self.backbone.step(cache, cur, actuators[:, -1], text=text)   # the committed frame
+            cache.n += 1
         return cur
 
     # ---- reveal policies: given this step's confidences, which tokens to commit ---------
@@ -583,12 +618,17 @@ class MaskGITDynamics(nn.Module):
                 n_predict: Optional[int] = None, temperature: float = 1.0,
                 generator: Optional[torch.Generator] = None,
                 sampler: Optional[SamplerConfig] = None,
-                text: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
+                text: Optional[torch.Tensor] = None,
+                kv_cache: bool = False,
+                hold: Optional[Dict[str, torch.Tensor]] = None) -> Dict[str, torch.Tensor]:
         """Seed K₀ real frames -> generate + COMMIT n_predict frames. Closed code space, no
         decode/re-tokenize round-trip.
 
         seed_codes[.]: (B, K0, n_tok). actuators: (B, K0 + n_predict, actuator_dim).
         Returns full trajectory {name: (B, K0 + n_predict, n_tok)}.
+
+        ``kv_cache`` gives the same trajectory at a fraction of the cost (see ``KVCache``);
+        ``hold`` is :func:`placeholders`' output, or any {name: (B,) bool}.
         """
         cfg = self.cfg
         n_predict = cfg.n_predict if n_predict is None else n_predict
@@ -598,10 +638,12 @@ class MaskGITDynamics(nn.Module):
             raise ValueError(
                 f"actuators has {actuators.shape[1]} frames; need K0+n_predict={K0 + n_predict}"
             )
+        cache = (self.backbone.prefill(traj, actuators[:, :K0], K0 + n_predict, text=text)
+                 if kv_cache else None)
         for t in range(n_predict):
             nxt = self.generate_frame(
                 traj, actuators[:, : K0 + t + 1], temperature=temperature,
-                generator=generator, sampler=sampler, text=text
+                generator=generator, sampler=sampler, text=text, cache=cache, hold=hold
             )
             traj = {n: torch.cat([traj[n], nxt[n].unsqueeze(1)], dim=1) for n in traj}
         return traj
