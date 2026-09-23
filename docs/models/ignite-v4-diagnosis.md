@@ -184,6 +184,7 @@ average (Frontier job 5218866), which is the chaotic sensitivity of item 3 above
   agree with the uncached path to 4e-5 (total variation 6e-6); 3 frames × 10 passes take 4.6 s
   instead of 42.2 s; an 80-frame, 10-pass member takes 106 s at a 16.6 GiB peak, about 30×
   less than the uncached path. `rollout(..., kv_cache=True)`; the default path is unchanged.
+  `scripts/evaluation/ignite_kv_cache_check.py` reruns these numbers on any checkpoint.
 - **Clamp placeholders** (H8, done). `rollout(..., hold=placeholders(seed))` keeps a modality
   whose seed codes never change at that code.
 - **An evaluation harness that can say no.** Per design, done: `shot_design simulate` runs
