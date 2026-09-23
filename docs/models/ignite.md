@@ -5,8 +5,8 @@ sidebar_position: 2
 
 # IGNITE — Design Note
 
-**Status:** design-only, no implementation. This is the consolidated architecture and
-decision log for a *fresh-start* Genie-style world model for the tokamak. It supersedes
+**Status:** architecture notes and decision log, with the current IGNITE v4
+bundle contract in [Section 12](#12-v4-generation). It supersedes
 the rollout-native / descriptor / continuous-head / independent-marginal approach
 (see `analysis/mode_audit/EXPERIMENTS.md` and the mode-audit conclusion for why).
 
@@ -19,7 +19,7 @@ Date of decisions: 2026-07-14.
 A **controllable plasma simulator**:
 
 - **Inputs:** an initial plasma state (`K₀` real seed frames) + a target **actuator
-  trajectory** (80 frames × 70 channels), known for the whole horizon.
+  trajectory** (80 frames × 88 channels), known for the whole horizon.
 - **Output:** the predicted plasma state (all diagnostics) for **80 frames**, produced by
   autoregressive rollout.
 - Change the actuator trajectory → different predicted evolution. That *is* the
@@ -54,7 +54,7 @@ between sampled windows, for diverse training starts — not a prediction stride
   STFT)          shift-invariant)              │ closed         ▲                   │
                                      frozen enc/dec code space  │ additive          ▼
  decoded frame ◄── decoder (adversarial) ◄──── predicted codes  │ actuator     frozen decoder
-                                                                └── 70-ch/frame      │
+                                                                └── 88-ch/frame      │
                                                                                      ▼
                                                                             predicted plasma state
 ```
@@ -148,12 +148,12 @@ One frame = all modalities' Phase-A codes concatenated (frozen codec set, all 4 
 
 | family | codecs | tokens each | subtotal |
 |---|---|---|---|
-| spectro | ece, bes, mhr, co2 | 192 | 768 |
+| spectro | ece, bes, mhr, co2, mirnov | 192 | 960 |
 | video   | tangtv_lower, tangtv_upper | 108 | 216 |
 | slow-TS | ts_core_density/temp, ts_tangential_density/temp, cer_ti, cer_rot, mse | 4 | 28 |
 | fast-TS | filterscopes (ELM activity envelope) | 5 | 5 |
 
-→ **1017 tokens / frame** (192×4 + 108×2 + 4×7 + 5×1). Each token carries **modality-type** +
+→ **1209 tokens / frame** (192×5 + 108×2 + 4×7 + 5×1). Each token carries **modality-type** +
 **within-modality position** + **frame index** (temporal). This whole multi-modal token set *is*
 the plasma state at that step. **Per-modality vocab heads** (each over its own FSQ codebook).
 NOTE: fast-TS (filterscopes) was ERRONEOUSLY omitted from the first layout draft (2026-07-27);
@@ -301,16 +301,14 @@ Not design forks — calibration/spec-out at build time:
 
 ## 12. v4 generation
 
-Update, 2026-09-19: the pinned production dynamics model moved from the
-14-modality/1017-token layout described above to a **15-modality**
-generation ("v4"), merged from `peter/dev-peter`. The frame layout, vocab
-size and starting time all changed; treat this section as authoritative over
-Sections 4-5 for the currently pinned bundle.
+IGNITE v4 is the model generation used by shot_design on both Frontier
+and Stellar. `model:` in `configs/shot_design/ignite_modalities.yaml`
+defines the bundle, frame layout, vocabularies and origin.
 
 ### Modalities and frame layout
 
-`mirnov` (spectro family, 29 channels, same `n_tok`/vocab shape as `mhr`) is
-added to the 14 modalities of the v2 generation. Every modality now shares a
+The 15 codecs include `mirnov` (spectro family, 29 channels, same
+`n_tok`/vocab shape as `mhr`). Every modality uses a
 single **1000-entry** codebook (`production_vocabs`), and the frame token
 count is:
 
@@ -322,9 +320,8 @@ count is:
 | fast-TS | filterscopes | 5 | 5 |
 
 → **1209 tokens / frame** (192×5 + 108×2 + 4×7 + 5×1), all at vocab size
-1000. Rollout now starts at `t0_start_s: 1.0` (v2 started at 0.05 s), giving
-**219 frames** for a full shot instead of v2's 239. The actuator vector
-widened from 70 to **88 channels** — `eval_dynamics.load_model` infers this
+1000. Frame 0 starts at `t0_start_s: 1.0`, giving **219 frames** for a full
+shot. The actuator vector has **88 channels** — `eval_dynamics.load_model` infers this
 directly from the checkpoint's `backbone.act_embed.weight` shape rather than
 from a hardcoded constant, so a bundle with a different actuator width loads
 without a code change.
@@ -362,8 +359,10 @@ mismatch. Since 2026-09-21 the same pinned bundle is also published as the priva
 Hugging Face repo `nc1/IGNITE-v4` (`model.repo_id`/`model.revision` in
 `ignite_modalities.yaml`), so a machine without the Frontier checkpoints, such as
 Stellar, installs it with `shot_design model --download --full` after `hf auth login`;
-`--check` then verifies the download against the same `codecs/MANIFEST.json`. The v2
-release stays untouched at `nc1/IGNITE`.
+`--check` then verifies the download against the same `codecs/MANIFEST.json`.
+On Stellar it lives at
+`/scratch/gpfs/EKOLEMEN/nc1514/shot-recommender/models/IGNITE_v4`.
+The pinned Hub revision is `d2f12b82`.
 
 ### G-ENC gate
 
@@ -381,8 +380,8 @@ fractions before relying on the cache for a new modality.
 ### Dynamics caveat
 
 The pinned dynamics checkpoint is `mskfull/dynamics_best.pt` at **step
-3200** — an early checkpoint relative to the v2 production run
-(`prod_d512L8`, step 13.5k). Rollouts from it are qualitative evidence that
+3200**. Its frame embedding has 100 rows: with 20 seed frames, at most 80
+frames can be predicted. Rollouts from this early checkpoint are qualitative evidence that
 the v4 stack loads and runs end to end, not a claim about prediction
 accuracy. Any report built from it (see
 [Simulation](../shot-design/simulation.md)) should say so explicitly rather
