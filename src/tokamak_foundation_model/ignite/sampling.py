@@ -31,6 +31,8 @@ class SamplerConfig:
                        ``revision_frac`` of the frame and re-decode, this many times.
     cfg_scale        : classifier-free guidance on the actuator conditioning.
                        1.0 = off (single forward pass, no cost).
+    gumbel           : annealed Gumbel noise on the reveal order (canonical MaskGIT).
+                       0 = the greedy confidence order, drawing no extra random numbers.
     """
 
     temperature: Union[float, Dict[str, float]] = 1.0
@@ -39,6 +41,7 @@ class SamplerConfig:
     revision_rounds: int = 0
     revision_frac: float = 0.25
     cfg_scale: float = 1.0
+    gumbel: float = 0.0
 
     def temp_for(self, name: str) -> float:
         if isinstance(self.temperature, dict):
