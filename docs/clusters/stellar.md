@@ -78,8 +78,7 @@ keeps its old name, its package having become `labeler`.
 
 ## Environment variables
 
-The `shot-design`/`shot-design-cpu` envs pin these on activation, so `pixi run -e shot-design`
-always sees production paths, even if you exported something else:
+The `shot-design`/`shot-design-cpu` envs default these on activation:
 
 ```
 SHOT_DESIGN_DATA_ROOT = /scratch/gpfs/EKOLEMEN/nc1514/ideate
@@ -87,10 +86,9 @@ LABELER_ROOT          = /scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 SHOT_DESIGN_CORPUS    = /scratch/gpfs/EKOLEMEN/foundation_model
 ```
 
-To point at another root, use the env's interpreter directly, not `pixi run`:
-`.pixi/envs/shot-design-cpu/bin/python -m shot_design ...` with your own exports.
-Never run a `shot_design` write command through `pixi run` against a scratch
-target; it will write to production.
+A root you export first wins: `SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db pixi run --frozen -e
+shot-design-cpu python -m shot_design ...` writes under `/tmp/scratch-db`. A write command
+prints the root it resolved before its first write.
 
 Other variables the code reads: `SHOT_DESIGN_PATHS` (paths file overriding the
 root), `SHOT_DESIGN_CONFIG_DIR`, `SHOT_DESIGN_HF_ONLINE` (default offline),

@@ -28,23 +28,24 @@ See also: [The command line](./cli.md), [The MCP server](./mcp.md),
 [Actuator programs](./programs.md), [Simulation](./simulation.md) and
 [Database build](./database-build.md) split out of this page by topic.
 
-## Scratch databases and the pixi activation env
+## Scratch databases and the data root
 
-`pixi run -e shot-design` and `-e shot-design-cpu` set `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
-`SHOT_DESIGN_CORPUS` from `[tool.pixi.feature.shot-design.target.unix.activation.env]` in `pyproject.toml`.
-Activation runs *after* your shell, so a value you exported is replaced without a word. On
-2026-09-14 a one-shot scratch build, run through `pixi run` with `SHOT_DESIGN_DATA_ROOT` exported to a
-`/tmp` directory, published itself over the 500-shot production database.
-
-So a scratch build must not go through `pixi run`. Call the environment's interpreter directly,
-with the variables exported:
+`pixi run -e shot-design` and `-e shot-design-cpu` give `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
+`SHOT_DESIGN_CORPUS` their production values only as defaults
+(`[tool.pixi.feature.shot-design.target.unix.activation.env]` in `pyproject.toml`). A root you
+export is the one the command writes under:
 
 ```bash
-export SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db HF_HUB_OFFLINE=1
-/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/shot-design-cpu/bin/python -m shot_design build --shots 190000
+SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db pixi run --frozen -e shot-design-cpu python -m shot_design build --shots 190000
 ```
 
-or give it a paths file of its own — `SHOT_DESIGN_PATHS=<file>` — remembering that `SHOT_DESIGN_DATA_ROOT`
+Until 2026-09-22 the activation replaced an exported root without a word. On 2026-09-14 a one-shot
+scratch build, run through `pixi run` with `SHOT_DESIGN_DATA_ROOT` exported to a `/tmp` directory,
+published itself over the 500-shot production database. The batch scripts call the environment's
+interpreter directly (`.pixi/envs/shot-design-cpu/bin/python -m shot_design ...`) with the roots
+exported, which does not depend on the activation at all.
+
+A paths file of its own works too — `SHOT_DESIGN_PATHS=<file>` — remembering that `SHOT_DESIGN_DATA_ROOT`
 still wins over it, so it has to be out of the environment:
 
 ```bash

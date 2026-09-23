@@ -8,11 +8,9 @@ from urllib.parse import urlencode
 
 DEFAULT_PORT = 8811
 
-#: The wrapper every live fdp fetch has to run under, spelled the way
-#: `docs/LABELER.md` spells it. `fdp run` execs a program, so it takes the
-#: module form rather than the `labeler-verify` pixi task, which is not an
-#: executable on PATH.
-FDP_COMMAND = "pixi run -e labelmaker fdp run python -m labeler.events.ui"
+#: How to start the page so a live fdp fetch works: the task runs it under
+#: `fdp run`.
+FDP_COMMAND = "pixi run -e labelmaker labeler-verify"
 
 #: What `fdp run` actually leaves in the environment (measured on stellar,
 #: 2026-09-18): the PTDATA client library and the MDSplus tree path. Either

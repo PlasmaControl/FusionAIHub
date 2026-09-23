@@ -2,7 +2,7 @@
 
 A documented escape hatch that has drifted from the code is worse than none: it reads as
 authority. So each assertion here is tied to the thing it documents -- the origin labels
-`config.data_root_origin` actually returns, the variables `pyproject.toml` actually pins, and
+`config.data_root_origin` actually returns, the roots `pyproject.toml` actually defaults, and
 the flag the guard actually names.
 """
 
@@ -16,7 +16,8 @@ from shot_design import config
 
 REPO = Path(__file__).resolve().parents[2]
 DOCS = REPO / "docs" / "shot-design" / "overview.md"
-HEADING = "## Scratch databases and the pixi activation env"
+HEADING = "## Scratch databases and the data root"
+ROOTS = ("SHOT_DESIGN_DATA_ROOT", "LABELER_ROOT", "SHOT_DESIGN_CORPUS")
 
 
 def section() -> str:
@@ -26,19 +27,31 @@ def section() -> str:
     return re.split(r"^## ", after, maxsplit=1, flags=re.MULTILINE)[0]
 
 
-def test_the_section_names_every_variable_the_shot_design_features_pin():
-    """`pixi run -e shot-design*` overrides these, whatever the caller exported -- which is what
-    replaced the production database with a one-shot one."""
-    pinned = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
-    env = pinned["tool"]["pixi"]["feature"]["shot-design"]["target"]["unix"]["activation"]["env"]
+def activation(feature: str) -> dict[str, str]:
+    manifest = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    return manifest["tool"]["pixi"]["feature"][feature]["target"]["unix"]["activation"]["env"]
+
+
+def test_every_root_the_manifest_sets_is_a_default():
+    """A plain value would replace a root the caller exported, which is what once replaced the
+    production database with a one-shot one."""
+    for feature in ("shot-design", "shot-design-frontier"):
+        env = activation(feature)
+        for name in (*ROOTS, "SHOT_DESIGN_PATHS"):
+            if name in env:
+                assert env[name].startswith("${" + name + ":-"), (feature, name, env[name])
+    assert set(ROOTS) <= set(activation("shot-design"))
+
+
+def test_the_section_names_every_root_the_shot_design_features_default():
     text = section()
-    for name in ("SHOT_DESIGN_DATA_ROOT", "LABELER_ROOT", "SHOT_DESIGN_CORPUS"):
-        assert name in env, f"{name} is no longer pinned; the docs section is now wrong"
+    for name in ROOTS:
         assert name in text, f"the docs section does not name {name}"
 
 
-def test_the_section_gives_both_ways_to_build_a_scratch_database():
+def test_the_section_gives_the_ways_to_build_a_scratch_database():
     text = section()
+    assert "SHOT_DESIGN_DATA_ROOT=/tmp/scratch-db pixi run --frozen -e shot-design-cpu" in text
     assert ".pixi/envs/shot-design-cpu/bin/python -m shot_design" in text
     assert "SHOT_DESIGN_PATHS=" in text
 

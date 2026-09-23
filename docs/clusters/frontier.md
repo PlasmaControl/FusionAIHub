@@ -45,11 +45,12 @@ LABELER_ROOT          = /lustre/orion/fus187/proj-shared/nchen/labeler
 SHOT_DESIGN_CORPUS    = /lustre/orion/fus187/proj-shared/foundation_model
 ```
 
-`pixi run --frozen -e shot-design-frontier ...` sets all four (plus
+`pixi run --frozen -e shot-design-frontier ...` defaults all four (plus
 `HF_HUB_OFFLINE=1`, `TOKENIZERS_PARALLELISM=false`,
 `HDF5_USE_FILE_LOCKING=FALSE`) through
 `[tool.pixi.feature.shot-design-frontier.target.unix.activation.env]` in
-`pyproject.toml`. `configs/shot_design/paths.frontier.yaml` carries every key
+`pyproject.toml`; a value you export first wins.
+`configs/shot_design/paths.frontier.yaml` carries every key
 `paths.yaml` does, pointed at the roots above; `paths.yaml` itself stays the
 Stellar file and is unaffected by anything written to the Frontier one.
 

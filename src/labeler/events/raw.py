@@ -287,7 +287,7 @@ RETRY_DELAY_S = 2.0
 #: How to restart the browser server so a live fetch can work. `fdp_signal`
 #: names the notebook kernel's command in its own hint, which is the wrong
 #: thing to tell someone looking at the browser page.
-FDP_UI_COMMAND = "pixi run -e labelmaker fdp run python -m labeler.events.ui"
+FDP_UI_COMMAND = "pixi run -e labelmaker labeler-verify"
 
 
 def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:

@@ -68,9 +68,9 @@ To wire a new cluster's file in:
    permissions.
 2. Write `paths.<cluster>.yaml` from the template above.
 3. Add a pixi feature for the cluster (or a plain shell wrapper, if the
-   cluster has no pixi) whose activation environment sets
+   cluster has no pixi) whose activation environment defaults
    `SHOT_DESIGN_PATHS`, `SHOT_DESIGN_DATA_ROOT`, `LABELER_ROOT` and
-   `SHOT_DESIGN_CORPUS` to that cluster's values — see
+   `SHOT_DESIGN_CORPUS` to that cluster's values (`"${VAR:-value}"`) — see
    `[tool.pixi.feature.shot-design-frontier.target.unix.activation.env]` in
    `pyproject.toml` for the Frontier version. List that feature **first**
    among the environment's features in `[tool.pixi.environments]`: pixi

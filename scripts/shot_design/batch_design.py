@@ -13,7 +13,7 @@ id it did not print).
 
 prompts.jsonl rows: {"shot": int, "theme": str, "prompt": str, ...}; the output rows copy
 the input row and add design_id / error / elapsed_s / trace path. Runs the interpreter it
-was started with (never `pixi run`, whose activation would re-point the data root).
+was started with.
 """
 
 from __future__ import annotations
