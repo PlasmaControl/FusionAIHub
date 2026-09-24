@@ -5,8 +5,11 @@ import json
 import pandas as pd
 import pytest
 
+from labeler.events.databases import DatabaseError
 from labeler.events.interval_tables import (
+    ATTRS_COLUMN,
     INTERVAL_COLUMNS,
+    INTERVAL_SCHEMA_VERSION,
     project_intervals,
     validate_intervals,
     write_interval_table,
@@ -76,6 +79,40 @@ def test_interval_validation_rejects_corrupt_values(over):
     row.update(over)
     with pytest.raises(ValueError):
         validate_intervals(pd.DataFrame([row]))
+
+
+def test_an_attrs_column_is_optional_and_kept_as_sorted_json(tmp_path):
+    frame = pd.DataFrame(
+        [[1, 1, 0, 10, None, '{"n": 1, "m": 2}'], [1, 0, 10, 20, None, ""]],
+        columns=[*INTERVAL_COLUMNS, ATTRS_COLUMN],
+    )
+    assert validate_intervals(frame)[ATTRS_COLUMN].tolist() == ['{"m": 2, "n": 1}', ""]
+    path = tmp_path / "labels.csv"
+    write_interval_table(frame, path, {"category": "neoclassical_tearing_mode"})
+    back = pd.read_csv(path, dtype={ATTRS_COLUMN: str}, keep_default_na=False)
+    assert validate_intervals(back)[ATTRS_COLUMN].tolist() == ['{"m": 2, "n": 1}', ""]
+    meta = json.loads(path.with_suffix(".meta.json").read_text())
+    assert meta["columns"] == [*INTERVAL_COLUMNS, ATTRS_COLUMN]
+    assert meta["schema_version"] == INTERVAL_SCHEMA_VERSION == 6
+    five = pd.read_csv(path).drop(columns=ATTRS_COLUMN)
+    assert tuple(validate_intervals(five).columns) == INTERVAL_COLUMNS
+
+
+@pytest.mark.parametrize("cell", ["{not json", "[1, 2]", '"text"', '{"x": NaN}'])
+def test_attrs_must_be_a_plain_json_object(cell):
+    frame = pd.DataFrame(
+        [[1, 1, 0, 10, None, cell]], columns=[*INTERVAL_COLUMNS, ATTRS_COLUMN]
+    )
+    with pytest.raises(DatabaseError, match="attrs"):
+        validate_intervals(frame)
+
+
+def test_no_other_extra_column_is_allowed():
+    frame = pd.DataFrame(
+        [[1, 1, 0, 10, None, "x"]], columns=[*INTERVAL_COLUMNS, "notes"]
+    )
+    with pytest.raises(DatabaseError, match="optionally then 'attrs'"):
+        validate_intervals(frame)
 
 
 def test_sparse_grid_roundtrip_preserves_integer_classes_zeros_and_unknown(tmp_path):

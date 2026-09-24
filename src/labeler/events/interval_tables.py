@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -12,7 +13,9 @@ from .databases import DatabaseError, write_csv, write_meta
 
 LEGACY_INTERVAL_COLUMNS = ("shot", "t_start", "t_end", "confidence")
 INTERVAL_COLUMNS = ("shot", "category", "t_start", "t_end", "confidence")
-INTERVAL_SCHEMA_VERSION = 5
+ATTRS_COLUMN = "attrs"
+WITH_ATTRS = (*INTERVAL_COLUMNS, ATTRS_COLUMN)
+INTERVAL_SCHEMA_VERSION = 6
 CATEGORY_NAMES = {
     "qmin_low": "low",
     "qmin_hybrid": "hybrid",
@@ -37,9 +40,14 @@ def category_labels(category: str) -> dict[str, str]:
 
 
 def validate_intervals(frame: pd.DataFrame) -> pd.DataFrame:
-    """Validate millisecond intervals; blank confidence means unknown."""
-    if tuple(frame.columns) != INTERVAL_COLUMNS:
-        raise DatabaseError(f"Expected columns {INTERVAL_COLUMNS}")
+    """Validate millisecond intervals; blank confidence means unknown.
+
+    A sixth column, `attrs`, is optional: a JSON object per row, blank for none.
+    """
+    if tuple(frame.columns) not in (INTERVAL_COLUMNS, WITH_ATTRS):
+        raise DatabaseError(
+            f"Expected columns {INTERVAL_COLUMNS}, optionally then {ATTRS_COLUMN!r}"
+        )
     result = frame.copy()
     values = pd.to_numeric(result["category"], errors="coerce")
     if not (
@@ -60,7 +68,34 @@ def validate_intervals(frame: pd.DataFrame) -> pd.DataFrame:
         result[column] = values.astype("int64" if column == "shot" else "float64")
     if (result.t_end < result.t_start).any():
         raise DatabaseError("t_end must not precede t_start")
+    if ATTRS_COLUMN in result:
+        result[ATTRS_COLUMN] = result[ATTRS_COLUMN].map(attrs_text)
     return result
+
+
+def parse_attrs(value) -> dict:
+    """One `attrs` cell as a dict: blank is `{}`, anything else a JSON object."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return {}
+    if isinstance(value, str):
+        if not value.strip():
+            return {}
+        try:
+            value = json.loads(value)
+        except ValueError as error:
+            raise DatabaseError(f"attrs is not JSON: {value!r}") from error
+    if not isinstance(value, dict):
+        raise DatabaseError(f"attrs must be a JSON object, not {value!r}")
+    return dict(value)
+
+
+def attrs_text(value) -> str:
+    """The cell as written: sorted-key JSON, or blank for no attributes."""
+    parsed = parse_attrs(value)
+    try:
+        return json.dumps(parsed, sort_keys=True, allow_nan=False) if parsed else ""
+    except (TypeError, ValueError) as error:
+        raise DatabaseError(f"attrs is not plain JSON: {parsed!r}") from error
 
 
 def project_intervals(events: pd.DataFrame) -> pd.DataFrame:
@@ -105,7 +140,7 @@ def write_interval_table(frame: pd.DataFrame, path: Path, meta: dict) -> None:
         **meta,
         "schema_version": INTERVAL_SCHEMA_VERSION,
         "time_units": "ms",
-        "columns": list(INTERVAL_COLUMNS),
+        "columns": list(frame.columns),
         "categories": meta.get("categories", category_labels(meta.get("category", ""))),
         "n_rows": len(frame),
         "n_shots": int(frame.shot.nunique()),
