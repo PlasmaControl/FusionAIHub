@@ -115,6 +115,8 @@ protobuf = "<7"
 # The review page's server; the same ranges as feature.shot-design.
 fastapi = ">=0.115,<1"
 uvicorn = ">=0.30,<1"
+# PDF text for labeler.literature.osti; the same range as feature.shot-design.
+pypdf = ">=4,<7"
 
 [tool.pixi.feature.labelmaker.pypi-dependencies]
 # CPU wheels: labeler never uses a GPU.
