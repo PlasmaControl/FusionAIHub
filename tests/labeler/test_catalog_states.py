@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
+from pathlib import Path
+
 import pytest
 
-from labeler.events.catalog.states import PHENOMENA, STATE_NAMES, attr_problems
+from labeler.events.catalog.states import (
+    COMMON_ATTRS,
+    PHENOMENA,
+    STATE_NAMES,
+    attr_problems,
+)
 
 
 def test_four_states_and_six_phenomena():
@@ -146,3 +155,26 @@ def test_always_observable_phenomena_are_recorded_in_the_vocabulary():
         "neoclassical_tearing_mode",
         "disruption",
     }
+
+
+def test_data_guide_phenomena_table_agrees_with_the_vocabulary():
+    guide = (Path(__file__).resolve().parents[2] / "data/events/README.md").read_text()
+    match = re.search(r'<table id="catalog-phenomena">.*?</table>', guide, re.DOTALL)
+    assert match, "The data guide must list each phenomenon's attributes and points"
+    table = ET.fromstring(match.group())
+    documented = {}
+    for row in table.findall("tbody/tr"):
+        category_cell, attrs_cell, points_cell, observable_cell = row.findall("td")
+        category = category_cell.findtext("code")
+        assert category not in documented, f"Repeated phenomenon: {category}"
+        documented[category] = (
+            {key.text for key in attrs_cell.findall("code")},
+            tuple(kind.text for kind in points_cell.findall("code")),
+            "".join(observable_cell.itertext()).strip(),
+        )
+    assert set(documented) == set(PHENOMENA)
+    for category, phenomenon in PHENOMENA.items():
+        attrs, points, not_observable = documented[category]
+        assert attrs == set(COMMON_ATTRS) | set(phenomenon.attrs), category
+        assert points == phenomenon.points, category
+        assert not_observable == ("No" if phenomenon.observable_always else "Yes")
