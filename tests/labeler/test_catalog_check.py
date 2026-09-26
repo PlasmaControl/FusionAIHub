@@ -324,6 +324,100 @@ def test_a_consistent_disruption_shot_passes_every_check():
     )
 
 
+@pytest.mark.parametrize("end", [5260.54, 5262.0])
+def test_d19_final_quench_may_end_up_to_two_ms_past_the_allowed_window(end):
+    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, end))
+    frame = _points(
+        (191389, "disruption", "t80", 5255.65),
+        (191389, "disruption", "t_D", end - 0.01),
+        (191389, "disruption", "t20", end),
+    )
+    assert (
+        check_table(
+            labels, "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("kind", ["t80", "t_D", "t20"])
+def test_d19_points_allow_two_ms_but_report_a_larger_overrun(kind):
+    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, 5262.01))
+    frame = _points(
+        (191389, "disruption", "t80", 5255.65),
+        (191389, "disruption", "t_D", 5260.53),
+        (191389, "disruption", "t20", 5260.54),
+    )
+    frame.loc[frame.kind == kind, "t_ms"] = 5262.01
+    found = check_table(
+        labels, "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+    )
+    assert any(f.check == "windows" for f in found)
+    assert any(f.check == "points" and kind in f.detail for f in found)
+    for check in ("windows", "points"):
+        assert any(
+            f.check == check and "8-5260 ms" in f.detail and "2 ms" in f.detail
+            for f in found
+        )
+
+
+def test_d19_points_pass_when_labels_stop_at_the_allowed_window_end():
+    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, 5260))
+    frame = _points(
+        (191389, "disruption", "t80", 5255.65),
+        (191389, "disruption", "t_D", 5260.53),
+        (191389, "disruption", "t20", 5260.54),
+    )
+    assert (
+        check_table(
+            labels, "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("state", [0, 2])
+def test_d19_does_not_extend_nonpresent_disruption_spans(state):
+    labels = _labels((191389, state, 8, 5260.54))
+    found = check_table(labels, "disruption", allowed={191389: (8, 5260)})
+    assert any(f.check == "windows" for f in found)
+
+
+def test_d19_does_not_extend_other_phenomena_or_the_window_start():
+    labels = _labels((191389, 1, 8, 5260.54))
+    frame = _points((191389, "edge_localized_mode", "elm", 5260.54))
+    found = check_table(
+        labels,
+        "edge_localized_mode",
+        allowed={191389: (8, 5260)},
+        points_frame=frame,
+    )
+    assert {f.check for f in found} == {"windows", "points"}
+    labels = _labels((191389, 1, 7.99, 20))
+    frame = _points(
+        (191389, "disruption", "t80", 7.99),
+        (191389, "disruption", "t_D", 7.99),
+        (191389, "disruption", "t20", 19.99),
+    )
+    found = check_table(
+        labels, "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+    )
+    assert any(f.check == "windows" for f in found)
+
+
+def test_d19_does_not_extend_a_labelled_window_ending_before_the_allowed_end():
+    labels = _labels((191389, 1, 5255, 5258))
+    frame = _points(
+        (191389, "disruption", "t80", 5255),
+        (191389, "disruption", "t_D", 5257),
+        (191389, "disruption", "t20", 5258),
+    )
+    found = check_table(
+        labels, "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+    )
+    assert len(found) == 1 and "outside the assessed window" in found[0].detail
+
+
 @pytest.mark.parametrize("kind", ["t_D", "t80", "t20"])
 def test_a_disruption_refuses_more_than_one_point_of_each_kind(kind):
     frame = pd.concat(

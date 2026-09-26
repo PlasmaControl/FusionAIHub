@@ -39,6 +39,9 @@ from .states import NOT_OBSERVABLE, PHENOMENA, STATE_NAMES, attr_problems
 
 Windows = Mapping[int, Sequence[float] | np.ndarray]
 CSV_ERRORS = (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError)
+# D19: a final disruption quench may run this far past the allowed window end.
+# This scoring tolerance is also the unchanged floor of D17's quench margin.
+DISRUPTION_TIMING_TOLERANCE_MS = 2.0
 
 
 @dataclass(frozen=True)
@@ -134,7 +137,11 @@ def assessed(frame: pd.DataFrame) -> dict[int, tuple[float, float]]:
 
 
 def windows(
-    frame: pd.DataFrame, allowed: Windows, where: str = "labels"
+    frame: pd.DataFrame,
+    allowed: Windows,
+    where: str = "labels",
+    *,
+    category: str | None = None,
 ) -> list[Finding]:
     out = []
     for shot, (lo, hi) in assessed(frame).items():
@@ -144,9 +151,23 @@ def windows(
         problem = _allowed_problem(shot, span)
         if problem:
             out.append(Finding("windows", where, shot, problem))
-        elif lo < span[0] or hi > span[1]:
-            detail = f"window {lo:g}-{hi:g} ms is outside {span[0]:g}-{span[1]:g}"
-            out.append(Finding("windows", where, shot, detail + " ms"))
+            continue
+        end_allowed = hi <= span[1]
+        suffix = ""
+        if category == "disruption":
+            overrun = frame[(frame.shot == shot) & (frame.t_end > span[1])]
+            end_allowed |= (
+                len(overrun) == 1
+                and overrun.iloc[0].category == 1
+                and hi <= span[1] + DISRUPTION_TIMING_TOLERANCE_MS
+            )
+            suffix = (
+                f" (D19: only the last present span may end up to "
+                f"{DISRUPTION_TIMING_TOLERANCE_MS:g} ms later)"
+            )
+        if lo < span[0] or not end_allowed:
+            detail = f"window {lo:g}-{hi:g} ms is outside {span[0]:g}-{span[1]:g} ms"
+            out.append(Finding("windows", where, shot, detail + suffix))
     return out
 
 
@@ -182,6 +203,8 @@ def points(
     labels: pd.DataFrame | None,
     category: str,
     where: str = "points",
+    *,
+    allowed: Windows | None = None,
 ) -> list[Finding]:
     try:
         frame = validate_points(frame)
@@ -196,7 +219,27 @@ def points(
             out.append(Finding("points", where, shot, detail))
             continue
         span = spans.get(shot)
-        if labels is not None and (span is None or not span[0] <= r.t_ms < span[1]):
+        limit = allowed.get(shot) if category == "disruption" and allowed else None
+        extended = (
+            limit is not None
+            and span is not None
+            and span[1] >= limit[1]
+            and span[0] <= r.t_ms
+            and limit[1] <= r.t_ms <= limit[1] + DISRUPTION_TIMING_TOLERANCE_MS
+        )
+        if limit is not None and not (
+            limit[0] <= r.t_ms <= limit[1] + DISRUPTION_TIMING_TOLERANCE_MS
+        ):
+            detail = (
+                f"{at} is outside the allowed window {limit[0]:g}-{limit[1]:g} ms "
+                f"(D19: at most {DISRUPTION_TIMING_TOLERANCE_MS:g} ms past its end)"
+            )
+            out.append(Finding("points", where, shot, detail))
+        elif (
+            labels is not None
+            and not extended
+            and (span is None or not span[0] <= r.t_ms < span[1])
+        ):
             detail = f"{at} is outside the assessed window"
             out.append(Finding("points", where, shot, detail))
         for problem in attr_problems(category, parse_attrs(r.attrs)):
@@ -243,7 +286,7 @@ def disruption_points(
                 # D17: max|dIp/dt| lies within the quench plus a margin of
                 # max(2 ms scoring tolerance, one quarter of the quench).
                 # The quarter covers an exponential quench's earlier steepest slope.
-                margin = max(2.0, (hi - lo) / 4)
+                margin = max(DISRUPTION_TIMING_TOLERANCE_MS, (hi - lo) / 4)
                 if not lo - margin <= at <= hi + margin:
                     detail = (
                         f"D17: t_D at {_ms(at)} is outside the quench {lo:g}-{hi:g} ms "
@@ -294,11 +337,11 @@ def check_table(
     found += tiling(labels, where) + states(labels, where, category=category)
     found += attrs(labels, category, where)
     if allowed is not None:
-        found += windows(labels, allowed, where)
+        found += windows(labels, allowed, where, category=category)
     if points_frame is None and category == "disruption":
         points_frame = pd.DataFrame(columns=list(POINT_COLUMNS))
     if points_frame is not None:
-        found += points(points_frame, labels, category, beside)
+        found += points(points_frame, labels, category, beside, allowed=allowed)
     return found
 
 
