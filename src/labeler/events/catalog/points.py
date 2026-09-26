@@ -36,7 +36,9 @@ def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
         raise DatabaseError(f"Expected columns {POINT_COLUMNS}")
     result = frame.copy()
     shots = pd.to_numeric(result.shot, errors="coerce")
-    if not (np.isfinite(shots) & (shots >= 0) & (shots % 1 == 0)).all():
+    if not (
+        np.isfinite(shots) & (shots >= 0) & (shots < 2**63) & (shots % 1 == 0)
+    ).all():
         raise DatabaseError("shot must be a nonnegative integer")
     result["shot"] = shots.astype("int64")
     for row in result[["phenomenon", "kind"]].drop_duplicates().itertuples():
@@ -48,9 +50,22 @@ def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
     result["t_ms"] = pd.to_numeric(result.t_ms, errors="coerce").astype("float64")
     if not np.isfinite(result.t_ms).all():
         raise DatabaseError("t_ms must be a finite number")
+    repeated = result.duplicated(["shot", "phenomenon", "kind", "t_ms"])
+    if repeated.any():
+        row = result.loc[repeated].iloc[0]
+        raise DatabaseError(
+            f"repeated point: shot {row.shot}, {row.phenomenon}, "
+            f"{row.kind} at {row.t_ms:g} ms"
+        )
     result["attrs"] = result["attrs"].map(attrs_text).astype(str)
-    lo = pd.to_numeric(result.window_start_ms, errors="coerce").astype("float64")
-    hi = pd.to_numeric(result.window_end_ms, errors="coerce").astype("float64")
+    for column in WINDOW_COLUMNS:
+        raw = result[column]
+        values = pd.to_numeric(raw, errors="coerce").astype("float64")
+        blank = raw.isna() | (raw == "")
+        if (~blank & ~np.isfinite(values)).any():
+            raise DatabaseError(f"{column} must be a finite number when set")
+        result[column] = values
+    lo, hi = result.window_start_ms, result.window_end_ms
     if (lo.isna() != hi.isna()).any():
         raise DatabaseError("window_start_ms and window_end_ms are set together")
     checked = lo.notna()

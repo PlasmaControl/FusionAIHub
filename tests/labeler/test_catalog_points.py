@@ -77,3 +77,38 @@ def test_the_columns_are_fixed():
     frame = _points([1, "disruption", "t_D", 10.0, "", None, None])
     with pytest.raises(DatabaseError, match="Expected columns"):
         validate_points(frame.drop(columns="attrs"))
+
+
+@pytest.mark.parametrize(
+    "bounds",
+    [("oops", "oops"), ("oops", ""), (-float("inf"), 20), (0, float("inf"))],
+)
+def test_malformed_point_windows_are_rejected(bounds):
+    frame = _points([190001, "disruption", "t_D", 10.25, "", *bounds])
+    with pytest.raises(DatabaseError, match="window.*finite number"):
+        validate_points(frame)
+
+
+@pytest.mark.parametrize("bounds", [("", ""), (None, None), (float("nan"),) * 2])
+def test_blank_point_windows_remain_unchecked(bounds):
+    frame = validate_points(_points([1, "disruption", "t_D", 10.25, "", *bounds]))
+    assert frame.window_start_ms.isna().all()
+    assert frame.window_end_ms.isna().all()
+
+
+def test_points_shot_cannot_wrap_to_a_negative_int64():
+    with pytest.raises(DatabaseError, match="shot"):
+        validate_points(_points([2**63, "disruption", "t_D", 10.25, "", None, None]))
+    frame = validate_points(
+        _points([2**63 - 1, "disruption", "t_D", 10.25, "", None, None])
+    )
+    assert frame.shot.iloc[0] == 2**63 - 1
+
+
+def test_repeated_points_name_the_first_repeat():
+    row = [190001, "edge_localized_mode", "elm", 10.25, "", None, None]
+    with pytest.raises(DatabaseError, match="repeat.*190001.*elm.*10.25"):
+        validate_points(_points(row, row, row))
+    other = [190002, *row[1:]]
+    later = [*row[:3], 10.5, *row[4:]]
+    assert len(validate_points(_points(row, other, later))) == 3
