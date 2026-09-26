@@ -1,12 +1,14 @@
 """The population: the corpus shots 185,601-204,999 that pass four rules.
 
-Rules 1-3 are `shot_design.shotdb.select.eligible()` with its text-length clause
-dropped, and the rejections keep its names:
+Rules 1-3 use `shot_design.shotdb.select.eligible()` with its text-length clause
+dropped and its title filter replaced by machine time; the rejections keep its names:
 
 1. the shot-table row: SHOT_TYPE plasma, |IP| >= 0.5 MA, PULSE-LENGTH >= 2 s, and
    PBEAM-MAX >= 1 MW or PECH-MAX > 0 (`shot_type`, `ip`, `pulse_length`, `heating`);
 2. the shot's own shot-table block, not the session fallback, under a run title that
-   names no machine activity (`session_fallback`, `title`);
+   names no machine activity (`session_fallback`, `title`): startup and power-system
+   test titles, or the lexicon's machine theme after physics themes have been tried
+   first against the title and mini-proposal subject;
 3. at least 2 s of census coverage for mhr, ece and filterscopes (`census_<group>`),
    in effect presence in this corpus: mhr spans 4.194 s and ece 6.193 s when present.
 
@@ -31,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import replace
@@ -50,6 +53,9 @@ from .check import CatalogError
 
 FIRST_SHOT, LAST_SHOT = 185_601, 204_999
 MAX_IP_DT_MS = 0.5
+MACHINE_TITLE = re.compile(
+    r"(?i)^\s*(?:plasma\s+)?(?:start-?up|starup)\b|^\s*power\s+systems?\s+test"
+)
 #: Census groups whose spans a pool row carries; the first three are rule 3's.
 SPAN_GROUPS = ("mhr", "ece", "filterscopes", "co2", "sxr", "mirnov")
 POOL_COLUMNS = (
@@ -85,15 +91,29 @@ RULES = {
 }
 
 
+def machine_time(title, subject, themes=None) -> bool:
+    """An explicit machine title or the lexicon's physics-first machine theme."""
+    if themes is None:
+        themes = select.lexicon_themes()
+    return bool(MACHINE_TITLE.search(title or "")) or (
+        select.assign_theme(title, themes, subject=subject) == select.FALLBACK_THEME
+    )
+
+
 def screen(
     shots: Iterable[int],
     bundles: Mapping[int, str],
     spans: Mapping[int, Mapping[str, float]],
+    themes=None,
 ) -> pd.DataFrame:
     """One row per shot: its shot-table values, census spans and the rules 1-3 it fails.
 
     `reasons` joins the rejections with ";" and is empty for a shot that passes.
+    Rule 2 rejects explicit startup/power-system test titles and the lexicon's
+    machine theme, assigned physics first from title and mini-proposal subject.
     """
+    if themes is None:
+        themes = select.lexicon_themes()
     rows = []
     for shot in sorted(set(shots)):
         if shot not in bundles:
@@ -112,6 +132,11 @@ def screen(
         facts = replace(facts, **missing)
         found = spans.get(shot, {})
         _, why = select.eligible(facts, found, min_shot_chars=0)
+        # Rule 4 uses measured Ip, and rule 2 uses machine time instead of words
+        # such as "test", which occur in physics titles as well.
+        reasons = set(why) - {"flattop", "title"}
+        if machine_time(facts.title, facts.mp_subject, themes):
+            reasons.add("title")
         rows.append(
             {
                 "shot": shot,
@@ -126,8 +151,9 @@ def screen(
                 "pbeam_max_mw": facts.pbeam_max_mw,
                 "pech_max_mw": facts.pech_max_mw,
                 **{f"span_{g}_s": round(found.get(g, 0.0), 3) for g in SPAN_GROUPS},
-                # rule 4 is measured from Ip, not from the pulse-length proxy
-                "reasons": ";".join(r for r in why if r != "flattop"),
+                "reasons": ";".join(
+                    r for rule in RULES.values() for r in rule if r in reasons
+                ),
             }
         )
     frame = pd.DataFrame(rows, columns=list(POOL_COLUMNS))
@@ -263,7 +289,11 @@ def rules_record() -> dict:
         },
         "rule_2": {
             "own_shot_table_block": True,
-            "title_exclude": select.TITLE_EXCLUDE.pattern,
+            "machine_time": {
+                "pattern": MACHINE_TITLE.pattern,
+                "lexicon_theme": select.FALLBACK_THEME,
+                "assignment": "physics themes first, title and mini-proposal subject",
+            },
         },
         "rule_3": {
             "groups": list(select.CENSUS_GROUPS),
@@ -280,6 +310,7 @@ def rules_record() -> dict:
         "dropped": {
             "shot_text": {"min_shot_chars": 0},
             "flattop": "select.eligible pulse-length flattop proxy",
+            "title": select.TITLE_EXCLUDE.pattern,
         },
     }
 

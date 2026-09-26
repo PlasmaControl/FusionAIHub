@@ -49,7 +49,7 @@ def _pool():
         1: _bundle(1, GOOD),
         2: _bundle(2, GOOD | {"PULSE-LENGTH": "1.5", "PBEAM-MAX-(MW)": "0.0"}),
         3: _bundle(3, None),
-        4: _bundle(4, GOOD, title="PS test"),
+        4: _bundle(4, GOOD, title="Power Systems Testing continued."),
         5: _bundle(5, GOOD),
         7: _bundle(
             7,
@@ -407,3 +407,161 @@ def test_a_missing_bundle_has_a_blank_input_digest(tmp_path, monkeypatch, capsys
     assert inputs.to_dict("records") == [{"shot": 185601, "bundle_sha256": ""}]
     meta = json.loads((out / "pool.meta.json").read_text())
     assert meta["bundles"] == 0 and meta["corpus_in_range"] == 1
+
+
+@pytest.mark.parametrize(
+    ("title", "subject", "want"),
+    [
+        (
+            (
+                "Test FSRM at Low Collisionality and Spectroscopic Measurements "
+                "of ELMy Redeposition"
+            ),
+            (
+                "Spectroscopic Measurements of Tungsten S/XB | Test FSRM at Low "
+                "Collisionality and Spectroscopic Measurements of ELMy Redeposition"
+            ),
+            False,
+        ),
+        (
+            (
+                "Impurity-seeded detachment in upper-ceiling closed divertor and test "
+                "detachment scaling model"
+            ),
+            None,
+            False,
+        ),
+        (
+            "Test the root cause of 2,1 instability of low-torque stable IBS plasmas",
+            None,
+            False,
+        ),
+        (
+            (
+                "Detachment dynamics and control with multi-sine system identification "
+                "and IRTV heat flux control test"
+            ),
+            None,
+            False,
+        ),
+        (
+            "Test Off-axis Helicon Current Drive using High Beta_e Plasma coupling",
+            None,
+            False,
+        ),
+        (
+            (
+                "Characterization of runaway electron generation during ohmic plasma "
+                "startup"
+            ),
+            None,
+            False,
+        ),
+        (
+            (
+                "Investigation of electron-cyclotron assisted startup and the ITER "
+                "first plasma scenario with ITER-like actuators (part 1)"
+            ),
+            (
+                "Investigation of EC assisted startup and the ITER | Investigation of "
+                "electron-cyclotron assisted startup and the ITER first plasma "
+                "scenario with ITER-like actuators (part 1)"
+            ),
+            False,
+        ),
+        (
+            "Diagnostic checkout for WPQH",
+            (
+                "Diagnostic checkout for QH/WPQH-Mode D3DMP No. 2022-35-51 | Divertor "
+                "diagnostic checkout for QH/WPQH-Mode"
+            ),
+            False,
+        ),
+        ("Helicon Commissioning - Determine Edge Conditions for Coupling", None, False),
+        ("Testing of private industry plasma-facing materials", None, False),
+        (None, None, False),
+        ("Power Systems Testing continued.", None, True),
+        ("Startup", None, True),
+        ("Startup", "Startup", True),
+        ("Plasma Startup - reboot - Day 9", None, True),
+        ("Plasma Starup - reboot - Day 5", None, True),
+        (
+            "Plasma Startup and Systems Checkout - post NT armor vent - Day 4",
+            None,
+            True,
+        ),
+        ("Plasma Startup - PostECG port blank off", "Startup", True),
+        ("Plasma Startup after Helicon Vent", None, True),
+        ("IWL Plasmas for diagnostic checkout", None, True),
+        (
+            "RF Systems Commissioning",
+            "RF Systems Commissioning D3DMP No. 2024-23-59 | RF Systems Commissioning",
+            True,
+        ),
+    ],
+)
+def test_machine_time_separates_physics_from_machine_activity(title, subject, want):
+    assert pop.machine_time(title, subject) is want
+
+
+@pytest.mark.parametrize(
+    ("title", "want"),
+    [
+        (
+            "Test the root cause of 2,1 instability of low-torque stable IBS plasmas",
+            "",
+        ),
+        ("Power Systems Testing continued.", "title"),
+    ],
+)
+def test_screen_rejects_machine_titles_and_keeps_physics_tests(title, want):
+    pool = pop.screen([1], {1: _bundle(1, GOOD, title=title)}, {1: SPANS})
+    assert pool.loc[0, "reasons"] == want
+
+
+def test_the_subject_can_resolve_a_machine_title_with_supplied_themes():
+    title = (
+        "Investigation of electron-cyclotron assisted startup and the ITER first "
+        "plasma scenario with ITER-like actuators (part 1)"
+    )
+    subject = "Investigation of EC assisted startup and the ITER"
+    themes = [
+        {"id": "startup_checkout", "keywords": ["startup"]},
+        {"id": "physics", "keywords": ["ec assisted"]},
+    ]
+    assert pop.machine_time(title, None, themes)
+    assert not pop.machine_time(title, subject, themes)
+
+
+def test_the_screen_loads_themes_once_and_honours_supplied_themes(monkeypatch):
+    calls = []
+    themes = [{"id": "startup_checkout", "keywords": ["fixture machine"]}]
+
+    def lexicon_themes():
+        calls.append(True)
+        return themes
+
+    monkeypatch.setattr(pop.select, "lexicon_themes", lexicon_themes)
+    bundles = {shot: _bundle(shot, GOOD, title="fixture machine") for shot in (1, 2)}
+    spans = {1: SPANS, 2: SPANS}
+    assert pop.screen([1, 2], bundles, spans)["reasons"].tolist() == ["title", "title"]
+    assert calls == [True]
+    pool = pop.screen([1, 2], bundles, spans, themes=[])
+    assert pool["reasons"].tolist() == ["", ""]
+    assert calls == [True]
+
+
+def test_the_rule_record_names_the_machine_rule_and_dropped_title_regex():
+    rules = pop.rules_record()
+    assert rules["rule_2"] == {
+        "own_shot_table_block": True,
+        "machine_time": {
+            "pattern": (
+                r"(?i)^\s*(?:plasma\s+)?(?:start-?up|starup)\b"
+                r"|^\s*power\s+systems?\s+test"
+            ),
+            "lexicon_theme": "startup_checkout",
+            "assignment": "physics themes first, title and mini-proposal subject",
+        },
+    }
+    assert rules["dropped"]["title"] == pop.select.TITLE_EXCLUDE.pattern
