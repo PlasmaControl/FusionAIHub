@@ -18,6 +18,10 @@ skip it.
 | `cohort_manifest.yaml` | the same command | The seed, rules, allocation, N and n per cell, the rejection counts and the checksums of every input |
 | `papers.csv` | `python -m labeler.literature.osti links` | One row per verified shot-paper link |
 | `cards/<method>@<version>.json` | the scoring library, later | A method's scores against the blind reference |
+| Release manifest | exporter, at release (later) | Release contents and checksums |
+
+The release manifest lists the catalog tables, the cohort, the links, the method
+cards and the code commit held in the release, with their checksums.
 
 Each file is written under `$LABELER_ROOT` first (`catalog/` for the cohort,
 `literature/osti/` for the links) and copied here only with the owner's
