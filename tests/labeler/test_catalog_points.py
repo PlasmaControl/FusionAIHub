@@ -41,6 +41,21 @@ def test_a_missing_or_empty_points_table_has_no_rows(tmp_path):
     assert validate_points(_points()).empty
 
 
+def test_a_missing_points_table_has_the_same_dtypes_as_a_read_one(tmp_path):
+    path = tmp_path / "points.csv"
+    write_points(_points([1, "disruption", "t_D", 10, "", None, None]), path)
+    written = read_points(path)
+    missing = read_points(tmp_path / "missing.csv")
+    validated = validate_points(_points([1, "disruption", "t_D", 10, "", 0, 20]))
+    assert written.dtypes.equals(validated.dtypes)
+    typed = ["shot", "t_ms", "window_start_ms", "window_end_ms"]
+    assert written[typed].dtypes.equals(missing[typed].dtypes)
+    assert written[typed].dtypes.equals(validated[typed].dtypes)
+    assert written["shot"].dtype == "int64"
+    for column in ("t_ms", "window_start_ms", "window_end_ms"):
+        assert written[column].dtype == "float64"
+
+
 @pytest.mark.parametrize(
     "row, problem",
     [
