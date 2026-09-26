@@ -2,13 +2,18 @@
 
 Ip is the PTDATA point `ip`, in amperes, read through `raw.raw_signal(shot, "ip")`:
 the first read fetches it live and parks the whole record in the raw cache. Its
-native step is 0.5 ms on the 2021 shots and 0.05 ms from about 189,000 on.
+native step is 0.5 ms through shot 187,328, and 0.05 ms from 188,349 on; no
+pool shot lies between.
 
-The window is the plasma's stretch of |Ip| >= 50 kA. It is the longest one, with
-gaps under `BRIDGE_MS` bridged, not simply the first to the last sample over 50 kA:
-the ohmic pre-magnetisation puts a pickup pulse of 30-47 kA on Ip about 0.9 s
-before breakdown (measured on 5 shots), and one sample over 50 kA there would open
-the window a second early.
+The window is the longest stretch of Ip >= 50 kA in the plasma's own direction,
+with gaps of at most `BRIDGE_MS` bridged. Post-shot pickup of 51-107 kA about
+0.9 s after the end (185779-185788, 189138, 189154), and a one-sample 54 kA spike
+4.1 s after 188351, are why it is the longest stretch. The opposite-sign quench
+tail of 189013, about -318 kA decaying over 1.1 s, is why the current is signed.
+
+The flat-top reads centred 25 ms means of |Ip| inside the window, matching the
+feature grid on which its rule was calibrated. This keeps single noisy samples
+and short dips from splitting the plateau and reduces sampling-rate dependence.
 
 Measuring a shot list is a login-node job, under the fdp wrapper:
 
@@ -44,6 +49,7 @@ from ..verify import NoDataError
 IP_GROUP = "ip"
 WINDOW_IP_A = 50e3
 BRIDGE_MS = 10.0
+FLATTOP_MEAN_MS = 25.0
 #: A shot with one of these is measured for good; an "error" is tried again.
 SETTLED = ("ok", "no_plasma")
 LOG_COLUMNS = (
@@ -62,7 +68,7 @@ LOG_COLUMNS = (
 def assessed_window(
     t_ms, ip_a, *, threshold_a: float = WINDOW_IP_A, bridge_ms: float = BRIDGE_MS
 ) -> tuple[int, int] | None:
-    """The plasma's stretch of |Ip| >= threshold, rounded inward to whole ms.
+    """The plasma's signed stretch above threshold, rounded inward to whole ms.
 
     None when Ip never gets there. NaN samples count as below the threshold. The
     edges are taken to the us before rounding, so a sample on a whole ms counts as
@@ -70,8 +76,13 @@ def assessed_window(
     shot 200111's last sample over 50 kA at 5348.00005 ms, fdp's at 5347.99999).
     """
     t = np.asarray(t_ms, dtype=float).ravel()
-    y = np.abs(np.asarray(ip_a, dtype=float).ravel())
-    times = t[y >= threshold_a]
+    y = np.asarray(ip_a, dtype=float).ravel()
+    finite = np.isfinite(y)
+    if not finite.any():
+        return None
+    samples = y[finite]
+    sign = 1 if samples[np.argmax(np.abs(samples))] >= 0 else -1
+    times = t[finite & (sign * y >= threshold_a)]
     if not times.size:
         return None
     breaks = np.flatnonzero(np.diff(times) > bridge_ms)
@@ -82,8 +93,29 @@ def assessed_window(
     return (start, end) if start < end else None
 
 
-def flattop_s(t_ms, ip_a, window: tuple[int, int]) -> float:
-    """`select.flattop_from_ip` inside the window, so the record's length can't move it.
+def _centred_mean(values: np.ndarray, half_width: int) -> np.ndarray:
+    """Finite-sample means; NaN where the full centred span cannot be measured."""
+    width = 2 * half_width + 1
+    result = np.full(values.size, np.nan)
+    if width > values.size:
+        return result
+    finite = np.isfinite(values)
+    total = np.r_[0.0, np.cumsum(np.where(finite, values, 0.0))]
+    count = np.r_[0, np.cumsum(finite)]
+    totals, counts = total[width:] - total[:-width], count[width:] - count[:-width]
+    np.divide(
+        totals,
+        counts,
+        out=result[half_width : values.size - half_width],
+        where=counts > 0,
+    )
+    return result
+
+
+def flattop_s(
+    t_ms, ip_a, window: tuple[int, int], *, mean_ms: float = FLATTOP_MEAN_MS
+) -> float:
+    """`select.flattop_from_ip` on centred means of |Ip| inside the window.
 
     Its plateau is the 95th percentile of |Ip|; over a whole record, a long enough
     run of pre- and post-shot zeros drags that percentile down onto the ramps.
@@ -91,7 +123,11 @@ def flattop_s(t_ms, ip_a, window: tuple[int, int]) -> float:
     t = np.asarray(t_ms, dtype=float).ravel()
     inside = (t >= window[0]) & (t <= window[1])
     ip = np.asarray(ip_a, dtype=float).ravel()
-    return flattop_from_ip(t[inside] / 1000.0, ip[inside])
+    t, ip = t[inside], np.abs(ip[inside])
+    if t.size < 2:
+        return float("nan")
+    half_width = round(mean_ms / 2 / float(np.median(np.diff(t))))
+    return flattop_from_ip(t / 1000.0, _centred_mean(ip, half_width))
 
 
 def _finite(x: float, digits: int) -> float | None:
