@@ -53,6 +53,7 @@ from .. import databases
 from . import population as pop
 from . import window
 from .check import CatalogError, Finding, require
+from .points import validate_csv_fields
 
 SEED = 20260923
 COHORT_SIZE = 500
@@ -481,6 +482,7 @@ def read_population(path) -> pd.DataFrame:
 
 
 def _read_table(path, columns, boolean) -> pd.DataFrame:
+    validate_csv_fields(path)
     strings = ("run_id", "legacy_sets", "split", "group", "cell", boolean)
     frame = pd.read_csv(
         path,
