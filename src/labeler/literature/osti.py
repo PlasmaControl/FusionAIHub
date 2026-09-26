@@ -1,4 +1,4 @@
-"""OSTI: probe hits, full texts at one request a second, and the links they give.
+"""OSTI: probe hits, full texts at three requests a minute, and the links they give.
 
 The probe (`$LABELER_ROOT/literature/osti/osti_probe.py`) asked OSTI's full-text
 search for `"<shot>" AND "DIII-D"`, one corpus shot at a time. Each line of its
@@ -52,7 +52,9 @@ FIRST_SHOT, LAST_SHOT = 185_601, 204_999  # the FAITH corpus range
 FIRST_YEAR = 2021  # the year of FIRST_SHOT, the corpus' first campaign
 PURL = "https://www.osti.gov/servlets/purl/{}"
 USER_AGENT = "FusionAIHub-literature/0.1 (research; one request at a time)"
-MIN_INTERVAL_S = 1.0
+# OSTI's full-text servlet (measured 2026-09-26): three requests/minute/host;
+# a fourth is dropped unanswered. 21 s keeps any minute to three starts.
+MIN_INTERVAL_S = 21.0
 TIMEOUT_S = 120
 FINAL = ("ok", "not_pdf", "missing", "unreadable")
 LINK_COLUMNS = (

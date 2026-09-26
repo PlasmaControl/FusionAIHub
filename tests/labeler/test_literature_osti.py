@@ -8,6 +8,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.error
+from itertools import pairwise
 
 import pandas as pd
 import pytest
@@ -150,14 +151,21 @@ def test_records_dated_before_the_corpus_are_not_fetched(tmp_path):
     assert sorted(to_fetch(read_hits([probe]))) == ["2", "3"]
 
 
-def test_requests_start_at_least_a_second_apart_without_an_email():
+def test_at_most_three_requests_start_in_any_minute_without_an_email():
     clock = _Clock()
-    web = _Web(_Answer(b"%PDF"), _Answer(b"%PDF"))
-    fetcher = _fetcher(web, clock)
-    fetcher.get("https://www.osti.gov/servlets/purl/1")
-    clock.now += 0.25
-    fetcher.get("https://www.osti.gov/servlets/purl/2")
-    assert clock.slept == [pytest.approx(0.75)]
+    web = _Web(*(_Answer(b"%PDF") for _ in range(4)))
+    starts = []
+
+    def opener(request, timeout):
+        starts.append(clock.now)
+        return web(request, timeout)
+
+    fetcher = _fetcher(opener, clock)
+    for record_id in range(1, 5):
+        fetcher.get(osti.PURL.format(record_id))
+        clock.now += 0.25
+    assert all(b - a >= osti.MIN_INTERVAL_S for a, b in pairwise(starts))
+    assert starts[3] - starts[0] >= 60
     headers = " ".join(v for r in web.requests for v in r.headers.values())
     assert "@" not in headers
 
