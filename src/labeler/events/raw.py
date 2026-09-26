@@ -74,6 +74,8 @@ FETCH_SPECS: dict[str, FetchSpec] = {
         exprs=tuple(ECE_POINT.format(channel=c) for c in ECE_CHANNELS),
         via="mds",
     ),
+    # Plasma current in amperes; 0.5 ms steps on the 2021 shots, 0.05 ms after.
+    "ip": FetchSpec(exprs=("ip",), via="ptdata"),
 }
 
 #: One lock per resolved path, so two `write_group` calls for different
