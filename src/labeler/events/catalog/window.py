@@ -32,6 +32,7 @@ import math
 import sys
 from collections import Counter
 from collections.abc import Iterable, Iterator
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from functools import partial
 from multiprocessing import Pool
@@ -233,10 +234,12 @@ def _validate_line(line: dict) -> None:
 
 def read_log(path) -> pd.DataFrame:
     """Last complete line per shot; skip torn tails, refuse corrupt complete lines."""
-    path = Path(path)
+    stream = hasattr(path, "read")
+    if not stream:
+        path = Path(path)
     last = {}
-    if path.is_file():
-        with path.open("rb") as source:
+    if stream or path.is_file():
+        with nullcontext(path) if stream else path.open("rb") as source:
             for number, text in enumerate(source, 1):
                 if not text.endswith(b"\n"):
                     break

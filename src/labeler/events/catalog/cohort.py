@@ -47,7 +47,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from ...config import Paths, atomic_path, git_dirty, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_dirty, git_sha
 from ...literature.papers import read_papers
 from .. import databases
 from . import population as pop
@@ -150,12 +150,27 @@ def allocate(sizes: Mapping[str, int], n: int) -> dict[str, int]:
     return share
 
 
-def legacy_sets(root) -> tuple[dict[int, tuple[str, ...]], list[databases.TableSpec]]:
+def legacy_sets(
+    root, *, inputs=None
+) -> tuple[dict[int, tuple[str, ...]], list[databases.TableSpec]]:
     """`{shot: the directories of the legacy tables naming it}`, and the tables read."""
     specs = list(databases.load_manifest(root))
     named: dict[int, set[str]] = defaultdict(set)
     for spec in specs:
-        for shot in databases.shots(spec, root):
+        path = spec.path(root)
+        data = path.read_bytes()
+        source = _stream(data, path)
+        validate_csv_fields(source)
+        table = databases._parse(source)
+        for column, expected in (
+            ("source", spec.source),
+            ("phenomenon", spec.phenomenon),
+        ):
+            if column in table and not table[column].eq(expected).all():
+                raise CatalogError(f"{path}: {column} must match manifest {expected!r}")
+        if inputs is not None:
+            inputs.append(_input(path, Path(root), data=data))
+        for shot in table.shot:
             named[int(shot)].add(spec.dir)
     return {shot: tuple(sorted(dirs)) for shot, dirs in named.items()}, specs
 
@@ -266,9 +281,13 @@ def _shot_id(value) -> int | None:
 
 
 def check_cohort(cohort: pd.DataFrame, cells: Mapping[str, int]) -> list[Finding]:
-    """Every shot has a group, cell, weight and split, and the weights reproduce N.
+    """Check unique integral shots, group/year cells, weights and their cell sums.
 
+    Also check u in [0, 1), queue ranks as a permutation with blind shots first,
+    split/blind consistency, per-group split counts and u ordering across splits.
     `cells` maps each cell to its N (the manifest's `cells.<cell>.N`).
+    Population membership, exact redraw, group provenance and shared scientific
+    metadata (including window/flat-top validity) are left to `verify_cohort`.
     """
     where = "cohort"
     found = [
@@ -410,6 +429,55 @@ def verify_cohort(
             found.append(Finding("unique", name, _shot_id(shot), "appears twice"))
     if found:
         return found
+    for name, frame in (("population", population), ("cohort", cohort)):
+        for row in frame.itertuples(index=False):
+            lo, hi = row.window_start_ms, row.window_end_ms
+            for column, value in (
+                ("window_start_ms", lo),
+                ("window_end_ms", hi),
+                ("flattop_s", row.flattop_s),
+            ):
+                valid = isinstance(value, Real) and math.isfinite(value)
+                if column == "flattop_s":
+                    valid = valid and value >= window.MIN_FLATTOP_S
+                if not valid:
+                    found.append(
+                        Finding(
+                            "measurement",
+                            name,
+                            int(row.shot),
+                            f"{column}: invalid value {value!r}",
+                        )
+                    )
+            if pd.notna(lo) and pd.notna(hi) and lo >= hi:
+                found.append(
+                    Finding(
+                        "measurement",
+                        name,
+                        int(row.shot),
+                        "window_end_ms must exceed window_start_ms",
+                    )
+                )
+    for row in population.itertuples(index=False):
+        group = "L" if row.n_links_verified > 0 else "G" if row.legacy_sets else "R"
+        if row.group != group:
+            found.append(
+                Finding(
+                    "group",
+                    "population",
+                    int(row.shot),
+                    f"group {row.group!r} must be {group!r}",
+                )
+            )
+        if row.cell != f"{group}{row.year}":
+            found.append(
+                Finding(
+                    "cell",
+                    "population",
+                    int(row.shot),
+                    f"cell {row.cell!r} must be {group}{row.year}",
+                )
+            )
     actual = set(cohort["shot"])
     eligible = set(population["shot"])
     marked = set(population.loc[population["in_cohort"], "shot"])
@@ -446,8 +514,11 @@ def verify_cohort(
             Finding("draw", "cohort", int(shot), "shot membership differs from redraw")
         )
     common = expected.index.intersection(got.index)
-    for column in DRAW_COLUMNS[1:]:
-        same = got.loc[common, column].eq(expected.loc[common, column]).fillna(False)
+    columns = sorted((set(population.columns) & set(cohort.columns)) - {"shot"})
+    columns += [c for c in DRAW_COLUMNS[1:] if c not in columns]
+    for column in columns:
+        a, b = got.loc[common, column], expected.loc[common, column]
+        same = (a.eq(b) | (a.isna() & b.isna())).fillna(False)
         different = common[~same]
         for shot in different[:20]:
             found.append(
@@ -502,19 +573,27 @@ def _read_table(path, columns, boolean) -> pd.DataFrame:
     return frame.astype({"window_start_ms": "Int64", "window_end_ms": "Int64"})
 
 
-def _input(path: Path, root: Path | None = None) -> dict:
+def _stream(data: bytes, path: Path):
+    source = io.BytesIO(data)
+    source.name = str(path)
+    return source
+
+
+def _input(path: Path, root: Path | None = None, *, data: bytes | None = None) -> dict:
     """The path, relative to `root` when it lies under it, and its checksum."""
     path = path.resolve()
     root = root.resolve() if root is not None else None
     inside = root is not None and path.is_relative_to(root)
     return {
         "path": str(path.relative_to(root) if inside else path),
-        "sha256": sha256_of(path),
+        "sha256": hashlib.sha256(
+            path.read_bytes() if data is None else data
+        ).hexdigest(),
     }
 
 
 def manifest(
-    frame, cohort, cells, *, seed, inputs, pool_meta, ip_log_meta, outputs
+    frame, cohort, cells, *, seed, inputs, pool_meta, ip_log_meta, papers_meta, outputs
 ) -> dict:
     """What fixed the cohort: rules, seeds, inputs, counts, N and n per cell."""
     in_pop = frame[frame["reasons"].eq("")]
@@ -540,14 +619,18 @@ def manifest(
             "groups": "L: >= 1 verified OSTI link; G: in a legacy table; R: the rest",
             "caps": dict(CAPS),
             "cohort_size": COHORT_SIZE,
-            "allocation": "largest remainder across years within a group, "
-            ">= 1 per non-empty cell",
+            "allocation": "largest remainder across years within a group; "
+            "remainder ties go to the first cell by name; each non-empty cell "
+            "left at zero, in name order, takes one shot from the cell furthest "
+            "above its quota among those with more than one shot "
+            "(donor ties go to the last cell by name)",
             "blind_size": BLIND_SIZE,
             "val_size": VAL_SIZE,
         },
         "inputs": inputs,
         "pool": pool_meta,
         "ip_log_meta": ip_log_meta,
+        "papers_meta": papers_meta,
         "outputs": outputs,
         "counts": {
             **pop.funnel(frame),
@@ -569,6 +652,37 @@ def manifest(
     }
 
 
+def _supersedes(path: Path, reason: str, current: dict) -> dict:
+    try:
+        data = path.read_bytes()
+        old = yaml.safe_load(data)
+    except (OSError, yaml.YAMLError) as error:
+        raise CatalogError(f"{path}: invalid superseded manifest: {error}") from error
+    if not isinstance(old, dict) or old.get("seed") != current["seed"]:
+        raise CatalogError(f"{path}: superseded seed differs from the requested seed")
+    for field in ("git_sha", "written_at", "inputs"):
+        if field not in old:
+            raise CatalogError(f"{path}: superseded manifest has no {field}")
+    changed = [
+        name
+        for name in sorted(old["inputs"].keys() | current["inputs"].keys())
+        if old["inputs"].get(name) != current["inputs"].get(name)
+    ]
+    for name, key in (
+        ("pool_meta", "pool"),
+        ("ip_log_meta", "ip_log_meta"),
+        ("papers_meta", "papers_meta"),
+    ):
+        if old.get(key) != current.get(key):
+            changed.append(name)
+    return {
+        "sha256": hashlib.sha256(data).hexdigest(),
+        **{k: old[k] for k in ("git_sha", "written_at", "seed")},
+        "reason": reason,
+        "changed_inputs": changed,
+    }
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m labeler.events.catalog.cohort",
@@ -585,30 +699,69 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--out", type=Path, help="default: $LABELER_ROOT/catalog")
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--supersedes", type=Path, help="manifest this freeze replaces")
+    parser.add_argument("--reason", help="why this freeze replaces the previous one")
     args = parser.parse_args(argv)
-    paths = Paths.from_env()
+    if args.supersedes and (not args.reason or not args.reason.strip()):
+        parser.error("--supersedes requires a nonblank --reason")
+    if args.reason and not args.supersedes:
+        parser.error("--reason requires --supersedes")
+    try:
+        return _run(args, Paths.from_env())
+    except CatalogError as error:
+        parser.error(str(error))
+
+
+def _run(args, paths) -> int:
     pool_path = args.pool or paths.catalog / "pool.csv"
     log_path = args.ip_log or paths.catalog / "ip.jsonl"
     papers_path = args.papers or paths.label_tables / "catalog" / "papers.csv"
     for path in (pool_path, log_path, papers_path):
         if not path.is_file():
-            parser.error(f"{path} does not exist")
+            raise CatalogError(f"{path} does not exist")
     meta_path = pool_path.with_suffix(".meta.json")
     ip_meta_path = log_path.with_suffix(".meta.json")
-    for path in (meta_path, ip_meta_path):
+    papers_meta_path = papers_path.with_suffix(".meta.json")
+    for path in (meta_path, ip_meta_path, papers_meta_path):
         if not path.is_file():
             raise CatalogError(f"{path}: missing provenance record")
-    pool_meta = json.loads(meta_path.read_text())
-    ip_log_meta = json.loads(ip_meta_path.read_text())
-    pool_input = _input(pool_path)
+    pool_meta = json.loads(meta_path.read_bytes())
+    ip_log_meta = json.loads(ip_meta_path.read_bytes())
+    papers_meta_data = papers_meta_path.read_bytes()
+    papers_record = json.loads(papers_meta_data)
+    pool_data, log_data, papers_data = (
+        path.read_bytes() for path in (pool_path, log_path, papers_path)
+    )
+    pool_input = _input(pool_path, data=pool_data)
     if pool_meta.get("pool_sha256") != pool_input["sha256"]:
         raise CatalogError(f"{meta_path}: pool_sha256 differs from {pool_path}")
     if pool_meta.get("rules") != pop.rules_record():
         raise CatalogError(f"{meta_path}: rules differ from population.rules_record()")
-    frame = pop.population(pop.read_pool(pool_path), window.read_log(log_path))
-    legacy, specs = legacy_sets(paths.label_tables)
+    pool = pop.read_pool(_stream(pool_data, pool_path))
+    for field, expected in {
+        "definition": window.definition(),
+        "version": window.LOG_VERSION,
+        "shot_file_sha256": pool_meta.get("pool_shots_sha256"),
+        "shots": int(pop.passes_screen(pool).sum()),
+    }.items():
+        if expected is None or ip_log_meta.get(field) != expected:
+            raise CatalogError(f"{ip_meta_path}: {field} differs from the pool/window")
+    if (
+        papers_record.get("outputs", {}).get("papers.csv")
+        != hashlib.sha256(papers_data).hexdigest()
+    ):
+        raise CatalogError(f"{papers_meta_path}: papers.csv sha256 differs")
+    papers_meta = {
+        "sha256": hashlib.sha256(papers_meta_data).hexdigest(),
+        **{k: papers_record.get(k) for k in ("git_sha", "written_at", "summary")},
+    }
+    frame = pop.population(pool, window.read_log(_stream(log_data, log_path)))
+    legacy_inputs = []
+    legacy, _ = legacy_sets(paths.label_tables, inputs=legacy_inputs)
     grouped = assign_groups(
-        frame[frame["reasons"].eq("")], osti_links(read_papers(papers_path)), legacy
+        frame[frame["reasons"].eq("")],
+        osti_links(read_papers(_stream(papers_data, papers_path))),
+        legacy,
     )
     cohort, cells = draw(grouped, args.seed)
     grouped["in_cohort"] = grouped["shot"].isin(cohort["shot"])
@@ -625,11 +778,9 @@ def main(argv=None) -> int:
     )
     inputs = {
         "pool": pool_input,
-        "ip_log": _input(log_path),
-        "papers": _input(papers_path, paths.label_tables),
-        "legacy_tables": [
-            _input(s.path(paths.label_tables), paths.label_tables) for s in specs
-        ],
+        "ip_log": _input(log_path, data=log_data),
+        "papers": _input(papers_path, paths.label_tables, data=papers_data),
+        "legacy_tables": legacy_inputs,
     }
     frame = frame.merge(grouped[["shot", "group", "cell"]], on="shot", how="left")
     encoded = {name: text.encode("utf-8") for name, text in tables.items()}
@@ -641,10 +792,13 @@ def main(argv=None) -> int:
         inputs=inputs,
         pool_meta=pool_meta,
         ip_log_meta=ip_log_meta,
+        papers_meta=papers_meta,
         outputs={
             name: hashlib.sha256(data).hexdigest() for name, data in encoded.items()
         },
     )
+    if args.supersedes:
+        doc["supersedes"] = _supersedes(args.supersedes, args.reason.strip(), doc)
     out = args.out or paths.catalog
     out.mkdir(parents=True, exist_ok=True)
     for name, data in encoded.items():
