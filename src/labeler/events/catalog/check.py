@@ -28,6 +28,7 @@ from decimal import Decimal, InvalidOperation
 from numbers import Integral, Real
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from ...config import Paths
@@ -36,7 +37,7 @@ from ..interval_tables import ATTRS_COLUMN, parse_attrs, validate_intervals
 from .points import POINT_COLUMNS, read_points, validate_csv_fields, validate_points
 from .states import NOT_OBSERVABLE, PHENOMENA, STATE_NAMES, attr_problems
 
-Windows = Mapping[int, tuple[float, float]]
+Windows = Mapping[int, Sequence[float] | np.ndarray]
 CSV_ERRORS = (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError)
 
 
@@ -158,8 +159,8 @@ def _allowed_problem(shot, span) -> str | None:
     ):
         return prefix + "shot must be an integer in [0, 2**63)"
     valid = False
-    if isinstance(span, Sequence) and len(span) == 2:
-        try:
+    try:
+        if isinstance(span, (Sequence, np.ndarray)) and len(span) == 2:
             valid = (
                 all(
                     isinstance(value, Real)
@@ -169,8 +170,8 @@ def _allowed_problem(shot, span) -> str | None:
                 )
                 and span[0] < span[1]
             )
-        except OverflowError:
-            pass
+    except (TypeError, OverflowError):
+        pass
     if not valid:
         return prefix + "bounds must be two finite numbers with start < end"
     return None

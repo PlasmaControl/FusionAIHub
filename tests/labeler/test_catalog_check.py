@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -466,6 +467,101 @@ def test_windows_csv_allows_named_cohort_columns_and_quoted_commas(tmp_path):
         '190001,"train,first",0.25,100.75,1\n'
     )
     assert read_windows(path) == {190001: (0.25, 100.75)}
+
+
+@pytest.mark.parametrize(
+    "header,row,repeated",
+    [
+        ("shot,shot,window_start_ms,window_end_ms", "190002,190001,0,10", "shot"),
+        (
+            "shot,window_start_ms,window_end_ms,window_end_ms",
+            "1,10,400,50",
+            "window_end_ms",
+        ),
+        (
+            "shot,window_start_ms,window_start_ms,window_end_ms",
+            "1,0,10,400",
+            "window_start_ms",
+        ),
+        (
+            "shot,group,group,window_start_ms,window_end_ms",
+            "1,a,b,10,400",
+            "group",
+        ),
+    ],
+)
+def test_duplicate_windows_headers_are_rejected(tmp_path, header, row, repeated):
+    path = tmp_path / "windows.csv"
+    path.write_text(header + "\n" + row + "\n")
+    with pytest.raises(CatalogError, match=f"row 1:.*duplicate.*{repeated}") as error:
+        read_windows(path)
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("filename", ["labels.csv", "points.csv"])
+def test_duplicate_review_headers_are_schema_findings(tmp_path, filename):
+    review = tmp_path / "edge_localized_mode" / "review"
+    review.mkdir(parents=True)
+    _labels((1, 1, 0, 100)).to_csv(review / "labels.csv", index=False)
+    header, row = (
+        (INTERVAL_COLUMNS, "1,1,0,100,")
+        if filename == "labels.csv"
+        else (POINT_COLUMNS, "1,edge_localized_mode,elm,50,,,")
+    )
+    (review / filename).write_text(",".join(header) + ",shot\n" + row + ",2\n")
+    found, count = check_category(review.parent)
+    assert count == 1
+    assert [(f.check, f.where) for f in found] == [
+        ("schema", f"edge_localized_mode/review/{filename}")
+    ]
+    assert "row 1:" in found[0].detail
+    assert "duplicate" in found[0].detail and "shot" in found[0].detail
+
+
+@pytest.mark.parametrize("filename", ["labels.csv", "points.csv", "windows.csv"])
+def test_catalog_csv_readers_skip_blank_lines(tmp_path, filename):
+    review = tmp_path / "edge_localized_mode" / "review"
+    review.mkdir(parents=True)
+    _labels((1, 1, 0, 100)).to_csv(review / "labels.csv", index=False)
+    _points((1, "edge_localized_mode", "elm", 50)).to_csv(
+        review / "points.csv", index=False
+    )
+    path = review / filename
+    if filename == "windows.csv":
+        path.write_text("shot,window_start_ms,window_end_ms\n1,0,100\n")
+    path.write_text("\n" + path.read_text().replace("\n", "\n\n"))
+    if filename == "windows.csv":
+        assert read_windows(path) == {1: (0, 100)}
+    assert check_category(review.parent) == ([], 1)
+
+
+@pytest.mark.parametrize(
+    "span", [(0, 400), [0.0, 400.0], np.array([0, 400]), np.array([0.0, 400.0])]
+)
+def test_allowed_windows_accept_finite_numeric_sequences(span):
+    assert check_table(GOOD, "alfven_eigenmode", allowed={1: span}) == []
+
+
+@pytest.mark.parametrize(
+    "span",
+    [
+        np.array([False, True]),
+        np.array([0, np.nan]),
+        np.array([0, np.inf]),
+        np.array([[0, 1], [400, 500]]),
+        np.array(400),
+        np.array([0, 1, 400]),
+        np.array([400, 0]),
+        np.array([0, 0]),
+        {0, 400},
+        {0: 0, 1: 400},
+        iter([0, 400]),
+    ],
+)
+def test_allowed_windows_refuse_invalid_array_spans_and_nonsequences(span):
+    found = check_table(GOOD, "alfven_eigenmode", allowed={1: span})
+    assert len(found) == 1 and found[0].check == "windows"
+    assert "two finite numbers with start < end" in found[0].detail
 
 
 def test_header_only_windows_csv_is_refused(tmp_path):

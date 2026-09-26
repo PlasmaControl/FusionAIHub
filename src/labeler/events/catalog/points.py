@@ -32,9 +32,9 @@ WINDOW_COLUMNS = ("window_start_ms", "window_end_ms")
 
 
 def validate_csv_fields(path: Path) -> None:
-    """Refuse ragged CSV records before pandas can infer an index or pad cells.
+    """Refuse ragged records and duplicate headers before pandas changes them.
 
-    Count records, including the header as row 1, just as `read_windows` does.
+    Skip empty records and report each record's starting physical line number.
     Quoted commas and newlines belong to their field, not to the table structure.
     """
     row, width = 0, None
@@ -42,12 +42,22 @@ def validate_csv_fields(path: Path) -> None:
         with Path(path).open(newline="", encoding="utf-8-sig") as source:
             reader = csv.reader(source, strict=True)
             while True:
-                row += 1
+                row = reader.line_num + 1
                 fields = next(reader, None)
                 if fields is None:
                     break
+                if not fields:
+                    continue
                 if width is None:
                     width = len(fields)
+                    repeated = sorted(
+                        {name for name in fields if fields.count(name) > 1}
+                    )
+                    if repeated:
+                        raise pd.errors.ParserError(
+                            f"{path}: row {row}: duplicate headers: "
+                            + ", ".join(repeated)
+                        )
                 elif len(fields) != width:
                     raise pd.errors.ParserError(
                         f"{path}: row {row}: expected {width} fields, got {len(fields)}"
