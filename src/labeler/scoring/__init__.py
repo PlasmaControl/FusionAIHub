@@ -8,4 +8,9 @@ shots the same way:
 - `events`: onsets and ends, nearest-first matching within a tolerance;
 - `stats`: precision, recall, F1, Cohen's and Fleiss' kappa, shot weights and the
   stratified shot bootstrap.
+
+D21 scores events strictly inside the common window, matches nearest first,
+then excludes unmatched boundaries near the other reader's uncertain or
+not-observable time. Matched pairs always count. Method abstentions read as
+absent and never exclude; reader exclusions apply in both directions.
 """
