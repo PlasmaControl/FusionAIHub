@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from ...config import atomic_path
+from ..catalog.states import PHENOMENA, STATE_NAMES
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
 
 LONGEST_WINDOW_MS = 20_000
@@ -50,7 +51,13 @@ class Label:
 
 
 def categories(event: str) -> dict[int, str]:
-    """The categories a span can carry; 0 (absent) is the gaps."""
+    """The categories a span can carry; 0 (absent) is the gaps.
+
+    A catalog phenomenon's spans carry its states: present, uncertain and not
+    observable.
+    """
+    if event in PHENOMENA:
+        return {k: v for k, v in STATE_NAMES.items() if k}
     return {int(k): v for k, v in category_labels(event).items() if k != "0"}
 
 
