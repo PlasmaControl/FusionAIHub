@@ -212,6 +212,12 @@ def _draw(frame: pd.DataFrame, seed: int, n: int):
     cells = _cells(frame)
     by_group = frame["group"].value_counts().to_dict()
     per_group = group_sizes(by_group, n)
+    if sum(per_group.values()) < n:
+        sizes = {g: int(by_group.get(g, 0)) for g in GROUPS}
+        raise CatalogError(
+            f"cannot draw n={n}: N per group {sizes}, caps {CAPS}; "
+            f"only {sum(per_group.values())} shots available under the caps"
+        )
     alloc = {}
     for g in GROUPS:
         alloc |= allocate({c: cells[c] for c in cells if c[0] == g}, per_group[g])
@@ -496,6 +502,8 @@ def _read_table(path, columns, boolean) -> pd.DataFrame:
 
 def _input(path: Path, root: Path | None = None) -> dict:
     """The path, relative to `root` when it lies under it, and its checksum."""
+    path = path.resolve()
+    root = root.resolve() if root is not None else None
     inside = root is not None and path.is_relative_to(root)
     return {
         "path": str(path.relative_to(root) if inside else path),
