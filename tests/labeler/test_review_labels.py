@@ -299,7 +299,7 @@ def test_review_refuses_states_that_its_checker_always_rejects(tmp_path, event):
             "window": [0, 100], "intervals": [[0, 100, 3]],
         })
     assert response.status_code == 400
-    assert "category 3" in response.json()["detail"]
+    assert "category 3" in response.json()["error"]
     assert not labels.labels_path(directory).exists()
     assert not labels.history_path(directory).exists()
 

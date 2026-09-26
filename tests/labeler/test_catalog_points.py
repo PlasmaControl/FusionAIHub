@@ -8,6 +8,7 @@ import pytest
 from labeler.events.catalog.points import (
     POINT_COLUMNS,
     read_points,
+    validate_csv_fields,
     validate_points,
     write_points,
 )
@@ -127,4 +128,33 @@ def test_read_points_rejects_rows_with_undeclared_or_missing_fields(
     path = tmp_path / "points.csv"
     path.write_text(",".join(POINT_COLUMNS) + "\n" + row + "\n")
     with pytest.raises(pd.errors.ParserError, match=f"row 2:.*7 fields.*{count}"):
+        read_points(path)
+
+
+def test_csv_blank_lines_preserve_physical_error_line_numbers(tmp_path):
+    path = tmp_path / "table.csv"
+    path.write_text('a,b\n\n"two\nlines",value\n\nextra,field,here\n')
+    with pytest.raises(pd.errors.ParserError, match="row 6: expected 2 fields, got 3"):
+        validate_csv_fields(path)
+
+
+def test_csv_skips_empty_records_but_preserves_quoted_fields(tmp_path):
+    path = tmp_path / "table.csv"
+    path.write_text('\na,b\n\n"two\nlines","a,b"\n\n')
+    validate_csv_fields(path)
+
+
+def test_csv_does_not_skip_a_record_of_empty_fields(tmp_path):
+    path = tmp_path / "table.csv"
+    path.write_text('a,b\n""\n')
+    with pytest.raises(pd.errors.ParserError, match="row 2: expected 2 fields, got 1"):
+        validate_csv_fields(path)
+
+
+def test_read_points_rejects_duplicate_headers_before_pandas_renames_them(tmp_path):
+    path = tmp_path / "points.csv"
+    path.write_text(
+        ",".join(POINT_COLUMNS) + ",kind\n1,edge_localized_mode,elm,50,,,,crash\n"
+    )
+    with pytest.raises(pd.errors.ParserError, match="row 1:.*duplicate.*kind"):
         read_points(path)
