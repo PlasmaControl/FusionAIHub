@@ -195,7 +195,7 @@ def points(
 def disruption_points(
     frame: pd.DataFrame, labels: pd.DataFrame | None, where: str
 ) -> list[Finding]:
-    """One t_D, t80 and t20 per event; present is [t80, t20] to within 1 ms."""
+    """One t_D near [t80, t20]; present agrees with those bounds within 1 ms."""
     frame = frame[frame.phenomenon == "disruption"]
     present = labels[labels.category == 1] if labels is not None else None
     shots = set(frame.shot)
@@ -224,9 +224,21 @@ def disruption_points(
                 out.append(
                     Finding("points", where, int(shot), "t80 must be before t20")
                 )
-            if not missing and spans is not None:
+            elif counts.get("t_D", 0) == 1:
+                at = float(rows.loc[rows.kind == "t_D", "t_ms"].iloc[0])
+                # D17: max|dIp/dt| lies within the quench plus a margin of
+                # max(2 ms scoring tolerance, one quarter of the quench).
+                # The quarter covers an exponential quench's earlier steepest slope.
+                margin = max(2.0, (hi - lo) / 4)
+                if not lo - margin <= at <= hi + margin:
+                    detail = (
+                        f"D17: t_D at {_ms(at)} is outside the quench {lo:g}-{hi:g} ms "
+                        f"(margin {margin:.3g} ms)"
+                    )
+                    out.append(Finding("points", where, int(shot), detail))
+            if spans is not None:
                 if len(spans) != 1:
-                    detail = "the three points require exactly one present span"
+                    detail = "t80 and t20 require exactly one present span"
                 elif (
                     abs(float(spans.iloc[0].t_start) - lo) > 1
                     or abs(float(spans.iloc[0].t_end) - hi) > 1
