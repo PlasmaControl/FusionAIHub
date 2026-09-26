@@ -211,14 +211,14 @@ def test_an_authorized_response_is_not_cached(client):
 
 
 def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source):
-    # "scratch" has no roster, so it is not an event.
-    present = {"1": "present"}
+    # "scratch" has no roster, so it is not an event. AE is a catalog phenomenon.
+    states = {"1": "present", "2": "uncertain", "3": "not_observable"}
     assert client.get("/api/events").json() == {
         "events": [
             {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
-             "categories": present},
+             "categories": states},
             {"event": "detachment", "n_shots": 1, "n_reviewed": 0,
-             "categories": present},
+             "categories": {"1": "present"}},
         ]
     }
 

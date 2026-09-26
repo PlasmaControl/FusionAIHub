@@ -191,7 +191,12 @@ def test_shot_labels_carries_source_saved_state_and_last_save(event_dir):
 
 
 def test_categories_leave_out_absent():
-    assert labels.categories("alfven_eigenmode") == {1: "present"}
+    assert labels.categories("resistive_wall_mode") == {1: "present"}
+    assert labels.categories("alfven_eigenmode") == {
+        1: "present",
+        2: "uncertain",
+        3: "not_observable",
+    }
     assert labels.categories("minimum_safety_factor") == {
         1: "low",
         2: "hybrid",
