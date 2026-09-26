@@ -4,6 +4,7 @@ Nothing else in the package hard-codes a path, so pointing labeler at a
 different data root (a scratch copy, a test fixture) is one environment
 variable. Defaults are group storage: Nathan's own scratch is near quota.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -192,9 +193,17 @@ class Paths:
         return self.spectrograms / event / f"{int(shot)}.h5"
 
     def mkdirs(self) -> None:
-        for d in (self.features, self.labels, self.models, self.runs,
-                  self.validation, self.events, self.masks, self.annotate,
-                  self.text_cache):
+        for d in (
+            self.features,
+            self.labels,
+            self.models,
+            self.runs,
+            self.validation,
+            self.events,
+            self.masks,
+            self.annotate,
+            self.text_cache,
+        ):
             d.mkdir(parents=True, exist_ok=True)
 
 
@@ -252,3 +261,19 @@ def git_sha() -> str:
     except (OSError, subprocess.SubprocessError):
         return "unknown"
     return out.stdout.strip() or "unknown"
+
+
+def git_dirty() -> bool | None:
+    """Whether tracked files differ from HEAD, or None when git cannot answer."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=Path(__file__).resolve().parents[2],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return bool(out.stdout.strip())
