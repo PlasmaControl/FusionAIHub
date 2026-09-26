@@ -61,6 +61,35 @@ def test_no_plasma_no_window():
     t, ip = _trace(peak=40e3)
     assert assessed_window(t, ip) is None
     assert assessed_window(t, np.full_like(t, np.nan)) is None
+    assert assessed_window([], []) is None
+
+
+@pytest.mark.parametrize("sign", [1, -1])
+def test_a_quench_ends_at_the_plasmas_own_sign(sign):
+    t, _ = _trace()
+    ip = 1e6 * np.interp(t, [0, 500, 2000, 2005, 3000], [0, 1, 1, -0.3, 0])
+    assert assessed_window(t, sign * ip) == (26, 2003)
+
+
+@pytest.mark.parametrize("dip", ["one_sample", "six_ms"])
+def test_a_brief_dip_does_not_split_the_flattop(dip):
+    t, ip = _trace()
+    if dip == "one_sample":
+        ip[np.argmin(abs(t - 1000.2))] = 0.79e6
+    else:
+        ip[(t >= 1000) & (t < 1006)] = 0.78e6
+    assert flattop_s(t, ip, (26, 2474)) == pytest.approx(1.6995)
+
+
+def test_the_noisy_flattop_agrees_across_native_rates():
+    rng = np.random.default_rng(0)
+    measured = []
+    for start, dt in [(-1000.03, 0.05), (-1000.3, 0.5)]:
+        t = np.arange(start, 4000.0, dt)
+        ip = 1e6 * np.interp(t, [0, 500, 2000, 2500], [0, 1, 1, 0])
+        ip += rng.normal(0, 4e3, t.size)
+        measured.append(flattop_s(t, ip, assessed_window(t, ip)))
+    assert measured[0] == pytest.approx(measured[1], abs=0.002)
 
 
 def test_the_flattop_is_measured_inside_the_window():
@@ -170,4 +199,4 @@ def test_live_window_of_a_measured_shot(tmp_path):
     line = window.measure(200111, Paths(root=tmp_path))
     assert line["dt_ms"] == 0.05 and line["n"] == 480_256
     assert (line["window_start_ms"], line["window_end_ms"]) == (7, 5348)
-    assert line["flattop_s"] == pytest.approx(3.517, abs=0.001)
+    assert line["flattop_s"] == pytest.approx(3.534, abs=0.001)
