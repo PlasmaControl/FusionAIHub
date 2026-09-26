@@ -74,7 +74,7 @@ def require(findings: list[Finding], limit: int = 20) -> None:
 
 
 def _ms(t: float) -> str:
-    return f"{t:g} ms"
+    return f"{repr(float(t)).removesuffix('.0')} ms"
 
 
 def tiling(frame: pd.DataFrame, where: str = "labels") -> list[Finding]:
@@ -244,6 +244,17 @@ def points(
             and (span is None or not span[0] <= r.t_ms < span[1])
         ):
             detail = f"{at} is outside the assessed window"
+            if (
+                category == "disruption"
+                and allowed is None
+                and span is not None
+                and span[1] <= r.t_ms <= span[1] + DISRUPTION_TIMING_TOLERANCE_MS
+            ):
+                detail += (
+                    "; D19 needs the allowed windows: "
+                    "python -m labeler.events.catalog.check disruption "
+                    "--windows data/events/catalog/cohort.csv"
+                )
             out.append(Finding("points", where, shot, detail))
         for problem in attr_problems(category, parse_attrs(r.attrs)):
             out.append(Finding("attrs", where, shot, f"{at}: {problem}"))
@@ -431,7 +442,7 @@ def _raw_points(path: Path) -> pd.DataFrame:
 def read_windows(path: Path) -> dict[int, tuple[float, float]]:
     """Allowed windows from a table with `shot, window_start_ms, window_end_ms`."""
     try:
-        validate_csv_fields(path)
+        lines = validate_csv_fields(path)
     except pd.errors.ParserError as error:
         raise CatalogError(str(error)) from error
     except (UnicodeDecodeError, OSError) as error:
@@ -446,7 +457,7 @@ def read_windows(path: Path) -> dict[int, tuple[float, float]]:
     if frame.empty:
         raise CatalogError(f"{path}: row 1: no windows in the table")
     allowed = {}
-    for row, values in enumerate(frame[list(columns)].itertuples(index=False), 2):
+    for row, values in zip(lines[1:], frame[list(columns)].itertuples(index=False)):
         prefix = f"{path}: row {row}: "
         # Parse the integer separately to preserve all int64 shot IDs exactly.
         try:

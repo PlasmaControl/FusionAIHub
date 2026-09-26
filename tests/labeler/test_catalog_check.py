@@ -909,3 +909,55 @@ def test_checker_to_scoring_keeps_d19_at_original_allowed_end():
     ).tolist() == [4999.5]
     with pytest.raises(ValueError, match="allowed"):
         Assessment.from_checked(rows, allowed, category="alfven_eigenmode")
+
+
+@pytest.mark.parametrize("with_windows", [False, True])
+@pytest.mark.parametrize("end", [5262.0, 5262.001])
+def test_cli_d19_context_and_precise_endpoint(tmp_path, capsys, with_windows, end):
+    review = tmp_path / "disruption" / "review"
+    review.mkdir(parents=True)
+    _labels((191389, 0, 8, 5256), (191389, 1, 5256, 5261)).to_csv(
+        review / "labels.csv", index=False
+    )
+    _points(
+        (191389, "disruption", "t80", 5255.65),
+        (191389, "disruption", "t_D", 5260.53),
+        (191389, "disruption", "t20", end),
+    ).to_csv(review / "points.csv", index=False)
+    windows_path = tmp_path / "windows.csv"
+    windows_path.write_text("shot,window_start_ms,window_end_ms\n191389,8,5260\n")
+    args = ["disruption", "--root", str(tmp_path)]
+    if with_windows:
+        args += ["--windows", str(windows_path)]
+    assert main(args) == (0 if with_windows and end == 5262 else 1)
+    message = capsys.readouterr().out
+    if not with_windows:
+        assert "D19 needs the allowed windows" in message
+        assert (
+            "python -m labeler.events.catalog.check disruption "
+            "--windows data/events/catalog/cohort.csv"
+        ) in message
+    elif end == 5262:
+        assert "0 finding(s)" in message
+    else:
+        assert "5262.001 ms is outside the allowed window" in message
+
+
+def test_cli_windows_diagnostic_names_physical_start_line(tmp_path, capsys):
+    path = tmp_path / "windows.csv"
+    path.write_text(
+        'shot,window_start_ms,window_end_ms,note\n\n1,0,10,"two\nlines"\n2,bad,20,\n'
+    )
+    with pytest.raises(SystemExit) as exc:
+        main(["disruption", "--root", str(tmp_path), "--windows", str(path)])
+    assert exc.value.code == 2
+    assert f"{path}: row 5: window_start_ms" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "value, text", [(5262.001, "5262.001 ms"), (5504.625, "5504.625 ms"), (2, "2 ms")]
+)
+def test_diagnostic_time_round_trips(value, text):
+    from labeler.events.catalog.check import _ms
+
+    assert _ms(value) == text

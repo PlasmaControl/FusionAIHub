@@ -31,13 +31,14 @@ POINT_COLUMNS = (
 WINDOW_COLUMNS = ("window_start_ms", "window_end_ms")
 
 
-def validate_csv_fields(path: Path) -> None:
+def validate_csv_fields(path: Path) -> list[int]:
     """Refuse ragged records and duplicate headers before pandas changes them.
 
-    Skip empty records and report each record's starting physical line number.
+    Skip empty records and return each record's starting physical line number.
     Quoted commas and newlines belong to their field, not to the table structure.
     """
     row, width = 0, None
+    lines = []
     try:
         with Path(path).open(newline="", encoding="utf-8-sig") as source:
             reader = csv.reader(source, strict=True)
@@ -48,6 +49,7 @@ def validate_csv_fields(path: Path) -> None:
                     break
                 if not fields:
                     continue
+                lines.append(row)
                 if width is None:
                     width = len(fields)
                     repeated = sorted(
@@ -66,6 +68,7 @@ def validate_csv_fields(path: Path) -> None:
         raise pd.errors.ParserError(
             f"{path}: row {row}: error tokenizing CSV: {error}"
         ) from error
+    return lines
 
 
 def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
