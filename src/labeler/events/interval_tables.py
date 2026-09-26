@@ -76,6 +76,15 @@ def validate_intervals(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+def _unique_object(pairs) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate attribute key {key!r}")
+        result[key] = value
+    return result
+
+
 def parse_attrs(value) -> dict:
     """One `attrs` cell as a dict: blank is `{}`, anything else a JSON object."""
     if value is None or (isinstance(value, float) and math.isnan(value)):
@@ -84,9 +93,9 @@ def parse_attrs(value) -> dict:
         if not value.strip():
             return {}
         try:
-            value = json.loads(value)
+            value = json.loads(value, object_pairs_hook=_unique_object)
         except ValueError as error:
-            raise DatabaseError(f"attrs is not JSON: {value!r}") from error
+            raise DatabaseError(f"attrs is not JSON: {error}: {value!r}") from error
     if not isinstance(value, dict):
         raise DatabaseError(f"attrs must be a JSON object, not {value!r}")
     return dict(value)
