@@ -426,3 +426,61 @@ def test_cohort_design_coverage_and_bias(capsys):
     assert np.all((0.92 <= coverage) & (coverage <= 0.98))
     assert np.all(np.abs(bias) < 0.01)
     assert elapsed < 20
+
+
+def test_two_stage_frozen_g_weights_and_group_resampling():
+    from labeler.scoring.stats import two_stage_weights
+
+    first = [1, 124 / 21] + [345 / 59] * 4 + [113 / 19] * 4 + [2, 4]
+    groups = ["G"] * 10 + ["L"] * 2
+    weights = two_stage_weights(first, groups, {"G": 100, "L": 4})
+    assert weights[:2] == pytest.approx([10, 124 / 21 * 10])
+    draws = replicate_weights(groups, weights, n=50, seed=7) / weights
+    assert (draws[:, :10].sum(axis=1) == 10).all()
+    assert (draws[:, 10:].sum(axis=1) == 2).all()
+
+
+def test_two_stage_exact_unbiased_total_by_enumeration():
+    from fractions import Fraction
+    from itertools import combinations
+
+    from labeler.scoring.stats import two_stage_weights
+
+    # Values differ between cells, so group-only weighting is biased.
+    y = [1, 2, 3, 4, 5, 10, 20, 30]
+    first = [Fraction(5, 3)] * 5 + [Fraction(3)] * 3
+    totals, group_totals = [], []
+    for a, b in product(combinations(range(5), 3), combinations(range(5, 8), 1)):
+        for blind in combinations(a + b, 2):
+            exact = [first[i] * Fraction(4, 2) for i in blind]
+            actual = two_stage_weights(
+                [float(first[i]) for i in blind], ["g"] * 2, {"g": 4}
+            )
+            assert actual == pytest.approx([float(w) for w in exact])
+            totals.append(sum(w * y[i] for w, i in zip(exact, blind)))
+            group_totals.append(sum(Fraction(8, 2) * y[i] for i in blind))
+    assert len(totals) == 180
+    assert sum(totals) / len(totals) == sum(y)
+    assert sum(group_totals) / len(group_totals) != sum(y)
+
+
+@pytest.mark.parametrize(
+    "first, counts",
+    [
+        ([1, 1], {}),
+        ([0, 1], {"g": 4}),
+        ([-1, 1], {"g": 4}),
+        ([np.nan, 1], {"g": 4}),
+        ([np.inf, 1], {"g": 4}),
+        ([1, 1], {"g": 2.5}),
+        ([1, 1], {"g": np.nan}),
+        ([1, 1], {"g": np.inf}),
+        ([1, 1], {"g": True}),
+        ([1, 1], {"g": 1}),
+    ],
+)
+def test_two_stage_refuses_invalid_group_inputs(first, counts):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="g"):
+        two_stage_weights(first, ["g", "g"], counts)
