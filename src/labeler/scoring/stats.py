@@ -27,10 +27,11 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 
 import numpy as np
 
-from .frames import _whole
+from .frames import whole_number
 
 N_REPLICATES = 2000
 LEVEL = 0.95
@@ -59,7 +60,7 @@ def f1(totals):
 
 def cohen_cells(frames) -> np.ndarray:
     """`[n00, n01, n10, n11]` from `(n_frames, 2)` 0/1 frames."""
-    frames = np.asarray(frames, dtype=np.int64).reshape(-1, 2)
+    frames = _binary_frames(frames, cohen=True)
     return np.bincount(frames[:, 0] * 2 + frames[:, 1], minlength=4).astype(float)
 
 
@@ -79,7 +80,7 @@ def fleiss_cells(frames) -> np.ndarray:
     `agreeing_pairs` sums, over frames, the ordered pairs of readers who agree:
     `p(p - 1) + a(a - 1)` for `p` present and `a` absent votes.
     """
-    frames = np.asarray(frames, dtype=np.int64)
+    frames = _binary_frames(frames)
     present = frames.sum(axis=1)
     absent = frames.shape[1] - present
     pairs = present * (present - 1) + absent * (absent - 1)
@@ -95,6 +96,15 @@ def fleiss_kappa(totals, k: int):
     return _ratio(observed - chance, 1 - chance)
 
 
+def _binary_frames(frames, *, cohen=False):
+    frames = np.asarray(frames)
+    if frames.ndim != 2 or (frames.shape[1] != 2 if cohen else frames.shape[1] < 2):
+        raise ValueError("frames must have shape (n_frames, 2) or (n_frames, k >= 2)")
+    if not np.isin(frames, (0, 1)).all():
+        raise ValueError("every frame entry must be 0 or 1")
+    return frames.astype(np.int64)
+
+
 def stratum_weights(strata: Sequence, population: Mapping) -> np.ndarray:
     """`N_h / n_h` per shot: `N_h` from `population`, `n_h` counted in `strata`."""
     strata = list(strata)
@@ -103,7 +113,11 @@ def stratum_weights(strata: Sequence, population: Mapping) -> np.ndarray:
     if missing:
         raise ValueError(f"no population count for strata {missing}")
     for h, count in population.items():
-        if not np.isfinite(count) or count < 0:
+        try:
+            count = whole_number(count)
+        except ValueError as exc:
+            raise ValueError(f"population stratum {h!r}: {exc}") from exc
+        if count < counts[h]:
             raise ValueError(f"population stratum {h!r} has invalid count {count!r}")
     unscored = sorted(
         (h for h, count in population.items() if count > 0 and h not in counts),
@@ -127,7 +141,7 @@ def two_stage_weights(
         if g not in cohort_counts:
             raise ValueError(f"no cohort count for group {g!r}")
         try:
-            n = _whole(cohort_counts[g])
+            n = whole_number(cohort_counts[g])
         except ValueError as exc:
             raise ValueError(f"group {g!r}: {exc}") from exc
         if b > n:
@@ -149,7 +163,7 @@ def _shot_inputs(strata, weights):
 
 
 def _replicate_count(n):
-    n = _whole(n)
+    n = whole_number(n)
     if n < 1:
         raise ValueError(f"replicates {n} must be at least 1")
     return n
@@ -158,6 +172,16 @@ def _replicate_count(n):
 def _check_level(level):
     if not 0 < level < 1:
         raise ValueError(f"level {level!r} must be strictly between 0 and 1")
+
+
+def _seed(seed):
+    try:
+        value = whole_number(seed)
+    except ValueError as exc:
+        raise ValueError(f"seed: {exc}") from exc
+    if value < 0:
+        raise ValueError("seed must be nonnegative")
+    return value
 
 
 def replicate_weights(
@@ -170,9 +194,13 @@ def replicate_weights(
     """
     strata, weights = _shot_inputs(strata, weights)
     n = _replicate_count(n)
-    codes = {h: i for i, h in enumerate(sorted(set(strata), key=str))}
+    ordered = sorted(set(strata), key=str)
+    for a, b in pairwise(ordered):
+        if str(a) == str(b):
+            raise ValueError(f"distinct strata {a!r} and {b!r} have the same str")
+    codes = {h: i for i, h in enumerate(ordered)}
     ids = np.array([codes[h] for h in strata], dtype=np.int64)
-    rng = np.random.default_rng(seed)
+    rng = np.random.default_rng(_seed(seed))
     draws = np.zeros((n, len(strata)))
     for code in range(len(codes)):
         members = np.flatnonzero(ids == code)
@@ -235,6 +263,10 @@ def estimate(
     strata, weights = _shot_inputs(strata, weights)
     if cells.ndim != 2 or len(cells) != len(strata):
         raise ValueError("cells must be two-dimensional with one row per shot")
+    bad = np.flatnonzero((~np.isfinite(cells) | (cells < 0)).any(axis=1))
+    if len(bad):
+        raise ValueError(f"cells row {bad[0]} must be finite and nonnegative")
+    seed = _seed(seed)
     _check_level(level)
     value = float(metric(weights @ cells))
     replicates = metric(replicate_weights(strata, weights, n, seed) @ cells)
@@ -268,6 +300,8 @@ def difference(
 def weighted_median(values, weights):
     """Weighted median of `values`; `weights` may carry leading replicate axes."""
     values = np.asarray(values, dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("values must be finite")
     weights = np.asarray(weights, dtype=float)
     if not len(values):
         return np.full(weights.shape[:-1], np.nan) if weights.ndim > 1 else np.nan
@@ -294,7 +328,8 @@ def median_estimate(
     strata, weights = _shot_inputs(strata, weights)
     if values.ndim != 1 or owners.ndim != 1 or len(values) != len(owners):
         raise ValueError("values and owners must be one-dimensional of the same length")
-    indices = [_whole(owner) for owner in owners]
+    seed = _seed(seed)
+    indices = [whole_number(owner) for owner in owners]
     if any(owner < 0 or owner >= len(strata) for owner in indices):
         raise ValueError("each owner must be a shot index in [0, number of shots)")
     owners = np.array(indices, dtype=np.int64)

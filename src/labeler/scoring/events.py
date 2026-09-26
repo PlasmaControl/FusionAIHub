@@ -24,6 +24,18 @@ from .frames import ABSENT, PRESENT, Assessment
 SLACK_MS = 1e-9
 
 
+def _timing_option(value, name):
+    if not np.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be finite and nonnegative")
+
+
+def _times(values):
+    times = np.asarray(values, dtype=float).ravel()
+    if not np.isfinite(times).all():
+        raise ValueError("event times must be finite")
+    return times
+
+
 def boundaries(
     assessment: Assessment, *, method: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -64,8 +76,9 @@ def match(reference, estimate, tolerance_ms: float) -> Matching:
     references [0, 10] and estimates [6, 14] at tolerance 6 give one pair,
     although two pairs are possible.
     """
-    ref = np.asarray(reference, dtype=float).ravel()
-    est = np.asarray(estimate, dtype=float).ravel()
+    _timing_option(tolerance_ms, "tolerance_ms")
+    ref = _times(reference)
+    est = _times(estimate)
     distance = np.abs(ref[:, None] - est[None, :])
     i, j = np.nonzero(distance <= tolerance_ms + SLACK_MS)
     d = distance[i, j]
@@ -158,7 +171,8 @@ def within(times, window, *, end_slack_ms: float = 0.0) -> np.ndarray:
     A disruption's t_D, t80 and t20 take D19's 2 ms end slack:
     `labeler.events.catalog.check.DISRUPTION_TIMING_TOLERANCE_MS`.
     """
-    times = np.asarray(times, dtype=float).ravel()
+    _timing_option(end_slack_ms, "end_slack_ms")
+    times = _times(times)
     before_end = times < window[1]
     if end_slack_ms > 0:
         before_end |= times <= window[1] + end_slack_ms
