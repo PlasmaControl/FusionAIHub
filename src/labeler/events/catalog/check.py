@@ -11,7 +11,8 @@ every problem at once, and `require` turns a non-empty list into an error.
   assessed window from Ip); shots with no allowed window are not catalog shots
   (the AE180 relabels) and are left alone;
 - `points`: the points table is well formed, each point's attrs are checked,
-  and each point lies inside its shot's assessed window `[start, end)`.
+  and each point lies inside its shot's assessed window `[start, end)`;
+  a disruption's t_D, t80 and t20 agree with each other and its present span.
 
 `python -m labeler.events.catalog.check` runs them over every labels and points
 table under each category's `review/`.
@@ -31,7 +32,7 @@ import pandas as pd
 from ...config import Paths
 from ..databases import DatabaseError
 from ..interval_tables import ATTRS_COLUMN, parse_attrs, validate_intervals
-from .points import read_points, validate_points
+from .points import POINT_COLUMNS, read_points, validate_points
 from .states import PHENOMENA, STATE_NAMES, attr_problems
 
 Windows = Mapping[int, tuple[float, float]]
@@ -153,6 +154,54 @@ def points(
             out.append(Finding("points", where, shot, detail))
         for problem in attr_problems(category, parse_attrs(r.attrs)):
             out.append(Finding("attrs", where, shot, f"{at}: {problem}"))
+    if category == "disruption":
+        out += disruption_points(frame, labels, where)
+    return out
+
+
+def disruption_points(
+    frame: pd.DataFrame, labels: pd.DataFrame | None, where: str
+) -> list[Finding]:
+    """One t_D, t80 and t20 per event; present is [t80, t20] to within 1 ms."""
+    frame = frame[frame.phenomenon == "disruption"]
+    present = labels[labels.category == 1] if labels is not None else None
+    shots = set(frame.shot)
+    if present is not None:
+        shots.update(present.shot)
+    out = []
+    kinds = {"t_D", "t80", "t20"}
+    for shot in sorted(shots):
+        rows = frame[frame.shot == shot]
+        counts = rows.kind.value_counts()
+        for kind in sorted(kinds):
+            if counts.get(kind, 0) > 1:
+                out.append(Finding("points", where, int(shot), f"more than one {kind}"))
+        missing = kinds - set(counts.index)
+        if len(rows) and missing:
+            detail = f"missing point kinds: {', '.join(sorted(missing))}"
+            out.append(Finding("points", where, int(shot), detail))
+        spans = present[present.shot == shot] if present is not None else None
+        if spans is not None and len(spans) and {"t80", "t20"} & missing:
+            detail = "present span has no t80 and t20 pair"
+            out.append(Finding("points", where, int(shot), detail))
+        if counts.get("t80", 0) == counts.get("t20", 0) == 1:
+            lo = float(rows.loc[rows.kind == "t80", "t_ms"].iloc[0])
+            hi = float(rows.loc[rows.kind == "t20", "t_ms"].iloc[0])
+            if lo >= hi:
+                out.append(
+                    Finding("points", where, int(shot), "t80 must be before t20")
+                )
+            if not missing and spans is not None:
+                if len(spans) != 1:
+                    detail = "the three points require exactly one present span"
+                elif (
+                    abs(float(spans.iloc[0].t_start) - lo) > 1
+                    or abs(float(spans.iloc[0].t_end) - hi) > 1
+                ):
+                    detail = "present span bounds must be within 1 ms of t80 and t20"
+                else:
+                    continue
+                out.append(Finding("points", where, int(shot), detail))
     return out
 
 
@@ -173,6 +222,8 @@ def check_table(
     found += attrs(labels, category, where)
     if allowed is not None:
         found += windows(labels, allowed, where)
+    if points_frame is None and category == "disruption":
+        points_frame = pd.DataFrame(columns=list(POINT_COLUMNS))
     if points_frame is not None:
         beside = (
             "points" if where == "labels" else str(Path(where).with_name("points.csv"))

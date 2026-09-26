@@ -301,3 +301,106 @@ def test_points_findings_replace_only_the_filename():
     assert [f.where for f in found] == [
         "edge_localized_mode/review/labelsmith/points.csv"
     ]
+
+
+DISRUPTION_POINTS = _points(
+    (1, "disruption", "t_D", 175.5),
+    (1, "disruption", "t80", 100.25),
+    (1, "disruption", "t20", 249.75),
+)
+
+
+def test_a_consistent_disruption_shot_passes_every_check():
+    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+
+
+@pytest.mark.parametrize("kind", ["t_D", "t80", "t20"])
+def test_a_disruption_refuses_more_than_one_point_of_each_kind(kind):
+    frame = pd.concat(
+        [DISRUPTION_POINTS, _points((1, "disruption", kind, 180.5))], ignore_index=True
+    )
+    found = check_table(GOOD, "disruption", points_frame=frame)
+    assert any(
+        f.check == "points" and f.shot == 1 and f"more than one {kind}" in f.detail
+        for f in found
+    )
+    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+
+
+@pytest.mark.parametrize(
+    "kinds",
+    [("t_D",), ("t80",), ("t20",), ("t_D", "t80"), ("t_D", "t20"), ("t80", "t20")],
+)
+def test_a_disruption_requires_all_three_point_kinds(kinds):
+    frame = DISRUPTION_POINTS[DISRUPTION_POINTS.kind.isin(kinds)]
+    found = check_table(GOOD, "disruption", points_frame=frame)
+    assert any(
+        f.check == "points" and f.shot == 1 and "missing point kinds" in f.detail
+        for f in found
+    )
+    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+
+
+@pytest.mark.parametrize("end", [100.25, 99.25])
+def test_a_disruption_requires_t80_before_t20(end):
+    frame = DISRUPTION_POINTS.copy()
+    frame.loc[frame.kind == "t20", "t_ms"] = end
+    found = check_table(GOOD, "disruption", points_frame=frame)
+    assert any(
+        f.check == "points" and f.shot == 1 and "t80 must be before t20" in f.detail
+        for f in found
+    )
+    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [(1, 0, 0, 400)],
+        [(1, 0, 0, 100), (1, 1, 100, 150), (1, 0, 150, 200), (1, 1, 200, 250)],
+    ],
+)
+def test_disruption_points_require_exactly_one_present_span(rows):
+    found = check_table(_labels(*rows), "disruption", points_frame=DISRUPTION_POINTS)
+    assert any(
+        f.check == "points" and f.shot == 1 and "exactly one present span" in f.detail
+        for f in found
+    )
+    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+
+
+@pytest.mark.parametrize("kind, time", [("t80", 98.99), ("t20", 251.01)])
+def test_disruption_present_bounds_allow_only_one_ms_of_rounding(kind, time):
+    frame = DISRUPTION_POINTS.copy()
+    frame.loc[frame.kind == kind, "t_ms"] = time
+    found = check_table(GOOD, "disruption", points_frame=frame)
+    assert any(
+        f.check == "points" and f.shot == 1 and "within 1 ms" in f.detail for f in found
+    )
+    frame.loc[frame.kind == kind, "t_ms"] = 99 if kind == "t80" else 251
+    assert check_table(GOOD, "disruption", points_frame=frame) == []
+
+
+@pytest.mark.parametrize(
+    "points_frame", [None, _points(), DISRUPTION_POINTS.assign(shot=2)]
+)
+def test_each_disruption_present_span_requires_its_own_t80_and_t20(points_frame):
+    found = check_table(GOOD, "disruption", points_frame=points_frame)
+    assert any(
+        f.check == "points"
+        and f.shot == 1
+        and "present span has no t80 and t20" in f.detail
+        for f in found
+    )
+    assert check_table(_labels((1, 0, 0, 400)), "disruption") == []
+
+
+def test_disruption_present_span_is_checked_when_points_file_is_missing(tmp_path):
+    review = tmp_path / "disruption" / "review"
+    review.mkdir(parents=True)
+    GOOD.to_csv(review / "labels.csv", index=False)
+    found, n = check_category(review.parent)
+    assert n == 1
+    assert [(f.check, f.shot) for f in found] == [("points", 1)]
+    DISRUPTION_POINTS.to_csv(review / "points.csv", index=False)
+    assert check_category(review.parent) == ([], 1)
