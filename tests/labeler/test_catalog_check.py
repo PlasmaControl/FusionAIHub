@@ -10,7 +10,9 @@ from labeler.events.catalog.check import (
     check_category,
     check_table,
     main,
+    read_windows,
     require,
+    windows,
 )
 from labeler.events.catalog.points import POINT_COLUMNS
 from labeler.events.interval_tables import ATTRS_COLUMN, INTERVAL_COLUMNS
@@ -404,3 +406,133 @@ def test_disruption_present_span_is_checked_when_points_file_is_missing(tmp_path
     assert [(f.check, f.shot) for f in found] == [("points", 1)]
     DISRUPTION_POINTS.to_csv(review / "points.csv", index=False)
     assert check_category(review.parent) == ([], 1)
+
+
+@pytest.mark.parametrize("row, count", [("190001,0,10,20", 4), ("190001,0", 2)])
+def test_windows_csv_field_counts_match_the_header(tmp_path, row, count):
+    path = tmp_path / "windows.csv"
+    path.write_text(f"shot,window_start_ms,window_end_ms\n{row}\n")
+    with pytest.raises(CatalogError, match=f"row 2:.*3 fields.*{count}") as error:
+        read_windows(path)
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("filename, width", [("labels.csv", 5), ("points.csv", 7)])
+@pytest.mark.parametrize("extra", [True, False])
+def test_review_csv_field_counts_match_the_header(tmp_path, filename, width, extra):
+    review = tmp_path / "edge_localized_mode" / "review"
+    review.mkdir(parents=True)
+    _labels((190002, 1, 0, 100)).to_csv(review / "labels.csv", index=False)
+    header, row = (
+        (INTERVAL_COLUMNS, "190002,1,0,100,")
+        if filename == "labels.csv"
+        else (POINT_COLUMNS, "190002,edge_localized_mode,elm,50,,,")
+    )
+    row = "190001," + row if extra else row[:-1]
+    (review / filename).write_text(",".join(header) + "\n" + row + "\n")
+    found, count = check_category(review.parent)
+    assert count == 1
+    assert [(f.check, f.where) for f in found] == [
+        ("schema", f"edge_localized_mode/review/{filename}")
+    ]
+    assert "row 2:" in found[0].detail
+    assert f"{width} fields" in found[0].detail
+    assert f"got {width + (1 if extra else -1)}" in found[0].detail
+
+
+def test_windows_csv_allows_named_cohort_columns_and_quoted_commas(tmp_path):
+    path = tmp_path / "windows.csv"
+    path.write_text(
+        "shot,group,window_start_ms,window_end_ms,weight\n"
+        '190001,"train,first",0.25,100.75,1\n'
+    )
+    assert read_windows(path) == {190001: (0.25, 100.75)}
+
+
+def test_header_only_windows_csv_is_refused(tmp_path):
+    path = tmp_path / "windows.csv"
+    path.write_text("shot,window_start_ms,window_end_ms\n")
+    with pytest.raises(CatalogError, match="row 1:.*no windows"):
+        read_windows(path)
+
+
+@pytest.mark.parametrize(
+    "span",
+    [
+        (float("nan"), float("nan")),
+        (-float("inf"), float("inf")),
+        (100, 0),
+        (0, 0),
+        (0,),
+        (0, 100, 200),
+        ("0", "100"),
+        (False, 100),
+        None,
+    ],
+)
+@pytest.mark.parametrize("assessed_shot", [190001, 190002])
+def test_public_checker_validates_every_allowed_span(span, assessed_shot):
+    # Even a shot without labels must not hide an invalid mapping entry.
+    found = check_table(
+        _labels((assessed_shot, 0, 0, 100)),
+        "alfven_eigenmode",
+        allowed={190001: span},
+    )
+    assert len(found) == 1 and found[0].check == "windows"
+    assert "190001" in found[0].detail
+    with pytest.raises(CatalogError):
+        require(found)
+
+
+@pytest.mark.parametrize("shot", ["190001", True, 1.0, -1, 2**63])
+def test_public_checker_validates_allowed_shot_keys(shot):
+    found = check_table(GOOD, "alfven_eigenmode", allowed={shot: (0, 400)})
+    assert len(found) == 1 and found[0].check == "windows"
+    assert repr(shot) in found[0].detail
+
+
+@pytest.mark.parametrize(
+    "span", [(100, 0), (float("nan"), float("nan")), (-float("inf"), float("inf"))]
+)
+def test_windows_itself_refuses_unordered_or_nonfinite_spans(span):
+    found = windows(GOOD, {1: span})
+    assert len(found) == 1 and found[0].check == "windows"
+    assert found[0].shot == 1
+
+
+def test_bad_labels_schema_still_checks_independent_points(tmp_path):
+    review = tmp_path / "edge_localized_mode" / "review"
+    review.mkdir(parents=True)
+    (review / "labels.csv").write_text("shot,wrong\n190001,1\n")
+    _points((190001, "edge_localized_mode", "t_Q", 50)).to_csv(
+        review / "points.csv", index=False
+    )
+    found, count = check_category(review.parent)
+    assert count == 1
+    assert [(f.check, f.where) for f in found] == [
+        ("schema", "edge_localized_mode/review/labels.csv"),
+        ("points", "edge_localized_mode/review/points.csv"),
+    ]
+    assert "t_Q" in found[1].detail
+
+
+def test_raw_points_fallback_also_checks_csv_field_counts(tmp_path, monkeypatch):
+    from labeler.events.catalog import check
+    from labeler.events.databases import DatabaseError
+
+    review = tmp_path / "edge_localized_mode" / "review"
+    review.mkdir(parents=True)
+    GOOD.to_csv(review / "labels.csv", index=False)
+    (review / "points.csv").write_text(
+        ",".join(POINT_COLUMNS) + "\n190001,1,edge_localized_mode,elm,50,,,\n"
+    )
+
+    def invalid_schema(path):
+        raise DatabaseError("bad schema")
+
+    monkeypatch.setattr(check, "read_points", invalid_schema)
+    found, count = check_category(review.parent)
+    assert count == 1 and len(found) == 1
+    assert found[0].check == "schema"
+    assert "row 2:" in found[0].detail
+    assert "7 fields" in found[0].detail and "got 8" in found[0].detail

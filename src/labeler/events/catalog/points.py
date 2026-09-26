@@ -8,6 +8,7 @@ a blind window `[start, end)`, and are blank otherwise.
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import numpy as np
@@ -28,6 +29,33 @@ POINT_COLUMNS = (
     "window_end_ms",
 )
 WINDOW_COLUMNS = ("window_start_ms", "window_end_ms")
+
+
+def validate_csv_fields(path: Path) -> None:
+    """Refuse ragged CSV records before pandas can infer an index or pad cells.
+
+    Count records, including the header as row 1, just as `read_windows` does.
+    Quoted commas and newlines belong to their field, not to the table structure.
+    """
+    row, width = 0, None
+    try:
+        with Path(path).open(newline="", encoding="utf-8-sig") as source:
+            reader = csv.reader(source, strict=True)
+            while True:
+                row += 1
+                fields = next(reader, None)
+                if fields is None:
+                    break
+                if width is None:
+                    width = len(fields)
+                elif len(fields) != width:
+                    raise pd.errors.ParserError(
+                        f"{path}: row {row}: expected {width} fields, got {len(fields)}"
+                    )
+    except csv.Error as error:
+        raise pd.errors.ParserError(
+            f"{path}: row {row}: error tokenizing CSV: {error}"
+        ) from error
 
 
 def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
@@ -83,9 +111,14 @@ def read_points(path) -> pd.DataFrame:
     path = Path(path)
     if not path.is_file():
         return validate_points(pd.DataFrame(columns=list(POINT_COLUMNS)))
+    validate_csv_fields(path)
     blank = {column: [""] for column in WINDOW_COLUMNS}
     frame = pd.read_csv(
-        path, dtype={"attrs": str}, keep_default_na=False, na_values=blank
+        path,
+        dtype={"attrs": str},
+        keep_default_na=False,
+        na_values=blank,
+        index_col=False,
     )
     return validate_points(frame)
 
