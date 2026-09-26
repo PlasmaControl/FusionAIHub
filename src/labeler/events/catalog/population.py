@@ -8,7 +8,8 @@ dropped and its title filter replaced by machine time; the rejections keep its n
 2. the shot's own shot-table block, not the session fallback, under a run title that
    names no machine activity (`session_fallback`, `title`): startup and power-system
    test titles, or the lexicon's machine theme after physics themes have been tried
-   first against the title and mini-proposal subject;
+   first against the title and mini-proposal subject. An empty run title uses the
+   first Experiment: line in the bundle's ### CHIEF_OPERATOR SUMMARY block;
 3. at least 2 s of census coverage for mhr, ece and filterscopes (`census_<group>`),
    in effect presence in this corpus: mhr spans 4.194 s and ece 6.193 s when present.
 
@@ -66,6 +67,7 @@ POOL_COLUMNS = (
     "has_shot_table",
     "title",
     "mp_subject",
+    "experiment",
     "ip_ma",
     "pulse_length_s",
     "pbeam_max_mw",
@@ -91,6 +93,33 @@ RULES = {
 }
 
 
+def experiment_line(bundle: str) -> str | None:
+    """The chief operator's experiment, confined to that summary's first entry."""
+    heading = re.search(r"^### CHIEF_OPERATOR SUMMARY[ \t]*$", bundle, re.MULTILINE)
+    if heading is None:
+        return None
+    block = re.split(
+        r"^#{2,3} ", bundle[heading.end() :], maxsplit=1, flags=re.MULTILINE
+    )[0]
+    entry = re.search(r"^[ \t]*Experiment:[ \t]*(.*)$", block, re.MULTILINE)
+    if entry is None:
+        return None
+    underline = re.compile(r"[=\-*_~ ]+")
+    value = entry.group(1).strip()
+    if value and not underline.fullmatch(value):
+        return value
+    lines = [line.strip() for line in block[entry.end() :].splitlines() if line.strip()]
+    for i, value in enumerate(lines):
+        if underline.fullmatch(value):
+            continue
+        if value.endswith(":") or (
+            i + 1 < len(lines) and underline.fullmatch(lines[i + 1])
+        ):
+            return None
+        return value
+    return None
+
+
 def machine_time(title, subject, themes=None) -> bool:
     """An explicit machine title or the lexicon's physics-first machine theme."""
     if themes is None:
@@ -111,6 +140,7 @@ def screen(
     `reasons` joins the rejections with ";" and is empty for a shot that passes.
     Rule 2 rejects explicit startup/power-system test titles and the lexicon's
     machine theme, assigned physics first from title and mini-proposal subject.
+    An empty title uses the chief operator's experiment line from the bundle.
     """
     if themes is None:
         themes = select.lexicon_themes()
@@ -119,9 +149,12 @@ def screen(
         if shot not in bundles:
             rows.append({"shot": shot, "reasons": "no_bundle"})
             continue
+        experiment = experiment_line(bundles[shot])
         table_row = shot_table_row(bundles[shot])
         if table_row and table_row.get("SHOT", "").strip() != str(shot):
-            rows.append({"shot": shot, "reasons": "bundle_mismatch"})
+            rows.append(
+                {"shot": shot, "experiment": experiment, "reasons": "bundle_mismatch"}
+            )
             continue
         facts = select.parse_facts(shot, bundles[shot])
         missing = {
@@ -135,7 +168,8 @@ def screen(
         # Rule 4 uses measured Ip, and rule 2 uses machine time instead of words
         # such as "test", which occur in physics titles as well.
         reasons = set(why) - {"flattop", "title"}
-        if machine_time(facts.title, facts.mp_subject, themes):
+        title = (facts.title or "").strip()
+        if machine_time(title or experiment, facts.mp_subject, themes):
             reasons.add("title")
         rows.append(
             {
@@ -146,6 +180,7 @@ def screen(
                 "has_shot_table": facts.has_shot_table,
                 "title": facts.title,
                 "mp_subject": facts.mp_subject,
+                "experiment": experiment,
                 "ip_ma": facts.ip_ma,
                 "pulse_length_s": facts.pulse_length_s,
                 "pbeam_max_mw": facts.pbeam_max_mw,
@@ -177,7 +212,14 @@ def read_pool(path) -> pd.DataFrame:
         dtype={
             **{
                 c: str
-                for c in ("run_id", "shot_type", "title", "mp_subject", "reasons")
+                for c in (
+                    "run_id",
+                    "shot_type",
+                    "title",
+                    "mp_subject",
+                    "experiment",
+                    "reasons",
+                )
             },
             "has_shot_table": "boolean",
         },
@@ -289,6 +331,9 @@ def rules_record() -> dict:
         },
         "rule_2": {
             "own_shot_table_block": True,
+            "empty_title_fallback": (
+                "first Experiment: line in the ### CHIEF_OPERATOR SUMMARY block"
+            ),
             "machine_time": {
                 "pattern": MACHINE_TITLE.pattern,
                 "lexicon_theme": select.FALLBACK_THEME,
