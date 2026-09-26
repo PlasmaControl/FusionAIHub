@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
+import sys
+import types
 
 import numpy as np
 import pytest
 
 from labeler.config import Paths
 from labeler.events.catalog import window
+from labeler.events.catalog.check import CatalogError
 from labeler.events.catalog.window import (
     assessed_window,
     fetch,
@@ -16,6 +21,7 @@ from labeler.events.catalog.window import (
     read_log,
     summarise,
 )
+from labeler.events.raw import write_group
 from labeler.events.verify import NoDataError
 from labeler.features.store import FeatureArray
 from shot_design.shotdb.select import flattop_from_ip
@@ -104,12 +110,13 @@ def test_a_summary_line_says_what_was_measured():
     t, ip = _trace()
     assert summarise(7, t, ip) == {
         "shot": 7,
+        "version": 2,
         "n": t.size,
         "dt_ms": 0.5,
         "status": "ok",
         "window_start_ms": 26,
         "window_end_ms": 2474,
-        "flattop_s": 1.6995,
+        "flattop_s": pytest.approx(1.6995),
         "ip_peak_ma": 1.0,
     }
     assert summarise(8, t, ip / 100)["status"] == "no_plasma"
@@ -170,10 +177,17 @@ def test_an_unexpected_failure_is_logged_and_the_run_goes_on(tmp_path, monkeypat
 
 def test_workers_measure_the_same(tmp_path, monkeypatch):
     monkeypatch.setattr(window, "raw_signal", _fake_ip([]))
-    log = tmp_path / "ip.jsonl"
-    counts = fetch([1, 2, 3, 4], log, Paths(root=tmp_path), workers=2)
-    assert counts == {"ok": 2, "no_plasma": 1, "error": 1}
-    assert read_log(log)["status"].tolist() == ["ok", "no_plasma", "error", "ok"]
+    logs = []
+    for workers in (1, 2):
+        log = tmp_path / f"ip-{workers}.jsonl"
+        counts = fetch([1, 2, 3, 4], log, Paths(root=tmp_path), workers=workers)
+        assert counts == {"ok": 2, "no_plasma": 1, "error": 1}
+        assert read_log(log)["status"].tolist() == ["ok", "no_plasma", "error", "ok"]
+        lines = [json.loads(text) for text in log.read_text().splitlines()]
+        for line in lines:
+            del line["written_at"]
+        logs.append(sorted(lines, key=lambda line: line["shot"]))
+    assert logs[0] == logs[1]
 
 
 def test_an_empty_log_is_an_empty_table(tmp_path):
@@ -192,6 +206,23 @@ def test_the_command_logs_under_the_root(tmp_path, monkeypatch, capsys):
     assert summary["log"] == str(tmp_path / "catalog" / "ip.jsonl")
     assert summary["status"] == {"ok": 1, "no_plasma": 1, "error": 1}
     assert summary["flattop_at_least_1s"] == 1
+    assert summary["versions"] == {"2": 3}
+    meta = json.loads((tmp_path / "catalog" / "ip.meta.json").read_text())
+    assert meta["version"] == 2
+    assert re.fullmatch(r"[0-9a-f]{64}", meta["shot_file_sha256"])
+    assert meta["shot_file"] == str(shots) and meta["shots"] == 3
+    assert meta["this_run"] == {"ok": 1, "no_plasma": 1, "error": 1}
+    assert meta["log"] == summary["log"]
+    assert meta["git_sha"] and meta["written_at"]
+    definition = meta["definition"]
+    assert definition == window.definition()
+    assert definition["log_version"] == 2
+    assert definition["ip"] == "PTDATA ip, native rate"
+    assert definition["window_ip_a"] == 50e3
+    assert definition["bridge_ms"] == 10.0
+    assert definition["flattop_mean_ms"] == 25.0
+    assert definition["flattop_fraction"] == 0.8
+    assert definition["min_flattop_s"] == 1.0
 
 
 @pytest.mark.live
@@ -200,3 +231,217 @@ def test_live_window_of_a_measured_shot(tmp_path):
     assert line["dt_ms"] == 0.05 and line["n"] == 480_256
     assert (line["window_start_ms"], line["window_end_ms"]) == (7, 5348)
     assert line["flattop_s"] == pytest.approx(3.534, abs=0.001)
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_a_bad_cached_record_does_not_stop_other_shots(tmp_path, workers):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "absent-corpus")
+    t = np.arange(0.0, 2000.0, 0.05)
+    ip = np.full_like(t, 1e6)
+    bad_t = t.copy()
+    bad_t[-1] = np.nan
+    write_group(paths.raw_cache / "1_processed.h5", "ip", bad_t, ip[None])
+    write_group(paths.raw_cache / "2_processed.h5", "ip", t, ip[None])
+    log = tmp_path / "ip.jsonl"
+    assert fetch([1, 2], log, paths, workers=workers) == {"error": 1, "ok": 1}
+    assert read_log(log)["status"].tolist() == ["error", "ok"]
+    assert fetch([1, 2], log, paths, workers=workers) == {"error": 1}
+    assert len(log.read_text().splitlines()) == 3
+
+
+@pytest.mark.parametrize(
+    ("t", "ip"),
+    [
+        ([0, 1], [1e6]),
+        ([0], [1e6]),
+        ([0, np.nan], [1e6, 1e6]),
+        ([0, 0], [1e6, 1e6]),
+        ([0, 1], [np.nan, np.nan]),
+    ],
+    ids=["length", "too_short", "nonfinite_time", "unordered", "no_finite_ip"],
+)
+def test_summarise_refuses_unmeasurable_records(t, ip):
+    with pytest.raises(ValueError):
+        summarise(1, t, ip)
+
+
+def test_all_nan_current_is_a_retryable_error(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "absent-corpus")
+    t, _ = _trace()
+    write_group(
+        paths.raw_cache / "1_processed.h5", "ip", t, np.full((1, t.size), np.nan)
+    )
+    line = window.measure(1, paths)
+    assert line["status"] == "error" and line["version"] == 2
+    assert line["error"].startswith("ValueError:")
+
+
+def test_a_missing_tier_is_also_a_per_shot_error(tmp_path, monkeypatch):
+    t, ip = _trace()
+    monkeypatch.setattr(
+        window,
+        "raw_signal",
+        lambda *args, **kwargs: FeatureArray(x=t, y=ip[None], attrs={}),
+    )
+    line = window.measure(1, Paths(root=tmp_path))
+    assert line["status"] == "error" and "KeyError" in line["error"]
+
+
+def test_logging_keeps_full_precision_at_the_one_second_cut():
+    t = np.arange(-1000.0, 3000.0, 0.05) + 0.01
+    end = 1299.97
+    ip = 1e6 * np.interp(t, [0, 500, end, end + 500], [0, 1, 1, 0])
+    bounds = assessed_window(t, ip)
+    assert bounds == (26, 1774)
+    measured = flattop_s(t, ip, bounds)
+    assert measured == pytest.approx(0.99995)
+    logged = summarise(1, t, ip)["flattop_s"]
+    assert logged == measured
+    assert logged < 1.0
+
+
+def _ok_line():
+    return {
+        "shot": 1,
+        "status": "ok",
+        "window_start_ms": 0,
+        "window_end_ms": 2000,
+        "flattop_s": 1.5,
+        "ip_peak_ma": 1.0,
+        "dt_ms": 0.05,
+        "version": 2,
+    }
+
+
+def test_a_torn_tail_is_set_aside_before_resuming(tmp_path, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(window, "raw_signal", _fake_ip(calls))
+    log = tmp_path / "ip.jsonl"
+    fragment = '{"shot": 2, "status":'
+    complete = json.dumps(_ok_line()) + "\n"
+    log.write_text(complete + fragment)
+    assert read_log(log)["shot"].tolist() == [1]
+    assert fetch([1, 2], log, Paths(root=tmp_path)) == {"no_plasma": 1}
+    torn = tmp_path / "ip.jsonl.torn"
+    assert torn.read_text() == fragment + "\n"
+    assert str(torn) in capsys.readouterr().out
+    assert calls == [2]
+    assert [json.loads(t)["shot"] for t in log.read_text().splitlines()] == [1, 2]
+    before = log.read_bytes()
+    assert fetch([1, 2], log, Paths(root=tmp_path)) == {}
+    assert log.read_bytes() == before and calls == [2]
+    assert torn.read_text() == fragment + "\n"
+
+
+def test_only_newline_terminated_nonblank_lines_are_read(tmp_path):
+    log = tmp_path / "ip.jsonl"
+    first = json.dumps(_ok_line())
+    log.write_text("\n  \n" + first + "\n" + json.dumps(_ok_line() | {"shot": 2}))
+    assert read_log(log)["shot"].tolist() == [1]
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "{broken json}",
+        {},
+        {"shot": True, "status": "error"},
+        {"shot": 1.0, "status": "error"},
+        {"shot": 1, "status": "pending"},
+        _ok_line() | {"window_start_ms": 2000},
+        _ok_line() | {"flattop_s": 2.1},
+        _ok_line() | {"ip_peak_ma": float("inf")},
+        _ok_line() | {"version": True},
+        _ok_line() | {"version": 0},
+        _ok_line() | {"version": 1.5},
+        _ok_line() | {"window_start_ms": None},
+        _ok_line() | {"window_end_ms": 2000.0},
+        _ok_line() | {"window_start_ms": False},
+        _ok_line() | {"flattop_s": -0.1},
+        _ok_line() | {"flattop_s": float("nan")},
+        _ok_line() | {"dt_ms": 0},
+        _ok_line() | {"dt_ms": float("inf")},
+    ],
+    ids=[
+        "json",
+        "no_shot",
+        "bool_shot",
+        "float_shot",
+        "status",
+        "window_order",
+        "long_flattop",
+        "peak",
+        "bool_version",
+        "zero_version",
+        "float_version",
+        "null_window",
+        "float_window",
+        "bool_window",
+        "negative_flattop",
+        "nan_flattop",
+        "zero_dt",
+        "infinite_dt",
+    ],
+)
+def test_bad_complete_log_lines_name_the_file_and_line(tmp_path, bad):
+    log = tmp_path / "ip.jsonl"
+    text = bad if isinstance(bad, str) else json.dumps(bad)
+    log.write_text(json.dumps(_ok_line()) + "\n" + text + "\n")
+    with pytest.raises(CatalogError, match=r"ip\.jsonl:2:"):
+        read_log(log)
+
+
+def test_old_log_versions_are_remeasured_once(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(window, "raw_signal", _fake_ip(calls))
+    log = tmp_path / "ip.jsonl"
+    old = _ok_line()
+    del old["version"]
+    log.write_text(json.dumps(old) + "\n")
+    table = read_log(log)
+    assert table["version"].tolist() == [1]
+    assert str(table["version"].dtype) == "Int64"
+    assert fetch([1], log, Paths(root=tmp_path)) == {"ok": 1}
+    assert read_log(log)["version"].tolist() == [2]
+    assert len(log.read_text().splitlines()) == 2
+    assert fetch([1], log, Paths(root=tmp_path)) == {}
+    assert calls == [1]
+
+
+@pytest.mark.parametrize("module", ["toksearch", "toksearch_d3d"])
+def test_toksearch_in_the_parent_refuses_a_worker_pool(tmp_path, monkeypatch, module):
+    calls = []
+    monkeypatch.setattr(window, "raw_signal", _fake_ip(calls))
+    monkeypatch.setitem(sys.modules, module, types.ModuleType(module))
+    log = tmp_path / "ip.jsonl"
+    with pytest.raises(RuntimeError, match="toksearch"):
+        fetch([1], log, Paths(root=tmp_path), workers=2)
+    assert not log.read_text() and not calls
+    assert fetch([1], log, Paths(root=tmp_path), workers=1) == {"ok": 1}
+    assert calls == [1]
+
+
+def test_a_gap_of_exactly_ten_ms_is_bridged():
+    t = np.arange(0.0, 3000.0, 0.5)
+    clean = 1e6 * np.minimum(
+        np.clip(t / 500, 0, 1), np.clip((2500 - t) / 500, 0, 1)
+    )
+    for end, want in [(110.0, (25, 2475)), (110.5, (111, 2475))]:
+        ip = clean.copy()
+        ip[(t > 100) & (t < end)] = 0
+        assert assessed_window(t, ip) == want
+
+
+def test_import_does_not_load_torch_or_toksearch():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import labeler.events.catalog.window; "
+            "assert not {'torch', 'toksearch', 'toksearch_d3d'} & sys.modules.keys()",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
