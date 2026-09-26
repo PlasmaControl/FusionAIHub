@@ -74,3 +74,10 @@ def test_attributes_that_fit(category, attrs):
 )
 def test_attributes_that_do_not(category, attrs, problem):
     assert attr_problems(category, attrs) == [problem]
+
+
+def test_an_int_too_large_for_a_double_is_a_problem_not_a_crash():
+    # Not a whole message comparison: the value is a 401-digit number.
+    problems = attr_problems("sawtooth_oscillation", {"period_ms": 10**400})
+    assert len(problems) == 1
+    assert problems[0].endswith("is not a finite number")

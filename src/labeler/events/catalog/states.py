@@ -105,7 +105,10 @@ def _fits(value, rule) -> bool:
     if isinstance(value, bool) or rule is bool:
         return isinstance(value, bool) and rule is bool
     if rule is float:
-        return isinstance(value, int | float) and math.isfinite(value)
+        try:
+            return isinstance(value, int | float) and math.isfinite(value)
+        except OverflowError:  # an int too large for a double
+            return False
     if rule is str:
         return isinstance(value, str) and bool(value.strip())
     return isinstance(value, rule)
