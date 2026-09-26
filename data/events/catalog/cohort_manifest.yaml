@@ -1,0 +1,299 @@
+catalog: DIII-D event catalog v1
+written_at: '2026-09-26T22:06:50+00:00'
+git_sha: d84612f
+git_dirty: false
+seed: 20260923
+keys: sha256 of '<seed>:<purpose>:<shot>', its first 8 bytes as a big-endian unsigned
+  integer, / 2**64; purposes draw (the cell sample) and order (u)
+rules:
+  shot_range:
+  - 185601
+  - 204999
+  rule_1:
+    shot_type: plasma
+    min_abs_ip_ma: 0.5
+    min_pulse_length_s: 2.0
+    min_pbeam_mw: 1.0
+    pech_max_mw_gt: 0.0
+    heating: PBEAM-MAX >= min_pbeam_mw or PECH-MAX > pech_max_mw_gt
+  rule_2:
+    own_shot_table_block: true
+    empty_title_fallback: 'first Experiment: line in the ### CHIEF_OPERATOR SUMMARY
+      block'
+    machine_time:
+      pattern: (?i)^\s*(?:plasma\s+)?(?:start-?up|starup)\b|^\s*power\s+systems?\s+test
+      lexicon_theme: startup_checkout
+      assignment: physics themes first, title and mini-proposal subject
+  rule_3:
+    groups:
+    - mhr
+    - ece
+    - filterscopes
+    min_group_span_s: 2.0
+  rule_4:
+    log_version: 2
+    ip: PTDATA ip, native rate
+    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the finite
+      sample of largest |Ip| (zero is positive), bridging gaps of at most bridge_ms
+      and rounding edges to us then inward to whole ms.
+    window_ip_a: 50000.0
+    bridge_ms: 10.0
+    flattop: select.flattop_from_ip on centred flattop_mean_ms means of finite |Ip|
+      inside the window, with h = round(flattop_mean_ms / 2 / median dt), over i-h
+      through i+h, and NaN for incomplete or empty spans.
+    flattop_mean_ms: 25.0
+    flattop_fraction: 0.8
+    min_flattop_s: 1.0
+    max_ip_dt_ms: 0.5
+    measured_on: every shot passing rules 1-3
+  dropped:
+    shot_text:
+      min_shot_chars: 0
+    flattop: select.eligible pulse-length flattop proxy
+    title: (?i)\b(?:test|ps|bcoil|abort|mag\s+cal)\b
+  groups: 'L: >= 1 verified OSTI link; G: in a legacy table; R: the rest'
+  caps:
+    L: 200
+    G: 100
+  cohort_size: 500
+  allocation: largest remainder across years within a group, >= 1 per non-empty cell
+  blind_size: 50
+  val_size: 50
+inputs:
+  pool:
+    path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/pool.csv
+    sha256: 09b2a7c36449c318871c915ed8e0d3ebef90b0f860811c7ec9094624d694375f
+  ip_log:
+    path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/ip.jsonl
+    sha256: 3e1a45034066eab178920d03cdf44a8357c4e121c68a9ad8aec27533b7e4314c
+  papers:
+    path: catalog/papers.csv
+    sha256: 772951aa61ea3422c288a9d4bf0a572f3c58e9c9aa7fd5f8399389ce2869dc9c
+  legacy_tables:
+  - path: resistive_wall_mode/format/rwm_format_2026_v1.csv
+    sha256: d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390
+  - path: alfven_eigenmode/format/alfven_eigenmode_format_2026_v1.csv
+    sha256: 8a52b8b785ddb78ba0932318e69ab58136fbaa0d3b19bcb7815159b2e6b72279
+  - path: edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv
+    sha256: e81df0c70cbfece4e056cc8f9b7d9339338154e3d43ed09cd842641e120b8e9f
+  - path: neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv
+    sha256: f6d09fb6ccdffc8c8c84bd18698d612079bbb2d72b3e3313a657b0b815495a7b
+  - path: high_confinement_mode/format/high_confinement_mode_format_2026_v1.csv
+    sha256: 8a1b1e13c1a4350941d90b9f79e6f38bad1db3d2a974f2b9c37f29d64ae94707
+  - path: low_confinement_mode/format/low_confinement_mode_format_2026_v1.csv
+    sha256: c6b60b10980ddb48a83a2c5b677adb190ddc771ce7d108c722b59f84ec08c8cd
+pool:
+  census: /scratch/gpfs/EKOLEMEN/nc1514/ideate/db/corpus_coverage.parquet
+  census_sha256: 7979710d0e8673a9507686d8049d872abf6ccc7e9fbb01eb63fa18e6ec82067d
+  census_max_span_s:
+    mhr: 4.194
+    ece: 6.193
+    filterscopes: 11.5
+  text_root: /scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/shotsummary/processed/per_shot_txt
+  corpus: /scratch/gpfs/EKOLEMEN/foundation_model
+  git_sha: 3c8258c
+  git_dirty: false
+  written_at: '2026-09-26T19:43:59+00:00'
+  pool_sha256: 09b2a7c36449c318871c915ed8e0d3ebef90b0f860811c7ec9094624d694375f
+  pool_shots_sha256: 11b3150f3f233b84d596d7f6e07d1fa1efca1276dd5b4ad118aa9fc085f50d80
+  pool_inputs_sha256: 2c696d9fab91f14548a348a34631ba2822fc0403efd11bd7763f0cdab1b263e4
+  lexicon: configs/shot_design/labels.yaml
+  lexicon_sha256: 9338347b5cae437edbb1b9470e408b83274327f26e8ff849b96ffac8c44a4ad8
+  corpus_in_range: 16909
+  bundles: 13313
+  funnel:
+    corpus_in_range: 16909
+    after_bundle: 13313
+    after_rule_1: 6462
+    after_rule_2: 5253
+    after_rule_3: 4997
+  rejections:
+    no_bundle: 3596
+    bundle_mismatch: 0
+    shot_type: 5424
+    ip: 5945
+    pulse_length: 6702
+    heating: 5798
+    session_fallback: 1291
+    title: 3253
+    census_mhr: 2927
+    census_ece: 2895
+    census_filterscopes: 3496
+  rules:
+    shot_range:
+    - 185601
+    - 204999
+    rule_1:
+      shot_type: plasma
+      min_abs_ip_ma: 0.5
+      min_pulse_length_s: 2.0
+      min_pbeam_mw: 1.0
+      pech_max_mw_gt: 0.0
+      heating: PBEAM-MAX >= min_pbeam_mw or PECH-MAX > pech_max_mw_gt
+    rule_2:
+      own_shot_table_block: true
+      empty_title_fallback: 'first Experiment: line in the ### CHIEF_OPERATOR SUMMARY
+        block'
+      machine_time:
+        pattern: (?i)^\s*(?:plasma\s+)?(?:start-?up|starup)\b|^\s*power\s+systems?\s+test
+        lexicon_theme: startup_checkout
+        assignment: physics themes first, title and mini-proposal subject
+    rule_3:
+      groups:
+      - mhr
+      - ece
+      - filterscopes
+      min_group_span_s: 2.0
+    rule_4:
+      log_version: 2
+      ip: PTDATA ip, native rate
+      window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the
+        finite sample of largest |Ip| (zero is positive), bridging gaps of at most
+        bridge_ms and rounding edges to us then inward to whole ms.
+      window_ip_a: 50000.0
+      bridge_ms: 10.0
+      flattop: select.flattop_from_ip on centred flattop_mean_ms means of finite |Ip|
+        inside the window, with h = round(flattop_mean_ms / 2 / median dt), over i-h
+        through i+h, and NaN for incomplete or empty spans.
+      flattop_mean_ms: 25.0
+      flattop_fraction: 0.8
+      min_flattop_s: 1.0
+      max_ip_dt_ms: 0.5
+      measured_on: every shot passing rules 1-3
+    dropped:
+      shot_text:
+        min_shot_chars: 0
+      flattop: select.eligible pulse-length flattop proxy
+      title: (?i)\b(?:test|ps|bcoil|abort|mag\s+cal)\b
+ip_log_meta:
+  version: 2
+  git_sha: 3c8258c
+  written_at: '2026-09-26T19:44:01+00:00'
+  log: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/ip.jsonl
+  shot_file: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/pool_shots.txt
+  shot_file_sha256: 11b3150f3f233b84d596d7f6e07d1fa1efca1276dd5b4ad118aa9fc085f50d80
+  shots: 4997
+  this_run: {}
+  definition:
+    log_version: 2
+    ip: PTDATA ip, native rate
+    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the finite
+      sample of largest |Ip| (zero is positive), bridging gaps of at most bridge_ms
+      and rounding edges to us then inward to whole ms.
+    window_ip_a: 50000.0
+    bridge_ms: 10.0
+    flattop: select.flattop_from_ip on centred flattop_mean_ms means of finite |Ip|
+      inside the window, with h = round(flattop_mean_ms / 2 / median dt), over i-h
+      through i+h, and NaN for incomplete or empty spans.
+    flattop_mean_ms: 25.0
+    flattop_fraction: 0.8
+    min_flattop_s: 1.0
+outputs:
+  cohort.csv: 8bb9ece2fcd42daf165a9ba0dc5dfe8339b46697636dbb91ffa6447206063378
+  population.csv: c09488519631636a46f188cdb520d74c578acc224d6b3562e45dc0eac47f7b05
+counts:
+  corpus_in_range: 16909
+  after_bundle: 13313
+  after_rule_1: 6462
+  after_rule_2: 5253
+  after_rule_3: 4997
+  after_rule_4: 4885
+  population: 4885
+  rejections:
+    no_bundle: 3596
+    bundle_mismatch: 0
+    shot_type: 5424
+    ip: 5945
+    pulse_length: 6702
+    heating: 5798
+    session_fallback: 1291
+    title: 3253
+    census_mhr: 2927
+    census_ece: 2895
+    census_filterscopes: 3496
+    flattop: 112
+    no_plasma: 0
+    flattop_unmeasured: 0
+  groups:
+    L:
+      N: 142
+      n: 142
+      test: 14
+      val: 14
+      train: 114
+    G:
+      N: 583
+      n: 100
+      test: 10
+      val: 10
+      train: 80
+    R:
+      N: 4160
+      n: 258
+      test: 26
+      val: 26
+      train: 206
+cells:
+  L2021:
+    N: 10
+    n: 10
+    weight: 1.0
+  L2022:
+    N: 51
+    n: 51
+    weight: 1.0
+  L2023:
+    N: 35
+    n: 35
+    weight: 1.0
+  L2024:
+    N: 36
+    n: 36
+    weight: 1.0
+  L2025:
+    N: 10
+    n: 10
+    weight: 1.0
+  G2021:
+    N: 124
+    n: 21
+    weight: 5.904761904761905
+  G2022:
+    N: 345
+    n: 59
+    weight: 5.8474576271186445
+  G2023:
+    N: 113
+    n: 19
+    weight: 5.947368421052632
+  G2024:
+    N: 1
+    n: 1
+    weight: 1.0
+  G2025:
+    N: 0
+    n: 0
+    weight: null
+  R2021:
+    N: 347
+    n: 21
+    weight: 16.523809523809526
+  R2022:
+    N: 1171
+    n: 73
+    weight: 16.041095890410958
+  R2023:
+    N: 703
+    n: 44
+    weight: 15.977272727272727
+  R2024:
+    N: 1081
+    n: 67
+    weight: 16.134328358208954
+  R2025:
+    N: 858
+    n: 53
+    weight: 16.18867924528302
+replacements: []
+replacements_note: rule 4 was measured on the whole pool before the draw, so no drawn
+  shot can fail it
