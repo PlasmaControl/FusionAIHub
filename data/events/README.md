@@ -26,6 +26,11 @@ data/events/<category>/
     _cache/                                 # fetch cache, not a claim; deletable
 ```
 
+`catalog/` sits beside the categories but is not one: it holds the event
+catalog's shared tables (the cohort, its manifest and the literature links; see
+[`catalog/README.md`](catalog/README.md)). `events.yaml` lists it under
+`non_category_dirs`, and category scans skip it.
+
 ## Interval CSVs
 
 Both `format/` and `extend_<producer>/` use exactly these columns:

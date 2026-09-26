@@ -33,6 +33,10 @@ FORMAT_SCHEMA_VERSION = 1
 #: The manifest's name inside the label-tables root.
 MANIFEST = "tables.yaml"
 
+#: The events.yaml key that names the directories beside the categories that are
+#: not categories themselves; `category_dirs` leaves them out.
+NON_CATEGORY_KEY = "non_category_dirs"
+
 #: What every row of a table claims, and who claims it. The prefix is kept
 #: literal - `source` is a column, not a filename - and the resulting
 #: `event_id` is the schema's own `{shot}-database:<stem>-{n:05d}`.
@@ -366,6 +370,23 @@ def load_manifest(root=None) -> tuple[TableSpec, ...]:
                     f"{tuple(sorted(ids))}"
                 )
     return specs
+
+
+def category_dirs(root=None) -> list[Path]:
+    """The event-category directories under the label-tables root, by name.
+
+    A directory that events.yaml lists under `non_category_dirs`, such as
+    `catalog/` with its catalog-wide tables, is not a category and is left out.
+    """
+    base = _root(root)
+    manifest = base / "events.yaml"
+    raw = {}
+    if manifest.exists():
+        raw = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+    skip = raw.get(NON_CATEGORY_KEY) or []
+    if not isinstance(skip, list) or not all(isinstance(n, str) for n in skip):
+        raise DatabaseError(f"{manifest}: `{NON_CATEGORY_KEY}` must be a list of names")
+    return sorted(p for p in base.iterdir() if p.is_dir() and p.name not in skip)
 
 
 def read_table(spec: TableSpec, root=None) -> pd.DataFrame:

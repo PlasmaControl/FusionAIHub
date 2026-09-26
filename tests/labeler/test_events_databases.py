@@ -357,3 +357,47 @@ def test_a_changed_file_is_reread(table):
     assert len(db.read_table(spec, table)) == 3
     _csv(table, _entry(), [(158015, 2.613, 2, "n2rwm")])
     assert len(db.read_table(spec, table)) == 1
+
+
+def test_category_dirs_leave_out_what_events_yaml_registers(tmp_path):
+    for name in ("fishbone", "catalog", "alfven_eigenmode"):
+        (tmp_path / name).mkdir()
+    (tmp_path / "README.md").write_text("# Events\n")
+    (tmp_path / "events.yaml").write_text(
+        yaml.safe_dump({"version": 1, "non_category_dirs": ["catalog"]})
+    )
+    assert [p.name for p in db.category_dirs(tmp_path)] == [
+        "alfven_eigenmode", "fishbone"
+    ]
+
+
+def test_without_a_registration_every_directory_is_a_category(tmp_path):
+    (tmp_path / "catalog").mkdir()
+    assert [p.name for p in db.category_dirs(tmp_path)] == ["catalog"]
+    (tmp_path / "events.yaml").write_text(yaml.safe_dump({"version": 1}))
+    assert [p.name for p in db.category_dirs(tmp_path)] == ["catalog"]
+
+
+def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path):
+    (tmp_path / "events.yaml").write_text(
+        yaml.safe_dump({"version": 1, "non_category_dirs": "catalog"})
+    )
+    with pytest.raises(db.DatabaseError, match="non_category_dirs"):
+        db.category_dirs(tmp_path)
+
+
+def test_the_repository_registers_the_catalog_directory():
+    root = Paths().label_tables
+    names = [p.name for p in db.category_dirs(root)]
+    assert (root / "catalog").is_dir() and "catalog" not in names
+    assert "disruption" in names
+
+
+def test_events_yaml_gives_each_catalog_category_the_four_states():
+    from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
+
+    manifest = yaml.safe_load((Paths().label_tables / "events.yaml").read_text())
+    classes = manifest["label_grid"]["classes"]
+    for category in PHENOMENA:
+        assert classes[category] == STATE_NAMES, category
+        assert (Paths().label_tables / category).is_dir(), category

@@ -167,10 +167,11 @@ def test_notes_stay_on_one_line(tmp_path):
 
 def test_every_category_has_a_valid_roster():
     from labeler.config import Paths
+    from labeler.events.databases import category_dirs
     from labeler.events.rosters import ROSTER_NAME, read_roster
 
     root = Paths.from_env().label_tables
-    categories = sorted(p.name for p in root.iterdir() if p.is_dir())
+    categories = [p.name for p in category_dirs(root)]
     # No count, for the same reason the roster lengths below are not pinned:
     # a hardcoded 16 fails the next time a category is added or removed.
     assert categories, f"no category directories under {root}"
