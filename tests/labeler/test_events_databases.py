@@ -378,9 +378,12 @@ def test_without_a_registration_every_directory_is_a_category(tmp_path):
     assert [p.name for p in db.category_dirs(tmp_path)] == ["catalog"]
 
 
-def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path):
+@pytest.mark.parametrize(
+    "entry", ["catalog", None, False, 0, "", {}, ["catalog", 5]]
+)
+def test_a_registration_that_is_not_a_list_of_names_is_refused(tmp_path, entry):
     (tmp_path / "events.yaml").write_text(
-        yaml.safe_dump({"version": 1, "non_category_dirs": "catalog"})
+        yaml.safe_dump({"version": 1, "non_category_dirs": entry})
     )
     with pytest.raises(db.DatabaseError, match="non_category_dirs"):
         db.category_dirs(tmp_path)
