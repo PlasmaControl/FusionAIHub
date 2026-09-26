@@ -233,17 +233,14 @@ def test_article_lookback_covers_the_longest_normalised_prefix(citation, number)
 
 @pytest.mark.parametrize("number", ["190001", "190001-03"])
 @pytest.mark.parametrize("before", [" ", "x"])
-def test_article_lookback_keeps_the_word_boundary_at_its_edge(
+def test_article_lookback_accepts_glued_citations_at_its_edge(
     monkeypatch, number, before
 ):
     citation = "Physical Review Accel. Beams 1234 , "
     # Tighten the span to put the journal exactly at its edge, without the margin.
     monkeypatch.setattr(context, "_ARTICLE_SPAN", len(citation), raising=False)
     text = "DIII-D" + before + citation + number
-    expected = [] if before == " " else [(190001, "exact")]
-    if before == "x" and number == "190001-03":
-        expected += [(190002, "range"), (190003, "range")]
-    assert _found(text) == expected
+    assert _found(text) == []
 
 
 @pytest.mark.parametrize(
@@ -305,8 +302,183 @@ def test_excluded_article_rule_keeps_numbers_after_other_numbers():
 
 
 @pytest.mark.parametrize(
-    "text",
-    ["shot Phys. Plasmas 108 192275", "shot Phys. Rev. Lett. 12345, 192275"],
+    "text, expected",
+    [
+        ("shot Phys. Plasmas 108 192275", []),
+        ("shot Phys. Rev. Lett. 12345, 192275", [(192275, "exact")]),
+    ],
 )
-def test_excluded_article_rule_requires_the_journal_and_a_short_volume(text):
-    assert _found(text) == [(192275, "exact")]
+def test_excluded_article_rule_requires_the_journal_and_a_short_volume(text, expected):
+    assert _found(text) == expected
+
+
+TICKS = (
+    "ems. To overcome these limitations, the DGPA model has been proposed [9], "
+    "which integrates the expressive capacity of 2 160000 165000 170000 175000 "
+    "180000 185000 190000 195000 Shot Numbers 0.01 0.02 0.03 0.04 0.05 0.06 0.07"
+)
+CONTRACT = (
+    "248.80 per Item(s). No Building 6/10/2022 $2,248.80 $0.00 $2,248.80 6/8/22 "
+    "Oleta Coach Lines Contract# I.C.C. MC-192798. 846.08 per 55 passenger bus. . "
+    "1 Item(s) @ 846.08 per Item"
+)
+TABLE_HASH_HEADER = (
+    "ection, perturbed divertor and main chamber gas species ( Γδ and Γbg), the "
+    "fundamental frequency f 0, and modes lk. # BT Γδ Γbg f 0 [Hz] lk LSN 192043 "
+    "unfav. N2 D2 1000/441 1, 3 192044 unfav. N2 D2 1000/441 1, "
+)
+GLUED_CITATION = (
+    "get plates during type-i edge-localized modesPhys. Rev. Lett. 91 195003 "
+    "[302] Knolker M., Evans T.E., Wingen A."
+)
+POSTAL = (
+    "al University, Seoul, Republic of Korea 17 Ioffe Institute, St. Petersburg "
+    "194021, Russia 18 Institution Project Center ITER, Rosatom, Moscow"
+)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        (TICKS, []),
+        (CONTRACT, []),
+        (TABLE_HASH_HEADER, [(192043, "exact")]),
+        (GLUED_CITATION, []),
+        ("DIII-D " + GLUED_CITATION, []),
+        (POSTAL, []),
+        (POSTAL + " DIII-D", []),
+    ],
+    ids=["ticks", "contract", "table", "glued", "glued_near", "postal", "postal_near"],
+)
+def test_d23_real_non_shots_and_table(text, expected):
+    assert _found(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("195000 190000 185000 180000 175000 170000 165000 160000 Shot Numbers", []),
+        ("Shot 190000 190500 191000", []),
+        ("shots 190904, 160000, 165000, 170000", [190904]),
+        ("shots 190001, 190002 and 190003", [190001, 190002, 190003]),
+        ("shots 190001, 190003 and 190005", [190001, 190003, 190005]),
+        ("DIII-D shots 190101, 190201 and 190301", [190101, 190201, 190301]),
+        ("shots 190000, 195000", [190000, 195000]),
+        ("shots 190000, 190099, 190198", [190000, 190099, 190198]),
+        ("shots 190000, 190000, 190000", [190000, 190000, 190000]),
+        ("shots 190000, 190500, 191000, 191001, 192000, 193000, 194000", [191001]),
+        ("shots 190000, 190500, 191000-191002", [191002]),
+        ("shot 190000, 195000, 200000" + ", " * 35 + "190001", []),
+    ],
+)
+def test_d23_round_ticks_only(text, expected):
+    assert _found(text) == [(s, "exact") for s in expected]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("Contract# MC-192798", []),
+        ("Contract# z-192798-99", []),
+        ("Contract# MC-192798-192800", [(192800, "exact")]),
+        ("#-192798", [(192798, "exact")]),
+        ("shot -192798", [(192798, "exact")]),
+        ("#192221-#192233", [(192221, "exact"), (192233, "exact")]),
+        (
+            "shots 192221-192233",
+            [(192221, "exact")]
+            + [(s, "range") for s in range(192222, 192233)]
+            + [(192233, "exact")],
+        ),
+        ("shot MC-192798" + ", " * 35 + "190001", []),
+    ],
+)
+def test_d23_identifiers_and_genuine_hyphens(text, expected):
+    assert _found(text) == expected
+
+
+@pytest.mark.parametrize(
+    "journal",
+    [
+        "Appl. Phys. Lett.",
+        "Applied Physics Letters",
+        "J. Appl. Phys.",
+        "Journal of Applied Physics",
+        "J. Chem. Phys.",
+        "Journal of Chemical Physics",
+        "Phys. Plasmas",
+        "Physics of Plasmas",
+        "Rev. Sci. Instrum.",
+        "Review of Scientific Instruments",
+        "Nucl. Fusion",
+        "Nuclear Fusion",
+        "Plasma Phys. Control. Fusion",
+        "Plasma Physics and Controlled Fusion",
+    ],
+)
+@pytest.mark.parametrize("comma", ["", ","])
+@pytest.mark.parametrize("space", [" ", "", " ", " "])
+def test_d23_journal_articles_are_not_tokens_or_range_starts(journal, comma, space):
+    citation = space.join(journal.split()) + space + "1234" + comma + space
+    assert _found("DIII-D " + citation + "194101") == []
+    assert _found("DIII-D " + citation + "194101-03") == []
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("DIII-D modesPhys. Rev. Lett. 91 195003", []),
+        ("DIII-D Phys. Rev. Lett. 91 195003", []),
+        ("DIII-D Phys. Rev. Lett. 91 195003", []),
+        ("DIII-D modesPhysical Reviewer Letters 91 195003", [(195003, "exact")]),
+        ("shot 190000, Appl. Phys. Lett. 118, 194101", [(190000, "exact")]),
+        ("shot Appl. Phys. Lett. 118, 194101" + ", " * 35 + "190001", []),
+    ],
+)
+def test_d23_glued_citations_and_controls(text, expected):
+    assert _found(text) == expected
+
+
+def test_d23_article_span_has_a_margin_over_the_longest_prefix():
+    prefix = "Plasma Physics and Controlled Fusion 1234 , "
+    assert len(normalise(prefix)) == 44
+    assert context._ARTICLE_SPAN >= len(normalise(prefix)) + 10
+    assert _found("DIII-D " + prefix + "194101") == []
+
+
+@pytest.mark.parametrize(
+    "country",
+    [
+        "China",
+        "P. R. China",
+        "PR China",
+        "P.R. China",
+        "Russia",
+        "Russian Federation",
+        "India",
+        "Kazakhstan",
+        "Singapore",
+    ],
+)
+def test_d23_postal_countries(country):
+    assert _found(f"Shanghai 200240, {country}. DIII-D National Fusion Facility") == []
+    assert _found(f"DIII-D 194021 St. Petersburg, {country}") == []
+    assert _found(f"DIII-D 194021 to 23, {country}") == [(194021, "exact")]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("194021 St. Petersburg, Russia, DIII-D", []),
+        ("DIII-D shot 194021, Russian and Chinese teams", [(194021, "exact")]),
+        ("DIII-D shot 194021 (Russia collaboration)", [(194021, "exact")]),
+        ("DIII-D shot 194021, Chinas", [(194021, "exact")]),
+        ("DIII-D shot 194021, 2, Russia", [(194021, "exact")]),
+        ("shot 194021, Russia" + ", " * 35 + "190001", []),
+        ("shot 194021" + "x" * 33 + ", China", []),
+        ("shot 194021" + "x" * 33 + ", Chinas", [(194021, "exact")]),
+        ("shot 194021" + "x" * 34 + ", China", [(194021, "exact")]),
+    ],
+)
+def test_d23_postal_reach_and_controls(text, expected):
+    assert _found(text) == expected
