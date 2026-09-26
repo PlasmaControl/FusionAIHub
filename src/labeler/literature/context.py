@@ -22,7 +22,8 @@ it; with no name in reach it is the paper's machine. Counts over the whole
 normalised text choose NSTX-U (including NSTX) when it outnumbers DIII-D and
 at least ties LHD, or LHD when it outnumbers both; otherwise it is DIII-D.
 Only NSTX-U and LHD change this default because their shot numbers overlap
-the corpus's 185601-206000 range; the other machines' shot numbers do not.
+the corpus's 185601-204999 range (`FIRST_SHOT` and `LAST_SHOT`); the other
+machines' shot numbers do not.
 
 Text is normalised first: dashes become "-", soft hyphens go, a word broken
 across a line ("dis-\\ncharge") is joined, and runs of whitespace become one space.
@@ -61,6 +62,8 @@ _PHYSICAL_REVIEW = re.compile(
     r"(?:(?:Lett\.|Letters|[A-EX]\.?|Research|Applied|Fluids|Accel\.\s*Beams)\s*)?"
     r"\d{1,4}\s*,?\s*$"
 )
+# Normalised citation prefixes span at most 36 characters; keep a margin.
+_ARTICLE_SPAN = 64
 
 
 def normalise(text: str) -> str:
@@ -112,10 +115,15 @@ def _devices(text: str):
     return other
 
 
+def _article_number(text: str, start: int) -> bool:
+    """Whether a number follows a Physical Review citation in normalised text."""
+    return bool(_PHYSICAL_REVIEW.search(text, max(0, start - _ARTICLE_SPAN), start))
+
+
 def _runs(text: str) -> list[list[re.Match]]:
     runs: list[list[re.Match]] = []
     for m in _TOKEN.finditer(text):
-        if _PHYSICAL_REVIEW.search(text, 0, m.start()):
+        if _article_number(text, m.start()):
             continue
         if runs and _RUN_GAP.fullmatch(text[runs[-1][-1].end() : m.start()]):
             runs[-1].append(m)
@@ -160,7 +168,7 @@ def mentions(text: str, shots: Collection[int] | None = None) -> list[Mention]:
                 if keep(int(m.group()))
             ]
     for m in _RANGE.finditer(text):
-        if _PHYSICAL_REVIEW.search(text, 0, m.start()):
+        if _article_number(text, m.start()):
             continue
         inside = _range(m)
         if inside is not None and near(*m.span()) and not other(*m.span()):

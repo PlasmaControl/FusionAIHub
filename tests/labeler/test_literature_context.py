@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from labeler.literature import context
 from labeler.literature.context import REACH, mentions, normalise
 
 
@@ -216,6 +217,55 @@ def test_physical_review_article_is_not_named_by_the_next_reference():
 
 def test_physical_review_article_number_does_not_start_a_range():
     assert _found("shot Phys. Rev. Lett. 131 195101-03") == []
+
+
+@pytest.mark.parametrize("number", ["190001", "190001-03"])
+@pytest.mark.parametrize(
+    "citation",
+    [
+        "Physical Review Accel. Beams 1234, ",
+        "Physical\n\tReview   Accel.\nBeams 1234 \t,\n ",
+    ],
+)
+def test_article_lookback_covers_the_longest_normalised_prefix(citation, number):
+    assert _found("DIII-D " + citation + number) == []
+
+
+@pytest.mark.parametrize("number", ["190001", "190001-03"])
+@pytest.mark.parametrize("before", [" ", "x"])
+def test_article_lookback_keeps_the_word_boundary_at_its_edge(
+    monkeypatch, number, before
+):
+    citation = "Physical Review Accel. Beams 1234 , "
+    # Tighten the span to put the journal exactly at its edge, without the margin.
+    monkeypatch.setattr(context, "_ARTICLE_SPAN", len(citation), raising=False)
+    text = "DIII-D" + before + citation + number
+    expected = [] if before == " " else [(190001, "exact")]
+    if before == "x" and number == "190001-03":
+        expected += [(190002, "range"), (190003, "range")]
+    assert _found(text) == expected
+
+
+@pytest.mark.parametrize(
+    "number, expected",
+    [
+        ("190001", [(190001, "exact")]),
+        (
+            "190001-03",
+            [(190001, "exact"), (190002, "range"), (190003, "range")],
+        ),
+    ],
+)
+def test_article_lookback_does_not_exclude_shots_after_distant_citations(
+    number, expected
+):
+    text = "Phys. Rev. Lett. 131 195103. " + "Other text. " * 10
+    assert _found(text + "DIII-D shot " + number) == expected
+
+
+def test_excluded_article_between_real_shots_keeps_both():
+    text = "DIII-D shot 190000, Phys. Rev. Lett. 131 195103, 190002"
+    assert _found(text) == [(190000, "exact"), (190002, "exact")]
 
 
 @pytest.mark.parametrize(
