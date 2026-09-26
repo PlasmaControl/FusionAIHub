@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import getpass
 import json
-import math
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,6 +24,7 @@ from ...config import atomic_path
 from ..catalog.points import validate_csv_fields
 from ..catalog.states import NOT_OBSERVABLE, PHENOMENA
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
+from ..times import whole_ms
 
 LONGEST_WINDOW_MS = 20_000
 REVIEW = "review"
@@ -67,7 +67,7 @@ def categories(event: str) -> dict[int, str]:
 
 def _ms(t) -> int:
     """Whole ms, halves up (JavaScript's `Math.floor(t + 0.5)`, so the page agrees)."""
-    return math.floor(float(t) + 0.5)
+    return whole_ms(t)
 
 
 def normalise(window, intervals, known: set[int] | None = None) -> Label:

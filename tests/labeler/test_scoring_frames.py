@@ -198,3 +198,36 @@ def test_reference_only_uses_whole_frames_and_drops_reference_abstentions():
     counts = frame_counts(reference, Assessment((25, 85)))
     assert counts.tn == 5
     assert counts.reference_only == 2  # [20, 30) and [80, 90), partly uncovered
+
+
+@pytest.mark.parametrize(
+    "value, expected", [(5255.5, 5256), (5255.49, 5255), (-0.5, 0), (2.5, 3)]
+)
+def test_public_whole_ms_matches_page(value, expected):
+    from labeler.events.review.labels import _ms
+    from labeler.events.times import whole_ms
+
+    assert whole_ms(value) == _ms(value) == expected
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf")])
+def test_whole_ms_refuses_nonfinite(value):
+    from labeler.events.times import whole_ms
+
+    with pytest.raises(ValueError, match="finite"):
+        whole_ms(value)
+
+
+@pytest.mark.parametrize(
+    "rows, reason",
+    [
+        ([(7, 5260, 0)], "allowed"),
+        ([(8, 5263, 1)], "allowed"),
+        ([(8, 5261, 0)], "present"),
+        ([(8, 5261, 1), (5261, 5262, 1)], "last"),
+        ([(8, 100, 0), (101, 200, 1)], "gap"),
+    ],
+)
+def test_checked_assessment_refuses_invalid_extent(rows, reason):
+    with pytest.raises(ValueError, match=reason):
+        Assessment.from_checked(rows, (8, 5260), category="disruption")

@@ -349,7 +349,7 @@ def test_a_consistent_disruption_shot_passes_every_check():
 
 @pytest.mark.parametrize("end", [5260.54, 5262.0])
 def test_d19_final_quench_may_end_up_to_two_ms_past_the_allowed_window(end):
-    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, end))
+    labels = _labels((191389, 0, 8, 5256), (191389, 1, 5256, round(end)))
     frame = _points(
         (191389, "disruption", "t80", 5255.65),
         (191389, "disruption", "t_D", end - 0.01),
@@ -365,7 +365,7 @@ def test_d19_final_quench_may_end_up_to_two_ms_past_the_allowed_window(end):
 
 @pytest.mark.parametrize("kind", ["t80", "t_D", "t20"])
 def test_d19_points_allow_two_ms_but_report_a_larger_overrun(kind):
-    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, 5262.01))
+    labels = _labels((191389, 0, 8, 5256), (191389, 1, 5256, 5263))
     frame = _points(
         (191389, "disruption", "t80", 5255.65),
         (191389, "disruption", "t_D", 5260.53),
@@ -385,7 +385,7 @@ def test_d19_points_allow_two_ms_but_report_a_larger_overrun(kind):
 
 
 def test_d19_points_pass_when_labels_stop_at_the_allowed_window_end():
-    labels = _labels((191389, 0, 8, 5255.65), (191389, 1, 5255.65, 5260))
+    labels = _labels((191389, 0, 8, 5256), (191389, 1, 5256, 5260))
     frame = _points(
         (191389, "disruption", "t80", 5255.65),
         (191389, "disruption", "t_D", 5260.53),
@@ -401,14 +401,14 @@ def test_d19_points_pass_when_labels_stop_at_the_allowed_window_end():
 
 @pytest.mark.parametrize("state", [0, 2])
 def test_d19_does_not_extend_nonpresent_disruption_spans(state):
-    labels = _labels((191389, state, 8, 5260.54))
+    labels = _labels((191389, state, 8, 5261))
     found = check_table(labels, "disruption", allowed={191389: (8, 5260)})
     assert any(f.check == "windows" for f in found)
 
 
 def test_d19_does_not_extend_other_phenomena_or_the_window_start():
-    labels = _labels((191389, 1, 8, 5260.54))
-    frame = _points((191389, "edge_localized_mode", "elm", 5260.54))
+    labels = _labels((191389, 1, 8, 5261))
+    frame = _points((191389, "edge_localized_mode", "elm", 5261))
     found = check_table(
         labels,
         "edge_localized_mode",
@@ -416,7 +416,7 @@ def test_d19_does_not_extend_other_phenomena_or_the_window_start():
         points_frame=frame,
     )
     assert {f.check for f in found} == {"windows", "points"}
-    labels = _labels((191389, 1, 7.99, 20))
+    labels = _labels((191389, 1, 7, 20))
     frame = _points(
         (191389, "disruption", "t80", 7.99),
         (191389, "disruption", "t_D", 7.99),
@@ -785,7 +785,11 @@ def test_raw_points_fallback_also_checks_csv_field_counts(tmp_path, monkeypatch)
 def test_disruption_t_d_quench_margin_bounds(end, margin, bound, offset, outside):
     start = 100.25
     time = (start - margin if bound == "lower" else end + margin) + offset
-    labels = _labels((1, 0, 0, start), (1, 1, start, end), (1, 0, end, 400))
+    labels = _labels(
+        (1, 0, 0, round(start)),
+        (1, 1, round(start), round(end)),
+        (1, 0, round(end), 400),
+    )
     frame = _points(
         (1, "disruption", "t_D", time),
         (1, "disruption", "t80", start),
@@ -814,7 +818,7 @@ def test_disruption_t_d_far_from_its_quench_is_a_finding(time):
 
 
 def test_disruption_missing_t_d_does_not_hide_a_span_mismatch():
-    labels = _labels((1, 0, 0, 300.25), (1, 1, 300.25, 449.75), (1, 0, 449.75, 500))
+    labels = _labels((1, 0, 0, 300), (1, 1, 300, 450), (1, 0, 450, 500))
     frame = DISRUPTION_POINTS[DISRUPTION_POINTS.kind != "t_D"]
     found = check_table(labels, "disruption", points_frame=frame)
     assert [(f.check, f.shot, f.detail) for f in found] == [
@@ -866,3 +870,42 @@ def test_not_observable_state_depends_on_the_phenomenon(category, always):
         assert "never not observable" in found[0].detail
     else:
         assert found == []
+
+
+@pytest.mark.parametrize("column", ["t_start", "t_end"])
+def test_label_boundaries_must_be_whole_ms(column):
+    labels = _labels((190001, 0, 1000, 2000))
+    labels[column] = 1000.5 if column == "t_start" else 2000.25
+    found = check_table(labels, "alfven_eigenmode")
+    assert any(f.check == "whole_ms" and "row 0" in f.detail for f in found)
+
+
+def test_checker_to_scoring_keeps_d19_at_original_allowed_end():
+    from labeler.scoring.events import points_within
+    from labeler.scoring.frames import Assessment
+
+    rows = [(8, 5256, 0), (5256, 5261, 1)]
+    labels = _labels(*[(191389, s, a, b) for a, b, s in rows])
+    times = [5255.65, 5260.53, 5260.54]
+    frame = _points(
+        *[(191389, "disruption", k, t) for k, t in zip(["t80", "t_D", "t20"], times)]
+    )
+    allowed = (8, 5260)
+    assert (
+        check_table(labels, "disruption", allowed={191389: allowed}, points_frame=frame)
+        == []
+    )
+    assessed = Assessment.from_checked(rows, allowed, category="disruption")
+    assert assessed.window == allowed
+    assert assessed.spans == ((5256, 5260, 1),)
+    got = points_within(
+        times + [5262.0, 5262.001], assessed.window, allowed, category="disruption"
+    )
+    assert got.tolist() == times + [5262.0]
+    short = Assessment.from_checked([(8, 5000, 0)], allowed, category="disruption")
+    assert short.window == (8, 5000)
+    assert points_within(
+        [4999.5, 5000, 5260], short.window, allowed, category="disruption"
+    ).tolist() == [4999.5]
+    with pytest.raises(ValueError, match="allowed"):
+        Assessment.from_checked(rows, allowed, category="alfven_eigenmode")
