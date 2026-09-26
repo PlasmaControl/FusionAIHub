@@ -56,6 +56,10 @@ REASONS = ("group absent", "channel out of range", "fallback not needed")
 #: The corpus' absent-signal sentinel: `ydata.shape[-1] < 2`.
 MIN_SAMPLES = 2
 
+#: The DIII-D ECE array. Fixed, because the inversion test is a statement
+#: about a radial ordering and a different array is a different statement.
+N_ECE_CHANNELS = 48
+
 
 @dataclass(frozen=True)
 class ChannelSpec:

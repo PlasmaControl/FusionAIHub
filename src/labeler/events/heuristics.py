@@ -69,6 +69,7 @@ import numpy as np
 from scipy.ndimage import median_filter
 from scipy.signal import medfilt
 
+from .channels import N_ECE_CHANNELS
 from .coverage import (
     UNKNOWN,
     clip_point_to_coverage,
@@ -104,9 +105,6 @@ REL_POS = 0.3
 MIN_BLOCK = 3
 #: Neutral channels allowed between the dropping block and the rising one.
 MAX_GAP = 2
-#: The DIII-D ECE array. Fixed, because the inversion test is a statement
-#: about a radial ordering and a different array is a different statement.
-N_ECE_CHANNELS = 48
 
 #: Filterscope channels that carry real D-alpha (plan V4); 8 and up are NaN
 #: on every shot in the corpus.
