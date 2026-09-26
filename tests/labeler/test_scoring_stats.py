@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 
 import numpy as np
@@ -116,3 +117,135 @@ def test_from_frames_to_a_weighted_precision():
     got = estimate(cells, ["a", "b"], weights, precision)
     assert got.value == pytest.approx((2 * 5 + 6 * 5) / (2 * 5 + 6 * 10))
     assert got.as_json()["value"] == pytest.approx(got.value)
+
+
+@pytest.mark.parametrize(
+    "strata, weights",
+    [
+        (["a"], [1, 1]),
+        (["a", "b"], [1]),
+        (["a", "b"], [2, -1]),
+        (["a", "b"], [1, np.nan]),
+        (["a", "b"], [1, np.inf]),
+        (["a", "b"], [[1], [1]]),
+    ],
+)
+def test_replicate_weights_refuses_misalignment_and_invalid_weights(strata, weights):
+    with pytest.raises(ValueError):
+        replicate_weights(strata, weights, n=10)
+
+
+@pytest.mark.parametrize("n", [0, -1, 1.5, np.nan, np.inf, "2", True])
+def test_replicate_weights_requires_a_positive_whole_count(n):
+    with pytest.raises(ValueError):
+        replicate_weights(["a"], [1], n=n)
+
+
+def test_replicate_weights_accepts_whole_float_counts_and_zero_weights():
+    assert replicate_weights(["a"], [0], n=2.0).tolist() == [[0], [0]]
+
+
+@pytest.mark.parametrize(
+    "cells, strata, weights",
+    [
+        ([[1, 0, 0], [0, 1, 0]], ["a"], [1, 1]),
+        ([[1, 0, 0], [0, 1, 0]], ["a", "b"], [2, -1]),
+        ([[1, 0, 0], [0, 1, 0]], ["a", "b"], [1]),
+        ([1, 0, 0], ["a"], [1]),
+        ([[[1, 0, 0]]], ["a"], [1]),
+    ],
+)
+def test_estimate_refuses_cells_not_aligned_with_shots(cells, strata, weights):
+    with pytest.raises(ValueError):
+        estimate(cells, strata, weights, precision, n=100)
+
+
+@pytest.mark.parametrize("level", [0, 1, -0.1, 1.1, np.nan, np.inf])
+@pytest.mark.parametrize("kind", ["estimate", "difference", "median"])
+def test_all_intervals_require_a_level_strictly_between_zero_and_one(level, kind):
+    with pytest.raises(ValueError):
+        if kind == "estimate":
+            estimate([[1, 0, 0]], ["a"], [1], f1, n=10, level=level)
+        elif kind == "difference":
+            difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], f1, n=10, level=level)
+        else:
+            median_estimate([1], [0], ["a"], [1], n=10, level=level)
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ([[1, 0, 0]], [[1, 0, 0, 0]]),
+        ([[1, 0, 0]], [[1, 0, 0], [0, 1, 0]]),
+        ([1, 0, 0], [1, 0, 0]),
+    ],
+)
+def test_difference_requires_two_dimensional_cells_of_identical_shape(a, b):
+    with pytest.raises(ValueError):
+        difference(a, b, ["a"], [1], f1, n=10)
+
+
+@pytest.mark.parametrize(
+    "values, owners",
+    [
+        ([1, 9], [0]),
+        ([1], [0, 1]),
+        ([1, 9], [0.9, 1.9]),
+        ([1], [-1]),
+        ([1], [2]),
+        ([1], [np.nan]),
+        ([1], [np.inf]),
+        ([[1, 9]], [[0, 1]]),
+    ],
+)
+def test_median_estimate_requires_aligned_values_and_integral_shot_owners(
+    values, owners
+):
+    with pytest.raises(ValueError):
+        median_estimate(values, owners, ["a", "b"], [10, 1], n=10)
+
+
+def test_median_estimate_checks_shot_alignment():
+    with pytest.raises(ValueError):
+        median_estimate([1, 9], [0, 1], ["a"], [10, 1], n=10)
+
+
+def test_stratum_weights_names_every_unscored_population_stratum():
+    with pytest.raises(ValueError) as exc:
+        stratum_weights(["L"] * 20 + ["R"] * 20, {"L": 231, "G": 573, "R": 4081})
+    assert "G" in str(exc.value)
+    with pytest.raises(ValueError) as exc:
+        stratum_weights(["L"], {"L": 231, "G": 573, "R": 4081})
+    assert "G" in str(exc.value) and "R" in str(exc.value)
+
+
+@pytest.mark.parametrize("population", [{"a": -1}, {"a": np.nan}, {"a": np.inf}])
+def test_stratum_weights_refuses_negative_or_nonfinite_population(population):
+    with pytest.raises(ValueError, match="a"):
+        stratum_weights(["a"], population)
+
+
+def test_an_empty_zero_population_stratum_is_allowed():
+    assert stratum_weights(["L2025"], {"L2025": 18, "G2025": 0}).tolist() == [18]
+
+
+@pytest.mark.parametrize("kind", ["estimate", "difference", "median"])
+def test_estimate_records_settings_in_strict_json(kind):
+    options = {"n": 37, "seed": 19, "level": 0.8}
+    if kind == "estimate":
+        got = estimate([[1, 0, 0]], ["a"], [1], f1, **options)
+    elif kind == "difference":
+        got = difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], f1, **options)
+    else:
+        got = median_estimate([2], [0], ["a"], [1], **options)
+    assert (got.replicates, got.seed, got.level) == (37, 19, 0.8)
+    data = json.loads(json.dumps(got.as_json(), allow_nan=False))
+    assert data == {
+        "value": got.value,
+        "low": got.low,
+        "high": got.high,
+        "undefined_replicates": 0,
+        "replicates": 37,
+        "seed": 19,
+        "level": 0.8,
+    }
