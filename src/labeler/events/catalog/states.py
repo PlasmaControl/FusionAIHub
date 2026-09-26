@@ -24,12 +24,15 @@ class Phenomenon:
     """A catalog phenomenon: its category directory, attributes and point kinds.
 
     An attribute allows a type (`int`, `float`, `bool`, `str`) or a set of words.
+    `lower_bounds` maps numeric attributes to `(minimum, inclusive)`.
     """
 
     category: str
     name: str
     attrs: Mapping[str, type | frozenset] = field(default_factory=dict)
     points: tuple[str, ...] = ()
+    lower_bounds: Mapping[str, tuple[float, bool]] = field(default_factory=dict)
+    observable_always: bool = False
 
 
 def _words(*words: str) -> frozenset:
@@ -61,6 +64,8 @@ PHENOMENA = {
                 ),
                 "other_mhd": _words("m1", "classical_tm", "fishbone", "eho", "kink"),
             },
+            lower_bounds={"m": (2, True), "n": (1, True)},
+            observable_always=True,  # Magnetics are an inclusion rule.
         ),
         Phenomenon(
             "high_confinement_mode",
@@ -68,19 +73,29 @@ PHENOMENA = {
             {"variant": _words("standard", "QH", "other")},
         ),
         Phenomenon(
-            "edge_localized_mode", "ELMing", {"frequency_hz": float}, points=("elm",)
+            "edge_localized_mode",
+            "ELMing",
+            {"frequency_hz": float},
+            points=("elm",),
+            lower_bounds={"frequency_hz": (0, False)},
         ),
         Phenomenon(
             "sawtooth_oscillation",
             "sawteeth",
             {"period_ms": float, "inversion_channel": int, "inversion_radius_m": float},
             points=("crash",),
+            lower_bounds={
+                "period_ms": (0, False),
+                "inversion_channel": (1, True),
+                "inversion_radius_m": (0, False),
+            },
         ),
         Phenomenon(
             "disruption",
             "disruption",
             {"intentional": bool, "phase": _words("flattop", "rampdown")},
             points=("t_D", "t80", "t20"),
+            observable_always=True,  # Ip always exists.
         ),
     )
 }
@@ -88,7 +103,8 @@ PHENOMENA = {
 
 def attr_problems(category: str, attrs: Mapping) -> list[str]:
     """What is wrong with one row's `attrs` for `category`; empty if nothing."""
-    allowed = {**COMMON_ATTRS, **PHENOMENA[category].attrs}
+    phenomenon = PHENOMENA[category]
+    allowed = {**COMMON_ATTRS, **phenomenon.attrs}
     problems = []
     for key, value in attrs.items():
         rule = allowed.get(key)
@@ -96,6 +112,12 @@ def attr_problems(category: str, attrs: Mapping) -> list[str]:
             problems.append(f"{key!r} is not an attribute of {category}")
         elif not _fits(value, rule):
             problems.append(f"{key}={value!r} is not {_describe(rule)}")
+        elif key in phenomenon.lower_bounds:
+            minimum, inclusive = phenomenon.lower_bounds[key]
+            if inclusive and value < minimum:
+                problems.append(f"{key}={value!r} is below {minimum:g}")
+            elif not inclusive and value <= minimum:
+                problems.append(f"{key}={value!r} must be above {minimum:g}")
     return problems
 
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import pytest
 
@@ -305,6 +307,8 @@ def test_points_findings_replace_only_the_filename():
     ]
 
 
+# Disruption is always observable; keep shot 2 assessed but absent.
+DISRUPTION_LABELS = GOOD.replace({"category": {3: 0}})
 DISRUPTION_POINTS = _points(
     (1, "disruption", "t_D", 175.5),
     (1, "disruption", "t80", 100.25),
@@ -313,7 +317,10 @@ DISRUPTION_POINTS = _points(
 
 
 def test_a_consistent_disruption_shot_passes_every_check():
-    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+    assert (
+        check_table(DISRUPTION_LABELS, "disruption", points_frame=DISRUPTION_POINTS)
+        == []
+    )
 
 
 @pytest.mark.parametrize("kind", ["t_D", "t80", "t20"])
@@ -321,12 +328,15 @@ def test_a_disruption_refuses_more_than_one_point_of_each_kind(kind):
     frame = pd.concat(
         [DISRUPTION_POINTS, _points((1, "disruption", kind, 180.5))], ignore_index=True
     )
-    found = check_table(GOOD, "disruption", points_frame=frame)
+    found = check_table(DISRUPTION_LABELS, "disruption", points_frame=frame)
     assert any(
         f.check == "points" and f.shot == 1 and f"more than one {kind}" in f.detail
         for f in found
     )
-    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+    assert (
+        check_table(DISRUPTION_LABELS, "disruption", points_frame=DISRUPTION_POINTS)
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -335,24 +345,30 @@ def test_a_disruption_refuses_more_than_one_point_of_each_kind(kind):
 )
 def test_a_disruption_requires_all_three_point_kinds(kinds):
     frame = DISRUPTION_POINTS[DISRUPTION_POINTS.kind.isin(kinds)]
-    found = check_table(GOOD, "disruption", points_frame=frame)
+    found = check_table(DISRUPTION_LABELS, "disruption", points_frame=frame)
     assert any(
         f.check == "points" and f.shot == 1 and "missing point kinds" in f.detail
         for f in found
     )
-    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+    assert (
+        check_table(DISRUPTION_LABELS, "disruption", points_frame=DISRUPTION_POINTS)
+        == []
+    )
 
 
 @pytest.mark.parametrize("end", [100.25, 99.25])
 def test_a_disruption_requires_t80_before_t20(end):
     frame = DISRUPTION_POINTS.copy()
     frame.loc[frame.kind == "t20", "t_ms"] = end
-    found = check_table(GOOD, "disruption", points_frame=frame)
+    found = check_table(DISRUPTION_LABELS, "disruption", points_frame=frame)
     assert any(
         f.check == "points" and f.shot == 1 and "t80 must be before t20" in f.detail
         for f in found
     )
-    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+    assert (
+        check_table(DISRUPTION_LABELS, "disruption", points_frame=DISRUPTION_POINTS)
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -368,26 +384,29 @@ def test_disruption_points_require_exactly_one_present_span(rows):
         f.check == "points" and f.shot == 1 and "exactly one present span" in f.detail
         for f in found
     )
-    assert check_table(GOOD, "disruption", points_frame=DISRUPTION_POINTS) == []
+    assert (
+        check_table(DISRUPTION_LABELS, "disruption", points_frame=DISRUPTION_POINTS)
+        == []
+    )
 
 
 @pytest.mark.parametrize("kind, time", [("t80", 98.99), ("t20", 251.01)])
 def test_disruption_present_bounds_allow_only_one_ms_of_rounding(kind, time):
     frame = DISRUPTION_POINTS.copy()
     frame.loc[frame.kind == kind, "t_ms"] = time
-    found = check_table(GOOD, "disruption", points_frame=frame)
+    found = check_table(DISRUPTION_LABELS, "disruption", points_frame=frame)
     assert any(
         f.check == "points" and f.shot == 1 and "within 1 ms" in f.detail for f in found
     )
     frame.loc[frame.kind == kind, "t_ms"] = 99 if kind == "t80" else 251
-    assert check_table(GOOD, "disruption", points_frame=frame) == []
+    assert check_table(DISRUPTION_LABELS, "disruption", points_frame=frame) == []
 
 
 @pytest.mark.parametrize(
     "points_frame", [None, _points(), DISRUPTION_POINTS.assign(shot=2)]
 )
 def test_each_disruption_present_span_requires_its_own_t80_and_t20(points_frame):
-    found = check_table(GOOD, "disruption", points_frame=points_frame)
+    found = check_table(DISRUPTION_LABELS, "disruption", points_frame=points_frame)
     assert any(
         f.check == "points"
         and f.shot == 1
@@ -400,7 +419,7 @@ def test_each_disruption_present_span_requires_its_own_t80_and_t20(points_frame)
 def test_disruption_present_span_is_checked_when_points_file_is_missing(tmp_path):
     review = tmp_path / "disruption" / "review"
     review.mkdir(parents=True)
-    GOOD.to_csv(review / "labels.csv", index=False)
+    DISRUPTION_LABELS.to_csv(review / "labels.csv", index=False)
     found, n = check_category(review.parent)
     assert n == 1
     assert [(f.check, f.shot) for f in found] == [("points", 1)]
@@ -589,3 +608,47 @@ def test_disruption_missing_t_d_does_not_hide_a_span_mismatch():
         ("points", 1, "missing point kinds: t_D"),
         ("points", 1, "present span bounds must be within 1 ms of t80 and t20"),
     ]
+
+
+@pytest.mark.parametrize(
+    "category, key, bad, good",
+    [
+        ("neoclassical_tearing_mode", "m", 1, 2),
+        ("neoclassical_tearing_mode", "n", 0, 1),
+        ("edge_localized_mode", "frequency_hz", 0, 0.01),
+        ("sawtooth_oscillation", "period_ms", 0, 0.01),
+        ("sawtooth_oscillation", "inversion_channel", 0, 1),
+        ("sawtooth_oscillation", "inversion_radius_m", 0, 0.01),
+    ],
+)
+@pytest.mark.parametrize("valid", [False, True])
+def test_attribute_physical_bounds_in_the_checker(category, key, bad, good, valid):
+    value = good if valid else bad
+    found = check_table(_labels((1, 1, 0, 100, json.dumps({key: value}))), category)
+    if valid:
+        assert found == []
+    else:
+        assert len(found) == 1 and found[0].check == "attrs"
+        assert found[0].shot == 1 and key in found[0].detail
+
+
+@pytest.mark.parametrize(
+    "category, always",
+    [
+        ("alfven_eigenmode", False),
+        ("neoclassical_tearing_mode", True),
+        ("high_confinement_mode", False),
+        ("edge_localized_mode", False),
+        ("sawtooth_oscillation", False),
+        ("disruption", True),
+    ],
+)
+def test_not_observable_state_depends_on_the_phenomenon(category, always):
+    found = check_table(_labels((1, 3, 0, 100)), category)
+    if always:
+        assert len(found) == 1 and found[0].check == "states"
+        assert found[0].shot == 1
+        assert category in found[0].detail
+        assert "never not observable" in found[0].detail
+    else:
+        assert found == []
