@@ -10,7 +10,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from ..heuristics import N_ECE_CHANNELS
+from ..channels import N_ECE_CHANNELS
 
 ABSENT, PRESENT, UNCERTAIN, NOT_OBSERVABLE = 0, 1, 2, 3
 STATE_NAMES = {

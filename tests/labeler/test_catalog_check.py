@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
@@ -44,6 +46,27 @@ GOOD = _labels(
     (2, 3, 50, 90),
     (2, 0, 90, 300),
 )
+
+
+@pytest.mark.parametrize(
+    "module", ["labeler.events.catalog.check", "labeler.events.catalog.states"]
+)
+def test_import_does_not_load_torch_or_toksearch(module):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                f"import sys; import {module}; "
+                "assert not {'torch', 'toksearch', 'toksearch_d3d'} "
+                "& sys.modules.keys()"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_a_good_table_has_no_findings():
