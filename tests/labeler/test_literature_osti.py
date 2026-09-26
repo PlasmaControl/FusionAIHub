@@ -5,17 +5,24 @@ No test touches the network: the fetcher takes a fake opener, clock and sleep.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
+import platform
+import shlex
+import sys
 import urllib.error
+from datetime import UTC, datetime, timedelta
+from importlib.metadata import version
 from itertools import pairwise
 
 import pandas as pd
 import pytest
 
+from labeler.config import git_dirty, git_sha, sha256_of
 from labeler.events.catalog.check import CatalogError
 from labeler.events.catalog.population import POOL_COLUMNS
-from labeler.literature import osti
+from labeler.literature import context, osti
 from labeler.literature.osti import (
     Fetcher,
     build_links,
@@ -308,3 +315,248 @@ def test_the_links_command_writes_both_tables(tmp_path, monkeypatch, capsys):
     assert links.verdict.tolist() == ["verified", "no_text"]
     with pytest.raises(SystemExit):  # no pool: the shots cannot be dated
         osti.main(["links", "--cache", str(cache), "--pool", str(tmp_path / "x.csv")])
+
+
+@pytest.fixture
+def links_inputs(tmp_path, monkeypatch):
+    cache = tmp_path / "osti cache"
+    folder = cache / "fulltext"
+    folder.mkdir(parents=True)
+    probe = cache / "osti_phase1.jsonl"
+    extra_probe = tmp_path / "extra hits.jsonl"
+    records = [
+        {"osti_id": "1", "date": "2019-01-01"},
+        *({"osti_id": str(k)} for k in range(2, 12)),
+    ]
+    rows = [
+        {"shot": 189631, "n": 12, "records": records},
+        {
+            "shot": 189632,
+            "n": 3,
+            "records": [{"osti_id": k} for k in ("3", "4", "5")],
+        },
+        {"shot": 189633, "n": 1, "records": [{"osti_id": "3"}]},
+    ]
+    probe.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    extra_probe.write_text(
+        json.dumps({"shot": 189634, "n": 1, "records": [{"osti_id": "3"}]}) + "\n"
+    )
+    # Deliberately not numeric record order; the digest must sort it.
+    raw_texts = {
+        "10": "DIII-D discharge 189633; β\n",
+        "4": " \f\n ",
+        "2": "DIII-D shots 189631 and 189632\n",
+    }
+    for record_id, text in raw_texts.items():
+        (folder / f"{record_id}.txt").write_text(text, encoding="utf-8")
+    statuses = [
+        ("3", "error"),  # only the later 'missing' status counts
+        ("10", "ok"),
+        ("2", "ok"),
+        ("4", "ok"),
+        ("3", "missing"),
+        ("11", "missing"),
+        ("5", "not_pdf"),
+        ("6", "error"),
+        ("8", "unreadable"),
+        ("9", "ok"),  # logged ok, but the text file is absent
+    ]  # record 7 has never been attempted; record 1 predates the corpus
+    (folder / "fetched.jsonl").write_text(
+        "".join(
+            json.dumps({"osti_id": k, "status": status}) + "\n"
+            for k, status in statuses
+        )
+    )
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    shots = [189634, 189632, 189631, 189633]
+    for shot in [*shots, 150000, 205000]:
+        (corpus / f"{shot}_processed.h5").touch()
+    monkeypatch.setenv("LABELER_CORPUS", str(corpus))
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
+    pool = tmp_path / "pool.csv"
+    rows = {"shot": shots, "year": [2022] * 4, "reasons": [""] * 4}
+    pd.DataFrame(rows).reindex(columns=list(POOL_COLUMNS)).to_csv(pool, index=False)
+    args = [
+        "links",
+        "--cache",
+        str(cache),
+        "--pool",
+        str(pool),
+        "--hits",
+        str(probe),
+        str(extra_probe),
+    ]
+    return cache, pool, [probe, extra_probe], raw_texts, shots, args
+
+
+@pytest.mark.parametrize("probe_script", [False, True])
+def test_links_build_record_inputs_outputs_and_reproducibility(
+    links_inputs, monkeypatch, capsys, probe_script
+):
+    cache, pool, probes, raw_texts, shots, args = links_inputs
+    if probe_script:
+        (cache / "osti_probe.py").write_text("# fixture probe script\n")
+    before = datetime.now(UTC).replace(microsecond=0)
+    assert osti.main(args) == 0
+    summary = json.loads(capsys.readouterr().out)
+    meta_path = cache / "papers.meta.json"
+    assert meta_path.is_file()
+    raw = meta_path.read_text()
+    doc = json.loads(raw)
+    assert raw == json.dumps(doc, sort_keys=True, indent=1) + "\n"
+    written = datetime.fromisoformat(doc["written_at"])
+    assert before <= written <= datetime.now(UTC)
+    assert written.utcoffset().total_seconds() == 0 and written.microsecond == 0
+    assert doc["git_sha"] == git_sha() and doc["git_dirty"] == git_dirty()
+    assert shlex.split(doc["command"]) == [
+        "python",
+        "-m",
+        "labeler.literature.osti",
+        *args,
+    ]
+    assert doc["summary"] == summary
+    assert doc["rules"] == {
+        "REACH": context.REACH,
+        "RANGE_CAP": context.RANGE_CAP,
+        "_ARTICLE_SPAN": context._ARTICLE_SPAN,
+        "TICK_MIN_RUN": context.TICK_MIN_RUN,
+        "TICK_MIN_STEP": context.TICK_MIN_STEP,
+        "POSTAL_REACH": context.POSTAL_REACH,
+        "FIRST_SHOT": osti.FIRST_SHOT,
+        "LAST_SHOT": osti.LAST_SHOT,
+        "FIRST_YEAR": osti.FIRST_YEAR,
+    }
+    text_lines = "".join(
+        f"{k} {hashlib.sha256(raw_texts[k].encode('utf-8')).hexdigest()}\n"
+        for k in sorted(raw_texts, key=int)
+    )
+    shot_lines = "".join(f"{s}\n" for s in sorted(shots))
+    assert doc["inputs"] == {
+        "hits": [
+            {"path": "osti_phase1.jsonl", "sha256": sha256_of(probes[0])},
+            {"path": str(probes[1]), "sha256": sha256_of(probes[1])},
+        ],
+        "fetch_log": {
+            "path": "fulltext/fetched.jsonl",
+            "sha256": sha256_of(cache / "fulltext" / "fetched.jsonl"),
+        },
+        "pool": {"path": str(pool), "sha256": sha256_of(pool)},
+        "probe_script": {
+            "path": "osti_probe.py",
+            "sha256": sha256_of(cache / "osti_probe.py") if probe_script else None,
+        },
+        "texts": {
+            "count": 3,
+            "sha256": hashlib.sha256(text_lines.encode("utf-8")).hexdigest(),
+        },
+        "corpus_shots": {
+            "count": 4,
+            "sha256": hashlib.sha256(shot_lines.encode("utf-8")).hexdigest(),
+        },
+    }
+    assert doc["outputs"] == {
+        name: sha256_of(cache / name) for name in ("links.csv", "papers.csv")
+    }
+    assert doc["environment"] == {
+        "python": platform.python_version(),
+        "pandas": pd.__version__,
+        "pypdf": version("pypdf"),
+    }
+    # Force a later timestamp without sleeping, and exercise main(argv=None).
+    later = written + timedelta(seconds=1)
+
+    class Later:
+        @staticmethod
+        def now(tz):
+            assert tz is UTC
+            return later
+
+    monkeypatch.setattr(osti, "datetime", Later)
+    monkeypatch.setattr(sys, "argv", ["osti.py", *args])
+    assert osti.main() == 0
+    assert json.loads(capsys.readouterr().out) == summary
+    second = json.loads(meta_path.read_text())
+    assert second.pop("written_at") == later.isoformat(timespec="seconds")
+    doc.pop("written_at")
+    assert second == doc
+    assert not (cache / "papers.meta.json.tmp").exists()
+
+
+def test_links_build_record_coverage_and_last_status(links_inputs, capsys):
+    cache, _, _, _, _, args = links_inputs
+    assert osti.main(args) == 0
+    doc = json.loads((cache / "papers.meta.json").read_text())
+    assert doc["coverage"] == {
+        "records": {
+            "probe": 11,
+            "dated_before_first_year": 1,
+            "to_fetch": 10,
+            "fetch_status": {
+                "ok": 4,
+                "missing": 2,
+                "not_pdf": 1,
+                "error": 1,
+                "unreadable": 1,
+                "unattempted": 1,
+            },
+            "texts_read": 3,
+            "empty_text_ids": ["4"],
+        },
+        "truncated_queries": [{"shot": 189631, "n": 12, "kept": 11}],
+        "no_text": {
+            "missing": {"pairs": 5, "shots": 4, "shots_without_verified_link": 1},
+            "empty": {"pairs": 2, "shots": 2, "shots_without_verified_link": 0},
+            "not_pdf": {"pairs": 2, "shots": 2, "shots_without_verified_link": 0},
+            "error": {"pairs": 1, "shots": 1, "shots_without_verified_link": 0},
+            "unreadable": {"pairs": 1, "shots": 1, "shots_without_verified_link": 0},
+            "unattempted": {"pairs": 1, "shots": 1, "shots_without_verified_link": 0},
+            "ok": {"pairs": 1, "shots": 1, "shots_without_verified_link": 0},
+        },
+    }
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["predates_links"] == 1 and summary["empty_texts"] == 1
+    assert summary["truncated_shots"] == [189631]
+    assert summary["verified_links_not_in_probe"] == 2
+
+
+def test_links_build_record_before_any_fetch(links_inputs, capsys):
+    cache, _, _, _, _, args = links_inputs
+    (cache / "fulltext" / "fetched.jsonl").unlink()
+    assert osti.main(args) == 0
+    doc = json.loads((cache / "papers.meta.json").read_text())
+    assert doc["inputs"]["fetch_log"]["sha256"] is None
+    assert doc["inputs"]["texts"] == {
+        "count": 0,
+        "sha256": hashlib.sha256(b"").hexdigest(),
+    }
+    assert doc["coverage"]["records"]["fetch_status"] == {
+        "ok": 0,
+        "missing": 0,
+        "not_pdf": 0,
+        "error": 0,
+        "unattempted": 10,
+    }
+    assert doc["coverage"]["no_text"] == {
+        "unattempted": {"pairs": 15, "shots": 4, "shots_without_verified_link": 4}
+    }
+
+
+def test_hits_keep_counts_beside_unchanged_truncated_shots(links_inputs):
+    _, _, probes, _, _, _ = links_inputs
+    hits = read_hits(probes)
+    assert hits.truncated == (189631,)
+    assert hits.truncated_queries == ({"shot": 189631, "n": 12, "kept": 11},)
+
+
+def test_repeated_probe_counts_keep_the_last_truncation(tmp_path):
+    probe = tmp_path / "hits.jsonl"
+    probe.write_text(
+        "".join(
+            json.dumps({"shot": 189631, "n": n, "records": [{"osti_id": "1"}]}) + "\n"
+            for n in (4, 2, 1)
+        )
+    )
+    hits = read_hits([probe])
+    assert hits.truncated == (189631, 189631)  # the existing history is unchanged
+    assert hits.truncated_queries == ({"shot": 189631, "n": 2, "kept": 1},)

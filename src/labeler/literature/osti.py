@@ -14,15 +14,17 @@ type}]}`, or `{"shot", "error"}`.
   ended in a `FINAL` status.
 - `links` scans every extracted text for every corpus shot in the catalog's
   range and writes `<cache>/links.csv` (each probe hit and each mention, with
-  its verdict) and `<cache>/papers.csv` (the verified links, release schema).
+  its verdict), `<cache>/papers.csv` (the verified links, release schema), and
+  `<cache>/papers.meta.json` (the build inputs, rules, outputs and coverage).
   A text with no printable character (a scanned PDF) counts as none, and a
   paper dated before its shot's year cannot name it: that pair is `predates`.
   The shots' years come from the population's `pool.csv` (`year_starts`).
 
-Copying `papers.csv` into `data/events/catalog/` is the owner's call.
-
     pixi run -e labelmaker python -m labeler.literature.osti fetch
     pixi run -e labelmaker python -m labeler.literature.osti links
+
+Copying `papers.csv` and `papers.meta.json` into `data/events/catalog/` is the
+owner's call.
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ import argparse
 import hashlib
 import json
 import logging
+import platform
+import shlex
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -38,14 +43,16 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 
 import pandas as pd
 
 from ..catalog import corpus_shots
-from ..config import Paths, atomic_path
+from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from ..events.catalog.check import CatalogError
 from ..events.catalog.population import read_pool
+from . import context
 from .papers import Record, links, papers_frame, write_papers
 
 FIRST_SHOT, LAST_SHOT = 185_601, 204_999  # the FAITH corpus range
@@ -77,6 +84,7 @@ class Hits:
     by_shot: dict[int, tuple[str, ...]]  # shot -> the osti_ids its query returned
     truncated: tuple[int, ...]  # shots whose query matched more than it returned
     failed: tuple[int, ...]  # shots whose query never answered
+    truncated_queries: tuple[dict[str, int], ...] = ()  # last truncation per shot
 
 
 def _record(raw: dict) -> Record:
@@ -95,6 +103,7 @@ def read_hits(
     paths: Iterable[Path], first: int = FIRST_SHOT, last: int = LAST_SHOT
 ) -> Hits:
     records, by_shot, truncated, failed = {}, {}, [], []
+    truncated_queries = {}
     for path in paths:
         for line in Path(path).read_text().splitlines():
             row = json.loads(line)
@@ -109,12 +118,18 @@ def read_hits(
             by_shot[shot] = tuple(r.record_id for r in found)
             if row.get("n", 0) > len(found):
                 truncated.append(shot)
+                truncated_queries[shot] = {
+                    "shot": shot,
+                    "n": int(row["n"]),
+                    "kept": len(found),
+                }
     answered = set(by_shot)
     return Hits(
         records,
         by_shot,
         tuple(sorted(truncated)),
         tuple(sorted(set(failed) - answered)),
+        tuple(truncated_queries[s] for s in sorted(truncated_queries)),
     )
 
 
@@ -353,19 +368,18 @@ def build_links(
     return audit, papers_frame(verified)
 
 
-def _texts(folder: Path) -> tuple[dict[str, str], list[str]]:
+def _texts(folder: Path, log: Mapping[str, dict]) -> tuple[dict[str, str], list[str]]:
     """(texts, empty): each fetched record's text, and those with no printable text.
 
-    An empty text (a scanned or image-only PDF) is no text: its hits are `no_text`.
+    Empty texts are retained here for hashing, then excluded from link verification.
     """
     texts, empty = {}, []
-    for k, row in fetch_log(folder).items():
+    for k, row in log.items():
         path = folder / f"{k}.txt"
         if row["status"] == "ok" and path.is_file():
-            text = path.read_text()
-            if text.strip():
-                texts[k] = text
-            else:
+            text = path.read_text(encoding="utf-8")
+            texts[k] = text
+            if not text.strip():
                 empty.append(k)
     return texts, empty
 
@@ -396,7 +410,122 @@ def _summary(
     }
 
 
+def _coverage(
+    hits: Hits,
+    log: Mapping[str, dict],
+    texts: Mapping[str, str],
+    empty: list[str],
+    audit: pd.DataFrame,
+) -> dict:
+    wanted = to_fetch(hits)
+    statuses = Counter(
+        dict.fromkeys(("ok", "missing", "not_pdf", "error", "unattempted"), 0)
+    )
+
+    def status(record_id: str) -> str:
+        return log.get(record_id, {}).get("status", "unattempted")
+
+    statuses.update(status(k) for k in wanted)
+    empty_ids = set(empty)
+    verified = set(audit.loc[audit.verdict.eq("verified"), "shot"])
+    missing = audit[audit.verdict.eq("no_text")]
+    causes = missing.record_id.map(lambda k: "empty" if k in empty_ids else status(k))
+    no_text = {}
+    for cause, part in missing.groupby(causes):
+        shots = set(part.shot)
+        no_text[cause] = {
+            "pairs": len(part),
+            "shots": len(shots),
+            "shots_without_verified_link": len(shots - verified),
+        }
+    return {
+        "records": {
+            "probe": len(hits.records),
+            "dated_before_first_year": len(hits.records) - len(wanted),
+            "to_fetch": len(wanted),
+            "fetch_status": dict(statuses),
+            "texts_read": len(texts),
+            "empty_text_ids": sorted(empty, key=int),
+        },
+        "truncated_queries": list(hits.truncated_queries),
+        "no_text": no_text,
+    }
+
+
+def _build_record(
+    *,
+    cache: Path,
+    hit_files: list[Path],
+    pool: Path,
+    hits: Hits,
+    log: Mapping[str, dict],
+    texts: Mapping[str, str],
+    empty: list[str],
+    shots: list[int],
+    audit: pd.DataFrame,
+    summary: dict,
+    argv: list[str],
+) -> dict:
+    """The inputs read and coverage of a links build, for `papers.meta.json`."""
+
+    def file_record(path: Path) -> dict:
+        try:
+            name = str(path.resolve().relative_to(cache.resolve()))
+        except ValueError:
+            name = str(path)
+        return {"path": name, "sha256": sha256_of(path) if path.is_file() else None}
+
+    text_lines = "".join(
+        f"{k} {hashlib.sha256(texts[k].encode('utf-8')).hexdigest()}\n"
+        for k in sorted(texts, key=int)
+    )
+    shot_lines = "".join(f"{s}\n" for s in sorted(shots))
+    return {
+        "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "git_sha": git_sha(),
+        "git_dirty": git_dirty(),
+        "command": shlex.join(["python", "-m", "labeler.literature.osti", *argv]),
+        "rules": {
+            "REACH": context.REACH,
+            "RANGE_CAP": context.RANGE_CAP,
+            "_ARTICLE_SPAN": context._ARTICLE_SPAN,
+            "TICK_MIN_RUN": context.TICK_MIN_RUN,
+            "TICK_MIN_STEP": context.TICK_MIN_STEP,
+            "POSTAL_REACH": context.POSTAL_REACH,
+            "FIRST_SHOT": FIRST_SHOT,
+            "LAST_SHOT": LAST_SHOT,
+            "FIRST_YEAR": FIRST_YEAR,
+        },
+        "inputs": {
+            "hits": [file_record(p) for p in hit_files],
+            "fetch_log": file_record(cache / "fulltext" / "fetched.jsonl"),
+            "pool": file_record(pool),
+            "probe_script": file_record(cache / "osti_probe.py"),
+            "texts": {
+                "count": len(texts),
+                "sha256": hashlib.sha256(text_lines.encode("utf-8")).hexdigest(),
+            },
+            "corpus_shots": {
+                "count": len(shots),
+                "sha256": hashlib.sha256(shot_lines.encode("utf-8")).hexdigest(),
+            },
+        },
+        "environment": {
+            "python": platform.python_version(),
+            "pandas": pd.__version__,
+            "pypdf": version("pypdf"),
+        },
+        "outputs": {
+            name: sha256_of(cache / name) for name in ("links.csv", "papers.csv")
+        },
+        "summary": summary,
+        "coverage": _coverage(hits, log, texts, empty, audit),
+    }
+
+
 def main(argv=None) -> int:
+    """Fetch texts, or write `links.csv`, `papers.csv` and `papers.meta.json`."""
+    argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(prog="python -m labeler.literature.osti")
     parser.add_argument("command", choices=("fetch", "links"))
     parser.add_argument(
@@ -441,13 +570,31 @@ def main(argv=None) -> int:
             f" every paper dated before {FIRST_YEAR}"
         )
     shots = [s for s in corpus_shots(paths) if FIRST_SHOT <= s <= LAST_SHOT]
-    texts, empty = _texts(folder)
+    log = fetch_log(folder)
+    texts, empty = _texts(folder, log)
+    empty_ids = set(empty)
+    printable = {k: text for k, text in texts.items() if k not in empty_ids}
     years = {s: shot_year(s, starts) for s in shots}
-    audit, papers = build_links(hits, texts, shots, years)
+    audit, papers = build_links(hits, printable, shots, years)
     with atomic_path(cache / "links.csv") as tmp:
         audit.to_csv(tmp, index=False)
     write_papers(papers, cache / "papers.csv")
     summary = _summary(hits, audit, papers, starts=starts, empty_texts=len(empty))
+    record = _build_record(
+        cache=cache,
+        hit_files=hit_files,
+        pool=pool,
+        hits=hits,
+        log=log,
+        texts=texts,
+        empty=empty,
+        shots=shots,
+        audit=audit,
+        summary=summary,
+        argv=argv,
+    )
+    with atomic_path(cache / "papers.meta.json") as tmp:
+        tmp.write_text(json.dumps(record, sort_keys=True, indent=1) + "\n")
     print(json.dumps(summary, indent=1))
     return 0
 
