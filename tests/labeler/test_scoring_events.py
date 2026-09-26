@@ -250,3 +250,30 @@ def test_nearest_first_pair_count_is_bounded_by_brute_force_optimum():
         single_ref, single_est = rng.integers(0, 30, size=2)
         got = match([single_ref], [single_est], tolerance)
         assert len(got.pairs) == optimum([single_ref], [single_est], tolerance)
+
+
+@pytest.mark.parametrize("bad", [-1, np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("kind", ["match", "events", "within"])
+def test_timing_options_must_be_finite_nonnegative(bad, kind):
+    with pytest.raises(ValueError, match="finite.*nonnegative"):
+        if kind == "match":
+            match([1], [1], bad)
+        elif kind == "events":
+            a = Assessment((0, 100), ((10, 20, PRESENT),))
+            events.event_matchings(a, a, bad, method=False)
+        else:
+            within([1], (0, 10), end_slack_ms=bad)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("kind", ["reference", "estimate", "within"])
+def test_event_times_must_be_finite(bad, kind):
+    with pytest.raises(ValueError, match="finite"):
+        if kind == "within":
+            within([1, bad], (0, 10))
+        else:
+            match(
+                [bad] if kind == "reference" else [1],
+                [bad] if kind == "estimate" else [1],
+                2,
+            )

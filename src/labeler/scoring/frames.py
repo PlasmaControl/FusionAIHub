@@ -32,7 +32,7 @@ STATES = tuple(STATE_NAMES)
 OUTSIDE = -1
 
 
-def _whole(value) -> int:
+def whole_number(value) -> int:
     """Validate a whole numeric value before converting it to a plain int."""
     if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
         return int(value)
@@ -53,10 +53,12 @@ class Assessment:
     spans: tuple[tuple[int, int, int], ...] = ()
 
     def __post_init__(self):
-        lo, hi = (_whole(v) for v in self.window)
+        lo, hi = (whole_number(v) for v in self.window)
         if not lo < hi:
             raise ValueError(f"window {lo}-{hi} ms is empty")
-        spans = tuple(sorted(tuple(_whole(v) for v in span) for span in self.spans))
+        spans = tuple(
+            sorted(tuple(whole_number(v) for v in span) for span in self.spans)
+        )
         last = lo
         for a, b, state in spans:
             if state not in STATES:
@@ -77,7 +79,7 @@ class Assessment:
     @classmethod
     def from_rows(cls, rows) -> Assessment:
         """From nonempty `(t_start, t_end, state)` rows tiling one window."""
-        rows = sorted(tuple(_whole(v) for v in row) for row in rows)
+        rows = sorted(tuple(whole_number(v) for v in row) for row in rows)
         if not rows:
             raise ValueError("no rows")
         previous = None

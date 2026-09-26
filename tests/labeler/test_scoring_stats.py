@@ -484,3 +484,100 @@ def test_two_stage_refuses_invalid_group_inputs(first, counts):
 
     with pytest.raises(ValueError, match="g"):
         two_stage_weights(first, ["g", "g"], counts)
+
+
+@pytest.mark.parametrize("bad", [-1, np.nan, np.inf])
+@pytest.mark.parametrize("kind", ["estimate", "difference"])
+def test_count_cells_refuse_first_bad_row(bad, kind):
+    cells = [[1, 0, 0], [2, bad, 0]]
+    with pytest.raises(ValueError, match="row 1"):
+        if kind == "estimate":
+            estimate(cells, ["a", "a"], [1, 1], precision, n=10)
+        else:
+            difference([[1, 0, 0]] * 2, cells, ["a", "a"], [1, 1], precision)
+
+
+@pytest.mark.parametrize("frames", [[[0, 1, 0], [1, 0, 1]], [0, 1], [[[0, 1]]]])
+def test_cohen_refuses_wrong_shape(frames):
+    with pytest.raises(ValueError, match="shape"):
+        cohen_cells(frames)
+
+
+@pytest.mark.parametrize("frames", [[0, 1], [[0]], [[[0, 1]]]])
+def test_fleiss_refuses_wrong_shape(frames):
+    with pytest.raises(ValueError, match="shape"):
+        fleiss_cells(frames)
+
+
+@pytest.mark.parametrize("bad", [-1, 2, 0.5, np.nan, np.inf])
+@pytest.mark.parametrize("function", [cohen_cells, fleiss_cells])
+def test_agreement_refuses_nonbinary_states(function, bad):
+    with pytest.raises(ValueError, match="0 or 1"):
+        function([[0, bad]])
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_median_refuses_nonfinite_values(bad):
+    with pytest.raises(ValueError, match="finite"):
+        median_estimate([1, bad], [0, 1], ["a", "b"], [1, 1], n=10)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2.5, True, "3"])
+def test_stratum_weights_requires_a_whole_population_at_least_sample_size(count):
+    with pytest.raises(ValueError, match="a"):
+        stratum_weights(["a", "a"], {"a": count})
+
+
+def test_strata_with_the_same_string_are_refused():
+    with pytest.raises(ValueError, match="3.*'3'|'3'.*3"):
+        replicate_weights([3, "3"], [1, 1], n=10)
+
+
+@pytest.mark.parametrize(
+    "seed",
+    [
+        None,
+        True,
+        np.bool_(True),
+        -1,
+        1.5,
+        np.inf,
+        np.nan,
+        "2",
+        np.random.default_rng(1),
+    ],
+)
+@pytest.mark.parametrize("kind", ["replicate", "estimate", "difference", "median"])
+def test_public_bootstrap_functions_refuse_invalid_seeds(seed, kind):
+    with pytest.raises(ValueError, match="seed"):
+        if kind == "replicate":
+            replicate_weights(["a"], [1], n=10, seed=seed)
+        elif kind == "estimate":
+            estimate([[1, 0, 0]], ["a"], [1], precision, n=10, seed=seed)
+        elif kind == "difference":
+            difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], precision, seed=seed)
+        else:
+            median_estimate([1], [0], ["a"], [1], n=10, seed=seed)
+
+
+def test_mixed_strata_reproduce_across_hash_seeds():
+    import os
+    import subprocess
+    import sys
+
+    code = """
+import json
+from labeler.scoring.stats import estimate, precision
+print(json.dumps(estimate([[1, 2, 0], [3, 1, 0], [2, 4, 0], [4, 1, 0]],
+                         [3, 'a', 3, 'a'], [2, 1, 2, 1], precision,
+                         seed=42).as_json(), sort_keys=True))
+"""
+    results = [
+        subprocess.check_output(
+            [sys.executable, "-c", code],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            text=True,
+        )
+        for seed in ["0", "1"]
+    ]
+    assert results[0] == results[1]
