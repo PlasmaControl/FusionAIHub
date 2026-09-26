@@ -1,0 +1,121 @@
+{
+ "command": "python -m labeler.literature.osti links",
+ "coverage": {
+  "no_text": {
+   "empty": {
+    "pairs": 12,
+    "shots": 12,
+    "shots_without_verified_link": 12
+   },
+   "missing": {
+    "pairs": 85,
+    "shots": 66,
+    "shots_without_verified_link": 57
+   }
+  },
+  "records": {
+   "dated_before_first_year": 545,
+   "empty_text_ids": [
+    "2538688"
+   ],
+   "fetch_status": {
+    "error": 0,
+    "missing": 108,
+    "not_pdf": 2,
+    "ok": 329,
+    "unattempted": 0
+   },
+   "probe": 984,
+   "texts_read": 329,
+   "to_fetch": 439
+  },
+  "truncated_queries": [
+   {
+    "kept": 100,
+    "n": 246,
+    "shot": 189631
+   }
+  ]
+ },
+ "environment": {
+  "pandas": "3.0.5",
+  "pypdf": "6.19.0",
+  "python": "3.11.16"
+ },
+ "git_dirty": false,
+ "git_sha": "6fa889c",
+ "inputs": {
+  "corpus_shots": {
+   "count": 16909,
+   "sha256": "6e36f5e02daad5c0d428ec0a91bfa2f722bc4c3503711a2d67e0aac5ce46441a"
+  },
+  "fetch_log": {
+   "path": "fulltext/fetched.jsonl",
+   "sha256": "a78f777fc72dbfce2008ff4b8327f8d1824e972920ba6269b78067c2bf947aec"
+  },
+  "hits": [
+   {
+    "path": "osti_phase1.jsonl",
+    "sha256": "2618442fe697792447f5a200677906af758655173eba13a61a49a320b10caafc"
+   },
+   {
+    "path": "osti_phase2.jsonl",
+    "sha256": "fd6ce42c109cd91bd291033f096c687ffb34fad4bc86c57dd55c7604d4cd1407"
+   }
+  ],
+  "pool": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/pool.csv",
+   "sha256": "09b2a7c36449c318871c915ed8e0d3ebef90b0f860811c7ec9094624d694375f"
+  },
+  "probe_script": {
+   "path": "osti_probe.py",
+   "sha256": "0cd009da88e0d91d7c20f80be828673e95ee6bc61278f3f135d22b35026ada00"
+  },
+  "texts": {
+   "count": 329,
+   "sha256": "31176e763151deccceada5b3d8d894183f7e7d8b064ae86dca19d2be90a4873f"
+  }
+ },
+ "outputs": {
+  "links.csv": "17dd78a3542cd30a3c8f1946cf8387ad1eaae935102e05d075ff4fffc8486bd6",
+  "papers.csv": "91351e18e602e0ad687d05103de85b3bec70e570aad2461cd110538313e10378"
+ },
+ "rules": {
+  "FIRST_SHOT": 185601,
+  "FIRST_YEAR": 2021,
+  "LAST_SHOT": 204999,
+  "POSTAL_REACH": 40,
+  "RANGE_CAP": 50,
+  "REACH": 60,
+  "TICK_MIN_RUN": 3,
+  "TICK_MIN_STEP": 100,
+  "_ARTICLE_SPAN": 64
+ },
+ "summary": {
+  "empty_texts": 1,
+  "failed_queries": [],
+  "hit_links": 1660,
+  "hit_shots": 807,
+  "predates_links": 937,
+  "truncated_shots": [
+   189631
+  ],
+  "verdicts": {
+   "no_context": 292,
+   "no_text": 97,
+   "predates": 937,
+   "verified": 334
+  },
+  "verified_links_not_in_probe": 68,
+  "verified_shots": 350,
+  "verified_shots_exact": 286,
+  "year_starts": {
+   "2021": 185601,
+   "2022": 188336,
+   "2023": 193496,
+   "2024": 197444,
+   "2025": 202307
+  }
+ },
+ "written_at": "2026-09-26T23:45:48+00:00"
+}
