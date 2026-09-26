@@ -6,11 +6,16 @@ A shot number counts when it lies within `REACH` characters of
 - `exact`: the number itself is written. A number in a run of numbers joined
   only by commas, semicolons, slashes, "&", "and", "or" or spaces counts when
   any number of the run is within reach, so a long list keeps its context.
-- `range`: the number lies strictly inside a stated range within reach:
+- A stated range within reach counts both written six-digit ends as `exact`
+  and its unwritten numbers as `range`:
   `189600-189650`, `189600 to 189650`, `189600 through 189650`, or `189600-50`
   (a dash and 2 to 5 closing digits; that closing shot is `range` too). A range
-  spans at most `RANGE_CAP` shots; a wider one is not expanded. Its written
-  ends are `exact`.
+  spans at most `RANGE_CAP` shots; a wider or reversed one is not a range:
+  only its six-digit tokens can count, and an abbreviated end counts nothing.
+
+Each context extends `REACH` characters either side of the span covering its
+number (its whole range for a `range` mention) and the whole keyword match
+nearest that number among those in reach of its run or range.
 
 Numbers immediately after "%" are URL encoding, not shot tokens or range starts.
 Round, equally spaced runs of at least three numbers are axis ticks, not shot
@@ -109,14 +114,20 @@ class Mention:
 
 
 def _reach(text: str):
-    """`near(a, b)`: whether some keyword ends or starts within reach of [a, b)."""
+    """The keyword in reach of [a, b) nearest the mention's [start, end)."""
     spans = [(m.start(), m.end()) for m in KEYWORDS.finditer(text)]
     starts = [a for a, _ in spans]
     ends = [b for _, b in spans]  # sorted too: matches never overlap
 
-    def near(a: int, b: int) -> bool:
-        i = bisect.bisect_right(starts, b + REACH)  # keywords starting in reach
-        return i > 0 and ends[i - 1] >= a - REACH
+    def near(a: int, b: int, start: int, end: int) -> tuple[int, int] | None:
+        lo = bisect.bisect_left(ends, a - REACH)
+        hi = bisect.bisect_right(starts, b + REACH)
+        if lo >= hi:
+            return None
+        i = bisect.bisect_left(starts, start, lo, hi)
+        candidates = spans[max(lo, i - 1) : min(hi, i + 1)]
+        # An equally distant keyword before the mention wins the tie.
+        return min(candidates, key=lambda k: max(start - k[1], k[0] - end, 0))
 
     return near
 
@@ -214,25 +225,34 @@ def mentions(text: str, shots: Collection[int] | None = None) -> list[Mention]:
     def keep(shot: int) -> bool:
         return shots is None or shot in shots
 
-    def mention(shot: int, kind: str, a: int, b: int) -> Mention:
-        return Mention(shot, kind, a, b, text[max(0, a - REACH) : b + REACH])
+    def mention(shot: int, kind: str, a: int, b: int, keyword: tuple[int, int]):
+        if keep(shot):
+            left, right = min(a, keyword[0]), max(b, keyword[1])
+            found[a, shot, kind] = Mention(
+                shot, kind, a, b, text[max(0, left - REACH) : right + REACH]
+            )
 
-    found = []
+    found = {}
     runs = _runs(text)
     token_starts = {m.start() for run in runs for m in run}
     for run in runs:
-        if other(run[0].start(), run[-1].end()):
+        span = (run[0].start(), run[-1].end())
+        if other(*span):
             continue
-        if any(near(m.start(), m.end()) for m in run):
-            found += [
-                mention(int(m.group()), "exact", m.start(), m.end())
-                for m in run
-                if keep(int(m.group()))
-            ]
+        for m in run:
+            keyword = near(*span, *m.span())
+            if keyword is not None:
+                mention(int(m.group()), "exact", *m.span(), keyword)
     for m in _RANGE.finditer(text):
         if m.start() not in token_starts:
             continue
         inside = _range(m)
-        if inside is not None and near(*m.span()) and not other(*m.span()):
-            found += [mention(s, "range", *m.span()) for s in inside if keep(s)]
-    return sorted(found, key=lambda x: (x.start, x.shot, x.match_type))
+        keyword = near(*m.span(), *m.span())
+        if inside is not None and keyword is not None and not other(*m.span()):
+            for s in inside:
+                mention(s, "range", *m.span(), keyword)
+            for group in ("lo", "tail"):
+                if len(m.group(group)) == 6 and m.start(group) in token_starts:
+                    keyword = near(*m.span(), *m.span(group))
+                    mention(int(m.group(group)), "exact", *m.span(group), keyword)
+    return sorted(found.values(), key=lambda x: (x.start, x.shot, x.match_type))

@@ -482,3 +482,142 @@ def test_d23_postal_countries(country):
 )
 def test_d23_postal_reach_and_controls(text, expected):
     assert _found(text) == expected
+
+
+RANGE_END = (
+    "nts seem to better representΘredep at lower pressure. 9 3 RESULTS Electron "
+    "Pressure (Pa) DIII-D shots Large dot Diameter (mm) 67.3 148679 to 148682 "
+    "[23] 10 108 192275 to 192276 [38] 8 144 184948 to 184951 1"
+)
+CUT_KEYWORD = (
+    "n DIII-D 3 1.0 1.5 2.0 2.5 R (m) -1.5 -1.0 -0.5 0.0 0.5 1.0 1.5 z (m) "
+    "193806@3.00s Figure 1. A representative equilibrium of the discharges "
+    "used for this work, all of which"
+)
+RUN_FAR_KEYWORD = (
+    " in DIII-D 6 0.0 0.2 0.4 0.6 0.8 1.0 ρ 0 20 40 60 80 100 120Vϕ (km/s) "
+    "193807-4.000s 194479-2.800s 194479-3.800s 4.5 Nm Intrinsic Intrinsic "
+    "Figure 5. Proﬁles of impurity toroidal rotation for th"
+)
+
+
+def test_d23_real_range_written_end():
+    assert _found(RANGE_END) == [
+        (148679, "exact"),
+        (148680, "range"),
+        (148681, "range"),
+        (148682, "exact"),
+        (192275, "exact"),
+        (192276, "exact"),
+    ]
+
+
+@pytest.mark.parametrize("keyword_before", [True, False])
+@pytest.mark.parametrize("words", [11, 12])
+def test_d23_written_ends_share_range_context_once(keyword_before, words):
+    filler = " ".join(["word"] * words)
+    text = (
+        "DIII-D shots " + filler + " 189600 to 189603 were run."
+        if keyword_before
+        else "189600 to 189603 " + filler + " shots on DIII-D."
+    )
+    expected = [
+        (189600, "exact"),
+        (189601, "range"),
+        (189602, "range"),
+        (189603, "exact"),
+    ]
+    # The brief's twelve words put both versions beyond REACH (62 / 61).
+    assert _found(text) == (expected if words == 11 else [])
+    assert _found(text, {189603}) == ([(189603, "exact")] if words == 11 else [])
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("DIII-D shots " + "word " * 20 + "189600-189603", []),
+        ("LHD shots " + "word " * 12 + "189600-189603", []),
+        ("NSTX-U shots 189600-189603", []),
+        (
+            "DIII-D shots 189600-03",
+            [
+                (189600, "exact"),
+                (189601, "range"),
+                (189602, "range"),
+                (189603, "range"),
+            ],
+        ),
+        (
+            "DIII-D shots 189600-189650",
+            [(189600, "exact")]
+            + [(s, "range") for s in range(189601, 189650)]
+            + [(189650, "exact")],
+        ),
+        ("DIII-D shots 189600-189651", [(189600, "exact"), (189651, "exact")]),
+        ("DIII-D shots 189600-51", [(189600, "exact")]),
+        ("DIII-D shots 189650-189600", [(189650, "exact"), (189600, "exact")]),
+        (
+            "DIII-D shots " + "word " * 11 + "189600-189651",
+            [(189600, "exact")],
+        ),
+        (
+            "DIII-D shots " + "word " * 11 + "189650-189600",
+            [(189650, "exact")],
+        ),
+    ],
+)
+def test_d23_range_limits_and_guards(text, expected):
+    assert _found(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        CUT_KEYWORD,
+        RUN_FAR_KEYWORD,
+        "DIII-D shots " + ", ".join(str(s) for s in range(190001, 190021)),
+        "padding " * 20 + "DIII-D shots 189600 to 189603 " + "trailing " * 20,
+        "padding " * 20 + "DIII-D shots 189600-03 " + "trailing " * 20,
+    ],
+)
+def test_d23_context_covers_number_and_whole_nearest_keyword(text):
+    text = normalise(text)
+    found = mentions(text)
+    assert found
+    keywords = list(context.KEYWORDS.finditer(text))
+    for m in found:
+        keyword = min(
+            keywords,
+            key=lambda k: max(m.start - k.end(), k.start() - m.end, 0),
+        )
+        a, b = min(m.start, keyword.start()), max(m.end, keyword.end())
+        expected = text[max(0, a - REACH) : b + REACH]
+        assert context.KEYWORDS.search(m.context)
+        assert m.context == expected
+        assert len(m.context) <= b - a + 2 * REACH
+        if m.match_type == "exact":
+            assert str(m.shot) in m.context
+        else:
+            assert text[m.start : m.end] in m.context
+    if text == normalise(CUT_KEYWORD):
+        assert "discharges" in found[0].context
+
+
+def test_d23_context_uses_the_nearest_eligible_keyword():
+    # The nearer "shot" supplies each context, not the distant "#".
+    text = "#" + "word " * 13 + "shots 190001, 190002, 190003"
+    for m in mentions(text):
+        a = text.index("shots")
+        assert m.context == text[max(0, a - REACH) : m.end + REACH]
+
+
+def test_d23_range_end_context_uses_its_range_keyword():
+    text = "padding " * 20 + "shots " + "word " * 11 + "189600 to 189603"
+    found = mentions(text)
+    assert len(found) == 4
+    for m in found:
+        assert m.context == text[text.index("shots") - REACH : m.end + REACH]
+    assert [(m.start, m.end) for m in found if m.match_type == "exact"] == [
+        (text.index("189600"), text.index("189600") + 6),
+        (text.index("189603"), text.index("189603") + 6),
+    ]
