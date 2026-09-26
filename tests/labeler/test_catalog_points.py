@@ -112,3 +112,19 @@ def test_repeated_points_name_the_first_repeat():
     other = [190002, *row[1:]]
     later = [*row[:3], 10.5, *row[4:]]
     assert len(validate_points(_points(row, other, later))) == 3
+
+
+@pytest.mark.parametrize(
+    "row, count",
+    [
+        ("190001,1,edge_localized_mode,elm,50,,,", 8),
+        ("1,edge_localized_mode,elm,50,,", 6),
+    ],
+)
+def test_read_points_rejects_rows_with_undeclared_or_missing_fields(
+    tmp_path, row, count
+):
+    path = tmp_path / "points.csv"
+    path.write_text(",".join(POINT_COLUMNS) + "\n" + row + "\n")
+    with pytest.raises(pd.errors.ParserError, match=f"row 2:.*7 fields.*{count}"):
+        read_points(path)

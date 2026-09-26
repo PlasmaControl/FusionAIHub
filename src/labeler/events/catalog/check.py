@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import argparse
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from numbers import Integral, Real
 from pathlib import Path
 
 import pandas as pd
@@ -32,7 +33,7 @@ import pandas as pd
 from ...config import Paths
 from ..databases import DatabaseError
 from ..interval_tables import ATTRS_COLUMN, parse_attrs, validate_intervals
-from .points import POINT_COLUMNS, read_points, validate_points
+from .points import POINT_COLUMNS, read_points, validate_csv_fields, validate_points
 from .states import PHENOMENA, STATE_NAMES, attr_problems
 
 Windows = Mapping[int, tuple[float, float]]
@@ -123,11 +124,43 @@ def windows(
 ) -> list[Finding]:
     out = []
     for shot, (lo, hi) in assessed(frame).items():
-        span = allowed.get(shot)
-        if span is not None and (lo < span[0] or hi > span[1]):
+        if shot not in allowed:
+            continue
+        span = allowed[shot]
+        problem = _allowed_problem(shot, span)
+        if problem:
+            out.append(Finding("windows", where, shot, problem))
+        elif lo < span[0] or hi > span[1]:
             detail = f"window {lo:g}-{hi:g} ms is outside {span[0]:g}-{span[1]:g}"
             out.append(Finding("windows", where, shot, detail + " ms"))
     return out
+
+
+def _allowed_problem(shot, span) -> str | None:
+    prefix = f"allowed window for key {shot!r}: "
+    if (
+        isinstance(shot, bool)
+        or not isinstance(shot, Integral)
+        or not 0 <= shot < 2**63
+    ):
+        return prefix + "shot must be an integer in [0, 2**63)"
+    valid = False
+    if isinstance(span, Sequence) and len(span) == 2:
+        try:
+            valid = (
+                all(
+                    isinstance(value, Real)
+                    and not isinstance(value, bool)
+                    and math.isfinite(value)
+                    for value in span
+                )
+                and span[0] < span[1]
+            )
+        except OverflowError:
+            pass
+    if not valid:
+        return prefix + "bounds must be two finite numbers with start < end"
+    return None
 
 
 def points(
@@ -214,20 +247,31 @@ def check_table(
     where: str = "labels",
 ) -> list[Finding]:
     """Every check on one labels table (and its points table, if any)."""
+    found = []
+    beside = "points" if where == "labels" else str(Path(where).with_name("points.csv"))
+    if allowed is not None:
+        valid_allowed = {}
+        for shot, span in allowed.items():
+            problem = _allowed_problem(shot, span)
+            if problem:
+                found.append(Finding("windows", where, None, problem))
+            else:
+                valid_allowed[shot] = span
+        allowed = valid_allowed
     try:
         labels = validate_intervals(labels)
     except DatabaseError as error:
-        return [Finding("schema", where, None, str(error))]
-    found = tiling(labels, where) + states(labels, where)
+        found.append(Finding("schema", where, None, str(error)))
+        if points_frame is not None:
+            found += points(points_frame, None, category, beside)
+        return found
+    found += tiling(labels, where) + states(labels, where)
     found += attrs(labels, category, where)
     if allowed is not None:
         found += windows(labels, allowed, where)
     if points_frame is None and category == "disruption":
         points_frame = pd.DataFrame(columns=list(POINT_COLUMNS))
     if points_frame is not None:
-        beside = (
-            "points" if where == "labels" else str(Path(where).with_name("points.csv"))
-        )
         found += points(points_frame, labels, category, beside)
     return found
 
@@ -261,8 +305,12 @@ def check_category(
             )
         else:
             try:
+                validate_csv_fields(path)
                 labels = pd.read_csv(
-                    path, dtype={ATTRS_COLUMN: str}, keep_default_na=False
+                    path,
+                    dtype={ATTRS_COLUMN: str},
+                    keep_default_na=False,
+                    index_col=False,
                 )
             except CSV_ERRORS as error:
                 found.append(Finding("schema", where, None, str(error)))
@@ -289,18 +337,29 @@ def _raw_points(path: Path) -> pd.DataFrame:
     try:
         return read_points(path)
     except DatabaseError:
-        return pd.read_csv(path, dtype={"attrs": str}, keep_default_na=False)
+        validate_csv_fields(path)
+        return pd.read_csv(
+            path, dtype={"attrs": str}, keep_default_na=False, index_col=False
+        )
 
 
 def read_windows(path: Path) -> dict[int, tuple[float, float]]:
     """Allowed windows from a table with `shot, window_start_ms, window_end_ms`."""
     try:
-        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+        validate_csv_fields(path)
+    except pd.errors.ParserError as error:
+        raise CatalogError(str(error)) from error
+    except (UnicodeDecodeError, OSError) as error:
+        raise CatalogError(f"{path}: row 1: {error}") from error
+    try:
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
     except (*CSV_ERRORS, OSError) as error:
         raise CatalogError(f"{path}: row 1: {error}") from error
     columns = ("shot", "window_start_ms", "window_end_ms")
     if not set(columns) <= set(frame.columns):
         raise CatalogError(f"{path}: row 1: expected columns {columns}")
+    if frame.empty:
+        raise CatalogError(f"{path}: row 1: no windows in the table")
     allowed = {}
     for row, values in enumerate(frame[list(columns)].itertuples(index=False), 2):
         prefix = f"{path}: row {row}: "
