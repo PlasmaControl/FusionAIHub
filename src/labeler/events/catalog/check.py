@@ -34,7 +34,7 @@ from ...config import Paths
 from ..databases import DatabaseError
 from ..interval_tables import ATTRS_COLUMN, parse_attrs, validate_intervals
 from .points import POINT_COLUMNS, read_points, validate_csv_fields, validate_points
-from .states import PHENOMENA, STATE_NAMES, attr_problems
+from .states import NOT_OBSERVABLE, PHENOMENA, STATE_NAMES, attr_problems
 
 Windows = Mapping[int, tuple[float, float]]
 CSV_ERRORS = (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError)
@@ -90,9 +90,11 @@ def tiling(frame: pd.DataFrame, where: str = "labels") -> list[Finding]:
     return out
 
 
-def states(frame: pd.DataFrame, where: str = "labels") -> list[Finding]:
+def states(
+    frame: pd.DataFrame, where: str = "labels", *, category: str | None = None
+) -> list[Finding]:
     bad = frame[~frame.category.isin(list(STATE_NAMES))]
-    return [
+    out = [
         Finding(
             "states",
             where,
@@ -101,6 +103,17 @@ def states(frame: pd.DataFrame, where: str = "labels") -> list[Finding]:
         )
         for r in bad.itertuples()
     ]
+    if category is not None and PHENOMENA[category].observable_always:
+        out += [
+            Finding(
+                "states",
+                where,
+                int(r.shot),
+                f"{category} is never not observable (state 3 at {_ms(r.t_start)})",
+            )
+            for r in frame[frame.category == NOT_OBSERVABLE].itertuples()
+        ]
+    return out
 
 
 def attrs(frame: pd.DataFrame, category: str, where: str = "labels") -> list[Finding]:
@@ -277,7 +290,7 @@ def check_table(
         if points_frame is not None:
             found += points(points_frame, None, category, beside)
         return found
-    found += tiling(labels, where) + states(labels, where)
+    found += tiling(labels, where) + states(labels, where, category=category)
     found += attrs(labels, category, where)
     if allowed is not None:
         found += windows(labels, allowed, where)

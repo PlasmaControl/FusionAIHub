@@ -81,3 +81,68 @@ def test_an_int_too_large_for_a_double_is_a_problem_not_a_crash():
     problems = attr_problems("sawtooth_oscillation", {"period_ms": 10**400})
     assert len(problems) == 1
     assert problems[0].endswith("is not a finite number")
+
+
+@pytest.mark.parametrize(
+    "category, key, value, problem",
+    [
+        ("neoclassical_tearing_mode", "m", 1, "m=1 is below 2"),
+        ("neoclassical_tearing_mode", "m", -3, "m=-3 is below 2"),
+        ("neoclassical_tearing_mode", "m", 2, None),
+        ("neoclassical_tearing_mode", "n", 0, "n=0 is below 1"),
+        ("neoclassical_tearing_mode", "n", 1, None),
+        ("edge_localized_mode", "frequency_hz", 0, "frequency_hz=0 must be above 0"),
+        (
+            "edge_localized_mode",
+            "frequency_hz",
+            -50,
+            "frequency_hz=-50 must be above 0",
+        ),
+        ("edge_localized_mode", "frequency_hz", 0.01, None),
+        ("sawtooth_oscillation", "period_ms", 0, "period_ms=0 must be above 0"),
+        ("sawtooth_oscillation", "period_ms", 0.01, None),
+        (
+            "sawtooth_oscillation",
+            "inversion_channel",
+            0,
+            "inversion_channel=0 is below 1",
+        ),
+        ("sawtooth_oscillation", "inversion_channel", 1, None),
+        (
+            "sawtooth_oscillation",
+            "inversion_radius_m",
+            0,
+            "inversion_radius_m=0 must be above 0",
+        ),
+        ("sawtooth_oscillation", "inversion_radius_m", 0.01, None),
+    ],
+)
+def test_physical_attribute_bounds(category, key, value, problem):
+    assert attr_problems(category, {key: value}) == (
+        [] if problem is None else [problem]
+    )
+
+
+@pytest.mark.parametrize(
+    "category, key, kind",
+    [
+        ("neoclassical_tearing_mode", "m", "an integer"),
+        ("neoclassical_tearing_mode", "n", "an integer"),
+        ("edge_localized_mode", "frequency_hz", "a finite number"),
+        ("sawtooth_oscillation", "period_ms", "a finite number"),
+        ("sawtooth_oscillation", "inversion_channel", "an integer"),
+        ("sawtooth_oscillation", "inversion_radius_m", "a finite number"),
+    ],
+)
+@pytest.mark.parametrize("value", [True, "2"])
+def test_bounded_attributes_still_refuse_bools_and_wrong_types(
+    category, key, kind, value
+):
+    assert attr_problems(category, {key: value}) == [f"{key}={value!r} is not {kind}"]
+
+
+def test_always_observable_phenomena_are_recorded_in_the_vocabulary():
+    assert {key for key, p in PHENOMENA.items() if p.observable_always} == {
+        "neoclassical_tearing_mode",
+        "disruption",
+    }
