@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from labeler.events.catalog.check import states
+from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
 from labeler.events.interval_tables import validate_intervals
 from labeler.events.review import labels
 from labeler.events.review.labels import Label, normalise
@@ -247,12 +249,59 @@ def test_saving_another_shot_preserves_existing_attributes(tmp_path):
     assert "attrs" in after.columns
     pd.testing.assert_frame_equal(after[after.shot == "190001"], before)
     assert (after.loc[after.shot == "190002", "attrs"] == "").all()
-    labels.save(event, 190002, normalise([0, 100], [[30, 50, 3]]), source=None)
-    replaced = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
-    pd.testing.assert_frame_equal(replaced[replaced.shot == "190001"], before)
-    assert replaced.loc[replaced.shot == "190002", "category"].tolist() == [
-        "0", "3", "0"
-    ]
+    before_refusal = {
+        name: (review / name).read_bytes() for name in ("labels.csv", "history.jsonl")
+    }
+    with pytest.raises(ValueError, match="category 3"):
+        label = normalise(
+            [0, 100], [[30, 50, 3]], known=set(labels.categories(event.name))
+        )
+        labels.save(event, 190002, label, source=None)
+    assert {
+        name: (review / name).read_bytes() for name in before_refusal
+    } == before_refusal
+
+
+@pytest.mark.parametrize("event", PHENOMENA)
+def test_review_menu_and_checker_accept_the_same_span_states(event):
+    accepted = set()
+    for state in STATE_NAMES:
+        frame = pd.DataFrame({"shot": [190001], "category": [state], "t_start": [0]})
+        if not states(frame, category=event):
+            accepted.add(state)
+    assert set(labels.categories(event)) == accepted - {0}
+
+
+@pytest.mark.parametrize(
+    "event", [key for key, spec in PHENOMENA.items() if spec.observable_always]
+)
+def test_review_refuses_states_that_its_checker_always_rejects(tmp_path, event):
+    from fastapi.testclient import TestClient
+
+    from labeler.config import Paths
+    from labeler.events.ui.app import COOKIE, create_app
+
+    tables = tmp_path / "events"
+    directory = tables / event
+    directory.mkdir(parents=True)
+    (directory / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n190001,unverified,false,,,\n"
+    )
+    paths = Paths(
+        root=tmp_path / "root", corpus=tmp_path / "corpus",
+        text_root=tmp_path / "text", logs_jsonl=tmp_path / "logs.jsonl",
+        label_tables=tables, raw_cache=tmp_path / "raw",
+    )
+    with TestClient(create_app(paths=paths, token="secret")) as client:
+        client.cookies.set(COOKIE, "secret")
+        response = client.post("/api/label", json={
+            "event": event, "shot": 190001,
+            "window": [0, 100], "intervals": [[0, 100, 3]],
+        })
+    assert response.status_code == 400
+    assert "category 3" in response.json()["detail"]
+    assert not labels.labels_path(directory).exists()
+    assert not labels.history_path(directory).exists()
 
 
 @pytest.mark.parametrize("attrs", ['{"intentional": false}', '{}'])
