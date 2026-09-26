@@ -11,9 +11,15 @@ A metric takes the totals, shape `(..., k)`, and returns one value per leading
 index, so the bootstrap evaluates all its replicates in one call. An undefined
 value (nothing to divide by) is NaN.
 
+The cohort weight is N_h / n_h for a group-year cell. D25's blind weight is
+that first-stage weight times n_g / b_g, the group's cohort-to-blind ratio;
+the blind subset is resampled within its groups.
+
 Intervals use the specified percentile bootstrap (95% by default). Simulation
 coverage depends on the design: the reviewed cohort design covered 0.948-0.953,
 and the smaller blind design 0.912-0.932. No coverage correction is applied.
+The blind figure was simulated with group-only weights and a 20/10/20
+allocation, before D25.
 """
 
 from __future__ import annotations
@@ -106,6 +112,30 @@ def stratum_weights(strata: Sequence, population: Mapping) -> np.ndarray:
     if unscored:
         raise ValueError(f"no scored shot for population strata {unscored}")
     return np.array([population[h] / counts[h] for h in strata], dtype=float)
+
+
+def two_stage_weights(
+    first_stage, groups: Sequence, cohort_counts: Mapping
+) -> np.ndarray:
+    """D25 blind weights: cohort weight times the group's `n_g / b_g`."""
+    groups = list(groups)
+    weights = np.asarray(first_stage, dtype=float)
+    if weights.ndim != 1 or len(weights) != len(groups):
+        raise ValueError("first_stage and groups must have one entry per blind shot")
+    counts = Counter(groups)
+    for g, b in counts.items():
+        if g not in cohort_counts:
+            raise ValueError(f"no cohort count for group {g!r}")
+        try:
+            n = _whole(cohort_counts[g])
+        except ValueError as exc:
+            raise ValueError(f"group {g!r}: {exc}") from exc
+        if b > n:
+            raise ValueError(f"group {g!r}: blind count {b} exceeds cohort count {n}")
+    for g, weight in zip(groups, weights):
+        if not np.isfinite(weight) or weight <= 0:
+            raise ValueError(f"group {g!r}: invalid first-stage weight {weight!r}")
+    return weights * np.array([cohort_counts[g] / counts[g] for g in groups])
 
 
 def _shot_inputs(strata, weights):
