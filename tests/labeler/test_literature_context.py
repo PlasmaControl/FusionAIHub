@@ -163,3 +163,100 @@ def test_context_is_the_normalised_text_in_reach():
     (m,) = mentions("In   DIII-D\nshot 189631 the mode locked.")
     assert m.context == "In DIII-D shot 189631 the mode locked."
     assert normalise("a­b \t c") == "ab c"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "#:~:text=Primary%20energy%20consumption%20in%20China%202018%2D2023",
+        "shot %20189631",
+        "shot %189631",
+        "shot %189600-02",
+    ],
+)
+def test_url_encoding_is_not_a_shot_or_range(text):
+    assert _found(text) == []
+
+
+@pytest.mark.parametrize(
+    "citation",
+    [
+        "Phys. Rev. Lett. 127, 185001",
+        "Phys.Rev.Lett.127,185001",
+        "Phys. Rev. E 104, 205001",
+        "Physical Review Letters 127, 185001",
+        "Phys. Rev. Research 3, 193001",
+        "Phys. Plasmas ... Phys. Rev. X 11, 190001",
+        "Phys. Rev. 127, 185001",
+        "Physical Review 127, 185001",
+        "Phys. Rev. A 104, 190001",
+        "Phys. Rev. B. 104, 190001",
+        "Phys. Rev. C 104, 190001",
+        "Phys. Rev. D. 104, 190001",
+        "Phys. Rev. E. 104, 190001",
+        "Phys. Rev. X. 11, 190001",
+        "Phys. Rev. Applied 12, 190001",
+        "Phys. Rev. Fluids 4, 190001",
+        "Phys. Rev. Accel. Beams 24, 190001",
+        "Phys.Rev.Accel.Beams1234,190001",
+        "Physical\nReview\tLetters 127 , 185001",
+    ],
+)
+def test_physical_review_article_numbers_are_not_shots(citation):
+    assert _found("DIII-D " + citation) == []
+
+
+def test_physical_review_article_is_not_named_by_the_next_reference():
+    text = (
+        "et al 2023 Phys. Rev. Lett. 131 195101 [3] Thome K E et al 2024 "
+        "Overview of results from the 2023 DIII-D negative triangularity campaign"
+    )
+    assert _found(text) == []
+
+
+def test_physical_review_article_number_does_not_start_a_range():
+    assert _found("shot Phys. Rev. Lett. 131 195101-03") == []
+
+
+@pytest.mark.parametrize(
+    "text, last",
+    [
+        ("shot %189600-189602", 189602),
+        ("shot Phys. Rev. Lett. 131 195101-195103", 195103),
+    ],
+)
+def test_excluded_range_start_does_not_exclude_its_written_end(text, last):
+    assert _found(text) == [(last, "exact")]
+
+
+@pytest.mark.parametrize("first", ["%202018", "Phys. Rev. Lett. 131 195101"])
+def test_excluded_number_cannot_give_a_run_its_context(first):
+    text = "shot " + first + ", " * 35 + "190000"
+    assert _found(text) == []
+
+
+def test_excluded_article_number_leaves_the_real_shot():
+    assert _found("shot 190000, Phys. Rev. Lett. 131 195101") == [(190000, "exact")]
+
+
+def test_excluded_article_rule_keeps_a_genuine_shot_run():
+    assert _found("DIII-D shots 195101 and 195140") == [
+        (195101, "exact"),
+        (195140, "exact"),
+    ]
+
+
+def test_excluded_article_rule_keeps_numbers_after_other_numbers():
+    assert _found("shot 190000 at 3.3 s, 108 192275 to 192276") == [
+        (190000, "exact"),
+        (192275, "exact"),
+        (192276, "exact"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["shot Phys. Plasmas 108 192275", "shot Phys. Rev. Lett. 12345, 192275"],
+)
+def test_excluded_article_rule_requires_the_journal_and_a_short_volume(text):
+    assert _found(text) == [(192275, "exact")]
