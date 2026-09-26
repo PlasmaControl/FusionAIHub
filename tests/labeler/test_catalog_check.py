@@ -536,3 +536,56 @@ def test_raw_points_fallback_also_checks_csv_field_counts(tmp_path, monkeypatch)
     assert found[0].check == "schema"
     assert "row 2:" in found[0].detail
     assert "7 fields" in found[0].detail and "got 8" in found[0].detail
+
+
+@pytest.mark.parametrize("end, margin", [(104.25, 2), (249.75, 37.375)])
+@pytest.mark.parametrize(
+    "bound, offset, outside",
+    [
+        ("lower", -0.01, True),
+        ("lower", 0, False),
+        ("lower", 0.01, False),
+        ("upper", -0.01, False),
+        ("upper", 0, False),
+        ("upper", 0.01, True),
+    ],
+)
+def test_disruption_t_d_quench_margin_bounds(end, margin, bound, offset, outside):
+    start = 100.25
+    time = (start - margin if bound == "lower" else end + margin) + offset
+    labels = _labels((1, 0, 0, start), (1, 1, start, end), (1, 0, end, 400))
+    frame = _points(
+        (1, "disruption", "t_D", time),
+        (1, "disruption", "t80", start),
+        (1, "disruption", "t20", end),
+    )
+    found = check_table(labels, "disruption", points_frame=frame)
+    if outside:
+        assert len(found) == 1 and found[0].check == "points"
+        assert found[0].shot == 1
+        assert "t_D" in found[0].detail and "outside the quench" in found[0].detail
+        assert f"margin {margin:.3g} ms" in found[0].detail
+        assert "D17" in found[0].detail
+    else:
+        assert found == []
+
+
+@pytest.mark.parametrize("time", [10, 399])
+def test_disruption_t_d_far_from_its_quench_is_a_finding(time):
+    frame = DISRUPTION_POINTS.copy()
+    frame.loc[frame.kind == "t_D", "t_ms"] = time
+    found = check_table(GOOD[GOOD.shot == 1], "disruption", points_frame=frame)
+    assert len(found) == 1 and found[0].check == "points"
+    assert f"t_D at {time} ms" in found[0].detail
+    assert "100.25-249.75 ms" in found[0].detail
+    assert "margin 37.4 ms" in found[0].detail
+
+
+def test_disruption_missing_t_d_does_not_hide_a_span_mismatch():
+    labels = _labels((1, 0, 0, 300.25), (1, 1, 300.25, 449.75), (1, 0, 449.75, 500))
+    frame = DISRUPTION_POINTS[DISRUPTION_POINTS.kind != "t_D"]
+    found = check_table(labels, "disruption", points_frame=frame)
+    assert [(f.check, f.shot, f.detail) for f in found] == [
+        ("points", 1, "missing point kinds: t_D"),
+        ("points", 1, "present span bounds must be within 1 ms of t80 and t20"),
+    ]
