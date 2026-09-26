@@ -404,3 +404,14 @@ def test_events_yaml_gives_each_catalog_category_the_four_states():
     for category in PHENOMENA:
         assert classes[category] == STATE_NAMES, category
         assert (Paths().label_tables / category).is_dir(), category
+
+
+def test_catalog_category_names_agree_between_code_manifest_and_states():
+    from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
+    from labeler.events.interval_tables import category_labels
+
+    manifest = yaml.safe_load((Paths().label_tables / "events.yaml").read_text())
+    classes = manifest["label_grid"]["classes"]
+    for category in PHENOMENA:
+        names = {int(k): v for k, v in category_labels(category).items()}
+        assert names == classes[category] == STATE_NAMES, category

@@ -203,3 +203,47 @@ def test_categories_leave_out_absent():
         3: "elevated",
         4: "high",
     }
+
+
+def test_saving_another_shot_preserves_existing_attributes(tmp_path):
+    from labeler.events.interval_tables import WITH_ATTRS
+
+    event = tmp_path / "disruption"
+    review = event / "review"
+    review.mkdir(parents=True)
+    attrs = '{"intentional": false, "phase": "flattop"}'
+    original = pd.DataFrame(
+        [[190001, 1, "0.25", "100.50", "0.750", attrs]], columns=WITH_ATTRS
+    )
+    original.to_csv(review / "labels.csv", index=False)
+    before = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
+    labels.save(event, 190002, normalise([0, 100], [[20, 40, 2]]), source=None)
+    after = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
+    assert "attrs" in after.columns
+    pd.testing.assert_frame_equal(after[after.shot == "190001"], before)
+    assert (after.loc[after.shot == "190002", "attrs"] == "").all()
+    labels.save(event, 190002, normalise([0, 100], [[30, 50, 3]]), source=None)
+    replaced = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
+    pd.testing.assert_frame_equal(replaced[replaced.shot == "190001"], before)
+    assert replaced.loc[replaced.shot == "190002", "category"].tolist() == [
+        "0", "3", "0"
+    ]
+
+
+@pytest.mark.parametrize("attrs", ['{"intentional": false}', '{}'])
+def test_saving_a_shot_with_attrs_refuses_without_changing_either_file(tmp_path, attrs):
+    from labeler.events.interval_tables import WITH_ATTRS
+
+    event = tmp_path / "disruption"
+    review = event / "review"
+    review.mkdir(parents=True)
+    pd.DataFrame(
+        [[190001, 1, 0, 100, None, attrs]], columns=WITH_ATTRS
+    ).to_csv(review / "labels.csv", index=False)
+    (review / "history.jsonl").write_text('{"shot": 190001}\n')
+    before = {name: (review / name).read_bytes() for name in [
+        "labels.csv", "history.jsonl"
+    ]}
+    with pytest.raises(ValueError, match="190001.*attrs"):
+        labels.save(event, 190001, normalise([0, 100], [[20, 40, 2]]), source=None)
+    assert {name: (review / name).read_bytes() for name in before} == before

@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from .catalog.states import PHENOMENA, STATE_NAMES
 from .databases import DatabaseError, write_csv, write_meta
 
 LEGACY_INTERVAL_COLUMNS = ("shot", "t_start", "t_end", "confidence")
@@ -34,6 +35,8 @@ QMIN_CATEGORY_IDS = {
 
 def category_labels(category: str) -> dict[str, str]:
     """Names shared by CSV sidecars, sampled grids, and event documentation."""
+    if category in PHENOMENA:
+        return {str(k): v for k, v in STATE_NAMES.items()}
     if category == "minimum_safety_factor":
         return {"0": "absent", "1": "low", "2": "hybrid", "3": "elevated", "4": "high"}
     return {"0": "absent", "1": "present"}

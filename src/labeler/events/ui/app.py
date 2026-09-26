@@ -250,9 +250,12 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         except ValueError as error:
             raise HTTPException(400, str(error)) from None
         table = labels.source_path(directory)
-        entry = labels.save(
-            directory, body.shot, label, source=table.name if table else None
-        )
+        try:
+            entry = labels.save(
+                directory, body.shot, label, source=table.name if table else None
+            )
+        except labels.SaveRefused as error:
+            raise HTTPException(409, str(error)) from None
         source = labels.read_source(directory).get(body.shot)
         row = {
             "shot": body.shot,
