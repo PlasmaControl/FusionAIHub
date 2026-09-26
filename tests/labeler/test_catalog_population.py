@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
+from labeler import config as labeler_config
 from labeler.config import sha256_of
 from labeler.events.catalog import population as pop
 from labeler.events.catalog import window
@@ -335,8 +338,9 @@ def test_the_funnel_counts_what_each_rule_leaves(tmp_path):
 
 
 @pytest.mark.parametrize("default_census", [False, True])
+@pytest.mark.parametrize("record_field", ["lexicon", "git_dirty", "census_max_span_s"])
 def test_the_command_writes_the_pool_under_the_root(
-    tmp_path, monkeypatch, capsys, default_census
+    tmp_path, monkeypatch, capsys, default_census, record_field
 ):
     corpus, text = tmp_path / "corpus", tmp_path / "text"
     corpus.mkdir()
@@ -345,8 +349,20 @@ def test_the_command_writes_the_pool_under_the_root(
         (corpus / f"{shot}_processed.h5").touch()
         (text / f"shot_{shot}.txt").write_text(_bundle(shot, GOOD))
     census = pd.DataFrame(
-        [(s, g, True, 0.0, 5.0) for s in (185_601, 185_602) for g in SPANS]
-        + [(185_602, "ece", True, 0.0, 1.0)],
+        [
+            (s, g, True, 0.125, end)
+            for s in (185_601, 185_602)
+            for g, end in {
+                "mhr": 5.23645,
+                "ece": 6.54321,
+                "filterscopes": 7.65432,
+            }.items()
+        ]
+        + [
+            (185_602, "ece", True, 0.0, 1.0),
+            (185_600, "mhr", True, 0.0, 9.87654),
+            (185_600, "filterscopes", False, 0.0, 1000.0),
+        ],
         columns=["shot", "group", "present", "t0_s", "t1_s"],
     )
     census = census.drop_duplicates(["shot", "group"], keep="last")
@@ -358,6 +374,7 @@ def test_the_command_writes_the_pool_under_the_root(
     monkeypatch.setattr(
         shot_config, "load_paths", lambda: SimpleNamespace(db_dir=tmp_path)
     )
+    monkeypatch.setattr(pop, "git_dirty", lambda: True, raising=False)
     assert pop.main([] if default_census else ["--census", str(census_path)]) == 0
     out = tmp_path / "root" / "catalog"
     assert pop.read_pool(out / "pool.csv")["reasons"].tolist() == ["", "census_ece"]
@@ -375,7 +392,12 @@ def test_the_command_writes_the_pool_under_the_root(
         suffix = ".txt" if name == "pool_shots" else ".csv"
         assert meta[f"{name}_sha256"] == sha256_of(out / (name + suffix))
     lexicon = shot_config.CONFIG_DIR / "labels.yaml"
-    assert meta["lexicon"] == str(lexicon)
+    expected = {
+        "lexicon": "configs/shot_design/labels.yaml",
+        "git_dirty": True,
+        "census_max_span_s": {"mhr": 9.877, "ece": 6.418, "filterscopes": 7.529},
+    }
+    assert meta[record_field] == expected[record_field]
     assert meta["lexicon_sha256"] == sha256_of(lexicon)
     assert meta["corpus_in_range"] == 2 and meta["bundles"] == 2
     assert meta["funnel"] == {
@@ -396,6 +418,7 @@ def test_the_command_writes_the_pool_under_the_root(
     assert rules["rule_2"]["own_shot_table_block"] is True
     assert rules["rule_3"]["groups"] == ["mhr", "ece", "filterscopes"]
     assert rules["rule_3"]["min_group_span_s"] == 2.0
+    assert "corpus_effect" not in rules["rule_3"]
     assert rules["rule_4"]["max_ip_dt_ms"] == 0.5
     assert rules["rule_4"]["log_version"] == 2
     assert rules["rule_4"]["measured_on"] == "every shot passing rules 1-3"
@@ -442,6 +465,132 @@ def test_read_pool_refuses_invalid_tables(tmp_path, bad):
     pool.to_csv(path, index=False)
     with pytest.raises(CatalogError, match=message):
         pop.read_pool(path)
+
+
+@pytest.mark.parametrize("reasons", [";", "title;", ";title"])
+def test_read_pool_refuses_empty_reason_tokens(tmp_path, reasons):
+    pool = _pool()
+    pool.loc[0, "reasons"] = reasons
+    path = tmp_path / "pool.csv"
+    pool.to_csv(path, index=False)
+    with pytest.raises(CatalogError, match=rf"shot 1:.*{re.escape(repr(reasons))}"):
+        pop.read_pool(path)
+
+
+@pytest.fixture
+def command_inputs(tmp_path, monkeypatch):
+    corpus, text = tmp_path / "corpus", tmp_path / "text"
+    corpus.mkdir()
+    text.mkdir()
+    (corpus / "185601_processed.h5").touch()
+    bundle = text / "shot_185601.txt"
+    bundle.write_text(_bundle(185601, GOOD), encoding="utf-8")
+    census = tmp_path / "census.parquet"
+    pd.DataFrame(
+        [(185601, group, True, 0.0, 5.0) for group in SPANS],
+        columns=["shot", "group", "present", "t0_s", "t1_s"],
+    ).to_parquet(census)
+    monkeypatch.setenv("LABELER_CORPUS", str(corpus))
+    monkeypatch.setenv("LABELER_TEXT_ROOT", str(text))
+    return bundle, census, tmp_path / "out"
+
+
+def test_bundle_inputs_hash_the_bytes_with_selects_decoding(tmp_path):
+    path = tmp_path / "shot_185601.txt"
+    path.write_bytes(b"Experiment: \xff\r\nPlasma startup\rMorning Summary:\n")
+    bundles, digests = pop.read_bundle_inputs(tmp_path, [185601, 185602])
+    assert bundles == pop.select.read_bundles(tmp_path, [185601, 185602])
+    assert bundles[185601] == "Experiment: \ufffd\nPlasma startup\nMorning Summary:\n"
+    assert digests == {185601: sha256_of(path)}
+
+
+def test_command_digests_the_consumed_bundle(command_inputs, monkeypatch):
+    bundle, census, out = command_inputs
+    digest = sha256_of(bundle)
+    real_screen = pop.screen
+
+    def screen_then_change_source(*args, **kwargs):
+        pool = real_screen(*args, **kwargs)
+        bundle.write_text(_bundle(185601, GOOD, title="Startup"), encoding="utf-8")
+        return pool
+
+    monkeypatch.setattr(pop, "screen", screen_then_change_source)
+    assert pop.main(["--census", str(census), "--out", str(out)]) == 0
+    assert pop.read_pool(out / "pool.csv")["reasons"].tolist() == [""]
+    inputs = pd.read_csv(out / "pool_inputs.csv")
+    assert inputs["bundle_sha256"].tolist() == [digest]
+    assert digest != sha256_of(bundle)
+
+
+def test_command_preserves_shot_list_when_writing_fails(command_inputs, monkeypatch):
+    _, census, out = command_inputs
+    out.mkdir()
+    shots = out / "pool_shots.txt"
+    shots.write_text("previous shot list\n", encoding="utf-8")
+
+    def interrupted_write(path, values):
+        Path(path).write_text("partial", encoding="utf-8")
+        raise OSError("interrupted shot list write")
+
+    monkeypatch.setattr(pop, "write_shot_file", interrupted_write)
+    with pytest.raises(OSError, match="interrupted shot list write"):
+        pop.main(["--census", str(census), "--out", str(out)])
+    assert shots.read_text() == "previous shot list\n"
+    assert not list(out.glob("*.tmp"))
+
+
+def test_command_keeps_an_external_lexicon_path(command_inputs, monkeypatch, tmp_path):
+    _, census, out = command_inputs
+    config_dir = tmp_path / "external-config"
+    config_dir.mkdir()
+    lexicon = config_dir / "labels.yaml"
+    lexicon.write_bytes((shot_config.CONFIG_DIR / "labels.yaml").read_bytes())
+    monkeypatch.setattr(shot_config, "CONFIG_DIR", config_dir)
+    assert pop.main(["--census", str(census), "--out", str(out)]) == 0
+    meta = json.loads((out / "pool.meta.json").read_text())
+    assert meta["lexicon"] == str(lexicon)
+    assert meta["lexicon_sha256"] == sha256_of(lexicon)
+
+
+@pytest.mark.parametrize("state", ["clean", "untracked", "unstaged", "staged"])
+def test_git_dirty_reports_only_tracked_changes(tmp_path, monkeypatch, state):
+    def git(*args):
+        subprocess.run(
+            ["git", *args], cwd=tmp_path, check=True, capture_output=True, text=True
+        )
+
+    git("init")
+    tracked = tmp_path / "tracked.txt"
+    tracked.write_text("committed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git(
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.org",
+        "commit",
+        "-m",
+        "fixture",
+    )
+    if state == "untracked":
+        (tmp_path / "untracked.txt").touch()
+    elif state in ("unstaged", "staged"):
+        tracked.write_text("changed\n", encoding="utf-8")
+        if state == "staged":
+            git("add", "tracked.txt")
+    monkeypatch.setattr(
+        labeler_config, "__file__", str(tmp_path / "src" / "labeler" / "config.py")
+    )
+    assert labeler_config.git_dirty() is (state in ("unstaged", "staged"))
+
+
+@pytest.mark.parametrize("failure", [OSError, subprocess.SubprocessError])
+def test_git_dirty_is_unknown_when_git_fails(monkeypatch, failure):
+    def fail(*args, **kwargs):
+        raise failure("git unavailable")
+
+    monkeypatch.setattr(labeler_config.subprocess, "run", fail)
+    assert labeler_config.git_dirty() is None
 
 
 @pytest.mark.parametrize(

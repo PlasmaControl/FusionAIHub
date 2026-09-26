@@ -10,8 +10,7 @@ dropped and its title filter replaced by machine time; the rejections keep its n
    test titles, or the lexicon's machine theme after physics themes have been tried
    first against the title and mini-proposal subject. An empty run title uses the
    first Experiment: line in the bundle's ### CHIEF_OPERATOR SUMMARY block;
-3. at least 2 s of census coverage for mhr, ece and filterscopes (`census_<group>`),
-   in effect presence in this corpus: mhr spans 4.194 s and ece 6.193 s when present.
+3. at least 2 s of census coverage for mhr, ece and filterscopes (`census_<group>`).
 
 A shot with no text bundle fails them all, as `no_bundle`; a bundle with another
 shot's table row fails as `bundle_mismatch`.
@@ -19,8 +18,9 @@ shot's table row fails as `bundle_mismatch`.
 Rule 4, an Ip flat-top of at least 1 s, is measured from high-rate Ip
 (`catalog.window`) for every shot that passes rules 1-3, not only for the drawn ones,
 so N per cell is exact and no drawn shot is ever replaced. Its rejections are
-`flattop` (under 1 s), `no_plasma` (|Ip| never reached 50 kA) and
-`flattop_unmeasured` (the fetch kept failing).
+`flattop` (a measured flat-top under 1 s), `no_plasma` (the log's `no_plasma`:
+no stretch of |Ip| >= 50 kA was found), and `flattop_unmeasured` (an `error` line,
+an `ok` line without a flat-top, or sampling missing or coarser than MAX_IP_DT_MS).
 
     pixi run -e labelmaker python -m labeler.events.catalog.population
 
@@ -32,6 +32,7 @@ fails; `pool_shots.txt`, the shots that pass rules 1-3, for the Ip fetch; and
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import re
@@ -48,7 +49,7 @@ from shot_design.shotdb import select
 from shot_design.shotdb.text import shot_table_row
 
 from ...catalog import corpus_shots, write_shot_file
-from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from . import window
 from .check import CatalogError
 
@@ -292,7 +293,9 @@ def _reason_sets(frame: pd.DataFrame) -> list[set[str]]:
     known = {reason for rule in RULES.values() for reason in rule}
     failed = []
     for shot, text in zip(frame["shot"], frame["reasons"], strict=True):
-        reasons = [reason for reason in text.split(";") if reason]
+        reasons = text.split(";") if text else []
+        if "" in reasons:
+            raise CatalogError(f"shot {shot}: empty rejection token in {text!r}")
         for reason in reasons:
             if reason not in known:
                 raise CatalogError(f"shot {shot}: unknown rejection {reason!r}")
@@ -343,9 +346,6 @@ def rules_record() -> dict:
         "rule_3": {
             "groups": list(select.CENSUS_GROUPS),
             "min_group_span_s": select.MIN_GROUP_SPAN_S,
-            "corpus_effect": (
-                "In effect presence: mhr spans 4.194 s and ece 6.193 s when present."
-            ),
         },
         "rule_4": window.definition()
         | {
@@ -358,6 +358,22 @@ def rules_record() -> dict:
             "title": select.TITLE_EXCLUDE.pattern,
         },
     }
+
+
+def read_bundle_inputs(
+    text_dir: Path, shots: Iterable[int]
+) -> tuple[dict[int, str], dict[int, str]]:
+    """Bundle text and digests from one read, decoded as `select.read_bundles`."""
+    bundles, digests = {}, {}
+    for shot in shots:
+        path = Path(text_dir) / f"shot_{int(shot)}.txt"
+        if path.exists():
+            data = path.read_bytes()
+            digests[int(shot)] = hashlib.sha256(data).hexdigest()
+            # Match read_text's UTF-8 replacement and universal newline handling.
+            text = data.decode("utf-8", errors="replace")
+            bundles[int(shot)] = text.replace("\r\n", "\n").replace("\r", "\n")
+    return bundles, digests
 
 
 def main(argv=None) -> int:
@@ -382,8 +398,9 @@ def main(argv=None) -> int:
     census = pd.read_parquet(
         args.census, columns=["shot", "group", "present", "t0_s", "t1_s"]
     )
-    bundles = select.read_bundles(paths.text_root, shots)
-    pool = screen(shots, bundles, select.spans(census))
+    bundles, digests = read_bundle_inputs(paths.text_root, shots)
+    census_spans = select.spans(census)
+    pool = screen(shots, bundles, census_spans)
     left = funnel(pool)
     if left["after_rule_3"] != int(passes_screen(pool).sum()):
         raise CatalogError("funnel after_rule_3 disagrees with passes_screen(pool)")
@@ -396,16 +413,13 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     with atomic_path(out / "pool.csv") as tmp:
         pool.to_csv(tmp, index=False)
-    write_shot_file(out / "pool_shots.txt", pool.loc[passes_screen(pool), "shot"])
+    with atomic_path(out / "pool_shots.txt") as tmp:
+        write_shot_file(tmp, pool.loc[passes_screen(pool), "shot"])
     inputs = pd.DataFrame(
         [
             {
                 "shot": shot,
-                "bundle_sha256": (
-                    sha256_of(paths.text_root / f"shot_{shot}.txt")
-                    if shot in bundles
-                    else ""
-                ),
+                "bundle_sha256": digests.get(shot, ""),
             }
             for shot in shots
         ],
@@ -416,17 +430,34 @@ def main(argv=None) -> int:
     from shot_design.config import CONFIG_DIR
 
     lexicon = CONFIG_DIR / "labels.yaml"
+    try:
+        lexicon_path = lexicon.resolve().relative_to(
+            Path(__file__).resolve().parents[4]
+        )
+    except ValueError:
+        lexicon_path = lexicon
     meta = {
         "census": str(args.census),
         "census_sha256": sha256_of(args.census),
+        "census_max_span_s": {
+            group: round(
+                max(
+                    (spans[group] for spans in census_spans.values() if group in spans),
+                    default=0.0,
+                ),
+                3,
+            )
+            for group in select.CENSUS_GROUPS
+        },
         "text_root": str(paths.text_root),
         "corpus": str(paths.corpus),
         "git_sha": git_sha(),
+        "git_dirty": git_dirty(),
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "pool_sha256": sha256_of(out / "pool.csv"),
         "pool_shots_sha256": sha256_of(out / "pool_shots.txt"),
         "pool_inputs_sha256": sha256_of(out / "pool_inputs.csv"),
-        "lexicon": str(lexicon),
+        "lexicon": str(lexicon_path),
         "lexicon_sha256": sha256_of(lexicon),
         "corpus_in_range": len(shots),
         "bundles": len(bundles),
