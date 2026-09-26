@@ -123,3 +123,78 @@ def test_runs_fill_gaps_and_merge_neighbours():
         (60, 100, 0),
     ]
     assert np.array_equal(frame_states(read, 0, 10), [0, 1, 1, 0, 0, 2, 0, 0, 0, 0])
+
+
+@pytest.mark.parametrize(
+    "window, spans, value",
+    [
+        ((0, 100), ((19.6, 20.4, PRESENT),), "19.6"),
+        ((0.2, 0.8), (), "0.2"),
+        ((0, 100), ((10, 20, 1.9),), "1.9"),
+        ((0, float("inf")), (), "inf"),
+        ((0, 100), ((10, float("nan"), PRESENT),), "nan"),
+        (("0", 100), (), "0"),
+    ],
+)
+def test_assessment_refuses_values_that_are_not_whole_numbers(window, spans, value):
+    with pytest.raises(ValueError, match=value):
+        Assessment(window, spans)
+
+
+def test_assessment_stores_whole_floats_and_numpy_integers_as_plain_ints():
+    read = Assessment((np.int64(0), 100.0), ((np.int32(10), 20.0, np.int8(PRESENT)),))
+    assert read == Assessment((0, 100), ((10, 20, PRESENT),))
+    assert all(type(v) is int for v in (*read.window, *read.spans[0]))
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [(0, 100, 0), (200, 300, 1), (300, 400, 0)],
+        [(0, 100, 0), (10, 20, 1)],
+    ],
+)
+def test_from_rows_refuses_gaps_and_overlaps_and_names_both_rows(rows):
+    with pytest.raises(ValueError) as exc:
+        Assessment.from_rows(rows)
+    assert str(rows[0]) in str(exc.value) and str(rows[1]) in str(exc.value)
+
+
+def test_from_rows_refuses_an_empty_absent_row():
+    with pytest.raises(ValueError, match=r"\(10, 10, 0\)"):
+        Assessment.from_rows([(0, 10, 1), (10, 10, 0), (10, 20, 1)])
+
+
+def test_from_rows_checks_whole_values_before_dropping_absent_rows():
+    with pytest.raises(ValueError, match="0.2"):
+        Assessment.from_rows([(0.2, 10, 0), (10, 20, 1)])
+
+
+def test_from_rows_sorts_a_tiling():
+    assert Assessment.from_rows([(20.0, 30, 0), (0, 10, 0), (10, 20, 1)]) == (
+        Assessment((0, 30), ((10, 20, PRESENT),))
+    )
+
+
+@pytest.mark.parametrize("state", [UNCERTAIN, NOT_OBSERVABLE])
+def test_method_shot_presence_reads_abstention_as_absent(state):
+    read = Assessment((0, 100), ((0, 100, state),))
+    assert shot_presence(read) is None
+    assert shot_presence(read, method=True) == 0
+    assert shot_presence(Assessment((0, 100), ((10, 20, 1),)), method=True) == 1
+
+
+def test_reference_only_frames_are_recorded_beside_the_common_window_cells():
+    reference = Assessment((0, 1000), ((0, 1000, PRESENT),))
+    estimate = Assessment((400, 600), ((400, 600, PRESENT),))
+    counts = frame_counts(reference, estimate)
+    assert counts.cells().tolist() == [20, 0, 0, 0]
+    assert counts.reference_only == 80
+    assert frame_counts(reference, reference).reference_only == 0
+
+
+def test_reference_only_uses_whole_frames_and_drops_reference_abstentions():
+    reference = Assessment((5, 105), ((10, 20, UNCERTAIN), (90, 100, 3)))
+    counts = frame_counts(reference, Assessment((25, 85)))
+    assert counts.tn == 5
+    assert counts.reference_only == 2  # [20, 30) and [80, 90), partly uncovered

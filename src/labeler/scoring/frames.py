@@ -32,6 +32,19 @@ STATES = tuple(STATE_NAMES)
 OUTSIDE = -1
 
 
+def _whole(value) -> int:
+    """Validate a whole numeric value before converting it to a plain int."""
+    if isinstance(value, (int, np.integer)) and not isinstance(value, (bool, np.bool_)):
+        return int(value)
+    if (
+        isinstance(value, (float, np.floating))
+        and np.isfinite(value)
+        and value == np.floor(value)
+    ):
+        return int(value)
+    raise ValueError(f"value {value!r} is not a whole number")
+
+
 @dataclass(frozen=True)
 class Assessment:
     """A window and its non-overlapping spans `(start, stop, state)`, in ms."""
@@ -40,10 +53,10 @@ class Assessment:
     spans: tuple[tuple[int, int, int], ...] = ()
 
     def __post_init__(self):
-        lo, hi = self.window
+        lo, hi = (_whole(v) for v in self.window)
         if not lo < hi:
             raise ValueError(f"window {lo}-{hi} ms is empty")
-        spans = tuple(sorted(tuple(int(v) for v in span) for span in self.spans))
+        spans = tuple(sorted(tuple(_whole(v) for v in span) for span in self.spans))
         last = lo
         for a, b, state in spans:
             if state not in STATES:
@@ -63,11 +76,21 @@ class Assessment:
 
     @classmethod
     def from_rows(cls, rows) -> Assessment:
-        """From `(t_start, t_end, state)` rows that tile a window, gaps as 0."""
-        rows = [(int(a), int(b), int(s)) for a, b, s in rows]
+        """From nonempty `(t_start, t_end, state)` rows tiling one window."""
+        rows = sorted(tuple(_whole(v) for v in row) for row in rows)
         if not rows:
             raise ValueError("no rows")
-        window = (min(a for a, _, _ in rows), max(b for _, b, _ in rows))
+        previous = None
+        for row in rows:
+            a, b, state = row
+            if not a < b:
+                raise ValueError(f"row {row} is empty or reversed")
+            if state not in STATES:
+                raise ValueError(f"state {state} is not one of {STATES}")
+            if previous is not None and previous[1] != a:
+                raise ValueError(f"rows {previous} and {row} have a gap or overlap")
+            previous = row
+        window = (rows[0][0], rows[-1][1])
         return cls(window, tuple(row for row in rows if row[2] != ABSENT))
 
     def runs(self) -> list[tuple[int, int, int]]:
@@ -120,6 +143,8 @@ class FrameCounts:
     Counted frames are those the reference called present or absent. A method's
     uncertain or not-observable frame counts as not present; how many of the
     counted frames it called each is kept beside the four cells.
+    Reference-only frames were present or absent on the reference's own grid,
+    but the estimate's window did not cover them; they are outside the cells.
     """
 
     tp: int
@@ -129,6 +154,7 @@ class FrameCounts:
     excluded: int
     method_uncertain: int
     method_unobserved: int
+    reference_only: int
 
     def cells(self) -> np.ndarray:
         """`[tp, fp, fn, tn]`, the order `stats` expects."""
@@ -144,6 +170,9 @@ def frame_counts(reference: Assessment, estimate: Assessment) -> FrameCounts:
     counted = both & (ref <= PRESENT)
     truth = ref == PRESENT
     said = est == PRESENT
+    ref_first, ref_n = frame_grid(reference)
+    own_ref = frame_states(reference, ref_first, ref_n)
+    own_est = frame_states(estimate, ref_first, ref_n)
     return FrameCounts(
         tp=int(np.sum(counted & truth & said)),
         fp=int(np.sum(counted & ~truth & said)),
@@ -152,6 +181,7 @@ def frame_counts(reference: Assessment, estimate: Assessment) -> FrameCounts:
         excluded=int(np.sum(both & (ref > PRESENT))),
         method_uncertain=int(np.sum(counted & (est == UNCERTAIN))),
         method_unobserved=int(np.sum(counted & (est == NOT_OBSERVABLE))),
+        reference_only=int(np.sum((own_ref <= PRESENT) & (own_est == OUTSIDE))),
     )
 
 
@@ -163,15 +193,18 @@ def agreement_frames(*reads: Assessment) -> np.ndarray:
     return states[keep].astype(np.int8)
 
 
-def shot_presence(assessment: Assessment) -> int | None:
+def shot_presence(assessment: Assessment, *, method: bool = False) -> int | None:
     """1 if present anywhere; 0 if absent over all observable time; else None.
 
     None means the shot-level answer is not known: something was uncertain and
     nothing present, or the whole window was not observable.
+    With `method=True`, uncertain and not observable count as absent.
     """
     states = {state for _, _, state in assessment.spans}
     if PRESENT in states:
         return 1
+    if method:
+        return 0
     if UNCERTAIN in states:
         return None
     unobserved = sum(b - a for a, b, s in assessment.spans if s == NOT_OBSERVABLE)
