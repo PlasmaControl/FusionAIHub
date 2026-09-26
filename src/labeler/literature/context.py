@@ -14,8 +14,11 @@ A shot number counts when it lies within `REACH` characters of
 
 A number counts only as DIII-D's. The machine a number (a run, a range) belongs
 to is the nearest device name within reach before it, else the nearest after
-it; with no name in reach it is DIII-D. So "NSTX-U discharge 204112" does not
-count: NSTX-U numbered its shots 20xxxx too.
+it; with no name in reach it is the paper's machine. Counts over the whole
+normalised text choose NSTX-U (including NSTX) when it outnumbers DIII-D and
+at least ties LHD, or LHD when it outnumbers both; otherwise it is DIII-D.
+Only NSTX-U and LHD change this default because their shot numbers overlap
+the corpus's 185601-206000 range; the other machines' shot numbers do not.
 
 Text is normalised first: dashes become "-", soft hyphens go, a word broken
 across a line ("dis-\\ncharge") is joined, and runs of whitespace become one space.
@@ -37,6 +40,8 @@ OTHER_DEVICES = re.compile(
     r"\b(?:NSTX(?:-U)?|EAST|KSTAR|JET|ASDEX|AUG|TCV|MAST(?:-U)?|JT-60(?:U|SA)?"
     r"|WEST|LHD|HL-2A|HL-3|C-Mod|TFTR|W7-X|ST40|COMPASS)\b"
 )
+NSTX_U = re.compile(r"\bNSTX(?:-U)?\b")
+LHD = re.compile(r"\bLHD\b")
 
 _DASHES = str.maketrans({c: "-" for c in "‐‑‒–—―−﹣－"} | {"­": None, "＃": "#"})
 _BROKEN_WORD = re.compile(r"([A-Za-z])-[ \t]*\n\s*([a-z])")
@@ -80,9 +85,10 @@ def _reach(text: str):
 
 def _devices(text: str):
     """`other(a, b)`: whether [a, b) belongs to a machine other than DIII-D."""
+    diii_d = [(m.start(), m.end(), False) for m in DIII_D.finditer(text)]
+    paper_other = max(len(NSTX_U.findall(text)), len(LHD.findall(text))) > len(diii_d)
     names = sorted(
-        [(m.start(), m.end(), False) for m in DIII_D.finditer(text)]
-        + [(m.start(), m.end(), True) for m in OTHER_DEVICES.finditer(text)]
+        diii_d + [(m.start(), m.end(), True) for m in OTHER_DEVICES.finditer(text)]
     )  # names never overlap, so ends are sorted too
     starts = [start for start, _, _ in names]
 
@@ -92,7 +98,7 @@ def _devices(text: str):
             return names[i - 1][2]
         if i < len(names) and names[i][0] <= b + REACH:
             return names[i][2]
-        return False
+        return paper_other
 
     return other
 

@@ -95,6 +95,66 @@ def test_another_machines_shot_does_not_count():
     assert len(_found(f"DIII-D shots {run} and NSTX-U")) == 12  # a run is one
 
 
+@pytest.mark.parametrize(
+    "paper, context",
+    [
+        ("NSTX-U NSTX-U DIII-D", "during shot 204100"),
+        ("NSTX NSTX DIII-D", "during shot 204100"),
+        ("NSTX-U NSTX DIII-D", "shots 203648, 203681"),
+        ("NSTX-U NSTX-U DIII-D", "discharges 204098-204101"),
+        ("LHD LHD DIII-D", "In shot 189894, a Li granule"),
+        ("LHD LHD DIII-D", "#186636 no IPD #186638"),
+        ("NSTX-U NSTX LHD LHD DIII-D", "during shot 204100"),
+        ("NSTX-U LHD LHD DIII-D", "In shot 189894, a Li granule"),
+        ("NSTX–U NSTX–U DIII–D", "during shot 204100"),
+    ],
+)
+def test_paper_machine_owns_numbers_far_from_device_names(paper, context):
+    text = paper + ". " + "Plasma behaviour is discussed here. " * 3 + context
+    assert _found(text) == []
+
+
+def test_paper_machine_counts_names_after_the_number_too():
+    text = "during shot 204100. " + "Plasma behaviour is discussed here. " * 3
+    assert _found(text + "NSTX-U NSTX-U DIII-D") == []
+
+
+@pytest.mark.parametrize("machine", ["NSTX-U", "LHD"])
+@pytest.mark.parametrize(
+    "context",
+    ["the DIII-D reference shot 190904", "reference shot 190904 on DIII-D"],
+)
+def test_paper_machine_yields_to_a_device_name_in_reach(machine, context):
+    text = f"{machine} {machine} {machine}. "
+    text += "Plasma behaviour is discussed here. " * 3 + context
+    assert _found(text) == [(190904, "exact")]
+
+
+@pytest.mark.parametrize(
+    "paper",
+    [
+        "DIII-D DIII-D NSTX-U",
+        "DIII-D NSTX-U",
+        "DIII-D LHD",
+        "DIII-D DIII-D NSTX-U NSTX LHD LHD",
+        "DIII-D nstx-u nstx-u lhd lhd",
+        "DIII-D xNSTX-Ux xNSTXx xLHDx xLHDx",
+        "diii - d DIII–D NSTX-U",
+    ],
+)
+def test_paper_default_stays_diii_d_without_a_larger_other_count(paper):
+    text = paper + ". " + "Plasma behaviour is discussed here. " * 3
+    assert _found(text + "discharge #204184") == [(204184, "exact")]
+
+
+@pytest.mark.parametrize("machine", ["KSTAR", "TCV", "JET"])
+def test_paper_default_ignores_machines_with_other_shot_numbering(machine):
+    text = f"{machine} {machine} {machine}. "
+    text += "the DIII-D cases with standard (#198955). "
+    text += "Plasma behaviour is discussed here. " * 3 + "#191366 t = 1774.9 ms"
+    assert _found(text) == [(198955, "exact"), (191366, "exact")]
+
+
 def test_only_the_shots_asked_for():
     assert _found("shots 189600-189603", {189602, 200000}) == [(189602, "range")]
 
