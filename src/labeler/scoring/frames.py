@@ -114,6 +114,32 @@ class Assessment:
                 merged.append((a, b, state))
         return merged
 
+    @classmethod
+    def from_checked(cls, rows, allowed, *, category: str) -> Assessment:
+        """Tiled whole-ms rows inside `allowed`, clipping only D19's final span.
+
+        A reader may shrink the assessed window. Only a disruption's last present
+        row may overrun the allowed end by the checker's timing tolerance.
+        """
+        from ..events.catalog.check import DISRUPTION_TIMING_TOLERANCE_MS
+
+        rows = sorted(tuple(whole_number(v) for v in row) for row in rows)
+        assessed = cls.from_rows(rows)
+        lo, hi = cls(tuple(allowed)).window
+        a, b = assessed.window
+        if a < lo or a >= hi:
+            raise ValueError("assessed start is outside the allowed window")
+        if b > hi:
+            if category != "disruption" or b > hi + DISRUPTION_TIMING_TOLERANCE_MS:
+                raise ValueError("assessed end is outside the allowed window")
+            overrun = [row for row in rows if row[1] > hi]
+            if len(overrun) != 1 or overrun[0][2] != PRESENT:
+                raise ValueError("only the last present span may overrun allowed end")
+        return cls(
+            (a, min(b, hi)),
+            tuple((a, min(b, hi), s) for a, b, s in assessed.spans if a < hi),
+        )
+
 
 def frame_grid(*assessments: Assessment) -> tuple[int, int]:
     """The first frame index and the number of frames every window covers."""

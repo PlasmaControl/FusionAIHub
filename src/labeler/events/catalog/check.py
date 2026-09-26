@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 
 from ...config import Paths
+from ...scoring.frames import whole_number
 from ..databases import DatabaseError
 from ..interval_tables import ATTRS_COLUMN, parse_attrs, validate_intervals
 from .points import POINT_COLUMNS, read_points, validate_csv_fields, validate_points
@@ -336,6 +337,19 @@ def check_table(
         if points_frame is not None:
             found += points(points_frame, None, category, beside)
         return found
+    for row, values in enumerate(labels.itertuples()):
+        for column in ("t_start", "t_end"):
+            try:
+                whole_number(getattr(values, column))
+            except ValueError:
+                found.append(
+                    Finding(
+                        "whole_ms",
+                        where,
+                        int(values.shot),
+                        f"row {row}: {column} must be whole ms",
+                    )
+                )
     found += tiling(labels, where) + states(labels, where, category=category)
     found += attrs(labels, category, where)
     if allowed is not None:

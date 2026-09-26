@@ -57,13 +57,13 @@ class Matching:
     """Pairs and unmatched/excluded indices into the recorded times, in ms."""
 
     pairs: np.ndarray  # (k, 2): reference index, estimate index
-    unmatched_reference: np.ndarray
-    unmatched_estimate: np.ndarray
+    unmatched_reference: np.ndarray  # indices into reference
+    unmatched_estimate: np.ndarray  # indices into estimate
     offsets: np.ndarray  # |reference - estimate| of each pair, ms
     reference: np.ndarray
     estimate: np.ndarray
-    excluded_reference: np.ndarray
-    excluded_estimate: np.ndarray
+    excluded_reference: np.ndarray  # indices into reference
+    excluded_estimate: np.ndarray  # indices into estimate
 
 
 def match(reference, estimate, tolerance_ms: float) -> Matching:
@@ -75,6 +75,9 @@ def match(reference, estimate, tolerance_ms: float) -> Matching:
     This nearest-first rule (spec section 7.1) is not maximum-cardinality:
     references [0, 10] and estimates [6, 14] at tolerance 6 give one pair,
     although two pairs are possible.
+    D21 found one pair fewer than optimum in 63 of 4,000 small random cases,
+    losing about 1.9% of true positives for near-periodic 1 kHz ELM trains and
+    about 3% for random (Poisson) 500 Hz trains.
     """
     _timing_option(tolerance_ms, "tolerance_ms")
     ref = _times(reference)
@@ -168,7 +171,9 @@ def event_cells(matching: Matching) -> np.ndarray:
 def within(times, window, *, end_slack_ms: float = 0.0) -> np.ndarray:
     """Times in `[start, stop)`, plus `[stop, stop + end_slack_ms]` if positive.
 
-    A disruption's t_D, t80 and t20 take D19's 2 ms end slack:
+    `window` is the allowed window, never an assessment's; use `points_within`
+    to retain the assessed extent and apply D19 exactly once.
+    A disruption's t_D, t80 and t20 take D19's end slack:
     `labeler.events.catalog.check.DISRUPTION_TIMING_TOLERANCE_MS`.
     """
     _timing_option(end_slack_ms, "end_slack_ms")
@@ -177,3 +182,19 @@ def within(times, window, *, end_slack_ms: float = 0.0) -> np.ndarray:
     if end_slack_ms > 0:
         before_end |= times <= window[1] + end_slack_ms
     return times[(times >= window[0]) & before_end]
+
+
+def points_within(times, window, allowed, *, category: str) -> np.ndarray:
+    """Fractional points in the assessed window, with D19 at the allowed end."""
+    from ..events.catalog.check import DISRUPTION_TIMING_TOLERANCE_MS
+
+    lo, hi = Assessment(tuple(window)).window
+    allowed_lo, allowed_hi = Assessment(tuple(allowed)).window
+    if lo < allowed_lo or hi > allowed_hi:
+        raise ValueError("assessed window must lie inside the allowed window")
+    slack = (
+        DISRUPTION_TIMING_TOLERANCE_MS
+        if category == "disruption" and hi == allowed_hi
+        else 0
+    )
+    return within(times, (lo, hi), end_slack_ms=slack)

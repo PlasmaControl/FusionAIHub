@@ -169,6 +169,8 @@ It exits 1 on any finding and 2 on bad arguments.
 - Each shot's rows have positive length and tile their labelled window without
   gaps or overlaps. States are 0 absent, 1 present, 2 uncertain or 3 not observable;
   NTM and disruption cannot use state 3. Unlabelled time remains unassessed.
+- Label boundaries are whole milliseconds; writers use half-up `whole_ms`.
+  Point times retain the signal's fractional millisecond resolution.
 - Attributes use only the keys, types, allowed words and bounds in the table
   above. Attributes remain optional; numeric values are finite and booleans are
   distinct from numbers. Units describe the recorded quantities.
