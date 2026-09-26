@@ -423,9 +423,7 @@ def test_toksearch_in_the_parent_refuses_a_worker_pool(tmp_path, monkeypatch, mo
 
 def test_a_gap_of_exactly_ten_ms_is_bridged():
     t = np.arange(0.0, 3000.0, 0.5)
-    clean = 1e6 * np.minimum(
-        np.clip(t / 500, 0, 1), np.clip((2500 - t) / 500, 0, 1)
-    )
+    clean = 1e6 * np.minimum(np.clip(t / 500, 0, 1), np.clip((2500 - t) / 500, 0, 1))
     for end, want in [(110.0, (25, 2475)), (110.5, (111, 2475))]:
         ip = clean.copy()
         ip[(t > 100) & (t < end)] = 0
@@ -437,8 +435,11 @@ def test_import_does_not_load_torch_or_toksearch():
         [
             sys.executable,
             "-c",
-            "import sys; import labeler.events.catalog.window; "
-            "assert not {'torch', 'toksearch', 'toksearch_d3d'} & sys.modules.keys()",
+            (
+                "import sys; import labeler.events.catalog.window; "
+                "assert not {'torch', 'toksearch', 'toksearch_d3d'} "
+                "& sys.modules.keys()"
+            ),
         ],
         capture_output=True,
         text=True,
