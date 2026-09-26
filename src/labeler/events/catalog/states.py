@@ -10,6 +10,8 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from ..heuristics import N_ECE_CHANNELS
+
 ABSENT, PRESENT, UNCERTAIN, NOT_OBSERVABLE = 0, 1, 2, 3
 STATE_NAMES = {
     ABSENT: "absent",
@@ -24,7 +26,8 @@ class Phenomenon:
     """A catalog phenomenon: its category directory, attributes and point kinds.
 
     An attribute allows a type (`int`, `float`, `bool`, `str`) or a set of words.
-    `lower_bounds` maps numeric attributes to `(minimum, inclusive)`.
+    `lower_bounds` and `upper_bounds` map numeric attributes to `(bound, inclusive)`.
+    `units` gives the physical unit where one applies.
     """
 
     category: str
@@ -33,6 +36,8 @@ class Phenomenon:
     points: tuple[str, ...] = ()
     lower_bounds: Mapping[str, tuple[float, bool]] = field(default_factory=dict)
     observable_always: bool = False
+    upper_bounds: Mapping[str, tuple[float, bool]] = field(default_factory=dict)
+    units: Mapping[str, str] = field(default_factory=dict)
 
 
 def _words(*words: str) -> frozenset:
@@ -78,6 +83,7 @@ PHENOMENA = {
             {"frequency_hz": float},
             points=("elm",),
             lower_bounds={"frequency_hz": (0, False)},
+            units={"frequency_hz": "Hz"},
         ),
         Phenomenon(
             "sawtooth_oscillation",
@@ -89,6 +95,8 @@ PHENOMENA = {
                 "inversion_channel": (1, True),
                 "inversion_radius_m": (0, False),
             },
+            upper_bounds={"inversion_channel": (N_ECE_CHANNELS, True)},
+            units={"period_ms": "ms", "inversion_radius_m": "m"},
         ),
         Phenomenon(
             "disruption",
@@ -112,12 +120,19 @@ def attr_problems(category: str, attrs: Mapping) -> list[str]:
             problems.append(f"{key!r} is not an attribute of {category}")
         elif not _fits(value, rule):
             problems.append(f"{key}={value!r} is not {_describe(rule)}")
-        elif key in phenomenon.lower_bounds:
-            minimum, inclusive = phenomenon.lower_bounds[key]
-            if inclusive and value < minimum:
-                problems.append(f"{key}={value!r} is below {minimum:g}")
-            elif not inclusive and value <= minimum:
-                problems.append(f"{key}={value!r} must be above {minimum:g}")
+        else:
+            if key in phenomenon.lower_bounds:
+                minimum, inclusive = phenomenon.lower_bounds[key]
+                if inclusive and value < minimum:
+                    problems.append(f"{key}={value!r} is below {minimum:g}")
+                elif not inclusive and value <= minimum:
+                    problems.append(f"{key}={value!r} must be above {minimum:g}")
+            if key in phenomenon.upper_bounds:
+                maximum, inclusive = phenomenon.upper_bounds[key]
+                if inclusive and value > maximum:
+                    problems.append(f"{key}={value!r} is above {maximum:g}")
+                elif not inclusive and value >= maximum:
+                    problems.append(f"{key}={value!r} must be below {maximum:g}")
     return problems
 
 

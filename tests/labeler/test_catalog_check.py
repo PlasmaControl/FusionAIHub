@@ -808,6 +808,7 @@ def test_disruption_missing_t_d_does_not_hide_a_span_mismatch():
         ("edge_localized_mode", "frequency_hz", 0, 0.01),
         ("sawtooth_oscillation", "period_ms", 0, 0.01),
         ("sawtooth_oscillation", "inversion_channel", 0, 1),
+        ("sawtooth_oscillation", "inversion_channel", 49, 48),
         ("sawtooth_oscillation", "inversion_radius_m", 0, 0.01),
     ],
 )

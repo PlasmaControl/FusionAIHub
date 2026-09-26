@@ -5,13 +5,15 @@ every problem at once, and `require` turns a non-empty list into an error.
 
 - `tiling`: each shot's rows, in time order, tile its window: no gap, no overlap,
   no row without length;
-- `states`: every state is 0-3;
+- `states`: every state is 0-3; NTM and disruption are never not observable;
 - `attrs`: attribute keys and values are the phenomenon's;
 - `windows`: each shot's window lies inside its allowed window (the default
   assessed window from Ip); shots with no allowed window are not catalog shots
-  (the AE180 relabels) and are left alone;
+  (the AE180 relabels) and are left alone; D19 allows only a final disruption's
+  present span to end up to 2 ms past the allowed window end;
 - `points`: the points table is well formed, each point's attrs are checked,
-  and each point lies inside its shot's assessed window `[start, end)`;
+  and each point lies inside its shot's assessed window `[start, end)`, with
+  D19's exception for disruption points at the allowed window end;
   a disruption's t_D, t80 and t20 agree with each other and its present span.
 
 `python -m labeler.events.catalog.check` runs them over every labels and points
