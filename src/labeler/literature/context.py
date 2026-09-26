@@ -12,6 +12,10 @@ A shot number counts when it lies within `REACH` characters of
   spans at most `RANGE_CAP` shots; a wider one is not expanded. Its written
   ends are `exact`.
 
+Numbers immediately after "%" are URL encoding, not shot tokens or range starts.
+Numbers after a Physical Review journal name and volume are article numbers,
+not shot tokens or range starts.
+
 A number counts only as DIII-D's. The machine a number (a run, a range) belongs
 to is the nearest device name within reach before it, else the nearest after
 it; with no name in reach it is the paper's machine. Counts over the whole
@@ -45,12 +49,17 @@ LHD = re.compile(r"\bLHD\b")
 
 _DASHES = str.maketrans({c: "-" for c in "‐‑‒–—―−﹣－"} | {"­": None, "＃": "#"})
 _BROKEN_WORD = re.compile(r"([A-Za-z])-[ \t]*\n\s*([a-z])")
-_TOKEN = re.compile(r"(?<![\d.])\d{6}(?!\d|\.\d)")
+_TOKEN = re.compile(r"(?<![\d.%])\d{6}(?!\d|\.\d)")
 _RUN_GAP = re.compile(r"\s*(?:(?:[,;/&]|and|or)\s*)*", re.IGNORECASE)
 _RANGE = re.compile(
-    r"(?<![\d.])(?P<lo>\d{6})\s*(?P<sep>-|to|through|thru)\s*"
+    r"(?<![\d.%])(?P<lo>\d{6})\s*(?P<sep>-|to|through|thru)\s*"
     r"(?P<tail>\d{2,6})(?!\d|\.\d)",
     re.IGNORECASE,
+)
+_PHYSICAL_REVIEW = re.compile(
+    r"\b(?:Phys\.|Physical)\s*(?:Rev\.|Review)\s*"
+    r"(?:(?:Lett\.|Letters|[A-EX]\.?|Research|Applied|Fluids|Accel\.\s*Beams)\s*)?"
+    r"\d{1,4}\s*,?\s*$"
 )
 
 
@@ -106,6 +115,8 @@ def _devices(text: str):
 def _runs(text: str) -> list[list[re.Match]]:
     runs: list[list[re.Match]] = []
     for m in _TOKEN.finditer(text):
+        if _PHYSICAL_REVIEW.search(text, 0, m.start()):
+            continue
         if runs and _RUN_GAP.fullmatch(text[runs[-1][-1].end() : m.start()]):
             runs[-1].append(m)
         else:
@@ -149,6 +160,8 @@ def mentions(text: str, shots: Collection[int] | None = None) -> list[Mention]:
                 if keep(int(m.group()))
             ]
     for m in _RANGE.finditer(text):
+        if _PHYSICAL_REVIEW.search(text, 0, m.start()):
+            continue
         inside = _range(m)
         if inside is not None and near(*m.span()) and not other(*m.span()):
             found += [mention(s, "range", *m.span()) for s in inside if keep(s)]
