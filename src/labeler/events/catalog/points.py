@@ -43,12 +43,12 @@ def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
         kinds = PHENOMENA[row.phenomenon].points if row.phenomenon in PHENOMENA else ()
         if row.kind not in kinds:
             raise DatabaseError(f"{row.phenomenon} has no point kind {row.kind!r}")
-    result["t_ms"] = pd.to_numeric(result.t_ms, errors="coerce")
+    result["t_ms"] = pd.to_numeric(result.t_ms, errors="coerce").astype("float64")
     if not np.isfinite(result.t_ms).all():
         raise DatabaseError("t_ms must be a finite number")
     result["attrs"] = result["attrs"].map(attrs_text)
-    lo = pd.to_numeric(result.window_start_ms, errors="coerce")
-    hi = pd.to_numeric(result.window_end_ms, errors="coerce")
+    lo = pd.to_numeric(result.window_start_ms, errors="coerce").astype("float64")
+    hi = pd.to_numeric(result.window_end_ms, errors="coerce").astype("float64")
     if (lo.isna() != hi.isna()).any():
         raise DatabaseError("window_start_ms and window_end_ms are set together")
     checked = lo.notna()
@@ -65,7 +65,7 @@ def read_points(path) -> pd.DataFrame:
     """A points table; a missing file is an empty one."""
     path = Path(path)
     if not path.is_file():
-        return pd.DataFrame(columns=list(POINT_COLUMNS))
+        return validate_points(pd.DataFrame(columns=list(POINT_COLUMNS)))
     blank = {column: [""] for column in WINDOW_COLUMNS}
     frame = pd.read_csv(
         path, dtype={"attrs": str}, keep_default_na=False, na_values=blank
