@@ -1,0 +1,454 @@
+"""OSTI: probe hits, full texts at one request a second, and the links they give.
+
+The probe (`$LABELER_ROOT/literature/osti/osti_probe.py`) asked OSTI's full-text
+search for `"<shot>" AND "DIII-D"`, one corpus shot at a time. Each line of its
+output is `{"shot", "n", "records": [{osti_id, doi, title, date, journal,
+type}]}`, or `{"shot", "error"}`.
+
+- `fetch` downloads the full text of each record not dated before `FIRST_YEAR`
+  (no earlier paper can name a shot in range) from its OSTI purl into
+  `<cache>/fulltext/<osti_id>.pdf`, one request at a time and at least
+  `MIN_INTERVAL_S` apart, and extracts the text with pypdf into `<osti_id>.txt`
+  (pages separated by form feeds). Every attempt is a line of
+  `<cache>/fulltext/fetched.jsonl`; a rerun skips records whose last attempt
+  ended in a `FINAL` status.
+- `links` scans every extracted text for every corpus shot in the catalog's
+  range and writes `<cache>/links.csv` (each probe hit and each mention, with
+  its verdict) and `<cache>/papers.csv` (the verified links, release schema).
+  A text with no printable character (a scanned PDF) counts as none, and a
+  paper dated before its shot's year cannot name it: that pair is `predates`.
+  The shots' years come from the population's `pool.csv` (`year_starts`).
+
+Copying `papers.csv` into `data/events/catalog/` is the owner's call.
+
+    pixi run -e labelmaker python -m labeler.literature.osti fetch
+    pixi run -e labelmaker python -m labeler.literature.osti links
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import logging
+import time
+import urllib.error
+import urllib.request
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+import pandas as pd
+
+from ..catalog import corpus_shots
+from ..config import Paths, atomic_path
+from ..events.catalog.check import CatalogError
+from ..events.catalog.population import read_pool
+from .papers import Record, links, papers_frame, write_papers
+
+FIRST_SHOT, LAST_SHOT = 185_601, 204_999  # the FAITH corpus range
+FIRST_YEAR = 2021  # the year of FIRST_SHOT, the corpus' first campaign
+PURL = "https://www.osti.gov/servlets/purl/{}"
+USER_AGENT = "FusionAIHub-literature/0.1 (research; one request at a time)"
+MIN_INTERVAL_S = 1.0
+TIMEOUT_S = 120
+FINAL = ("ok", "not_pdf", "missing", "unreadable")
+LINK_COLUMNS = (
+    "shot",
+    "record_id",
+    "in_probe",
+    "verdict",
+    "paper_year",
+    "shot_year",
+    "match_type",
+    "context",
+)
+
+
+@dataclass(frozen=True)
+class Hits:
+    """What the probe found for the shots in range."""
+
+    records: dict[str, Record]  # osti_id -> the paper
+    by_shot: dict[int, tuple[str, ...]]  # shot -> the osti_ids its query returned
+    truncated: tuple[int, ...]  # shots whose query matched more than it returned
+    failed: tuple[int, ...]  # shots whose query never answered
+
+
+def _record(raw: dict) -> Record:
+    date = raw.get("date") or ""
+    return Record(
+        source="osti",
+        record_id=str(raw["osti_id"]),
+        doi=raw.get("doi") or "",
+        title=" ".join((raw.get("title") or "").split()),
+        year=int(date[:4]) if date[:4].isdigit() else None,
+        venue=raw.get("journal") or raw.get("type") or "",
+    )
+
+
+def read_hits(
+    paths: Iterable[Path], first: int = FIRST_SHOT, last: int = LAST_SHOT
+) -> Hits:
+    records, by_shot, truncated, failed = {}, {}, [], []
+    for path in paths:
+        for line in Path(path).read_text().splitlines():
+            row = json.loads(line)
+            shot = int(row["shot"])
+            if not first <= shot <= last:
+                continue
+            if "error" in row:
+                failed.append(shot)
+                continue
+            found = [_record(r) for r in row.get("records", [])]
+            records.update((r.record_id, r) for r in found)
+            by_shot[shot] = tuple(r.record_id for r in found)
+            if row.get("n", 0) > len(found):
+                truncated.append(shot)
+    answered = set(by_shot)
+    return Hits(
+        records,
+        by_shot,
+        tuple(sorted(truncated)),
+        tuple(sorted(set(failed) - answered)),
+    )
+
+
+def to_fetch(hits: Hits, first_year: int = FIRST_YEAR) -> list[str]:
+    """The records worth a full text: those not dated before `first_year`.
+
+    An undated record is fetched: nothing shows that it predates the corpus.
+    """
+    kept = (r for r in hits.records.values() if r.year is None or r.year >= first_year)
+    return [r.record_id for r in kept]
+
+
+@dataclass(frozen=True)
+class Response:
+    status: int | None  # HTTP status; None if no answer came
+    content_type: str = ""
+    body: bytes = b""
+    url: str = ""
+    error: str = ""
+
+
+class Fetcher:
+    """GETs one URL at a time, starting each at least `min_interval` s after the last.
+
+    Transient failures (no answer, 429, 5xx) are retried with a doubling wait.
+    """
+
+    def __init__(
+        self,
+        *,
+        opener: Callable = urllib.request.urlopen,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+        min_interval: float = MIN_INTERVAL_S,
+        tries: int = 3,
+        backoff_s: float = 5.0,
+    ):
+        self.opener, self.sleep, self.clock = opener, sleep, clock
+        self.min_interval, self.tries, self.backoff_s = min_interval, tries, backoff_s
+        self._last: float | None = None
+
+    def _wait(self) -> None:
+        if self._last is not None:
+            gap = self.min_interval - (self.clock() - self._last)
+            if gap > 0:
+                self.sleep(gap)
+        self._last = self.clock()
+
+    def get(self, url: str) -> Response:
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/pdf"}
+        error = ""
+        for attempt in range(self.tries):
+            self._wait()
+            try:
+                request = urllib.request.Request(url, headers=headers)
+                with self.opener(request, timeout=TIMEOUT_S) as r:
+                    kind = r.headers.get("Content-Type", "")
+                    return Response(r.status, kind, r.read(), r.geturl())
+            except urllib.error.HTTPError as e:
+                if e.code != 429 and e.code < 500:
+                    return Response(e.code, url=url, error=str(e))
+                error = str(e)
+            except (urllib.error.URLError, TimeoutError, OSError) as e:
+                error = str(e)
+            if attempt < self.tries - 1:
+                self.sleep(self.backoff_s * 2**attempt)
+        return Response(None, url=url, error=error)
+
+
+def extract_text(pdf: Path) -> tuple[str, int, int]:
+    """(text, pages, pages that failed); raises if the file is not a readable PDF."""
+    from pypdf import PdfReader  # only fetching needs pypdf
+
+    reader = PdfReader(pdf)
+    pages, failed = [], 0
+    for page in reader.pages:
+        try:
+            pages.append(page.extract_text() or "")
+        except Exception:  # noqa: BLE001 - one broken page must not lose the rest
+            pages.append("")
+            failed += 1
+    return "\f".join(pages), len(pages), failed
+
+
+def fetch_record(fetcher: Fetcher, osti_id: str, folder: Path) -> dict:
+    """Fetch one record's full text into `folder`; return its log line."""
+    response = fetcher.get(PURL.format(osti_id))
+    line = {
+        "osti_id": osti_id,
+        "http_status": response.status,
+        "content_type": response.content_type,
+        "url": response.url,
+        "n_bytes": len(response.body),
+        "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "error": response.error,
+    }
+    if response.status != 200:
+        status = "missing" if response.status in (404, 410) else "error"
+        return {**line, "status": status}
+    if not response.body.startswith(b"%PDF"):
+        return {**line, "status": "not_pdf"}
+    pdf = folder / f"{osti_id}.pdf"
+    with atomic_path(pdf) as tmp:
+        tmp.write_bytes(response.body)
+    line["sha256"] = hashlib.sha256(response.body).hexdigest()
+    try:
+        text, n_pages, failed = extract_text(pdf)
+    except Exception as exc:  # noqa: BLE001 - pypdf raises many kinds on a bad file
+        return {**line, "status": "unreadable", "error": f"{type(exc).__name__}: {exc}"}
+    with atomic_path(folder / f"{osti_id}.txt") as tmp:
+        tmp.write_text(text)
+    n_chars = len("".join(text.split()))  # 0 for a scanned or image-only PDF
+    return {
+        **line,
+        "status": "ok",
+        "n_pages": n_pages,
+        "failed_pages": failed,
+        "n_chars": n_chars,
+    }
+
+
+def fetch_log(folder: Path) -> dict[str, dict]:
+    """The last logged attempt per record."""
+    log = folder / "fetched.jsonl"
+    if not log.is_file():
+        return {}
+    last = {}
+    for line in log.read_text().splitlines():
+        if line.strip():
+            row = json.loads(line)
+            last[row["osti_id"]] = row
+    return last
+
+
+def fetch_all(
+    osti_ids: Iterable[str], folder: Path, fetcher: Fetcher, *, limit: int | None = None
+) -> Counter:
+    """Fetch every record not yet final; one log line per attempt."""
+    folder.mkdir(parents=True, exist_ok=True)
+    done = {k for k, row in fetch_log(folder).items() if row["status"] in FINAL}
+    todo = [k for k in sorted(set(osti_ids), key=int) if k not in done][:limit]
+    counts = Counter()
+    with (folder / "fetched.jsonl").open("a") as log:
+        for i, osti_id in enumerate(todo, 1):
+            line = fetch_record(fetcher, osti_id, folder)
+            log.write(json.dumps(line) + "\n")
+            log.flush()
+            counts[line["status"]] += 1
+            if i % 50 == 0 or i == len(todo):
+                print(f"{i}/{len(todo)} {dict(counts)}", flush=True)
+    return counts
+
+
+def year_starts(pool: pd.DataFrame) -> dict[int, int]:
+    """Each year's first shot, from the pool shots whose run id is their own.
+
+    A shot's year is its run id's (`pool.csv`, from its text bundle). A bundle that
+    fell back to its session's block (`session_fallback`) can hold another run's
+    id, so only the other shots date the calendar. Shot numbers only grow, so their
+    years must too: a shot dated before an earlier one is a `CatalogError`.
+    """
+    fallback = pool.reasons.str.contains("session_fallback", regex=False)
+    own = pool[pool.year.notna() & ~fallback].sort_values("shot", ignore_index=True)
+    years = own.year.astype("int64")
+    back = own.index[years.diff() < 0]
+    if len(back):
+        i = back[0]
+        raise CatalogError(
+            f"shot {own.shot[i]} is dated {years[i]}, after shot {own.shot[i - 1]}"
+            f" was dated {years[i - 1]}"
+        )
+    return {int(y): int(s) for y, s in own.groupby(years).shot.min().items()}
+
+
+def shot_year(shot: int, starts: Mapping[int, int]) -> int | None:
+    """The year `shot` was run, at the earliest: the last year starting at or before it.
+
+    A shot between one year's last dated shot and the next year's first gets the
+    earlier year, so no link is dropped for a year its shot may not have had.
+    """
+    years = [year for year, first in starts.items() if first <= shot]
+    return max(years) if years else None
+
+
+def build_links(
+    hits: Hits,
+    texts: Mapping[str, str],
+    shots: Iterable[int],
+    years: Mapping[int, int | None],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(audit, papers): every probe hit and mention with its verdict; the verified.
+
+    A pair whose paper is dated before its shot's year (`years`) is `predates`: the
+    paper cannot name that shot, whatever its text says. Otherwise a mention in
+    context is `verified`, and a probe hit without one is `no_context`, or
+    `no_text` if its record has no text. A mention the probe did not return (a
+    range, or a shot OSTI's index missed) is verified all the same.
+    """
+    shots = frozenset(shots)
+    mentioned = []
+    for record_id in sorted(set(texts) & set(hits.records), key=int):
+        mentioned += links(hits.records[record_id], texts[record_id], shots)
+    probe = {(s, r) for s, ids in hits.by_shot.items() if s in shots for r in ids}
+    found = {(row["shot"], row["record_id"]) for row in mentioned}
+
+    def predates(shot: int, record_id: str) -> bool:
+        paper, run = hits.records[record_id].year, years.get(shot)
+        return paper is not None and run is not None and paper < run
+
+    def row(shot, record_id, verdict, match_type="", context="") -> dict:
+        return {
+            "shot": shot,
+            "record_id": record_id,
+            "in_probe": (shot, record_id) in probe,
+            "verdict": "predates" if predates(shot, record_id) else verdict,
+            "paper_year": hits.records[record_id].year,
+            "shot_year": years.get(shot),
+            "match_type": match_type,
+            "context": context,
+        }
+
+    audit = [
+        row(m["shot"], m["record_id"], "verified", m["match_type"], m["context"])
+        for m in mentioned
+    ]
+    audit += [
+        row(s, r, "no_context" if r in texts else "no_text")
+        for s, r in sorted(probe - found, key=lambda sr: (sr[0], int(sr[1])))
+    ]
+    audit = (
+        pd.DataFrame(audit, columns=list(LINK_COLUMNS))
+        .astype({"paper_year": "Int64", "shot_year": "Int64"})
+        .sort_values(["shot", "record_id"], kind="stable", ignore_index=True)
+    )
+    verified = [m for m in mentioned if not predates(m["shot"], m["record_id"])]
+    return audit, papers_frame(verified)
+
+
+def _texts(folder: Path) -> tuple[dict[str, str], list[str]]:
+    """(texts, empty): each fetched record's text, and those with no printable text.
+
+    An empty text (a scanned or image-only PDF) is no text: its hits are `no_text`.
+    """
+    texts, empty = {}, []
+    for k, row in fetch_log(folder).items():
+        path = folder / f"{k}.txt"
+        if row["status"] == "ok" and path.is_file():
+            text = path.read_text()
+            if text.strip():
+                texts[k] = text
+            else:
+                empty.append(k)
+    return texts, empty
+
+
+def _summary(
+    hits: Hits,
+    audit: pd.DataFrame,
+    papers: pd.DataFrame,
+    *,
+    starts: Mapping[int, int],
+    empty_texts: int,
+) -> dict:
+    probe = audit[audit.in_probe]
+    exact = papers[papers.match_type == "exact"]
+    verified = audit.verdict.eq("verified")
+    return {
+        "hit_shots": len([s for s, ids in hits.by_shot.items() if ids]),
+        "hit_links": len(probe),
+        "verdicts": probe.verdict.value_counts().to_dict(),
+        "verified_shots": int(papers.shot.nunique()),
+        "verified_shots_exact": int(exact.shot.nunique()),
+        "verified_links_not_in_probe": int((~audit.in_probe & verified).sum()),
+        "predates_links": int(audit.verdict.eq("predates").sum()),
+        "empty_texts": empty_texts,
+        "year_starts": dict(sorted(starts.items())),
+        "truncated_shots": list(hits.truncated),
+        "failed_queries": list(hits.failed),
+    }
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m labeler.literature.osti")
+    parser.add_argument("command", choices=("fetch", "links"))
+    parser.add_argument(
+        "--cache", type=Path, help="default: $LABELER_ROOT/literature/osti"
+    )
+    parser.add_argument("--hits", type=Path, nargs="+", help="probe output files")
+    parser.add_argument("--limit", type=int, help="fetch: at most this many records")
+    parser.add_argument(
+        "--pool", type=Path, help="links: default $LABELER_ROOT/catalog/pool.csv"
+    )
+    args = parser.parse_args(argv)
+    paths = Paths.from_env()
+    cache = args.cache or paths.literature / "osti"
+    hit_files = args.hits or sorted(cache.glob("osti_phase*.jsonl"))
+    if not hit_files:
+        parser.error(f"no probe output under {cache}")
+    hits = read_hits(hit_files)
+    folder = cache / "fulltext"
+    if args.command == "fetch":
+        # pypdf warns of each broken cross-reference it recovers from; the log
+        # line's page and character counts are what matter.
+        logging.getLogger("pypdf").setLevel(logging.ERROR)
+        wanted = to_fetch(hits)
+        counts = fetch_all(wanted, folder, Fetcher(), limit=args.limit)
+        print(
+            json.dumps(
+                {
+                    "fetched": dict(counts),
+                    "records": len(hits.records),
+                    f"dated_before_{FIRST_YEAR}": len(hits.records) - len(wanted),
+                }
+            )
+        )
+        return 0
+    pool = args.pool or paths.catalog / "pool.csv"
+    if not pool.is_file():
+        parser.error(f"no {pool}: links date the shots from the population's pool")
+    starts = year_starts(read_pool(pool))
+    if not starts or min(starts) < FIRST_YEAR:
+        raise CatalogError(
+            f"{pool} dates shots from {min(starts, default=None)}: the fetch skipped"
+            f" every paper dated before {FIRST_YEAR}"
+        )
+    shots = [s for s in corpus_shots(paths) if FIRST_SHOT <= s <= LAST_SHOT]
+    texts, empty = _texts(folder)
+    years = {s: shot_year(s, starts) for s in shots}
+    audit, papers = build_links(hits, texts, shots, years)
+    with atomic_path(cache / "links.csv") as tmp:
+        audit.to_csv(tmp, index=False)
+    write_papers(papers, cache / "papers.csv")
+    summary = _summary(hits, audit, papers, starts=starts, empty_texts=len(empty))
+    print(json.dumps(summary, indent=1))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
