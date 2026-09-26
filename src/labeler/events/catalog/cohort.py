@@ -276,21 +276,33 @@ def check_cohort(cohort: pd.DataFrame, cells: Mapping[str, int]) -> list[Finding
 
 
 def read_cohort(path) -> pd.DataFrame:
+    """Read the cohort with exact floats and strictly spelled booleans."""
+    return _read_table(path, COHORT_COLUMNS, "blind")
+
+
+def read_population(path) -> pd.DataFrame:
+    """Read the frozen sampling frame with the same precision as the cohort."""
+    return _read_table(path, POPULATION_COLUMNS, "in_cohort")
+
+
+def _read_table(path, columns, boolean) -> pd.DataFrame:
+    strings = ("run_id", "legacy_sets", "split", "group", "cell", boolean)
     frame = pd.read_csv(
         path,
-        dtype={"run_id": str, "legacy_sets": str},
+        dtype={c: str for c in strings},
+        float_precision="round_trip",
         keep_default_na=False,
-        na_values={
-            c: [""]
-            for c in COHORT_COLUMNS
-            if c not in ("run_id", "legacy_sets", "split", "group", "cell")
-        },
+        na_values={c: [""] for c in columns if c not in strings},
     )
-    if tuple(frame.columns) != COHORT_COLUMNS:
-        raise CatalogError(f"{path}: expected the columns {COHORT_COLUMNS}")
-    return frame.astype(
-        {"window_start_ms": "Int64", "window_end_ms": "Int64", "blind": bool}
-    )
+    if tuple(frame.columns) != columns:
+        raise CatalogError(f"{path}: expected the columns {columns}")
+    for row, value in enumerate(frame[boolean], 2):
+        if value not in ("True", "False"):
+            raise CatalogError(
+                f"{path}: row {row}: {boolean} {value!r}, expected True or False"
+            )
+    frame[boolean] = frame[boolean].eq("True")
+    return frame.astype({"window_start_ms": "Int64", "window_end_ms": "Int64"})
 
 
 def _input(path: Path, root: Path | None = None) -> dict:

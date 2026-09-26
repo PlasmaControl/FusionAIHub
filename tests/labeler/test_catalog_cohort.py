@@ -64,6 +64,61 @@ def _paper(shot, source="osti", record_id="1"):
     }
 
 
+def _tables():
+    population = _population()
+    population["flattop_s"] = 1.2345678901234567
+    drawn, _ = cohort.draw(population)
+    population["in_cohort"] = population["shot"].isin(drawn["shot"])
+    return drawn, population[list(cohort.POPULATION_COLUMNS)]
+
+
+@pytest.mark.parametrize("name", ["cohort", "population"])
+def test_tables_read_back_every_column_exactly(tmp_path, name):
+    drawn, population = _tables()
+    expected = {"cohort": drawn, "population": population}[name].astype(
+        {"year": "int64", "window_start_ms": "Int64", "window_end_ms": "Int64"}
+    )
+    path = tmp_path / f"{name}.csv"
+    expected.to_csv(path, index=False)
+    got = getattr(cohort, f"read_{name}")(path)
+    pd.testing.assert_frame_equal(got, expected, check_exact=True)
+
+
+@pytest.mark.parametrize(
+    "name, column", [("cohort", "blind"), ("population", "in_cohort")]
+)
+@pytest.mark.parametrize("value", ["", "Ture", "true", "1", " False"])
+def test_table_booleans_are_strict(tmp_path, name, column, value):
+    drawn, population = _tables()
+    frame = {"cohort": drawn, "population": population}[name].copy()
+    frame[column] = frame[column].astype(object)
+    frame.loc[0, column] = value
+    path = tmp_path / f"{name}.csv"
+    frame.to_csv(path, index=False)
+    with pytest.raises(CatalogError) as error:
+        getattr(cohort, f"read_{name}")(path)
+    assert str(path) in str(error.value)
+    assert "row 2" in str(error.value)
+    assert column in str(error.value) and repr(value) in str(error.value)
+
+
+@pytest.mark.parametrize("name", ["cohort", "population"])
+@pytest.mark.parametrize("change", ["missing", "extra", "reordered"])
+def test_table_columns_are_exact(tmp_path, name, change):
+    drawn, population = _tables()
+    frame = {"cohort": drawn, "population": population}[name]
+    if change == "missing":
+        frame = frame.drop(columns="shot")
+    elif change == "extra":
+        frame = frame.assign(extra=1)
+    else:
+        frame = frame[frame.columns[::-1]]
+    path = tmp_path / f"{name}.csv"
+    frame.to_csv(path, index=False)
+    with pytest.raises(CatalogError, match="expected the columns"):
+        getattr(cohort, f"read_{name}")(path)
+
+
 def test_a_key_depends_on_the_seed_the_purpose_and_the_shot_alone():
     assert cohort.key(20260923, "draw", 190000) == 0.884898099725107
     assert cohort.key(20260923, "order", 190000) == 0.11216141712330072
