@@ -26,7 +26,15 @@ GOOD = {
 SPANS = {"mhr": 5.0, "ece": 5.0, "filterscopes": 5.0}
 
 
-def _bundle(shot, row, *, title="Tearing mode avoidance", run_id="20220301"):
+def _bundle(
+    shot,
+    row,
+    *,
+    title="Tearing mode avoidance",
+    run_id="20220301",
+    chief=None,
+    subject=None,
+):
     """The parts of a `shot_<N>.txt` that `select.parse_facts` reads; `row=None` is the
     session fallback."""
     meta = json.dumps({"run_id": run_id, "title": title}, indent=1)
@@ -34,7 +42,7 @@ def _bundle(shot, row, *, title="Tearing mode avoidance", run_id="20220301"):
         table = "(Shot table key/value mapping not found.)"
     else:
         table = "\n".join([f"- SHOT: {shot}"] + [f"- {k}: {v}" for k, v in row.items()])
-    return "\n\n".join(
+    bundle = "\n\n".join(
         [
             f"RUN_ID: {run_id}",
             f"METADATA (selected)\n{meta}",
@@ -42,6 +50,103 @@ def _bundle(shot, row, *, title="Tearing mode avoidance", run_id="20220301"):
             f"SHOT: {shot}\n\nSHOT TABLE ROW (name -> value)\n{table}",
         ]
     )
+    if chief is not None:
+        bundle += f"\n\n### CHIEF_OPERATOR SUMMARY\n{chief}"
+    if subject is not None:
+        marker = "## Shot-specific context (from summary.html)"
+        planned = f"## Planned context (mini-proposal)\nSubject: {subject}\n\n"
+        bundle = bundle.replace(marker, planned + marker)
+    return bundle
+
+
+@pytest.mark.parametrize(
+    ("title", "chief", "tail", "want"),
+    [
+        ("", "Experiment:\n===========\nPlasma startup", "", "title"),
+        (" \t ", "Experiment:\n- -- -- -- \nStartup phase 2", "", "title"),
+        ("", "Experiment:\nWhistler waves in RE beam", "", ""),
+        ("", "Experiment:\n===========\nMorning Summary:", "", ""),
+        ("", "Experiment:\nSummary for Day\n\n===============", "", ""),
+        ("", "  Experiment: Plasma startup  ", "", "title"),
+        ("", "No experiment recorded.", "", ""),
+        ("", None, "\n### BEAMS SUMMARY\nExperiment: Plasma startup", ""),
+        (
+            "",
+            "Experiment:\n===========",
+            "\n### BEAMS SUMMARY\nExperiment: Plasma startup",
+            "",
+        ),
+        (
+            "",
+            "Experiment:\n===========",
+            "\n## Planned context (mini-proposal)\nExperiment: Plasma startup",
+            "",
+        ),
+        ("Tearing mode avoidance", "Experiment: Plasma startup", "", ""),
+    ],
+    ids=[
+        "untitled-startup",
+        "whitespace-title",
+        "untitled-physics",
+        "colon-section-label",
+        "underlined-section-label",
+        "inline-experiment",
+        "no-experiment",
+        "beams-only",
+        "next-summary-boundary",
+        "next-context-boundary",
+        "run-title-wins",
+    ],
+)
+def test_screen_uses_the_chief_experiment_for_an_empty_title(title, chief, tail, want):
+    bundle = _bundle(1, GOOD, title=title, chief=chief) + tail
+    pool = pop.screen([1], {1: bundle}, {1: SPANS})
+    assert pool.loc[0, "reasons"] == want
+
+
+@pytest.mark.parametrize(
+    ("chief", "want"),
+    [
+        (None, None),
+        ("Morning Summary:\nPlasma startup", None),
+        ("Experiment:\n===========\n\n", None),
+        ("Experiment:\n===========\nMorning Summary:", None),
+        ("Experiment:\nSummary for Day\n\n===============", None),
+        ("Experiment: - -- -- -- \n\nPlasma startup", "Plasma startup"),
+        (
+            "Experiment:\n =-*_~ \n  Whistler waves in RE beam  ",
+            "Whistler waves in RE beam",
+        ),
+        ("  Experiment: Plasma startup  ", "Plasma startup"),
+        ("Experiment: First experiment\nExperiment: Second", "First experiment"),
+    ],
+)
+def test_experiment_is_recorded_and_round_trips(tmp_path, chief, want):
+    bundle = _bundle(1, GOOD, chief=chief)
+    assert pop.experiment_line(bundle) == want
+    pool = pop.screen([1], {1: bundle}, {1: SPANS})
+    assert pool.loc[0, "experiment"] == want
+    path = tmp_path / "pool.csv"
+    pool.to_csv(path, index=False)
+    got = pop.read_pool(path)
+    if want is None:
+        assert pd.isna(got.loc[0, "experiment"])
+    else:
+        assert got.loc[0, "experiment"] == want
+
+
+@pytest.mark.parametrize(
+    ("subject", "theme", "want"),
+    [("calibration", "startup_checkout", "title"), ("tearing", "tearing_mhd", "")],
+)
+def test_screen_uses_the_untitled_bundles_mini_proposal(subject, theme, want):
+    themes = pop.select.lexicon_themes()
+    assert subject in next(t["keywords"] for t in themes if t["id"] == theme)
+    assert pop.select.assign_theme(None, themes, subject=subject) == theme
+    bundle = _bundle(1, GOOD, title="", chief="Morning Summary:", subject=subject)
+    pool = pop.screen([1], {1: bundle}, {1: SPANS}, themes=themes)
+    assert pool.loc[0, "mp_subject"] == subject
+    assert pool.loc[0, "reasons"] == want
 
 
 def _pool():
@@ -555,6 +660,9 @@ def test_the_rule_record_names_the_machine_rule_and_dropped_title_regex():
     rules = pop.rules_record()
     assert rules["rule_2"] == {
         "own_shot_table_block": True,
+        "empty_title_fallback": (
+            "first Experiment: line in the ### CHIEF_OPERATOR SUMMARY block"
+        ),
         "machine_time": {
             "pattern": (
                 r"(?i)^\s*(?:plasma\s+)?(?:start-?up|starup)\b"
