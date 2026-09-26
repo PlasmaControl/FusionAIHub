@@ -117,6 +117,13 @@ def test_an_int_too_large_for_a_double_is_a_problem_not_a_crash():
             "inversion_channel=0 is below 1",
         ),
         ("sawtooth_oscillation", "inversion_channel", 1, None),
+        ("sawtooth_oscillation", "inversion_channel", 48, None),
+        (
+            "sawtooth_oscillation",
+            "inversion_channel",
+            49,
+            "inversion_channel=49 is above 48",
+        ),
         (
             "sawtooth_oscillation",
             "inversion_radius_m",
@@ -168,13 +175,38 @@ def test_data_guide_phenomena_table_agrees_with_the_vocabulary():
         category = category_cell.findtext("code")
         assert category not in documented, f"Repeated phenomenon: {category}"
         documented[category] = (
-            {key.text for key in attrs_cell.findall("code")},
+            {
+                key.text: " ".join(key.tail.strip(":; \n").split())
+                for key in attrs_cell.findall("code")
+            },
             tuple(kind.text for kind in points_cell.findall("code")),
             "".join(observable_cell.itertext()).strip(),
         )
     assert set(documented) == set(PHENOMENA)
     for category, phenomenon in PHENOMENA.items():
         attrs, points, not_observable = documented[category]
-        assert attrs == set(COMMON_ATTRS) | set(phenomenon.attrs), category
+        assert set(attrs) == set(COMMON_ATTRS) | set(phenomenon.attrs), category
+        for key, rule in {**COMMON_ATTRS, **phenomenon.attrs}.items():
+            description = attrs[key]
+            context = f"{category}.{key}: {description}"
+            if isinstance(rule, frozenset):
+                assert description.startswith("string, "), context
+                assert set(description.removeprefix("string, ").split(" / ")) == rule
+                continue
+            expected = {
+                int: "integer",
+                float: "number",
+                bool: "boolean, true / false",
+                str: "nonblank string",
+            }[rule]
+            if key in phenomenon.lower_bounds:
+                value, inclusive = phenomenon.lower_bounds[key]
+                expected += f" {'≥' if inclusive else '>'} {value:g}"
+            if key in phenomenon.upper_bounds:
+                value, inclusive = phenomenon.upper_bounds[key]
+                expected += f" and {'≤' if inclusive else '<'} {value:g}"
+            if key in phenomenon.units:
+                expected += f", {phenomenon.units[key]}"
+            assert description == expected, context
         assert points == phenomenon.points, category
         assert not_observable == ("No" if phenomenon.observable_always else "Yes")

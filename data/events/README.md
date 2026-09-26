@@ -127,7 +127,7 @@ classical_tm / not_tearing_mode;<br />
 <tr>
 <td><code>sawtooth_oscillation</code></td>
 <td><code>period_ms</code>: number > 0, ms;<br />
-<code>inversion_channel</code>: integer ≥ 1;<br />
+<code>inversion_channel</code>: integer ≥ 1 and ≤ 48;<br />
 <code>inversion_radius_m</code>: number > 0, m;<br />
 <code>reason</code>: nonblank string</td>
 <td><code>crash</code></td><td>Yes</td>
@@ -141,6 +141,10 @@ classical_tm / not_tearing_mode;<br />
 </tr>
 </tbody>
 </table>
+
+`inversion_radius_m` is the sawtooth inversion radius as a minor radius:
+the distance from the magnetic axis along the ECE's midplane line of sight,
+in metres. It is neither the major radius R nor a normalised radius.
 
 `review/points.csv` holds point events with these columns:
 
@@ -159,6 +163,36 @@ python -m labeler.events.catalog.check [categories ...] [--root DIR] [--windows 
 ```
 
 It exits 1 on any finding and 2 on bad arguments.
+
+### What the checker certifies
+
+- Each shot's rows have positive length and tile their labelled window without
+  gaps or overlaps. States are 0 absent, 1 present, 2 uncertain or 3 not observable;
+  NTM and disruption cannot use state 3. Unlabelled time remains unassessed.
+- Attributes use only the keys, types, allowed words and bounds in the table
+  above. Attributes remain optional; numeric values are finite and booleans are
+  distinct from numbers. Units describe the recorded quantities.
+- When allowed windows are supplied, labelled windows stay inside them. Missing
+  shots in the allowed-window mapping are left alone. Window starts are exact.
+  D19 allows only the final present disruption span to end up to 2 ms past the
+  allowed window end; absent and uncertain spans receive no extension.
+- Points have the phenomenon's point kinds, finite times and valid attributes,
+  with no repeated `(shot, phenomenon, kind, t_ms)` entries. They require a labels
+  table and lie in its assessed `[start, end)` window. If a disruption's labelled
+  window reaches the allowed end, D19 admits t80, t_D and t20 from that end through
+  end + 2 ms, inclusive. This does not extend other phenomena or earlier labelled
+  windows. Explicit blind point windows remain half-open, with both bounds set.
+- A present disruption requires t80 and t20. Any disruption points require all
+  three kinds, t80, t_D and t20, at most once each. t80 precedes t20, and the pair
+  requires exactly one present span whose bounds agree with them within 1 ms.
+  D17 places t_D in `[t80 - margin, t20 + margin]`, inclusive, where
+  `margin = max(2 ms, (t20 - t80) / 4)`. D19 leaves this margin unchanged.
+- An uncertain disruption span alone does not require quench points. If points
+  are supplied, they still face the same checks and cannot replace the required
+  present span. Uncertain spans still obey tiling, attributes and window checks.
+- Empty CSV records are skipped. Ragged rows and repeated header names are
+  refused before parsing can shift fields or rename columns. Windows files may
+  include uniquely named cohort columns alongside their three required columns.
 
 ## Review rosters
 

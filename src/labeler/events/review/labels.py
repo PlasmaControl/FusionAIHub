@@ -60,7 +60,9 @@ def categories(event: str) -> dict[int, str]:
     excluded = {0}
     if event in PHENOMENA and PHENOMENA[event].observable_always:
         excluded.add(NOT_OBSERVABLE)
-    return {int(k): v for k, v in category_labels(event).items() if int(k) not in excluded}
+    return {
+        int(k): v for k, v in category_labels(event).items() if int(k) not in excluded
+    }
 
 
 def _ms(t) -> int:
