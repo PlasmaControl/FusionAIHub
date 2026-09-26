@@ -13,8 +13,14 @@ A shot number counts when it lies within `REACH` characters of
   ends are `exact`.
 
 Numbers immediately after "%" are URL encoding, not shot tokens or range starts.
-Numbers after a Physical Review journal name and volume are article numbers,
-not shot tokens or range starts.
+Round, equally spaced runs of at least three numbers are axis ticks, not shot
+tokens or range starts, and cannot give the remaining run its context.
+Numbers immediately after an ASCII letter and hyphen are identifiers, not shot
+tokens or range starts.
+Numbers after an article-numbering journal's name and volume are citation
+identifiers, not shot tokens or range starts, even when the name is glued to a word.
+Numbers followed within 40 characters by a comma and a listed country, without
+intervening digits, are postal codes, not shot tokens or range starts.
 
 A number counts only as DIII-D's. The machine a number (a run, a range) belongs
 to is the nearest device name within reach before it, else the nearest after
@@ -35,9 +41,13 @@ import bisect
 import re
 from collections.abc import Collection
 from dataclasses import dataclass
+from itertools import pairwise
 
 REACH = 60
 RANGE_CAP = 50
+TICK_MIN_RUN = 3
+TICK_MIN_STEP = 100
+POSTAL_REACH = 40
 KEYWORDS = re.compile(r"\bshot|\bdischarge|#|DIII\s?-\s?D", re.IGNORECASE)
 DIII_D = re.compile(r"DIII\s?-\s?D", re.IGNORECASE)
 #: Other machines, whose own shot numbers can read as DIII-D's.
@@ -58,12 +68,28 @@ _RANGE = re.compile(
     re.IGNORECASE,
 )
 _PHYSICAL_REVIEW = re.compile(
-    r"\b(?:Phys\.|Physical)\s*(?:Rev\.|Review)\s*"
+    r"(?:Phys\.|Physical)\s*(?:Rev\.|Review)\s*"
     r"(?:(?:Lett\.|Letters|[A-EX]\.?|Research|Applied|Fluids|Accel\.\s*Beams)\s*)?"
     r"\d{1,4}\s*,?\s*$"
 )
-# Normalised citation prefixes span at most 36 characters; keep a margin.
+_OTHER_JOURNALS = re.compile(
+    r"(?:Appl\.\s*Phys\.\s*Lett\.|Applied\s*Physics\s*Letters"
+    r"|J\.\s*Appl\.\s*Phys\.|Journal\s*of\s*Applied\s*Physics"
+    r"|J\.\s*Chem\.\s*Phys\.|Journal\s*of\s*Chemical\s*Physics"
+    r"|Phys\.\s*Plasmas|Physics\s*of\s*Plasmas"
+    r"|Rev\.\s*Sci\.\s*Instrum\.|Review\s*of\s*Scientific\s*Instruments"
+    r"|Nucl\.\s*Fusion|Nuclear\s*Fusion"
+    r"|Plasma\s*Phys\.\s*Control\.\s*Fusion"
+    r"|Plasma\s*Physics\s*and\s*Controlled\s*Fusion)\s*\d{1,4}\s*,?\s*$"
+)
+# Longest normalised prefix: "Plasma Physics and Controlled Fusion 1234 , "
+# (44 characters); 64 keeps a 20-character margin.
 _ARTICLE_SPAN = 64
+_IDENTIFIER = re.compile(r"[A-Za-z]-$")
+_POSTAL = re.compile(
+    r"[^\d]*?,\s*(?:(?:P\.?\s*R\.?\s*)?China|Russia|Russian Federation"
+    r"|India|Kazakhstan|Singapore)\b"
+)
 
 
 def normalise(text: str) -> str:
@@ -116,20 +142,54 @@ def _devices(text: str):
 
 
 def _article_number(text: str, start: int) -> bool:
-    """Whether a number follows a Physical Review citation in normalised text."""
-    return bool(_PHYSICAL_REVIEW.search(text, max(0, start - _ARTICLE_SPAN), start))
+    """Whether a number follows an article-numbering journal and its volume."""
+    before = max(0, start - _ARTICLE_SPAN)
+    return bool(
+        _PHYSICAL_REVIEW.search(text, before, start)
+        or _OTHER_JOURNALS.search(text, before, start)
+    )
+
+
+def _not_token(text: str, m: re.Match) -> bool:
+    # One extra character preserves the country's real word boundary at the edge.
+    postal = _POSTAL.match(text, m.end(), m.end() + POSTAL_REACH + 1)
+    return bool(
+        _IDENTIFIER.search(text, max(0, m.start() - 2), m.start())
+        or _article_number(text, m.start())
+        or (postal and postal.end() <= m.end() + POSTAL_REACH)
+    )
+
+
+def _ticks(run: list[re.Match]) -> set[int]:
+    """Offsets of round tick labels, including equal-step subruns."""
+    values = [int(m.group()) for m in run]
+    dropped = set()
+    for i in range(len(run) - TICK_MIN_RUN + 1):
+        part = values[i : i + TICK_MIN_RUN]
+        step = part[1] - part[0]
+        if (
+            abs(step) >= TICK_MIN_STEP
+            and all(b - a == step for a, b in pairwise(part))
+            and all(n % step == 0 for n in part)
+        ):
+            dropped.update(m.start() for m in run[i : i + TICK_MIN_RUN])
+    return dropped
 
 
 def _runs(text: str) -> list[list[re.Match]]:
     runs: list[list[re.Match]] = []
     for m in _TOKEN.finditer(text):
-        if _article_number(text, m.start()):
+        if _not_token(text, m):
             continue
         if runs and _RUN_GAP.fullmatch(text[runs[-1][-1].end() : m.start()]):
             runs[-1].append(m)
         else:
             runs.append([m])
-    return runs
+    kept = []
+    for run in runs:
+        ticks = _ticks(run)
+        kept.append([m for m in run if m.start() not in ticks])
+    return [run for run in kept if run]
 
 
 def _range(m: re.Match) -> range | None:
@@ -158,7 +218,9 @@ def mentions(text: str, shots: Collection[int] | None = None) -> list[Mention]:
         return Mention(shot, kind, a, b, text[max(0, a - REACH) : b + REACH])
 
     found = []
-    for run in _runs(text):
+    runs = _runs(text)
+    token_starts = {m.start() for run in runs for m in run}
+    for run in runs:
         if other(run[0].start(), run[-1].end()):
             continue
         if any(near(m.start(), m.end()) for m in run):
@@ -168,7 +230,7 @@ def mentions(text: str, shots: Collection[int] | None = None) -> list[Mention]:
                 if keep(int(m.group()))
             ]
     for m in _RANGE.finditer(text):
-        if _article_number(text, m.start()):
+        if m.start() not in token_starts:
             continue
         inside = _range(m)
         if inside is not None and near(*m.span()) and not other(*m.span()):
