@@ -383,7 +383,7 @@ def category_dirs(root=None) -> list[Path]:
     raw = {}
     if manifest.exists():
         raw = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
-    skip = raw.get(NON_CATEGORY_KEY) or []
+    skip = raw.get(NON_CATEGORY_KEY, [])
     if not isinstance(skip, list) or not all(isinstance(n, str) for n in skip):
         raise DatabaseError(f"{manifest}: `{NON_CATEGORY_KEY}` must be a list of names")
     return sorted(p for p in base.iterdir() if p.is_dir() and p.name not in skip)
