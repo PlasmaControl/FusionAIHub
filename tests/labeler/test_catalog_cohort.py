@@ -189,12 +189,7 @@ def test_a_campaign_year_outside_the_cells_is_refused():
 def test_the_legacy_sets_are_the_registered_tables():
     root = REPO / "data" / "events"
     legacy, specs = cohort.legacy_sets(root)
-    assert {
-        "neoclassical_tearing_mode",
-        "edge_localized_mode",
-        "high_confinement_mode",
-        "resistive_wall_mode",
-    } <= {s.dir for s in specs}
+    assert {s.dir for s in specs} == {s.dir for s in databases.load_manifest(root)}
     elm = next(s for s in specs if s.dir == "edge_localized_mode")
     assert "edge_localized_mode" in legacy[min(databases.shots(elm, root))]
 
@@ -245,6 +240,41 @@ def test_each_cell_is_its_smallest_draw_keys_and_the_seed_moves_them():
     assert set(other.loc[other.group.eq("L"), "shot"]) == set(
         frame.loc[frame.group.eq("L"), "shot"]
     )
+
+
+def test_l_over_its_cap_shares_200_across_years_with_a_minimum_of_one():
+    sizes = {**SIZES, "L": {2021: 300, 2022: 150, 2023: 80, 2024: 50, 2025: 1}}
+    drawn, cells = cohort.draw(_population(sizes))
+    assert sum(sizes["L"].values()) == 581
+    assert drawn.group.eq("L").sum() == 200
+    # Quotas 103.27, 51.64, 27.54, 17.21, 0.34: 2022 and 2023 round up;
+    # then 2025 takes its one from 2023, the cell furthest above its quota.
+    assert {c: v["n"] for c, v in cells.items() if c.startswith("L")} == {
+        "L2021": 103,
+        "L2022": 52,
+        "L2023": 27,
+        "L2024": 17,
+        "L2025": 1,
+    }
+
+
+def test_removing_undrawn_shots_preserves_the_draw_when_allocation_is_stable():
+    frame = _population(
+        {
+            g: dict.fromkeys(cohort.YEARS, n)
+            for g, n in (("L", 60), ("G", 40), ("R", 200))
+        }
+    )
+    drawn, cells = cohort.draw(frame)
+    removed = frame[~frame.shot.isin(drawn.shot)].groupby("cell").head(5)
+    reduced = frame[~frame.shot.isin(removed.shot)]
+    assert len(frame) - len(reduced) == 75
+    other, new_cells = cohort.draw(reduced.sample(frac=1, random_state=7))
+    assert {c: v["n"] for c, v in new_cells.items()} == {
+        c: v["n"] for c, v in cells.items()
+    }
+    stable = ["shot", "year", "group", "cell", "split", "blind", "queue_rank", "u"]
+    pd.testing.assert_frame_equal(drawn[stable], other[stable], check_exact=True)
 
 
 def test_the_splits_follow_u_within_each_group_and_the_queue_starts_blind():
