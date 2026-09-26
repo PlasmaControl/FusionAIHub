@@ -22,7 +22,19 @@ data/events/<category>/
     <shot-list>/
       <shot>.npz                            # sampled time × rho labels
   review/
-    <shot>__<reviewer>__<stamp>.csv         # what a human asserts; append-only
+    labels.csv                              # catalog review page's intervals
+    history.jsonl                           # catalog review page's save history
+    points.csv                              # catalog review points
+    blind/
+      <reader>/
+        labels.csv
+        points.csv
+        history.jsonl
+    adjudicated/
+      labels.csv
+      points.csv
+      history.jsonl
+    <shot>__<reviewer>__<stamp>.csv           # notebook corrections; append-only
     _cache/                                 # fetch cache, not a claim; deletable
 ```
 
@@ -67,6 +79,68 @@ For these categories, the `category` column is the state: 0 absent, 1 present,
 
 An optional sixth column, `attrs`, holds a JSON object per row (interval schema 6;
 five-column tables stay valid). A blank cell means no attributes.
+
+The table lists every allowed attribute key, including the shared `reason`.
+Attributes are optional. Numbers must be finite; booleans are not numeric values.
+Units are given for physical quantities; other attributes have no physical units.
+NTM is always observable because magnetics are an inclusion rule; disruption is
+always observable because Ip always exists.
+
+<table id="catalog-phenomena">
+<thead>
+<tr><th>Phenomenon</th><th>Attributes: types, values and units</th>
+<th>Point kinds</th><th>Can be not observable?</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><code>alfven_eigenmode</code></td>
+<td><code>type</code>: string, RSAE / TAE / other;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>Yes</td>
+</tr>
+<tr>
+<td><code>neoclassical_tearing_mode</code></td>
+<td><code>m</code>: integer ≥ 2;<br />
+<code>n</code>: integer ≥ 1;<br />
+<code>efit_tree</code>: string, efit01 / efit02;<br />
+<code>seed</code>: string, sawtooth / elm / fishbone / none;<br />
+<code>confinement</code>: string, L / H;<br />
+<code>locked</code>: boolean, true / false;<br />
+<code>override</code>: string, island_not_resolved / q_unreliable /
+classical_tm / not_tearing_mode;<br />
+<code>other_mhd</code>: string, m1 / classical_tm / fishbone / eho / kink;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>No</td>
+</tr>
+<tr>
+<td><code>high_confinement_mode</code></td>
+<td><code>variant</code>: string, standard / QH / other;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>Yes</td>
+</tr>
+<tr>
+<td><code>edge_localized_mode</code></td>
+<td><code>frequency_hz</code>: number > 0, Hz;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>elm</code></td><td>Yes</td>
+</tr>
+<tr>
+<td><code>sawtooth_oscillation</code></td>
+<td><code>period_ms</code>: number > 0, ms;<br />
+<code>inversion_channel</code>: integer ≥ 1;<br />
+<code>inversion_radius_m</code>: number > 0, m;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>crash</code></td><td>Yes</td>
+</tr>
+<tr>
+<td><code>disruption</code></td>
+<td><code>intentional</code>: boolean, true / false;<br />
+<code>phase</code>: string, flattop / rampdown;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>t_D</code>, <code>t80</code>, <code>t20</code></td><td>No</td>
+</tr>
+</tbody>
+</table>
 
 `review/points.csv` holds point events with these columns:
 
@@ -117,6 +191,13 @@ agreeing with `reviewers`. It does not check `tier` against the reviewer
 list.
 
 ## Verification notebooks
+
+The verification notebooks write per-shot correction files and update `shots.csv`,
+as described below. The catalog's review page writes `review/labels.csv` and appends
+to `review/history.jsonl`. It replaces the selected shot's intervals while keeping
+every other shot's rows exactly, including their attribute text. Saving over a shot
+whose rows carry `attrs` is refused with HTTP 409; its labels and history stay
+unchanged. Catalog point events belong in `review/points.csv` beside these files.
 
 `verification.ipynb` in each category shows one shot's signals against its
 saved labels, where there are any, and takes back corrections:

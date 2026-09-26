@@ -2,7 +2,7 @@
 
 No description, method, provenance or table has been written for this
 category yet. It is one of the event catalog's six phenomena; its points
-(`t_D`, `t80`, `t20`) go in the catalog's point table and the shared tables
+(`t_D`, `t80`, `t20`) go in `disruption/review/points.csv` and the shared tables
 are in [`../catalog/`](../catalog/README.md). The scope inventory row is
 `Disruption` in [`discrete_labels.csv`](../discrete_labels.csv).
 
