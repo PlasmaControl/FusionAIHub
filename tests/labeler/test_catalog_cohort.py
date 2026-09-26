@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -274,16 +275,151 @@ def test_the_check_finds_each_kind_of_break():
             frame.loc[0, column] = value
         return {f.check for f in cohort.check_cohort(frame, n_pop)}
 
-    assert broken(weight=drawn.loc[0, "weight"] * 2) == {"weights"}
+    assert broken(weight=drawn.loc[0, "weight"] * 2) == {"weight", "weights"}
     assert broken(weight=0.5) == {"weight", "weights"}
     assert broken(split="holdout") == {"split"}
-    assert broken(blind=not drawn.loc[0, "blind"]) == {"split"}
-    assert broken(cell="Q2021") == {"cell", "weights"}
+    assert broken(blind=not drawn.loc[0, "blind"]) == {"split", "queue_rank"}
+    assert broken(cell="Q2021") == {"cell", "weight", "weights"}
     doubled = pd.concat([drawn, drawn.iloc[[0]]], ignore_index=True)
     assert {f.check for f in cohort.check_cohort(doubled, n_pop)} == {
         "unique",
         "weights",
+        "weight",
+        "queue_rank",
     }
+
+
+def test_the_check_rejects_offsetting_weight_errors():
+    drawn, cells = cohort.draw(_population())
+    i, j = drawn.index[drawn.cell.eq("R2022")][:2]
+    drawn.loc[i, "weight"] += 1
+    drawn.loc[j, "weight"] -= 1
+    found = cohort.check_cohort(drawn, {c: v["N"] for c, v in cells.items()})
+    assert {f.shot for f in found if f.check == "weight"} == {
+        drawn.loc[i, "shot"],
+        drawn.loc[j, "shot"],
+    }
+
+
+@pytest.mark.parametrize("shot", [float("nan"), 185601.5, -1, float("inf"), 0])
+def test_the_check_rejects_invalid_shots(shot):
+    drawn, cells = cohort.draw(_population())
+    drawn["shot"] = drawn["shot"].astype(float)
+    drawn.loc[0, "shot"] = shot
+    found = cohort.check_cohort(drawn, {c: v["N"] for c, v in cells.items()})
+    assert any(f.check == "shot" and repr(shot) in f.detail for f in found)
+
+
+@pytest.mark.parametrize("u", [-0.1, 1.0, float("nan"), float("inf")])
+def test_the_check_rejects_invalid_order_keys(u):
+    drawn, cells = cohort.draw(_population())
+    drawn.loc[0, "u"] = u
+    found = cohort.check_cohort(drawn, {c: v["N"] for c, v in cells.items()})
+    assert any(f.check == "u" and f.shot == drawn.loc[0, "shot"] for f in found)
+
+
+@pytest.mark.parametrize("change", ["one_duplicate", "all_duplicate", "blind_late"])
+def test_the_check_rejects_bad_queue_ranks(change):
+    drawn, cells = cohort.draw(_population())
+    if change == "one_duplicate":
+        drawn.loc[0, "queue_rank"] = drawn.loc[1, "queue_rank"]
+    elif change == "all_duplicate":
+        drawn["queue_rank"] = 1
+    else:
+        i = drawn.index[drawn.queue_rank.eq(1)][0]
+        j = drawn.index[drawn.queue_rank.eq(51)][0]
+        drawn.loc[[i, j], "queue_rank"] = [51, 1]
+    found = cohort.check_cohort(drawn, {c: v["N"] for c, v in cells.items()})
+    assert any(f.check == "queue_rank" and f.shot is not None for f in found)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "55_test",
+        "all_train",
+        "val_before_test",
+        "train_before_test",
+        "train_before_val",
+    ],
+)
+def test_the_check_rejects_split_counts_and_order(change):
+    drawn, cells = cohort.draw(_population())
+    if change == "55_test":
+        indices = drawn.index[drawn.split.eq("train")][:5]
+        drawn.loc[indices, "split"] = "test"
+        drawn.loc[indices, "blind"] = True
+    elif change == "all_train":
+        drawn["split"] = "train"
+        drawn["blind"] = False
+    else:
+        split, before = change.split("_before_")
+        group = drawn[drawn.group.eq("R")]
+        index = group.index[group.split.eq(split)][0]
+        drawn.loc[index, "u"] = group.loc[group.split.eq(before), "u"].min() / 2
+    found = cohort.check_cohort(drawn, {c: v["N"] for c, v in cells.items()})
+    assert any(f.check == "split" and f.shot is not None for f in found)
+
+
+def test_verification_rederives_an_untouched_draw():
+    drawn, population = _tables()
+    cells = cohort._cells(population)
+    assert cohort.verify_cohort(drawn, population, cells) == []
+    assert cohort.verify_cohort(drawn, population) == []
+    assert cohort.verify_cohort(drawn, population.sample(frac=1, random_state=7)) == []
+
+
+@pytest.mark.parametrize("change", ["outside", "flag_off", "flag_on", "duplicate"])
+def test_verification_checks_population_membership(change):
+    drawn, population = _tables()
+    shot = int(drawn.loc[0, "shot"])
+    if change == "outside":
+        shot = 999999
+        drawn.loc[0, "shot"] = shot
+    elif change == "flag_off":
+        population.loc[population.shot.eq(shot), "in_cohort"] = False
+    elif change == "flag_on":
+        i = population.index[~population.in_cohort][0]
+        shot = int(population.loc[i, "shot"])
+        population.loc[i, "in_cohort"] = True
+    else:
+        population = pd.concat([population, population.iloc[[0]]], ignore_index=True)
+    found = cohort.verify_cohort(drawn, population)
+    assert any(f.shot == shot for f in found)
+
+
+@pytest.mark.parametrize(
+    "column, value",
+    [
+        ("year", 2025),
+        ("group", "R"),
+        ("cell", "L2025"),
+        ("weight", 2.0),
+        ("split", "holdout"),
+        ("blind", None),
+        ("queue_rank", 501),
+        ("u", None),
+    ],
+)
+def test_verification_compares_each_draw_column_exactly(column, value):
+    drawn, population = _tables()
+    if column == "u":
+        value = math.nextafter(drawn.loc[0, column], 1.0)
+    elif column == "blind":
+        value = not drawn.loc[0, column]
+    drawn.loc[0, column] = value
+    found = cohort.verify_cohort(drawn, population)
+    assert any(f.shot == drawn.loc[0, "shot"] and column in f.detail for f in found)
+
+
+def test_verification_checks_manifest_cells_and_seed():
+    drawn, population = _tables()
+    cells = cohort._cells(population)
+    cells["R2022"] += 1
+    assert any(
+        "R2022" in f.detail for f in cohort.verify_cohort(drawn, population, cells)
+    )
+    assert cohort.verify_cohort(drawn, population, seed=1)
 
 
 def _inputs(folder: Path):
@@ -337,7 +473,7 @@ def test_the_command_writes_the_cohort_and_its_manifest(tmp_path, monkeypatch, c
     monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
     monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
-    assert cohort.main([]) == 0
+    assert cohort.main(["--out", str(folder)]) == 0
     drawn = cohort.read_cohort(folder / "cohort.csv")
     doc = yaml.safe_load((folder / "cohort_manifest.yaml").read_text())
     counts = doc["counts"]
@@ -370,6 +506,14 @@ def test_the_command_writes_the_cohort_and_its_manifest(tmp_path, monkeypatch, c
     assert doc["inputs"]["pool"]["path"] == str(folder / "pool.csv")
     population = pd.read_csv(folder / "population.csv")
     assert len(population) == 630 and population["in_cohort"].sum() == 500
+    assert (
+        cohort.verify_cohort(
+            drawn,
+            cohort.read_population(folder / "population.csv"),
+            {c: v["N"] for c, v in doc["cells"].items()},
+        )
+        == []
+    )
     assert json.loads(capsys.readouterr().out)["population"] == 630
 
 
@@ -378,5 +522,48 @@ def test_the_command_needs_the_verified_links(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tmp_path / "tables"))
     with pytest.raises(SystemExit):
-        cohort.main([])
+        cohort.main(["--out", str(tmp_path / "out")])
     assert "papers.csv does not exist" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("change", ["weight", "u", "serialized_u"])
+def test_the_command_checks_the_serialized_draw_before_writing(
+    tmp_path, monkeypatch, change
+):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    if change == "serialized_u":
+        original = cohort.read_cohort
+
+        def corrupt_read(path):
+            frame = original(path)
+            frame.loc[0, "u"] = math.nextafter(frame.loc[0, "u"], 1.0)
+            return frame
+
+        monkeypatch.setattr(cohort, "read_cohort", corrupt_read)
+    else:
+        original = cohort.draw
+
+        def corrupt_draw(*args, **kwargs):
+            frame, cells = original(*args, **kwargs)
+            frame.loc[0, change] = math.nextafter(frame.loc[0, change], 1.0)
+            if change == "weight":
+                frame.loc[0, change] += 1
+            return frame, cells
+
+        monkeypatch.setattr(cohort, "draw", corrupt_draw)
+    with pytest.raises(CatalogError):
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                str(folder / "papers.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+    assert not out.exists()
