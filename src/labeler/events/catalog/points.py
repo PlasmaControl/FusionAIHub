@@ -43,10 +43,12 @@ def validate_points(frame: pd.DataFrame) -> pd.DataFrame:
         kinds = PHENOMENA[row.phenomenon].points if row.phenomenon in PHENOMENA else ()
         if row.kind not in kinds:
             raise DatabaseError(f"{row.phenomenon} has no point kind {row.kind!r}")
+    for column in ("phenomenon", "kind"):
+        result[column] = result[column].astype(str)
     result["t_ms"] = pd.to_numeric(result.t_ms, errors="coerce").astype("float64")
     if not np.isfinite(result.t_ms).all():
         raise DatabaseError("t_ms must be a finite number")
-    result["attrs"] = result["attrs"].map(attrs_text)
+    result["attrs"] = result["attrs"].map(attrs_text).astype(str)
     lo = pd.to_numeric(result.window_start_ms, errors="coerce").astype("float64")
     hi = pd.to_numeric(result.window_end_ms, errors="coerce").astype("float64")
     if (lo.isna() != hi.isna()).any():
