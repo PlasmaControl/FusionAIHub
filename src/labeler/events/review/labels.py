@@ -23,6 +23,7 @@ import pandas as pd
 
 from ...config import atomic_path
 from ..catalog.points import validate_csv_fields
+from ..catalog.states import NOT_OBSERVABLE, PHENOMENA
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
 
 LONGEST_WINDOW_MS = 20_000
@@ -54,9 +55,12 @@ def categories(event: str) -> dict[int, str]:
     """The categories a span can carry; 0 (absent) is the gaps.
 
     A catalog phenomenon's spans carry its states: present, uncertain and not
-    observable.
+    observable, except phenomena that are always observable.
     """
-    return {int(k): v for k, v in category_labels(event).items() if k != "0"}
+    excluded = {0}
+    if event in PHENOMENA and PHENOMENA[event].observable_always:
+        excluded.add(NOT_OBSERVABLE)
+    return {int(k): v for k, v in category_labels(event).items() if int(k) not in excluded}
 
 
 def _ms(t) -> int:
