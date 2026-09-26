@@ -24,20 +24,24 @@ key does not depend on which other shots are in the population.
 
 reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `data/events/catalog/papers.csv`
 and the legacy tables, and writes `cohort.csv`, `cohort_manifest.yaml` and
-`population.csv` to `$LABELER_ROOT/catalog/`. Copying the first two into
-`data/events/catalog/` freezes the cohort, and that is the owner's call.
+`population.csv` to `$LABELER_ROOT/catalog/`. The freeze copies all three files,
+`cohort.csv`, `population.csv` and `cohort_manifest.yaml`, into
+`data/events/catalog/`, so anyone holding the release can rederive the draw (D20).
+Freezing the cohort is the owner's call.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from fractions import Fraction
+from numbers import Real
 from pathlib import Path
 
 import pandas as pd
@@ -94,6 +98,17 @@ POPULATION_COLUMNS = (
     "legacy_sets",
     "n_links_verified",
     *SPANS,
+)
+DRAW_COLUMNS = (
+    "shot",
+    "year",
+    "group",
+    "cell",
+    "weight",
+    "split",
+    "blind",
+    "queue_rank",
+    "u",
 )
 
 
@@ -188,6 +203,12 @@ def draw(frame: pd.DataFrame, seed: int = SEED, n: int = COHORT_SIZE):
 
     `frame` is the population with groups (`assign_groups`).
     """
+    cohort, table = _draw(frame, seed, n)
+    return cohort[list(COHORT_COLUMNS)], table
+
+
+def _draw(frame: pd.DataFrame, seed: int, n: int):
+    """Derive the draw columns, retaining any other columns supplied by the caller."""
     cells = _cells(frame)
     by_group = frame["group"].value_counts().to_dict()
     per_group = group_sizes(by_group, n)
@@ -222,7 +243,19 @@ def _split(picked: pd.DataFrame) -> pd.DataFrame:
     out["blind"] = out["split"].eq("test")
     out = out.sort_values(["blind", "u"], ascending=[False, True], kind="stable")
     out["queue_rank"] = range(1, len(out) + 1)
-    return out.sort_values("shot", ignore_index=True)[list(COHORT_COLUMNS)]
+    return out.sort_values("shot", ignore_index=True)
+
+
+def _shot_id(value) -> int | None:
+    if (
+        isinstance(value, Real)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 1
+        and value == int(value)
+    ):
+        return int(value)
+    return None
 
 
 def check_cohort(cohort: pd.DataFrame, cells: Mapping[str, int]) -> list[Finding]:
@@ -232,29 +265,69 @@ def check_cohort(cohort: pd.DataFrame, cells: Mapping[str, int]) -> list[Finding
     """
     where = "cohort"
     found = [
-        Finding("unique", where, int(s), "appears twice")
+        Finding("unique", where, _shot_id(s), f"shot {s!r} appears twice")
         for s in cohort.loc[cohort["shot"].duplicated(), "shot"]
     ]
-    for row in cohort.itertuples(index=False):
+    counts = cohort["cell"].value_counts()
+    duplicate_ranks = cohort["queue_rank"].duplicated(keep=False)
+    n_blind = int(cohort["blind"].sum())
+    for row, duplicate_rank in zip(cohort.itertuples(index=False), duplicate_ranks):
+        shot = _shot_id(row.shot)
+        if shot is None:
+            found.append(
+                Finding(
+                    "shot",
+                    where,
+                    None,
+                    f"shot {row.shot!r}: expected a finite whole number >= 1",
+                )
+            )
         if row.group not in GROUPS or row.cell != f"{row.group}{row.year}":
             found.append(
                 Finding(
                     "cell",
                     where,
-                    int(row.shot),
+                    shot,
                     f"group {row.group!r}, cell {row.cell!r}, year {row.year}",
                 )
             )
-        if not (row.weight >= 1.0):
+        expected = cells.get(row.cell)
+        if not (row.weight >= 1.0) or (
+            expected is not None
+            and not math.isclose(row.weight, expected / counts[row.cell], rel_tol=1e-9)
+        ):
             found.append(
-                Finding("weight", where, int(row.shot), f"weight {row.weight!r}")
+                Finding(
+                    "weight",
+                    where,
+                    shot,
+                    f"weight {row.weight!r}; cell {row.cell} requires N / n",
+                )
+            )
+        if not (0 <= row.u < 1):
+            found.append(Finding("u", where, shot, f"u {row.u!r} is outside [0, 1)"))
+        rank = _shot_id(row.queue_rank)
+        if (
+            rank is None
+            or rank > len(cohort)
+            or duplicate_rank
+            or bool(row.blind) != (rank <= n_blind)
+        ):
+            found.append(
+                Finding(
+                    "queue_rank",
+                    where,
+                    shot,
+                    f"rank {row.queue_rank!r}: expected a permutation of "
+                    f"1..{len(cohort)}, blind ranks 1..{n_blind}",
+                )
             )
         if row.split not in SPLITS or row.blind != (row.split == "test"):
             found.append(
                 Finding(
                     "split",
                     where,
-                    int(row.shot),
+                    shot,
                     f"split {row.split!r}, blind {row.blind!r}",
                 )
             )
@@ -272,6 +345,122 @@ def check_cohort(cohort: pd.DataFrame, cells: Mapping[str, int]) -> list[Finding
             )
     for cell in sorted(set(sums.index) - set(cells)):
         found.append(Finding("weights", where, None, f"cell {cell} has no N"))
+    sizes = {g: int(cohort["group"].eq(g).sum()) for g in GROUPS}
+    blind = allocate(sizes, BLIND_SIZE)
+    val = allocate({g: sizes[g] - blind[g] for g in GROUPS}, VAL_SIZE)
+    for group, part in cohort.groupby("group"):
+        if group not in GROUPS:
+            continue
+        expected = {
+            "test": blind[group],
+            "val": val[group],
+            "train": sizes[group] - blind[group] - val[group],
+        }
+        for split, n_split in expected.items():
+            got = int(part["split"].eq(split).sum())
+            if got != n_split:
+                found.append(
+                    Finding(
+                        "split",
+                        where,
+                        _shot_id(part.iloc[0].shot),
+                        f"group {group}: {split} has {got} shots, expected {n_split}",
+                    )
+                )
+        preceding = float("-inf")
+        for split in SPLITS:
+            rows = part[part["split"].eq(split)]
+            for row in rows[rows["u"] <= preceding].itertuples(index=False):
+                found.append(
+                    Finding(
+                        "split",
+                        where,
+                        _shot_id(row.shot),
+                        f"{split} u {row.u!r} is not above earlier splits "
+                        f"in group {group}",
+                    )
+                )
+            if not rows.empty:
+                preceding = max(preceding, rows["u"].max())
+    return found
+
+
+def verify_cohort(
+    cohort: pd.DataFrame,
+    population: pd.DataFrame,
+    cells: Mapping[str, int] | None = None,
+    *,
+    seed: int = SEED,
+    n: int = COHORT_SIZE,
+) -> list[Finding]:
+    """Rederive the draw from the frozen population and seed, comparing exactly."""
+    found = []
+    for name, frame in (("population", population), ("cohort", cohort)):
+        for shot in frame["shot"]:
+            if _shot_id(shot) is None:
+                found.append(Finding("shot", name, None, f"invalid shot {shot!r}"))
+        for shot in frame.loc[frame["shot"].duplicated(), "shot"]:
+            found.append(Finding("unique", name, _shot_id(shot), "appears twice"))
+    if found:
+        return found
+    actual = set(cohort["shot"])
+    eligible = set(population["shot"])
+    marked = set(population.loc[population["in_cohort"], "shot"])
+    for shots, detail in (
+        (actual - eligible, "shot is outside the population"),
+        (actual - marked, "shot is not marked in_cohort"),
+        (marked - actual, "in_cohort shot is missing from the cohort"),
+    ):
+        found.extend(
+            Finding("membership", "cohort", int(s), detail) for s in sorted(shots)
+        )
+    if cells is not None:
+        counts = _cells(population)
+        for cell in sorted(cells.keys() | counts.keys()):
+            if cells.get(cell) != counts.get(cell):
+                found.append(
+                    Finding(
+                        "population",
+                        "population",
+                        None,
+                        f"cell {cell}: N {cells.get(cell)!r}, "
+                        f"population has {counts.get(cell)!r}",
+                    )
+                )
+    try:
+        expected, _ = _draw(population, seed, n)
+    except (ValueError, KeyError) as error:
+        found.append(Finding("draw", "population", None, str(error)))
+        return found
+    expected = expected.set_index("shot")
+    got = cohort.set_index("shot")
+    for shot in sorted(set(expected.index) ^ actual):
+        found.append(
+            Finding("draw", "cohort", int(shot), "shot membership differs from redraw")
+        )
+    common = expected.index.intersection(got.index)
+    for column in DRAW_COLUMNS[1:]:
+        same = got.loc[common, column].eq(expected.loc[common, column]).fillna(False)
+        different = common[~same]
+        for shot in different[:20]:
+            found.append(
+                Finding(
+                    "draw",
+                    "cohort",
+                    int(shot),
+                    f"{column}: {got.loc[shot, column]!r}, "
+                    f"redraw {expected.loc[shot, column]!r}",
+                )
+            )
+        if len(different) > 20:
+            found.append(
+                Finding(
+                    "draw",
+                    "cohort",
+                    None,
+                    f"{column}: {len(different)} differences, first 20 shown",
+                )
+            )
     return found
 
 
@@ -394,7 +583,18 @@ def main(argv=None) -> int:
         frame[frame["reasons"].eq("")], osti_links(read_papers(papers_path)), legacy
     )
     cohort, cells = draw(grouped, args.seed)
-    require(check_cohort(cohort, {c: v["N"] for c, v in cells.items()}))
+    grouped["in_cohort"] = grouped["shot"].isin(cohort["shot"])
+    tables = {
+        "cohort.csv": cohort.to_csv(index=False),
+        "population.csv": grouped[list(POPULATION_COLUMNS)].to_csv(index=False),
+    }
+    saved_cohort = read_cohort(io.StringIO(tables["cohort.csv"]))
+    saved_population = read_population(io.StringIO(tables["population.csv"]))
+    n_pop = {c: v["N"] for c, v in cells.items()}
+    require(
+        check_cohort(saved_cohort, n_pop)
+        + verify_cohort(saved_cohort, saved_population, n_pop, seed=args.seed)
+    )
     meta_path = pool_path.with_suffix(".meta.json")
     inputs = {
         "pool": _input(pool_path),
@@ -411,13 +611,9 @@ def main(argv=None) -> int:
     )
     out = args.out or paths.catalog
     out.mkdir(parents=True, exist_ok=True)
-    grouped["in_cohort"] = grouped["shot"].isin(cohort["shot"])
-    for name, table in (
-        ("cohort.csv", cohort),
-        ("population.csv", grouped[list(POPULATION_COLUMNS)]),
-    ):
+    for name, text in tables.items():
         with atomic_path(out / name) as tmp:
-            table.to_csv(tmp, index=False)
+            Path(tmp).write_text(text, encoding="utf-8")
     with atomic_path(out / "cohort_manifest.yaml") as tmp:
         Path(tmp).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     print(
