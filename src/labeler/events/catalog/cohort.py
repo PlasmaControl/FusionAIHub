@@ -47,7 +47,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from ...literature.papers import read_papers
 from .. import databases
 from . import population as pop
@@ -511,7 +511,9 @@ def _input(path: Path, root: Path | None = None) -> dict:
     }
 
 
-def manifest(frame, cohort, cells, *, seed, inputs, pool_meta) -> dict:
+def manifest(
+    frame, cohort, cells, *, seed, inputs, pool_meta, ip_log_meta, outputs
+) -> dict:
     """What fixed the cohort: rules, seeds, inputs, counts, N and n per cell."""
     in_pop = frame[frame["reasons"].eq("")]
     groups = {}
@@ -526,8 +528,10 @@ def manifest(frame, cohort, cells, *, seed, inputs, pool_meta) -> dict:
         "catalog": "DIII-D event catalog v1",
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(),
+        "git_dirty": git_dirty(),
         "seed": seed,
-        "keys": "sha256 of '<seed>:<purpose>:<shot>', first 8 bytes / 2**64; "
+        "keys": "sha256 of '<seed>:<purpose>:<shot>', its first 8 bytes as a "
+        "big-endian unsigned integer, / 2**64; "
         "purposes draw (the cell sample) and order (u)",
         "rules": {
             **pop.rules_record(),
@@ -541,6 +545,8 @@ def manifest(frame, cohort, cells, *, seed, inputs, pool_meta) -> dict:
         },
         "inputs": inputs,
         "pool": pool_meta,
+        "ip_log_meta": ip_log_meta,
+        "outputs": outputs,
         "counts": {
             **pop.funnel(frame),
             "population": len(in_pop),
@@ -585,6 +591,18 @@ def main(argv=None) -> int:
     for path in (pool_path, log_path, papers_path):
         if not path.is_file():
             parser.error(f"{path} does not exist")
+    meta_path = pool_path.with_suffix(".meta.json")
+    ip_meta_path = log_path.with_suffix(".meta.json")
+    for path in (meta_path, ip_meta_path):
+        if not path.is_file():
+            raise CatalogError(f"{path}: missing provenance record")
+    pool_meta = json.loads(meta_path.read_text())
+    ip_log_meta = json.loads(ip_meta_path.read_text())
+    pool_input = _input(pool_path)
+    if pool_meta.get("pool_sha256") != pool_input["sha256"]:
+        raise CatalogError(f"{meta_path}: pool_sha256 differs from {pool_path}")
+    if pool_meta.get("rules") != pop.rules_record():
+        raise CatalogError(f"{meta_path}: rules differ from population.rules_record()")
     frame = pop.population(pop.read_pool(pool_path), window.read_log(log_path))
     legacy, specs = legacy_sets(paths.label_tables)
     grouped = assign_groups(
@@ -603,25 +621,33 @@ def main(argv=None) -> int:
         check_cohort(saved_cohort, n_pop)
         + verify_cohort(saved_cohort, saved_population, n_pop, seed=args.seed)
     )
-    meta_path = pool_path.with_suffix(".meta.json")
     inputs = {
-        "pool": _input(pool_path),
+        "pool": pool_input,
         "ip_log": _input(log_path),
         "papers": _input(papers_path, paths.label_tables),
         "legacy_tables": [
             _input(s.path(paths.label_tables), paths.label_tables) for s in specs
         ],
     }
-    pool_meta = json.loads(meta_path.read_text()) if meta_path.is_file() else None
     frame = frame.merge(grouped[["shot", "group", "cell"]], on="shot", how="left")
+    encoded = {name: text.encode("utf-8") for name, text in tables.items()}
     doc = manifest(
-        frame, cohort, cells, seed=args.seed, inputs=inputs, pool_meta=pool_meta
+        frame,
+        cohort,
+        cells,
+        seed=args.seed,
+        inputs=inputs,
+        pool_meta=pool_meta,
+        ip_log_meta=ip_log_meta,
+        outputs={
+            name: hashlib.sha256(data).hexdigest() for name, data in encoded.items()
+        },
     )
     out = args.out or paths.catalog
     out.mkdir(parents=True, exist_ok=True)
-    for name, text in tables.items():
+    for name, data in encoded.items():
         with atomic_path(out / name) as tmp:
-            Path(tmp).write_text(text, encoding="utf-8")
+            Path(tmp).write_bytes(data)
     with atomic_path(out / "cohort_manifest.yaml") as tmp:
         Path(tmp).write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
     print(

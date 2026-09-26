@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 import yaml
 
+from labeler.config import sha256_of
 from labeler.events import databases
 from labeler.events.catalog import cohort, window
 from labeler.events.catalog import population as pop
@@ -475,6 +476,30 @@ def _inputs(folder: Path):
         folder / "pool.csv", index=False
     )
     (folder / "ip.jsonl").write_text("".join(json.dumps(line) + "\n" for line in lines))
+    shots = folder / "pool_shots.txt"
+    shots.write_text("".join(f"{line['shot']}\n" for line in lines))
+    (folder / "pool.meta.json").write_text(
+        json.dumps(
+            {
+                "pool_sha256": sha256_of(folder / "pool.csv"),
+                "pool_shots_sha256": sha256_of(shots),
+                "rules": pop.rules_record(),
+            }
+        )
+    )
+    (folder / "ip.meta.json").write_text(
+        json.dumps(
+            {
+                "version": window.LOG_VERSION,
+                "git_sha": "fixture",
+                "log": str(folder / "ip.jsonl"),
+                "shot_file": str(shots),
+                "shot_file_sha256": sha256_of(shots),
+                "shots": len(lines),
+                "definition": window.definition(),
+            }
+        )
+    )
     write_papers(
         papers_frame([_paper(185_601 + 20 * k) for k in (1, 2, 3)]),
         folder / "papers.csv",
@@ -644,3 +669,103 @@ def test_an_input_outside_the_root_uses_its_resolved_absolute_path(tmp_path):
     papers.write_text("papers")
     alias = outside / ".." / "papers.csv"
     assert cohort._input(alias, outside)["path"] == str(papers.resolve())
+
+
+@pytest.mark.parametrize(
+    "change, filename, detail",
+    [
+        ("no_pool_meta", "pool.meta.json", "missing"),
+        ("stale_sha", "pool.meta.json", "pool_sha256"),
+        ("other_rules", "pool.meta.json", "rules"),
+        ("no_ip_meta", "ip.meta.json", "missing"),
+    ],
+)
+def test_the_command_refuses_unverified_provenance(
+    tmp_path, monkeypatch, change, filename, detail
+):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    meta_path = folder / filename
+    if change.startswith("no_"):
+        meta_path.unlink()
+    else:
+        meta = json.loads(meta_path.read_text())
+        meta[detail] = "0" * 64 if change == "stale_sha" else {"old": "rules"}
+        meta_path.write_text(json.dumps(meta))
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    with pytest.raises(CatalogError) as error:
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                str(folder / "papers.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+    assert str(meta_path) in str(error.value) and detail in str(error.value)
+    assert not out.exists()
+    assert before == {p.name: p.read_bytes() for p in folder.iterdir()}
+
+
+@pytest.mark.parametrize("field", ["outputs", "ip_log_meta", "keys"])
+def test_the_manifest_records_its_outputs_and_provenance(tmp_path, monkeypatch, field):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    assert (
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                str(folder / "papers.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    expected = {
+        "outputs": {
+            name: sha256_of(out / name) for name in ("cohort.csv", "population.csv")
+        },
+        "ip_log_meta": json.loads((folder / "ip.meta.json").read_text()),
+        "keys": "sha256 of '<seed>:<purpose>:<shot>', its first 8 bytes as a "
+        "big-endian unsigned integer, / 2**64; "
+        "purposes draw (the cell sample) and order (u)",
+    }
+    assert doc[field] == expected[field]
+    assert doc["pool"] == json.loads((folder / "pool.meta.json").read_text())
+
+
+@pytest.mark.parametrize("dirty", [True, False, None])
+def test_the_manifest_records_git_dirty(tmp_path, monkeypatch, dirty):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "git_dirty", lambda: dirty, raising=False)
+    assert (
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                str(folder / "papers.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    assert doc["git_dirty"] is dirty and "git_sha" in doc
