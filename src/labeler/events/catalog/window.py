@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from collections import Counter
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
@@ -39,17 +40,20 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from shot_design.shotdb.select import MIN_FLATTOP_S, flattop_from_ip
+from shot_design.shotdb.select import FLATTOP_FRACTION, MIN_FLATTOP_S, flattop_from_ip
 
 from ...catalog import read_shot_file
-from ...config import Paths
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ..raw import raw_signal
 from ..verify import NoDataError
+from .check import CatalogError
 
 IP_GROUP = "ip"
 WINDOW_IP_A = 50e3
+#: Samples more than BRIDGE_MS apart split a stretch; exactly 10 ms is bridged.
 BRIDGE_MS = 10.0
 FLATTOP_MEAN_MS = 25.0
+LOG_VERSION = 2
 #: A shot with one of these is measured for good; an "error" is tried again.
 SETTLED = ("ok", "no_plasma")
 LOG_COLUMNS = (
@@ -62,6 +66,7 @@ LOG_COLUMNS = (
     "dt_ms",
     "n",
     "error",
+    "version",
 )
 
 
@@ -70,7 +75,8 @@ def assessed_window(
 ) -> tuple[int, int] | None:
     """The plasma's signed stretch above threshold, rounded inward to whole ms.
 
-    None when Ip never gets there. NaN samples count as below the threshold. The
+    Gaps of at most BRIDGE_MS are bridged. None when Ip never gets there.
+    Non-finite samples count as below the threshold. The
     edges are taken to the us before rounding, so a sample on a whole ms counts as
     that ms: time bases carry float rounding (the raw cache's float32 seconds put
     shot 200111's last sample over 50 kA at 5348.00005 ms, fdp's at 5347.99999).
@@ -135,10 +141,22 @@ def _finite(x: float, digits: int) -> float | None:
 
 
 def summarise(shot: int, t_ms, ip_a) -> dict:
-    """One log line for a shot's Ip record."""
+    """One log line for a shot's Ip record; ValueError if it cannot be measured."""
     t = np.asarray(t_ms, dtype=float).ravel()
+    ip = np.asarray(ip_a, dtype=float).ravel()
+    if t.size != ip.size:
+        raise ValueError("times and current have different lengths")
+    if t.size < 2:
+        raise ValueError("fewer than two samples")
+    if not np.isfinite(t).all():
+        raise ValueError("non-finite time")
+    if not (np.diff(t) > 0).all():
+        raise ValueError("times are not strictly increasing")
+    if not np.isfinite(ip).any():
+        raise ValueError("no finite current")
     line = {
         "shot": int(shot),
+        "version": LOG_VERSION,
         "n": int(t.size),
         # To 1 us: the raw cache keeps times as float32 seconds, so its spacings
         # carry about a microsecond of rounding (0.05 ms steps read 0.050008).
@@ -147,13 +165,14 @@ def summarise(shot: int, t_ms, ip_a) -> dict:
     window = assessed_window(t, ip_a)
     if window is None:
         return line | {"status": "no_plasma"}
-    ip = np.abs(np.asarray(ip_a, dtype=float).ravel())
-    peak = np.nanmax(ip[(t >= window[0]) & (t <= window[1])])
+    ip = np.abs(ip)
+    peak = np.max(ip[(t >= window[0]) & (t <= window[1]) & np.isfinite(ip)])
+    flat = flattop_s(t, ip_a, window)
     return line | {
         "status": "ok",
         "window_start_ms": window[0],
         "window_end_ms": window[1],
-        "flattop_s": _finite(flattop_s(t, ip_a, window), 4),
+        "flattop_s": float(flat) if math.isfinite(flat) else None,
         "ip_peak_ma": _finite(peak / 1e6, 4),
     }
 
@@ -166,30 +185,74 @@ def measure(shot: int, paths: Paths) -> dict:
     """
     try:
         record = raw_signal(shot, IP_GROUP, paths=paths)
+        return summarise(shot, record.x, record.y[0]) | {"tier": record.attrs["tier"]}
     except NoDataError as error:
         return _error_line(shot, str(error))
     except Exception as error:  # noqa: BLE001 - logged for the shot, then retried
         return _error_line(shot, f"{type(error).__name__}: {error}")
-    return summarise(shot, record.x, record.y[0]) | {"tier": record.attrs["tier"]}
 
 
 def _error_line(shot: int, message: str) -> dict:
-    return {"shot": int(shot), "status": "error", "error": message[:300]}
+    return {
+        "shot": int(shot),
+        "status": "error",
+        "error": message[:300],
+        "version": LOG_VERSION,
+    }
+
+
+def _finite_number(value) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
+
+
+def _validate_line(line: dict) -> None:
+    """Validate one complete decoded line before it can supersede a measurement."""
+    if not isinstance(line, dict) or type(line.get("shot")) is not int:
+        raise ValueError("shot must be an int")
+    if line.get("status") not in (*SETTLED, "error"):
+        raise ValueError("status must be ok, no_plasma or error")
+    version = line.get("version", 1)
+    if type(version) is not int or version < 1:
+        raise ValueError("version must be an int >= 1")
+    if line["status"] != "ok":
+        return
+    start, end = line.get("window_start_ms"), line.get("window_end_ms")
+    if type(start) is not int or type(end) is not int or start >= end:
+        raise ValueError("window ends must be ints with start < end")
+    flat = line.get("flattop_s")
+    if flat is not None and (
+        not _finite_number(flat) or not 0 <= flat <= (end - start) / 1000 + 1e-6
+    ):
+        raise ValueError("flattop_s must be null or finite and within the window")
+    if not _finite_number(line.get("ip_peak_ma")):
+        raise ValueError("ip_peak_ma must be finite")
+    dt = line.get("dt_ms")
+    if dt is not None and (not _finite_number(dt) or dt <= 0):
+        raise ValueError("dt_ms must be null or finite and > 0")
 
 
 def read_log(path) -> pd.DataFrame:
-    """The last line per shot, in shot order; empty when there is no log."""
+    """Last complete line per shot; skip torn tails, refuse corrupt complete lines."""
     path = Path(path)
     last = {}
     if path.is_file():
-        for text in path.read_text(encoding="utf-8").splitlines():
-            if text.strip():
-                line = json.loads(text)
-                last[int(line["shot"])] = line
+        with path.open("rb") as source:
+            for number, text in enumerate(source, 1):
+                if not text.endswith(b"\n"):
+                    break
+                if not text.strip():
+                    continue
+                try:
+                    line = json.loads(text)
+                    _validate_line(line)
+                except (ValueError, UnicodeDecodeError) as error:
+                    raise CatalogError(f"{path}:{number}: {error}") from error
+                line.setdefault("version", 1)
+                last[line["shot"]] = line
     frame = pd.DataFrame([last[s] for s in sorted(last)], columns=list(LOG_COLUMNS))
     for column in ("flattop_s", "ip_peak_ma", "dt_ms"):
         frame[column] = pd.to_numeric(frame[column]).astype(float)
-    for column in ("shot", "window_start_ms", "window_end_ms", "n"):
+    for column in ("shot", "window_start_ms", "window_end_ms", "n", "version"):
         frame[column] = pd.to_numeric(frame[column]).astype("Int64")
     return frame
 
@@ -198,9 +261,26 @@ def _lines(shots: list[int], paths: Paths, workers: int) -> Iterator[dict]:
     if workers <= 1:
         yield from (measure(shot, paths) for shot in shots)
         return
-    # Forked before anything imports toksearch: its PTDATA reader is not fork-safe.
+    if "toksearch" in sys.modules or "toksearch_d3d" in sys.modules:
+        raise RuntimeError("cannot fork workers after importing toksearch")
     with Pool(workers) as pool:
         yield from pool.imap_unordered(partial(measure, paths=paths), shots)
+
+
+def _set_aside_torn(path: Path) -> None:
+    """Preserve a partial append separately before the next complete line is added."""
+    if not path.is_file():
+        return
+    data = path.read_bytes()
+    end = data.rfind(b"\n") + 1
+    if end == len(data):
+        return
+    torn = path.with_name(path.name + ".torn")
+    with torn.open("ab") as out:
+        out.write(data[end:] + b"\n")
+    with path.open("r+b") as out:
+        out.truncate(end)
+    print(f"Set aside torn segment from {path} in {torn}", flush=True)
 
 
 def fetch(
@@ -208,9 +288,14 @@ def fetch(
 ) -> Counter:
     """Measure every shot not yet settled in `log`, appending a line for each."""
     table = read_log(log)
-    settled = set(table.loc[table["status"].isin(SETTLED), "shot"])
+    settled = set(
+        table.loc[
+            table["status"].isin(SETTLED) & table["version"].eq(LOG_VERSION), "shot"
+        ]
+    )
     todo = [shot for shot in sorted(set(shots)) if shot not in settled]
     log.parent.mkdir(parents=True, exist_ok=True)
+    _set_aside_torn(log)
     counts: Counter = Counter()
     with log.open("a", encoding="utf-8") as out:
         for i, line in enumerate(_lines(todo, paths, workers), 1):
@@ -221,6 +306,29 @@ def fetch(
             if i % 100 == 0 or i == len(todo):
                 print(f"{i}/{len(todo)} {dict(counts)}", flush=True)
     return counts
+
+
+def definition() -> dict:
+    """The measurement recorded by each current-version Ip log line."""
+    return {
+        "log_version": LOG_VERSION,
+        "ip": "PTDATA ip, native rate",
+        "window": (
+            "Longest stretch of s * Ip >= window_ip_a, where s is the sign of the "
+            "finite sample of largest |Ip| (zero is positive), bridging gaps of "
+            "at most bridge_ms and rounding edges to us then inward to whole ms."
+        ),
+        "window_ip_a": WINDOW_IP_A,
+        "bridge_ms": BRIDGE_MS,
+        "flattop": (
+            "select.flattop_from_ip on centred flattop_mean_ms means of finite "
+            "|Ip| inside the window, with h = round(flattop_mean_ms / 2 / median "
+            "dt), over i-h through i+h, and NaN for incomplete or empty spans."
+        ),
+        "flattop_mean_ms": FLATTOP_MEAN_MS,
+        "flattop_fraction": FLATTOP_FRACTION,
+        "min_flattop_s": MIN_FLATTOP_S,
+    }
 
 
 def main(argv=None) -> int:
@@ -239,6 +347,19 @@ def main(argv=None) -> int:
     log = args.log or paths.catalog / "ip.jsonl"
     shots = read_shot_file(args.shot_file)[: args.limit]
     counts = fetch(shots, log, paths, workers=args.workers)
+    meta = {
+        "version": LOG_VERSION,
+        "git_sha": git_sha(),
+        "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "log": str(log),
+        "shot_file": str(args.shot_file),
+        "shot_file_sha256": sha256_of(args.shot_file),
+        "shots": len(shots),
+        "this_run": dict(counts),
+        "definition": definition(),
+    }
+    with atomic_path(log.with_suffix(".meta.json")) as tmp:
+        Path(tmp).write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     table = read_log(log)
     table = table[table["shot"].isin(shots)]
     summary = {
@@ -246,6 +367,10 @@ def main(argv=None) -> int:
         "shots": len(shots),
         "this_run": dict(counts),
         "status": table["status"].value_counts().to_dict(),
+        "versions": {
+            int(version): int(count)
+            for version, count in table["version"].value_counts().items()
+        },
         "flattop_at_least_1s": int((table["flattop_s"] >= MIN_FLATTOP_S).sum()),
     }
     print(json.dumps(summary, indent=1))
