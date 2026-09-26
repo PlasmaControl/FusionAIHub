@@ -422,6 +422,23 @@ def test_verification_checks_manifest_cells_and_seed():
     assert cohort.verify_cohort(drawn, population, seed=1)
 
 
+def test_an_infeasible_total_is_refused_without_exceeding_caps():
+    frame = _population({"L": {2021: 231}, "G": {2021: 573}, "R": {2021: 100}})
+    assert len(frame) == 904
+    with pytest.raises(CatalogError) as error:
+        cohort.draw(frame)
+    message = str(error.value)
+    for text in ("N", "L", "231", "G", "573", "R", "100", "caps", "200", "500"):
+        assert text in message
+
+
+def test_an_exactly_feasible_total_draws():
+    frame = _population({"L": {2021: 231}, "G": {2021: 573}, "R": {2021: 200}})
+    drawn, _ = cohort.draw(frame)
+    assert len(drawn) == 500
+    assert drawn.group.value_counts().to_dict() == {"L": 200, "G": 100, "R": 200}
+
+
 def _inputs(folder: Path):
     """700 shots pass rules 1-3, one fails rule 1; every tenth has a short flat-top."""
     rows, lines = [], []
@@ -567,3 +584,63 @@ def test_the_command_checks_the_serialized_draw_before_writing(
             ]
         )
     assert not out.exists()
+
+
+def test_the_command_refuses_an_infeasible_total(tmp_path, monkeypatch):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    small = _population({"L": {2021: 231}, "G": {2021: 573}, "R": {2021: 100}})
+    monkeypatch.setattr(cohort, "assign_groups", lambda *args: small)
+    with pytest.raises(CatalogError, match="500"):
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                str(folder / "papers.csv"),
+                "--out",
+                str(out),
+            ]
+        )
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("relative_root", [False, True])
+def test_relative_papers_are_recorded_under_resolved_label_tables(
+    tmp_path, monkeypatch, relative_root
+):
+    folder, out = tmp_path / "tables" / "catalog", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.chdir(tmp_path)
+    root = Path("tables") if relative_root else tmp_path / "tables"
+    monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
+    assert (
+        cohort.main(
+            [
+                "--pool",
+                str(folder / "pool.csv"),
+                "--ip-log",
+                str(folder / "ip.jsonl"),
+                "--papers",
+                "tables/catalog/papers.csv",
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    assert doc["inputs"]["papers"]["path"] == "catalog/papers.csv"
+
+
+def test_an_input_outside_the_root_uses_its_resolved_absolute_path(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    papers = tmp_path / "papers.csv"
+    papers.write_text("papers")
+    alias = outside / ".." / "papers.csv"
+    assert cohort._input(alias, outside)["path"] == str(papers.resolve())
