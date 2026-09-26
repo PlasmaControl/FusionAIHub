@@ -10,6 +10,10 @@ added up. The cells are
 A metric takes the totals, shape `(..., k)`, and returns one value per leading
 index, so the bootstrap evaluates all its replicates in one call. An undefined
 value (nothing to divide by) is NaN.
+
+Intervals use the specified percentile bootstrap (95% by default). Simulation
+coverage depends on the design: the reviewed cohort design covered 0.948-0.953,
+and the smaller blind design 0.912-0.932. No coverage correction is applied.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 import numpy as np
+
+from .frames import _whole
 
 N_REPLICATES = 2000
 LEVEL = 0.95
@@ -90,7 +96,38 @@ def stratum_weights(strata: Sequence, population: Mapping) -> np.ndarray:
     missing = sorted(set(counts) - set(population), key=str)
     if missing:
         raise ValueError(f"no population count for strata {missing}")
+    for h, count in population.items():
+        if not np.isfinite(count) or count < 0:
+            raise ValueError(f"population stratum {h!r} has invalid count {count!r}")
+    unscored = sorted(
+        (h for h, count in population.items() if count > 0 and h not in counts),
+        key=str,
+    )
+    if unscored:
+        raise ValueError(f"no scored shot for population strata {unscored}")
     return np.array([population[h] / counts[h] for h in strata], dtype=float)
+
+
+def _shot_inputs(strata, weights):
+    strata = list(strata)
+    weights = np.asarray(weights, dtype=float)
+    if weights.ndim != 1 or len(weights) != len(strata):
+        raise ValueError("strata and weights must have one entry per shot")
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError("weights must be finite and nonnegative")
+    return strata, weights
+
+
+def _replicate_count(n):
+    n = _whole(n)
+    if n < 1:
+        raise ValueError(f"replicates {n} must be at least 1")
+    return n
+
+
+def _check_level(level):
+    if not 0 < level < 1:
+        raise ValueError(f"level {level!r} must be strictly between 0 and 1")
 
 
 def replicate_weights(
@@ -101,10 +138,10 @@ def replicate_weights(
     Shots are drawn with replacement within their stratum, as many as the
     stratum holds; a shot's replicate weight is its weight times its draws.
     """
-    strata = list(strata)
+    strata, weights = _shot_inputs(strata, weights)
+    n = _replicate_count(n)
     codes = {h: i for i, h in enumerate(sorted(set(strata), key=str))}
     ids = np.array([codes[h] for h in strata], dtype=np.int64)
-    weights = np.asarray(weights, dtype=float)
     rng = np.random.default_rng(seed)
     draws = np.zeros((n, len(strata)))
     for code in range(len(codes)):
@@ -123,6 +160,9 @@ class Estimate:
     low: float
     high: float
     undefined: int  # replicates where the metric had nothing to divide by
+    replicates: int
+    seed: int
+    level: float
 
     def as_json(self) -> dict:
         return {
@@ -130,6 +170,9 @@ class Estimate:
             "low": _plain(self.low),
             "high": _plain(self.high),
             "undefined_replicates": self.undefined,
+            "replicates": int(self.replicates),
+            "seed": int(self.seed),
+            "level": float(self.level),
         }
 
 
@@ -159,11 +202,14 @@ def estimate(
 ) -> Estimate:
     """`metric` of the weighted totals of `cells` `(n_shots, k)`, with its interval."""
     cells = np.asarray(cells, dtype=float)
-    weights = np.asarray(weights, dtype=float)
+    strata, weights = _shot_inputs(strata, weights)
+    if cells.ndim != 2 or len(cells) != len(strata):
+        raise ValueError("cells must be two-dimensional with one row per shot")
+    _check_level(level)
     value = float(metric(weights @ cells))
     replicates = metric(replicate_weights(strata, weights, n, seed) @ cells)
     low, high, undefined = _interval(replicates, level)
-    return Estimate(value, low, high, undefined)
+    return Estimate(value, low, high, undefined, len(replicates), seed, level)
 
 
 def difference(
@@ -177,6 +223,10 @@ def difference(
     """`metric(a) - metric(b)` on the same resampled shots (paired)."""
     a = np.asarray(cells_a, dtype=float)
     b = np.asarray(cells_b, dtype=float)
+    if a.ndim != 2 or b.ndim != 2 or a.shape != b.shape:
+        raise ValueError(
+            "cells_a and cells_b must be two-dimensional of the same shape"
+        )
     k = a.shape[1]
 
     def paired(totals):
@@ -210,9 +260,16 @@ def median_estimate(
 ) -> Estimate:
     """Weighted median of per-event `values`, each owned by shot `owners[i]`."""
     values = np.asarray(values, dtype=float)
-    owners = np.asarray(owners, dtype=np.int64)
-    weights = np.asarray(weights, dtype=float)
+    owners = np.asarray(owners)
+    strata, weights = _shot_inputs(strata, weights)
+    if values.ndim != 1 or owners.ndim != 1 or len(values) != len(owners):
+        raise ValueError("values and owners must be one-dimensional of the same length")
+    indices = [_whole(owner) for owner in owners]
+    if any(owner < 0 or owner >= len(strata) for owner in indices):
+        raise ValueError("each owner must be a shot index in [0, number of shots)")
+    owners = np.array(indices, dtype=np.int64)
+    _check_level(level)
     value = float(weighted_median(values, weights[owners]))
     shots = replicate_weights(strata, weights, n, seed)
     low, high, undefined = _interval(weighted_median(values, shots[:, owners]), level)
-    return Estimate(value, low, high, undefined)
+    return Estimate(value, low, high, undefined, len(shots), seed, level)
