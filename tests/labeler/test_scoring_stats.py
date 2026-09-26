@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import math
+from itertools import product
+from time import perf_counter
 
 import numpy as np
 import pytest
@@ -249,3 +251,178 @@ def test_estimate_records_settings_in_strict_json(kind):
         "seed": 19,
         "level": 0.8,
     }
+
+
+@pytest.mark.parametrize("readers", [2, 3])
+def test_random_frame_kappas_match_textbook_agreement_and_marginals(readers):
+    rng = np.random.default_rng(701)
+    frames = (
+        rng.random((400, readers)) < np.array([0.18, 0.61, 0.83])[:readers]
+    ).astype(int)
+    if readers == 2:
+        observed = np.mean(frames[:, 0] == frames[:, 1])
+        p_a, p_b = frames.mean(axis=0)
+        chance = p_a * p_b + (1 - p_a) * (1 - p_b)
+        expected = (observed - chance) / (1 - chance)
+        assert cohen_kappa(cohen_cells(frames)) == pytest.approx(
+            expected, rel=0, abs=1e-12
+        )
+    present = frames.sum(axis=1)
+    absent = readers - present
+    per_frame = (present * (present - 1) + absent * (absent - 1)) / (
+        readers * (readers - 1)
+    )
+    prevalence = frames.mean()
+    chance = prevalence**2 + (1 - prevalence) ** 2
+    expected = (per_frame.mean() - chance) / (1 - chance)
+    assert fleiss_kappa(fleiss_cells(frames), readers) == pytest.approx(
+        expected, rel=0, abs=1e-12
+    )
+
+
+def _manual_f1(totals):
+    tp, fp, fn = totals[:3]
+    return 2 * tp / (2 * tp + fp + fn)
+
+
+def _manual_median(values, weights):
+    halfway = sum(weights) / 2
+    running = 0
+    for value, weight in sorted(zip(values, weights)):
+        running += weight
+        if running >= halfway:
+            return value
+    raise AssertionError("the enumerable cohort always has positive event weight")
+
+
+@pytest.mark.parametrize("kind", ["f1", "difference", "median"])
+def test_bootstrap_endpoints_equal_the_extremes_of_all_16_ordered_draws(kind):
+    strata, weights = ["a", "a", "b", "b"], np.array([3.0, 3.0, 1.0, 1.0])
+    a = np.array([[4, 0, 0], [0, 2, 1], [1, 0, 2], [0, 1, 0]])
+    b = np.array([[2, 1, 2], [1, 1, 0], [0, 1, 3], [1, 0, 0]])
+    values, owners = [1, 2, 6, 9, 12], [0, 0, 1, 2, 3]
+
+    def answer(w):
+        if kind == "f1":
+            return _manual_f1(w @ a)
+        if kind == "difference":
+            return _manual_f1(w @ a) - _manual_f1(w @ b)
+        return _manual_median(values, [w[i] for i in owners])
+
+    exact = []
+    for first, second in product(product((0, 1), repeat=2), product((2, 3), repeat=2)):
+        counts = [sum(pick == i for pick in first + second) for i in range(4)]
+        exact.append(answer(weights * counts))
+    # Each ordered draw has mass 1/16 > 2.5%; both tails reach the extremes.
+    assert len(exact) == 16 and min(exact) < max(exact)
+    options = {"n": 4000, "seed": 78}
+    if kind == "f1":
+        got = estimate(a, strata, weights, f1, **options)
+    elif kind == "difference":
+        got = difference(a, b, strata, weights, f1, **options)
+    else:
+        got = median_estimate(values, owners, strata, weights, **options)
+    assert [got.value, got.low, got.high] == pytest.approx(
+        [answer(weights), min(exact), max(exact)], rel=0, abs=1e-12
+    )
+    assert got.undefined == 0
+
+
+def test_pairing_detects_a_real_loss_of_true_positives_with_a_narrower_interval():
+    rng = np.random.default_rng(402)
+    a = rng.integers(1, 100, size=(60, 3))
+    b = a.copy()
+    moved = np.maximum(1, rng.binomial(a[:, 0], 0.1))
+    b[:, 0] -= moved
+    b[:, 2] += moved
+    strata = ["a"] * 20 + ["b"] * 40
+    weights = np.array([2.0] * 20 + [8.0] * 40)
+    paired = difference(a, b, strata, weights, f1, n=1000, seed=81)
+    own_a = estimate(a, strata, weights, f1, n=1000, seed=81)
+    own_b = estimate(b, strata, weights, f1, n=1000, seed=82)
+    independent_point = _manual_f1(weights @ a) - _manual_f1(weights @ b)
+    assert paired.value == pytest.approx(independent_point, rel=0, abs=1e-12)
+    assert 0 < paired.low < paired.high
+    assert paired.high - paired.low < math.hypot(
+        own_a.high - own_a.low, own_b.high - own_b.low
+    )
+
+
+def test_undefined_replicates_are_counted_from_the_draws_and_serialize_as_null():
+    cells = np.array([[1, 0, 0], [0, 0, 0]])
+    strata, weights, n, seed = ["a", "a"], [1, 1], 1000, 12
+    draws = replicate_weights(strata, weights, n=n, seed=seed)
+    denominators = draws @ (cells[:, 0] + cells[:, 1])
+    expected = int(np.count_nonzero(denominators == 0))
+    got = estimate(cells, strata, weights, precision, n=n, seed=seed)
+    assert 0 < expected < n
+    assert got.undefined == expected
+    assert got.value == got.low == got.high == 1.0
+    empty = estimate(np.zeros((2, 3)), strata, weights, precision, n=n, seed=seed)
+    data = json.loads(json.dumps(empty.as_json(), allow_nan=False))
+    assert data["value"] is data["low"] is data["high"] is None
+    assert data["undefined_replicates"] == n
+
+
+def test_cohort_design_coverage_and_bias(capsys):
+    started = perf_counter()
+    rng = np.random.default_rng(2026)
+    design = {
+        "G2021": (120, 21),
+        "G2022": (340, 59),
+        "G2023": (112, 19),
+        "G2024": (1, 1),
+        "L2021": (29, 25),
+        "L2022": (73, 63),
+        "L2023": (59, 51),
+        "L2024": (52, 45),
+        "L2025": (18, 16),
+        "R2021": (332, 16),
+        "R2022": (1154, 57),
+        "R2023": (680, 33),
+        "R2024": (1065, 52),
+        "R2025": (850, 42),
+    }
+    populations = {}
+    for h, (size, _) in design.items():
+        prevalence, quality = {"L": (0.35, 0.85), "G": (0.25, 0.75), "R": (0.1, 0.55)}[
+            h[0]
+        ]
+        rows = []
+        for _ in range(size):
+            frames = rng.integers(200, 800)
+            positive = rng.binomial(frames, rng.beta(2, 2 / prevalence - 2))
+            q = rng.beta(8 * quality, 8 * (1 - quality))
+            tp = rng.binomial(positive, q)
+            fp = rng.binomial(frames - positive, (1 - q) * 0.2)
+            rows.append((tp, fp, positive - tp))
+        populations[h] = np.array(rows, dtype=float)
+    totals = np.concatenate(list(populations.values())).sum(axis=0)
+    tp, fp, fn = totals
+    truth = np.array([tp / (tp + fp), tp / (tp + fn), 2 * tp / (2 * tp + fp + fn)])
+    strata = [h for h, (_, size) in design.items() for _ in range(size)]
+    weights = stratum_weights(strata, {h: size for h, (size, _) in design.items()})
+    hits, errors = np.zeros(3, dtype=int), np.zeros((200, 3))
+    for sample in range(200):
+        cells = np.concatenate(
+            [
+                populations[h][rng.choice(size, n, replace=False)]
+                for h, (size, n) in design.items()
+            ]
+        )
+        for j, metric in enumerate((precision, recall, f1)):
+            got = estimate(
+                cells, strata, weights, metric, n=1000, seed=int(rng.integers(1 << 30))
+            )
+            hits[j] += got.low <= truth[j] <= got.high
+            errors[sample, j] = got.value - truth[j]
+    coverage, bias = hits / 200, errors.mean(axis=0)
+    elapsed = perf_counter() - started
+    with capsys.disabled():
+        print(
+            f"\nCohort P/R/F1: coverage={coverage.tolist()}, "
+            f"bias={bias.tolist()}, runtime={elapsed:.3f}s"
+        )
+    assert np.all((0.92 <= coverage) & (coverage <= 0.98))
+    assert np.all(np.abs(bias) < 0.01)
+    assert elapsed < 20

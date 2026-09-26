@@ -226,3 +226,27 @@ def test_scoring_imports_do_not_load_heavy_packages():
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_nearest_first_pair_count_is_bounded_by_brute_force_optimum():
+    def optimum(ref, est, tolerance, i=0, used=frozenset()):
+        if i == len(ref):
+            return 0
+        best = optimum(ref, est, tolerance, i + 1, used)
+        for j, time in enumerate(est):
+            if j not in used and abs(ref[i] - time) <= tolerance:
+                best = max(best, 1 + optimum(ref, est, tolerance, i + 1, used | {j}))
+        return best
+
+    rng = np.random.default_rng(7)
+    for _ in range(250):
+        ref = rng.integers(0, 30, size=rng.integers(0, 6))
+        est = rng.integers(0, 30, size=rng.integers(0, 6))
+        tolerance = int(rng.integers(0, 7))
+        got = match(ref, est, tolerance)
+        assert len(got.pairs) <= optimum(ref, est, tolerance)
+        assert len(set(got.pairs[:, 0])) == len(set(got.pairs[:, 1])) == len(got.pairs)
+        assert all(abs(ref[i] - est[j]) <= tolerance for i, j in got.pairs)
+        single_ref, single_est = rng.integers(0, 30, size=2)
+        got = match([single_ref], [single_est], tolerance)
+        assert len(got.pairs) == optimum([single_ref], [single_est], tolerance)
