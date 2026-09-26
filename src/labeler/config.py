@@ -178,6 +178,16 @@ class Paths:
         """The review store: one rows file per shot, `<event>/<shot>.h5`."""
         return self.root / "spectrograms"
 
+    @property
+    def literature(self) -> Path:
+        """The literature cache: probe hits, full texts and the links they give."""
+        return self.root / "literature"
+
+    @property
+    def catalog(self) -> Path:
+        """The catalog's derived data: the pool, the Ip log, drafts of its tables."""
+        return self.root / "catalog"
+
     def spectrogram_file(self, event: str, shot: int) -> Path:
         return self.spectrograms / event / f"{int(shot)}.h5"
 
