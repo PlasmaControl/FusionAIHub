@@ -534,6 +534,16 @@ def _inputs(folder: Path):
         papers_frame([_paper(185_601 + 20 * k) for k in (1, 2, 3)]),
         folder / "papers.csv",
     )
+    (folder / "papers.meta.json").write_text(
+        json.dumps(
+            {
+                "outputs": {"papers.csv": sha256_of(folder / "papers.csv")},
+                "git_sha": "fixture",
+                "written_at": "2026-09-26",
+                "summary": {"links": 3},
+            }
+        )
+    )
     return {185_601 + 20 * k: ("edge_localized_mode",) for k in range(11, 111)}
 
 
@@ -542,7 +552,8 @@ def test_the_command_writes_the_cohort_and_its_manifest(tmp_path, monkeypatch, c
     legacy = _inputs(folder)
     (tables / "catalog").mkdir(parents=True)
     (folder / "papers.csv").rename(tables / "catalog" / "papers.csv")
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    (folder / "papers.meta.json").rename(tables / "catalog" / "papers.meta.json")
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
     assert cohort.main(["--out", str(folder)]) == 0
@@ -604,7 +615,7 @@ def test_the_command_checks_the_serialized_draw_before_writing(
 ):
     folder, out = tmp_path / "inputs", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     if change == "serialized_u":
         original = cohort.read_cohort
 
@@ -625,7 +636,7 @@ def test_the_command_checks_the_serialized_draw_before_writing(
             return frame, cells
 
         monkeypatch.setattr(cohort, "draw", corrupt_draw)
-    with pytest.raises(CatalogError):
+    with pytest.raises(SystemExit):
         cohort.main(
             [
                 "--pool",
@@ -641,13 +652,13 @@ def test_the_command_checks_the_serialized_draw_before_writing(
     assert not out.exists()
 
 
-def test_the_command_refuses_an_infeasible_total(tmp_path, monkeypatch):
+def test_the_command_refuses_an_infeasible_total(tmp_path, monkeypatch, capsys):
     folder, out = tmp_path / "inputs", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     small = _population({"L": {2021: 231}, "G": {2021: 573}, "R": {2021: 100}})
     monkeypatch.setattr(cohort, "assign_groups", lambda *args: small)
-    with pytest.raises(CatalogError, match="500"):
+    with pytest.raises(SystemExit):
         cohort.main(
             [
                 "--pool",
@@ -669,7 +680,7 @@ def test_relative_papers_are_recorded_under_resolved_label_tables(
 ):
     folder, out = tmp_path / "tables" / "catalog", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     monkeypatch.chdir(tmp_path)
     root = Path("tables") if relative_root else tmp_path / "tables"
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(root))
@@ -711,11 +722,11 @@ def test_an_input_outside_the_root_uses_its_resolved_absolute_path(tmp_path):
     ],
 )
 def test_the_command_refuses_unverified_provenance(
-    tmp_path, monkeypatch, change, filename, detail
+    tmp_path, monkeypatch, capsys, change, filename, detail
 ):
     folder, out = tmp_path / "inputs", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     meta_path = folder / filename
     if change.startswith("no_"):
         meta_path.unlink()
@@ -724,7 +735,7 @@ def test_the_command_refuses_unverified_provenance(
         meta[detail] = "0" * 64 if change == "stale_sha" else {"old": "rules"}
         meta_path.write_text(json.dumps(meta))
     before = {p.name: p.read_bytes() for p in folder.iterdir()}
-    with pytest.raises(CatalogError) as error:
+    with pytest.raises(SystemExit) as error:
         cohort.main(
             [
                 "--pool",
@@ -737,7 +748,9 @@ def test_the_command_refuses_unverified_provenance(
                 str(out),
             ]
         )
-    assert str(meta_path) in str(error.value) and detail in str(error.value)
+    assert error.value.code == 2
+    message = capsys.readouterr().err
+    assert str(meta_path) in message and detail in message
     assert not out.exists()
     assert before == {p.name: p.read_bytes() for p in folder.iterdir()}
 
@@ -746,7 +759,7 @@ def test_the_command_refuses_unverified_provenance(
 def test_the_manifest_records_its_outputs_and_provenance(tmp_path, monkeypatch, field):
     folder, out = tmp_path / "inputs", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     assert (
         cohort.main(
             [
@@ -780,7 +793,7 @@ def test_the_manifest_records_its_outputs_and_provenance(tmp_path, monkeypatch, 
 def test_the_manifest_records_git_dirty(tmp_path, monkeypatch, dirty):
     folder, out = tmp_path / "inputs", tmp_path / "out"
     legacy = _inputs(folder)
-    monkeypatch.setattr(cohort, "legacy_sets", lambda root: (legacy, []))
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     monkeypatch.setattr(cohort, "git_dirty", lambda: dirty, raising=False)
     assert (
         cohort.main(
@@ -799,3 +812,245 @@ def test_the_manifest_records_git_dirty(tmp_path, monkeypatch, dirty):
     )
     doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
     assert doc["git_dirty"] is dirty and "git_sha" in doc
+
+
+@pytest.mark.parametrize(
+    "column, value",
+    [
+        ("window_end_ms", 999999),
+        ("window_start_ms", 9),
+        ("flattop_s", 0),
+        ("legacy_sets", "invented"),
+        ("n_links_verified", 999),
+        ("span_ece_s", 0),
+    ],
+)
+def test_release_verifier_checks_shared_science(column, value):
+    drawn, population = _tables()
+    drawn.loc[0, column] = value
+    assert any(
+        f.shot == drawn.loc[0, "shot"] and column in f.detail
+        for f in cohort.verify_cohort(drawn, population)
+    )
+
+
+@pytest.mark.parametrize(
+    "column, value",
+    [
+        ("window_start_ms", float("nan")),
+        ("window_end_ms", float("inf")),
+        ("window_end_ms", 7),
+        ("flattop_s", 0),
+        ("flattop_s", float("nan")),
+    ],
+)
+def test_release_verifier_refuses_matching_invalid_measurements(column, value):
+    drawn, population = _tables()
+    shot = drawn.loc[0, "shot"]
+    drawn[column] = drawn[column].astype(float)
+    population[column] = population[column].astype(float)
+    drawn.loc[0, column] = value
+    population.loc[population.shot.eq(shot), column] = value
+    assert any(
+        f.shot == shot and column in f.detail
+        for f in cohort.verify_cohort(drawn, population)
+    )
+
+
+@pytest.mark.parametrize(
+    "group, column, value",
+    [
+        ("R", "legacy_sets", "invented"),
+        ("G", "n_links_verified", 3),
+        ("R", "cell", "R2025"),
+    ],
+)
+def test_population_group_and_cell_are_derived_even_for_undrawn_shots(
+    group, column, value
+):
+    drawn, population = _tables()
+    row = population.index[(population.group == group) & ~population.in_cohort][0]
+    population.loc[row, column] = value
+    assert any(
+        f.shot == population.loc[row, "shot"]
+        and ("group" in f.detail or "cell" in f.detail)
+        for f in cohort.verify_cohort(drawn, population)
+    )
+
+
+def _command_inputs(tmp_path, monkeypatch):
+    folder, out = tmp_path / "inputs", tmp_path / "out"
+    legacy = _inputs(folder)
+    monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
+    args = [
+        "--pool",
+        str(folder / "pool.csv"),
+        "--ip-log",
+        str(folder / "ip.jsonl"),
+        "--papers",
+        str(folder / "papers.csv"),
+        "--out",
+        str(out),
+    ]
+    return folder, out, args
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("shots", 1), ("shot_file_sha256", "0" * 64), ("definition", {}), ("version", 0)],
+)
+def test_command_refuses_incompatible_ip_sidecar(
+    tmp_path, monkeypatch, capsys, field, value
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "ip.meta.json"
+    meta = json.loads(path.read_text())
+    meta[field] = value
+    path.write_text(json.dumps(meta))
+    with pytest.raises(SystemExit) as exc:
+        cohort.main(args)
+    assert exc.value.code == 2
+    assert field in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("kind", ["missing", "hash"])
+def test_command_refuses_unverified_papers(tmp_path, monkeypatch, capsys, kind):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "papers.meta.json"
+    if kind == "missing":
+        path.unlink(missing_ok=True)
+    else:
+        path.write_text(json.dumps({"outputs": {"papers.csv": "0" * 64}}))
+    with pytest.raises(SystemExit) as exc:
+        cohort.main(args)
+    assert exc.value.code == 2
+    assert "papers.meta.json" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_committed_release_hashes_and_exact_redraw():
+    root = REPO / "data/events/catalog"
+    doc = yaml.safe_load((root / "cohort_manifest.yaml").read_text())
+    for name in ("cohort.csv", "population.csv"):
+        assert doc["outputs"][name] == sha256_of(root / name)
+    drawn = cohort.read_cohort(root / "cohort.csv")
+    population = cohort.read_population(root / "population.csv")
+    cells = {c: v["N"] for c, v in doc["cells"].items()}
+    replay, allocations = cohort._draw(population, doc["seed"], len(drawn))
+    assert allocations == {
+        c: {k: v[k] for k in ("N", "n")} for c, v in doc["cells"].items()
+    }
+    pd.testing.assert_frame_equal(
+        replay[list(cohort.DRAW_COLUMNS)],
+        drawn[list(cohort.DRAW_COLUMNS)],
+        check_exact=True,
+    )
+    assert cohort.check_cohort(drawn, cells) == []
+    assert cohort.verify_cohort(drawn, population, cells, seed=doc["seed"]) == []
+
+
+def test_supersedes_records_previous_freeze_and_changed_inputs(tmp_path, monkeypatch):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    assert cohort.main(args) == 0
+    path = out / "cohort_manifest.yaml"
+    old_bytes = path.read_bytes()
+    old = yaml.safe_load(old_bytes)
+    previous = tmp_path / "previous.yaml"
+    previous.write_bytes(old_bytes)
+    papers_meta = folder / "papers.meta.json"
+    record = json.loads(papers_meta.read_text())
+    assert old["papers_meta"] == {
+        "sha256": sha256_of(papers_meta),
+        **{k: record[k] for k in ("git_sha", "written_at", "summary")},
+    }
+    meta = folder / "pool.meta.json"
+    data = json.loads(meta.read_text())
+    data["written_at"] = "changed"
+    meta.write_text(json.dumps(data))
+    assert (
+        cohort.main(args + ["--supersedes", str(previous), "--reason", "D23 and D2b"])
+        == 0
+    )
+    new = yaml.safe_load(path.read_text())
+    assert new["supersedes"] == {
+        "sha256": sha256_of(previous),
+        "git_sha": old["git_sha"],
+        "written_at": old["written_at"],
+        "seed": old["seed"],
+        "reason": "D23 and D2b",
+        "changed_inputs": ["pool_meta"],
+    }
+    assert "furthest above its quota" in new["rules"]["allocation"]
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ([], "reason"),
+        (["--reason", "  "], "reason"),
+        (["--reason", "correction", "--seed", "1"], "seed"),
+    ],
+)
+def test_supersedes_refuses_missing_reason_or_different_seed(
+    tmp_path, monkeypatch, capsys, extra, message
+):
+    _, out, args = _command_inputs(tmp_path, monkeypatch)
+    old = tmp_path / "old.yaml"
+    old.write_text(yaml.safe_dump({"seed": cohort.SEED}))
+    with pytest.raises(SystemExit) as exc:
+        cohort.main(args + ["--supersedes", str(old), *extra])
+    assert exc.value.code == 2
+    assert message in capsys.readouterr().err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    "filename, reader",
+    [("pool.csv", "pool"), ("ip.jsonl", "ip"), ("papers.csv", "papers")],
+)
+def test_cohort_fingerprints_bytes_consumed_when_input_replaced(
+    tmp_path, monkeypatch, filename, reader
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / filename
+    digest = sha256_of(path)
+    module, function = {
+        "pool": (pop, "read_pool"),
+        "ip": (window, "read_log"),
+        "papers": (cohort, "read_papers"),
+    }[reader]
+    original = getattr(module, function)
+
+    def replace_after_read(source):
+        frame = original(source)
+        path.write_text("replacement\n")
+        return frame
+
+    monkeypatch.setattr(module, function, replace_after_read)
+    assert cohort.main(args) == 0
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    key = "ip_log" if reader == "ip" else reader
+    assert doc["inputs"][key]["sha256"] == digest
+
+
+def test_legacy_membership_and_hash_use_same_bytes(tmp_path, monkeypatch):
+    spec = databases.load_manifest(REPO / "data/events")[0]
+    path = spec.path(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.write_bytes(spec.path(REPO / "data/events").read_bytes())
+    digest = sha256_of(path)
+    expected = databases.shots(spec, tmp_path)
+    monkeypatch.setattr(databases, "load_manifest", lambda root: [spec])
+    original = databases._parse
+
+    def replacing(source):
+        frame = original(source)
+        path.write_text("replacement\n")
+        return frame
+
+    monkeypatch.setattr(databases, "_parse", replacing)
+    inputs = []
+    named, _ = cohort.legacy_sets(tmp_path, inputs=inputs)
+    assert set(named) == expected
+    assert inputs[0]["sha256"] == digest
