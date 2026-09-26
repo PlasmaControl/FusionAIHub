@@ -22,7 +22,6 @@ import numpy as np
 import pandas as pd
 
 from ...config import atomic_path
-from ..catalog.states import PHENOMENA, STATE_NAMES
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
 
 LONGEST_WINDOW_MS = 20_000
@@ -56,8 +55,6 @@ def categories(event: str) -> dict[int, str]:
     A catalog phenomenon's spans carry its states: present, uncertain and not
     observable.
     """
-    if event in PHENOMENA:
-        return {k: v for k, v in STATE_NAMES.items() if k}
     return {int(k): v for k, v in category_labels(event).items() if k != "0"}
 
 
@@ -163,17 +160,35 @@ def read_history(event_dir) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+class SaveRefused(ValueError):
+    """The page cannot edit this shot without losing its existing attributes."""
+
+
 def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to the history."""
     with _write_lock:
-        saved = dict(read_saved(event_dir))  # a copy: the cached dict is shared
-        saved[int(shot)] = label
-        frame = pd.DataFrame(
-            [row for s in sorted(saved) for row in saved[s].rows(s)],
-            columns=list(INTERVAL_COLUMNS),
+        path = labels_path(event_dir)
+        # Read cells as written: other shots keep their precision and attrs text.
+        current = (
+            pd.read_csv(path, dtype=str, keep_default_na=False)
+            if path.is_file() else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
         )
+        selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
+        if (
+            "attrs" in current
+            and current.loc[selected, "attrs"].str.strip().ne("").any()
+        ):
+            raise SaveRefused(
+                f"shot {shot} has attrs that the review page cannot edit; save refused"
+            )
+        validate_intervals(current)
+        replacement = pd.DataFrame(label.rows(shot), columns=list(INTERVAL_COLUMNS))
+        if "attrs" in current:
+            replacement["attrs"] = ""
+        frame = pd.concat([current.loc[~selected], replacement], ignore_index=True)
+        frame = frame.sort_values("shot", key=pd.to_numeric, kind="stable")
         validate_intervals(frame)
-        with atomic_path(labels_path(event_dir)) as tmp:
+        with atomic_path(path) as tmp:
             frame.to_csv(tmp, index=False)
         entry = {
             "shot": int(shot),

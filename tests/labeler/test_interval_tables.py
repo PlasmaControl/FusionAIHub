@@ -356,3 +356,16 @@ def test_format_shot_grids_preserve_zeros_unknowns_and_point_events(tmp_path):
     loaded = read_label_grid(path)
     assert loaded["categories"] == {"0": "absent", "1": "present"}
     np.testing.assert_equal(loaded["label"][:, 0], grid["label"])
+
+
+def test_catalog_sidecars_name_all_four_states(tmp_path):
+    from labeler.events.catalog.states import STATE_NAMES
+
+    frame = pd.DataFrame(
+        [[190001, 2, 0, 10, None], [190001, 3, 10, 20, None]],
+        columns=INTERVAL_COLUMNS,
+    )
+    path = tmp_path / "labels.csv"
+    write_interval_table(frame, path, {"category": "disruption"})
+    meta = json.loads(path.with_suffix(".meta.json").read_text())
+    assert meta["categories"] == {str(k): v for k, v in STATE_NAMES.items()}

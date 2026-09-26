@@ -363,6 +363,24 @@ def test_a_changed_label_is_saved_merged_and_shown_beside_its_source(
     assert [entry["shot"] for entry in history] == [170815, 178642, 170815]
 
 
+def test_saving_a_shot_with_attrs_returns_conflict_and_keeps_both_files(client, tables):
+    review = tables / "alfven_eigenmode" / "review"
+    review.mkdir()
+    (review / "labels.csv").write_text(
+        'shot,category,t_start,t_end,confidence,attrs\n'
+        '170815,1,0,2000,,"{""type"": ""TAE""}"\n'
+    )
+    (review / "history.jsonl").write_text('{"shot": 170815}\n')
+    before = {name: (review / name).read_bytes() for name in [
+        "labels.csv", "history.jsonl"
+    ]}
+    response = client.post("/api/label", json=_label())
+    assert response.status_code == 409
+    assert "170815" in response.json()["error"]
+    assert "attrs" in response.json()["error"]
+    assert {name: (review / name).read_bytes() for name in before} == before
+
+
 @pytest.mark.parametrize(
     ("change", "status"),
     [
