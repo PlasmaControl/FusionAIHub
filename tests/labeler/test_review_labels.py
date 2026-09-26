@@ -128,6 +128,31 @@ def test_saving_replaces_one_shots_rows_and_appends_the_history(event_dir, monke
     ]
 
 
+def test_saving_another_shot_refuses_a_ragged_table_without_changes(event_dir):
+    review = event_dir / "review"
+    review.mkdir()
+    (review / "labels.csv").write_text(
+        "shot,category,t_start,t_end,confidence\n190001,190002,1,0,100,\n"
+    )
+    (review / "history.jsonl").write_text('{"shot": 190001}\n')
+    before = {name: (review / name).read_bytes() for name in (
+        "labels.csv", "history.jsonl"
+    )}
+    with pytest.raises(labels.SaveRefused, match="row 2: expected 5 fields, got 6"):
+        labels.save(event_dir, 190003, Label((0, 100)), source=None)
+    assert {name: (review / name).read_bytes() for name in before} == before
+
+
+def test_reading_a_ragged_saved_table_refuses_index_inference(event_dir):
+    path = labels.labels_path(event_dir)
+    path.parent.mkdir()
+    path.write_text(
+        "shot,category,t_start,t_end,confidence\n190001,190002,1,0,100,\n"
+    )
+    with pytest.raises(pd.errors.ParserError, match="row 2: expected 5 fields, got 6"):
+        labels.read_saved(event_dir)
+
+
 def test_states():
     source = normalise((0, 2000), [(100, 300, 1)])
     assert labels.state(None, source) == "unreviewed"

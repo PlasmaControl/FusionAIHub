@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from ...config import atomic_path
+from ..catalog.points import validate_csv_fields
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
 
 LONGEST_WINDOW_MS = 20_000
@@ -141,7 +142,8 @@ def _table(path) -> dict[int, Label]:
 @lru_cache(maxsize=64)
 def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
     """One label per shot of a format table; cached per file version, never mutate."""
-    frame = validate_intervals(pd.read_csv(path))
+    validate_csv_fields(path)
+    frame = validate_intervals(pd.read_csv(path, index_col=False))
     frame = frame[frame.t_end - frame.t_start >= 1]  # a point event has no span to edit
     found = {}
     for shot, rows in frame.groupby("shot", sort=False):
@@ -161,16 +163,21 @@ def read_history(event_dir) -> list[dict]:
 
 
 class SaveRefused(ValueError):
-    """The page cannot edit this shot without losing its existing attributes."""
+    """The page cannot save safely over the existing table."""
 
 
 def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to the history."""
     with _write_lock:
         path = labels_path(event_dir)
+        if path.is_file():
+            try:
+                validate_csv_fields(path)
+            except pd.errors.ParserError as error:
+                raise SaveRefused(str(error)) from error
         # Read cells as written: other shots keep their precision and attrs text.
         current = (
-            pd.read_csv(path, dtype=str, keep_default_na=False)
+            pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
             if path.is_file() else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
         )
         selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
