@@ -16,6 +16,7 @@ skip it.
 | --- | --- | --- |
 | `cohort.csv` | `python -m labeler.events.catalog.cohort` | The drawn shots: group, cell, weight, split, review-queue rank and assessed window |
 | `cohort_manifest.yaml` | the same command | The seed, rules, allocation, N and n per cell, the rejection counts and the checksums of every input |
+| `population.csv` | the same command | Every population shot with its group, cell, window, flat-top, legacy sets and `in_cohort`, from which `verify_cohort` draws the cohort again |
 | `papers.csv` | `python -m labeler.literature.osti links` | One row per verified shot-paper link |
 | `cards/<method>@<version>.json` | the scoring library, later | A method's scores against the blind reference |
 | Release manifest | exporter, at release (later) | Release contents and checksums |
