@@ -208,6 +208,9 @@ def read_pool(path) -> pd.DataFrame:
 
     An empty `reasons` means the shot passes; any other empty value is missing.
     """
+    from .points import validate_csv_fields
+
+    validate_csv_fields(path)
     frame = pd.read_csv(
         path,
         dtype={

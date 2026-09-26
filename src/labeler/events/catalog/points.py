@@ -9,6 +9,7 @@ a blind window `[start, end)`, and are blank otherwise.
 from __future__ import annotations
 
 import csv
+import io
 from pathlib import Path
 
 import numpy as np
@@ -31,16 +32,26 @@ POINT_COLUMNS = (
 WINDOW_COLUMNS = ("window_start_ms", "window_end_ms")
 
 
-def validate_csv_fields(path: Path) -> list[int]:
+def validate_csv_fields(path) -> list[int]:
     """Refuse ragged records and duplicate headers before pandas changes them.
 
     Skip empty records and return each record's starting physical line number.
     Quoted commas and newlines belong to their field, not to the table structure.
+    Seekable text/binary streams are inspected without changing their position.
     """
     row, width = 0, None
     lines = []
     try:
-        with Path(path).open(newline="", encoding="utf-8-sig") as source:
+        if hasattr(path, "read"):
+            position = path.tell()
+            try:
+                data = path.read()
+            finally:
+                path.seek(position)
+            data = data.decode("utf-8-sig") if isinstance(data, bytes) else data
+        else:
+            data = Path(path).read_text(encoding="utf-8-sig")
+        with io.StringIO(data, newline="") as source:
             reader = csv.reader(source, strict=True)
             while True:
                 row = reader.line_num + 1

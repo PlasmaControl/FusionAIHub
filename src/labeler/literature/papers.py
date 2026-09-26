@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from ..config import atomic_path
+from ..events.catalog.points import validate_csv_fields
 from ..events.databases import DatabaseError
 from .context import mentions
 
@@ -115,6 +116,7 @@ def write_papers(frame: pd.DataFrame, path) -> None:
 
 
 def read_papers(path) -> pd.DataFrame:
+    validate_csv_fields(path)
     frame = pd.read_csv(
         path,
         dtype={"record_id": str, "doi": str},
