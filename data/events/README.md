@@ -50,12 +50,41 @@ The per-shot binary grid represents their union.
 The interval table is retained even for large exports; it is no longer replaced
 by a shot-count summary above 50,000 rows. The CSV category is a nonnegative integer, matching the grid IDs. Every JSON
 sidecar has a `categories` ID-to-name mapping, also listed under **Category**
-in the event README. Binary labels use 0=absent, 1=present. Missing is not 0.
+in the event README. For other categories, binary labels use 0=absent, 1=present.
+Missing is not 0.
 
 `labeler.events.interval_tables.validate_intervals` validates this public
 schema. The event loader reads it through `events.yaml` and converts milliseconds
 to seconds internally. It also supports the older internal event-table schema.
 Undated `format_datasets` entries are pending and are not loaded.
+
+## Catalog categories
+
+The six catalog categories are `alfven_eigenmode`, `neoclassical_tearing_mode`,
+`high_confinement_mode`, `edge_localized_mode`, `sawtooth_oscillation` and `disruption`.
+For these categories, the `category` column is the state: 0 absent, 1 present,
+2 uncertain, 3 not observable. Time with no row was not assessed; it is not absent.
+
+An optional sixth column, `attrs`, holds a JSON object per row (interval schema 6;
+five-column tables stay valid). A blank cell means no attributes.
+
+`review/points.csv` holds point events with these columns:
+
+```csv
+shot,phenomenon,kind,t_ms,attrs,window_start_ms,window_end_ms
+```
+
+`t_ms` keeps the signal's own resolution in milliseconds. For points checked in a
+blind window, set both bounds of the half-open window
+`[window_start_ms, window_end_ms)`; otherwise leave both blank.
+
+Run the checker with:
+
+```text
+python -m labeler.events.catalog.check [categories ...] [--root DIR] [--windows CSV]
+```
+
+It exits 1 on any finding and 2 on bad arguments.
 
 ## Review rosters
 
