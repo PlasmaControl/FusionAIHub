@@ -369,3 +369,15 @@ def test_catalog_sidecars_name_all_four_states(tmp_path):
     write_interval_table(frame, path, {"category": "disruption"})
     meta = json.loads(path.with_suffix(".meta.json").read_text())
     assert meta["categories"] == {str(k): v for k, v in STATE_NAMES.items()}
+
+
+def test_interval_attrs_refuse_duplicate_keys():
+    from labeler.events.databases import DatabaseError
+    from labeler.events.interval_tables import INTERVAL_COLUMNS, validate_intervals
+
+    frame = pd.DataFrame(
+        [[190001, 1, 0, 100, None, '{"type":"BAE","type":"TAE"}']],
+        columns=[*INTERVAL_COLUMNS, "attrs"],
+    )
+    with pytest.raises(DatabaseError, match="duplicate.*type"):
+        validate_intervals(frame)

@@ -158,3 +158,19 @@ def test_read_points_rejects_duplicate_headers_before_pandas_renames_them(tmp_pa
     )
     with pytest.raises(pd.errors.ParserError, match="row 1:.*duplicate.*kind"):
         read_points(path)
+
+
+def test_point_attrs_refuse_duplicate_keys():
+    frame = _points(
+        [
+            190001,
+            "edge_localized_mode",
+            "elm",
+            1.25,
+            '{"type":"I","type":"III"}',
+            None,
+            None,
+        ]
+    )
+    with pytest.raises(DatabaseError, match="duplicate.*type"):
+        validate_points(frame)
