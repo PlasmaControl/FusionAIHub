@@ -224,10 +224,18 @@ def test_whole_ms_refuses_nonfinite(value):
         ([(7, 5260, 0)], "allowed"),
         ([(8, 5263, 1)], "allowed"),
         ([(8, 5261, 0)], "present"),
-        ([(8, 5261, 1), (5261, 5262, 1)], "last"),
+        ([(8, 5261, 1), (5261, 5262, 1)], "span 5261-5262.*allowed end 5260"),
         ([(8, 100, 0), (101, 200, 1)], "gap"),
     ],
 )
 def test_checked_assessment_refuses_invalid_extent(rows, reason):
     with pytest.raises(ValueError, match=reason):
+        Assessment.from_checked(rows, (8, 5260), category="disruption")
+
+
+@pytest.mark.parametrize("start", [5260, 5261])
+@pytest.mark.parametrize("prefix", [True, False])
+def test_checked_present_span_cannot_start_at_or_after_allowed_end(start, prefix):
+    rows = ([(8, start, ABSENT)] if prefix else []) + [(start, 5262, PRESENT)]
+    with pytest.raises(ValueError, match=rf"span {start}-5262.*allowed end 5260"):
         Assessment.from_checked(rows, (8, 5260), category="disruption")

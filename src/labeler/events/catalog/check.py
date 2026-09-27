@@ -162,14 +162,21 @@ def windows(
             end_allowed |= (
                 len(overrun) == 1
                 and overrun.iloc[0].category == 1
+                and overrun.iloc[0].t_start < span[1]
                 and hi <= span[1] + DISRUPTION_TIMING_TOLERANCE_MS
             )
             suffix = (
                 f" (D19: only the last present span may end up to "
                 f"{DISRUPTION_TIMING_TOLERANCE_MS:g} ms later)"
             )
-        if lo < span[0] or not end_allowed:
+        if lo < span[0] or lo >= span[1] or not end_allowed:
             detail = f"window {lo:g}-{hi:g} ms is outside {span[0]:g}-{span[1]:g} ms"
+            for row, values in enumerate(frame.itertuples()):
+                if values.shot == shot and values.t_start >= span[1]:
+                    detail += (
+                        f"; row {row}: span {values.t_start:g}-{values.t_end:g} ms "
+                        f"starts at or after allowed end {span[1]:g} ms"
+                    )
             out.append(Finding("windows", where, shot, detail + suffix))
     return out
 
