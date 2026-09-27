@@ -28,6 +28,7 @@
 #               WORKERS=6 EVENT=high_confinement_mode sbatch --cpus-per-task=2 --mem=3G <this>
 #               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=2G <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
+#   rebuild:    EVENT=neoclassical_tearing_mode FORCE=1 sbatch <this>  (--force: rebuilds built shots)
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
@@ -52,5 +53,6 @@ cd "$REPO"
 : "${EVENT:?set EVENT to the editor, e.g. EVENT=neoclassical_tearing_mode}"
 echo "job ${SLURM_JOB_ID:-none} $EVENT on $(hostname) at $(date -Is), root $ROOT"
 srun "$ENV/bin/python" -m labeler.events.review.build --event "$EVENT" \
-    --workers "${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}" ${SHOTS:+--shots $SHOTS}
+    --workers "${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}" ${SHOTS:+--shots $SHOTS} \
+    ${FORCE:+--force}
 echo "finished at $(date -Is)"
