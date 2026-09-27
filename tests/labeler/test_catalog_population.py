@@ -420,7 +420,7 @@ def test_the_command_writes_the_pool_under_the_root(
     assert rules["rule_3"]["min_group_span_s"] == 2.0
     assert "corpus_effect" not in rules["rule_3"]
     assert rules["rule_4"]["max_ip_dt_ms"] == 0.5
-    assert rules["rule_4"]["log_version"] == 2
+    assert rules["rule_4"]["log_version"] == 3
     assert rules["rule_4"]["measured_on"] == "every shot passing rules 1-3"
     assert rules["dropped"]["shot_text"] == {"min_shot_chars": 0}
 
@@ -873,3 +873,9 @@ def test_population_catalog_error_is_a_usage_error(command_inputs, monkeypatch, 
         pop.main(["--census", str(census), "--out", str(out)])
     assert exc.value.code == 2
     assert "invalid screen fixture" in capsys.readouterr().err
+
+
+def test_population_refuses_version_2_ip_lines(tmp_path):
+    lines = [_ok(shot, 2.0) | {"version": 2} for shot in (1, 7, 8)]
+    with pytest.raises(CatalogError, match="version other than 3"):
+        pop.population(_pool(), _log(tmp_path, lines))
