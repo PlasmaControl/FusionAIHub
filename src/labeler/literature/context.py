@@ -45,6 +45,11 @@ machines' shot numbers do not.
 
 Text is normalised first: dashes become "-", soft hyphens go, a word broken
 across a line ("dis-\\ncharge") is joined, and runs of whitespace become one space.
+Then a six-digit number split into two three-digit groups is joined after a
+whole-word shot(s), discharge(s) or keyword "#", optionally followed by no., nos.,
+number(s), "#" or ":". Joining follows whole or split numbers along a run or range;
+round, equally spaced ticks of one to three digits stay separate. D26 changes
+only those internal spaces, so all later rules and contexts see the joined number.
 """
 
 from __future__ import annotations
@@ -78,6 +83,19 @@ _DASHES = str.maketrans({c: "-" for c in "‐‑‒–—―−﹣－"} | {"­":
 _BROKEN_WORD = re.compile(r"([A-Za-z])-[ \t]*\n\s*([a-z])")
 _TOKEN = re.compile(r"(?<![\d.%])\d{6}(?!\d|\.\d)")
 _RUN_GAP = re.compile(r"\s*(?:(?:[,;/&]|and|or)\s*)*", re.IGNORECASE)
+_SHOT_ANCHOR = re.compile(
+    rf"(?:\b(?:shots?|discharges?)\b|{_HASH_KEYWORD})"
+    r"(?: ?(?:nos?\.|numbers?|#|:))? ?",
+    re.IGNORECASE,
+)
+_CHAIN_NUMBER = r"(?<![\d.%])\d{3} ?\d{3}(?!\d|\.\d)"
+_SHOT_CHAIN = re.compile(
+    rf"{_CHAIN_NUMBER}"
+    rf"(?:(?:{_RUN_GAP.pattern}|\s*(?:-|to|through|thru)\s*){_CHAIN_NUMBER})*",
+    re.IGNORECASE,
+)
+_SPLIT_NUMBER = re.compile(r"(?<![\d.%])\d{3} \d{3}(?!\d|\.\d)")
+_SMALL_GROUP = re.compile(r"(?<![\d.%])\d{1,3}(?!\d|\.\d)")
 _RANGE = re.compile(
     r"(?<![\d.%])(?P<lo>\d{6})\s*(?P<sep>-|to|through|thru)\s*"
     r"(?P<tail>\d{2,6})(?!\d|\.\d)",
@@ -120,7 +138,33 @@ _POSTAL = re.compile(
 
 def normalise(text: str) -> str:
     text = _BROKEN_WORD.sub(r"\1\2", text.translate(_DASHES))
-    return re.sub(r"\s+", " ", text)
+    return _join_split_shots(re.sub(r"\s+", " ", text))
+
+
+def _join_split_shots(text: str) -> str:
+    """D26: remove internal spaces only in keyword-anchored shot-number chains."""
+    runs: list[list[re.Match]] = []
+    for group in _SMALL_GROUP.finditer(text):
+        if runs and text[runs[-1][-1].end() : group.start()].isspace():
+            runs[-1].append(group)
+        else:
+            runs.append([group])
+    ticks = {start for run in runs for start in _ticks(run)}
+    spaces = set()
+    for anchor in _SHOT_ANCHOR.finditer(text):
+        chain = _SHOT_CHAIN.match(text, anchor.end())
+        if chain is None:
+            continue
+        for number in _SPLIT_NUMBER.finditer(text, chain.start(), chain.end()):
+            # Either group overlapping a tick subrun is enough to preserve it.
+            if number.start() not in ticks and number.start() + 4 not in ticks:
+                spaces.add(number.start() + 3)
+    parts, start = [], 0
+    for space in sorted(spaces):
+        parts.append(text[start:space])
+        start = space + 1
+    parts.append(text[start:])
+    return "".join(parts)
 
 
 @dataclass(frozen=True)
