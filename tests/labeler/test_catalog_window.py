@@ -548,3 +548,28 @@ def test_shot_file_hash_is_of_the_bytes_measured(tmp_path, monkeypatch):
     meta = json.loads((tmp_path / "catalog" / "ip.meta.json").read_text())
     assert meta["shot_file_sha256"] == hashlib.sha256(original).hexdigest()
     assert calls == [1, 2] and meta["shots"] == 2
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.5])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_d2d_opposite_single_sample_glitch_keeps_the_plasma(dt, sign):
+    t = np.arange(0, 4500, dt)
+    clean = sign * np.interp(t, [0, 500, 3500, 4000], [0, 1e6, 1e6, 0])
+    ip = clean.copy()
+    ip[np.argmin(abs(t - 2000))] = -sign * 2e6
+    assert assessed_window(t, ip) == (25, 3975)
+    baseline = summarise(1, t, clean)
+    measured = summarise(1, t, ip)
+    for key in ("window_start_ms", "window_end_ms", "flattop_s", "ip_peak_ma"):
+        assert measured[key] == baseline[key], key
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.5])
+def test_d2d_long_opposite_pickup_does_not_choose_the_sign(dt):
+    t = np.arange(0, 23000, dt)
+    ip = np.interp(t, [0, 500, 1500, 2000, 2500, 22500], [0, 1e6, 1e6, 0, -60e3, -60e3])
+    assert assessed_window(t, ip) == (25, 1975)
+
+
+def test_d2d_short_record_falls_back_to_largest_finite_sample():
+    assert assessed_window([0, 1, 2, 3], [np.nan, -60e3, -70e3, 0]) == (1, 2)
