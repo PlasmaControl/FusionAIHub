@@ -214,7 +214,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "event": event,
             "shot": shot,
             "tier": tier,
-            **rows.meta(path),
+            **rows.meta(path, review_build.HIDDEN.get(event, frozenset())),
             **labels.shot_labels(directory, shot),
         }
 
@@ -231,7 +231,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if not path.is_file():
             raise HTTPException(404, f"shot {shot} has no rows yet: open it first")
         try:
-            data, grid = rows.read_window(path, t0, t1, cols)
+            hide = review_build.HIDDEN.get(event, frozenset())
+            data, grid = rows.read_window(path, t0, t1, cols, hide)
         except (ValueError, OverflowError) as error:
             raise HTTPException(400, str(error)) from None
         return Response(
