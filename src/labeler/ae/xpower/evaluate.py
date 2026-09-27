@@ -197,8 +197,9 @@ def window_cells(shot: int, *, paths: Paths, label, model, blob: dict) -> np.nda
     rows = store_rows(paths.spectrogram_file(EVENT, shot))
     prob, observed = probabilities(model, rows, first, n, band=blob["band_khz"])
     owner = targets(label, first, n)
+    scored = observed & np.isin(owner, (ABSENT, PRESENT))
     frames = ShotFrames(
-        shot, owner, np.zeros(n, bool), observed, {"m": prob >= blob["threshold"]}
+        shot, owner, np.zeros(n, bool), scored, {"m": prob >= blob["threshold"]}
     )
     return cells([frames], "m")[0]
 

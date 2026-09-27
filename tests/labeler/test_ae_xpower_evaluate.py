@@ -11,6 +11,8 @@ import torch
 from labeler.ae.xpower import evaluate, train
 from labeler.ae.xpower.evaluate import ShotFrames
 from labeler.ae.xpower.model import FrameCNN
+from labeler.config import Paths
+from labeler.events.review import labels
 
 from . import ae_tree
 
@@ -40,6 +42,30 @@ def test_cells_count_scored_frames_and_a_where_narrows_them():
     assert evaluate.cells([f], "m").tolist() == [[1, 1, 1, 1]]
     assert evaluate.cells([f], "m", evaluate.mhd_absent).tolist() == [[0, 1, 0, 0]]
     assert evaluate.cells([f], "m", evaluate.other_absent).tolist() == [[0, 0, 0, 1]]
+
+
+@pytest.mark.parametrize(
+    "observed, expected",
+    [([True] * 4, [1, 1, 0, 0]), ([True, False, True, True], [1, 0, 0, 0])],
+)
+def test_whole_window_excludes_uncertain_and_not_observable_frames(
+    tmp_path, monkeypatch, observed, expected
+):
+    label = labels.normalise((0, 40), [(0, 10, 1), (20, 30, 2), (30, 40, 3)])
+    monkeypatch.setattr(evaluate, "store_rows", lambda path: None)
+    monkeypatch.setattr(
+        evaluate,
+        "probabilities",
+        lambda *args, **kwargs: (np.full(4, 0.9), np.asarray(observed)),
+    )
+    counts = evaluate.window_cells(
+        101,
+        paths=Paths(root=tmp_path),
+        label=label,
+        model=None,
+        blob={"band_khz": [80, 250], "threshold": 0.5},
+    )
+    assert counts.tolist() == expected
 
 
 def _population(ours_on_mhd: bool):
