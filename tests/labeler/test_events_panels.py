@@ -99,7 +99,9 @@ def test_an_unregistered_event_falls_back_to_the_generic_builder(monkeypatch):
 
 def test_the_registry_covers_the_events_with_bespoke_panels():
     assert set(registry.BUILDERS) == {
+        "edge_localized_mode",
         "fishbone",
+        "high_confinement_mode",
         "minimum_safety_factor",
         "sawtooth_oscillation",
     }

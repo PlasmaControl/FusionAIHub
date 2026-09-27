@@ -14,10 +14,19 @@ from __future__ import annotations
 
 from ...config import Paths
 from ..verify import Panel
-from . import _generic, fishbone, minimum_safety_factor, sawtooth_oscillation
+from . import (
+    _generic,
+    edge_localized_mode,
+    fishbone,
+    high_confinement_mode,
+    minimum_safety_factor,
+    sawtooth_oscillation,
+)
 
 BUILDERS = {
+    "edge_localized_mode": edge_localized_mode,
     "fishbone": fishbone,
+    "high_confinement_mode": high_confinement_mode,
     "minimum_safety_factor": minimum_safety_factor,
     "sawtooth_oscillation": sawtooth_oscillation,
 }
