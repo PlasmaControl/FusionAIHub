@@ -32,9 +32,11 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import logging
 import platform
+import re
 import shlex
 import sys
 import time
@@ -50,11 +52,11 @@ from pathlib import Path
 import pandas as pd
 
 from ..catalog import corpus_shots
-from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
+from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.catalog.check import CatalogError
 from ..events.catalog.population import FIRST_SHOT, LAST_SHOT, read_pool
 from . import context
-from .papers import Record, links, papers_frame, write_papers
+from .papers import Record, links, papers_frame
 
 FIRST_YEAR = 2021  # the year of FIRST_SHOT, the corpus' first campaign
 PURL = "https://www.osti.gov/servlets/purl/{}"
@@ -105,7 +107,8 @@ def read_hits(
     records, by_shot, truncated, failed = {}, {}, [], []
     truncated_queries = {}
     for path in paths:
-        for line in Path(path).read_text().splitlines():
+        data = path.read() if hasattr(path, "read") else Path(path).read_bytes()
+        for line in data.splitlines():
             row = json.loads(line)
             shot = int(row["shot"])
             if not first <= shot <= last:
@@ -251,13 +254,15 @@ def fetch_record(fetcher: Fetcher, osti_id: str, folder: Path) -> dict:
     }
 
 
-def fetch_log(folder: Path) -> dict[str, dict]:
+def fetch_log(folder) -> dict[str, dict]:
     """The last logged attempt per record."""
-    log = folder / "fetched.jsonl"
-    if not log.is_file():
-        return {}
+    if hasattr(folder, "read"):
+        data = folder.read()
+    else:
+        log = folder / "fetched.jsonl"
+        data = log.read_bytes() if log.is_file() else b""
     last = {}
-    for line in log.read_text().splitlines():
+    for line in data.splitlines():
         if line.strip():
             row = json.loads(line)
             last[row["osti_id"]] = row
@@ -377,7 +382,7 @@ def _texts(folder: Path, log: Mapping[str, dict]) -> tuple[dict[str, str], list[
     for k, row in log.items():
         path = folder / f"{k}.txt"
         if row["status"] == "ok" and path.is_file():
-            text = path.read_text(encoding="utf-8")
+            text = path.read_bytes().decode("utf-8")
             texts[k] = text
             if not text.strip():
                 empty.append(k)
@@ -438,6 +443,18 @@ def _coverage(
             "shots": len(shots),
             "shots_without_verified_link": len(shots - verified),
         }
+    no_context = audit[audit.verdict.eq("no_context")]
+    normalised = {k: context.normalise(text) for k, text in texts.items()}
+    present = []
+    for row in no_context.itertuples():
+        number = str(row.shot)
+        pattern = rf"(?<!\d){number[:3]} ?{number[3:]}(?!\d)"
+        present.append(bool(re.search(pattern, normalised[row.record_id])))
+
+    def counts(part):
+        return {"pairs": len(part), "shots": int(part.shot.nunique())}
+
+    in_text = pd.Series(present, index=no_context.index, dtype=bool)
     return {
         "records": {
             "probe": len(hits.records),
@@ -445,10 +462,17 @@ def _coverage(
             "to_fetch": len(wanted),
             "fetch_status": dict(statuses),
             "texts_read": len(texts),
+            "texts_printable": len(texts) - len(empty),
+            "texts_empty": len(empty),
             "empty_text_ids": sorted(empty, key=int),
         },
         "truncated_queries": list(hits.truncated_queries),
         "no_text": no_text,
+        "no_context": counts(no_context)
+        | {
+            "number_in_text": counts(no_context[in_text]),
+            "number_not_in_text": counts(no_context[~in_text]),
+        },
     }
 
 
@@ -465,6 +489,9 @@ def _build_record(
     audit: pd.DataFrame,
     summary: dict,
     argv: list[str],
+    corpus: Path,
+    input_bytes: Mapping[Path, bytes | None],
+    output_bytes: Mapping[str, bytes],
 ) -> dict:
     """The inputs read and coverage of a links build, for `papers.meta.json`."""
 
@@ -473,7 +500,11 @@ def _build_record(
             name = str(path.resolve().relative_to(cache.resolve()))
         except ValueError:
             name = str(path)
-        return {"path": name, "sha256": sha256_of(path) if path.is_file() else None}
+        data = input_bytes[path]
+        return {
+            "path": name,
+            "sha256": hashlib.sha256(data).hexdigest() if data is not None else None,
+        }
 
     text_lines = "".join(
         f"{k} {hashlib.sha256(texts[k].encode('utf-8')).hexdigest()}\n"
@@ -506,6 +537,7 @@ def _build_record(
                 "sha256": hashlib.sha256(text_lines.encode("utf-8")).hexdigest(),
             },
             "corpus_shots": {
+                "directory": str(corpus),
                 "count": len(shots),
                 "sha256": hashlib.sha256(shot_lines.encode("utf-8")).hexdigest(),
             },
@@ -516,7 +548,8 @@ def _build_record(
             "pypdf": version("pypdf"),
         },
         "outputs": {
-            name: sha256_of(cache / name) for name in ("links.csv", "papers.csv")
+            name: hashlib.sha256(data).hexdigest()
+            for name, data in output_bytes.items()
         },
         "summary": summary,
         "coverage": _coverage(hits, log, texts, empty, audit),
@@ -548,7 +581,8 @@ def _run(args, argv, paths) -> int:
     hit_files = args.hits or sorted(cache.glob("osti_phase*.jsonl"))
     if not hit_files:
         raise CatalogError(f"no probe output under {cache}")
-    hits = read_hits(hit_files)
+    input_bytes = {path: path.read_bytes() for path in hit_files}
+    hits = read_hits([io.BytesIO(input_bytes[path]) for path in hit_files])
     folder = cache / "fulltext"
     if args.command == "fetch":
         # pypdf warns of each broken cross-reference it recovers from; the log
@@ -571,22 +605,31 @@ def _run(args, argv, paths) -> int:
         raise CatalogError(
             f"no {pool}: links date the shots from the population's pool"
         )
-    starts = year_starts(read_pool(pool))
+    input_bytes[pool] = pool.read_bytes()
+    starts = year_starts(read_pool(io.BytesIO(input_bytes[pool])))
     if not starts or min(starts) < FIRST_YEAR:
         raise CatalogError(
             f"{pool} dates shots from {min(starts, default=None)}: the fetch skipped"
             f" every paper dated before {FIRST_YEAR}"
         )
     shots = [s for s in corpus_shots(paths) if FIRST_SHOT <= s <= LAST_SHOT]
-    log = fetch_log(folder)
+    for path in (folder / "fetched.jsonl", cache / "osti_probe.py"):
+        input_bytes[path] = path.read_bytes() if path.is_file() else None
+    log = fetch_log(io.BytesIO(input_bytes[folder / "fetched.jsonl"] or b""))
     texts, empty = _texts(folder, log)
     empty_ids = set(empty)
     printable = {k: text for k, text in texts.items() if k not in empty_ids}
     years = {s: shot_year(s, starts) for s in shots}
     audit, papers = build_links(hits, printable, shots, years)
-    with atomic_path(cache / "links.csv") as tmp:
-        audit.to_csv(tmp, index=False)
-    write_papers(papers, cache / "papers.csv")
+    output_bytes = {
+        "links.csv": audit.to_csv(index=False).encode("utf-8"),
+        "papers.csv": papers_frame(papers.to_dict("records"))
+        .to_csv(index=False)
+        .encode("utf-8"),
+    }
+    for name, data in output_bytes.items():
+        with atomic_path(cache / name) as tmp:
+            tmp.write_bytes(data)
     summary = _summary(hits, audit, papers, starts=starts, empty_texts=len(empty))
     record = _build_record(
         cache=cache,
@@ -600,6 +643,9 @@ def _run(args, argv, paths) -> int:
         audit=audit,
         summary=summary,
         argv=argv,
+        corpus=paths.corpus,
+        input_bytes=input_bytes,
+        output_bytes=output_bytes,
     )
     with atomic_path(cache / "papers.meta.json") as tmp:
         tmp.write_text(json.dumps(record, sort_keys=True, indent=1) + "\n")

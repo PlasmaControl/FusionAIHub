@@ -35,6 +35,7 @@ shots already settled and retries the errors.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
@@ -51,8 +52,7 @@ import pandas as pd
 
 from shot_design.shotdb.select import FLATTOP_FRACTION, MIN_FLATTOP_S, flattop_from_ip
 
-from ...catalog import read_shot_file
-from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_sha
 from ..raw import raw_signal
 from ..verify import NoDataError
 from .check import CatalogError
@@ -411,7 +411,10 @@ def main(argv=None) -> int:
 
 def _run(args, paths) -> int:
     log = args.log or paths.catalog / "ip.jsonl"
-    shots = read_shot_file(args.shot_file)[: args.limit]
+    shot_bytes = args.shot_file.read_bytes()
+    # The shot-file syntax is one int per line, with blanks and # comments ignored.
+    lines = (line.split("#", 1)[0].strip() for line in shot_bytes.decode().splitlines())
+    shots = sorted(int(line) for line in lines if line)[: args.limit]
     counts = fetch(shots, log, paths, workers=args.workers)
     meta = {
         "version": LOG_VERSION,
@@ -419,7 +422,7 @@ def _run(args, paths) -> int:
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "log": str(log),
         "shot_file": str(args.shot_file),
-        "shot_file_sha256": sha256_of(args.shot_file),
+        "shot_file_sha256": hashlib.sha256(shot_bytes).hexdigest(),
         "shots": len(shots),
         "this_run": dict(counts),
         "definition": definition(),
