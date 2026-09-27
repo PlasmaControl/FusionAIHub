@@ -1,4 +1,6 @@
-"""The links table: one row per (shot, paper) whose text names the shot in context.
+"""The links table: one row per (shot, paper) verified by the context rule.
+
+It holds the links that rule verifies, not every paper that names a shot.
 
 Columns: `shot, source, record_id, doi, title, year, venue,
 context, match_type, verified_by`. `source` is `osti` or `arxiv`; `match_type`

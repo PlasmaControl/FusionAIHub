@@ -92,6 +92,9 @@ PHENOMENA = {
             points=("crash",),
             lower_bounds={
                 "period_ms": (0, False),
+                # TECEF channel 1-48 = corpus ECE row + 1. Panel titles and
+                # heuristic inversion_channel_lo/_stop use zero-based rows.
+                # The owner must define which side of the inversion before use.
                 "inversion_channel": (1, True),
                 "inversion_radius_m": (0, False),
             },

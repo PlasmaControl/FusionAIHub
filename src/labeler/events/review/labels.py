@@ -173,7 +173,18 @@ class SaveRefused(ValueError):
 
 
 def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
-    """Replace one shot's rows in `labels.csv` and append the save to the history."""
+    """Replace one shot's rows in `labels.csv` and append the save to history.
+
+    Refuse malformed CSV records, ragged rows or duplicate headers, and any
+    nonblank attrs on the selected shot (the page cannot edit them). Validate
+    both the existing and replacement-combined interval tables: exact columns,
+    nonnegative integral int64 shot/category values, finite time bounds with
+    end >= start, confidence missing or in [0, 1], and plain JSON object attrs
+    without duplicate keys or nonfinite values. These checks precede writing.
+    Other shots retain their original precision and attrs text. This validates
+    interval schema; catalog tiling, observability, points and allowed windows
+    are checked separately by the catalog checker.
+    """
     with _write_lock:
         path = labels_path(event_dir)
         if path.is_file():
@@ -184,7 +195,8 @@ def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
         # Read cells as written: other shots keep their precision and attrs text.
         current = (
             pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
-            if path.is_file() else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
+            if path.is_file()
+            else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
         )
         selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
         if (

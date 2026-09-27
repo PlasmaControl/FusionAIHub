@@ -15,6 +15,9 @@ D2b ends that window at a restrike: after the longest flat-top stretch, a mean
 below 30% of the plateau followed by one above 60% marks a second plasma. The
 end is the lowest mean between them, rounded down to whole ms. Shot 204238 is
 such a restrike; 200811's early dip precedes its flat-top and stays in the window.
+Same-sign current above 50 kA after a quench stays in the window: 50 reviewed
+shots extended more than 25 ms past t20, and 198958 by 362 ms. D2b ends the
+window only at a restrike; it does not trim these post-quench tails.
 
 The flat-top reads centred 25 ms means of |Ip| inside the window, matching the
 feature grid on which its rule was calibrated. This keeps single noisy samples
