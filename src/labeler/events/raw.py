@@ -76,6 +76,9 @@ FETCH_SPECS: dict[str, FetchSpec] = {
     ),
     # Plasma current in amperes; 0.5 ms steps on the 2021 shots, 0.05 ms after.
     "ip": FetchSpec(exprs=("ip",), via="ptdata"),
+    # The divertor D-alpha photodiode the ELM review draws. Not a corpus group,
+    # so every shot's comes from here; the point name is PTDATA's, like DENR0UF.
+    "pcphd03": FetchSpec(exprs=("PCPHD03",), via="ptdata"),
 }
 
 #: One lock per resolved path, so two `write_group` calls for different
