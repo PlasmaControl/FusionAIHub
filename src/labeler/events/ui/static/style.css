@@ -11,6 +11,8 @@
   --unreviewed: #d3d8d5;
   --error: #b3261e;
   --veil: rgba(236, 238, 236, 0.62);
+  --mask: rgba(0, 229, 255, 0.6);
+  --rejected: rgba(200, 200, 200, 0.85);
   --gutter: 96px;
   color-scheme: light;
   font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -29,6 +31,8 @@
     --unreviewed: #3a423f;
     --error: #f2b8b5;
     --veil: rgba(21, 26, 24, 0.62);
+    --mask: rgba(0, 229, 255, 0.6);
+    --rejected: rgba(200, 200, 200, 0.85);
     color-scheme: dark;
   }
 }
@@ -72,7 +76,7 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 }
 
 #shot { width: 7em; margin-left: 4px; }
-#count, #tier, #saved { color: var(--muted); }
+#count, #tier, #saved, #masks { color: var(--muted); }
 #dirty { color: var(--unsaved); font-size: 16px; line-height: 1; }
 #status { margin-left: auto; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 #status.error { color: var(--error); }
