@@ -224,6 +224,8 @@ def picture(shot: int) -> dict:
         reference_name="owner" if reviewed else "source",
         mhd=mhd,
     )
+    other_group = "unreviewed" if reviewed else "reviewed"
+    (gallery_dir(paths) / other_group / f"{shot}.jpg").unlink(missing_ok=True)
     return {
         "shot": shot,
         "group": group,
@@ -240,19 +242,28 @@ def picture(shot: int) -> dict:
 
 
 def write_index(path, rows: Sequence[dict]) -> None:
-    """`index.csv`, merged with what is there: a shot drawn again replaces its row."""
+    """`index.csv`, merged with what is there: a shot drawn again replaces its row.
+
+    Reviewed/unreviewed share a row; extension keeps its own row for that shot.
+    """
+
+    def key(row):
+        group = row["group"]
+        family = "gallery" if group in ("reviewed", "unreviewed") else group
+        return int(row["shot"]), family
+
     path = Path(path)
     old = {}
     if path.is_file():
         with path.open() as f:
-            old = {(int(r["shot"]), r["group"]): r for r in csv.DictReader(f)}
+            old = {key(r): r for r in csv.DictReader(f)}
     for row in rows:
-        old[(int(row["shot"]), row["group"])] = row
+        old[key(row)] = row
     with atomic_path(path) as tmp, open(tmp, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=INDEX_COLUMNS)
         writer.writeheader()
-        for key in sorted(old):
-            writer.writerow({c: old[key].get(c, "") for c in INDEX_COLUMNS})
+        for identity in sorted(old):
+            writer.writerow({c: old[identity].get(c, "") for c in INDEX_COLUMNS})
 
 
 def run_all(work, shots, workers: int, init, initargs):

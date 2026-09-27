@@ -6,9 +6,11 @@ import csv
 
 import numpy as np
 import pandas as pd
+import pytest
 from PIL import Image
 
 from labeler.ae.xpower import gallery
+from labeler.events.review import labels
 from labeler.events.review.rows import Grid
 
 from . import ae_tree
@@ -70,3 +72,47 @@ def test_the_gallery_draws_reviewed_and_unreviewed_shots(tmp_path, monkeypatch):
     assert index.split.tolist() == ["train", "test", "unreviewed"]
     assert index.reference_present_frames.tolist() == [60, 60, 60]
     assert index.f1_vs_owner.iloc[2] == ""
+
+
+@pytest.mark.parametrize("with_extension", [False, True])
+def test_a_newly_reviewed_shot_replaces_its_row_and_picture(
+    tmp_path, monkeypatch, with_extension
+):
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"}, reviewed={101})
+    ae_tree.chosen(paths, {101: "train"})
+    ae_tree.env(monkeypatch, paths)
+    args = ["--workers", "1", "--shots", "102"]
+    assert gallery.main(args) == 0
+    root = gallery.gallery_dir(paths)
+    index_path = root / "index.csv"
+    old_picture = root / "unreviewed" / "102.jpg"
+    assert old_picture.is_file()
+    extension = {"shot": 102, "group": "extension", "file": "extension/102.jpg"}
+    if with_extension:
+        picture = root / extension["file"]
+        picture.parent.mkdir()
+        extension_bytes = old_picture.read_bytes()
+        picture.write_bytes(extension_bytes)
+        gallery.write_index(index_path, [extension])
+
+    event = gallery.event_dir(paths)
+    labels.save(event, 102, labels.read_source(event)[102], source="test")
+    assert gallery.main(args) == 0
+    index = pd.read_csv(index_path, dtype=str, keep_default_na=False)
+    expected = {"reviewed/102.jpg"}
+    if with_extension:
+        expected.add("extension/102.jpg")
+    assert len(index) == len(expected)
+    assert set(index.file) == expected
+    assert {str(p.relative_to(root)) for p in root.glob("*/*.jpg")} == expected
+    reviewed = index[index.group == "reviewed"].iloc[0]
+    assert reviewed.split == "after training" and reviewed.f1_vs_owner != ""
+
+    if with_extension:
+        assert picture.read_bytes() == extension_bytes
+        gallery.write_index(index_path, [{**extension, "model_present_frames": 7}])
+        redrawn = pd.read_csv(index_path, dtype=str, keep_default_na=False)
+        assert len(redrawn) == 2 and set(redrawn.file) == expected
+        assert redrawn[redrawn.group == "reviewed"].iloc[0].equals(reviewed)
+        extended = redrawn[redrawn.group == "extension"].iloc[0]
+        assert int(extended.model_present_frames) == 7
