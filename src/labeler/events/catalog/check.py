@@ -10,7 +10,8 @@ every problem at once, and `require` turns a non-empty list into an error.
 - `windows`: each shot's window lies inside its allowed window (the default
   assessed window from Ip); shots with no allowed window are not catalog shots
   (the AE180 relabels) and are left alone; D19 allows only a final disruption's
-  present span to end up to 2 ms past the allowed window end;
+  present span to end up to 2 ms past the allowed window end, provided that span
+  starts before the allowed end; a labelled window may not start at or after it;
 - `points`: the points table is well formed, each point's attrs are checked,
   and each point lies inside its shot's assessed window `[start, end)`, with
   D19's exception for disruption points at the allowed window end;

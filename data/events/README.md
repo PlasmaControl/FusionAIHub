@@ -180,8 +180,10 @@ It exits 1 on any finding and 2 on bad arguments.
 - When allowed windows are supplied, labelled windows stay inside them. Missing
   shots in the allowed-window mapping are left alone. A labelled window may
   start later than the allowed start, but the start has no slack before it.
-  D19 allows only the final present disruption span to end up to 2 ms past the
-  allowed window end; absent and uncertain spans receive no extension.
+  A labelled window may not start at or after the allowed end. D19 allows only
+  the final present disruption span to end up to 2 ms past the allowed window
+  end, and that span must start before the allowed end; absent and uncertain
+  spans receive no extension.
 - Points have the phenomenon's point kinds, finite times and valid attributes,
   with no repeated `(shot, phenomenon, kind, t_ms)` entries. They require a labels
   table and lie in its assessed `[start, end)` window. If a disruption's labelled
