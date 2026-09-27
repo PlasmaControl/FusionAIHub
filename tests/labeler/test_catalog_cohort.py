@@ -508,6 +508,9 @@ def _inputs(folder: Path):
         folder / "pool.csv", index=False
     )
     (folder / "ip.jsonl").write_text("".join(json.dumps(line) + "\n" for line in lines))
+    (folder / "ip_runs.jsonl").write_text(
+        json.dumps({"run": "b" * 32, "this_run": {"ok": len(lines)}}) + "\n"
+    )
     shots = folder / "pool_shots.txt"
     shots.write_text("".join(f"{line['shot']}\n" for line in lines))
     (folder / "pool.meta.json").write_text(
