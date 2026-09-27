@@ -719,6 +719,18 @@ def main(argv=None) -> int:
         parser.error(str(error))
 
 
+def _read_json_object(path: Path) -> tuple[dict, bytes]:
+    """Read a sidecar once, retaining its parsed bytes for provenance."""
+    try:
+        data = path.read_bytes()
+        record = json.loads(data)
+        if not isinstance(record, dict):
+            raise TypeError("expected a JSON object")
+    except (OSError, ValueError, TypeError) as error:
+        raise CatalogError(f"{path}: {error}") from error
+    return record, data
+
+
 def _run(args, paths) -> int:
     pool_path = args.pool or paths.catalog / "pool.csv"
     log_path = args.ip_log or paths.catalog / "ip.jsonl"
@@ -733,10 +745,9 @@ def _run(args, paths) -> int:
     for path in (meta_path, ip_meta_path, papers_meta_path):
         if not path.is_file():
             raise CatalogError(f"{path}: missing provenance record")
-    pool_meta = json.loads(meta_path.read_bytes())
-    ip_log_meta = json.loads(ip_meta_path.read_bytes())
-    papers_meta_data = papers_meta_path.read_bytes()
-    papers_record = json.loads(papers_meta_data)
+    pool_meta, _ = _read_json_object(meta_path)
+    ip_log_meta, _ = _read_json_object(ip_meta_path)
+    papers_record, papers_meta_data = _read_json_object(papers_meta_path)
     pool_data, log_data, papers_data = (
         path.read_bytes() for path in (pool_path, log_path, papers_path)
     )
