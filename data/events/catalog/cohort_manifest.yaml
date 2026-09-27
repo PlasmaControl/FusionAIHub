@@ -1,6 +1,6 @@
 catalog: DIII-D event catalog v1
-written_at: '2026-09-26T22:06:50+00:00'
-git_sha: d84612f
+written_at: '2026-09-27T06:08:10+00:00'
+git_sha: 07dfdb8446c7548db2d803066a4d37e974815916
 git_dirty: false
 seed: 20260923
 keys: sha256 of '<seed>:<purpose>:<shot>', its first 8 bytes as a big-endian unsigned
@@ -31,9 +31,11 @@ rules:
     - filterscopes
     min_group_span_s: 2.0
   rule_4:
-    log_version: 2
+    log_version: 3
     ip: PTDATA ip, native rate
-    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the finite
+    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the largest-magnitude
+      centred flattop_mean_ms mean of signed Ip over the whole record, with h = round(flattop_mean_ms
+      / 2 / median dt), over i-h through i+h; if no mean is finite, use the finite
       sample of largest |Ip| (zero is positive), bridging gaps of at most bridge_ms
       and rounding edges to us then inward to whole ms.
     window_ip_a: 50000.0
@@ -44,6 +46,13 @@ rules:
     flattop_mean_ms: 25.0
     flattop_fraction: 0.8
     min_flattop_s: 1.0
+    restrike: Inside the D2a window use the same centred means as flattop; drop non-finite
+      means and take their 95th percentile P. After the longest run >= flattop_fraction
+      * P (first on a tie), find the first mean < restrike_dip_fraction * P and the
+      first later mean > restrike_rise_fraction * P. End at the lowest mean between
+      them, rounded down to whole ms; remeasure flat-top and peak inside it.
+    restrike_dip_fraction: 0.3
+    restrike_rise_fraction: 0.6
     max_ip_dt_ms: 0.5
     measured_on: every shot passing rules 1-3
   dropped:
@@ -51,12 +60,25 @@ rules:
       min_shot_chars: 0
     flattop: select.eligible pulse-length flattop proxy
     title: (?i)\b(?:test|ps|bcoil|abort|mag\s+cal)\b
+  rule_5:
+    threshold_ev: 60.0
+    statistic: 'Median over assessed-window samples of the 90th percentile of finite,
+      positive ts_core_temp channels, in eV; samples with no valid channel omitted.
+      A profile sample has at least ceil(n_channels / 2) finite, positive channels;
+      n_profile counts profile samples and n_thomson counts samples with any valid
+      channel. Te uses all such samples when n_profile > 0. no_thomson means no usable
+      Thomson profile in the window (n_profile == 0): blank Te and retained.'
+    comparison: te_p90_ev < threshold_ev
+    no_thomson: retain
   groups: 'L: >= 1 verified OSTI link; G: in a legacy table; R: the rest'
   caps:
     L: 200
     G: 100
   cohort_size: 500
-  allocation: largest remainder across years within a group, >= 1 per non-empty cell
+  allocation: largest remainder across years within a group; remainder ties go to
+    the first cell by name; each non-empty cell left at zero, in name order, takes
+    one shot from the cell furthest above its quota among those with more than one
+    shot (donor ties go to the last cell by name)
   blind_size: 50
   val_size: 50
 inputs:
@@ -65,10 +87,19 @@ inputs:
     sha256: 09b2a7c36449c318871c915ed8e0d3ebef90b0f860811c7ec9094624d694375f
   ip_log:
     path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/ip.jsonl
-    sha256: 3e1a45034066eab178920d03cdf44a8357c4e121c68a9ad8aec27533b7e4314c
+    sha256: 31479a3e96df361b8cfee373322a51eba97bbc01673e11c3b165122c63fd6aab
   papers:
     path: catalog/papers.csv
-    sha256: 772951aa61ea3422c288a9d4bf0a572f3c58e9c9aa7fd5f8399389ce2869dc9c
+    sha256: 56bc6781187bdeed2d6ff7e4a65bc2833760e1be5e03e5f2a77da9053d5e6b4e
+  runaway:
+    path: catalog/runaway.csv
+    sha256: 41bec7f6cbd1fe5131037aff8ebe6ea909ee865f3475aad08fbc817f7b975c54
+    meta_sha256: 6e243f9865ce1c92f7e26ad30bab09cd8d07934287cb81f8ff558a117431b5fa
+    git_sha: 244a83ab264f1b4b08e9361a9dbd8c8c1e94f2a0
+    counts:
+      shots: 4885
+      marked: 13
+      no_thomson: 77
   legacy_tables:
   - path: resistive_wall_mode/format/rwm_format_2026_v1.csv
     sha256: d88cf9c25dc97b6338f286403f1b4ecd2c6b14d1551a5b3b786ea622e35e5390
@@ -91,9 +122,9 @@ pool:
     filterscopes: 11.5
   text_root: /scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/shotsummary/processed/per_shot_txt
   corpus: /scratch/gpfs/EKOLEMEN/foundation_model
-  git_sha: 3c8258c
+  git_sha: aea853baf47e572aff630f0cf618d5570d2ef1b1
   git_dirty: false
-  written_at: '2026-09-26T19:43:59+00:00'
+  written_at: '2026-09-27T02:40:36+00:00'
   pool_sha256: 09b2a7c36449c318871c915ed8e0d3ebef90b0f860811c7ec9094624d694375f
   pool_shots_sha256: 11b3150f3f233b84d596d7f6e07d1fa1efca1276dd5b4ad118aa9fc085f50d80
   pool_inputs_sha256: 2c696d9fab91f14548a348a34631ba2822fc0403efd11bd7763f0cdab1b263e4
@@ -145,11 +176,14 @@ pool:
       - filterscopes
       min_group_span_s: 2.0
     rule_4:
-      log_version: 2
+      log_version: 3
       ip: PTDATA ip, native rate
       window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the
-        finite sample of largest |Ip| (zero is positive), bridging gaps of at most
-        bridge_ms and rounding edges to us then inward to whole ms.
+        largest-magnitude centred flattop_mean_ms mean of signed Ip over the whole
+        record, with h = round(flattop_mean_ms / 2 / median dt), over i-h through
+        i+h; if no mean is finite, use the finite sample of largest |Ip| (zero is
+        positive), bridging gaps of at most bridge_ms and rounding edges to us then
+        inward to whole ms.
       window_ip_a: 50000.0
       bridge_ms: 10.0
       flattop: select.flattop_from_ip on centred flattop_mean_ms means of finite |Ip|
@@ -158,6 +192,14 @@ pool:
       flattop_mean_ms: 25.0
       flattop_fraction: 0.8
       min_flattop_s: 1.0
+      restrike: Inside the D2a window use the same centred means as flattop; drop
+        non-finite means and take their 95th percentile P. After the longest run >=
+        flattop_fraction * P (first on a tie), find the first mean < restrike_dip_fraction
+        * P and the first later mean > restrike_rise_fraction * P. End at the lowest
+        mean between them, rounded down to whole ms; remeasure flat-top and peak inside
+        it.
+      restrike_dip_fraction: 0.3
+      restrike_rise_fraction: 0.6
       max_ip_dt_ms: 0.5
       measured_on: every shot passing rules 1-3
     dropped:
@@ -166,18 +208,25 @@ pool:
       flattop: select.eligible pulse-length flattop proxy
       title: (?i)\b(?:test|ps|bcoil|abort|mag\s+cal)\b
 ip_log_meta:
-  version: 2
-  git_sha: 3c8258c
-  written_at: '2026-09-26T19:44:01+00:00'
+  run: 1760f5bdcc3a4b8e9ad1d918680b1dbc
+  version: 3
+  git_sha: aea853baf47e572aff630f0cf618d5570d2ef1b1
+  git_dirty: false
+  command: python -m labeler.events.catalog.window --shot-file /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/pool_shots.txt
+    --workers 4
+  written_at: '2026-09-27T02:43:08+00:00'
   log: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/ip.jsonl
   shot_file: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/pool_shots.txt
   shot_file_sha256: 11b3150f3f233b84d596d7f6e07d1fa1efca1276dd5b4ad118aa9fc085f50d80
   shots: 4997
-  this_run: {}
+  this_run:
+    ok: 4997
   definition:
-    log_version: 2
+    log_version: 3
     ip: PTDATA ip, native rate
-    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the finite
+    window: Longest stretch of s * Ip >= window_ip_a, where s is the sign of the largest-magnitude
+      centred flattop_mean_ms mean of signed Ip over the whole record, with h = round(flattop_mean_ms
+      / 2 / median dt), over i-h through i+h; if no mean is finite, use the finite
       sample of largest |Ip| (zero is positive), bridging gaps of at most bridge_ms
       and rounding edges to us then inward to whole ms.
     window_ip_a: 50000.0
@@ -188,9 +237,42 @@ ip_log_meta:
     flattop_mean_ms: 25.0
     flattop_fraction: 0.8
     min_flattop_s: 1.0
+    restrike: Inside the D2a window use the same centred means as flattop; drop non-finite
+      means and take their 95th percentile P. After the longest run >= flattop_fraction
+      * P (first on a tie), find the first mean < restrike_dip_fraction * P and the
+      first later mean > restrike_rise_fraction * P. End at the lowest mean between
+      them, rounded down to whole ms; remeasure flat-top and peak inside it.
+    restrike_dip_fraction: 0.3
+    restrike_rise_fraction: 0.6
+papers_meta:
+  sha256: 9d4a25b3c7e989754848e4523e96e93fed69341e17087b2255ad2afb4d35bc3e
+  git_sha: aea853baf47e572aff630f0cf618d5570d2ef1b1
+  written_at: '2026-09-27T02:45:30+00:00'
+  summary:
+    empty_texts: 1
+    failed_queries: []
+    hit_links: 1660
+    hit_shots: 807
+    predates_links: 937
+    truncated_shots:
+    - 189631
+    verdicts:
+      no_context: 288
+      no_text: 97
+      predates: 937
+      verified: 338
+    verified_links_not_in_probe: 91
+    verified_shots: 374
+    verified_shots_exact: 301
+    year_starts:
+      '2021': 185601
+      '2022': 188336
+      '2023': 193496
+      '2024': 197444
+      '2025': 202307
 outputs:
-  cohort.csv: 8bb9ece2fcd42daf165a9ba0dc5dfe8339b46697636dbb91ffa6447206063378
-  population.csv: c09488519631636a46f188cdb520d74c578acc224d6b3562e45dc0eac47f7b05
+  cohort.csv: b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda
+  population.csv: 022f48353639a3026cf1b6a4a955b09fb01eec09c0b17939c9fb40061fcdd07f
 counts:
   corpus_in_range: 16909
   after_bundle: 13313
@@ -198,7 +280,8 @@ counts:
   after_rule_2: 5253
   after_rule_3: 4997
   after_rule_4: 4885
-  population: 4885
+  after_rule_5: 4872
+  population: 4872
   rejections:
     no_bundle: 3596
     bundle_mismatch: 0
@@ -214,13 +297,14 @@ counts:
     flattop: 112
     no_plasma: 0
     flattop_unmeasured: 0
+    runaway_plateau: 13
   groups:
     L:
-      N: 142
-      n: 142
-      test: 14
+      N: 145
+      n: 145
+      test: 15
       val: 14
-      train: 114
+      train: 116
     G:
       N: 583
       n: 100
@@ -228,19 +312,19 @@ counts:
       val: 10
       train: 80
     R:
-      N: 4160
-      n: 258
-      test: 26
+      N: 4144
+      n: 255
+      test: 25
       val: 26
-      train: 206
+      train: 204
 cells:
   L2021:
     N: 10
     n: 10
     weight: 1.0
   L2022:
-    N: 51
-    n: 51
+    N: 54
+    n: 54
     weight: 1.0
   L2023:
     N: 35
@@ -279,17 +363,17 @@ cells:
     n: 21
     weight: 16.523809523809526
   R2022:
-    N: 1171
-    n: 73
-    weight: 16.041095890410958
+    N: 1168
+    n: 72
+    weight: 16.22222222222222
   R2023:
-    N: 703
-    n: 44
-    weight: 15.977272727272727
+    N: 700
+    n: 43
+    weight: 16.27906976744186
   R2024:
-    N: 1081
-    n: 67
-    weight: 16.134328358208954
+    N: 1071
+    n: 66
+    weight: 16.227272727272727
   R2025:
     N: 858
     n: 53
@@ -297,3 +381,44 @@ cells:
 replacements: []
 replacements_note: rule 4 was measured on the whole pool before the draw, so no drawn
   shot can fail it
+runaway_corroboration:
+  definition:
+    min_neutrons_per_s: 1000000000000000.0
+    max_beam_kw: 1000.0
+    comparison: max(neutron_rate_mean channels) >= min_neutrons_per_s and pinj_kw
+      < max_beam_kw; blank pinj_kw = 0; missing neutron channels cannot corroborate
+  all_marked_corroborated: true
+  marked_shots:
+  - 194904
+  - 194905
+  - 194906
+  - 200809
+  - 200811
+  - 200812
+  - 200813
+  - 200814
+  - 200819
+  - 200821
+  - 200823
+  - 200824
+  - 200827
+  unmarked_shots:
+  - 201447
+  - 203629
+supersedes:
+  sha256: d7cca06343ba027c8f32e2c785f574db0e86d79dffdf320dcdfcbe951ce68feb
+  git_sha: d84612f
+  written_at: '2026-09-26T22:06:50+00:00'
+  seed: 20260923
+  reason: 'D24: the first freeze drew group L from a papers.csv holding a link that
+    was not verified (190000; spec 4.5). Drawn again from the same seed before any
+    label was made, after the literature links were built again (D23, D26) and the
+    Ip windows measured again (Ip log version 3: D2b''s restrike end, D2d''s sign),
+    and the runaway-electron plateaus kept out of the population (D2e: rule 5, runaway.csv).'
+  changed_inputs:
+  - ip_log
+  - papers
+  - runaway
+  - pool_meta
+  - ip_log_meta
+  - papers_meta
