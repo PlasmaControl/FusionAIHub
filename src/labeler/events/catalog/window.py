@@ -10,6 +10,8 @@ with gaps of at most `BRIDGE_MS` bridged. Post-shot pickup of 51-107 kA about
 0.9 s after the end (185779-185788, 189138, 189154), and a one-sample 54 kA spike
 4.1 s after 188351, are why it is the longest stretch. The opposite-sign quench
 tail of 189013, about -318 kA decaying over 1.1 s, is why the current is signed.
+D2d takes that sign from the largest-magnitude centred 25 ms signed mean over
+the record, falling back to the largest finite sample for a shorter record.
 
 D2b ends that window at a restrike: after the longest flat-top stretch, a mean
 below 30% of the plateau followed by one above 60% marks a second plasma. The
@@ -97,8 +99,7 @@ def assessed_window(
     finite = np.isfinite(y)
     if not finite.any():
         return None
-    samples = y[finite]
-    sign = 1 if samples[np.argmax(np.abs(samples))] >= 0 else -1
+    sign = _plasma_sign(t, y)
     times = t[finite & (sign * y >= threshold_a)]
     if not times.size:
         return None
@@ -127,6 +128,18 @@ def _centred_mean(values: np.ndarray, half_width: int) -> np.ndarray:
         where=counts > 0,
     )
     return result
+
+
+def _plasma_sign(t: np.ndarray, ip: np.ndarray) -> int:
+    """D2d sign of the largest centred signed mean, or sample if no mean exists."""
+    samples = ip[np.isfinite(ip)]
+    if t.size >= 2:
+        half_width = round(FLATTOP_MEAN_MS / 2 / float(np.median(np.diff(t))))
+        means = _centred_mean(ip, half_width)
+        finite = means[np.isfinite(means)]
+        if finite.size:
+            samples = finite
+    return 1 if samples[np.argmax(np.abs(samples))] >= 0 else -1
 
 
 def flattop_s(
@@ -213,7 +226,8 @@ def summarise(shot: int, t_ms, ip_a) -> dict:
     end = restrike_end(t, ip_a, window)
     if end is not None:
         window = (window[0], end)
-    ip = np.abs(ip)
+    # An opposite-sign glitch must not become the plasma's peak (D2d).
+    ip = _plasma_sign(t, ip) * ip
     peak = np.max(ip[(t >= window[0]) & (t <= window[1]) & np.isfinite(ip)])
     flat = flattop_s(t, ip_a, window)
     return line | {
@@ -365,7 +379,10 @@ def definition() -> dict:
         "ip": "PTDATA ip, native rate",
         "window": (
             "Longest stretch of s * Ip >= window_ip_a, where s is the sign of the "
-            "finite sample of largest |Ip| (zero is positive), bridging gaps of "
+            "largest-magnitude centred flattop_mean_ms mean of signed Ip over "
+            "the whole record, with h = round(flattop_mean_ms / 2 / median dt), "
+            "over i-h through i+h; if no mean is finite, use the finite sample "
+            "of largest |Ip| (zero is positive), bridging gaps of "
             "at most bridge_ms and rounding edges to us then inward to whole ms."
         ),
         "window_ip_a": WINDOW_IP_A,
