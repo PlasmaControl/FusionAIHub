@@ -53,8 +53,8 @@ def _store(path: Path, rng) -> None:
     rows.write(path, grid, built, event="alfven_eigenmode", shot=int(path.stem))
 
 
-def _tokeye(root: Path, shot: int, split: str) -> None:
-    t = -0.768 + TOKEYE_DT * np.arange(783)  # to 2002 ms
+def _tokeye(root: Path, shot: int, split: str, dt: float = TOKEYE_DT) -> None:
+    t = -0.768 + dt * np.arange(int(2002.8 // dt) + 1)  # to 2002 ms
     clean = np.zeros((4, 512, len(t)), dtype=bool)
     ae = (t >= AE_MS[0]) & (t < AE_MS[1])
     mhd = (t >= MHD_MS[0]) & (t < MHD_MS[1])
@@ -71,7 +71,7 @@ def _tokeye(root: Path, shot: int, split: str) -> None:
     )
     dataset = root / "ae" / "dataset"
     dataset.mkdir(parents=True, exist_ok=True)
-    np.savez(
+    np.savez_compressed(
         dataset / f"{shot}_{split}.npz",
         spec=np.zeros((4, 348, len(t)), dtype=np.float16),
     )
@@ -86,17 +86,22 @@ def _table(path: Path, shots, spans) -> None:
 
 
 def build(
-    tmp_path: Path, splits: dict[int, str], seed: int = 0, reviewed=None
+    tmp_path: Path,
+    splits: dict[int, str],
+    seed: int = 0,
+    reviewed=None,
+    tokeye_dt: float = TOKEYE_DT,
 ) -> Paths:
     """The tree under `tmp_path`, `splits` giving each shot's SELDNet split;
-    the owner has saved `reviewed` (default: every shot)."""
+    the owner has saved `reviewed` (default: every shot). `tokeye_dt=0.256` gives
+    TokEye the real column spacing."""
     root, events = tmp_path / "root", tmp_path / "events"
     rng = np.random.default_rng(seed)
     store_dir = root / "spectrograms" / "alfven_eigenmode"
     store_dir.mkdir(parents=True, exist_ok=True)
     for shot, split in sorted(splits.items()):
         _store(store_dir / f"{shot}.h5", rng)
-        _tokeye(root, shot, split)
+        _tokeye(root, shot, split, tokeye_dt)
     spans = [(0, AE_MS[0], 0), (*AE_MS, 1), (AE_MS[1], 2000, 0)]
     event = events / "alfven_eigenmode"
     saved = sorted(splits) if reviewed is None else sorted(reviewed)
