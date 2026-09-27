@@ -54,6 +54,13 @@ after the newest save.
   before. **Restore** loads a version as an unsaved edit; a save appends a
   version and never rewrites one, but a crash between writing the label and
   its history line can leave the current label without its version line.
+- **Mask** (Alfvén eigenmode shots with a pseudo-mask): TokEye's coherent lines
+  inside the label's AE frames, 80-250 kHz, drawn in cyan over the rows
+  (`labeler.ae.seg.pseudo` builds them). The segmentation model learns from
+  them. A click on a region that is not the mode (an MHD harmonic, pickup)
+  rejects it, grey; a second click takes that back. Each click is saved at
+  once, with your name. `M` hides and shows the mask, and the browser
+  remembers which. The header counts the regions kept.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.
@@ -81,6 +88,7 @@ that edit back. Restoring the current label leaves it alone.
 | `S` / `R` | save / revert to the source |
 | `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
 | `H` | saved versions, and restore one |
+| `M` / click a mask region | AE: hide or show the pseudo-mask / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
 
@@ -100,6 +108,11 @@ Saves go under the event's directory in the label tables
   only ever appended to: a shot's versions are its lines in order, numbered
   from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
   names existed have no `name` and read as unnamed.
+- `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
+  shot, the pseudo-mask's version and sha256, the regions rejected, `name`
+  and time. A shot's last line is its decision. A decision made on an older
+  pseudo-mask (another sha256) is dropped: the page says so and training
+  ignores it.
 
 A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the

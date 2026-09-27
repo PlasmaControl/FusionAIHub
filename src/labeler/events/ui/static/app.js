@@ -6,6 +6,8 @@
 const LONGEST_WINDOW_MS = 20000;
 const HANDLE_BAND = 10; // px at the foot of the label track that hold the window's edges
 const GRAB = 5; // px either side of an edge that grab it
+const CLICK_PX = 4; // a press that moves less than this is a click; a click this close picks a region
+const MASK_EVENT = "alfven_eigenmode"; // the one event with pseudo-masks
 const INFERNO = [
   "000004", "0b0724", "210c4a", "3d0965", "57106e", "71196e", "8a226a", "a32c61", "bc3754",
   "d24644", "e45a31", "f1731d", "f98e09", "fcac11", "f9cb35", "f2ea69", "fcffa4",
@@ -111,6 +113,23 @@ function hitTest(label, x, y, height, px) {
   return { kind: "new" };
 }
 
+/** The pseudo-mask region with a pixel nearest bin `j`, column `k`, at most `tj` bins
+ * and `tk` columns away; null if none. A region's `runs` are `[bin, first column,
+ * length]`; on a tie the lower-numbered region wins. */
+function regionAt(regions, j, k, tj = 0, tk = 0) {
+  let [best, nearest] = [null, Infinity];
+  for (const region of regions) {
+    for (const [y, x, n] of region.runs) {
+      const dy = Math.abs(y - j);
+      const dx = k < x ? x - k : k >= x + n ? k - (x + n - 1) : 0;
+      if (dy > tj || dx > tk) continue;
+      const d = Math.hypot(dy / (tj + 1), dx / (tk + 1));
+      if (d < nearest) [best, nearest] = [region, d];
+    }
+  }
+  return best;
+}
+
 /** Colours for the byte values 0-255: inferno from `lo` up, its floor below `lo`. */
 function lut(lo, hi = 255) {
   const anchors = INFERNO.map((hex) => [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16)));
@@ -164,6 +183,8 @@ const S = {
   api: 1, // what /api/version said: 2 takes a name with each save and lists versions
   name: "", // the reviewer's typed name, sent with each save
   versions: [], // the open shot's saved versions, as /api/history listed them
+  masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
+  showMasks: true, // M shows and hides them; the browser remembers which
 };
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
@@ -213,7 +234,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -360,6 +381,7 @@ async function boot() {
   S.lut = lut(S.lo);
   S.name = stored("labeler:name") || "";
   $("reviewer-name").value = S.name;
+  S.showMasks = stored("labeler:masks") !== "hidden";
   wire();
   try {
     S.api = (await (await api("/api/version")).json()).api;
@@ -464,7 +486,8 @@ async function openEvent(event, shot) {
 function showNothing(shot, text) {
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
-    undo: [], selected: -1, asked: "", frame: 0 });
+    undo: [], selected: -1, asked: "", frame: 0, masks: null });
+  showMasks();
   const note = document.createElement("p");
   note.className = "failure";
   note.textContent = text;
@@ -492,13 +515,14 @@ async function openShot(shot) {
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
-    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1 });
+    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null });
     S.label = draft(shot) || baseline();
     buildRows();
     arrive();
     fit();
     fetchRows(0);
     prefetch();
+    loadMasks(ticket);
   } catch (error) {
     if (ticket !== S.ticket) return;
     // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
@@ -710,6 +734,7 @@ function drawRows() {
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
+    if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
     g.restore();
@@ -739,6 +764,26 @@ function drawImage(g, row, i, h) {
     if (!data) continue;
     const [x0, x1] = [px(data.t0), px(data.t1)];
     g.drawImage(bitmap(row, data, i), 0, row.n_y - stop, data.n, stop - first, x0, 0, x1 - x0, h - 1);
+  }
+}
+
+/** The pseudo-mask over an image row: `--mask` where TokEye's line lies inside the
+ * label's AE frames, `--rejected` where the reviewer rejected the region. */
+function drawMasks(g, row, h) {
+  const m = S.masks;
+  if (!m || !S.showMasks) return;
+  const [lo, hi] = imageRange(row);
+  const y = (f) => (h - 1) * (1 - (f - lo) / (hi - lo));
+  const x = (k) => px(m.grid.t0_ms + k * m.grid.dt_ms);
+  const rejected = new Set(m.rejected);
+  for (const region of m.regions) {
+    g.fillStyle = rejected.has(region.id) ? T.rejected : T.mask;
+    for (const [j, k, n] of region.runs) {
+      const [top, bottom] = [y(m.y0_khz + (j + 0.5) * m.dy_khz), y(m.y0_khz + (j - 0.5) * m.dy_khz)];
+      if (bottom < 0 || top > h) continue;
+      const left = x(k);
+      g.fillRect(left, top, Math.max(1, x(k + n) - left), Math.max(1, bottom - top));
+    }
   }
 }
 
@@ -979,7 +1024,7 @@ function startDrag(event, drag) {
 function onRowsDown(event) {
   if (event.button !== 0 || !S.meta || event.target.tagName !== "CANVAS") return;
   if (event.shiftKey) startDrag(event, { kind: "new", from: timeAt(event.clientX) });
-  else startDrag(event, { kind: "pan", x: event.clientX, view: S.view });
+  else startDrag(event, { kind: "pan", x: event.clientX, y: event.clientY, view: S.view, canvas: event.target });
 }
 
 function onLabelDown(event) {
@@ -1003,6 +1048,7 @@ function dragTo(clientX) {
   const d = S.drag;
   const t = timeAt(clientX);
   if (d.kind === "pan") {
+    d.moved ||= Math.abs(clientX - d.x) > CLICK_PX;
     const shift = ((clientX - d.x) / plotWidth()) * (d.view[1] - d.view[0]);
     return setView(d.view[0] - shift, d.view[1] - shift);
   }
@@ -1036,12 +1082,105 @@ function dragTo(clientX) {
   render();
 }
 
-function endDrag() {
+function endDrag(event) {
   const d = S.drag;
   S.drag = null;
+  if (d?.kind === "pan" && d.canvas && !d.moved && event?.type === "pointerup") return clickMask(d);
   if (!d || d.kind === "pan" || same(d.base, S.label)) return;
   keepForUndo(d.base);
   touch();
+}
+
+// -- the AE pseudo-mask: TokEye's lines inside the label, one click per region
+
+/** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
+async function loadMasks(ticket) {
+  if (S.api >= 3 && S.event === MASK_EVENT) {
+    try {
+      const body = await (await api(`/api/masks?event=${enc(S.event)}&shot=${S.shot}`)).json();
+      if (ticket !== S.ticket) return;
+      S.masks = body;
+    } catch {
+      // no pseudo-mask for this shot: nothing to draw
+    }
+  }
+  if (ticket !== S.ticket) return;
+  showMasks();
+  render();
+}
+
+function showMasks() {
+  const m = S.masks;
+  $("masks").hidden = !m;
+  if (!m) return;
+  const n = m.regions.length;
+  const kept = n - m.rejected.length;
+  const last = !m.stale && m.last_save;
+  const by = last ? ` · saved${last.name ? ` by ${last.name}` : ""}` : "";
+  const notes = [m.stale ? " · a decision on an older mask was dropped" : "", by, S.showMasks ? "" : " · hidden"];
+  $("masks").textContent = `mask ${kept}/${n} kept${notes.join("")}`;
+}
+
+function toggleMasks() {
+  if (!S.masks) return say("this shot has no pseudo-mask");
+  S.showMasks = !S.showMasks;
+  store("labeler:masks", S.showMasks ? null : "hidden");
+  showMasks();
+  render();
+}
+
+/** A click on an image row, not a drag: reject the region under it, or take that back. */
+function clickMask(d) {
+  const m = S.masks;
+  if (!m || !S.showMasks || m.saving) return;
+  const row = S.meta.rows[[...$("rows").children].indexOf(d.canvas)];
+  if (!row || row.kind !== "image") return;
+  const rect = d.canvas.getBoundingClientRect();
+  const [lo, hi] = imageRange(row);
+  const f = hi - ((d.y - rect.top) / (rect.height - 1)) * (hi - lo);
+  const j = Math.round((f - m.y0_khz) / m.dy_khz);
+  const k = Math.floor((timeAt(d.x) - m.grid.t0_ms) / m.grid.dt_ms);
+  const binPx = ((rect.height - 1) * m.dy_khz) / (hi - lo);
+  const columnPx = (plotWidth() * m.grid.dt_ms) / (S.view[1] - S.view[0]);
+  const reach = (size) => Math.ceil(CLICK_PX / Math.max(size, 1e-6));
+  const region = regionAt(m.regions, j, k, reach(binPx), reach(columnPx));
+  if (!region) return;
+  const rejected = new Set(m.rejected);
+  if (!rejected.delete(region.id)) rejected.add(region.id);
+  saveMasks(m, [...rejected].sort((a, b) => a - b));
+}
+
+/** Save the rejected regions at once, with the typed name; drawn before the answer. */
+async function saveMasks(m, rejected) {
+  const before = m.rejected;
+  Object.assign(m, { rejected, saving: true });
+  showMasks();
+  render();
+  try {
+    const response = await api("/api/masks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event: S.event,
+        shot: m.shot,
+        pseudo_sha256: m.pseudo_sha256,
+        rejected,
+        name: S.name || null,
+      }),
+    });
+    const body = await response.json();
+    Object.assign(m, { rejected: body.rejected, last_save: body.last_save, stale: false });
+    const n = body.rejected.length;
+    if (S.masks === m) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
+  } catch (error) {
+    m.rejected = before;
+    if (S.masks === m) say(error.message, true);
+  } finally {
+    m.saving = false;
+  }
+  if (S.masks !== m) return;
+  showMasks();
+  render();
 }
 
 function onWheel(event, zoomAlways) {
@@ -1144,6 +1283,7 @@ const KEYS = {
   s: () => save(false),
   r: revert,
   h: toggleVersions,
+  m: toggleMasks,
   j: () => go(-1),
   k: () => go(1),
   ArrowLeft: () => go(-1),
@@ -1271,7 +1411,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, lut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, regionAt, lut };
 } else {
   boot();
 }
