@@ -56,3 +56,19 @@ def test_later_label(pending_events, tmp_path, action, route):  # noqa: F811
     assert [(v["shot"], v["intervals"]) for v in labels.read_history(event_b)] == [
         (170815, [[900, 1100, 1]])
     ]
+
+
+@pytest.mark.parametrize("case", ["queue_save", "queue_next", "queue_moves"])
+def test_pending_queue(pending_events, tmp_path, case):  # noqa: F811
+    base, (event_a, event_b) = pending_events
+    _run_browser(base, tmp_path, case, 10 if case == "queue_moves" else 12)
+    history = labels.read_history(event_a)
+    expected = [170815, 170816]
+    if case != "queue_moves":
+        expected.append(170817)
+        saved = labels.read_saved(event_a)[170817]
+        ((start, stop, category),) = saved.intervals
+        assert abs(start - 500) <= 2 and abs(stop - 800) <= 2 and category == 1
+        assert history[-1]["intervals"] == [list(span) for span in saved.intervals]
+    assert [entry["shot"] for entry in history] == expected
+    assert len(labels.read_history(event_b)) == 1
