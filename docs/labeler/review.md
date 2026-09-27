@@ -32,10 +32,9 @@ after the newest save.
 
 ## The page
 
-- **Rows.** Alfvén eigenmode shots show the CO2 interferometer: the power of
-  chords R0, V1, V2 and V3, then the cross-power of R0 with each of the other
-  three. A mode seen by several chords shows in all seven rows. Noise on one
-  chord shows only in that chord's power row. Colour is dB above each
+- **Rows.** Alfvén eigenmode shots show the CO2 interferometer as three rows:
+  the cross-power of chord R0 with V1, V2 and V3. A mode seen by several chords
+  shows in all three rows; noise on a single chord averages out. Colour is dB above each
   frequency's own quiet level (its median over 0-6 s), from -3 to 27 dB. Other
   events show the rows of their panel builder.
 - **Source** is the label the event's newest `format/*_format_*.csv` gives the

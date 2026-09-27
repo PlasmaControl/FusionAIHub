@@ -21,6 +21,8 @@ from .. import rosters
 from . import alfven, panel_rows, rows
 
 BUILDERS = {"alfven_eigenmode": alfven.build}
+# Rows an older build wrote that the review no longer shows, until it is rebuilt.
+HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
 
 
 def build(event: str, shot: int, paths: Paths | None = None) -> Path:

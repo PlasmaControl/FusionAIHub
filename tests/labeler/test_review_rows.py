@@ -79,6 +79,12 @@ def test_meta_describes_the_grid_and_the_rows(store):
     ]
 
 
+def test_hidden_rows_are_left_out_of_the_meta_and_the_bytes(store):
+    assert [row["name"] for row in rows.meta(store, {"R0"})["rows"]] == ["p1"]
+    data, grid = rows.read_window(store, 0, 10_000, 1000, frozenset({"R0"}))
+    assert len(data) == 2 * 2 * grid["n"] * 4
+
+
 def test_a_whole_record_read_takes_the_coarsest_level_that_fills_the_columns(store):
     data, grid = rows.read_window(store, 0, 10_000, 1000)
     assert grid == {"t0": 0.0, "t1": 10000.0, "n": 625}

@@ -96,7 +96,7 @@ def source(tables):
 def _built(paths, event="alfven_eigenmode", shot=170815):
     """A store file of two rows over 0-2000 ms at 1 ms: a 4-bin image and a trace."""
     image = ImageRow(
-        "R0", "R0", (np.arange(8000) % 256).reshape(4, 2000).astype("uint8"),
+        "R0xV1", "R0 × V1", (np.arange(8000) % 256).reshape(4, 2000).astype("uint8"),
         y0=0.0, dy=1.0, y_units="kHz", z_lo=-3.0, z_hi=27.0, z_units="dB",
         band=(80.0, 250.0),
     )
@@ -243,7 +243,7 @@ def test_a_built_shot_opens_with_its_grid_its_rows_and_its_labels(
     assert body["tier"] == "gold"
     assert body["grid"] == {"t0": 0.0, "dt": 1.0, "n": 2000}
     assert body["t_range"] == [0.0, 2000.0]
-    assert [row["name"] for row in body["rows"]] == ["R0", "p1"]
+    assert [row["name"] for row in body["rows"]] == ["R0xV1", "p1"]
     assert body["rows"][0]["band"] == [80.0, 250.0]
     assert body["source"] == {"window": [0, 2000], "intervals": [[100, 300, 1]]}
     assert (body["saved"], body["last_save"], body["state"]) == (
@@ -306,6 +306,26 @@ def test_rows_come_back_as_bytes_with_the_grid_they_cover(client, paths):
     trace = np.frombuffer(response.content[2000:], dtype="<f4").reshape(2, 1, 500)
     assert image[0, :3].tolist() == [3, 7, 11]
     assert (trace[0] == 0).all() and (trace[1] == 1).all()
+
+
+def test_an_ae_store_built_before_the_power_rows_were_dropped_hides_them(
+    client, paths
+):
+    def image(name, value):
+        return ImageRow(
+            name, name, np.full((4, 2000), value, dtype="uint8"), y0=0.0, dy=1.0,
+            y_units="kHz", z_lo=-3.0, z_hi=27.0, z_units="dB",
+        )
+
+    path = paths.spectrogram_file("alfven_eigenmode", 170815)
+    rows = [image("R0", 7), image("V1", 7), image("R0xV1", 9)]
+    review_rows.write(path, Grid(0.0, 1.0, 2000), rows)
+    view = client.get("/api/shot?event=alfven_eigenmode&shot=170815").json()
+    assert [row["name"] for row in view["rows"]] == ["R0xV1"]
+    response = client.get(
+        "/api/rows?event=alfven_eigenmode&shot=170815&t0=0&t1=2000&cols=500"
+    )
+    assert response.content == bytes([9]) * (4 * 500)
 
 
 @pytest.mark.parametrize(

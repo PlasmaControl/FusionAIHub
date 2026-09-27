@@ -50,7 +50,7 @@ def _store(paths: Paths, shot: int) -> None:
     bins = np.arange(64)[:, None]
     chirp = np.exp(-((bins - 32 - 20 * np.sin(t / 300)) ** 2) / 6)
     image = ImageRow(
-        "R0", "R0", (40 + 200 * chirp).astype("uint8"),
+        "R0xV1", "R0 × V1", (40 + 200 * chirp).astype("uint8"),
         y0=0.0, dy=4.0, y_units="kHz", z_lo=-3.0, z_hi=27.0, z_units="dB",
     )
     wave = np.sin(t / 120)[None]
