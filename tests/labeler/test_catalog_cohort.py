@@ -1196,6 +1196,23 @@ def test_command_refuses_incompatible_ip_sidecar(
     assert not out.exists()
 
 
+@pytest.mark.parametrize("name", ["pool", "ip", "papers"])
+@pytest.mark.parametrize("content", ['{"truncated":', "[]"])
+def test_command_refuses_malformed_json_sidecar_by_name(
+    tmp_path, monkeypatch, capsys, name, content
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / f"{name}.meta.json"
+    path.write_text(content)
+    with pytest.raises(SystemExit) as stopped:
+        cohort.main(args)
+    assert stopped.value.code == 2
+    error = capsys.readouterr().err
+    assert str(path) in error
+    assert "Traceback" not in error
+    assert not out.exists()
+
+
 @pytest.mark.parametrize("kind", ["missing", "hash"])
 def test_command_refuses_unverified_papers(tmp_path, monkeypatch, capsys, kind):
     folder, out, args = _command_inputs(tmp_path, monkeypatch)
