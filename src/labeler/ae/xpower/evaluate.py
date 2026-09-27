@@ -39,12 +39,14 @@ extension runs on 2024-2025 ones (1,103 from 2024, 809 from 2025, and 2 from
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import torch
@@ -362,6 +364,11 @@ def _reviewed(split: dict[int, str], which: str, limit: int) -> list[int]:
 
 
 def run_choose(paths: Paths, models: Path, limit: int = 0) -> dict:
+    evaluation = models / "evaluation.json"
+    if evaluation.exists():
+        raise FileExistsError(
+            f"{evaluation}: the version is evaluated; a new choice is a new version"
+        )
     results = {}
     for name in CANDIDATES:
         file = models / name / "model.pt"
@@ -406,11 +413,25 @@ def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
         raise FileExistsError(
             f"{evaluation}: the test shots are scored once; a retry is a new version"
         )
-    file = chosen_model(models)
-    saved = labels.read_saved(file.parent)  # the labels it was trained on
+    chosen_bytes = (models / "chosen.json").read_bytes()
+    candidate = json.loads(chosen_bytes)["candidate"]
+    file = models / candidate / "model.pt"
+    # Load only these snapshots, so the hashes describe the bytes actually scored.
+    snapshots = {
+        "model.pt": file.read_bytes(),
+        "split.csv": (file.parent / "split.csv").read_bytes(),
+        "review/labels.csv": labels.labels_path(file.parent).read_bytes(),
+    }
+    with TemporaryDirectory(prefix="ae-evaluation-") as directory:
+        frozen = Path(directory)
+        for name, data in snapshots.items():
+            target = frozen / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        saved = labels.read_saved(frozen)
+        model, blob = load(frozen / "model.pt")
+        split = read_split(frozen / "split.csv")
     source = labels.read_source(event_dir(paths))
-    model, blob = load(file)
-    split = read_split(file.parent / "split.csv")
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
     shots, windows = [], []
@@ -438,6 +459,12 @@ def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
     bar = verdict(scores)
     meta = {
         "candidate": blob["candidate"],
+        "model_sha256": hashlib.sha256(snapshots["model.pt"]).hexdigest(),
+        "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
+        "split_sha256": hashlib.sha256(snapshots["split.csv"]).hexdigest(),
+        "labels_copy_sha256": hashlib.sha256(
+            snapshots["review/labels.csv"]
+        ).hexdigest(),
         "threshold": blob["threshold"],
         "band_khz": blob["band_khz"],
         "model_git_sha": blob["git_sha"],
@@ -468,14 +495,17 @@ def main(argv=None) -> int:
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
     models = args.models or model_dir(paths)
+    try:
+        record = (
+            run_choose(paths, models, args.limit)
+            if args.choose
+            else run_test(paths, models, args.limit)
+        )
+    except (OSError, ValueError) as error:
+        p.error(str(error))
     if args.choose:
-        record = run_choose(paths, models, args.limit)
         print(f"chose {record['candidate']}: {record['why']}")
     else:
-        try:
-            record = run_test(paths, models, args.limit)
-        except FileExistsError as error:
-            p.error(str(error))
         print(json.dumps({"bar": record["bar"], "frames": record["frames"]}))
     return 0
 

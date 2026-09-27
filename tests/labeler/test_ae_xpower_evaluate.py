@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -11,7 +12,7 @@ import torch
 from labeler.ae.xpower import evaluate, train
 from labeler.ae.xpower.evaluate import ShotFrames
 from labeler.ae.xpower.model import FrameCNN
-from labeler.config import Paths
+from labeler.config import Paths, sha256_of
 from labeler.events.review import labels
 
 from . import ae_tree
@@ -182,7 +183,24 @@ def test_the_whole_run_chooses_on_validation_then_scores_the_test_shots(
         json.loads((models / "chosen.json").read_text())["candidate"]
         == chosen["candidate"]
     )
+    candidate = models / chosen["candidate"]
+    inputs = {
+        "model_sha256": candidate / "model.pt",
+        "chosen_sha256": models / "chosen.json",
+        "split_sha256": candidate / "split.csv",
+        "labels_copy_sha256": labels.labels_path(candidate),
+    }
+    reads = dict.fromkeys(inputs.values(), 0)
+    read_bytes = Path.read_bytes
+
+    def read_once(path):
+        if path in reads:
+            reads[path] += 1
+        return read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", read_once)
     record = evaluate.run_test(paths, models)
+    assert set(reads.values()) == {1}
     assert set(record["methods"]) == set(evaluate.METHODS)
     assert record["frames"]["shots"] == 2 and record["frames"]["scored"] == 400
     assert record["frames"]["present"] == 120 and record["frames"]["mhd_absent"] == 60
@@ -191,6 +209,8 @@ def test_the_whole_run_chooses_on_validation_then_scores_the_test_shots(
     assert record["methods"]["tokeye"]["fp_rate_mhd"]["value"] == 1.0  # the harmonic
     assert record["methods"]["always"]["recall"]["value"] == 1.0
     assert record["meta"]["tier"] == "suggestions"
+    for key, path in inputs.items():
+        assert record["meta"][key] == sha256_of(path)
     assert set(record["bar"]) == {"A1", "A2", "A3", "all"}
     text = (models / "evaluation.md").read_text()
     assert "| seldnet |" in text and "Tier: suggestions." in text
@@ -218,3 +238,19 @@ def test_test_scoring_refuses_an_existing_evaluation_before_loading_inputs(
     assert "Traceback" not in stderr
     assert path.read_bytes() == original
     assert report.read_text() == "original test report\n"
+
+
+def test_choose_refuses_an_evaluated_version_before_scoring(
+    tmp_path, monkeypatch, capsys
+):
+    paths = Paths(root=tmp_path)
+    path = tmp_path / "evaluation.json"
+    path.write_text("{}")
+    with pytest.raises(FileExistsError, match="version is evaluated"):
+        evaluate.run_choose(paths, tmp_path)
+    ae_tree.env(monkeypatch, paths)
+    with pytest.raises(SystemExit) as error:
+        evaluate.main(["--choose", "--models", str(tmp_path)])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(path) in stderr and "Traceback" not in stderr
