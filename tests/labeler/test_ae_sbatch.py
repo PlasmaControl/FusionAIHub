@@ -1,4 +1,4 @@
-"""The AE jobs' scheduler contract, read from the scripts: nothing is submitted."""
+"""The round-two jobs' scheduler contract, read from the scripts, never submitted."""
 
 from __future__ import annotations
 
@@ -20,6 +20,8 @@ JOBS = {
     "ae_xpower_extend.sbatch": ("labeler.ae.xpower.extend",),
     "ae_seg_train.sbatch": ("labeler.ae.seg.train", "labeler.ae.seg.evaluate"),
     "ae_seg_poi.sbatch": ("labeler.ae.seg.poi",),
+    "spans.sbatch": ("labeler.events.spans",),
+    "review_build.sbatch": ("labeler.events.review.build",),
 }
 EXPORTS = (
     'export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"',
