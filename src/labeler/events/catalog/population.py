@@ -1,4 +1,4 @@
-"""The population: the corpus shots 185,601-204,999 that pass four rules.
+"""The population: the corpus shots 185,601-204,999 that pass five rules.
 
 Rules 1-3 use `shot_design.shotdb.select.eligible()` with its text-length clause
 dropped and its title filter replaced by machine time; the rejections keep its names:
@@ -22,6 +22,14 @@ so N per cell is exact and no drawn shot is ever replaced. Its rejections are
 no stretch of Ip >= 50 kA in the plasma's own direction was found), and
 `flattop_unmeasured` (an `error` line,
 an `ok` line without a flat-top, or sampling missing or coarser than MAX_IP_DT_MS).
+
+Rule 5 (D2e) excludes `runaway_plateau`: Thomson core Te's median channel-p90
+over the assessed window below 60 eV, provided at least one window sample has
+ceil(n_channels / 2) finite, positive core channels. The median still uses all
+samples with any valid channel. `catalog.runaway` computes the evidence
+for every rule-4 shot into `data/events/catalog/runaway.csv`; `catalog.cohort`
+reads that committed input before drawing. `n_profile` counts usable profiles;
+shots with none remain eligible and are counted as `no_thomson`.
 
     pixi run -e labelmaker python -m labeler.events.catalog.population
 
@@ -94,6 +102,7 @@ RULES = {
     "rule_2": ("session_fallback", "title"),
     "rule_3": tuple(f"census_{group}" for group in select.CENSUS_GROUPS),
     "rule_4": ("flattop", "no_plasma", "flattop_unmeasured"),
+    "rule_5": ("runaway_plateau",),
 }
 
 
@@ -422,11 +431,12 @@ def _run(args, paths) -> int:
     left = funnel(pool)
     if left["after_rule_3"] != int(passes_screen(pool).sum()):
         raise CatalogError("funnel after_rule_3 disagrees with passes_screen(pool)")
-    del left["after_rule_4"]  # measured later, from the Ip log
+    for rule in ("rule_4", "rule_5"):  # measured later from separate inputs
+        del left[f"after_{rule}"]
     rejected = {
         code: count
         for code, count in rejections(pool).items()
-        if code not in RULES["rule_4"]
+        if code not in (*RULES["rule_4"], *RULES["rule_5"])
     }
     out.mkdir(parents=True, exist_ok=True)
     with atomic_path(out / "pool.csv") as tmp:
