@@ -1,4 +1,4 @@
-"""The review page in a real browser: draw a span, save, reload, move on."""
+"""The review page in a real browser: draw, save, reload, restore, move on."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ ROSTER = (
     "shot,tier,holdout,reviewers,verified_on,notes\n"
     "170815,gold,false,,,\n"
     "170816,unverified,false,,,\n"
+    "170817,unverified,false,,,\n"
 )
 SOURCE = (
     "shot,category,t_start,t_end,confidence\n"
@@ -63,7 +64,11 @@ def _store(paths: Paths, shot: int) -> None:
 
 @pytest.fixture
 def served(tmp_path):
-    """The review server on a free loopback port, over two built shots."""
+    """The review server on a free loopback port, over three built shots.
+
+    170816 is saved before the page opens, so the next unreviewed shot after
+    170815 is 170817 while the next shot in the queue is 170816.
+    """
     paths = Paths(
         root=tmp_path / "root",
         corpus=tmp_path / "corpus",
@@ -76,8 +81,9 @@ def served(tmp_path):
     (event / "format").mkdir(parents=True)
     (event / "shots.csv").write_text(ROSTER)
     (event / "format/alfven_eigenmode_format_2026_v1.csv").write_text(SOURCE)
-    for shot in (170815, 170816):
+    for shot in (170815, 170816, 170817):
         _store(paths, shot)
+    labels.save(event, 170816, labels.normalise((0, 2000), [(400, 600, 1)]), source=None)
     app = create_app(paths=paths, token=TOKEN)
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")
@@ -104,9 +110,14 @@ def test_a_drawn_label_is_saved_found_again_and_left_behind(served, tmp_path):
     assert result.returncode == 0, result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert [c for c in checks if not c["ok"]] == []
-    assert len(checks) == 12
+    assert len(checks) == 19
     saved = labels.read_saved(event)
-    assert list(saved) == [170815]
+    assert sorted(saved) == [170815, 170816]
     kept, (a, b, c) = saved[170815].intervals
     assert kept == (100, 300, 1) and c == 1 and abs(a - 500) <= 2 and abs(b - 800) <= 2
-    assert [entry["shot"] for entry in labels.read_history(event)] == [170815] * 2
+    history = labels.read_history(event)
+    assert [entry["shot"] for entry in history] == [170816] + [170815] * 3
+    assert [entry["name"] for entry in history] == [None] + ["Ada Lovelace"] * 3
+    first, second, restored = history[1:]
+    assert len(second["intervals"]) == 3, "the second save added a span"
+    assert restored["intervals"] == first["intervals"], "the restored version was saved"

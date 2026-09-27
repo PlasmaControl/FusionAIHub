@@ -44,6 +44,17 @@ after the newest save.
   *confirmed* (saved as the source had it) or *changed*. A dot marks a shot with
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
   a reload keeps them.
+- **Your name**, in the box at the top right, goes with every save and is shown
+  beside it (`saved Sep 26, 14:02 by Ada Lovelace`). The browser remembers it.
+  It is an attribution, not a login: the history also records the login that
+  runs the server.
+- **History** (`H`) lists the shot's saved versions, newest first: who saved
+  each one, when, how many spans, and how many ms it changed from the version
+  before. **Restore** loads a version as an unsaved edit; saving it adds a new
+  version, so no version is ever lost.
+- **Save and next** shows the shot it goes to. It is the next shot in the
+  queue, reviewed or not, wrapping at the end; `U` still jumps to the next
+  unreviewed one.
 
 | Key or gesture | Does |
 |---|---|
@@ -55,13 +66,14 @@ after the newest save.
 | Wheel | scroll the rows |
 | Ctrl/⌘ + wheel, or any wheel over the axis or tracks | zoom at the cursor |
 | Double-click, `0` | fit the window |
-| `←` `→`, `-` `=` | pan, zoom |
+| Shift + `←` `→`, `-` `=` | pan, zoom |
 | `1`-`9` | category for new spans and the selected one |
 | `Delete` | remove the selected span |
 | Ctrl/⌘ + `Z` | undo |
-| `Enter` | save and open the next unreviewed shot |
+| `Enter` | save and open the next shot in the queue |
 | `S` / `R` | save / revert to the source |
-| `J` `K` / `U` | previous, next shot / next unreviewed |
+| `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
+| `H` | saved versions, and restore one |
 | `[` `]` | contrast |
 | `?` | this list |
 
@@ -75,8 +87,16 @@ Saves go under the event's directory in the label tables
   A shot's rows tile its window, and the gaps are category 0. Each save replaces
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
-- `review/history.jsonl` gets one line per save: shot, reviewer, time, the
-  window and spans saved, and the source file they were compared with.
+- `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
+  running the server), `name` (what the name box held, or null), time, the
+  window and spans saved, and the source file they were compared with. It is
+  only ever appended to: a shot's versions are its lines in order, numbered
+  from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
+  names existed have no `name` and read as unnamed.
+
+A page newer than its server asks `/api/version` first. From an older server it
+saves without a name, hides the history and says to restart the server, so a
+page reload before a restart never breaks a save.
 
 ## The row store
 

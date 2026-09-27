@@ -79,11 +79,12 @@ async function draw(t0, t1) {
   await drag(x0, x1, y);
 }
 
+/** A key press; `modifiers` is CDP's bit set: 2 is Ctrl, 8 is Shift. */
 async function press(key, modifiers = 0) {
-  const named = { Enter: [13, "\r"] }[key];
+  const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowLeft: [37, ""], ArrowRight: [39, ""] }[key];
   const [code, text] = named || [key.toUpperCase().charCodeAt(0), key];
   const event = { key, code: named ? key : `Key${key.toUpperCase()}`, windowsVirtualKeyCode: code, modifiers };
-  await send("Input.dispatchKeyEvent", { type: "keyDown", ...event, ...(modifiers ? {} : { text }) });
+  await send("Input.dispatchKeyEvent", { type: "keyDown", ...event, ...(modifiers || !text ? {} : { text }) });
   await send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
 }
 
@@ -99,6 +100,15 @@ try {
   const source = await js("S.meta.source");
   check("the link opens its shot on its source label", same(await js("S.label"), source), source);
 
+  await js(`$("reviewer-name").focus()`);
+  await send("Input.insertText", { text: "Ada Lovelace" });
+  await press("Enter");
+  check(
+    "the name box keeps the reviewer's name and gives the keys back",
+    await js(`localStorage.getItem("labeler:name") === "Ada Lovelace" && document.activeElement === document.body`),
+    await js(`[localStorage.getItem("labeler:name"), document.activeElement.id]`)
+  );
+
   await draw(500, 800);
   check("a drag on the label adds a span", (await js("S.label.intervals.length")) === 2, await js("S.label"));
   check(
@@ -113,17 +123,18 @@ try {
   await until("S.meta.saved !== null && !S.saving");
   const saved = await js("S.label");
   check(
-    "s saves it and says so",
-    await js(`$("state").textContent === "changed" && $("saved").textContent.startsWith("saved")`),
+    "s saves it and says who saved it",
+    await js(`$("state").textContent === "changed" && /^saved .* by Ada Lovelace$/.test($("saved").textContent)`),
     await js(`[$("state").textContent, $("saved").textContent]`)
   );
 
   await send("Page.reload");
   await opened(170815);
   check(
-    "a reload opens the saved label",
-    same(await js("S.label"), saved) && (await js(`$("count").textContent`)) === "1/2",
-    await js("S.label")
+    "a reload opens the saved label and the name",
+    same(await js("S.label"), saved) &&
+      (await js(`$("count").textContent === "2/3" && $("reviewer-name").value === "Ada Lovelace"`)),
+    await js(`[S.label, $("count").textContent, $("reviewer-name").value]`)
   );
 
   const [x, y, before] = await js(`(() => {
@@ -147,9 +158,45 @@ try {
   })`);
   check("a zoom-out shows the overview until its own rows arrive", pixel[0] && pixel[1][3] > 0, pixel);
 
+  await draw(1200, 1400);
+  await press("s");
+  await until(`!S.saving && $("dirty").hidden`);
+  await press("h");
+  await until(`$("versions").open`);
+  const listed = await js(`[...$("version-list").children].map((item) => item.textContent)`);
+  check(
+    "h lists every saved version, newest first, with who saved it",
+    listed.length === 2 && listed[0].startsWith("v2") && listed.every((text) => text.includes("Ada Lovelace")),
+    listed
+  );
+  await press("Escape");
+  await until(`!$("versions").open`);
+  check("escape shuts the list and gives the keys back", await js(`document.activeElement === document.body`),
+    await js(`document.activeElement.outerHTML`));
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector('[data-version="1"]').click()`);
+  check(
+    "restore loads a version as an unsaved draft",
+    same(await js("S.label"), saved) && (await js(`!$("versions").open && !$("dirty").hidden`)),
+    await js("S.label")
+  );
+
+  // 170816 is saved already, so the next unreviewed shot would be 170817.
   await press("Enter");
   await opened(170816);
-  check("enter saves and opens the next unreviewed shot", true);
+  check("enter saves and opens the next shot in the queue", (await js(`$("next-shot").textContent`)) === "→ 170817");
+
+  await press("ArrowRight");
+  await opened(170817);
+  check("→ opens the next shot", true);
+  await press("ArrowLeft");
+  await opened(170816);
+  check("← opens the previous shot", true);
+  const start = await js("zoomAt(middle(), 0.5), S.view[0]");
+  await press("ArrowRight", 8);
+  await until(`S.view[0] > ${start}`);
+  check("shift-→ pans instead", (await js("S.shot")) === 170816, await js("[S.shot, S.view]"));
 
   await js(`$("shot").focus(); $("shot").value = "1"`);
   await press("Enter");
@@ -157,9 +204,9 @@ try {
   check("a shot off the roster says why", await js(`$("rows").textContent.includes("not on this event")`),
     await js(`$("rows").textContent`));
   await js("document.activeElement.blur()");
-  await press("k");
+  await press("ArrowRight");
   await opened(170815);
-  check("k carries on from it", true);
+  check("→ carries on from it", true);
 } catch (error) {
   check("the page did what was asked", false, String(error));
 }
