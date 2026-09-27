@@ -274,6 +274,9 @@ def save(
         lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
         tmp.write_text("\n".join(lines) + "\n")
     record = {
+        "candidate": blob["candidate"],
+        "band_khz": blob["band_khz"],
+        "git_sha": blob["git_sha"],
         "labels_sha256": blob["labels_sha256"],
         "history": history,
         "best_epoch": best_epoch(history),
