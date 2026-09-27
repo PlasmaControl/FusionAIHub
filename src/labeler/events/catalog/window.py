@@ -16,10 +16,14 @@ the record, falling back to the largest finite sample for a shorter record.
 D2b ends that window at a restrike: after the longest flat-top stretch, a mean
 below 30% of the plateau followed by one above 60% marks a second plasma. The
 end is the lowest mean between them, rounded down to whole ms. Shot 204238 is
-such a restrike; 200811's early dip precedes its flat-top and stays in the window.
-Same-sign current above 50 kA after a quench stays in the window: 50 reviewed
-shots extended more than 25 ms past t20, and 198958 by 362 ms. D2b ends the
-window only at a restrike; it does not trim these post-quench tails.
+such a restrike. 200811's early dip is a runaway beam after a triggered disruption;
+the window keeps it (no restrike: the current does not rise past
+RESTRIKE_RISE_FRACTION), and rule 5 drops it. 203529 is a known missed restrike:
+its hump reaches 0.57 of the peak, under 0.6; this is recorded, not fixed.
+Same-sign current above 50 kA after a quench stays in the window: 50 fast-quench
+population shots of the version-2 audit extended more than 25 ms past t20, and
+198958 by 362 ms. D2b ends the window only at a restrike; it does not trim these
+post-quench tails.
 
 The flat-top reads centred 25 ms means of |Ip| inside the window, matching the
 feature grid on which its rule was calibrated. This keeps single noisy samples
@@ -250,7 +254,7 @@ def measure(shot: int, paths: Paths) -> dict:
     A failure is the shot's `error` line, whatever raised it, so one bad shot never
     stops a run over thousands; a rerun tries it again.
     """
-    fingerprint = {}
+    fingerprint = {"ip_sha256": None}  # an unread waveform has no digest
     try:
         record = raw_signal(shot, IP_GROUP, paths=paths)
         t, ip = record.x, record.y[0]
@@ -288,9 +292,16 @@ def _validate_line(line: dict) -> None:
     if type(version) is not int or version < 1:
         raise ValueError("version must be an int >= 1")
     for field, length in (("ip_sha256", 64), ("run", 32)):
-        required = version == 3 and line["status"] == "ok"
+        required = version >= 3
         if field in line or required:
             value = line.get(field)
+            if (
+                field == "ip_sha256"
+                and field in line
+                and value is None
+                and line["status"] == "error"
+            ):
+                continue
             if not isinstance(value, str) or not re.fullmatch(
                 rf"[0-9a-f]{{{length}}}", value
             ):
@@ -332,6 +343,29 @@ def read_log(path) -> pd.DataFrame:
                     raise CatalogError(f"{path}:{number}: {error}") from error
                 line.setdefault("version", 1)
                 last[line["shot"]] = line
+    current = [line for line in last.values() if line["version"] == LOG_VERSION]
+    if current:
+        log_path = Path(path.name) if stream else path
+        runs_path = log_path.with_name("ip_runs.jsonl")
+        starts = set()
+        if runs_path.is_file():
+            for number, text in enumerate(runs_path.read_bytes().splitlines(True), 1):
+                if not text.endswith(b"\n"):
+                    break
+                if not text.strip():
+                    continue
+                try:
+                    record = json.loads(text)
+                    if record.get("type") in (None, "start"):
+                        starts.add(record["run"])
+                except (ValueError, KeyError, AttributeError) as error:
+                    raise CatalogError(f"{runs_path}:{number}: {error}") from error
+        for line in current:
+            if line["run"] not in starts:
+                raise CatalogError(
+                    f"{path}: shot {line['shot']}: run {line['run']} has no start "
+                    f"record in {runs_path}"
+                )
     frame = pd.DataFrame([last[s] for s in sorted(last)], columns=list(LOG_COLUMNS))
     for column in ("flattop_s", "ip_peak_ma", "dt_ms"):
         frame[column] = pd.to_numeric(frame[column]).astype(float)
@@ -376,7 +410,22 @@ def fetch(
 ) -> Counter:
     """Measure every shot not yet settled in `log`, appending a line for each."""
     table = read_log(log)
-    run = run or uuid4().hex
+    shots = sorted(set(shots))
+    if run is None:
+        run = uuid4().hex
+        _append_run(
+            log,
+            {
+                "type": "start",
+                "run": run,
+                "version": LOG_VERSION,
+                "git_sha": git_sha(full=True),
+                "git_dirty": git_dirty(),
+                "command": "labeler.events.catalog.window.fetch",
+                "shots": shots,
+                "definition": definition(),
+            },
+        )
     settled = set(
         table.loc[
             table["status"].isin(SETTLED) & table["version"].eq(LOG_VERSION), "shot"
@@ -396,6 +445,15 @@ def fetch(
             if i % 100 == 0 or i == len(todo):
                 print(f"{i}/{len(todo)} {dict(counts)}", flush=True)
     return counts
+
+
+def _append_run(log: Path, record: dict) -> None:
+    """Close the append before any measurement can name this run."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    runs = log.with_name("ip_runs.jsonl")
+    _set_aside_torn(runs)
+    with runs.open("a", encoding="utf-8") as out:
+        out.write(json.dumps(record) + "\n")
 
 
 def definition() -> dict:
@@ -460,7 +518,6 @@ def _run(args, paths, argv) -> int:
     lines = (line.split("#", 1)[0].strip() for line in shot_bytes.decode().splitlines())
     shots = sorted(int(line) for line in lines if line)[: args.limit]
     run = uuid4().hex
-    counts = fetch(shots, log, paths, workers=args.workers, run=run)
     meta = {
         "run": run,
         "version": LOG_VERSION,
@@ -472,11 +529,16 @@ def _run(args, paths, argv) -> int:
         "shot_file": str(args.shot_file),
         "shot_file_sha256": hashlib.sha256(shot_bytes).hexdigest(),
         "shots": len(shots),
-        "this_run": dict(counts),
         "definition": definition(),
     }
-    with log.with_name("ip_runs.jsonl").open("a", encoding="utf-8") as out:
-        out.write(json.dumps(meta) + "\n")
+    _append_run(log, meta | {"type": "start"})
+    counts = fetch(shots, log, paths, workers=args.workers, run=run)
+    meta |= {
+        "type": "complete",
+        "this_run": dict(counts),
+        "completed_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    _append_run(log, meta)
     with atomic_path(log.with_suffix(".meta.json")) as tmp:
         Path(tmp).write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     table = read_log(log)

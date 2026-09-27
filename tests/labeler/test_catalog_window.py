@@ -247,6 +247,7 @@ def test_live_window_of_a_restrike(tmp_path):
 
 @pytest.mark.live
 def test_live_window_keeps_an_early_dip(tmp_path):
+    """200811 is a runaway beam after a triggered disruption; rule 5 drops it."""
     line = window.measure(200811, Paths(root=tmp_path))
     assert (line["window_start_ms"], line["window_end_ms"]) == (8, 2097)
     assert line["flattop_s"] == pytest.approx(1.2486, abs=0.001)
@@ -334,6 +335,12 @@ def _ok_line():
     }
 
 
+def _legacy_run(log):
+    log.with_name("ip_runs.jsonl").write_text(
+        json.dumps({"run": "b" * 32, "this_run": {"ok": 1}}) + "\n"
+    )
+
+
 def test_a_torn_tail_is_set_aside_before_resuming(tmp_path, monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(window, "raw_signal", _fake_ip(calls))
@@ -341,6 +348,7 @@ def test_a_torn_tail_is_set_aside_before_resuming(tmp_path, monkeypatch, capsys)
     fragment = '{"shot": 2, "status":'
     complete = json.dumps(_ok_line()) + "\n"
     log.write_text(complete + fragment)
+    _legacy_run(log)
     assert read_log(log)["shot"].tolist() == [1]
     assert fetch([1, 2], log, Paths(root=tmp_path)) == {"no_plasma": 1}
     torn = tmp_path / "ip.jsonl.torn"
@@ -358,6 +366,7 @@ def test_only_newline_terminated_nonblank_lines_are_read(tmp_path):
     log = tmp_path / "ip.jsonl"
     first = json.dumps(_ok_line())
     log.write_text("\n  \n" + first + "\n" + json.dumps(_ok_line() | {"shot": 2}))
+    _legacy_run(log)
     assert read_log(log)["shot"].tolist() == [1]
 
 
@@ -510,6 +519,7 @@ def test_d2b_ends_at_post_flattop_dip_and_remeasures_peak(dt):
 
 @pytest.mark.parametrize("dt", [0.05, 0.5])
 def test_d2b_keeps_the_early_discharge_dip(dt):
+    """200811's runaway beam stays in the Ip window, then rule 5 excludes it."""
     t = np.arange(0, 2400 + dt / 2, dt)
     ip = np.interp(
         t, [0, 400, 470, 900, 2100, 2300, 2400], [0, 600e3, 170e3, 600e3, 600e3, 0, 0]
@@ -618,7 +628,7 @@ def test_measured_waveform_hash_is_little_endian_time_then_current(tmp_path, bad
 def test_unread_waveform_error_has_no_hash(tmp_path, monkeypatch):
     monkeypatch.setattr(window, "raw_signal", _fake_ip([]))
     line = window.measure(3, Paths(root=tmp_path))
-    assert line["status"] == "error" and "ip_sha256" not in line
+    assert line["status"] == "error" and line["ip_sha256"] is None
 
 
 def test_runs_are_append_only_and_lines_keep_their_origin(tmp_path, monkeypatch):
@@ -643,7 +653,8 @@ def test_runs_are_append_only_and_lines_keep_their_origin(tmp_path, monkeypatch)
     assert log.read_bytes() == lines_before
     assert runs.read_bytes().startswith(records_before)
     records = [json.loads(row) for row in runs.read_bytes().splitlines()]
-    assert len(records) == 3
+    assert [record["type"] for record in records] == ["start", "complete"] * 3
+    records = records[1::2]
     ids = [record["run"] for record in records]
     assert len(set(ids)) == 3
     assert all(re.fullmatch(r"[0-9a-f]{32}", run) for run in ids)
@@ -700,3 +711,70 @@ def test_optional_fingerprints_are_kept_on_any_version(tmp_path, status):
     table = read_log(log)
     assert table.loc[0, "ip_sha256"] == "a" * 64
     assert table.loc[0, "run"] == "b" * 32
+
+
+def test_interruption_keeps_the_start_record_and_resume_completes(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
+    shots = tmp_path / "shots.txt"
+    shots.write_text("1\n2\n")
+    args = ["--shot-file", str(shots), "--workers", "1"]
+    raw = _fake_ip([])
+
+    def interrupted(shot, *args, **kwargs):
+        if shot == 2:
+            raise KeyboardInterrupt
+        return raw(shot, *args, **kwargs)
+
+    monkeypatch.setattr(window, "raw_signal", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        window.main(args)
+    log = tmp_path / "catalog" / "ip.jsonl"
+    line = json.loads(log.read_text())
+    runs = log.with_name("ip_runs.jsonl")
+    assert runs.is_file()
+    start = json.loads(runs.read_text())
+    assert start["type"] == "start" and start["run"] == line["run"]
+    assert start["git_sha"] == git_sha(full=True)
+    assert start["shot_file_sha256"] == hashlib.sha256(b"1\n2\n").hexdigest()
+    assert read_log(log).shot.tolist() == [1]
+    monkeypatch.setattr(window, "raw_signal", raw)
+    assert window.main(args) == 0
+    records = [json.loads(row) for row in runs.read_text().splitlines()]
+    assert [row["type"] for row in records] == ["start", "start", "complete"]
+    assert records[-1]["run"] == records[-2]["run"]
+    assert records[-1]["this_run"] == {"no_plasma": 1}
+    assert read_log(log).shot.tolist() == [1, 2]
+
+
+@pytest.mark.parametrize("record_type", ["absent", "complete"])
+def test_unknown_run_is_refused_by_name(tmp_path, record_type):
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(_ok_line()) + "\n")
+    if record_type == "complete":
+        log.with_name("ip_runs.jsonl").write_text(
+            json.dumps({"type": "complete", "run": "b" * 32}) + "\n"
+        )
+    with pytest.raises(CatalogError, match=r"ip\.jsonl.*run"):
+        read_log(log)
+
+
+@pytest.mark.parametrize("version", [3, 4])
+@pytest.mark.parametrize("field", ["ip_sha256", "run"])
+def test_no_plasma_requires_fingerprints_from_v3(tmp_path, version, field):
+    line = _ok_line() | {"status": "no_plasma", "version": version}
+    del line[field]
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(line) + "\n")
+    with pytest.raises(CatalogError, match=field):
+        read_log(log)
+
+
+def test_legacy_whole_run_record_is_still_read(tmp_path):
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(_ok_line()) + "\n")
+    log.with_name("ip_runs.jsonl").write_text(
+        json.dumps({"run": "b" * 32, "this_run": {"ok": 1}}) + "\n"
+    )
+    assert read_log(log).shot.tolist() == [1]

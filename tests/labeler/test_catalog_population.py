@@ -216,6 +216,10 @@ def test_the_pool_round_trips(tmp_path):
 
 def _log(tmp_path, lines):
     path = tmp_path / "ip.jsonl"
+    path.with_name("ip_runs.jsonl").write_text(
+        json.dumps({"run": "b" * 32, "this_run": {}}) + "\n"
+    )
+    lines = [{"ip_sha256": "a" * 64, "run": "b" * 32} | line for line in lines]
     path.write_text("".join(json.dumps(line) + "\n" for line in lines))
     return read_log(path)
 
