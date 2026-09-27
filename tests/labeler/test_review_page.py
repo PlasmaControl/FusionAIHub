@@ -94,6 +94,25 @@ def test_a_change_is_where_the_label_leaves_its_source():
 
 
 @needs_node
+def test_each_saved_version_counts_the_ms_it_changed_from_the_one_before():
+    """The history's `ms changed`: the first version against the source, if any."""
+    source = {"window": [0, 2000], "intervals": [[100, 300, 1]]}
+    versions = [
+        {"window": [0, 2000], "intervals": [[100, 300, 1]]},
+        {"window": [0, 2000], "intervals": [[100, 300, 1], [500, 800, 1]]},
+        {"window": [0, 2000], "intervals": [[150, 300, 1], [500, 800, 1]]},
+        {"window": [0, 2100], "intervals": [[150, 300, 1], [500, 800, 1]]},
+    ]
+    found = _node(
+        "[m.versionChanges(input.versions, input.source),"
+        " m.versionChanges(input.versions.slice(0, 2), null),"
+        " m.versionChanges([], input.source)]",
+        {"source": source, "versions": versions},
+    )
+    assert found == [[0, 300, 50, 100], [None, 300], []]
+
+
+@needs_node
 def test_ticks_step_by_one_two_or_five():
     spans = [[1000, 10], [9000, 8], [50, 10], [3.7, 5]]
     assert _node("input.map(([s, n]) => m.niceStep(s, n))", spans) == [100, 2000, 5, 1]

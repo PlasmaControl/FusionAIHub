@@ -75,6 +75,14 @@ function diffRuns(a, b) {
     .map(([s, e]) => [lo + s, lo + e]);
 }
 
+/** Per saved version, the ms it changed from the one before; the first, from the source or null. */
+function versionChanges(versions, source) {
+  return versions.map((version, i) => {
+    const before = i ? versions[i - 1] : source;
+    return before ? diffRuns(before, version).reduce((n, [s, e]) => n + e - s, 0) : null;
+  });
+}
+
 /** A tick step giving about `n` ticks over `span`: 1, 2 or 5 times a power of ten. */
 function niceStep(span, n) {
   const raw = span / n;
@@ -148,6 +156,9 @@ const S = {
   frame: 0,
   timer: 0,
   saving: false,
+  api: 1, // what /api/version said: 2 takes a name with each save and lists versions
+  name: "", // the reviewer's typed name, sent with each save
+  versions: [], // the open shot's saved versions, as /api/history listed them
 };
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
@@ -182,6 +193,12 @@ async function api(path, options) {
     throw new Error(body.error || `${response.status} ${response.statusText}`);
   }
   return response;
+}
+
+/** A save time as the header shows it. */
+function when(iso) {
+  const style = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
+  return new Date(iso).toLocaleString([], style);
 }
 
 function say(message, error = false) {
@@ -326,7 +343,16 @@ async function boot() {
   });
   S.lo = clamp(Number(stored("labeler:contrast")) || 0, 0, 192);
   S.lut = lut(S.lo);
+  S.name = stored("labeler:name") || "";
+  $("reviewer-name").value = S.name;
   wire();
+  try {
+    S.api = (await (await api("/api/version")).json()).api;
+  } catch {
+    S.api = 1; // a server older than this page: save without a name, no history
+  }
+  for (const id of ["reviewer-name", "show-versions"]) $(id).hidden = S.api < 2;
+  $("stale").hidden = S.api >= 2;
   try {
     S.events = (await (await api("/api/events")).json()).events;
     $("event").replaceChildren(
@@ -418,7 +444,9 @@ async function openShot(shot) {
 function arrive() {
   busy(null);
   $("cursor").hidden ||= !S.meta;
-  for (const id of ["save-next", "revert"]) $(id).disabled = !S.meta;
+  for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
+  const next = neighbour(1);
+  $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   history.replaceState(null, "", `#${S.event}/${S.shot}`);
   $("shot").value = S.shot;
   showHeader();
@@ -434,7 +462,7 @@ function busy(text) {
 
 /** Ask for the next shot now, so a build it needs is done when the reviewer gets there. */
 function prefetch() {
-  const next = nextUnreviewed() ?? neighbour(1);
+  const next = neighbour(1);
   if (next != null && next !== S.shot) api(`/api/shot?event=${enc(S.event)}&shot=${next}`).catch(() => {});
 }
 
@@ -444,9 +472,17 @@ function nextUnreviewed() {
   return after.find((row) => row.state === "unreviewed")?.shot ?? null;
 }
 
-function neighbour(delta) {
-  const i = S.queue.findIndex((row) => row.shot === S.shot);
+/** The shot `delta` places from `shot` in queue order, wrapping at the ends. */
+function neighbour(delta, shot = S.shot) {
+  const i = S.queue.findIndex((row) => row.shot === shot);
   return S.queue[(i + delta + S.queue.length) % S.queue.length]?.shot ?? null;
+}
+
+/** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
+async function go(delta) {
+  const left = dirty() ? S.shot : null;
+  await openShot(neighbour(delta));
+  if (left != null && left !== S.shot) say(`${left}: the edit is kept as a draft, not saved`);
 }
 
 function fetchRows(delay = 90) {
@@ -499,11 +535,12 @@ async function save(next) {
   if (!S.meta || S.saving) return;
   S.saving = true;
   const [shot, key] = [S.shot, draftKey(S.shot)];
+  const name = S.api >= 2 ? { name: S.name || null } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: S.event, shot, ...S.label }),
+      body: JSON.stringify({ event: S.event, shot, ...S.label, ...name }),
     });
     const body = await response.json();
     store(key, null);
@@ -514,7 +551,7 @@ async function save(next) {
       showHeader();
       touch();
     }
-    if (next) await openShot(nextUnreviewed() ?? neighbour(1));
+    if (next) await openShot(neighbour(1, shot));
   } catch (error) {
     say(error.message, true);
   } finally {
@@ -797,9 +834,7 @@ function showHeader() {
   $("tier").textContent = row.tier || "";
   $("state").textContent = row.state || "";
   $("state").className = `pill ${row.state || ""}`;
-  $("saved").textContent = last
-    ? `saved ${new Date(last.saved_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
-    : "";
+  $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
   const reviewed = S.queue.filter((row) => row.state !== "unreviewed").length;
   $("count").textContent = `${reviewed}/${S.queue.length}`;
@@ -943,16 +978,74 @@ function showCursor(clientX) {
 
 function toggleKeys() {
   const dialog = $("keys");
-  if (dialog.open) dialog.close();
+  if (dialog.open) closeDialog(dialog);
   else dialog.showModal();
+}
+
+/** Close a dialog and give the keys back to the page, not to a button left inside it. */
+function closeDialog(dialog) {
+  if (dialog.contains(document.activeElement)) document.activeElement.blur();
+  dialog.close();
+}
+
+/** The shot's saved versions, newest first; H again, Escape or Close shuts them. */
+async function toggleVersions() {
+  const dialog = $("versions");
+  if (dialog.open) return closeDialog(dialog);
+  if (!S.meta || S.api < 2) return;
+  const shot = S.shot;
+  try {
+    const body = await (await api(`/api/history?event=${enc(S.event)}&shot=${shot}`)).json();
+    if (shot !== S.shot) return;
+    S.versions = body.versions;
+    renderVersions();
+    dialog.showModal();
+  } catch (error) {
+    say(error.message, true);
+  }
+}
+
+function renderVersions() {
+  const changes = versionChanges(S.versions, S.meta.source);
+  const items = S.versions.map((version, i) => {
+    const item = document.createElement("li");
+    const who = version.name ? `${version.name} (${version.reviewer})` : version.reviewer || "unknown";
+    const n = version.intervals.length;
+    const moved = changes[i] == null ? "first label" : `${changes[i]} ms changed`;
+    const text = document.createElement("span");
+    text.textContent = `v${version.version} · ${when(version.saved_at)} · ${who} · ${n} span${n === 1 ? "" : "s"} · ${moved}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.version = version.version;
+    button.textContent = "Restore";
+    item.append(text, button);
+    return item;
+  });
+  const none = Object.assign(document.createElement("li"), { textContent: "Not saved yet." });
+  $("version-list").replaceChildren(...(items.length ? items.reverse() : [none]));
+}
+
+/** Load a saved version as the draft: saving it appends a new version, so none is lost. */
+function restoreVersion(number) {
+  const found = S.versions.find((version) => version.version === number);
+  if (!found || !S.meta) return;
+  closeDialog($("versions"));
+  const label = normalise(found.window, found.intervals, known());
+  if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  S.selected = -1;
+  edit(label.window, label.intervals);
+  say(`version ${number} restored as a draft: Enter or S saves it as a new version`);
 }
 
 const KEYS = {
   Enter: () => save(true),
   s: () => save(false),
   r: revert,
-  j: () => openShot(neighbour(-1)),
-  k: () => openShot(neighbour(1)),
+  h: toggleVersions,
+  j: () => go(-1),
+  k: () => go(1),
+  ArrowLeft: () => go(-1),
+  ArrowRight: () => go(1),
   u: () => (nextUnreviewed() == null ? say("all reviewed") : openShot(nextUnreviewed())),
   "[": () => contrast(-16),
   "]": () => contrast(16),
@@ -962,21 +1055,24 @@ const KEYS = {
   },
   Delete: removeSelected,
   Backspace: removeSelected,
-  ArrowLeft: () => pan(-0.1),
-  ArrowRight: () => pan(0.1),
+  "Shift+ArrowLeft": () => pan(-0.1),
+  "Shift+ArrowRight": () => pan(0.1),
   "-": () => zoomAt(middle(), 1.25),
   "=": () => zoomAt(middle(), 0.8),
   "+": () => zoomAt(middle(), 0.8),
   0: fit,
 };
 
-const MOVES = new Set(["j", "k", "u"]); // the keys that work on a shot with nothing to show
+// The keys that work on a shot with nothing to show.
+const MOVES = new Set(["j", "k", "u", "ArrowLeft", "ArrowRight"]);
 
 function onKey(event) {
   const target = event.target;
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const key = event.shiftKey && typed.startsWith("Arrow") ? `Shift+${typed}` : typed;
   if (target.closest("input, select, textarea")) return;
   if (target.closest("button") && (key === "Enter" || key === " ")) return;
+  if ($("versions").open) return key === "h" && toggleVersions();
   if (key === "?" || $("keys").open) return key === "?" && toggleKeys();
   const mod = event.ctrlKey || event.metaKey;
   if (event.altKey || (mod && key !== "z") || (!S.meta && !MOVES.has(key))) return;
@@ -1030,7 +1126,31 @@ function wire() {
   });
   $("save-next").addEventListener("click", () => save(true));
   $("revert").addEventListener("click", () => S.meta && revert());
+  $("show-versions").addEventListener("click", toggleVersions);
   $("help").addEventListener("click", toggleKeys);
+  for (const dialog of document.querySelectorAll("dialog")) {
+    // Chrome can leave focus on a button in a closed dialog, and Enter would then click it
+    // instead of saving: let go of it as Escape cancels the dialog, and again once closed.
+    const release = () => dialog.contains(document.activeElement) && document.activeElement.blur();
+    dialog.addEventListener("cancel", release);
+    dialog.addEventListener("close", release);
+  }
+  // A button clicked with the mouse gives the keys back, so Enter saves instead of clicking it again.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button");
+    if (button && event.detail > 0) button.blur();
+  });
+  $("version-list").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-version]");
+    if (button) restoreVersion(Number(button.dataset.version));
+  });
+  $("reviewer-name").addEventListener("input", () => {
+    S.name = $("reviewer-name").value.trim();
+    store("labeler:name", S.name || null);
+  });
+  $("reviewer-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === "Escape") $("reviewer-name").blur();
+  });
   new ResizeObserver(() => {
     sizeCanvases();
     render();
@@ -1039,7 +1159,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, niceStep, hitTest, lut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, lut };
 } else {
   boot();
 }
