@@ -324,6 +324,7 @@ def test_the_funnel_counts_what_each_rule_leaves(tmp_path):
         "after_rule_2": 4,
         "after_rule_3": 3,
         "after_rule_4": 1,
+        "after_rule_5": 1,
     }
     assert pop.rejections(frame) == {
         "no_bundle": 1,
@@ -340,6 +341,7 @@ def test_the_funnel_counts_what_each_rule_leaves(tmp_path):
         "flattop": 1,
         "no_plasma": 0,
         "flattop_unmeasured": 1,
+        "runaway_plateau": 0,
     }
 
 

@@ -549,7 +549,29 @@ def _inputs(folder: Path):
             }
         )
     )
+    pd.DataFrame(
+        [
+            {
+                "shot": line["shot"],
+                "te_p90_ev": 100.0,
+                "n_thomson": 10,
+                "n_profile": 5,
+                "pinj_kw": 1000.0,
+                "neutron_rate_mean": "1.0;2.0",
+                "runaway": False,
+            }
+            for line in lines
+            if line["flattop_s"] >= 1.0
+        ]
+    ).to_csv(folder / "runaway.csv", index=False)
+    _runaway_meta(folder / "runaway.csv")
     return {185_601 + 20 * k: ("edge_localized_mode",) for k in range(11, 111)}
+
+
+def _runaway_meta(path):
+    path.with_suffix(".meta.json").write_text(
+        json.dumps({"outputs": {"runaway.csv": sha256_of(path)}})
+    )
 
 
 def test_the_command_writes_the_cohort_and_its_manifest(tmp_path, monkeypatch, capsys):
@@ -558,6 +580,8 @@ def test_the_command_writes_the_cohort_and_its_manifest(tmp_path, monkeypatch, c
     (tables / "catalog").mkdir(parents=True)
     (folder / "papers.csv").rename(tables / "catalog" / "papers.csv")
     (folder / "papers.meta.json").rename(tables / "catalog" / "papers.meta.json")
+    (folder / "runaway.csv").rename(tables / "catalog" / "runaway.csv")
+    (folder / "runaway.meta.json").rename(tables / "catalog" / "runaway.meta.json")
     monkeypatch.setattr(cohort, "legacy_sets", lambda root, **kwargs: (legacy, []))
     monkeypatch.setenv("LABELER_ROOT", str(tmp_path / "root"))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(tables))
@@ -898,6 +922,139 @@ def _command_inputs(tmp_path, monkeypatch):
         str(out),
     ]
     return folder, out, args
+
+
+def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.csv"
+    frame = pd.read_csv(path)
+    shot = int(frame.loc[0, "shot"])
+    frame.loc[0, ["te_p90_ev", "runaway"]] = [10.0, True]
+    frame.to_csv(path, index=False)
+    _runaway_meta(path)
+    assert cohort.main(args + ["--runaway", str(path)]) == 0
+    assert shot not in set(cohort.read_population(out / "population.csv").shot)
+    assert shot not in set(cohort.read_cohort(out / "cohort.csv").shot)
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    assert doc["counts"]["population"] == 629
+    assert doc["counts"]["after_rule_5"] == 629
+    assert doc["counts"]["rejections"]["runaway_plateau"] == 1
+    assert doc["inputs"]["runaway"] == {"path": str(path), "sha256": sha256_of(path)}
+    assert doc["rules"]["rule_5"]["threshold_ev"] == 60.0
+    assert "ceil(n_channels / 2)" in doc["rules"]["rule_5"]["statistic"]
+
+
+def test_runaway_without_n_profile_is_refused(tmp_path, monkeypatch, capsys):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.csv"
+    pd.read_csv(path).drop(columns="n_profile").to_csv(path, index=False)
+    _runaway_meta(path)
+    with pytest.raises(SystemExit) as stopped:
+        cohort.main(args)
+    assert stopped.value.code == 2
+    error = capsys.readouterr().err
+    assert str(path) in error and "n_profile" in error
+    assert not out.exists()
+
+
+def test_runaway_with_sparse_thomson_remains_eligible(tmp_path, monkeypatch):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.csv"
+    frame = pd.read_csv(path)
+    shot = int(frame.loc[0, "shot"])
+    frame.loc[0, "n_profile"] = 0
+    frame.loc[0, "te_p90_ev"] = float("nan")
+    frame.to_csv(path, index=False)
+    _runaway_meta(path)
+    assert cohort.main(args) == 0
+    assert shot in set(cohort.read_population(out / "population.csv").shot)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "absent",
+        "missing_shot",
+        "duplicate",
+        "ragged",
+        "flag",
+        "temperature",
+        "count",
+        "profile_negative",
+        "profile_fractional",
+        "profile_above_thomson",
+        "profile_zero_with_te",
+        "profile_with_blank_te",
+        "contradiction",
+        "meta_absent",
+        "meta_json",
+        "meta_shape",
+        "digest",
+    ],
+)
+def test_runaway_refusals_name_the_input(tmp_path, monkeypatch, bad, capsys):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.csv"
+    frame = pd.read_csv(path)
+    if bad == "absent":
+        path.unlink()
+    elif bad == "ragged":
+        path.write_text(path.read_text() + "1,2,3,4,5,6,7,8\n")
+    elif bad in (
+        "missing_shot",
+        "duplicate",
+        "flag",
+        "temperature",
+        "count",
+        "profile_negative",
+        "profile_fractional",
+        "profile_above_thomson",
+        "profile_zero_with_te",
+        "profile_with_blank_te",
+        "contradiction",
+    ):
+        if bad == "missing_shot":
+            frame = frame.iloc[1:]
+        elif bad == "duplicate":
+            frame = pd.concat([frame, frame.iloc[:1]])
+        elif bad == "flag":
+            frame["runaway"] = "unknown"
+        elif bad == "temperature":
+            frame["te_p90_ev"] = float("inf")
+        elif bad == "count":
+            frame["n_thomson"] = -1
+        elif bad.startswith("profile_"):
+            if bad == "profile_with_blank_te":
+                frame["te_p90_ev"] = float("nan")
+            else:
+                frame["n_profile"] = {
+                    "profile_negative": -1,
+                    "profile_fractional": 1.5,
+                    "profile_above_thomson": 11,
+                    "profile_zero_with_te": 0,
+                }[bad]
+        else:
+            frame["runaway"] = True
+        frame.to_csv(path, index=False)
+    if path.exists():
+        _runaway_meta(path)
+    meta = path.with_suffix(".meta.json")
+    if bad == "meta_absent":
+        meta.unlink()
+    elif bad == "meta_json":
+        meta.write_text("{")
+    elif bad == "meta_shape":
+        meta.write_text("[]")
+    elif bad == "digest":
+        meta.write_text(json.dumps({"outputs": {"runaway.csv": "0" * 64}}))
+    with pytest.raises(SystemExit) as stopped:
+        cohort.main(args)
+    assert stopped.value.code == 2
+    error = capsys.readouterr().err
+    assert (
+        str(path if not bad.startswith("meta") and bad != "digest" else meta) in error
+    )
+    assert not out.exists()
 
 
 @pytest.mark.parametrize(

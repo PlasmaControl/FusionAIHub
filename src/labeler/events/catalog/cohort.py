@@ -1,5 +1,12 @@
 """The cohort: 500 population shots drawn with known weights.
 
+The population passes rules 1-4 from `catalog.population`, then rule 5 (D2e)
+drops runaway-electron plateaus using the committed Thomson scan, runaway.csv.
+It requires median channel-p90 Te below 60 eV and at least one usable profile
+in the assessed window: ceil(n_channels / 2) finite, positive core channels.
+Te's median still uses all samples with any valid channel; `n_profile` counts
+profile samples. Shots with no usable profile are retained (`no_thomson`).
+
 Groups partition the population, each shot taking the first that applies:
 - L: at least one verified OSTI link at freeze (a `papers.csv` row, source osti);
 - G: named by a legacy label table (every table `events.yaml` registers);
@@ -22,7 +29,8 @@ key does not depend on which other shots are in the population.
 
     pixi run -e labelmaker python -m labeler.events.catalog.cohort
 
-reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `data/events/catalog/papers.csv`
+reads `$LABELER_ROOT/catalog/{pool.csv, ip.jsonl}`, `data/events/catalog/papers.csv`,
+`data/events/catalog/runaway.csv`
 and the legacy tables, and writes `cohort.csv`, `cohort_manifest.yaml` and
 `population.csv` to `$LABELER_ROOT/catalog/`. The freeze copies all three files,
 `cohort.csv`, `population.csv` and `cohort_manifest.yaml`, into
@@ -51,7 +59,7 @@ from ...config import NamedBytes, Paths, atomic_path, git_dirty, git_sha
 from ...literature.papers import read_papers
 from .. import databases
 from . import population as pop
-from . import window
+from . import runaway, window
 from .check import CatalogError, Finding, require
 from .points import validate_csv_fields
 
@@ -610,6 +618,7 @@ def manifest(
         "purposes draw (the cell sample) and order (u)",
         "rules": {
             **pop.rules_record(),
+            "rule_5": runaway.definition(),
             "groups": "L: >= 1 verified OSTI link; G: in a legacy table; R: the rest",
             "caps": dict(CAPS),
             "cohort_size": COHORT_SIZE,
@@ -691,6 +700,9 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--papers", type=Path, help="default: <label tables>/catalog/papers.csv"
     )
+    parser.add_argument(
+        "--runaway", type=Path, help="default: runaway.csv beside papers.csv"
+    )
     parser.add_argument("--out", type=Path, help="default: $LABELER_ROOT/catalog")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--supersedes", type=Path, help="manifest this freeze replaces")
@@ -710,7 +722,8 @@ def _run(args, paths) -> int:
     pool_path = args.pool or paths.catalog / "pool.csv"
     log_path = args.ip_log or paths.catalog / "ip.jsonl"
     papers_path = args.papers or paths.label_tables / "catalog" / "papers.csv"
-    for path in (pool_path, log_path, papers_path):
+    runaway_path = args.runaway or papers_path.with_name("runaway.csv")
+    for path in (pool_path, log_path, papers_path, runaway_path):
         if not path.is_file():
             raise CatalogError(f"{path} does not exist")
     meta_path = pool_path.with_suffix(".meta.json")
@@ -749,7 +762,23 @@ def _run(args, paths) -> int:
         "sha256": hashlib.sha256(papers_meta_data).hexdigest(),
         **{k: papers_record.get(k) for k in ("git_sha", "written_at", "summary")},
     }
+    runaway_data = runaway_path.read_bytes()
+    runaway_meta_path = runaway_path.with_suffix(".meta.json")
+    try:
+        runaway_record = json.loads(runaway_meta_path.read_bytes())
+        if (
+            runaway_record.get("outputs", {}).get("runaway.csv")
+            != hashlib.sha256(runaway_data).hexdigest()
+        ):
+            raise ValueError("runaway.csv sha256 differs")
+    except (OSError, ValueError, AttributeError) as error:
+        raise CatalogError(f"{runaway_meta_path}: {error}") from error
     frame = pop.population(pool, window.read_log(NamedBytes(log_data, log_path)))
+    frame = runaway.apply_rule(
+        frame,
+        runaway.read_runaway(NamedBytes(runaway_data, runaway_path)),
+        runaway_path,
+    )
     legacy_inputs = []
     legacy, _ = legacy_sets(paths.label_tables, inputs=legacy_inputs)
     grouped = assign_groups(
@@ -774,6 +803,7 @@ def _run(args, paths) -> int:
         "pool": pool_input,
         "ip_log": _input(log_path, data=log_data),
         "papers": _input(papers_path, paths.label_tables, data=papers_data),
+        "runaway": _input(runaway_path, paths.label_tables, data=runaway_data),
         "legacy_tables": legacy_inputs,
     }
     frame = frame.merge(grouped[["shot", "group", "cell"]], on="shot", how="left")
