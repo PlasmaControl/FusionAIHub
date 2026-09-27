@@ -16,6 +16,8 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
 JOBS = {
     "ae_xpower_train.sbatch": ("labeler.ae.xpower.train",),
     "ae_xpower_evaluate.sbatch": ("labeler.ae.xpower.evaluate",) * 2,
+    "ae_xpower_gallery.sbatch": ("labeler.ae.xpower.gallery",),
+    "ae_xpower_extend.sbatch": ("labeler.ae.xpower.extend",),
 }
 EXPORTS = (
     'export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"',
