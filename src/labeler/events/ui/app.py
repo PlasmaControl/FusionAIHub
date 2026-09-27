@@ -68,6 +68,7 @@ class MaskIn(BaseModel):
     shot: int
     #: The version of the pseudo-mask the page drew; a save on another is refused.
     pseudo_sha256: str = Field(min_length=64, max_length=64)
+    revision: int = Field(ge=0)
     rejected: list[int] = Field(max_length=regions.MAX_REGIONS)
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
 
@@ -198,7 +199,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def events():
         try:
             directories = sorted(
-                p for p in paths.label_tables.iterdir()
+                p
+                for p in paths.label_tables.iterdir()
                 if (p / rosters.ROSTER_NAME).is_file()
             )
         except OSError:
@@ -210,12 +212,14 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 roster = _roster(directory)
                 saved = labels.read_saved(directory)
                 categories = labels.categories(event)
-                found.append({
-                    "event": event,
-                    "n_shots": len(roster),
-                    "n_reviewed": int(roster.shot.isin(list(saved)).sum()),
-                    "categories": {str(k): v for k, v in categories.items()},
-                })
+                found.append(
+                    {
+                        "event": event,
+                        "n_shots": len(roster),
+                        "n_reviewed": int(roster.shot.isin(list(saved)).sum()),
+                        "categories": {str(k): v for k, v in categories.items()},
+                    }
+                )
             except Exception as error:  # noqa: BLE001 - one bad roster must not hide the rest
                 message = str(error) or type(error).__name__
                 found.append({"event": event, "error": message})
@@ -314,12 +318,25 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     @app.get("/api/masks")
     def masks_view(event: str, shot: int):
         directory, _ = mask_file(event, shot)
-        return regions.shot_view(paths, directory, shot)
+        with mask_lock:
+            return regions.shot_view(paths, directory, shot)
 
     @app.post("/api/masks")
     def save_masks(body: MaskIn):
         directory, path = mask_file(body.event, body.shot)
         with mask_lock:
+            revision = len(regions.shot_history(directory, body.shot))
+            if revision != body.revision:
+                return JSONResponse(
+                    status_code=409,
+                    content={
+                        "error": (
+                            "the mask decisions changed since the page drew them: "
+                            "reopen it"
+                        ),
+                        "revision": revision,
+                    },
+                )
             if regions.file_sha256(path) != body.pseudo_sha256:
                 raise HTTPException(
                     409, "the pseudo-mask changed since the page drew it: reopen it"
@@ -339,7 +356,11 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 pseudo_sha256=body.pseudo_sha256,
                 name=name,
             )
-        return {"rejected": entry["rejected"], "last_save": entry}
+        return {
+            "rejected": entry["rejected"],
+            "last_save": entry,
+            "revision": revision + 1,
+        }
 
     mask_lock = threading.Lock()
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

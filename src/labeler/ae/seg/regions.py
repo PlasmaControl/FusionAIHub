@@ -7,7 +7,8 @@ over the AE rows and a click rejects it (not the mode: a harmonic of an MHD
 mode, a line of pickup) or takes the rejection back.
 
 Each save appends one line to `data/events/alfven_eigenmode/review/masks.jsonl`:
-`{"shot", "pseudo", "pseudo_sha256", "rejected", "name", "saved_at"}`. The last
+`{"shot", "pseudo", "pseudo_sha256", "rejected", "reviewer", "name", "saved_at"}`.
+The last
 line of a shot is its decision; the earlier ones are its history. A decision
 made on another version of the pseudo-mask (another sha256) is stale: the page
 says so and training ignores it.
@@ -18,6 +19,7 @@ Training takes the pseudo-mask with every rejected region set to background
 
 from __future__ import annotations
 
+import getpass
 import hashlib
 import json
 from datetime import UTC, datetime
@@ -84,17 +86,23 @@ def describe(pm: PseudoMask) -> list[dict]:
     return found
 
 
-def read_decisions(event_dir) -> dict[int, dict]:
-    """The last decision per shot."""
+def shot_history(event_dir, shot: int | None = None) -> list[dict]:
+    """Saved lines, optionally for one shot, including stale decisions."""
     path = log_path(event_dir)
     if not path.is_file():
-        return {}
-    found = {}
+        return []
+    found = []
     for line in path.read_text().splitlines():
         if line.strip():
             entry = json.loads(line)
-            found[int(entry["shot"])] = entry
+            if shot is None or int(entry["shot"]) == int(shot):
+                found.append(entry)
     return found
+
+
+def read_decisions(event_dir) -> dict[int, dict]:
+    """The last decision per shot."""
+    return {int(entry["shot"]): entry for entry in shot_history(event_dir)}
 
 
 def save_decision(
@@ -107,6 +115,7 @@ def save_decision(
         "pseudo_sha256": pseudo_sha256,
         "rejected": sorted({int(k) for k in rejected}),
         "name": name,
+        "reviewer": getpass.getuser(),
         "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
     path = log_path(event_dir)
@@ -134,10 +143,12 @@ def shot_view(paths, event_dir, shot: int) -> dict | None:
         return None
     pm = PseudoMask.load(path)
     sha = file_sha256(path)
-    decision = read_decisions(event_dir).get(int(shot))
+    history = shot_history(event_dir, shot)
+    decision = history[-1] if history else None
     current = bool(decision) and decision.get("pseudo_sha256") == sha
     return {
         "shot": int(shot),
+        "revision": len(history),
         "pseudo": PSEUDO,
         "pseudo_sha256": sha,
         "grid": {"t0_ms": pm.t0_ms, "dt_ms": pm.dt_ms, "n": int(pm.mask.shape[1])},

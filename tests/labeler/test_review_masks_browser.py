@@ -89,3 +89,37 @@ def test_a_region_is_rejected_by_a_click_and_the_choice_is_kept(served, tmp_path
     lines = regions.log_path(event).read_text().splitlines()
     saves = [json.loads(line) for line in lines]
     assert [(s["rejected"], s["name"]) for s in saves] == [([2], "Ada"), ([], "Ada")]
+
+
+@pytest.mark.parametrize("case", ["race", "failed", "conflict", "stale_mask"])
+def test_mask_save_races_and_failures(served, tmp_path, case):
+    base, event = served
+    if case == "stale_mask":
+        regions.save_decision(event, 170815, [2], pseudo_sha256="old mask")
+    result = subprocess.run(
+        [
+            NODE,
+            str(DRIVER),
+            base,
+            TOKEN,
+            str(SHELLS[-1]),
+            str(tmp_path / "profile"),
+            case,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    checks = json.loads(result.stdout.splitlines()[-1])
+    assert [c for c in checks if not c["ok"]] == []
+    log = regions.log_path(event)
+    saves = [json.loads(line)["rejected"] for line in log.read_text().splitlines()]
+    expected = {
+        "race": [[2], [1, 2]],
+        "failed": [[2]],
+        "conflict": [[2], [1, 2]],
+        "stale_mask": [[2], [1]],
+    }
+    assert saves == expected[case]

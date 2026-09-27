@@ -216,7 +216,9 @@ async function api(path, options) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `${response.status} ${response.statusText}`);
+    const error = new Error(body.error || `${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
   }
   return response;
 }
@@ -1093,11 +1095,16 @@ function endDrag(event) {
 
 // -- the AE pseudo-mask: TokEye's lines inside the label, one click per region
 
+const maskSaves = new Map(); // shot -> pending save, survives navigation
+
 /** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
 async function loadMasks(ticket) {
   if (S.api >= 3 && S.event === MASK_EVENT) {
+    const event = S.event, shot = S.shot;
     try {
-      const body = await (await api(`/api/masks?event=${enc(S.event)}&shot=${S.shot}`)).json();
+      await maskSaves.get(shot);
+      if (ticket !== S.ticket) return;
+      const body = await (await api(`/api/masks?event=${enc(event)}&shot=${shot}`)).json();
       if (ticket !== S.ticket) return;
       S.masks = body;
     } catch {
@@ -1131,6 +1138,7 @@ function toggleMasks() {
 
 /** A click on an image row, not a drag: reject the region under it, or take that back. */
 function clickMask(d) {
+  if (maskSaves.has(S.shot)) return say("mask is saving; wait for it to finish");
   const m = S.masks;
   if (!m || !S.showMasks || m.saving) return;
   const row = S.meta.rows[[...$("rows").children].indexOf(d.canvas)];
@@ -1151,8 +1159,18 @@ function clickMask(d) {
 }
 
 /** Save the rejected regions at once, with the typed name; drawn before the answer. */
-async function saveMasks(m, rejected) {
+function saveMasks(m, rejected) {
+  if (maskSaves.has(m.shot)) return say("mask is saving; wait for it to finish");
+  const pending = persistMasks(m, rejected, S.event);
+  maskSaves.set(m.shot, pending);
+  return pending;
+}
+
+async function persistMasks(m, rejected, event) {
   const before = m.rejected;
+  const current = () => S.event === event && S.masks?.shot === m.shot &&
+    S.masks.pseudo_sha256 === m.pseudo_sha256;
+  let conflict = false;
   Object.assign(m, { rejected, saving: true });
   showMasks();
   render();
@@ -1161,24 +1179,40 @@ async function saveMasks(m, rejected) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        event: S.event,
+        event,
         shot: m.shot,
         pseudo_sha256: m.pseudo_sha256,
+        revision: m.revision,
         rejected,
         name: S.name || null,
       }),
     });
     const body = await response.json();
-    Object.assign(m, { rejected: body.rejected, last_save: body.last_save, stale: false });
+    const saved = { rejected: body.rejected, last_save: body.last_save,
+      revision: body.revision, stale: false };
+    Object.assign(m, saved);
+    if (current()) Object.assign(S.masks, saved);
     const n = body.rejected.length;
-    if (S.masks === m) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
+    if (current()) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
   } catch (error) {
     m.rejected = before;
-    if (S.masks === m) say(error.message, true);
+    conflict = error.status === 409;
+    if (current()) {
+      S.masks.rejected = before;
+      say(error.message, true);
+    }
   } finally {
     m.saving = false;
+    if (current()) S.masks.saving = false;
+    maskSaves.delete(m.shot);
   }
-  if (S.masks !== m) return;
+  if (conflict && S.event === event && S.shot === m.shot) {
+    await loadMasks(S.ticket);
+    if (S.event === event && S.shot === m.shot) {
+      say("mask decisions changed; reloaded the current masks — click again", true);
+    }
+  }
+  if (!current()) return;
   showMasks();
   render();
 }
