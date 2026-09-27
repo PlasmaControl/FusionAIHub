@@ -35,22 +35,24 @@ point of interest, never a catalog label.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
 import torch
 
-from ...config import Paths, atomic_path, git_sha
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...events.review.rows import Grid
 from ...scoring import stats
 from ...scoring.frames import FRAME_MS
-from ..xpower import event_dir, tokeye_masks
 from ..xpower import model_dir as ae_model_dir
+from ..xpower import tokeye_masks
 from ..xpower.data import (
     BAND_KHZ,
     MIN_FRACTION,
@@ -67,7 +69,6 @@ from ..xpower.evaluate import (
     EVAL_FRAMES,
     ShotFrames,
     cells,
-    chosen_model,
     fp_rate,
     mhd_absent,
 )
@@ -113,10 +114,14 @@ def column_frames(flags: np.ndarray, first: int, grid: Grid) -> np.ndarray:
     return out
 
 
-def shot_scores(paths: Paths, shot: int, *, label, decisions, seg, ae) -> dict:
+def shot_scores(
+    paths: Paths, shot: int, *, label, decisions, seg, ae, pseudo_bytes=None
+) -> dict:
     """One test shot: `{"pixels": {method: cells}, "frames": ShotFrames}`.
     `seg` and `ae` are `(model, blob)` pairs."""
-    ex = train.load_example(paths, shot, decisions, margin=None)
+    ex = train.load_example(
+        paths, shot, decisions, margin=None, pseudo_bytes=pseudo_bytes
+    )
     n_y = ex.y.shape[0]
     grid = Grid(ex.t0_ms, ex.dt_ms, ex.y.shape[1])
     in_band = np.zeros(n_y, dtype=bool)
@@ -262,26 +267,101 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
 
 
 def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
-    seg = train.load(models / "model.pt")
-    split = read_split(models / "split.csv")
-    ae_file = chosen_model(ae_model_dir(paths))
-    ae = load_ae(ae_file)
-    saved = labels.read_saved(event_dir(paths))
-    decisions = regions.read_decisions(event_dir(paths))
+    evaluation = models / "evaluation.json"
+    if evaluation.exists():
+        raise FileExistsError(
+            f"{evaluation}: the test shots are scored once; a retry is a new version"
+        )
+    model_file = models / "model.pt"
+    model_bytes = model_file.read_bytes()
+    seg = train.load(BytesIO(model_bytes))
+    inputs = seg[1].get("inputs", {})
+    archive = {
+        "pseudo_masks_sha256": models / "pseudo_masks.json",
+        "labels_sha256": labels.labels_path(models),
+        "masks_sha256": regions.log_path(models),
+    }
+    frozen = {}
+    evaluation_inputs = {}
+    for key, path in archive.items():
+        if not path.is_file() or not inputs.get(key):
+            raise ValueError(
+                f"{path}: trained before the frozen bundle; evaluate a new version"
+            )
+        frozen[key] = path.read_bytes()
+        evaluation_inputs[key] = hashlib.sha256(frozen[key]).hexdigest()
+        if evaluation_inputs[key] != inputs[key]:
+            raise ValueError(f"{path}: archive hash differs from the training bundle")
+    if not inputs.get("ae_model_sha256"):
+        raise ValueError(
+            f"{model_file}: trained before the frozen bundle; evaluate a new version"
+        )
+    split_bytes = (models / "split.csv").read_bytes()
+    split = read_split(models / "split.csv", data=split_bytes)
+    choice_bytes = (ae_model_dir(paths) / "chosen.json").read_bytes()
+    ae_file = ae_model_dir(paths) / json.loads(choice_bytes)["candidate"] / "model.pt"
+    ae_bytes = ae_file.read_bytes()
+    evaluation_inputs["ae_model_sha256"] = hashlib.sha256(ae_bytes).hexdigest()
+    evaluation_inputs["ae_chosen_sha256"] = hashlib.sha256(choice_bytes).hexdigest()
+    if evaluation_inputs["ae_model_sha256"] != inputs["ae_model_sha256"]:
+        raise ValueError(
+            f"{ae_file}: chosen xpower model differs from the frozen bundle"
+        )
+    ae = load_ae(BytesIO(ae_bytes))
+    saved, decisions = train.read_review_bytes(
+        frozen["labels_sha256"], frozen["masks_sha256"]
+    )
+    manifest = json.loads(frozen["pseudo_masks_sha256"])
     shots = sorted(s for s, v in split.items() if v == "test")
+    pseudo_bytes = {}
+    evaluation_inputs["pseudo_masks"] = {}
+    for shot in shots:
+        path = regions.pseudo_file(paths, shot)
+        data = path.read_bytes()
+        digest = hashlib.sha256(data).hexdigest()
+        if manifest.get(path.name) != digest:
+            raise ValueError(f"{path}: pseudo-mask differs from the frozen bundle")
+        pseudo_bytes[shot] = data
+        evaluation_inputs["pseudo_masks"][path.name] = digest
     shots = shots[:limit] if limit else shots
     if not shots:
         raise ValueError(f"{models / 'split.csv'} has no test shot")
+    # Stores and TokEye remain external; detect drift across scoring. Targets
+    # and models above are loaded from the exact bytes whose hashes we record.
+    external = {}
+    for s in shots:
+        for path in (
+            paths.spectrogram_file(EVENT, s),
+            clean_path(tokeye_masks(paths), s),
+        ):
+            if path is None:
+                raise ValueError(f"{tokeye_masks(paths)}: no TokEye mask for {s}")
+            external[str(path)] = sha256_of(path)
     per_shot = [
-        shot_scores(paths, s, label=saved[s], decisions=decisions, seg=seg, ae=ae)
+        shot_scores(
+            paths,
+            s,
+            label=saved[s],
+            decisions=decisions,
+            seg=seg,
+            ae=ae,
+            pseudo_bytes=pseudo_bytes[s],
+        )
         for s in shots
     ]
+    for path, digest in external.items():
+        if sha256_of(path) != digest:
+            raise ValueError(f"{path}: evaluation input changed during scoring")
+    evaluation_inputs["external_files"] = external
     scores = score(per_shot)
     bar = verdict(scores)
     meta = {
         "threshold": seg[1]["threshold"],
         "model_git_sha": seg[1]["git_sha"],
         "inputs": seg[1]["inputs"],
+        "model_sha256": hashlib.sha256(model_bytes).hexdigest(),
+        "split_sha256": hashlib.sha256(split_bytes).hexdigest(),
+        "evaluation_inputs": evaluation_inputs,
         "ae_model": str(ae_file),
         "min_fraction": MIN_FRACTION,
         "git_sha": git_sha(),
@@ -304,7 +384,10 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
-    record = run_test(paths, args.models or model_dir(paths), args.limit)
+    try:
+        record = run_test(paths, args.models or model_dir(paths), args.limit)
+    except (OSError, ValueError) as error:
+        p.error(str(error))
     print(json.dumps({"bar": record["bar"], "counts": record["counts"]}))
     return 0
 

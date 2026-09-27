@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -215,12 +217,17 @@ def summary(pm: PseudoMask, file: str) -> dict:
     }
 
 
-def make(paths: Paths, shot: int, label: labels.Label) -> PseudoMask:
+def make(
+    paths: Paths, shot: int, label: labels.Label, *, tokeye_bytes: bytes | None = None
+) -> PseudoMask:
     grid, values, y0, dy = store_rows(paths.spectrogram_file(EVENT, shot), LEVEL)
     tokeye = clean_path(tokeye_masks(paths), shot)
     if tokeye is None:
         raise FileNotFoundError(f"{shot} has no TokEye mask")
-    return build(shot, label, grid, values.shape[1], y0, dy, tokeye_clean(tokeye))
+    data = tokeye.read_bytes() if tokeye_bytes is None else tokeye_bytes
+    return build(
+        shot, label, grid, values.shape[1], y0, dy, tokeye_clean(BytesIO(data))
+    )
 
 
 def main(argv=None) -> int:
@@ -233,10 +240,15 @@ def main(argv=None) -> int:
     shots = args.shots or sorted(saved)
     out = pseudo_dir(paths)
     out.mkdir(parents=True, exist_ok=True)
-    rows, failed = [], []
+    rows, failed, tokeye_hashes = [], [], {}
     for shot in shots:
         try:
-            pm = make(paths, shot, saved[shot])
+            tokeye = clean_path(tokeye_masks(paths), shot)
+            if tokeye is None:
+                raise FileNotFoundError(f"{shot} has no TokEye mask")
+            data = tokeye.read_bytes()
+            pm = make(paths, shot, saved[shot], tokeye_bytes=data)
+            tokeye_hashes[str(shot)] = hashlib.sha256(data).hexdigest()
         except (KeyError, OSError, ValueError) as error:
             failed.append(shot)
             print(f"{shot}: {type(error).__name__}: {error}", flush=True)
@@ -252,6 +264,7 @@ def main(argv=None) -> int:
         "pseudo": PSEUDO,
         "shots": len(rows),
         "failed": failed,
+        "tokeye_sha256": tokeye_hashes,
         "labels": str(labels_file),
         "labels_sha256": sha256_of(labels_file) if labels_file.is_file() else None,
         "git_sha": git_sha(),
