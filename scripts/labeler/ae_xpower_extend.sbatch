@@ -20,6 +20,7 @@
 #
 #   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this>
 #   full run:   sbatch <this>
+# For N shards, use OF=N together with --array=0-<N-1>.
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)

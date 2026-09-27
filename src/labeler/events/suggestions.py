@@ -3,7 +3,8 @@
 A suggestion table has the format-table columns (`shot, category, t_start,
 t_end, confidence`, ms) and the catalog states as categories (0 absent,
 1 present, 2 uncertain, 3 not observable); each shot's rows tile its window.
-It lives at `$LABELER_ROOT/suggestions/<method>/<version>/<event>_suggest_<method>_<version>.csv`
+It lives at
+`$LABELER_ROOT/suggestions/<method>/<version>/<event>_suggest_<method>_<version>.csv`
 beside a `.meta.json` naming what made it. It is a suggestion, not a label
 (v1 spec §3): the review page can start from one (`review/source.json`), and
 only what a reviewer saves becomes a label.
