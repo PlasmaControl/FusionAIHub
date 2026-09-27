@@ -1,5 +1,5 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty|inflight] [case]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty|inflight|pending] [case]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -519,6 +519,67 @@ async function eventQueueInflight() {
       .every((r) => r.shot === "170815")`));
 }
 
+async function pendingResponses() {
+  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  const key = `labeler:${a}:170815`;
+  const original = await js("S.label");
+  await draw(500, 800);
+  const sent = await js("S.label");
+  await arm("label");
+  await press("s");
+  await held("label");
+  if (CASE.startsWith("restore_")) {
+    await press("h");
+    await until(`$("versions").open`);
+    await js(`$("version-list").querySelector('[data-version="1"]').click()`);
+  } else {
+    await press("z", 2);
+  }
+  check("Restore or Undo returns to the old baseline while saving",
+    same(await js("S.label"), original));
+  check("the later label has a draft even when it equals the old baseline",
+    same(await js(`JSON.parse(localStorage.getItem("${key}"))`), original));
+
+  if (CASE.endsWith("_switch")) {
+    await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
+    await settled(b, 170815);
+  } else if (CASE.endsWith("_type")) {
+    await js(`$("shot").focus(); $("shot").value = "170816"`);
+    await press("Enter");
+    await opened(170816);
+    await js("document.activeElement.blur()");
+  } else {
+    await press("ArrowRight");
+    await opened(170816);
+  }
+  await release("label");
+  await until("!S.saving");
+  const history = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
+  const saved = history.versions.at(-1);
+  check("navigation does not change the label actually saved by the server",
+    same({ window: saved.window, intervals: saved.intervals }, sent));
+  check("save completion on another shot or event keeps the later draft",
+    same(await js(`JSON.parse(localStorage.getItem("${key}"))`), original));
+  if (CASE.endsWith("_switch")) {
+    await js(`$("event").value = "${a}"; $("event").dispatchEvent(new Event("change"))`);
+    // The event resumes its unreviewed shot; type the shot whose draft was left.
+    await settled(a, 170817);
+    await js(`$("shot").focus(); $("shot").value = "170815"`);
+    await press("Enter");
+    await opened(170815);
+    await js("document.activeElement.blur()");
+  } else {
+    await press("ArrowLeft");
+    await opened(170815);
+  }
+  check("returning shows the restored or undone label", same(await js("S.label"), original));
+  check("returning marks the later label unsaved in the header and queue", await js(`
+    !$("dirty").hidden && $("queue").querySelector('[data-shot="170815"]').classList.contains("dirty")`));
+  check("returning keeps the later draft in storage",
+    same(await js(`JSON.parse(localStorage.getItem("${key}"))`), original));
+  check("returning reads the acknowledged save as its new baseline", same(await js("S.meta.saved"), sent));
+}
+
 async function moves() {
   const fetched = await js(`window.requests.filter((r) => r.kind === "shot").map((r) => r.shot)`);
   check("opening 170815 prefetches its next queue shot, the saved 170816",
@@ -810,11 +871,12 @@ try {
       };
     ` });
   }
-  if (["race", "moves", "empty", "inflight"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
+  if (["race", "moves", "empty", "inflight", "pending"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   if (SCENARIO !== "race") await opened(170815);
   if (SCENARIO === "race") await navigationRace();
   else if (SCENARIO === "inflight") await inflight();
+  else if (SCENARIO === "pending") await pendingResponses();
   else if (SCENARIO === "moves") await moves();
   else if (SCENARIO === "empty") await emptyEvent();
   else if (SCENARIO === "api1") await olderServer();
