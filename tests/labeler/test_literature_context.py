@@ -621,3 +621,25 @@ def test_d23_range_end_context_uses_its_range_keyword():
         (text.index("189600"), text.index("189600") + 6),
         (text.index("189603"), text.index("189603") + 6),
     ]
+
+
+@pytest.mark.parametrize("abbreviated", [False, True])
+@pytest.mark.parametrize("distance", [50, 51])
+def test_range_cap_counts_difference_of_ends(abbreviated, distance):
+    end = str(distance) if abbreviated else str(189600 + distance)
+    found = _found(f"DIII-D shots 189600-{end}")
+    assert ((189601, "range") in found) == (distance == 50)
+    if distance == 50:
+        assert len(found) == 51
+    else:
+        assert found == (
+            [(189600, "exact")]
+            if abbreviated
+            else [(189600, "exact"), (189651, "exact")]
+        )
+
+
+@pytest.mark.parametrize("space", ["\u00a0", "\u2009"])
+def test_unicode_spaces_keep_shot_mentions(space):
+    assert normalise(f"shot{space}189631") == "shot 189631"
+    assert _found(f"shot{space}189631") == [(189631, "exact")]

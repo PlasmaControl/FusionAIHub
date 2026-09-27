@@ -560,3 +560,24 @@ def test_repeated_probe_counts_keep_the_last_truncation(tmp_path):
     hits = read_hits([probe])
     assert hits.truncated == (189631, 189631)  # the existing history is unchanged
     assert hits.truncated_queries == ({"shot": 189631, "n": 2, "kept": 1},)
+
+
+def test_links_early_pool_is_usage_error(links_inputs, capsys):
+    cache, pool, _, _, _, args = links_inputs
+    frame = pd.read_csv(pool)
+    frame["year"] = 2020
+    frame.to_csv(pool, index=False)
+    with pytest.raises(SystemExit) as exc:
+        osti.main(args)
+    assert exc.value.code == 2
+    assert "dates shots from 2020" in capsys.readouterr().err
+    assert not (cache / "papers.csv").exists()
+
+
+def test_osti_corpus_range_comes_from_population():
+    from labeler.events.catalog import population
+
+    assert (osti.FIRST_SHOT, osti.LAST_SHOT) == (
+        population.FIRST_SHOT,
+        population.LAST_SHOT,
+    )
