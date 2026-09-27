@@ -287,6 +287,9 @@ def save(
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index)."""
     refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
+    lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
+    split_bytes = ("\n".join(lines) + "\n").encode()
+    inputs = {**inputs, "split_sha256": hashlib.sha256(split_bytes).hexdigest()}
     out.mkdir(parents=True, exist_ok=True)
     for name, data in (bundle or {}).items():
         with atomic_path(out / name) as tmp:
@@ -304,10 +307,10 @@ def save(
     with atomic_path(out / "model.pt") as tmp:
         torch.save(blob, tmp)
     with atomic_path(out / "split.csv") as tmp:
-        lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
-        tmp.write_text("\n".join(lines) + "\n")
+        tmp.write_bytes(split_bytes)
     seconds = [row["seconds"] for row in history]
     record = {
+        "inputs": inputs,
         "history": history,
         "best_epoch": best_epoch(history),
         "threshold": threshold,

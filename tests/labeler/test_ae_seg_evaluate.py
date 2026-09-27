@@ -142,7 +142,10 @@ def test_live_owner_edits_do_not_change_frozen_evaluation(frozen_model, tmp_path
     )
 
 
-@pytest.mark.parametrize("change", ["npz", "choice", "legacy", "evaluation"])
+@pytest.mark.parametrize(
+    "change",
+    ["npz", "choice", "legacy", "evaluation", "swap", "missing", "added"],
+)
 def test_evaluation_refuses_drift_and_repeat_scoring(
     frozen_model, monkeypatch, capsys, change
 ):
@@ -162,9 +165,26 @@ def test_evaluation_refuses_drift_and_repeat_scoring(
     elif change == "legacy":
         file = models / "pseudo_masks.json"
         file.unlink(missing_ok=True)
-    else:
+    elif change == "evaluation":
         file = models / "evaluation.json"
         file.write_text("original evaluation")
+    else:
+        file = models / "split.csv"
+        split = train.read_split(file)
+        if change == "swap":
+            split[101], split[103] = "test", "train"
+        elif change == "missing":
+            del split[103]
+        else:
+            split[102] = "test"
+        file.write_text(
+            "shot,split\n" + "".join(f"{s},{v}\n" for s, v in sorted(split.items()))
+        )
+
+    def no_scoring(*args, **kwargs):
+        pytest.fail("drift must be refused before scoring")
+
+    monkeypatch.setattr(evaluate, "shot_scores", no_scoring)
     with pytest.raises((ValueError, FileExistsError)) as error:
         evaluate.run_test(paths, models)
     assert str(file) in str(error.value)
