@@ -1328,6 +1328,15 @@ def test_committed_release_hashes_and_exact_redraw():
     doc = yaml.safe_load((root / "cohort_manifest.yaml").read_text())
     for name in ("cohort.csv", "population.csv"):
         assert doc["outputs"][name] == sha256_of(root / name)
+    inputs = doc["inputs"]
+    for record in (inputs["papers"], inputs["runaway"], *inputs["legacy_tables"]):
+        assert record["sha256"] == sha256_of(root.parent / record["path"])
+    for name, digest in (
+        ("papers", doc["papers_meta"]["sha256"]),
+        ("runaway", inputs["runaway"]["meta_sha256"]),
+    ):
+        path = (root.parent / inputs[name]["path"]).with_suffix(".meta.json")
+        assert digest == sha256_of(path)
     drawn = cohort.read_cohort(root / "cohort.csv")
     population = cohort.read_population(root / "population.csv")
     cells = {c: v["N"] for c, v in doc["cells"].items()}
