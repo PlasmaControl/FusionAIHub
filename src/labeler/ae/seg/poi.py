@@ -14,14 +14,17 @@ Writes `$LABELER_ROOT/poi/alfven_eigenmode/ae_seg-v1/poi.csv` (`POI_COLUMNS`,
 one row per region, merged over runs: a shot drawn again replaces its rows)
 and, unless `--no-pictures`, a JPEG per shot in
 `$LABELER_ROOT/gallery/alfven_eigenmode/ae_seg-v1/`: the R0 x V1 row with the
-regions outlined and numbered, and below it the reviewed pseudo-mask where the
-shot has one. Every point is a suggestion: nobody has reviewed it.
+regions outlined (the 30 largest numbered on crowded shots), and below it the
+pseudo-mask with any current region review applied. Every point is a suggestion:
+nobody has reviewed it.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +32,7 @@ import pandas as pd
 from matplotlib.figure import Figure
 from scipy import ndimage
 
-from ...config import Paths, atomic_path
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
 from ..xpower import tokeye_masks
@@ -102,7 +105,19 @@ def points(
     return found, out
 
 
-def draw(path, *, title, grid: Grid, row, y0, dy, labelled, found, pseudo=None):
+def draw(
+    path,
+    *,
+    title,
+    grid: Grid,
+    row,
+    y0,
+    dy,
+    labelled,
+    found,
+    pseudo=None,
+    pseudo_review=None,
+):
     """R0 x V1 with the regions outlined and numbered; the pseudo-mask below."""
     panels = 2 if pseudo is not None else 1
     fig = Figure(figsize=(16, 4 + 3 * panels), dpi=100, layout="constrained")
@@ -129,11 +144,24 @@ def draw(path, *, title, grid: Grid, row, y0, dy, labelled, found, pseudo=None):
         ax.axhline(BAND_LINE_KHZ, color="white", lw=0.8, ls="--")
         ax.set_ylim(0, 250)
         ax.set_ylabel("R0 × V1\nkHz")
+        if extent[1] > 2000:
+            ax.axvline(2000, color="white", lw=0.8, ls="--", label="scored: 0-2 s")
+            ax.text(
+                2000,
+                0.98,
+                "scored: 0-2 s",
+                transform=ax.get_xaxis_transform(),
+                ha="right",
+                va="top",
+                color="white",
+                fontsize=8,
+            )
     if labelled.any():
         axes[0].contour(
             t, f, labelled > 0, levels=[0.5], colors="#00e5ff", linewidths=1
         )
-    for p in found:
+    numbered = sorted(found, key=lambda p: (-p["pixels"], p["region"]))[:30]
+    for p in numbered:
         axes[0].annotate(
             str(p["region"]),
             (p["t_start_ms"], p["f_hi_khz"]),
@@ -141,7 +169,10 @@ def draw(path, *, title, grid: Grid, row, y0, dy, labelled, found, pseudo=None):
             fontsize=8,
             va="bottom",
         )
-    axes[0].set_title(f"{len(found)} regions the model draws", fontsize=9, loc="left")
+    crowded = " (the 30 largest numbered; all in poi.csv)" if len(found) > 30 else ""
+    axes[0].set_title(
+        f"{len(found)} regions the model draws{crowded}", fontsize=9, loc="left"
+    )
     if pseudo is not None:
         shown = np.ma.masked_where(pseudo != 1, np.ones_like(pseudo, dtype=float))
         axes[1].imshow(
@@ -153,11 +184,15 @@ def draw(path, *, title, grid: Grid, row, y0, dy, labelled, found, pseudo=None):
             alpha=0.7,
             interpolation="nearest",
         )
-        axes[1].set_title(
-            "reviewed pseudo-mask (TokEye inside the owner's AE frames)",
-            fontsize=9,
-            loc="left",
+        review_title = (
+            "pseudo-mask (TokEye inside the owner's AE frames; regions not reviewed)"
         )
+        if pseudo_review is not None:
+            k, n = pseudo_review
+            review_title = (
+                f"pseudo-mask after the owner's region review ({k} of {n} rejected)"
+            )
+        axes[1].set_title(review_title, fontsize=9, loc="left")
     axes[-1].set_xlabel("time (ms)")
     fig.suptitle(title)
     with atomic_path(path) as tmp:
@@ -199,10 +234,15 @@ def shot_points(shot: int) -> list[dict]:
     if w["pictures"]:
         file = regions.pseudo_file(paths, shot)
         mask = None
+        review = None
         if file.is_file() and not w["from_corpus"]:
             pm = PseudoMask.load(file)
             sha = regions.file_sha256(file)
-            mask = regions.reviewed_mask(pm, w["decisions"].get(shot), sha)
+            decision = w["decisions"].get(shot)
+            mask = regions.reviewed_mask(pm, decision, sha)
+            if decision and decision.get("pseudo_sha256") == sha:
+                _, count = regions.label_regions(pm.mask)
+                review = (len(decision["rejected"]), count)
             mask = np.where(mask == IGNORE, 0, mask)
         draw(
             gallery_dir(paths) / f"{shot}.jpg",
@@ -215,6 +255,7 @@ def shot_points(shot: int) -> list[dict]:
             labelled=labelled,
             found=found,
             pseudo=mask,
+            pseudo_review=review,
         )
     return found
 
@@ -246,6 +287,8 @@ def main(argv=None) -> int:
         p.error("--from-corpus needs --shots")
     paths = Paths.from_env()
     model_file = (args.models or model_dir(paths)) / "model.pt"
+    model_hash = sha256_of(model_file)
+    _, blob = load(model_file)
     shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
     flags = {"from_corpus": args.from_corpus, "pictures": not args.no_pictures}
     init = (
@@ -263,7 +306,30 @@ def main(argv=None) -> int:
         else:
             done.append(shot)
             rows += outcome
+    if sha256_of(model_file) != model_hash:
+        p.error(f"{model_file}: model changed while drawing points")
     table = write_points(poi_dir(paths) / "poi.csv", done, rows)
+    record = {
+        "model": str(model_file),
+        "model_sha256": model_hash,
+        "threshold": blob["threshold"],
+        "MIN_POI_PIXELS": MIN_POI_PIXELS,
+        "shots": sorted(done),
+        "pictures": not args.no_pictures,
+        "points_before_2s": int(sum(row["t_peak_ms"] < 2000 for row in rows)),
+        "points_after_2s": int(sum(row["t_peak_ms"] >= 2000 for row in rows)),
+        "scope": "shots completed in this run; after includes peaks at 2000 ms",
+        "git_sha": git_sha(),
+        "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    meta_file = poi_dir(paths) / "meta.json"
+    previous = (
+        json.loads(meta_file.read_text()).get("runs", []) if meta_file.exists() else []
+    )
+    with atomic_path(meta_file) as tmp:
+        tmp.write_text(
+            json.dumps({**record, "runs": [*previous, record]}, indent=1) + "\n"
+        )
     print(
         f"{len(rows)} points on {len(done)} shots ({len(table)} in the table); "
         f"{len(failed)} failed"
