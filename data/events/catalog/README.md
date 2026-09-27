@@ -1,10 +1,11 @@
 # Event Catalog
 
 The shared tables of the DIII-D event catalog (v1): 500 shots from 2021-2025,
-each assessed for six phenomena - Alfvén eigenmodes, neoclassical tearing
-modes, H-mode, ELMs, sawteeth and disruptions. A phenomenon's own labels stay in
-its category directory (`../<category>/review/`); what belongs to the catalog
-as a whole is here.
+selected to be assessed for six phenomena - Alfvén eigenmodes, neoclassical tearing
+modes, H-mode, ELMs, sawteeth and disruptions. Labels come in later parts, in each
+phenomenon's category directory (`../<category>/review/`); what belongs to the
+catalog as a whole is here. The population passes five inclusion rules; the cohort
+applies rule 5 from `runaway.csv` after the population module's rules 1-4.
 
 This directory is not an event category. `events.yaml` lists it under
 `non_category_dirs`, so category scans (`labeler.events.databases.category_dirs`)
@@ -28,9 +29,11 @@ skip it.
 The release manifest lists the catalog tables, the cohort, the links, the method
 cards and the code commit held in the release, with their checksums.
 
-Each file is written under `$LABELER_ROOT` first (`catalog/` for the cohort,
-`literature/osti/` for the links) and copied here only with the owner's
-go-ahead.
+The cohort and literature files are written under `$LABELER_ROOT` first
+(`catalog/` for the cohort, `literature/osti/` for the links) and copied here only
+with the owner's go-ahead. The exception is `runaway.csv` and `runaway.meta.json`:
+the runaway command writes them straight into `data/events/catalog/`, with no
+production copy.
 
 The cohort is drawn once, from inputs frozen beforehand, and is never redrawn in
 place: a new draw is a new freeze, whose manifest names the freeze it supersedes and

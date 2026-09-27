@@ -20,9 +20,10 @@ with the smallest draw keys, and each weighs N_h / n_h.
 
 Every cohort shot then gets an order key u. The blind subset (the test split) is 50
 shots shared across L, G and R in proportion to their cohort counts, each group's
-smallest u; val is the next 50 by the same rule; train is the rest. The review queue
-is the blind shots, then the rest, each by u, so any prefix of it is a random
-subsample of every group.
+smallest u; val is the next 50 in each group by u, shared across the groups by their
+cohort counts less their blind shots (largest remainder); train is the rest. The
+review queue is the blind shots, then the rest, each by u, so any prefix of it is a
+random subsample of every group.
 
 Keys are hashes of (seed, purpose, shot), not draws from one generator, so a shot's
 key does not depend on which other shots are in the population.
