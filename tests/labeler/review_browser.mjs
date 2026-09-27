@@ -397,6 +397,7 @@ async function navigationRace() {
 }
 
 async function inflight() {
+  if (CASE === "queue") return await eventQueueInflight();
   const a = "alfven_eigenmode", key = `labeler:${a}:170815`;
   const original = await js("S.label");
   if (CASE === "restore") {
@@ -475,6 +476,47 @@ async function inflight() {
     check("Ctrl+Z still undoes the later edit or Restore to the submitted label",
       same(await js("S.label"), sent) && await js(`$("dirty").hidden && localStorage.getItem("${key}") === null`));
   }
+}
+
+async function eventQueueInflight() {
+  const b = "neoclassical_tearing_mode";
+  await arm("queue", b);
+  await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
+  await held("queue");
+  check("changing events empties the previous roster in state and on screen",
+    await js(`S.queue.length === 0 && $("queue").children.length === 0`), await js("S.queue"));
+  check("a pending event queue shows neither the previous count nor next-shot hint",
+    await js(`$("count").textContent === "0/0" && $("next-shot").textContent === ""`));
+  await js(`$("shot").focus(); $("shot").value = "170815"`);
+  await press("Enter");
+  await settled(b, 170815);
+  await js("document.activeElement.blur()");
+  check("the typed shot opens its own event's label while the queue is held",
+    same(await js("S.label.intervals"), [[900, 1100, 1]]));
+  check("opening a shot before its queue arrives never prefetches another event's roster",
+    await js(`window.requests.filter((r) => r.kind === "shot" && r.event === "${b}")
+      .every((r) => r.shot === "170815")`));
+  const ticket = await js("S.ticket");
+  const requests = await js(`window.requests.filter((r) => r.kind === "shot").length`);
+  await release("queue");
+  await sleep(100);
+  check("the delayed queue belongs to the event even after a newer shot navigation",
+    same(await js("S.queue.map((r) => r.shot)"), [170815]), await js("S.queue"));
+  check("the delayed event queue refreshes its reviewed count",
+    await js(`$("count").textContent === "1/1"`), await js(`$("count").textContent`));
+  check("the next-shot hint stays on the event's one-shot roster",
+    await js(`$("next-shot").textContent === ""`), await js(`$("next-shot").textContent`));
+  check("accepting a delayed queue does not reopen the chosen shot",
+    await js(`S.ticket === ${ticket} &&
+      window.requests.filter((r) => r.kind === "shot").length === ${requests}`));
+  await press("Enter");
+  await until("window.saves.length === 1 && !S.saving && !pendingNavigation()");
+  check("Save-and-next wraps within the event's roster",
+    await js(`S.event === "${b}" && S.shot === 170815 && S.meta?.event === "${b}"`),
+    await js(`({ event: S.event, shot: S.shot, meta: S.meta, status: $("status").textContent })`));
+  check("every navigation and prefetch in the new event stays on its roster",
+    await js(`window.requests.filter((r) => r.kind === "shot" && r.event === "${b}")
+      .every((r) => r.shot === "170815")`));
 }
 
 async function moves() {

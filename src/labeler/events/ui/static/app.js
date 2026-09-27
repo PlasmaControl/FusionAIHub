@@ -421,17 +421,21 @@ function leave() {
 async function openEvent(event, shot) {
   const ticket = ++S.ticket;
   leave();
+  if (S.event !== event) S.queue = [];
   S.event = event;
   S.categories = S.events.find((row) => row.event === event).categories;
   S.category = known()[0] || 1;
   $("event").value = event;
   store("labeler:event", event);
   renderSwatches();
-  $("queue").replaceChildren();
+  renderQueue();
+  showHeader();
   const queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
-  if (ticket !== S.ticket) return;
+  if (S.event !== event) return;
   S.queue = queue.shots;
   renderQueue();
+  showHeader();
+  if (ticket !== S.ticket) return;
   await openShot(S.queue.some((row) => row.shot === shot) ? shot : queue.resume);
 }
 
@@ -487,8 +491,6 @@ function arrive() {
   busy(null);
   $("cursor").hidden ||= !S.meta;
   for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
-  const next = neighbour(1);
-  $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
@@ -884,6 +886,8 @@ function drawTrack(canvas, label, editable) {
 }
 
 function showHeader() {
+  const next = neighbour(1);
+  $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   const row = S.queue.find((r) => r.shot === S.shot) || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
