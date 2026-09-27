@@ -21,18 +21,17 @@ from . import labels
 
 #: The longest name the page may send; longer is refused, not cut.
 NAME_MAX = 64
+JOINERS = frozenset("\u200c\u200d")
 
 
 def clean_name(name: str | None) -> str | None:
     """The typed name with its outer whitespace removed; None when empty.
 
-    Refuses a name longer than `NAME_MAX` characters, Unicode Cc (C0 and C1
-    controls, including newline, tab, NUL and NEL), Cs (lone surrogates, which
-    UTF-8 cannot encode), line and paragraph separators U+2028 and U+2029,
-    and bidi embedding, override and isolate controls U+202A-U+202E and
-    U+2066-U+2069, which reorder the displayed line, the login included.
-    Every other character is accepted, including ZWNJ (U+200C) and ZWJ
-    (U+200D), so scripts that need joiners can keep them in a name.
+    Refuses a name longer than `NAME_MAX` characters and every Unicode C
+    character: Cc (controls), Cf (format), Cs (surrogates), Co (private use)
+    and Cn (unassigned), except ZWNJ (U+200C) and ZWJ (U+200D), which pass
+    because scripts need these joiners inside words. Also refuses line and
+    paragraph separators U+2028 and U+2029 because they break a line.
     """
     if name is None:
         return None
@@ -42,9 +41,8 @@ def clean_name(name: str | None) -> str | None:
     if len(name) > NAME_MAX:
         raise ValueError(f"a name is at most {NAME_MAX} characters")
     if any(
-        unicodedata.category(ch) in {"Cc", "Cs"}
-        or "\u2028" <= ch <= "\u202e"
-        or "\u2066" <= ch <= "\u2069"
+        (unicodedata.category(ch).startswith("C") and ch not in JOINERS)
+        or ch in {"\u2028", "\u2029"}
         for ch in name
     ):
         raise ValueError("a name cannot hold control characters")
