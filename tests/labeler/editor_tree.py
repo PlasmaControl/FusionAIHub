@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import h5py
 import numpy as np
+import pandas as pd
 
 from labeler.config import Paths
 from labeler.events import raw
+from labeler.events.catalog.cohort import COHORT_COLUMNS
 from labeler.events.verify import NoDataError
 from labeler.features.store import FeatureArray, write_features
 
@@ -62,3 +64,33 @@ def no_fetch(monkeypatch) -> list:
     monkeypatch.setattr(raw, "fdp_signal", refuse)
     monkeypatch.setattr(raw, "RETRY_DELAY_S", 0.0)
     return tried
+
+
+def use_env(monkeypatch, p: Paths) -> None:
+    """Point `Paths.from_env()` at `p`, as a CLI under test reads it."""
+    for name, value in {
+        "LABELER_ROOT": p.root,
+        "LABELER_CORPUS": p.corpus,
+        "LABELER_LABEL_TABLES": p.label_tables,
+        "LABELER_RAW_CACHE": p.raw_cache,
+    }.items():
+        monkeypatch.setenv(name, str(value))
+
+
+def queue_row(shot: int, rank: int, *, blind=False, window=(0, 1000)) -> dict:
+    return {
+        "shot": shot,
+        "queue_rank": rank,
+        "blind": blind,
+        "window_start_ms": window[0],
+        "window_end_ms": window[1],
+    }
+
+
+def cohort(p: Paths, rows) -> None:
+    """A frozen cohort at `data/events/catalog/cohort.csv`; unnamed columns blank."""
+    blank = dict.fromkeys(COHORT_COLUMNS, "")
+    frame = pd.DataFrame([blank | row for row in rows], columns=list(COHORT_COLUMNS))
+    path = p.label_tables / "catalog" / "cohort.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
