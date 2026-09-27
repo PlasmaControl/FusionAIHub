@@ -20,6 +20,7 @@ from . import (
     fishbone,
     high_confinement_mode,
     minimum_safety_factor,
+    neoclassical_tearing_mode,
     sawtooth_oscillation,
 )
 
@@ -28,6 +29,7 @@ BUILDERS = {
     "fishbone": fishbone,
     "high_confinement_mode": high_confinement_mode,
     "minimum_safety_factor": minimum_safety_factor,
+    "neoclassical_tearing_mode": neoclassical_tearing_mode,
     "sawtooth_oscillation": sawtooth_oscillation,
 }
 
