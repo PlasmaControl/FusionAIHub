@@ -584,6 +584,21 @@ def test_links_early_pool_is_usage_error(links_inputs, capsys):
     assert not (cache / "papers.csv").exists()
 
 
+def test_links_duplicate_pool_shot_names_the_file(links_inputs, capsys):
+    cache, pool, _, _, _, args = links_inputs
+    frame = pd.read_csv(pool)
+    frame.loc[1, "shot"] = frame.loc[0, "shot"]
+    frame.to_csv(pool, index=False)
+    with pytest.raises(SystemExit) as exc:
+        osti.main(args)
+    assert exc.value.code == 2
+    error = capsys.readouterr().err
+    assert "duplicate shot 189634" in error
+    assert str(pool) in error
+    assert "BytesIO" not in error
+    assert not (cache / "papers.csv").exists()
+
+
 def test_osti_corpus_range_comes_from_population():
     from labeler.events.catalog import population
 
