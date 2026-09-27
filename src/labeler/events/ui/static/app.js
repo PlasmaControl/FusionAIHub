@@ -140,6 +140,9 @@ const S = {
   categories: {},
   category: 1,
   queue: [],
+  queueEvent: null, // whose queue has arrived; null while loading
+  saveCount: 0,
+  savedRows: new Map(), // event -> shot -> {count, row}, from acknowledged saves
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
   label: null, // the label being edited, always normalised
@@ -423,7 +426,8 @@ function leave() {
 async function openEvent(event, shot) {
   const ticket = ++S.ticket;
   leave();
-  if (S.event !== event) S.queue = [];
+  S.queue = [];
+  S.queueEvent = null;
   S.event = event;
   S.categories = S.events.find((row) => row.event === event).categories;
   S.category = known()[0] || 1;
@@ -432,9 +436,16 @@ async function openEvent(event, shot) {
   renderSwatches();
   renderQueue();
   showHeader();
+  const saveCount = S.saveCount;
   const queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
   if (S.event !== event) return;
-  S.queue = queue.shots;
+  const saved = S.savedRows.get(event);
+  S.queue = queue.shots.map((row) => {
+    const newer = saved?.get(row.shot);
+    return newer && newer.count > saveCount ? newer.row : row;
+  });
+  S.queueEvent = event;
+  if ($("status").textContent === "the queue is still loading") say("");
   renderQueue();
   showHeader();
   if (ticket !== S.ticket) return;
@@ -512,6 +523,12 @@ function prefetch() {
   if (next != null && next !== S.shot) api(`/api/shot?event=${enc(S.event)}&shot=${next}`).catch(() => {});
 }
 
+function stillLoadingQueue() {
+  if (S.queueEvent === S.event) return false;
+  say("the queue is still loading");
+  return true;
+}
+
 function nextUnreviewed() {
   const i = S.queue.findIndex((row) => row.shot === S.shot);
   const after = [...S.queue.slice(i + 1), ...S.queue.slice(0, Math.max(i, 0))];
@@ -526,6 +543,7 @@ function neighbour(delta, shot = S.shot) {
 
 /** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
 async function go(delta) {
+  if (stillLoadingQueue()) return;
   const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
   const left = !pendingNavigation() && !saving && dirty() ? S.shot : null;
   await openShot(neighbour(delta));
@@ -591,6 +609,9 @@ async function save(next) {
       body: JSON.stringify({ event, shot, ...label, ...name }),
     });
     const body = await response.json();
+    const saved = S.savedRows.get(event) || new Map();
+    saved.set(shot, { count: ++S.saveCount, row: body.row });
+    S.savedRows.set(event, saved);
     try {
       if (same(JSON.parse(stored(key)), label)) store(key, null);
     } catch {
@@ -610,7 +631,7 @@ async function save(next) {
       renderQueue();
       showHeader();
     }
-    if (next && ticket === S.ticket) await openShot(neighbour(1, shot));
+    if (next && ticket === S.ticket && !stillLoadingQueue()) await openShot(neighbour(1, shot));
   } catch (error) {
     say(error.message, true);
   } finally {
@@ -893,7 +914,7 @@ function showHeader() {
   const row = S.queue.find((r) => r.shot === S.shot) || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
-  $("state").textContent = row.state || "";
+  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : row.state || "";
   $("state").className = `pill ${row.state || ""}`;
   $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
@@ -1118,7 +1139,11 @@ const KEYS = {
   k: () => go(1),
   ArrowLeft: () => go(-1),
   ArrowRight: () => go(1),
-  u: () => (nextUnreviewed() == null ? say(S.queue.length ? "all reviewed" : "no shots to review") : openShot(nextUnreviewed())),
+  u: () => {
+    if (stillLoadingQueue()) return;
+    if (nextUnreviewed() == null) say(S.queue.length ? "all reviewed" : "no shots to review");
+    else openShot(nextUnreviewed());
+  },
   "[": () => contrast(-16),
   "]": () => contrast(16),
   Escape: () => {

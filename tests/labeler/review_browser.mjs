@@ -520,6 +520,7 @@ async function eventQueueInflight() {
 }
 
 async function pendingResponses() {
+  if (CASE.startsWith("queue_")) return pendingQueue();
   const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
   const key = `labeler:${a}:170815`;
   const original = await js("S.label");
@@ -578,6 +579,78 @@ async function pendingResponses() {
   check("returning keeps the later draft in storage",
     same(await js(`JSON.parse(localStorage.getItem("${key}"))`), original));
   check("returning reads the acknowledged save as its new baseline", same(await js("S.meta.saved"), sent));
+}
+
+async function pendingQueue() {
+  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  await visit(b, 170815);
+  await arm("queue", a);
+  await js(`$("event").value = "${a}"; $("event").dispatchEvent(new Event("change"))`);
+  await held("queue");
+  check("the header explains that this event's queue is loading",
+    await js(`$("state").textContent === "the queue is still loading"`), await js(`$("state").textContent`));
+  if (CASE === "queue_moves") {
+    const ticket = await js("S.ticket"), requests = await js("window.requests.length");
+    for (const key of ["ArrowRight", "ArrowLeft", "u"]) {
+      await press(key);
+      check(`${key} says the queue is loading`,
+        await js(`$("status").textContent === "the queue is still loading"`), await js(`$("status").textContent`));
+      check(`${key} does not navigate or replace the rows while the queue is held`, await js(`
+        S.ticket === ${ticket} && window.requests.length === ${requests} &&
+        !$("rows").textContent.includes("no shots to review")`));
+    }
+    await release("queue");
+    await until("S.queue.length === 3");
+    check("the arriving queue removes refused-navigation notes", await js(`
+      !$("rows").textContent.includes("no shots to review") &&
+      !$("status").textContent.includes("queue is still loading")`));
+    // Do not wait indefinitely if the broken arrow stole the navigation ticket.
+    await until("!pendingNavigation()");
+    if (await js("S.shot === 170817")) await opened(170817);
+    check("the event opens its resume shot after the queue arrives",
+      await js(`S.shot === 170817 && S.meta?.event === "${a}" && !pendingNavigation()`));
+    return;
+  }
+  await js(`$("shot").focus(); $("shot").value = "170817"`);
+  await press("Enter");
+  await settled(a, 170817);
+  await js("document.activeElement.blur()");
+  await draw(500, 800);
+  const sent = await js("S.label"), ticket = await js("S.ticket");
+  await press(CASE === "queue_next" ? "Enter" : "s");
+  await until("window.saves.length === 1 && !S.saving");
+  const history = await js(`fetch("/api/history?event=${a}&shot=170817").then((r) => r.json())`);
+  const saved = history.versions.at(-1);
+  check("saving before the queue arrives writes the drawn label to the server",
+    same({ window: saved.window, intervals: saved.intervals }, sent));
+  check("saving before the queue arrives stays on the typed shot", await js(`
+    S.shot === 170817 && S.ticket === ${ticket} && S.meta?.shot === 170817 && !pendingNavigation()`));
+  check("Enter explains why it stays; plain S does not invent an empty queue", await js(CASE === "queue_next"
+    ? `$("status").textContent === "the queue is still loading"`
+    : `!$("rows").textContent.includes("no shots to review")`), await js(`$("status").textContent`));
+  await release("queue");
+  await until("S.queue.length === 3");
+  check("the arriving queue retains the acknowledged save in its count",
+    await js(`$("count").textContent === "3/3"`), await js(`$("count").textContent`));
+  const serverQueue = await js(`fetch("/api/queue?event=${a}").then((r) => r.json())`);
+  check("the arriving queue matches the server's acknowledged review rows",
+    same(await js("S.queue"), serverQueue.shots));
+  check("the saved shot's chip is reviewed and has no unsaved mark", await js(`
+    $("queue").querySelector('[data-shot="170817"]').classList.contains("changed") &&
+    !$("queue").querySelector('[data-shot="170817"]').classList.contains("dirty")`));
+  check("the next-shot hint wraps from the typed shot in queue order",
+    await js(`$("next-shot").textContent === "→ 170815"`), await js(`$("next-shot").textContent`));
+  check("queue arrival removes the loading message without reopening the shot", await js(`
+    S.ticket === ${ticket} && S.shot === 170817 &&
+    !$("status").textContent.includes("queue is still loading") &&
+    !$("state").textContent.includes("queue is still loading")`));
+  await press("ArrowRight");
+  await opened(170815);
+  check("the arrow after queue arrival opens the next shot in queue order", true);
+  await press("u");
+  await until("!pendingNavigation()");
+  check("U skips the newly acknowledged shot and reports all reviewed", await js(`
+    S.shot === 170815 && $("status").textContent === "all reviewed"`));
 }
 
 async function moves() {
