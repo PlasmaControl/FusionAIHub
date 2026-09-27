@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from itertools import pairwise
 
 import numpy as np
 import pandas as pd
@@ -961,3 +962,76 @@ def test_diagnostic_time_round_trips(value, text):
     from labeler.events.catalog.check import _ms
 
     assert _ms(value) == text
+
+
+@pytest.mark.parametrize("start", [5260, 5261])
+@pytest.mark.parametrize("prefix", [True, False])
+def test_d19_overrunning_row_must_start_before_allowed_end(start, prefix):
+    rows = ([(191389, 0, 8, start)] if prefix else []) + [(191389, 1, start, 5262)]
+    frame = _points(
+        (191389, "disruption", "t80", start + 0.2),
+        (191389, "disruption", "t_D", start + 0.8),
+        (191389, "disruption", "t20", 5261.9),
+    )
+    found = check_table(
+        _labels(*rows), "disruption", allowed={191389: (8, 5260)}, points_frame=frame
+    )
+    assert len(found) == 1
+    finding = found[0]
+    assert (finding.check, finding.shot) == ("windows", 191389)
+    assert f"row {int(prefix)}" in finding.detail
+    assert f"{start}-5262 ms" in finding.detail
+    assert "allowed end 5260 ms" in finding.detail
+
+
+@pytest.mark.parametrize(
+    "category, kind",
+    [
+        ("disruption", "t_D"),
+        ("edge_localized_mode", "elm"),
+        ("sawtooth_oscillation", "crash"),
+    ],
+)
+def test_random_d19_checker_and_scoring_agree_without_losing_spans(category, kind):
+    from labeler.events.catalog.check import points, tiling
+    from labeler.scoring.events import points_within
+    from labeler.scoring.frames import PRESENT, Assessment
+
+    rng = np.random.default_rng(19)
+    accepted = refused = admitted_points = rejected_points = 0
+    for _ in range(120):
+        allowed = (8, int(rng.integers(40, 70)))
+        lo, hi = allowed
+        start = int(rng.choice([lo - 1, lo, lo + 3, hi - 1, hi, hi + 1]))
+        stop = max(start + 1, hi + int(rng.choice([-7, -1, 0, 1, 2, 3])))
+        cuts = sorted(set(rng.integers(start, stop, size=3)) | {start, stop})
+        rows = [(int(a), int(b), int(rng.integers(3))) for a, b in pairwise(cuts)]
+        labels = _labels(*[(191389, s, a, b) for a, b, s in rows])
+        # Only window/tiling verdicts concern from_checked: disruption's point
+        # triplet and attributes are separately checked before scoring.
+        found = windows(labels, {191389: allowed}, category=category) + tiling(labels)
+        if found:
+            with pytest.raises(ValueError):
+                Assessment.from_checked(rows, allowed, category=category)
+            refused += 1
+            continue
+        got = Assessment.from_checked(rows, allowed, category=category)
+        accepted += 1
+        present = [(a, min(b, hi), s) for a, b, s in rows if s == PRESENT]
+        assert [span for span in got.spans if span[2] == PRESENT] == present
+        candidates = [start - 0.001, start, stop - 0.001, stop, hi, hi + 2, hi + 2.001]
+        candidates += rng.uniform(start - 2, stop + 3, size=3).tolist()
+        for time in candidates:
+            findings = points(
+                _points((191389, category, kind, time)),
+                labels,
+                category,
+                allowed={191389: allowed},
+            )
+            # A lone t_D lacks a quench triplet; compare point admission only.
+            admitted = not any("outside" in f.detail for f in findings)
+            kept = points_within([time], got.window, allowed, category=category)
+            assert kept.tolist() == ([time] if admitted else [])
+            admitted_points += admitted
+            rejected_points += not admitted
+    assert accepted and refused and admitted_points and rejected_points

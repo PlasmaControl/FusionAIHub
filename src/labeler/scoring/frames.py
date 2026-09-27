@@ -126,6 +126,11 @@ class Assessment:
         rows = sorted(tuple(whole_number(v) for v in row) for row in rows)
         assessed = cls.from_rows(rows)
         lo, hi = cls(tuple(allowed)).window
+        for start, stop, state in assessed.spans:
+            if state == PRESENT and start >= hi:
+                raise ValueError(
+                    f"present span {start}-{stop} ms starts at or after allowed end {hi} ms"
+                )
         a, b = assessed.window
         if a < lo or a >= hi:
             raise ValueError("assessed start is outside the allowed window")
@@ -137,7 +142,7 @@ class Assessment:
                 raise ValueError("only the last present span may overrun allowed end")
         return cls(
             (a, min(b, hi)),
-            tuple((a, min(b, hi), s) for a, b, s in assessed.spans if a < hi),
+            tuple((a, min(b, hi), s) for a, b, s in assessed.spans),
         )
 
 
