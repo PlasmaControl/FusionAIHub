@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import io
 import json
 import logging
 import platform
@@ -52,7 +51,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..catalog import corpus_shots
-from ..config import Paths, atomic_path, git_dirty, git_sha
+from ..config import NamedBytes, Paths, atomic_path, git_dirty, git_sha
 from ..events.catalog.check import CatalogError
 from ..events.catalog.population import FIRST_SHOT, LAST_SHOT, read_pool
 from . import context
@@ -577,24 +576,13 @@ def main(argv=None) -> int:
         parser.error(str(error))
 
 
-class _NamedBytesIO(io.BytesIO):
-    """An input snapshot whose path is retained in reader refusals."""
-
-    def __init__(self, data: bytes, path: Path):
-        super().__init__(data)
-        self.name = str(path)
-
-    def __str__(self) -> str:
-        return self.name
-
-
 def _run(args, argv, paths) -> int:
     cache = args.cache or paths.literature / "osti"
     hit_files = args.hits or sorted(cache.glob("osti_phase*.jsonl"))
     if not hit_files:
         raise CatalogError(f"no probe output under {cache}")
     input_bytes = {path: path.read_bytes() for path in hit_files}
-    hits = read_hits([_NamedBytesIO(input_bytes[path], path) for path in hit_files])
+    hits = read_hits([NamedBytes(input_bytes[path], path) for path in hit_files])
     folder = cache / "fulltext"
     if args.command == "fetch":
         # pypdf warns of each broken cross-reference it recovers from; the log
@@ -618,7 +606,7 @@ def _run(args, argv, paths) -> int:
             f"no {pool}: links date the shots from the population's pool"
         )
     input_bytes[pool] = pool.read_bytes()
-    starts = year_starts(read_pool(_NamedBytesIO(input_bytes[pool], pool)))
+    starts = year_starts(read_pool(NamedBytes(input_bytes[pool], pool)))
     if not starts or min(starts) < FIRST_YEAR:
         raise CatalogError(
             f"{pool} dates shots from {min(starts, default=None)}: the fetch skipped"
@@ -628,7 +616,7 @@ def _run(args, argv, paths) -> int:
     for path in (folder / "fetched.jsonl", cache / "osti_probe.py"):
         input_bytes[path] = path.read_bytes() if path.is_file() else None
     log_path = folder / "fetched.jsonl"
-    log = fetch_log(_NamedBytesIO(input_bytes[log_path] or b"", log_path))
+    log = fetch_log(NamedBytes(input_bytes[log_path] or b"", log_path))
     texts, empty = _texts(folder, log)
     empty_ids = set(empty)
     printable = {k: text for k, text in texts.items() if k not in empty_ids}

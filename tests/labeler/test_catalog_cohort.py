@@ -931,6 +931,49 @@ def test_command_refuses_unverified_papers(tmp_path, monkeypatch, capsys, kind):
     assert not out.exists()
 
 
+def test_command_refuses_duplicate_pool_shot_names_the_file(
+    tmp_path, monkeypatch, capsys
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "pool.csv"
+    lines = path.read_text().splitlines(keepends=True)
+    path.write_text("".join([*lines, lines[1]]))
+    meta_path = folder / "pool.meta.json"
+    meta = json.loads(meta_path.read_text())
+    meta["pool_sha256"] = sha256_of(path)
+    meta_path.write_text(json.dumps(meta))
+    with pytest.raises(SystemExit) as exc:
+        cohort.main(args)
+    assert exc.value.code == 2
+    error = capsys.readouterr().err
+    assert "duplicate shot 185601" in error
+    assert str(path) in error
+    assert "BytesIO" not in error
+    assert not out.exists()
+
+
+def test_command_refuses_extra_papers_field_names_the_file(
+    tmp_path, monkeypatch, capsys
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "papers.csv"
+    lines = path.read_text().splitlines()
+    lines[1] += ",extra"
+    path.write_text("\n".join(lines) + "\n")
+    meta_path = folder / "papers.meta.json"
+    meta = json.loads(meta_path.read_text())
+    meta["outputs"]["papers.csv"] = sha256_of(path)
+    meta_path.write_text(json.dumps(meta))
+    with pytest.raises(SystemExit) as exc:
+        cohort.main(args)
+    assert exc.value.code == 2
+    error = capsys.readouterr().err
+    assert "row 2: expected" in error
+    assert str(path) in error
+    assert "BytesIO" not in error
+    assert not out.exists()
+
+
 def test_committed_release_hashes_and_exact_redraw():
     root = REPO / "data/events/catalog"
     doc = yaml.safe_load((root / "cohort_manifest.yaml").read_text())
