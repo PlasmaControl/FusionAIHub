@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from labeler.ae.xpower import extend, gallery
-from labeler.config import Paths
+from labeler.config import Paths, sha256_of
 from labeler.events.catalog.check import CatalogError
 from labeler.events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT
 
@@ -28,9 +28,51 @@ def _cohort(paths):
 def _approved_model(paths, split):
     models = ae_tree.chosen(paths, split)
     (models / "evaluation.json").write_text(
-        json.dumps({"bar": {"A1": True, "A2": True, "A3": False, "all": False}})
+        json.dumps(
+            {
+                "bar": {"A1": True, "A2": True, "A3": False, "all": False},
+                "meta": {
+                    "candidate": "band80-mhd3",
+                    "limit": 0,
+                    "model_sha256": sha256_of(extend.chosen_model(models)),
+                    "chosen_sha256": sha256_of(models / "chosen.json"),
+                },
+            }
+        )
     )
     return models
+
+
+@pytest.mark.parametrize("change", ["choice", "weights", "pilot", "legacy"])
+@pytest.mark.parametrize("merging", [False, True])
+def test_evaluation_must_name_the_current_full_model(
+    tmp_path, monkeypatch, capsys, change, merging
+):
+    paths = ae_tree.build(tmp_path, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
+    evaluation = models / "evaluation.json"
+    if change == "choice":
+        (models / "chosen.json").write_text('{"candidate": "band0-mhd3"}')
+    elif change == "weights":
+        extend.chosen_model(models).write_bytes(b"changed weights")
+    else:
+        record = json.loads(evaluation.read_text())
+        if change == "pilot":
+            record["meta"]["limit"] = 1
+        else:
+            del record["meta"]["model_sha256"]
+        evaluation.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="evaluation.json"):
+        if merging:
+            extend.merge(paths, models=models, of=1)
+        else:
+            extend.run_shard(paths, models=models, k=0, of=1)
+    ae_tree.env(monkeypatch, paths)
+    with pytest.raises(SystemExit) as error:
+        extend.main(["--models", str(models), *(["--merge"] if merging else [])])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(evaluation) in stderr and "Traceback" not in stderr
 
 
 def test_frames_the_rows_miss_are_not_observable():

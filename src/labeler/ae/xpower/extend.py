@@ -163,6 +163,22 @@ def _passing_bar(models: Path) -> dict:
     bar = evaluation.get("bar") if isinstance(evaluation, dict) else None
     if not isinstance(bar, dict) or any(bar.get(k) is not True for k in ("A1", "A2")):
         raise ValueError(message)
+    meta = evaluation.get("meta")
+    if not isinstance(meta, dict) or meta.get("limit") != 0:
+        raise ValueError(f"{path}: extension requires a full evaluation (limit 0)")
+    choice = models / "chosen.json"
+    try:
+        candidate = json.loads(choice.read_bytes())["candidate"]
+        if meta.get("candidate") != candidate:
+            raise ValueError(f"{choice}: candidate differs from the evaluation")
+        for key, file in (
+            ("chosen_sha256", choice),
+            ("model_sha256", models / candidate / "model.pt"),
+        ):
+            if not meta.get(key) or meta[key] != sha256_of(file):
+                raise ValueError(f"{file}: missing or different {key}")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise ValueError(f"{path}: {error}") from error
     return bar
 
 

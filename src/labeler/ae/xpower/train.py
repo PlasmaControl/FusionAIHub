@@ -249,7 +249,9 @@ def save(
     labels_file: Path,
     candidate: str = "",
     labels_bytes: bytes | None = None,
+    allow_replace: bool = False,
 ) -> None:
+    refuse_checkpoint(out, allow_replace=allow_replace)
     if labels_bytes is None:
         labels_bytes = labels_file.read_bytes()
     out.mkdir(parents=True, exist_ok=True)
@@ -304,6 +306,14 @@ def read_split(path) -> dict[int, str]:
     return {int(a): b for a, b in (line.split(",") for line in lines[1:])}
 
 
+def refuse_checkpoint(out: Path, *, allow_replace: bool = False) -> None:
+    file = out / "model.pt"
+    if file.exists() and not allow_replace:
+        raise FileExistsError(
+            f"{file}: a trained candidate is not replaced; train a new version"
+        )
+
+
 def candidate_dir(paths: Paths, name: str) -> Path:
     return model_dir(paths) / name
 
@@ -331,6 +341,10 @@ def main(argv=None) -> int:
     out = args.out or (
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate)
     )
+    try:
+        refuse_checkpoint(out, allow_replace=bool(args.pilot))
+    except FileExistsError as error:
+        p.error(str(error))
     directory = event_dir(paths)
     labels_file = labels.labels_path(directory)
     labels_bytes = labels_file.read_bytes()
@@ -369,18 +383,22 @@ def main(argv=None) -> int:
     model, history, threshold = fit(
         train, val, config, log=lambda m: print(m, flush=True)
     )
-    save(
-        out,
-        model,
-        threshold=threshold,
-        split=split,
-        history=history,
-        config=config,
-        band_khz=spec["band"],
-        labels_file=labels_file,
-        labels_bytes=labels_bytes,
-        candidate=args.candidate,
-    )
+    try:
+        save(
+            out,
+            model,
+            threshold=threshold,
+            split=split,
+            history=history,
+            config=config,
+            band_khz=spec["band"],
+            labels_file=labels_file,
+            labels_bytes=labels_bytes,
+            candidate=args.candidate,
+            allow_replace=bool(args.pilot),
+        )
+    except FileExistsError as error:
+        p.error(str(error))
     print(
         f"wrote {out}: best epoch {best_epoch(history)}, threshold {threshold}",
         flush=True,
