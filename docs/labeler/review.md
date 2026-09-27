@@ -49,12 +49,18 @@ after the newest save.
   It is an attribution, not a login: the history also records the login that
   runs the server.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
-  each one, when, how many spans, and how many ms it changed from the version
+  each one, when, how many spans, and how many ms changed. The first version
+  is compared with the event's current source table; later ones with the version
   before. **Restore** loads a version as an unsaved edit; saving it adds a new
   version, so no version is ever lost.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.
+
+While the next shot is still opening, you cannot edit, save or restore a
+label. History closes when you move on. Enter closes History too; click
+Restore to load a version. If it replaces an unsaved edit, Ctrl+Z brings
+that edit back. Restoring the current label leaves it alone.
 
 | Key or gesture | Does |
 |---|---|
@@ -95,8 +101,8 @@ Saves go under the event's directory in the label tables
   names existed have no `name` and read as unnamed.
 
 A page newer than its server asks `/api/version` first. From an older server it
-saves without a name, hides the history and says to restart the server, so a
-page reload before a restart never breaks a save.
+saves without a name, hides the name box and history, and says to restart the
+server, so a page reload before a restart never breaks a save.
 
 ## The row store
 
