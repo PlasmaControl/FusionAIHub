@@ -15,11 +15,15 @@ The cohort weight is N_h / n_h for a group-year cell. D25's blind weight is
 that first-stage weight times n_g / b_g, the group's cohort-to-blind ratio;
 the blind subset is resampled within its groups.
 
-Intervals use the specified percentile bootstrap (95% by default). Simulation
-coverage depends on the design: the reviewed cohort design covered 0.948-0.953,
-and the smaller blind design 0.912-0.932. No coverage correction is applied.
-The blind figure was simulated with group-only weights and a 20/10/20
-allocation, before D25.
+Intervals use the specified percentile bootstrap (nominal 95% by default).
+The opt-in frozen-release study (LABELER_COVERAGE=1) uses D25 weights and the
+15/10/25 blind allocation: in 1,000 two-stage draws with 2,000 bootstrap
+replicates each, precision/recall/F1/Cohen kappa coverage ranges from 0.932-0.941
+in the dense scenario and 0.744-0.856 in the sparse scenario (precision/F1:
+0.848-0.856). These are synthetic repeated-sampling coverage measurements,
+not real-label guarantees; Monte Carlo SEs range from 0.0075 to 0.0138.
+The sparse case under-covers. No correction is applied: interval policy
+remains the owner's decision under D21/D25 and T58.
 """
 
 from __future__ import annotations

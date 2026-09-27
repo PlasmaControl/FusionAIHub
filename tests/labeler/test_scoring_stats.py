@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 from collections import Counter
 from itertools import product
 from pathlib import Path
@@ -594,6 +595,109 @@ def test_frozen_release_blind_weights_equal_manifest_d25():
     )
     np.testing.assert_allclose(weights, expected, rtol=1e-15)
     assert round(float(weights.sum()), 2) == 4888.24
+
+
+@pytest.mark.skipif(
+    os.environ.get("LABELER_COVERAGE") != "1", reason="opt-in coverage study"
+)
+@pytest.mark.parametrize("scenario, seed", [("dense", 7), ("sparse", 13)])
+def test_frozen_blind_coverage_under_d25(scenario, seed, capsys):
+    """Synthetic coverage diagnostic, not a claim of nominal calibration.
+
+    Draw the cohort by group-year cell, then the blind 15/10/25 by group.
+    Sparse events occur on 50% of L, 30% of G and 10% of R shots on average.
+    Reproduce with LABELER_COVERAGE=1; 1,000 draws, 2,000 bootstrap replicates.
+    """
+    started = perf_counter()
+    cohort, design = _frozen_release()
+    counts = Counter(row["group"] for row in cohort)
+    blind_counts = Counter(row["group"] for row in cohort if row["split"] == "test")
+    assert blind_counts == {"L": 15, "G": 10, "R": 25}
+    rng = np.random.default_rng(seed)
+    populations = {}
+    for h, cell in design.items():
+        if not cell["N"]:
+            continue
+        group = h[0]
+        prevalence, quality = {"L": (0.35, 0.85), "G": (0.25, 0.75), "R": (0.1, 0.55)}[
+            group
+        ]
+        rows = []
+        for _ in range(cell["N"]):
+            frames = rng.integers(200, 800)
+            p = prevalence
+            if scenario == "sparse":
+                p = 0.3 if rng.random() < {"L": 0.5, "G": 0.3, "R": 0.1}[group] else 0
+            positive = rng.binomial(frames, rng.beta(2, 2 / p - 2)) if p else 0
+            q = rng.beta(8 * quality, 8 * (1 - quality))
+            tp = rng.binomial(positive, q)
+            fp = rng.binomial(frames - positive, (1 - q) * 0.2)
+            rows.append((tp, fp, positive - tp, frames - positive - fp))
+        populations[h] = np.array(rows, dtype=float)
+
+    def kappa(totals):
+        return cohen_kappa(totals[..., [3, 1, 2, 0]])
+
+    metrics = (precision, recall, f1, kappa)
+    names = ("precision", "recall", "f1", "cohen_kappa")
+    totals = np.concatenate(list(populations.values())).sum(axis=0)
+    truth = np.array([metric(totals) for metric in metrics])
+    draws = 1000
+    hits = np.zeros(4, dtype=int)
+    errors, widths = np.zeros((draws, 4)), np.zeros((draws, 4))
+    event_shots = []
+    for draw in range(draws):
+        samples = {
+            h: pop[rng.choice(len(pop), design[h]["n"], replace=False)]
+            for h, pop in populations.items()
+        }
+        selected, first, groups = [], [], []
+        for group, blind_count in sorted(blind_counts.items()):
+            cells = [h for h in samples if h[0] == group]
+            full = np.concatenate([samples[h] for h in cells])
+            weights = np.concatenate(
+                [
+                    np.full(design[h]["n"], design[h]["N"] / design[h]["n"])
+                    for h in cells
+                ]
+            )
+            assert len(full) == counts[group]
+            picked = rng.choice(len(full), blind_count, replace=False)
+            selected.extend(full[picked])
+            first.extend(weights[picked])
+            groups.extend([group] * blind_count)
+        selected = np.array(selected)
+        weights = two_stage_weights(first, groups, counts)
+        event_shots.append(int(np.sum(selected[:, 0] + selected[:, 2] > 0)))
+        for j, metric in enumerate(metrics):
+            got = estimate(selected, groups, weights, metric, n=2000, seed=draw)
+            if draw == 0:
+                assert got.low < got.high  # Detect a collapsed interval immediately.
+            hits[j] += got.low <= truth[j] <= got.high
+            errors[draw, j] = got.value - truth[j]
+            widths[draw, j] = got.high - got.low
+    coverage = hits / draws
+    with capsys.disabled():
+        print(
+            f"\nFrozen D25 {scenario}: population={sum(c['N'] for c in design.values())}, "
+            f"cohort={dict(counts)}, blind={dict(blind_counts)}, seed={seed}, "
+            f"draws={draws}, replicates=2000, nominal=0.95, "
+            f"median event shots={np.median(event_shots):g}"
+        )
+        for j, name in enumerate(names):
+            se = np.sqrt(coverage[j] * (1 - coverage[j]) / draws)
+            print(
+                f"  {name}: truth={truth[j]:.6f}, coverage={coverage[j]:.3f}, "
+                f"MC_SE={se:.4f}, bias={errors[:, j].mean():+.6f}, "
+                f"mean_width={widths[:, j].mean():.6f}"
+            )
+        print(f"  runtime={perf_counter() - started:.3f}s")
+    # Check nondegeneracy, without imposing a minimum calibration target:
+    # sparse recall covers only 0.744 in this seeded population.
+    assert np.all((0 < coverage) & (coverage < 1))
+    assert np.all(np.abs(errors.mean(axis=0)) < 0.03)
+    if scenario == "sparse":
+        assert np.all(coverage[[0, 2]] < 0.93)
 
 
 @pytest.mark.parametrize("bad", [-1, np.nan, np.inf])
