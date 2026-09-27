@@ -9,6 +9,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+# Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
 
 # After the train array: choose a candidate on the validation shots, then score the test shots once.
 #   python -m labeler.ae.xpower.evaluate --choose   -> models/ae_xpower/v1/chosen.json

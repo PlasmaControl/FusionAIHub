@@ -109,7 +109,9 @@ def raw_rows(time_ms, chords) -> tuple[Grid, np.ndarray, float, float]:
 def frame_inputs(
     values, grid: Grid, first: int, n: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`(C, n_y, SUBS * n)` float32 in [0, 1] for frames `first ..`, and `(n,)` observed.
+    """Inputs: `(C, n_y, SUBS * n)` float32 in [0, 1] for frames `first ..`.
+
+    Also returns `(n,)` observed.
 
     Each sub-frame is the mean of the columns whose centre falls in it; one no
     column falls in is 0. A frame is observed when half its sub-frames are.
