@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import json
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -132,8 +133,52 @@ def test_elms_the_hmode_method_saw_in_l_mode_are_dropped(tmp_path, monkeypatch):
     _elm_train(p)
     hmode = spans.Found(((300.0, 1000.0, PRESENT),), ((0.0, 1000.0),))
     monkeypatch.setattr(spans, "detect_hmode", lambda shot, paths: hmode)
-    [(start, stop, _)] = spans.detect_elm(SHOT, p).spans
+    found = spans.detect_elm(SHOT, p)
+    [(start, stop, _)] = found.spans
     assert start == 300.0 and stop == pytest.approx(405, abs=1)
+    assert found.info == {"channel": "FS01", "hmode_gate": "ran"}
+
+
+def test_the_elm_draft_records_its_channel_and_why_no_gate_ran(tmp_path):
+    p = tree.paths(tmp_path)
+    _elm_train(p)
+    with h5py.File(p.corpus_file(SHOT), "a") as f:  # FS01 dark: FS02 carries it
+        y = f["filterscopes/ydata"][...]
+        y[1], y[0] = y[0], np.nan
+        f["filterscopes/ydata"][...] = y
+    _ip_ramp(p, full_at_ms=362.5, t1_ms=1000.0)
+    found = spans.detect_elm(SHOT, p, (0, 1000))
+    assert found.info["channel"] == "FS02"
+    assert found.info["hmode_gate"].startswith("NoDataError: shot 198658: no 'co2'")
+    assert found.info["start_ms"] == pytest.approx(290, abs=1)
+    assert found.info["start_from"] == "ip"
+
+
+def test_the_gate_catches_only_missing_inputs(tmp_path, monkeypatch):
+    p = tree.paths(tmp_path)
+    _elm_train(p)
+    intervals, status = spans.lmode(SHOT, p)
+    assert intervals == [] and status.startswith("NoDataError: shot 198658: no 'co2'")
+
+    def broken(shot, paths):
+        raise ValueError("a bug in the H-mode method")
+
+    monkeypatch.setattr(spans, "detect_hmode", broken)
+    with pytest.raises(ValueError, match="a bug"):
+        spans.detect_elm(SHOT, p)
+
+
+def test_the_sawtooth_draft_records_where_it_started(tmp_path, synth_shot):
+    p = tree.paths(tmp_path)
+    _write_synth(p, synth_shot)
+    assert spans.detect_sawtooth(SHOT, p, (-500, 800)).info == {
+        "start_ms": 200.0,
+        "start_from": spans.plasma_start(SHOT, p, (-500, 800))[1],
+    }
+    _ip_ramp(p)
+    info = spans.detect_sawtooth(SHOT, p, (0, 800)).info
+    assert info["start_from"] == "ip" and info["start_ms"] == pytest.approx(240, abs=2)
+    assert spans.detect_sawtooth(SHOT, p).info == {}, "no window: no start"
 
 
 def test_minus():
@@ -174,7 +219,8 @@ def cohort_env(tmp_path, monkeypatch):
         windows[shot] = window
         if shot in failing:
             raise NoDataError(f"shot {shot}: no 'filterscopes'")
-        return spans.Found(((100, 200, PRESENT),), ((0.0, 800.0),))
+        info = {"start_ms": 10.0 * shot, "start_from": "ip"}
+        return spans.Found(((100, 200, PRESENT),), ((0.0, 800.0),), info)
 
     method = dataclasses.replace(
         spans.METHODS["edge_localized_mode"], detect=detect, inputs=("x",)
@@ -209,6 +255,10 @@ def test_the_queue_is_suggested_in_order_and_merged_by_shot(cohort_env, capsys):
     assert meta["method"] == "elm_clock" and meta["rule"]["min_run"] == spans.MIN_RUN
     assert meta["rule"] == spans.METHODS["edge_localized_mode"].rule
     assert windows[2] == (0, 1000), "each shot is detected on its window"
+    assert meta["per_shot"] == {
+        "2": {"start_ms": 20.0, "start_from": "ip"},
+        "3": {"start_ms": 30.0, "start_from": "ip"},
+    }, "what each shot's drafts started from; 4 and 5 are under skipped"
     failing.clear()
     again = _run(capsys, "--shots", "4", "--force")
     assert (again["shots_run"], again["skipped_run"]) == (1, 0)
@@ -216,6 +266,8 @@ def test_the_queue_is_suggested_in_order_and_merged_by_shot(cohort_env, capsys):
     assert table[table.shot == 4].category.tolist() == [0, 1, 0, 3]
     meta = json.loads(path.with_suffix(".meta.json").read_text())
     assert meta["skipped"] == {"5": "no catalog window"}
+    assert sorted(meta["per_shot"]) == ["2", "3", "4"], "2 and 3 are kept"
+    assert meta["per_shot"]["4"]["start_ms"] == 40.0
     assert sorted(table.shot.unique()) == [2, 3, 4], "the blind shot is never suggested"
 
 
