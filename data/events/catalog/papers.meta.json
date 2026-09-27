@@ -1,6 +1,18 @@
 {
  "command": "python -m labeler.literature.osti links",
  "coverage": {
+  "no_context": {
+   "number_in_text": {
+    "pairs": 210,
+    "shots": 120
+   },
+   "number_not_in_text": {
+    "pairs": 78,
+    "shots": 53
+   },
+   "pairs": 288,
+   "shots": 170
+  },
   "no_text": {
    "empty": {
     "pairs": 12,
@@ -26,6 +38,8 @@
     "unattempted": 0
    },
    "probe": 984,
+   "texts_empty": 1,
+   "texts_printable": 328,
    "texts_read": 329,
    "to_fetch": 439
   },
@@ -43,10 +57,11 @@
   "python": "3.11.16"
  },
  "git_dirty": false,
- "git_sha": "6fa889c",
+ "git_sha": "aea853baf47e572aff630f0cf618d5570d2ef1b1",
  "inputs": {
   "corpus_shots": {
    "count": 16909,
+   "directory": "/scratch/gpfs/EKOLEMEN/foundation_model",
    "sha256": "6e36f5e02daad5c0d428ec0a91bfa2f722bc4c3503711a2d67e0aac5ce46441a"
   },
   "fetch_log": {
@@ -73,12 +88,12 @@
   },
   "texts": {
    "count": 329,
-   "sha256": "31176e763151deccceada5b3d8d894183f7e7d8b064ae86dca19d2be90a4873f"
+   "sha256": "f5e5438a64bf44829f2ac797709fe0074397aba8fef2341672feea186e76018a"
   }
  },
  "outputs": {
-  "links.csv": "17dd78a3542cd30a3c8f1946cf8387ad1eaae935102e05d075ff4fffc8486bd6",
-  "papers.csv": "91351e18e602e0ad687d05103de85b3bec70e570aad2461cd110538313e10378"
+  "links.csv": "4ff5a9ecca768534b2bfd42b56252926be91c90f0d2dfc65261b4248bbadc8f8",
+  "papers.csv": "56bc6781187bdeed2d6ff7e4a65bc2833760e1be5e03e5f2a77da9053d5e6b4e"
  },
  "rules": {
   "FIRST_SHOT": 185601,
@@ -89,6 +104,7 @@
   "REACH": 60,
   "TICK_MIN_RUN": 3,
   "TICK_MIN_STEP": 100,
+  "TICK_PAIR_STEP": 1000,
   "_ARTICLE_SPAN": 64
  },
  "summary": {
@@ -101,14 +117,14 @@
    189631
   ],
   "verdicts": {
-   "no_context": 292,
+   "no_context": 288,
    "no_text": 97,
    "predates": 937,
-   "verified": 334
+   "verified": 338
   },
-  "verified_links_not_in_probe": 68,
-  "verified_shots": 350,
-  "verified_shots_exact": 286,
+  "verified_links_not_in_probe": 91,
+  "verified_shots": 374,
+  "verified_shots_exact": 301,
   "year_starts": {
    "2021": 185601,
    "2022": 188336,
@@ -117,5 +133,5 @@
    "2025": 202307
   }
  },
- "written_at": "2026-09-26T23:45:48+00:00"
+ "written_at": "2026-09-27T02:45:30+00:00"
 }
