@@ -4,10 +4,11 @@
     python -m labeler.ae.xpower.extend --merge --of N
 
 **Shots.** The v1 population (`$LABELER_ROOT/catalog/population.csv`) rows whose
-corpus CO2 spans at least 2 s (`span_co2_s`); the corpus carries CO2 from about
-shot 197,545 on, so these are nearly all 2024-2025 shots. Nothing is fetched: a
-shot whose corpus CO2 cannot be read is logged in the shard's `failed` file and
-skipped.
+corpus CO2 spans at least 2 s (`span_co2_s`), excluding the frozen cohort's blind
+test shots (`$LABELER_ROOT/catalog/cohort.csv`) before sharding. A missing or
+unreadable cohort is an error. The corpus carries CO2 from about shot 197,545
+on, so these are nearly all 2024-2025 shots. Nothing is fetched: a shot whose
+corpus CO2 cannot be read is logged in the shard's `failed` file and skipped.
 
 **Frames.** Every whole 10 ms frame of the population window (v1 rule 4's Ip
 window). A frame the CO2 rows do not cover is not observable.
@@ -33,6 +34,8 @@ import pandas as pd
 
 from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events import suggestions
+from ...events.catalog.check import CatalogError
+from ...events.catalog.cohort import read_cohort
 from ...events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
@@ -159,7 +162,16 @@ def run_shard(
     limit: int = 0,
     pictures: bool = True,
 ) -> dict:
-    jobs = population_shots(paths.catalog / "population.csv").iloc[k::of]
+    cohort_path = paths.catalog / "cohort.csv"
+    try:
+        cohort = read_cohort(cohort_path)
+    except CatalogError:
+        raise
+    except (OSError, ValueError, TypeError) as error:
+        raise CatalogError(f"{cohort_path}: {error}") from error
+    blind = cohort.loc[cohort["blind"], "shot"]
+    jobs = population_shots(paths.catalog / "population.csv")
+    jobs = jobs.loc[~jobs["shot"].isin(blind)].iloc[k::of]
     if limit:
         jobs = jobs.iloc[:limit]
     jobs = [tuple(int(v) for v in row) for row in jobs.itertuples(index=False)]
@@ -289,15 +301,18 @@ def main(argv=None) -> int:
         return 0
     if not 0 <= args.shard < args.of:
         p.error("--shard must be in 0 .. --of - 1")
-    result = run_shard(
-        paths,
-        models=models,
-        k=args.shard,
-        of=args.of,
-        workers=args.workers,
-        limit=args.limit,
-        pictures=not args.no_pictures,
-    )
+    try:
+        result = run_shard(
+            paths,
+            models=models,
+            k=args.shard,
+            of=args.of,
+            workers=args.workers,
+            limit=args.limit,
+            pictures=not args.no_pictures,
+        )
+    except (CatalogError, FileNotFoundError) as error:
+        p.error(str(error))
     print(json.dumps(result))
     return 0
 
