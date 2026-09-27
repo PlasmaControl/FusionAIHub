@@ -1,30 +1,52 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const [BASE, TOKEN, SHELL, PROFILE, SCENARIO] = process.argv.slice(2);
+const env = { ...process.env };
+delete env.DISPLAY;
+delete env.WAYLAND_DISPLAY;
 const browser = spawn(
   SHELL,
   ["--no-sandbox", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${PROFILE}`,
     "--window-size=1400,900", "about:blank"],
-  { stdio: "ignore" }
+  { stdio: "ignore", env }
 );
 process.on("exit", () => browser.kill());
 
-let port;
-for (let i = 0; i < 200 && !port; i++) {
+async function within(promise, what) {
+  let timer;
   try {
-    port = readFileSync(`${PROFILE}/DevToolsActivePort`, "utf8").split("\n")[0];
-  } catch {
-    await sleep(50);
+    return await Promise.race([promise, new Promise((_, fail) => {
+      timer = setTimeout(() => fail(new Error(`${what} did not answer within 15 s`)), 15000);
+    })]);
+  } finally {
+    clearTimeout(timer);
   }
 }
-const page = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()).find((t) => t.type === "page");
+
+const page = await within((async () => {
+  let port;
+  while (!port) {
+    try {
+      port = readFileSync(`${PROFILE}/DevToolsActivePort`, "utf8").split("\n")[0];
+    } catch {
+      await sleep(50);
+    }
+  }
+  const response = await fetch(`http://127.0.0.1:${port}/json/list`);
+  const page = (await response.json()).find((t) => t.type === "page");
+  if (!page) throw new Error("browser DevTools endpoint returned no page");
+  return page;
+})(), "browser DevTools endpoint");
 const ws = new WebSocket(page.webSocketDebuggerUrl);
-await new Promise((open) => ws.addEventListener("open", open));
+await within(new Promise((open, fail) => {
+  ws.addEventListener("open", open);
+  ws.addEventListener("error", () => fail(new Error("browser DevTools WebSocket did not open")));
+}), "browser DevTools WebSocket");
 
 let id = 0;
 const pending = new Map();
@@ -81,7 +103,7 @@ async function draw(t0, t1) {
 
 /** A key press; `modifiers` is CDP's bit set: 2 is Ctrl, 8 is Shift. */
 async function press(key, modifiers = 0) {
-  const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowLeft: [37, ""], ArrowRight: [39, ""] }[key];
+  const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowLeft: [37, ""], ArrowRight: [39, ""], " ": [32, " "] }[key];
   const [code, text] = named || [key.toUpperCase().charCodeAt(0), key];
   const event = { key, code: named ? key : `Key${key.toUpperCase()}`, windowsVirtualKeyCode: code, modifiers };
   await send("Input.dispatchKeyEvent", { type: "keyDown", ...event, ...(modifiers || !text ? {} : { text }) });
@@ -372,6 +394,102 @@ async function navigationRace() {
     window.requests.filter((r) => r.kind === "shot").length === ${requests}`));
 }
 
+async function moves() {
+  const fetched = await js(`window.requests.filter((r) => r.kind === "shot").map((r) => r.shot)`);
+  check("opening 170815 prefetches its next queue shot, the saved 170816",
+    same(fetched, ["170815", "170816"]), fetched);
+  await press("ArrowRight");
+  await opened(170816);
+  await draw(1500, 1700);
+  const edited = await js("S.label"), kept = await drafts();
+  await press("h");
+  await until(`$("versions").open`);
+  check("History opens with focus on Close", await js(`document.activeElement.textContent === "Close" &&
+    $("versions").contains(document.activeElement)`));
+  await press("Enter");
+  check("Enter closes History and keeps the unsaved edit and draft", await js(`!$("versions").open && !$("dirty").hidden`) &&
+    same(await js("S.label"), edited) && same(await drafts(), kept));
+  check("Enter in History posts nothing", (await js("window.saves.length")) === 0);
+  const versions = await js(`fetch("/api/history?event=alfven_eigenmode&shot=170816").then((r) => r.json())`);
+  check("Enter in History adds no history line", versions.versions.length === 1);
+
+  await draw(1200, 1400);
+  const replaced = await js("S.label");
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector("button").click()`);
+  check("Restore says it replaced an unsaved edit and Ctrl+Z brings it back", await js(`
+    $("status").textContent.includes("unsaved edit") && $("status").textContent.includes("Ctrl+Z")`),
+    await js(`$("status").textContent`));
+  await press("z", 2);
+  check("Ctrl+Z brings back the edit replaced by Restore", same(await js("S.label"), replaced) &&
+    (await js(`!$("dirty").hidden && localStorage.getItem("labeler:alfven_eigenmode:170816") !== null`)));
+
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector("button").focus()`);
+  await press("Enter");
+  check("Enter on a focused Restore still closes without restoring", await js(`!$("versions").open && !$("dirty").hidden`) &&
+    same(await js("S.label"), replaced));
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector("button").focus()`);
+  await press(" ");
+  check("Space on a focused Restore loads the saved label", await js(`!$("versions").open && $("dirty").hidden`) &&
+    same(await js("S.label.intervals"), [[400, 600, 1]]));
+
+  const undoCount = await js("S.undo.length");
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector("button").click()`);
+  check("Restore of the current label stays clean and does not invite a save", await js(`
+    $("dirty").hidden && localStorage.getItem("labeler:alfven_eigenmode:170816") === null &&
+    S.undo.length === ${undoCount} && $("status").textContent.includes("current label") &&
+    !$("status").textContent.includes("saves it")`), await js(`$("status").textContent`));
+  await press("h");
+  await until(`$("versions").open`);
+  await press("h");
+  check("H closes History and gives the keys back", await js(`!$("versions").open && document.activeElement === document.body`));
+  await press("h");
+  await until(`$("versions").open`);
+  await press("Escape");
+  check("Escape closes History and gives the keys back", await js(`!$("versions").open && document.activeElement === document.body`));
+
+  await press("ArrowLeft");
+  await opened(170815);
+  await draw(1200, 1400);
+  const draft = await js("S.label");
+  await press("ArrowRight");
+  await opened(170816);
+  check("leaving an edit with → says it is kept, not saved", await js(`
+    $("status").textContent === "170815: the edit is kept as a draft, not saved"`));
+  check("the queue marks the shot with its unsaved draft", await js(`
+    $("queue").querySelector('[data-shot="170815"]').classList.contains("dirty") &&
+    localStorage.getItem("labeler:alfven_eigenmode:170815") !== null`));
+  await press("ArrowLeft");
+  await opened(170815);
+  check("← brings back the unsaved edit", same(await js("S.label"), draft) && (await js(`!$("dirty").hidden`)));
+  await press("u");
+  await opened(170817);
+  check("U skips saved 170816 to the next unreviewed shot in queue order", true);
+  await press("k");
+  await opened(170815);
+  await press("j");
+  await opened(170817);
+  check("J on the first shot wraps to the last", true);
+  await press("k");
+  await opened(170815);
+  check("K on the last shot wraps to the first", true);
+  await press("j");
+  await opened(170817);
+  await press("Enter");
+  await opened(170815);
+  const saves = await js("window.saves");
+  check("Enter saves the last shot and wraps to the first with its draft intact",
+    saves.length === 1 && saves[0].shot === 170817 && same(saves[0].intervals, []) &&
+    same(await js("S.label"), draft) && (await js(`!$("dirty").hidden`)), saves);
+}
+
 async function olderServer() {
   check(
     "the link opens its shot on its source label",
@@ -433,7 +551,7 @@ async function olderServer() {
 }
 
 try {
-  await send("Runtime.enable");
+  await within(send("Runtime.enable"), "first page command (Runtime.enable)");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   if (SCENARIO === "api1") {
     await send("Page.enable");
@@ -458,15 +576,17 @@ try {
       };
     ` });
   }
-  if (SCENARIO === "race") await recordFetches(true);
+  if (SCENARIO === "race" || SCENARIO === "moves") await recordFetches(SCENARIO === "race");
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   if (SCENARIO !== "race") await opened(170815);
   if (SCENARIO === "race") await navigationRace();
+  else if (SCENARIO === "moves") await moves();
   else if (SCENARIO === "api1") await olderServer();
   else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));
+  process.exitCode = 1;
 }
 check("no script error", errors.length === 0, errors);
 console.log(JSON.stringify(checks));
-process.exit(0);
+process.exit(process.exitCode || 0);
