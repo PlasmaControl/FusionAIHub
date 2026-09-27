@@ -54,7 +54,7 @@ alone. Columns marked "both" are in both files.
 | `in_cohort` | population | Whether the draw took the shot |
 | `weight` | cohort | N_h / n_h: the cell's population shots over its cohort shots. A blind shot's scoring weight is this times its group's cohort shots over its blind shots, n_g / b_g; `labeler.scoring.stats.two_stage_weights` computes it, and it is not stored |
 | `u` | cohort | The order key: the first 8 bytes of sha256(`<seed>:order:<shot>`), big-endian, over 2^64. The cell draw uses the same key with `draw` in place of `order` |
-| `split` | cohort | `test`, the blind subset: each group's smallest u, 50 shots shared across L, G and R by their cohort counts; `val`, the next 50 by the same rule; `train`, the rest |
+| `split` | cohort | `test`, the blind subset: each group's smallest u, 50 shots shared across L, G and R by their cohort counts; `val`, the next 50 by u in each group, shared across L, G and R by their cohort counts less their blind shots (largest remainder); `train`, the rest |
 | `blind` | cohort | `True` exactly when `split` is `test` |
 | `queue_rank` | cohort | 1-500, the review order: the blind shots by u, then the rest by u, so any prefix of the queue is a random subsample of every group |
 | `window_start_ms`, `window_end_ms` | both | The assessed window in whole ms, half-open [start, end): the longest stretch of Ip at or beyond 50 kA in the plasma's direction, gaps of up to 10 ms bridged, ended at a restrike (`labeler.events.catalog.window`) |
@@ -116,11 +116,17 @@ is not in the text, beside the sha256 of every input and output.
   and left out of the population (194904-194906, 200809, 200811-200814, 200819,
   200821, 200823, 200824, 200827). The profile condition is window-wide: on a
   plateau most channels have no fit, and the profiles lie in the thermal phase
-  before the disruption. So each mark is also checked against neutrons of at
-  least 1e15 /s with beams under 1 MW (`runaway_corroboration` in the manifest):
-  all 13 meet it, and so do two unmarked shots, 201447 and 203629, whose plasmas
-  are thermal (2.5 and 1.8 keV) and stay in. The 77 shots with no usable Thomson
-  profile have no rule-5 verdict and stay in.
+  before the disruption. So each mark is also checked against a window-mean
+  neutron rate of at least 1e15 /s with a window-mean beam power (`pinj_kw`)
+  under 1 MW (`runaway_corroboration` in the manifest): all 13 meet it, and so do
+  two unmarked shots, 201447 and 203629, whose plasmas are thermal (2.5 and 1.8
+  keV) and stay in. The beam half is weak: `pinj_kw` is blank, counted as no
+  beams, where the beam-power record holds a single sample, which is so for 10
+  of the 13 marks (200809-200827, with PBEAM-MAX 1.61-3.05 MW in the shot table),
+  for both unmarked shots that meet the check, and for 359 of the 4,885 shots
+  scanned; the three measured marks' means (9-476 kW) include the phase before
+  the disruption. So the neutrons carry the check. The 77 shots with no usable
+  Thomson profile have no rule-5 verdict and stay in.
 - **203529, a missed restrike (D2b).** Its second hump reaches 0.57 of the peak,
   under the 0.6 the rule needs, so its window keeps about 600 ms of a second
   plasma. Its membership does not change. Recorded, not fixed: a threshold moved
@@ -133,7 +139,10 @@ is not in the text, beside the sha256 of every input and output.
   rule 4's 1 s depending on the sampling phase; at the Ip log's sampling it passes.
 - **The literature links.** No person has checked a link (`verified_by = auto`).
   Two L shots rest on one weak mention each: 187328 (the end of a training-data
-  range) and 189998 (a software input example). D26's join can make one shot of
+  range) and 189998 (a software input example). 191506 rests on one paper whose
+  figure caption names "191 506" while the text describing the figure names
+  196093, with the same channels and time; removing that link would draw 186281
+  in its place. D26's join can make one shot of
   two numbers of three digits each ("Shot 200 400" → 200400, a population shot;
   "shot 195 196" → 195196); neither is among the links. Recall is bounded
   (above).
