@@ -26,6 +26,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -70,6 +71,39 @@ def population_shots(path, min_co2_s: float = MIN_CO2_S) -> pd.DataFrame:
     )
     out = frame.loc[keep, ["shot", "year", "window_start_ms", "window_end_ms"]]
     return out.astype(int).sort_values("shot", ignore_index=True)
+
+
+def shard_shots(paths: Paths, k: int, of: int) -> pd.DataFrame:
+    """Eligible non-blind shots, in the same order for execution and merge."""
+    if of <= 0 or not 0 <= k < of:
+        raise ValueError("shard must be in 0 .. of - 1, with of positive")
+    cohort_path = paths.catalog / "cohort.csv"
+    try:
+        cohort = read_cohort(cohort_path)
+    except CatalogError:
+        raise
+    except (OSError, ValueError, TypeError) as error:
+        raise CatalogError(f"{cohort_path}: {error}") from error
+    blind = cohort.loc[cohort["blind"], "shot"]
+    population = paths.catalog / "population.csv"
+    try:
+        jobs = population_shots(population)
+        jobs = jobs.loc[~jobs["shot"].isin(blind)]
+        if jobs.shot.duplicated().any():
+            raise ValueError("duplicate eligible shot IDs")
+    except (OSError, ValueError, KeyError) as error:
+        raise ValueError(f"{population}: {error}") from error
+    return jobs.iloc[k::of]
+
+
+def _shard_inputs(paths: Paths, models: Path) -> dict:
+    return {
+        "model_sha256": sha256_of(chosen_model(models)),
+        "evaluation_sha256": sha256_of(models / "evaluation.json"),
+        "population_sha256": sha256_of(paths.catalog / "population.csv"),
+        "cohort_sha256": sha256_of(paths.catalog / "cohort.csv"),
+        "min_co2_s": MIN_CO2_S,
+    }
 
 
 def frame_states(prob, observed, threshold: float) -> np.ndarray:
@@ -193,21 +227,19 @@ def run_shard(
     pictures: bool = True,
 ) -> dict:
     _passing_bar(models)
-    cohort_path = paths.catalog / "cohort.csv"
-    try:
-        cohort = read_cohort(cohort_path)
-    except CatalogError:
-        # Preserve the catalog's diagnostic before the broader ValueError handler.
-        raise
-    except (OSError, ValueError, TypeError) as error:
-        raise CatalogError(f"{cohort_path}: {error}") from error
-    blind = cohort.loc[cohort["blind"], "shot"]
-    jobs = population_shots(paths.catalog / "population.csv")
-    jobs = jobs.loc[~jobs["shot"].isin(blind)].iloc[k::of]
+    jobs = shard_shots(paths, k, of)
+    inputs = _shard_inputs(paths, models)
     if limit:
         jobs = jobs.iloc[:limit]
     jobs = [tuple(int(v) for v in row) for row in jobs.itertuples(index=False)]
     init = (str(chosen_model(models)), str(paths.root), str(paths.corpus), pictures)
+    out = suggestions_dir(paths) / "shards"
+    if limit > 0:
+        out /= "pilot"
+    out.mkdir(parents=True, exist_ok=True)
+    manifest = out / f"{k}.json"
+    # A partial replacement must never inherit the previous completion marker.
+    manifest.unlink(missing_ok=True)
     rows, summaries, probs, failed = [], [], {}, []
     for job, outcome in run_all(_work, jobs, workers, _init_shard, init):
         if isinstance(outcome, Exception):
@@ -217,8 +249,6 @@ def run_shard(
         summaries.append(outcome["summary"])
         probs[f"p{job[0]}"] = outcome["prob"]
         probs[f"f{job[0]}"] = np.int64(outcome["first"])
-    out = suggestions_dir(paths) / "shards"
-    out.mkdir(parents=True, exist_ok=True)
     with atomic_path(out / f"{k}.csv") as tmp:
         pd.DataFrame(rows, columns=list(suggestions.COLUMNS)).to_csv(tmp, index=False)
     with atomic_path(out / f"{k}.summary.csv") as tmp:
@@ -227,6 +257,18 @@ def run_shard(
         np.savez_compressed(f, **probs)
     with atomic_path(out / f"{k}.failed.txt") as tmp:
         tmp.write_text("".join(line + "\n" for line in failed))
+    if _shard_inputs(paths, models) != inputs:
+        raise ValueError(f"{manifest}: shard inputs changed during execution")
+    record = {
+        "k": k,
+        "of": of,
+        "shots": [job[0] for job in jobs],
+        **inputs,
+        "git_sha": git_sha(),
+        "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    with atomic_path(manifest) as tmp:
+        tmp.write_text(json.dumps(record, indent=1) + "\n")
     return {
         "shard": k,
         "shots": len(jobs),
@@ -238,21 +280,53 @@ def run_shard(
 def merge(paths: Paths, *, models: Path, of: int) -> dict:
     bar = _passing_bar(models)
     shards = suggestions_dir(paths) / "shards"
-    missing = [k for k in range(of) if not (shards / f"{k}.summary.csv").is_file()]
-    if missing:
-        raise FileNotFoundError(f"shards {missing} of {of} have not been written")
-    rows = pd.concat(
-        [pd.read_csv(shards / f"{k}.csv", keep_default_na=False) for k in range(of)],
-        ignore_index=True,
-    )
-    summary = pd.concat(
-        [pd.read_csv(shards / f"{k}.summary.csv") for k in range(of)], ignore_index=True
-    ).sort_values("shot", ignore_index=True)
-    failed = [
-        line
+    if of <= 0:
+        raise ValueError(f"{shards}: of must be positive")
+    missing = [
+        k
         for k in range(of)
-        for line in (shards / f"{k}.failed.txt").read_text().splitlines()
+        if not all(
+            (shards / f"{k}{suffix}").is_file()
+            for suffix in (".json", ".summary.csv", ".csv", ".failed.txt", ".npz")
+        )
     ]
+    if missing:
+        raise FileNotFoundError(
+            f"{shards}: shards {missing} of {of} have not been written completely"
+        )
+    inputs = _shard_inputs(paths, models)
+    manifests, summaries, tables, failed, given = [], [], [], [], []
+    for k in range(of):
+        path = shards / f"{k}.json"
+        try:
+            manifest = json.loads(path.read_text())
+            for key, expected in {"k": k, "of": of, **inputs}.items():
+                if manifest.get(key) != expected:
+                    raise ValueError(f"{key} differs from the current inputs")
+            assigned = manifest["shots"]
+            expected = shard_shots(paths, k, of).shot.tolist()
+            if assigned != expected:
+                raise ValueError("given shots differ from the eligible shard")
+            summary = pd.read_csv(shards / f"{k}.summary.csv")
+            failures = (shards / f"{k}.failed.txt").read_text().splitlines()
+            done = summary.shot.tolist()
+            failed_shots = [int(line.split("\t", 1)[0]) for line in failures]
+            if Counter(done + failed_shots) != Counter(dict.fromkeys(assigned, 1)):
+                raise ValueError("done plus failed must equal given shots exactly once")
+            tables.append(pd.read_csv(shards / f"{k}.csv", keep_default_na=False))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+            raise ValueError(f"{path}: {error}") from error
+        manifests.append(manifest)
+        summaries.append(summary)
+        failed.extend(failures)
+        given.extend(assigned)
+    eligible = shard_shots(paths, 0, 1).shot.tolist()
+    if Counter(given) != Counter(dict.fromkeys(eligible, 1)):
+        raise ValueError(f"{shards}: given shots do not cover the eligible population")
+    rows = pd.concat(tables, ignore_index=True)
+    summary = pd.concat(summaries, ignore_index=True).sort_values(
+        "shot", ignore_index=True
+    )
     file = chosen_model(models)
     _, blob = load(file)
     meta = {
@@ -261,7 +335,7 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
         "event": EVENT,
         "tier": "suggestions",
         "model": str(file),
-        "model_sha256": sha256_of(file),
+        "model_sha256": manifests[0]["model_sha256"],
         "candidate": blob["candidate"],
         "threshold": blob["threshold"],
         "band_khz": blob["band_khz"],
@@ -341,7 +415,7 @@ def main(argv=None) -> int:
                 limit=args.limit,
                 pictures=not args.no_pictures,
             )
-    except (CatalogError, FileNotFoundError, ValueError) as error:
+    except (CatalogError, OSError, ValueError) as error:
         p.error(str(error))
     print(json.dumps(result))
     return 0
