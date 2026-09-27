@@ -114,22 +114,37 @@ def test_without_a_window_the_floor_is_the_louder_half_of_the_record(tmp_path):
     _assert_plasma_on_scale(panels.build("neoclassical_tearing_mode", SHOT, paths=p)[0])
 
 
-def _sawtooth(p, *, ece=True, sxr=True):
+def _crashes(t, period_ms, *, start=0.0, stop=np.inf, amp=0.05):
+    """A sawtooth: a slow rise, then a drop in one sample, every `period_ms`."""
+    on = (t >= start) & (t < stop)
+    return np.where(on, amp * ((t - start) % period_ms) / period_ms, 0.0)
+
+
+def _sawtooth(p, *, ece=True, sxr=True, moving=(3, 5, 20, 25), early=()):
+    """ECE, and an SXR fan whose bright core chords sit still while the dim
+    `moving` ones crash every 50 ms; the `early` ones crash every 20 ms, only
+    before 70 ms."""
     groups = {}
     if ece:
         t = tree.times(0.0, 100.0, 500_000)
         groups["ece"] = (t, 1.0 + tree.noise(48, t, 0.01))
     if sxr:
-        t = tree.times(0.0, 100.0, 10_000)
+        t = tree.times(0.0, 400.0, 10_000)
         y = np.full((320, len(t)), np.nan)  # the SX90RM1F fan is dark
         first = dict(saw.SXR_ARRAYS)["SX90RP1F"]
         chords = np.arange(32)
-        y[first : first + 32] = np.exp(-(((chords - 10.5) / 3) ** 2))[:, None]
+        fan = np.exp(-(((chords - 10.3) / 3) ** 2))[:, None] + tree.noise(32, t, 1e-4)
+        for c in moving:
+            fan[c] += _crashes(t, 50.0)
+        for c in early:
+            fan[c] += _crashes(t, 20.0, stop=70.0, amp=0.2)
+        y[first : first + 32] = fan
         groups["sxr"] = (t, y)
     tree.write(p.corpus_file(SHOT), groups)
+    tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])  # no window: the whole record
 
 
-def test_sawteeth_draw_ece_and_the_brightest_sxr_chords(tmp_path, monkeypatch):
+def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
     _sawtooth(p)
@@ -138,8 +153,24 @@ def test_sawteeth_draw_ece_and_the_brightest_sxr_chords(tmp_path, monkeypatch):
         f"ECE ch {a}-{a + 3}" for a in (20, 24, 28, 32)
     ]
     sxr = built[4]
-    assert sxr.title == "SXR SX90RP1F, the 4 brightest chords"
-    assert sxr.legend == [f"SX90RP1F{c}" for c in ("10", "11", "12", "13")]
+    assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
+    assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
+
+
+def test_the_sxr_chords_are_chosen_over_the_ip_flat_top(tmp_path, monkeypatch):
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    _sawtooth(p, ece=False, moving=(3, 5, 20), early=(28,))
+    tree.cohort(p, [tree.queue_row(SHOT, 0, window=(0, 400))])
+    t = tree.times(0.0, 400.0, 1_000)
+    ip = 1e6 * np.clip(np.minimum(t / 100, (400 - t) / 100), 0, 1)
+    tree.write(p.raw_cache / f"{SHOT}_processed.h5", {"ip": (t, ip[None])})
+    [sxr] = panels.build("sawtooth_oscillation", SHOT, paths=p, t_range=(0, 60))
+    # 29 crashes most, before the flat-top; 11 is the brightest of the still.
+    assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "11", "21")]
+    assert sxr.x.max() <= 60, "the view is sliced; the choice is not the view's"
+    [whole] = panels.build("sawtooth_oscillation", SHOT, paths=tree.paths(tmp_path))
+    assert whole.legend == sxr.legend, "the same chords in any view"
 
 
 def test_a_shot_without_ece_or_sxr_draws_the_other(tmp_path, monkeypatch):

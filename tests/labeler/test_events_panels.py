@@ -205,6 +205,7 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
         )
 
     monkeypatch.setattr(saw, "raw_signal", fake_raw_signal)
+    monkeypatch.setattr(saw, "plasma_window", lambda shot, paths=None: None)
     window = (2100.0, 2400.0)
     built = registry.build("sawtooth_oscillation", 192238, t_range=window)
 
@@ -213,7 +214,7 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
         "ECE ch 24-27",
         "ECE ch 28-31",
         "ECE ch 32-35",
-        "SXR SX90RM1F, the 4 brightest chords",
+        "SXR SX90RM1F, the 4 chords with the most crash-like drops",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping
     # while outer ones rise, which only reads if the four overplotted
@@ -225,8 +226,11 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
         [32, 33, 34, 35],
     ]
     assert [row[:2] for row in seen] == [(192238, "ece")] * 4 + [(192238, "sxr")]
-    assert all(row[3] == window and row[4] is None for row in seen)
-    assert all(panel.y.shape == (4, 500) for panel in built)
+    # The SXR chords are chosen over the whole record, then cut to the view.
+    assert [row[3] for row in seen] == [window] * 4 + [None]
+    assert all(row[4] is None for row in seen)
+    assert all(panel.y.shape == (4, 500) for panel in built[:4])
+    assert built[4].y.shape == (4, 301)
     assert all(panel.ylabel == "keV" for panel in built[:4])
     assert built[0].legend == ["ch 20", "ch 21", "ch 22", "ch 23"]
     # `raw_signal` is already in milliseconds; a second conversion here
