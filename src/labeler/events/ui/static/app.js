@@ -437,7 +437,15 @@ async function openEvent(event, shot) {
   renderQueue();
   showHeader();
   const saveCount = S.saveCount;
-  const queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
+  let queue;
+  try {
+    queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
+  } catch (error) {
+    if (S.event !== event) return;
+    S.queueEvent = event;
+    showNothing(null, `${event}: the queue could not be read: ${error.message}. Choose the event again to retry.`);
+    return;
+  }
   if (S.event !== event) return;
   const saved = S.savedRows.get(event);
   S.queue = queue.shots.map((row) => {
@@ -544,7 +552,8 @@ function neighbour(delta, shot = S.shot) {
 /** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
 async function go(delta) {
   if (stillLoadingQueue()) return;
-  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
+  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot &&
+    same(S.label, S.saving.label);
   const left = !pendingNavigation() && !saving && dirty() ? S.shot : null;
   await openShot(neighbour(delta));
   if (left != null && left !== S.shot) say(`${left}: the edit is kept as a draft, not saved`);
@@ -631,9 +640,9 @@ async function save(next) {
       renderQueue();
       showHeader();
     }
-    if (next && ticket === S.ticket && !stillLoadingQueue()) await openShot(neighbour(1, shot));
+    if (next && ticket === S.ticket) await go(1);
   } catch (error) {
-    say(error.message, true);
+    say(`${shot} not saved: ${error.message}`, true);
   } finally {
     S.saving = false;
   }
