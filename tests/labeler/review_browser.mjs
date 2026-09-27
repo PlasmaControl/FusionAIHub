@@ -1,5 +1,5 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -205,6 +205,173 @@ async function currentServer() {
   check("→ carries on from it", true);
 }
 
+// Hold real responses at a chosen boundary; requests and saves still reach the fixture.
+async function recordFetches(holdVersion = false) {
+  await send("Page.enable");
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: `
+    window.requests = [];
+    window.saves = [];
+    window.gates = ${holdVersion ? '{ version: {} }' : '{}'};
+    const realFetch = window.fetch.bind(window);
+    window.fetch = async (input, options) => {
+      const request = new Request(input, options);
+      const url = new URL(request.url);
+      const kind = url.pathname.split("/").pop();
+      const params = Object.fromEntries(url.searchParams);
+      window.requests.push({ kind, ...params });
+      if (kind === "label" && request.method === "POST") {
+        window.saves.push(JSON.parse(await request.clone().text()));
+      }
+      const gate = window.gates[kind];
+      const held = gate && !gate.released &&
+        (!gate.event || gate.event === params.event) && (!gate.shot || gate.shot === params.shot);
+      const response = await realFetch(input, options);
+      if (held) {
+        gate.waiters ||= [];
+        if (!gate.released) await new Promise((done) => gate.waiters.push(done));
+      }
+      return response;
+    };
+  ` });
+}
+
+const arm = (kind, event, shot) => js(`window.gates[${JSON.stringify(kind)}] = {
+  event: ${JSON.stringify(event)}, shot: ${JSON.stringify(shot == null ? null : String(shot))}
+}; void 0`);
+const held = (kind) => until(`window.gates.${kind}.waiters?.length > 0`);
+const release = (kind) => js(`window.gates.${kind}.released = true;
+  window.gates.${kind}.waiters?.forEach((done) => done())`);
+const drafts = () => js(`Object.fromEntries(Object.entries(localStorage).filter(([key]) => /^labeler:.*:\\d+$/.test(key)))`);
+const settled = (event, shot) => until(`S.event === "${event}" && S.shot === ${shot} &&
+  S.meta?.event === "${event}" && S.data !== null`);
+const visit = async (event, shot) => {
+  await js(`void openEvent("${event}", ${shot})`);
+  await settled(event, shot);
+};
+
+async function navigationRace() {
+  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  await held("version");
+  check("name is hidden while API version is pending", await js(`$("reviewer-name").hidden`));
+  check("History is hidden while API version is pending", await js(`$("show-versions").hidden`));
+  await release("version");
+  await opened(170815);
+  check("API 2 reveals name and History", await js(`!$("reviewer-name").hidden && !$("show-versions").hidden`));
+
+  await draw(1200, 1400);
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`window.oldRestore = $("version-list").querySelector("button")`);
+  await arm("shot", a, 170816);
+  await js(`void openShot(170816)`);
+  check("starting a shot closes its open History", await js(`!$("versions").open && S.versions.length === 0`));
+  await held("shot");
+  await js(`closeDialog($("versions"))`); // keep testing refusals even on the broken page
+  const histories = await js(`window.requests.filter((r) => r.kind === "history").length`);
+  await press("h");
+  await sleep(100);
+  check("H during opening neither opens nor requests History", await js(`!$("versions").open &&
+    window.requests.filter((r) => r.kind === "history").length === ${histories}`));
+  await js(`closeDialog($("versions"))`);
+  const before = await js("S.label"), kept = await drafts();
+  await draw(1500, 1700);
+  check("drawing during opening preserves label and drafts", same(await js("S.label"), before) && same(await drafts(), kept));
+  check("an edit refused during opening explains why", await js(`$("status").textContent.includes("still opening")`));
+  for (const action of ["edit([0, 2000], [[700, 800, 1]])", "undo()", "touch()"]) {
+    await js(action);
+    check(`${action} cannot change a pending shot or draft`,
+      same(await js("S.label"), before) && same(await drafts(), kept));
+  }
+  await press("s");
+  await sleep(100);
+  check("S during opening posts nothing", (await js("window.saves.length")) === 0);
+  await press("Enter");
+  await js(`$("save-next").click(); document.activeElement.blur()`);
+  check("Enter and Save during opening post nothing", (await js("window.saves.length")) === 0);
+  await press("r");
+  await js(`$("revert").click()`);
+  check("Revert during opening preserves label and drafts",
+    same(await js("S.label"), before) && same(await drafts(), kept));
+  await release("shot");
+  await opened(170816);
+  await until("!S.saving");
+  check("170816 opens with its own saved label", same(await js("S.label.intervals"), [[400, 600, 1]]));
+  const target = await js("S.label"), targetDrafts = await drafts();
+  await js("window.oldRestore.click(); restoreVersion(1)");
+  check("a stale Restore cannot change the new shot or store a draft",
+    same(await js("S.label"), target) && same(await drafts(), targetDrafts));
+  await press("s");
+  await until("!S.saving");
+  const saved = await js("window.saves.at(-1)");
+  check("Save posts 170816 with its own label", saved?.event === a && saved?.shot === 170816 &&
+    same(saved?.intervals, [[400, 600, 1]]), saved);
+
+  await visit(a, 170815);
+  await arm("history", a, 170815);
+  await press("h");
+  await held("history");
+  await press("ArrowRight");
+  await opened(170816);
+  await release("history");
+  await sleep(100);
+  check("History arriving after navigation opens no dialog", await js(`!$("versions").open && S.versions.length === 0`));
+  await js(`closeDialog($("versions"))`);
+
+  for (const route of ["address", "menu"]) {
+    await visit(a, 170815);
+    await press("h");
+    await until(`$("versions").open`);
+    await js(`window.oldRestore = $("version-list").querySelector("button")`);
+    if (route === "menu") await press("Escape");
+    await arm("shot", b, 170815);
+    if (route === "address") await js(`location.hash = "#${b}/170815"`);
+    else await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
+    await held("shot");
+    check(`${route}: switching event closes and invalidates History`, await js(`!$("versions").open && S.versions.length === 0`));
+    await js(`closeDialog($("versions")); document.activeElement.blur()`);
+    const label = await js("S.label"), stored = await drafts(), posts = await js("window.saves.length");
+    await draw(1500, 1700);
+    await press("z", 2);
+    await press("r");
+    await press("s");
+    await sleep(100);
+    check(`${route}: the same shot in a pending event cannot be edited or saved`,
+      same(await js("S.label"), label) && same(await drafts(), stored) && (await js("window.saves.length")) === posts);
+    const requests = await js(`window.requests.filter((r) => r.kind === "history").length`);
+    await press("h");
+    await sleep(100);
+    check(`${route}: H cannot request the new event's history while opening`, await js(`!$("versions").open &&
+      window.requests.filter((r) => r.kind === "history").length === ${requests}`));
+    await release("shot");
+    await settled(b, 170815);
+    check(`${route}: the new event opens its own 170815 label`, same(await js("S.label.intervals"), [[900, 1100, 1]]));
+    const own = await js("S.label"), ownDrafts = await drafts();
+    await js("window.oldRestore.click(); restoreVersion(1)");
+    check(`${route}: A's version cannot be restored into B's same shot`,
+      same(await js("S.label"), own) && same(await drafts(), ownDrafts));
+  }
+
+  // A queue response must not undo a newer event or shot choice.
+  await visit(a, 170815);
+  await arm("queue", b);
+  await js(`void openEvent("${b}", 170815)`);
+  await held("queue");
+  await visit(a, 170816);
+  await release("queue");
+  await sleep(100);
+  check("a late event queue cannot replace a newer event", await js(`S.event === "${a}" && S.shot === 170816 && S.queue.length === 3`));
+  await arm("queue", b);
+  await js(`void openEvent("${b}", 170815)`);
+  await held("queue");
+  await js("void openShot(170815)");
+  await settled(b, 170815);
+  const requests = await js(`window.requests.filter((r) => r.kind === "shot").length`);
+  await release("queue");
+  await sleep(100);
+  check("a late event queue cannot open over a newer shot", await js(`S.event === "${b}" && S.shot === 170815 &&
+    window.requests.filter((r) => r.kind === "shot").length === ${requests}`));
+}
+
 async function olderServer() {
   check(
     "the link opens its shot on its source label",
@@ -291,9 +458,11 @@ try {
       };
     ` });
   }
+  if (SCENARIO === "race") await recordFetches(true);
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
-  await opened(170815);
-  if (SCENARIO === "api1") await olderServer();
+  if (SCENARIO !== "race") await opened(170815);
+  if (SCENARIO === "race") await navigationRace();
+  else if (SCENARIO === "api1") await olderServer();
   else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));
