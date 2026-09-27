@@ -274,3 +274,89 @@ def test_extension_requires_a_passing_evaluation(
     assert str(path) in stderr and "Traceback" not in stderr
     assert not extend.suggestions_dir(paths).exists()
     assert not gallery.gallery_dir(paths).exists()
+
+
+def _three_shots(tmp_path, monkeypatch):
+    paths = ae_tree.build(tmp_path, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
+    _cohort(paths)
+    pd.DataFrame(
+        {
+            "shot": [201, 202, 203],
+            "year": [2024] * 3,
+            "span_co2_s": [2.5] * 3,
+            "window_start_ms": [0] * 3,
+            "window_end_ms": [600] * 3,
+        }
+    ).to_csv(paths.catalog / "population.csv", index=False)
+
+    def work(fn, jobs, workers, init, initargs):
+        for shot, year, lo, hi in jobs:
+            yield (
+                (shot, year, lo, hi),
+                {
+                    "rows": [[shot, 1, lo, hi, 0.9]],
+                    "prob": np.full(60, 0.9, dtype=np.float16),
+                    "first": 0,
+                    "summary": dict(
+                        zip(
+                            extend.SUMMARY_COLUMNS,
+                            [shot, year, lo, hi, 60, 60, 0, 1, 0.9],
+                        )
+                    ),
+                },
+            )
+
+    monkeypatch.setattr(extend, "run_all", work)
+    return paths, models
+
+
+def test_a_pilot_cannot_stand_in_for_a_full_shard(tmp_path, monkeypatch):
+    paths, models = _three_shots(tmp_path, monkeypatch)
+    extend.run_shard(paths, models=models, k=0, of=2, limit=1, pictures=False)
+    extend.run_shard(paths, models=models, k=1, of=2, pictures=False)
+    with pytest.raises((ValueError, FileNotFoundError), match="shard"):
+        extend.merge(paths, models=models, of=2)
+    shards = extend.suggestions_dir(paths) / "shards"
+    assert not (shards / "0.csv").exists()
+    assert (shards / "pilot/0.csv").is_file()
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["model", "population", "cohort", "of", "missing", "duplicate", "given"],
+)
+def test_merge_checks_identity_and_exact_shot_accounting(
+    tmp_path, monkeypatch, capsys, change
+):
+    paths, models = _three_shots(tmp_path, monkeypatch)
+    for k in (0, 1):
+        extend.run_shard(paths, models=models, k=k, of=2, pictures=False)
+    shards = extend.suggestions_dir(paths) / "shards"
+    manifest = shards / "0.json"
+    assert manifest.is_file()
+    record = json.loads(manifest.read_text())
+    assert record["shots"] == [201, 203]
+    assert record["model_sha256"] == sha256_of(extend.chosen_model(models))
+    assert record["evaluation_sha256"] == sha256_of(models / "evaluation.json")
+    assert record["git_sha"] and record["made_at"]
+    if change in ("population", "cohort"):
+        path = paths.catalog / f"{change}.csv"
+        path.write_text(path.read_text() + "\n")
+    elif change in ("missing", "duplicate"):
+        summary = shards / "0.summary.csv"
+        frame = pd.read_csv(summary)
+        frame = frame.iloc[:1] if change == "missing" else pd.concat([frame, frame])
+        frame.to_csv(summary, index=False)
+    else:
+        key = {"model": "model_sha256", "of": "of", "given": "shots"}[change]
+        record[key] = {"model": "other model", "of": 3, "given": [201]}[change]
+        manifest.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="0.json"):
+        extend.merge(paths, models=models, of=2)
+    ae_tree.env(monkeypatch, paths)
+    with pytest.raises(SystemExit) as error:
+        extend.main(["--merge", "--of", "2"])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(manifest) in stderr and "Traceback" not in stderr
