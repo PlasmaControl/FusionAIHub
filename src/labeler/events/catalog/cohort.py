@@ -608,7 +608,7 @@ def manifest(
     return {
         "catalog": "DIII-D event catalog v1",
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "git_sha": git_sha(),
+        "git_sha": git_sha(full=True),
         "git_dirty": git_dirty(),
         "seed": seed,
         "keys": "sha256 of '<seed>:<purpose>:<shot>', its first 8 bytes as a "

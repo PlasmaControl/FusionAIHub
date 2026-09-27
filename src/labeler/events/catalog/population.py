@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import re
@@ -44,6 +45,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from shot_design.shotdb import select
 from shot_design.shotdb.text import shot_table_row
@@ -391,19 +393,31 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--out", type=Path, help="default: $LABELER_ROOT/catalog")
     args = parser.parse_args(argv)
-    paths = Paths.from_env()
+    try:
+        return _run(args, Paths.from_env())
+    except CatalogError as error:
+        parser.error(str(error))
+
+
+def _run(args, paths) -> int:
     if args.census is None:
         from shot_design.config import load_paths
 
         args.census = load_paths().db_dir / "corpus_coverage.parquet"
     out = args.out or paths.catalog
     shots = [s for s in corpus_shots(paths) if FIRST_SHOT <= s <= LAST_SHOT]
+    from shot_design.config import CONFIG_DIR
+
+    census_data = args.census.read_bytes()
+    lexicon = CONFIG_DIR / "labels.yaml"
+    lexicon_data = lexicon.read_bytes()
+    themes = list(yaml.safe_load(lexicon_data).get("themes") or [])
     census = pd.read_parquet(
-        args.census, columns=["shot", "group", "present", "t0_s", "t1_s"]
+        io.BytesIO(census_data), columns=["shot", "group", "present", "t0_s", "t1_s"]
     )
     bundles, digests = read_bundle_inputs(paths.text_root, shots)
     census_spans = select.spans(census)
-    pool = screen(shots, bundles, census_spans)
+    pool = screen(shots, bundles, census_spans, themes=themes)
     left = funnel(pool)
     if left["after_rule_3"] != int(passes_screen(pool).sum()):
         raise CatalogError("funnel after_rule_3 disagrees with passes_screen(pool)")
@@ -430,9 +444,6 @@ def main(argv=None) -> int:
     )
     with atomic_path(out / "pool_inputs.csv") as tmp:
         inputs.to_csv(tmp, index=False)
-    from shot_design.config import CONFIG_DIR
-
-    lexicon = CONFIG_DIR / "labels.yaml"
     try:
         lexicon_path = lexicon.resolve().relative_to(
             Path(__file__).resolve().parents[4]
@@ -441,7 +452,7 @@ def main(argv=None) -> int:
         lexicon_path = lexicon
     meta = {
         "census": str(args.census),
-        "census_sha256": sha256_of(args.census),
+        "census_sha256": hashlib.sha256(census_data).hexdigest(),
         "census_max_span_s": {
             group: round(
                 max(
@@ -454,14 +465,14 @@ def main(argv=None) -> int:
         },
         "text_root": str(paths.text_root),
         "corpus": str(paths.corpus),
-        "git_sha": git_sha(),
+        "git_sha": git_sha(full=True),
         "git_dirty": git_dirty(),
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "pool_sha256": sha256_of(out / "pool.csv"),
         "pool_shots_sha256": sha256_of(out / "pool_shots.txt"),
         "pool_inputs_sha256": sha256_of(out / "pool_inputs.csv"),
         "lexicon": str(lexicon_path),
-        "lexicon_sha256": sha256_of(lexicon),
+        "lexicon_sha256": hashlib.sha256(lexicon_data).hexdigest(),
         "corpus_in_range": len(shots),
         "bundles": len(bundles),
         "funnel": left,

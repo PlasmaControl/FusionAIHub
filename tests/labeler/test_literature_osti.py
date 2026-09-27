@@ -408,7 +408,7 @@ def test_links_build_record_inputs_outputs_and_reproducibility(
     written = datetime.fromisoformat(doc["written_at"])
     assert before <= written <= datetime.now(UTC)
     assert written.utcoffset().total_seconds() == 0 and written.microsecond == 0
-    assert doc["git_sha"] == git_sha() and doc["git_dirty"] == git_dirty()
+    assert doc["git_sha"] == git_sha(full=True) and doc["git_dirty"] == git_dirty()
     assert shlex.split(doc["command"]) == [
         "python",
         "-m",
