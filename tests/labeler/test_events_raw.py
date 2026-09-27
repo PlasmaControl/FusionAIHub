@@ -386,3 +386,20 @@ def test_ece_fetches_the_channels_a_corpus_row_would_index(roots, monkeypatch):
     assert seen["exprs"][-1].endswith("TECEF48")
     assert seen["exprs"] == sorted(seen["exprs"]), "ascending, like a corpus row"
     assert len(set(seen["exprs"])) == 48, "no channel fetched twice"
+
+
+def test_ip_fetches_the_ptdata_point(roots, monkeypatch):
+    seen = {}
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        seen.update(via=via, exprs=list(exprs))
+        return FeatureArray(
+            x=np.arange(10.0),
+            y=np.full((1, 10), 1.2e6, dtype="float32"),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    got = raw.raw_signal(190000, "ip", paths=roots)
+    assert seen == {"via": "ptdata", "exprs": ["ip"]}
+    assert got.attrs["tier"] == "fetch" and np.allclose(got.y, 1.2e6)

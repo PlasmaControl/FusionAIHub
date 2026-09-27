@@ -1,0 +1,388 @@
+"""Events: observed boundaries only, nearest-first matching within a tolerance."""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from itertools import pairwise
+
+import numpy as np
+import pytest
+
+from labeler.scoring import events
+from labeler.scoring.events import boundaries, event_cells, match, within
+from labeler.scoring.frames import NOT_OBSERVABLE, PRESENT, UNCERTAIN, Assessment
+from labeler.scoring.stats import f1
+
+
+def test_only_absent_present_changes_are_boundaries():
+    read = Assessment(
+        (0, 1000),
+        ((100, 200, PRESENT), (200, 300, UNCERTAIN), (500, 600, 1), (600, 1000, 1)),
+    )
+    onsets, ends = boundaries(read)
+    assert onsets.tolist() == [100, 500]  # 500-1000 runs to the window's edge
+    assert ends.tolist() == []  # 200 leads into uncertain, not absent
+
+
+def test_a_span_at_the_window_start_has_no_onset():
+    onsets, ends = boundaries(Assessment((0, 1000), ((0, 100, PRESENT),)))
+    assert onsets.tolist() == [] and ends.tolist() == [100]
+
+
+def test_nearest_pairs_are_taken_first():
+    m = match([0, 10], [6], 10)
+    assert m.pairs.tolist() == [[1, 0]]
+    assert m.unmatched_reference.tolist() == [0]
+    assert m.offsets.tolist() == [4]
+
+
+def test_counts_of_a_matching():
+    m = match([100, 110], [104, 200], 10)
+    assert m.pairs.tolist() == [[0, 0]]
+    assert event_cells(m).tolist() == [1, 1, 1]  # tp, fp, fn
+
+
+def test_the_tolerance_is_inclusive():
+    assert len(match([0], [2.0], 2).pairs) == 1
+    assert len(match([0], [2.0001], 2).pairs) == 0
+
+
+def test_a_tie_goes_to_the_earlier_estimate():
+    m = match([10], [8, 12], 5)
+    assert m.pairs.tolist() == [[0, 0]]
+    assert m.unmatched_estimate.tolist() == [1]
+
+
+def test_empty_sides_leave_everything_unmatched():
+    m = match([], [1, 2], 5)
+    assert len(m.pairs) == 0 and m.unmatched_estimate.tolist() == [0, 1]
+    assert event_cells(match([3], [], 5)).tolist() == [0, 0, 1]
+
+
+def test_points_are_scored_inside_their_window_only():
+    assert within([999.9, 1000, 1500, 2000], (1000, 2000)).tolist() == [1000, 1500]
+
+
+def test_onset_inside_reference_uncertain_is_excluded():
+    ref = Assessment((0, 1000), ((400, 500, UNCERTAIN), (500, 800, PRESENT)))
+    est = Assessment((0, 1000), ((450, 800, PRESENT),))
+    got = events.event_matchings(ref, est, 50, method=True)
+    onset = got["onset"]
+    assert event_cells(onset).tolist() == [0, 0, 0]
+    assert onset.estimate.tolist() == [450.0]
+    assert onset.excluded_estimate.tolist() == [0]
+    assert event_cells(got["end"]).tolist() == [1, 0, 0]
+
+
+def test_boundaries_inside_reference_not_observable_are_excluded():
+    ref = Assessment((0, 1000), ((0, 300, NOT_OBSERVABLE), (500, 800, PRESENT)))
+    est = Assessment((0, 1000), ((100, 200, PRESENT), (500, 800, PRESENT)))
+    got = events.event_matchings(ref, est, 10, method=True)
+    for matching in got.values():
+        assert event_cells(matching).tolist() == [1, 0, 0]
+        assert matching.excluded_estimate.tolist() == [0]
+        assert matching.pairs.tolist() == [[0, 1]]
+
+
+def test_boundaries_in_time_only_the_estimate_assessed_are_not_scored():
+    ref = Assessment((0, 1000), ((500, 800, PRESENT),))
+    est = Assessment((0, 1200), ((500, 800, PRESENT), (1050, 1100, PRESENT)))
+    got = events.event_matchings(ref, est, 10, method=True)
+    for key, time in [("onset", 500), ("end", 800)]:
+        matching = got[key]
+        assert event_cells(matching).tolist() == [1, 0, 0]
+        assert matching.reference.tolist() == matching.estimate.tolist() == [time]
+        assert matching.excluded_estimate.size == 0
+
+
+@pytest.mark.parametrize("state", [UNCERTAIN, NOT_OBSERVABLE])
+def test_method_abstention_is_absent_but_reader_abstention_censors(state):
+    ref = Assessment((0, 1000), ((500, 800, PRESENT),))
+    est = Assessment((0, 1000), ((400, 500, state), (500, 800, PRESENT)))
+    method = events.event_matchings(ref, est, 10, method=True)["onset"]
+    assert event_cells(method).tolist() == [1, 0, 0]
+    reader = events.event_matchings(ref, est, 10, method=False)["onset"]
+    assert event_cells(reader).tolist() == [0, 0, 0]
+    assert reader.excluded_reference.tolist() == [0]
+    assert reader.unmatched_reference.size == 0
+
+
+def test_method_abstention_never_excludes_a_missed_reference_boundary():
+    ref = Assessment((0, 1000), ((500, 800, PRESENT),))
+    est = Assessment((0, 1000), ((400, 900, UNCERTAIN),))
+    for matching in events.event_matchings(ref, est, 10, method=True).values():
+        assert event_cells(matching).tolist() == [0, 0, 1]
+        assert matching.excluded_reference.size == 0
+
+
+def test_matching_precedes_exclusion_beside_an_uncertain_span():
+    ref = Assessment((0, 1000), ((400, 490, UNCERTAIN), (500, 800, PRESENT)))
+    est = Assessment((0, 1000), ((495, 800, PRESENT),))
+    got = events.event_matchings(ref, est, 10, method=False)["onset"]
+    assert event_cells(got).tolist() == [1, 0, 0]
+    assert got.offsets.tolist() == [5]
+    assert got.excluded_reference.size == got.excluded_estimate.size == 0
+
+
+@pytest.mark.parametrize("onset, excluded", [(390, True), (510, True), (511, False)])
+def test_exclusion_uses_distance_to_the_closed_span(onset, excluded):
+    ref = Assessment((0, 1000), ((400, 500, UNCERTAIN),))
+    est = Assessment((0, 1000), ((onset, 800, PRESENT),))
+    got = events.event_matchings(ref, est, 10, method=True)["onset"]
+    assert got.excluded_estimate.size == int(excluded)
+    assert got.unmatched_estimate.size == int(not excluded)
+
+
+def test_exclusion_has_the_same_float_slack_as_matching():
+    ref = Assessment((0, 1000), ((400, 500, UNCERTAIN),))
+    est = Assessment((0, 1000), ((510, 800, PRESENT),))
+    got = events.event_matchings(ref, est, 10 - 5e-10, method=True)["onset"]
+    assert got.excluded_estimate.tolist() == [0]
+
+
+def test_reader_swapping_swaps_errors_and_excluded_boundaries():
+    a = Assessment(
+        (0, 2000), ((100, 200, 1), (400, 500, 2), (500, 600, 1), (800, 900, 1))
+    )
+    b = Assessment(
+        (0, 2000),
+        ((105, 205, 1), (450, 600, 1), (750, 800, 2), (800, 900, 1), (1200, 1300, 1)),
+    )
+    ab = events.event_matchings(a, b, 10, method=False)
+    ba = events.event_matchings(b, a, 10, method=False)
+    for key in ab:
+        assert np.array_equal(event_cells(ab[key]), event_cells(ba[key])[[0, 2, 1]])
+        assert np.array_equal(ab[key].excluded_reference, ba[key].excluded_estimate)
+        assert np.array_equal(ab[key].excluded_estimate, ba[key].excluded_reference)
+    assert ab["onset"].excluded_reference.size == 1
+    assert ab["onset"].excluded_estimate.size == 1
+    assert ab["onset"].unmatched_estimate.size == 1
+
+
+def test_one_reader_using_uncertain_at_onsets_does_not_change_onset_f1():
+    spans = ((100, 200, 1), (400, 500, 1), (700, 800, 1))
+    a = Assessment((0, 1000), spans)
+    b = Assessment((0, 1000), (*spans, (350, 400, 2), (650, 700, 2)))
+    got = events.event_matchings(a, b, 10, method=False)["onset"]
+    assert f1(event_cells(got)) == 1.0
+    assert got.excluded_reference.tolist() == [1, 2]
+    assert got.reference.tolist() == [100, 400, 700]
+    assert got.estimate.tolist() == [100]
+
+
+def test_boundaries_on_both_common_window_edges_are_not_scored():
+    ref = Assessment((0, 1000), ((400, 600, PRESENT),))
+    est = Assessment((400, 600), ((400, 600, PRESENT),))
+    for matching in events.event_matchings(ref, est, 10, method=True).values():
+        assert matching.reference.size == matching.estimate.size == 0
+        assert event_cells(matching).tolist() == [0, 0, 0]
+
+
+def test_disjoint_windows_score_no_boundaries():
+    ref = Assessment((0, 100), ((20, 80, 1),))
+    est = Assessment((200, 300), ((220, 280, 1),))
+    for matching in events.event_matchings(ref, est, 1000, method=True).values():
+        assert matching.reference.size == matching.estimate.size == 0
+
+
+def test_d19_disruption_points_take_inclusive_end_slack():
+    from labeler.events.catalog.check import DISRUPTION_TIMING_TOLERANCE_MS
+
+    times = [7.999, 8, 5260, 5260.53, 5262, 5262.001]
+    got = within(times, (8, 5260), end_slack_ms=DISRUPTION_TIMING_TOLERANCE_MS)
+    assert got.tolist() == [8, 5260, 5260.53, 5262]
+    assert within(times, (8, 5260)).tolist() == [8]
+
+
+def test_nearest_first_is_not_maximum_cardinality():
+    got = match([0, 10], [6, 14], 6)
+    assert got.pairs.tolist() == [[1, 0]]  # two pairs could fit the tolerance
+    assert event_cells(got).tolist() == [1, 1, 1]
+
+
+def test_match_records_given_times_and_has_no_exclusions():
+    got = match([10, 0], [6, 14], 6)
+    assert got.reference.tolist() == [10.0, 0.0]
+    assert got.estimate.tolist() == [6.0, 14.0]
+    assert got.reference.dtype == got.estimate.dtype == np.dtype(float)
+    assert got.excluded_reference.dtype.kind == got.excluded_estimate.dtype.kind == "i"
+    assert got.excluded_reference.size == got.excluded_estimate.size == 0
+
+
+def test_scoring_imports_do_not_load_heavy_packages():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import labeler.scoring.frames; "
+                "import labeler.scoring.events; import labeler.scoring.stats; "
+                "assert not {'torch', 'pandas', 'toksearch', 'toksearch_d3d'} "
+                "& sys.modules.keys()"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def _optimum(ref, est, tolerance, i=0, used=frozenset()):
+    if i == len(ref):
+        return 0
+    best = _optimum(ref, est, tolerance, i + 1, used)
+    for j, time in enumerate(est):
+        if j not in used and abs(ref[i] - time) <= tolerance + 1e-9:
+            best = max(best, 1 + _optimum(ref, est, tolerance, i + 1, used | {j}))
+    return best
+
+
+def _nearest_first(ref, est, tolerance):
+    candidates = sorted(
+        (abs(r - e), r, e, i, j)
+        for i, r in enumerate(ref)
+        for j, e in enumerate(est)
+        if abs(r - e) <= tolerance + 1e-9
+    )
+    pairs, used_ref, used_est = [], set(), set()
+    for _, _, _, i, j in candidates:
+        if i not in used_ref and j not in used_est:
+            pairs.append((i, j))
+            used_ref.add(i)
+            used_est.add(j)
+    return pairs
+
+
+def test_random_nearest_first_against_oracle_and_brute_force_optimum():
+    rng = np.random.default_rng(7)
+    nonempty_optima = 0
+    for _ in range(250):
+        ref = rng.integers(0, 30, size=rng.integers(0, 6))
+        est = rng.integers(0, 30, size=rng.integers(0, 6))
+        tolerance = int(rng.integers(0, 7))
+        got = match(ref, est, tolerance)
+        assert got.pairs.tolist() == [
+            list(pair) for pair in _nearest_first(ref, est, tolerance)
+        ]
+        assert len(got.pairs) <= _optimum(ref, est, tolerance)
+        assert len(set(got.pairs[:, 0])) == len(set(got.pairs[:, 1])) == len(got.pairs)
+        assert all(abs(ref[i] - est[j]) <= tolerance for i, j in got.pairs)
+        # Separated references make each estimate adjacent to at most one
+        # reference (disjoint stars). Nearest-first must attain the optimum.
+        ref = np.arange(int(rng.integers(2, 6))) * (2 * tolerance + 3)
+        est = rng.choice(ref, size=int(rng.integers(2, 6)))
+        est += rng.integers(-tolerance, tolerance + 1, size=len(est))
+        best = _optimum(ref, est, tolerance)
+        assert len(match(ref, est, tolerance).pairs) == best
+        nonempty_optima += best > 0
+    assert nonempty_optima == 250
+
+
+def test_random_d21_common_window_matching_and_abstention_against_oracle():
+    rng = np.random.default_rng(424242)
+
+    def draw():
+        lo = int(rng.integers(-20, 30))
+        hi = lo + int(rng.integers(20, 150))
+        cuts = sorted({lo, hi, *map(int, rng.integers(lo, hi + 1, size=7))})
+        return Assessment(
+            (lo, hi),
+            tuple((a, b, int(rng.integers(4))) for a, b in pairwise(cuts)),
+        )
+
+    def painted_boundaries(read, method):
+        lo, hi = read.window
+        ticks = {t: 0 for t in range(lo, hi)}
+        for a, b, state in read.spans:
+            ticks.update(
+                dict.fromkeys(range(a, b), int(state == PRESENT) if method else state)
+            )
+        return [
+            [t for t in range(lo + 1, hi) if (ticks[t - 1], ticks[t]) == transition]
+            for transition in ((0, 1), (1, 0))
+        ]
+
+    def near(time, read, tolerance):
+        return any(
+            max(a - time, time - b, 0) <= tolerance + 1e-9
+            for a, b, state in read.spans
+            if state > PRESENT
+        )
+
+    totals = np.zeros(5, dtype=int)
+    for _ in range(200):
+        a, b = draw(), draw()
+        tolerance = int(rng.choice([0, 2, 5, 10, 20]))
+        for method in (False, True):
+            lo, hi = max(a.window[0], b.window[0]), min(a.window[1], b.window[1])
+            got = events.event_matchings(a, b, tolerance, method=method)
+            for key, ref, est in zip(
+                ("onset", "end"),
+                painted_boundaries(a, False),
+                painted_boundaries(b, method),
+            ):
+                ref = [t for t in ref if lo < t < hi]
+                est = [t for t in est if lo < t < hi]
+                pairs = _nearest_first(ref, est, tolerance)
+                ur = [i for i in range(len(ref)) if all(i != p[0] for p in pairs)]
+                ue = [j for j in range(len(est)) if all(j != p[1] for p in pairs)]
+                xr = [i for i in ur if not method and near(ref[i], b, tolerance)]
+                xe = [j for j in ue if near(est[j], a, tolerance)]
+                unmatched_ref = [i for i in ur if i not in xr]
+                unmatched_est = [j for j in ue if j not in xe]
+                actual = got[key]
+                assert actual.reference.tolist() == ref
+                assert actual.estimate.tolist() == est
+                assert actual.pairs.tolist() == [list(pair) for pair in pairs]
+                assert actual.offsets.tolist() == [
+                    abs(ref[i] - est[j]) for i, j in pairs
+                ]
+                assert actual.unmatched_reference.tolist() == unmatched_ref
+                assert actual.unmatched_estimate.tolist() == unmatched_est
+                assert actual.excluded_reference.tolist() == xr
+                assert actual.excluded_estimate.tolist() == xe
+                totals += [
+                    len(pairs),
+                    len(unmatched_ref),
+                    len(unmatched_est),
+                    len(xr),
+                    len(xe),
+                ]
+    assert (totals > 0).all()
+
+
+@pytest.mark.parametrize(
+    "window", [(10, 0), (5, 5), (np.nan, 10), (0, np.nan), (-np.inf, 10), (0, np.inf)]
+)
+def test_within_refuses_invalid_windows(window):
+    with pytest.raises(ValueError, match="window"):
+        within([5], window)
+
+
+@pytest.mark.parametrize("bad", [-1, np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("kind", ["match", "events", "within"])
+def test_timing_options_must_be_finite_nonnegative(bad, kind):
+    with pytest.raises(ValueError, match="finite.*nonnegative"):
+        if kind == "match":
+            match([1], [1], bad)
+        elif kind == "events":
+            a = Assessment((0, 100), ((10, 20, PRESENT),))
+            events.event_matchings(a, a, bad, method=False)
+        else:
+            within([1], (0, 10), end_slack_ms=bad)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("kind", ["reference", "estimate", "within"])
+def test_event_times_must_be_finite(bad, kind):
+    with pytest.raises(ValueError, match="finite"):
+        if kind == "within":
+            within([1, bad], (0, 10))
+        else:
+            match(
+                [bad] if kind == "reference" else [1],
+                [bad] if kind == "estimate" else [1],
+                2,
+            )

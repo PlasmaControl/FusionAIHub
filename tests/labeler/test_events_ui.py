@@ -211,14 +211,14 @@ def test_an_authorized_response_is_not_cached(client):
 
 
 def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source):
-    # "scratch" has no roster, so it is not an event.
-    present = {"1": "present"}
+    # "scratch" has no roster, so it is not an event. AE is a catalog phenomenon.
+    states = {"1": "present", "2": "uncertain", "3": "not_observable"}
     assert client.get("/api/events").json() == {
         "events": [
             {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
-             "categories": present},
+             "categories": states},
             {"event": "detachment", "n_shots": 1, "n_reviewed": 0,
-             "categories": present},
+             "categories": {"1": "present"}},
         ]
     }
 
@@ -381,6 +381,24 @@ def test_a_changed_label_is_saved_merged_and_shown_beside_its_source(
     assert view["state"] == "changed"
     history = labels.read_history(tables / "alfven_eigenmode")
     assert [entry["shot"] for entry in history] == [170815, 178642, 170815]
+
+
+def test_saving_a_shot_with_attrs_returns_conflict_and_keeps_both_files(client, tables):
+    review = tables / "alfven_eigenmode" / "review"
+    review.mkdir()
+    (review / "labels.csv").write_text(
+        'shot,category,t_start,t_end,confidence,attrs\n'
+        '170815,1,0,2000,,"{""type"": ""TAE""}"\n'
+    )
+    (review / "history.jsonl").write_text('{"shot": 170815}\n')
+    before = {name: (review / name).read_bytes() for name in [
+        "labels.csv", "history.jsonl"
+    ]}
+    response = client.post("/api/label", json=_label())
+    assert response.status_code == 409
+    assert "170815" in response.json()["error"]
+    assert "attrs" in response.json()["error"]
+    assert {name: (review / name).read_bytes() for name in before} == before
 
 
 @pytest.mark.parametrize(
