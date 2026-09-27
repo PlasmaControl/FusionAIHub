@@ -190,9 +190,9 @@ def shot_rows(shot: int, window: Window, found: Found | None) -> list[list]:
     return suggestions.span_rows(shot, window, painted)
 
 
-def ramp_start(t_ms, ip, window) -> float | None:
-    """The first time inside `window` that the centred mean of |Ip| reaches
-    `RAMP_FRACTION` of its plateau, or None if nothing there can be measured."""
+def ip_flattop(t_ms, ip, window) -> Interval | None:
+    """The first and last times inside `window` that the centred mean of |Ip|
+    is at least `RAMP_FRACTION` of its plateau; None if nothing is measured."""
     t = np.asarray(t_ms, dtype=np.float64).ravel()
     y = np.abs(np.asarray(ip, dtype=np.float64).ravel())
     inside = (t >= window[0]) & (t <= window[1])
@@ -206,7 +206,23 @@ def ramp_start(t_ms, ip, window) -> float | None:
     plateau = float(np.percentile(means[finite], PLATEAU_PERCENTILE))
     if not plateau > 0:
         return None
-    return float(t[np.flatnonzero(finite & (means >= RAMP_FRACTION * plateau))[0]])
+    above = np.flatnonzero(finite & (means >= RAMP_FRACTION * plateau))
+    return float(t[above[0]]), float(t[above[-1]])
+
+
+def ramp_start(t_ms, ip, window) -> float | None:
+    """Where the ramp-up ends: the start of `ip_flattop`."""
+    flattop = ip_flattop(t_ms, ip, window)
+    return None if flattop is None else flattop[0]
+
+
+def plasma_flattop(shot: int, paths: Paths, window: Window) -> Interval | None:
+    """`ip_flattop` on the shot's Ip, or None without one."""
+    try:
+        t_s, y = read(shot, "ip", paths)
+    except IP_MISSING:
+        return None
+    return ip_flattop(t_s * 1000.0, y[0], window)
 
 
 def plasma_start(shot: int, paths: Paths, window: Window) -> tuple[float, str]:
