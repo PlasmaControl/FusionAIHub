@@ -172,6 +172,11 @@ def read_saved(event_dir) -> dict[int, Label]:
     return _table(labels_path(event_dir))
 
 
+def read_labels(path) -> dict[int, Label]:
+    """One label per shot of any format table at `path`; none if it is absent."""
+    return _table(Path(path))
+
+
 def _table(path) -> dict[int, Label]:
     if path is None or not path.is_file():
         return {}
