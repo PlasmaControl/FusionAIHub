@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from itertools import pairwise
 
 import numpy as np
 import pytest
@@ -228,28 +229,128 @@ def test_scoring_imports_do_not_load_heavy_packages():
     assert result.returncode == 0, result.stderr
 
 
-def test_nearest_first_pair_count_is_bounded_by_brute_force_optimum():
-    def optimum(ref, est, tolerance, i=0, used=frozenset()):
-        if i == len(ref):
-            return 0
-        best = optimum(ref, est, tolerance, i + 1, used)
-        for j, time in enumerate(est):
-            if j not in used and abs(ref[i] - time) <= tolerance:
-                best = max(best, 1 + optimum(ref, est, tolerance, i + 1, used | {j}))
-        return best
+def _optimum(ref, est, tolerance, i=0, used=frozenset()):
+    if i == len(ref):
+        return 0
+    best = _optimum(ref, est, tolerance, i + 1, used)
+    for j, time in enumerate(est):
+        if j not in used and abs(ref[i] - time) <= tolerance + 1e-9:
+            best = max(best, 1 + _optimum(ref, est, tolerance, i + 1, used | {j}))
+    return best
 
+
+def _nearest_first(ref, est, tolerance):
+    candidates = sorted(
+        (abs(r - e), r, e, i, j)
+        for i, r in enumerate(ref)
+        for j, e in enumerate(est)
+        if abs(r - e) <= tolerance + 1e-9
+    )
+    pairs, used_ref, used_est = [], set(), set()
+    for _, _, _, i, j in candidates:
+        if i not in used_ref and j not in used_est:
+            pairs.append((i, j))
+            used_ref.add(i)
+            used_est.add(j)
+    return pairs
+
+
+def test_random_nearest_first_against_oracle_and_brute_force_optimum():
     rng = np.random.default_rng(7)
+    nonempty_optima = 0
     for _ in range(250):
         ref = rng.integers(0, 30, size=rng.integers(0, 6))
         est = rng.integers(0, 30, size=rng.integers(0, 6))
         tolerance = int(rng.integers(0, 7))
         got = match(ref, est, tolerance)
-        assert len(got.pairs) <= optimum(ref, est, tolerance)
+        assert got.pairs.tolist() == [
+            list(pair) for pair in _nearest_first(ref, est, tolerance)
+        ]
+        assert len(got.pairs) <= _optimum(ref, est, tolerance)
         assert len(set(got.pairs[:, 0])) == len(set(got.pairs[:, 1])) == len(got.pairs)
         assert all(abs(ref[i] - est[j]) <= tolerance for i, j in got.pairs)
-        single_ref, single_est = rng.integers(0, 30, size=2)
-        got = match([single_ref], [single_est], tolerance)
-        assert len(got.pairs) == optimum([single_ref], [single_est], tolerance)
+        # Separated references make each estimate adjacent to at most one
+        # reference (disjoint stars). Nearest-first must attain the optimum.
+        ref = np.arange(int(rng.integers(2, 6))) * (2 * tolerance + 3)
+        est = rng.choice(ref, size=int(rng.integers(2, 6)))
+        est += rng.integers(-tolerance, tolerance + 1, size=len(est))
+        best = _optimum(ref, est, tolerance)
+        assert len(match(ref, est, tolerance).pairs) == best
+        nonempty_optima += best > 0
+    assert nonempty_optima == 250
+
+
+def test_random_d21_common_window_matching_and_abstention_against_oracle():
+    rng = np.random.default_rng(424242)
+
+    def draw():
+        lo = int(rng.integers(-20, 30))
+        hi = lo + int(rng.integers(20, 150))
+        cuts = sorted({lo, hi, *map(int, rng.integers(lo, hi + 1, size=7))})
+        return Assessment(
+            (lo, hi),
+            tuple((a, b, int(rng.integers(4))) for a, b in pairwise(cuts)),
+        )
+
+    def painted_boundaries(read, method):
+        lo, hi = read.window
+        ticks = {t: 0 for t in range(lo, hi)}
+        for a, b, state in read.spans:
+            ticks.update(
+                dict.fromkeys(range(a, b), int(state == PRESENT) if method else state)
+            )
+        return [
+            [t for t in range(lo + 1, hi) if (ticks[t - 1], ticks[t]) == transition]
+            for transition in ((0, 1), (1, 0))
+        ]
+
+    def near(time, read, tolerance):
+        return any(
+            max(a - time, time - b, 0) <= tolerance + 1e-9
+            for a, b, state in read.spans
+            if state > PRESENT
+        )
+
+    totals = np.zeros(5, dtype=int)
+    for _ in range(200):
+        a, b = draw(), draw()
+        tolerance = int(rng.choice([0, 2, 5, 10, 20]))
+        for method in (False, True):
+            lo, hi = max(a.window[0], b.window[0]), min(a.window[1], b.window[1])
+            got = events.event_matchings(a, b, tolerance, method=method)
+            for key, ref, est in zip(
+                ("onset", "end"),
+                painted_boundaries(a, False),
+                painted_boundaries(b, method),
+            ):
+                ref = [t for t in ref if lo < t < hi]
+                est = [t for t in est if lo < t < hi]
+                pairs = _nearest_first(ref, est, tolerance)
+                ur = [i for i in range(len(ref)) if all(i != p[0] for p in pairs)]
+                ue = [j for j in range(len(est)) if all(j != p[1] for p in pairs)]
+                xr = [i for i in ur if not method and near(ref[i], b, tolerance)]
+                xe = [j for j in ue if near(est[j], a, tolerance)]
+                unmatched_ref = [i for i in ur if i not in xr]
+                unmatched_est = [j for j in ue if j not in xe]
+                actual = got[key]
+                assert actual.reference.tolist() == ref
+                assert actual.estimate.tolist() == est
+                assert actual.pairs.tolist() == [list(pair) for pair in pairs]
+                assert actual.offsets.tolist() == [
+                    abs(ref[i] - est[j]) for i, j in pairs
+                ]
+                assert actual.unmatched_reference.tolist() == unmatched_ref
+                assert actual.unmatched_estimate.tolist() == unmatched_est
+                assert actual.excluded_reference.tolist() == xr
+                assert actual.excluded_estimate.tolist() == xe
+                totals += [
+                    len(pairs),
+                    len(unmatched_ref),
+                    len(unmatched_est),
+                    len(xr),
+                    len(xe),
+                ]
+    assert (totals > 0).all()
 
 
 @pytest.mark.parametrize(
