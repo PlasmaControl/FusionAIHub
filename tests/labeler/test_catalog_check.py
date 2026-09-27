@@ -878,7 +878,24 @@ def test_label_boundaries_must_be_whole_ms(column):
     labels = _labels((190001, 0, 1000, 2000))
     labels[column] = 1000.5 if column == "t_start" else 2000.25
     found = check_table(labels, "alfven_eigenmode")
-    assert any(f.check == "whole_ms" and "row 0" in f.detail for f in found)
+    assert any(f.check == "whole_ms" and "row 2" in f.detail for f in found)
+
+
+@pytest.mark.parametrize("kind", ["whole_ms", "windows"])
+def test_label_findings_name_physical_line_after_blank(tmp_path, kind):
+    event_dir = tmp_path / "alfven_eigenmode"
+    path = event_dir / "review" / "reader" / "labels.csv"
+    path.parent.mkdir(parents=True)
+    end = 300.5 if kind == "whole_ms" else 300
+    labels = _labels((190001, 0, 0, 100), (190002, 0, 200, end))
+    lines = labels.to_csv(index=False).splitlines(keepends=True)
+    path.write_text("".join([*lines[:2], "\n", lines[2]]))
+    allowed = {190002: (0, 200)} if kind == "windows" else None
+    found, count = check_category(event_dir, allowed=allowed)
+    assert count == 1
+    assert any(
+        f.check == kind and f.shot == 190002 and "row 4:" in f.detail for f in found
+    )
 
 
 def test_checker_to_scoring_keeps_d19_at_original_allowed_end():
@@ -979,7 +996,7 @@ def test_d19_overrunning_row_must_start_before_allowed_end(start, prefix):
     assert len(found) == 1
     finding = found[0]
     assert (finding.check, finding.shot) == ("windows", 191389)
-    assert f"row {int(prefix)}" in finding.detail
+    assert f"row {int(prefix) + 2}" in finding.detail
     assert f"{start}-5262 ms" in finding.detail
     assert "allowed end 5260 ms" in finding.detail
 

@@ -146,6 +146,7 @@ def windows(
     where: str = "labels",
     *,
     category: str | None = None,
+    line_numbers: Sequence[int] | None = None,
 ) -> list[Finding]:
     out = []
     for shot, (lo, hi) in assessed(frame).items():
@@ -174,8 +175,9 @@ def windows(
             detail = f"window {lo:g}-{hi:g} ms is outside {span[0]:g}-{span[1]:g} ms"
             for row, values in enumerate(frame.itertuples()):
                 if values.shot == shot and values.t_start >= span[1]:
+                    line = line_numbers[row] if line_numbers is not None else row + 2
                     detail += (
-                        f"; row {row}: span {values.t_start:g}-{values.t_end:g} ms "
+                        f"; row {line}: span {values.t_start:g}-{values.t_end:g} ms "
                         f"starts at or after allowed end {span[1]:g} ms"
                     )
             out.append(Finding("windows", where, shot, detail + suffix))
@@ -336,8 +338,13 @@ def check_table(
     allowed: Windows | None = None,
     points_frame: pd.DataFrame | None = None,
     where: str = "labels",
+    line_numbers: Sequence[int] | None = None,
 ) -> list[Finding]:
-    """Every check on one labels table (and its points table, if any)."""
+    """Every check on one labels table (and its points table, if any).
+
+    `line_numbers` maps records to physical CSV lines. Without it, assume one
+    header line followed by one line per record.
+    """
     found = []
     beside = "points" if where == "labels" else str(Path(where).with_name("points.csv"))
     if allowed is not None:
@@ -357,6 +364,7 @@ def check_table(
             found += points(points_frame, None, category, beside)
         return found
     for row, values in enumerate(labels.itertuples()):
+        line = line_numbers[row] if line_numbers is not None else row + 2
         for column in ("t_start", "t_end"):
             try:
                 whole_number(getattr(values, column))
@@ -366,13 +374,15 @@ def check_table(
                         "whole_ms",
                         where,
                         int(values.shot),
-                        f"row {row}: {column} must be whole ms",
+                        f"row {line}: {column} must be whole ms",
                     )
                 )
     found += tiling(labels, where) + states(labels, where, category=category)
     found += attrs(labels, category, where)
     if allowed is not None:
-        found += windows(labels, allowed, where, category=category)
+        found += windows(
+            labels, allowed, where, category=category, line_numbers=line_numbers
+        )
     if points_frame is None and category == "disruption":
         points_frame = pd.DataFrame(columns=list(POINT_COLUMNS))
     if points_frame is not None:
@@ -409,7 +419,7 @@ def check_category(
             )
         else:
             try:
-                validate_csv_fields(path)
+                lines = validate_csv_fields(path)
                 labels = pd.read_csv(
                     path,
                     dtype={ATTRS_COLUMN: str},
@@ -430,6 +440,7 @@ def check_category(
                 allowed=allowed,
                 points_frame=points_frame,
                 where=where,
+                line_numbers=lines[1:],
             )
         elif points_frame is not None:
             found += points(points_frame, None, event_dir.name, points_where)
