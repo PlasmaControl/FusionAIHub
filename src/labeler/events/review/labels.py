@@ -3,8 +3,9 @@
 `review/labels.csv` holds the current label of every reviewed shot in the format
 schema (`shot, category, t_start, t_end, confidence`, ms): a shot's rows tile its
 window, each span with its category and the gaps as category 0. `history.jsonl`
-gets one line per save. A shot nobody has saved opens on its source label, the
-newest `format/*_format_*.csv`.
+gets one line per save. A shot nobody has saved opens on its source label: the
+table `review/source.json` points at (a suggestion table), else the newest
+`format/*_format_*.csv`.
 """
 
 from __future__ import annotations
@@ -124,10 +125,43 @@ def history_path(event_dir) -> Path:
     return Path(event_dir) / REVIEW / "history.jsonl"
 
 
+def pointer_path(event_dir) -> Path:
+    return Path(event_dir) / REVIEW / "source.json"
+
+
 def source_path(event_dir) -> Path | None:
-    """The newest format table by name. `*_format_*`: RWM's has no event prefix."""
+    """The table a shot nobody has saved opens on.
+
+    The one `review/source.json` names, when the event has one; else the newest
+    format table by name (`*_format_*`: RWM's has no event prefix). A pointer
+    to a table that is gone raises: falling back would open every shot on
+    another method's labels.
+    """
+    pointer = pointer_path(event_dir)
+    if pointer.is_file():
+        table = Path(json.loads(pointer.read_text())["table"])
+        if not table.is_file():
+            raise FileNotFoundError(f"{pointer} names {table}, which does not exist")
+        return table
     tables = Path(event_dir).glob("format/*_format_*.csv")
     return max(tables, key=lambda path: path.name, default=None)
+
+
+def write_pointer(event_dir, table, *, method: str, version: str) -> dict:
+    """Point the event's review page at `table`, a suggestion table."""
+    table = Path(table).resolve()
+    if not table.is_file():
+        raise FileNotFoundError(f"no suggestion table at {table}")
+    entry = {
+        "table": str(table),
+        "method": method,
+        "version": version,
+        "set_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "set_by": getpass.getuser(),
+    }
+    with atomic_path(pointer_path(event_dir)) as tmp:
+        tmp.write_text(json.dumps(entry, indent=1) + "\n")
+    return entry
 
 
 def read_source(event_dir) -> dict[int, Label]:
