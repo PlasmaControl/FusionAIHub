@@ -153,3 +153,47 @@ def test_a_mask_off_the_store_grid_is_refused(tmp_path):
     )
     with pytest.raises(ValueError, match="level 8"):
         train.load_example(paths, 101, {})
+
+
+@pytest.mark.parametrize("changed", ["labels", "masks", "index"])
+@pytest.mark.parametrize("when", ["load", "fit"])
+def test_changed_training_inputs_refuse_to_save(
+    tmp_path, monkeypatch, capsys, changed, when
+):
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "train"})
+    ae_tree.chosen(paths, {101: "train", 102: "val"})
+    ae_tree.env(monkeypatch, paths)
+    assert pseudo.main([]) == 0
+    directory = paths.label_tables / "alfven_eigenmode"
+    files = {
+        "labels": directory / "review" / "labels.csv",
+        "masks": regions.log_path(directory),
+        "index": train.pseudo_dir(paths) / "index.csv",
+    }
+    changed_file = files[changed]
+    out = tmp_path / "seg-model"
+    load_example = train.load_example
+
+    def change_file():
+        original = changed_file.read_bytes() if changed_file.exists() else b""
+        changed_file.write_bytes(original + b"\n")
+
+    def load(paths, shot, decisions):
+        example = load_example(paths, shot, decisions)
+        if when == "load":
+            change_file()
+        return example
+
+    def fit(train_examples, val_examples, config, log):
+        if when == "fit":
+            change_file()
+        return train.SegNet(train.SegNetConfig(width=4)), [], 0.5
+
+    monkeypatch.setattr(train, "load_example", load)
+    monkeypatch.setattr(train, "fit", fit)
+    assert train.main(["--out", str(out)]) != 0
+    output = capsys.readouterr()
+    assert str(changed_file) in output.err
+    assert "changed" in output.err.lower()
+    assert "Traceback" not in output.err
+    assert not out.exists()

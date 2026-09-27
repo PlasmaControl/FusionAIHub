@@ -30,6 +30,7 @@ import copy
 import json
 import os
 import resource
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
@@ -343,6 +344,12 @@ def main(argv=None) -> int:
         chosen += sorted(s for s, v in split.items() if v == "val")[:4]
         split = {s: v for s, v in split.items() if v == "test" or s in chosen}
     directory = event_dir(paths)
+    input_files = {
+        "labels_sha256": labels.labels_path(directory),
+        "masks_sha256": regions.log_path(directory),
+        "pseudo_index_sha256": pseudo_dir(paths) / "index.csv",
+    }
+    inputs = {key: _sha(path) for key, path in input_files.items()}
     decisions = regions.read_decisions(directory)
     started = time.monotonic()
     examples = {
@@ -357,11 +364,10 @@ def main(argv=None) -> int:
     model, history, threshold = fit(
         train, val, config, log=lambda m: print(m, flush=True)
     )
-    inputs = {
-        "labels_sha256": _sha(labels.labels_path(directory)),
-        "masks_sha256": _sha(regions.log_path(directory)),
-        "pseudo_index_sha256": _sha(pseudo_dir(paths) / "index.csv"),
-    }
+    for key, path in input_files.items():
+        if _sha(path) != inputs[key]:
+            print(f"training input changed: {path}; refusing to save", file=sys.stderr)
+            return 1
     save(
         out,
         model,
