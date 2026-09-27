@@ -91,7 +91,9 @@ def test_a_region_is_rejected_by_a_click_and_the_choice_is_kept(served, tmp_path
     assert [(s["rejected"], s["name"]) for s in saves] == [([2], "Ada"), ([], "Ada")]
 
 
-@pytest.mark.parametrize("case", ["race", "failed", "conflict", "stale_mask"])
+@pytest.mark.parametrize(
+    "case", ["race", "failed", "away_failed", "conflict", "stale_mask"]
+)
 def test_mask_save_races_and_failures(served, tmp_path, case):
     base, event = served
     if case == "stale_mask":
@@ -119,6 +121,7 @@ def test_mask_save_races_and_failures(served, tmp_path, case):
     expected = {
         "race": [[2], [1, 2]],
         "failed": [[2]],
+        "away_failed": [[2]],
         "conflict": [[2], [1, 2]],
         "stale_mask": [[2], [1]],
     }

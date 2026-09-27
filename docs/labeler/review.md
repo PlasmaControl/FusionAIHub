@@ -109,10 +109,19 @@ Saves go under the event's directory in the label tables
   from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
   names existed have no `name` and read as unnamed.
 - `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
-  shot, the pseudo-mask's version and sha256, the regions rejected, `name`
-  and time. A shot's last line is its decision. A decision made on an older
-  pseudo-mask (another sha256) is dropped: the page says so and training
-  ignores it.
+  shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
+  (the server's login), `name` (the name box, or null), and time. A shot's last
+  line is its decision. Its `revision` is the number of that shot's log lines,
+  including decisions on older masks; it is derived from the log rather than
+  stored as a separate field. GET returns the revision and each POST must name
+  the revision it replaces. A successful save returns the incremented revision.
+  A changed revision or pseudo-mask returns HTTP 409: the page reloads the
+  current mask decisions, explains the conflict, and asks for another click.
+  A decision made on an older pseudo-mask (another sha256) is dropped: the page
+  says so and training
+  ignores it. A failed save restores the previous rejection list and keeps its
+  error for that shot across navigation, until a successful retry. Returning to
+  the shot shows the error and the saved decisions.
 
 A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the

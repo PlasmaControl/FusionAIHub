@@ -339,7 +339,8 @@ def main(argv=None) -> int:
             rows.append(outcome)
     write_index(gallery_dir(paths, version) / "index.csv", rows)
     print(
-        f"drew {len(rows)} shots into {gallery_dir(paths, version)}; {len(failed)} failed"
+        f"drew {len(rows)} shots into {gallery_dir(paths, version)}; "
+        f"{len(failed)} failed"
     )
     return 1 if failed else 0
 

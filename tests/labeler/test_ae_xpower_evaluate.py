@@ -61,7 +61,11 @@ def test_whole_window_excludes_uncertain_and_not_observable_frames(
     )
     counts = evaluate.window_cells(
         101,
-        paths=Paths(root=tmp_path),
+        paths=Paths(
+            root=tmp_path,
+            label_tables=tmp_path / "events",
+            corpus=tmp_path / "corpus",
+        ),
         label=label,
         model=None,
         blob={"band_khz": [80, 250], "threshold": 0.5},
@@ -219,7 +223,11 @@ def test_the_whole_run_chooses_on_validation_then_scores_the_test_shots(
 def test_test_scoring_refuses_an_existing_evaluation_before_loading_inputs(
     tmp_path, monkeypatch, capsys
 ):
-    paths = Paths(root=tmp_path / "root")
+    paths = Paths(
+        root=tmp_path / "root",
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
     models = tmp_path / "models"
     models.mkdir()
     path = models / "evaluation.json"
@@ -243,7 +251,11 @@ def test_test_scoring_refuses_an_existing_evaluation_before_loading_inputs(
 def test_choose_refuses_an_evaluated_version_before_scoring(
     tmp_path, monkeypatch, capsys
 ):
-    paths = Paths(root=tmp_path)
+    paths = Paths(
+        root=tmp_path,
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
     path = tmp_path / "evaluation.json"
     path.write_text("{}")
     with pytest.raises(FileExistsError, match="version is evaluated"):
