@@ -79,7 +79,7 @@ def agreement(event_dir: Path) -> dict:
         for shot in shots
     )
     precision, recall = scores["precision"], scores["recall"]
-    excluded = Counter(str(source) for source in elsewhere.values())
+    excluded = Counter(str(table) for table in elsewhere.values())
     return {
         "event": Path(event_dir).name,
         "table": None if table is None else str(table),
