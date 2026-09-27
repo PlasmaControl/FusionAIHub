@@ -96,7 +96,7 @@ def plasma_window(shot: int, paths: Paths | None = None):
         try:
             frame = table(paths)
         except (OSError, ValueError, KeyError) as error:
-            log.info("shot %s: no %s window: %s", shot, table.__name__, error)
+            log.warning("shot %s: no %s window: %s", shot, table.__name__, error)
             continue
         for row in frame[frame.shot == int(shot)].itertuples(index=False):
             start, end = float(row.window_start_ms), float(row.window_end_ms)

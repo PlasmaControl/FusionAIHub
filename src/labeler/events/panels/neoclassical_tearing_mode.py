@@ -19,7 +19,6 @@ import numpy as np
 from ..raw import raw_signal
 from ..verify import Panel
 from ._shared import (
-    Z_DB,
     above_floor_db,
     betan_panel,
     finite,
@@ -40,6 +39,9 @@ N_VALUES = np.arange(-4, 5)
 #: The spectrogram's floor: a tearing mode can hold one frequency for seconds.
 #: It is each bin's quantile over the plasma's columns (`plasma_columns`).
 FLOOR_QUANTILE = 0.2
+#: The spectrogram's scale, higher than the shared (-3, 27): a flat top's broadband
+#: power runs 27-40 dB over that floor on loud shots and would hide the lines.
+Z_DB = (-3.0, 42.0)
 #: A column's strongest line must stand this far above the column's median over
 #: the band, or its n is not scored. On the six probes' summed power a peak of
 #: white noise stays within ~5 dB of it.

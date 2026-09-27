@@ -40,7 +40,7 @@ after the newest save.
   (MPI66M322D) is dB above each frequency's 20th percentile over the plasma,
   the shot's v1 rule-4 Ip window from the cohort or the population (without
   one, the columns louder than the record's median), not over the whole
-  record, which runs seconds past the plasma.
+  record, which runs seconds past the plasma, from -3 to 42 dB.
 - **Source** is the label the event's newest `format/*_format_*.csv` gives the
   shot. **Label** is yours; it starts as a copy of the source. Where the two
   differ, a strip along the top of the label track marks the difference.
