@@ -156,8 +156,14 @@ def read_history(event_dir) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
-    """Replace one shot's rows in `labels.csv` and append the save to the history."""
+def save(
+    event_dir, shot: int, label: Label, *, source: str | None, name: str | None = None
+) -> dict:
+    """Replace one shot's rows in `labels.csv` and append the save to the history.
+
+    `reviewer` is the server's login; `name` is what the reviewer typed, or None
+    (see `versions`).
+    """
     with _write_lock:
         saved = dict(read_saved(event_dir))  # a copy: the cached dict is shared
         saved[int(shot)] = label
@@ -171,6 +177,7 @@ def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
         entry = {
             "shot": int(shot),
             "reviewer": getpass.getuser(),
+            "name": name,
             "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
             **label.as_json(),
             "source": source,

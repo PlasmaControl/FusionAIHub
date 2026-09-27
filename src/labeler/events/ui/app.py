@@ -3,6 +3,7 @@
 Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
 its one write is `POST /api/label`, into the event's `review/` directory.
+`GET /api/history` lists a shot's saved versions (see `review.versions`).
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...config import Paths
 from .. import raw, rosters
 from ..review import build as review_build
-from ..review import labels, rows
+from ..review import labels, rows, versions
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -37,6 +38,10 @@ COOKIE = "labeler_verify_token"
 FRAMED_COOKIE = "labeler_verify_token_framed"
 NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
+#: Bumped when the server gains a route or a field the page depends on. The
+#: page asks `/api/version` first and, from an older server, saves without a
+#: name and hides the history instead of failing every save.
+API_VERSION = 2
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +53,7 @@ class LabelIn(BaseModel):
     shot: int
     window: tuple[float, float]
     intervals: list[tuple[float, float, int]] = Field(max_length=1000)
+    name: str | None = Field(default=None, max_length=versions.NAME_MAX)
 
 
 class Builds:
@@ -168,6 +174,10 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         log.error("%s failed", request.url.path, exc_info=exc)
         return JSONResponse({"error": str(exc) or type(exc).__name__}, status_code=500)
 
+    @app.get("/api/version")
+    def version():
+        return {"api": API_VERSION}
+
     @app.get("/api/events")
     def events():
         try:
@@ -248,11 +258,16 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         known = set(labels.categories(body.event))
         try:
             label = labels.normalise(body.window, body.intervals, known=known)
+            name = versions.clean_name(body.name)
         except ValueError as error:
             raise HTTPException(400, str(error)) from None
         table = labels.source_path(directory)
         entry = labels.save(
-            directory, body.shot, label, source=table.name if table else None
+            directory,
+            body.shot,
+            label,
+            source=table.name if table else None,
+            name=name,
         )
         source = labels.read_source(directory).get(body.shot)
         row = {
@@ -262,6 +277,12 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "saved_at": entry["saved_at"],
         }
         return {"row": row, "saved": label.as_json(), "last_save": entry}
+
+    @app.get("/api/history")
+    def history_view(event: str, shot: int):
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        return {"shot": shot, "versions": versions.shot_versions(directory, shot)}
 
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
