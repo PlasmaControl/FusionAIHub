@@ -522,6 +522,7 @@ def _build_record(
             "_ARTICLE_SPAN": context._ARTICLE_SPAN,
             "TICK_MIN_RUN": context.TICK_MIN_RUN,
             "TICK_MIN_STEP": context.TICK_MIN_STEP,
+            "TICK_PAIR_STEP": context.TICK_PAIR_STEP,
             "POSTAL_REACH": context.POSTAL_REACH,
             "FIRST_SHOT": FIRST_SHOT,
             "LAST_SHOT": LAST_SHOT,
