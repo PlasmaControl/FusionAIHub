@@ -308,9 +308,10 @@ def _run(args, argv, paths) -> int:
                 "directory": str(paths.corpus),
                 "count": len(files),
                 "sha256": hashlib.sha256(file_bytes).hexdigest(),
-                "digest_definition": "sha256 of sorted '<filename> <digest>\\n'; each digest "
-                "hashes group name + newline, then 'absent\\n' or each xdata/ydata shape "
-                "(Python tuple string) + newline and C-order little-endian float64 bytes",
+                "digest_definition": "sha256 of sorted '<filename> <digest>\\n'; "
+                "each digest hashes group name + newline, then 'absent\\n' or "
+                "each xdata/ydata shape (Python tuple string) + newline "
+                "and C-order little-endian float64 bytes",
                 "groups": list(GROUPS),
                 "files": files,
             },
