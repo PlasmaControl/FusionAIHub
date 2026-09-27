@@ -15,8 +15,8 @@ page opens unreviewed shots on:
 - ELMing (`elm_clock`): each run of at least `MIN_RUN` ELMs with gaps of at most
   `ELM_MAX_GAP_MS`, padded by `PAD_MS` on both sides, less any time the H-mode
   method saw the shot in L-mode: ELMs are an H-mode phenomenon, and the clock
-  also counts L-mode D-alpha spikes. A shot the H-mode method cannot run on
-  keeps its runs whole.
+  also counts L-mode D-alpha spikes. A shot whose H-mode inputs are missing
+  keeps its runs whole; any other failure of the H-mode method is an error.
 - Sawteeth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
   most `SAWTOOTH_MAX_GAP_MS`.
 
@@ -32,8 +32,12 @@ steps and spikes neither make a run nor join one; the time before is absent.
 
 Inside the window, time the detector's inputs did not measure is not observable
 (3) and the rest is absent unless a span says otherwise. A shot the detector
-could not run on is not observable throughout, and the table's meta keeps why.
-Inputs come from the corpus, else the raw cache; nothing is fetched.
+could not run on is not observable throughout, and the table's meta keeps why
+(`skipped`). The meta's `per_shot` keeps what the page does not show, by shot:
+where the drafts started (`start_ms`, and `start_from`: "ip", or the fallback
+and why), and for ELMs the filterscope read (`channel`) and whether the H-mode
+gate ran (`hmode_gate`: "ran", or why not). Inputs come from the corpus, else
+the raw cache; nothing is fetched.
 
     pixi run -e labelmaker python -m labeler.events.spans --event edge_localized_mode
 
@@ -90,7 +94,9 @@ PLATEAU_PERCENTILE = 95
 #: all of which have Ip, the start above falls a median 725 ms in (5-95 %:
 #: 372-1427 ms).
 RAMP_FALLBACK_MS = 700.0
-IP_MISSING = (NoDataError, KeyError, OSError)
+#: What a missing or unreadable input raises: the Ip read and the H-mode gate
+#: fall back on these alone.
+INPUT_MISSING = (NoDataError, KeyError, OSError)
 START_RULE = {
     "ip_fraction": RAMP_FRACTION,
     "ip_mean_ms": RAMP_MEAN_MS,
@@ -106,10 +112,12 @@ Interval = tuple[float, float]
 
 @dataclass(frozen=True)
 class Found:
-    """What a method saw on one shot, in ms: its spans, and where it could see."""
+    """What a method saw on one shot, in ms: its spans, where it could see, and
+    what the table's meta records of how (`per_shot`)."""
 
     spans: tuple[tuple[float, float, int], ...]
     measured: tuple[Interval, ...]
+    info: dict = field(default_factory=dict, compare=False)
 
 
 def runs(
@@ -220,7 +228,7 @@ def plasma_flattop(shot: int, paths: Paths, window: Window) -> Interval | None:
     """`ip_flattop` on the shot's Ip, or None without one."""
     try:
         t_s, y = read(shot, "ip", paths)
-    except IP_MISSING:
+    except INPUT_MISSING:
         return None
     return ip_flattop(t_s * 1000.0, y[0], window)
 
@@ -232,7 +240,7 @@ def plasma_start(shot: int, paths: Paths, window: Window) -> tuple[float, str]:
         t_s, y = read(shot, "ip", paths)
         start = ramp_start(t_s * 1000.0, y[0], window)
         why = None if start is not None else "Ip never measured inside the window"
-    except IP_MISSING as error:
+    except INPUT_MISSING as error:
         start, why = None, f"{type(error).__name__}: {error}"
     if start is not None:
         return start, "ip"
@@ -287,24 +295,33 @@ def detect_elm(shot: int, paths: Paths, window: Window | None = None) -> Found:
     cov = coverage.Coverage.measured(t_s, y[channel], min_gap_s=ELM_MIN_GAP_S)
     found = transients.elm_clock_events(y[channel], t_s, shot=shot, channel=channel)
     elms = [e.t0_s * 1000 for e in found if e.phenomenon == transients.ELM_PHENOMENON]
+    info = {"channel": f"FS{channel + 1:02d}"}
     if window is not None:
-        start, _ = plasma_start(shot, paths, window)
+        start, info = started(shot, paths, window, info)
         elms = in_plasma(elms, start, window)
     spans = runs(elms, max_gap_ms=ELM_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS)
-    spans = minus(spans, lmode(shot, paths))
+    holes, info["hmode_gate"] = lmode(shot, paths)
+    spans = minus(spans, holes)
     if window is not None:
         spans = from_start(spans, start)
-    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov))
+    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov), info)
 
 
-def lmode(shot: int, paths: Paths) -> list[Interval]:
-    """Where the H-mode method saw the shot in L-mode; none if it cannot run."""
+def started(shot: int, paths: Paths, window: Window, info=None):
+    """`(start_ms, info)`: `plasma_start`, and `info` with it recorded."""
+    start, source = plasma_start(shot, paths, window)
+    return start, {**(info or {}), "start_ms": round(start, 1), "start_from": source}
+
+
+def lmode(shot: int, paths: Paths) -> tuple[list[Interval], str]:
+    """`(intervals, status)`: where the H-mode method saw the shot in L-mode, and
+    "ran"; or none, and why, when its inputs are missing (`INPUT_MISSING`)."""
     try:
         hmode = detect_hmode(shot, paths)
-    except Exception as error:  # noqa: BLE001 - no gate is the fallback
+    except INPUT_MISSING as error:
         log.info("shot %d: no H-mode gate for the ELMs: %s", shot, error)
-        return []
-    return minus(hmode.measured, [(a, b) for a, b, _ in hmode.spans])
+        return [], f"{type(error).__name__}: {error}"
+    return minus(hmode.measured, [(a, b) for a, b, _ in hmode.spans]), "ran"
 
 
 def detect_hmode(shot: int, paths: Paths, window: Window | None = None) -> Found:
@@ -347,15 +364,16 @@ def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Fo
     crashes = [
         e.t0_s * 1000 for e in found if e.phenomenon == heuristics.SAWTOOTH_PHENOMENON
     ]
+    info = {}
     if window is not None:
-        start, _ = plasma_start(shot, paths, window)
+        start, info = started(shot, paths, window)
         crashes = in_plasma(crashes, start, window)
     spans = runs(
         crashes, max_gap_ms=SAWTOOTH_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS
     )
     if window is not None:
         spans = from_start(spans, start)
-    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov))
+    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov), info)
 
 
 def detect_window(shot: int, paths: Paths, window: Window | None = None) -> Found:
@@ -444,13 +462,15 @@ def population(paths: Paths) -> pd.DataFrame:
 
 
 def suggest(method: Method, shot: int, window: Window, paths: Paths):
-    """`(rows, reason)`: the shot's rows, and why the method could not run, or None."""
+    """`(rows, reason, info)`: the shot's rows, why the method could not run (or
+    None), and what it recorded of how (`Found.info`)."""
     try:
         found, reason = method.detect(int(shot), paths, tuple(window)), None
     except Exception as error:  # noqa: BLE001 - one shot's failure is its own
         log.warning("shot %d: %s could not run: %s", shot, method.name, error)
         found, reason = None, f"{type(error).__name__}: {error}"
-    return shot_rows(int(shot), window, found), reason
+    info = {} if found is None else dict(found.info)
+    return shot_rows(int(shot), window, found), reason, info
 
 
 def _suggest(args):
@@ -477,7 +497,7 @@ def gold(method: Method, paths: Paths, reference=None) -> dict:
     pairs, failed = [], {}
     for shot in (s for s in shots if s in saved):
         label = saved[shot]
-        rows, reason = suggest(method, shot, label.window, paths)
+        rows, reason, _ = suggest(method, shot, label.window, paths)
         if reason:
             failed[str(shot)] = reason
         estimate = Assessment.from_rows([(a, b, state) for _, state, a, b, _ in rows])
@@ -523,12 +543,16 @@ def run(
             results = list(pool.map(_suggest, jobs, chunksize=1))
     else:
         results = [_suggest(job) for job in jobs]
-    rows = [row for shot_rows_, _ in results for row in shot_rows_]
-    skipped |= {str(job[1]): why for job, (_, why) in zip(jobs, results) if why}
+    rows = [row for shot_rows_, _, _ in results for row in shot_rows_]
+    skipped |= {str(job[1]): why for job, (_, why, _) in zip(jobs, results) if why}
+    per_shot = {str(job[1]): info for job, (_, _, info) in zip(jobs, results) if info}
     rerun = {job[1] for job in jobs} | {int(s) for s in skipped}
     if old is not None:
         rows = old[~old.shot.isin(rerun)].values.tolist() + rows
     kept = {k: v for k, v in old_meta.get("skipped", {}).items() if int(k) not in rerun}
+    kept_info = {
+        k: v for k, v in old_meta.get("per_shot", {}).items() if int(k) not in rerun
+    }
     meta = {
         "event": method.event,
         "method": method.name,
@@ -538,6 +562,9 @@ def run(
         "rule": method.rule,
         "windows": windows,
         "skipped": dict(sorted({**kept, **skipped}.items())),
+        "per_shot": dict(
+            sorted({**kept_info, **per_shot}.items(), key=lambda kv: int(kv[0]))
+        ),
     }
     scored = old_meta.get("gold") if scored is None else scored
     if scored is not None:
