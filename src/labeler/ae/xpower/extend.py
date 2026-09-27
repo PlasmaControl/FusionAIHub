@@ -129,6 +129,7 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
     shot, year, lo, hi = job
     w = _WORKER
     blob, paths = w["blob"], w["paths"]
+    version = w["version"]
     co2 = corpus_signal(shot, "co2", corpus=paths.corpus)
     rows = raw_rows(co2.x, co2.y)
     first, n = window_frames((lo, hi))
@@ -143,11 +144,11 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
             grid.t0_ms, grid.dt_ms * PICTURE_LEVEL, -(-grid.n // PICTURE_LEVEL)
         )
         title = (
-            f"{shot} ({year})   AE suggestions, {METHOD} {VERSION} "
+            f"{shot} ({year})   AE suggestions, {METHOD} {version} "
             f"({blob['candidate']}), not reviewed"
         )
         draw(
-            gallery_dir(paths) / "extension" / f"{shot}.jpg",
+            gallery_dir(paths, version) / "extension" / f"{shot}.jpg",
             title=title,
             grid=coarse,
             values=pool(values, PICTURE_LEVEL, "image"),
@@ -181,9 +182,15 @@ def _work(job):
     return label_shot(job, pictures=_WORKER.get("pictures", True))
 
 
-def _init_shard(model_file: str, root: str, corpus: str, pictures: bool) -> None:
+def _init_shard(
+    model_file: str,
+    root: str,
+    corpus: str,
+    pictures: bool,
+    version: str = VERSION,
+) -> None:
     _init(model_file, root, corpus)
-    _WORKER["pictures"] = pictures
+    _WORKER.update(pictures=pictures, version=version)
 
 
 def _passing_bar(models: Path) -> dict:
@@ -225,6 +232,7 @@ def run_shard(
     workers: int = 1,
     limit: int = 0,
     pictures: bool = True,
+    version: str = VERSION,
 ) -> dict:
     _passing_bar(models)
     jobs = shard_shots(paths, k, of)
@@ -232,8 +240,14 @@ def run_shard(
     if limit:
         jobs = jobs.iloc[:limit]
     jobs = [tuple(int(v) for v in row) for row in jobs.itertuples(index=False)]
-    init = (str(chosen_model(models)), str(paths.root), str(paths.corpus), pictures)
-    out = suggestions_dir(paths) / "shards"
+    init = (
+        str(chosen_model(models)),
+        str(paths.root),
+        str(paths.corpus),
+        pictures,
+        version,
+    )
+    out = suggestions_dir(paths, version) / "shards"
     if limit > 0:
         out /= "pilot"
     out.mkdir(parents=True, exist_ok=True)
@@ -277,9 +291,9 @@ def run_shard(
     }
 
 
-def merge(paths: Paths, *, models: Path, of: int) -> dict:
+def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dict:
     bar = _passing_bar(models)
-    shards = suggestions_dir(paths) / "shards"
+    shards = suggestions_dir(paths, version) / "shards"
     if of <= 0:
         raise ValueError(f"{shards}: of must be positive")
     missing = [
@@ -331,7 +345,7 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
     _, blob = load(file)
     meta = {
         "method": METHOD,
-        "version": VERSION,
+        "version": version,
         "event": EVENT,
         "tier": "suggestions",
         "model": str(file),
@@ -348,7 +362,7 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    table = suggestions.table_path(paths, EVENT, METHOD, VERSION)
+    table = suggestions.table_path(paths, EVENT, METHOD, version)
     suggestions.write_table(table, rows.itertuples(index=False), meta)
     with atomic_path(table.parent / "summary.csv") as tmp:
         summary.to_csv(tmp, index=False)
@@ -367,11 +381,12 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
             "f1_vs_owner": "",
             "threshold": blob["threshold"],
             "candidate": blob["candidate"],
+            "version": version,
         }
         for r in summary.itertuples(index=False)
-        if (gallery_dir(paths) / "extension" / f"{int(r.shot)}.jpg").is_file()
+        if (gallery_dir(paths, version) / "extension" / f"{int(r.shot)}.jpg").is_file()
     ]
-    write_index(gallery_dir(paths) / "index.csv", index)
+    write_index(gallery_dir(paths, version) / "index.csv", index)
     return {
         "table": str(table),
         "shots": len(summary),
@@ -397,14 +412,15 @@ def main(argv=None) -> int:
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
     )
+    p.add_argument("--version", default=VERSION)
     args = p.parse_args(argv)
     paths = Paths.from_env()
-    models = args.models or model_dir(paths)
+    models = args.models or model_dir(paths, args.version)
     if not args.merge and not 0 <= args.shard < args.of:
         p.error("--shard must be in 0 .. --of - 1")
     try:
         if args.merge:
-            result = merge(paths, models=models, of=args.of)
+            result = merge(paths, models=models, of=args.of, version=args.version)
         else:
             result = run_shard(
                 paths,
@@ -414,6 +430,7 @@ def main(argv=None) -> int:
                 workers=args.workers,
                 limit=args.limit,
                 pictures=not args.no_pictures,
+                version=args.version,
             )
     except (CatalogError, OSError, ValueError) as error:
         p.error(str(error))

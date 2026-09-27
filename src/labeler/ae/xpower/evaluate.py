@@ -58,6 +58,7 @@ from ...scoring import stats
 from .. import model as seldnet_model
 from . import (
     EVENT,
+    VERSION,
     check_limit,
     event_dir,
     model_dir,
@@ -371,7 +372,9 @@ def _reviewed(split: dict[int, str], which: str, limit: int) -> list[int]:
     return shots[:limit] if limit else shots
 
 
-def run_choose(paths: Paths, models: Path, limit: int = 0) -> dict:
+def run_choose(
+    paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
+) -> dict:
     check_limit(paths, models, limit)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
@@ -400,6 +403,7 @@ def run_choose(paths: Paths, models: Path, limit: int = 0) -> dict:
     picked, why = choose(results)
     record = {
         "candidate": picked,
+        "version": version,
         "why": why,
         "validation": results,
         "git_sha": git_sha(),
@@ -416,7 +420,9 @@ def chosen_model(models: Path) -> Path:
     return models / name / "model.pt"
 
 
-def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
+def run_test(
+    paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
+) -> dict:
     check_limit(paths, models, limit)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
@@ -469,6 +475,7 @@ def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
     bar = verdict(scores)
     meta = {
         "candidate": blob["candidate"],
+        "version": version,
         "model_sha256": hashlib.sha256(snapshots["model.pt"]).hexdigest(),
         "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
         "split_sha256": hashlib.sha256(snapshots["split.csv"]).hexdigest(),
@@ -500,16 +507,17 @@ def main(argv=None) -> int:
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
     )
+    p.add_argument("--version", default=VERSION)
     p.add_argument("--limit", type=int, default=0, help="the first N shots (pilots)")
     args = p.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
-    models = args.models or model_dir(paths)
+    models = args.models or model_dir(paths, args.version)
     try:
         record = (
-            run_choose(paths, models, args.limit)
+            run_choose(paths, models, args.limit, version=args.version)
             if args.choose
-            else run_test(paths, models, args.limit)
+            else run_test(paths, models, args.limit, version=args.version)
         )
     except (OSError, ValueError) as error:
         p.error(str(error))
