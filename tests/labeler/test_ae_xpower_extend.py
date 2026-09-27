@@ -252,7 +252,11 @@ def test_a_merge_refuses_a_missing_shard(tmp_path):
 def test_extension_requires_a_passing_evaluation(
     tmp_path, monkeypatch, capsys, merge, evaluation
 ):
-    paths = Paths(root=tmp_path / "root")
+    paths = Paths(
+        root=tmp_path / "root",
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
     models = tmp_path / "models"
     models.mkdir()
     path = models / "evaluation.json"

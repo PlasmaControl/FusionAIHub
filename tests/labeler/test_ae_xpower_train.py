@@ -49,7 +49,11 @@ def test_training_refuses_a_checkpoint_before_loading_data(
 ):
     ae_tree.env(
         monkeypatch,
-        Paths(root=tmp_path / "root", label_tables=tmp_path / "events"),
+        Paths(
+            root=tmp_path / "root",
+            label_tables=tmp_path / "events",
+            corpus=tmp_path / "corpus",
+        ),
     )
     file = tmp_path / "model.pt"
     file.write_bytes(b"original")

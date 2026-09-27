@@ -171,7 +171,11 @@ def test_command_refuses_missing_candidates_or_validation_without_outputs(
 ):
     from labeler.ae.xpower import frontier
 
-    paths = Paths(root=tmp_path / "root")
+    paths = Paths(
+        root=tmp_path / "root",
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
     if empty_split:
         paths = ae_tree.build(tmp_path, {101: "train"})
         _save(paths, split={101: "test"})

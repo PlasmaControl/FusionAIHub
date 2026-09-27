@@ -1096,6 +1096,7 @@ function endDrag(event) {
 // -- the AE pseudo-mask: TokEye's lines inside the label, one click per region
 
 const maskSaves = new Map(); // shot -> pending save, survives navigation
+const maskErrors = new Map(); // shot -> last failed save, until a successful retry
 
 /** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
 async function loadMasks(ticket) {
@@ -1107,6 +1108,8 @@ async function loadMasks(ticket) {
       const body = await (await api(`/api/masks?event=${enc(event)}&shot=${shot}`)).json();
       if (ticket !== S.ticket) return;
       S.masks = body;
+      const failure = maskErrors.get(shot);
+      if (failure) say(failure, true);
     } catch {
       // no pseudo-mask for this shot: nothing to draw
     }
@@ -1191,12 +1194,16 @@ async function persistMasks(m, rejected, event) {
     const saved = { rejected: body.rejected, last_save: body.last_save,
       revision: body.revision, stale: false };
     Object.assign(m, saved);
+    maskErrors.delete(m.shot);
     if (current()) Object.assign(S.masks, saved);
     const n = body.rejected.length;
     if (current()) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
   } catch (error) {
     m.rejected = before;
     conflict = error.status === 409;
+    maskErrors.set(m.shot, conflict
+      ? "mask decisions changed; reloaded the current masks — click again"
+      : error.message);
     if (current()) {
       S.masks.rejected = before;
       say(error.message, true);

@@ -190,6 +190,43 @@ try {
     await until('!S.masks.saving');
     check("the next rejection keeps both regions", same(await js('S.masks.rejected'), [1, 2]),
       await js('S.masks.rejected'));
+  } else if (CASE === "away_failed") {
+    await js(`window.realFetch = window.fetch.bind(window);
+      window.fetch = async (url, options) => {
+        if (String(url).includes('/api/masks') && options?.method === 'POST') {
+          window.fetch = window.realFetch;
+          await new Promise(resolve => { window.releaseMask = resolve; });
+          return new Response(JSON.stringify({error: 'mask save failed while away'}), {status: 500});
+        }
+        return window.realFetch(url, options);
+      };`);
+    const two = await region(2);
+    await click(two.x, two.y);
+    await until('S.masks.saving && typeof window.releaseMask === "function"');
+    await press("k");
+    await until('S.shot === 170816 && S.data !== null');
+    await js('window.releaseMask()');
+    await until('!maskSaves.has(170815)');
+    check("a failed save does not report on the unrelated shot",
+      await js('!$("status").textContent.includes("mask save failed")'), await js('$("status").textContent'));
+    await press("j");
+    await until('S.shot === 170815 && S.masks !== null && S.data !== null');
+    check("returning shows the shot's failed save and restores its rejection",
+      same(await js('S.masks.rejected'), []) &&
+      await js('$("status").textContent.includes("mask save failed while away") && !$("masks").textContent.includes("saved")'),
+      await js('[S.masks.rejected, $("status").textContent, $("masks").textContent]'));
+    const again = await region(2);
+    check("the failed rejection is still drawn as kept", cyan(again.rgb), again.rgb);
+    await click(again.x, again.y);
+    await until('!S.masks.saving && S.masks.last_save !== null');
+    await press("k");
+    await until('S.shot === 170816 && S.data !== null');
+    await press("j");
+    await until('S.shot === 170815 && S.masks !== null && S.data !== null');
+    check("a successful retry clears the retained failure",
+      same(await js('S.masks.rejected'), [2]) &&
+      await js('!$("status").textContent.includes("mask save failed")'),
+      await js('[S.masks.rejected, $("status").textContent]'));
   } else if (CASE === "failed") {
     await js(`window.realFetch = window.fetch.bind(window);
       window.fetch = async (url, options) => {
