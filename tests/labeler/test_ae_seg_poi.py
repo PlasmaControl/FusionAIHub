@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
+import pytest
 from PIL import Image
 
 from labeler.ae.seg import model_dir, poi, poi_dir, pseudo, train
 from labeler.ae.seg.model import SegNet, SegNetConfig
+from labeler.config import sha256_of
 from labeler.events.review.rows import Grid
 
 from . import ae_tree
@@ -63,6 +67,13 @@ def test_the_command_finds_points_on_stores_and_draws_them(tmp_path, monkeypatch
     assert poi.main(["--workers", "1"]) == 0
     table = pd.read_csv(poi_dir(paths) / "poi.csv")
     assert table.shot.tolist() == [101, 102] and (table.source == "store").all()
+    meta = json.loads((poi_dir(paths) / "meta.json").read_text())
+    assert meta["model_sha256"] == sha256_of(model_dir(paths) / "model.pt")
+    assert meta["threshold"] == 0.0 and meta["MIN_POI_PIXELS"] == 20
+    assert meta["shots"] == [101, 102]
+    assert meta["points_before_2s"] == int((table.t_peak_ms < 2000).sum())
+    assert meta["points_after_2s"] == int((table.t_peak_ms >= 2000).sum())
+    assert meta["git_sha"] and meta["made_at"]
     assert (table.f_lo_khz.round(0) == 80).all() and (table.f_hi_khz > 249).all()
     with Image.open(poi.gallery_dir(paths) / "101.jpg") as image:
         assert image.format == "JPEG" and image.size == (1600, 1000)
@@ -87,3 +98,86 @@ def test_no_region_over_the_threshold_is_no_point(tmp_path, monkeypatch):
     assert poi.main(["--workers", "1", "--no-pictures"]) == 0
     assert pd.read_csv(poi_dir(paths) / "poi.csv").empty
     assert not poi.gallery_dir(paths).exists()
+
+
+@pytest.mark.parametrize("review", [None, (2, 5)])
+def test_pictures_explain_review_number_only_the_largest_and_mark_scored_time(
+    tmp_path, monkeypatch, review
+):
+    from matplotlib.figure import Figure
+
+    figures = []
+    grid = Grid(0.0, 100.0, 32)
+    labelled = np.zeros((257, 32), dtype=int)
+    labelled[100, ::2] = 1
+    found = [
+        {
+            "region": k,
+            "pixels": 100 if k == 32 else 20,
+            "t_start_ms": k * 90,
+            "f_hi_khz": 101,
+        }
+        for k in range(1, 33)
+    ]
+
+    # atomic_path expects its temporary file to have been written by savefig.
+    def savefig(fig, path, **kwargs):
+        figures.append(fig)
+        path.write_bytes(b"picture")
+
+    monkeypatch.setattr(Figure, "savefig", savefig)
+    poi.draw(
+        tmp_path / "picture.jpg",
+        title="test",
+        grid=grid,
+        row=np.zeros_like(labelled),
+        y0=0.0,
+        dy=DY,
+        labelled=labelled,
+        found=found,
+        pseudo=np.zeros_like(labelled),
+        pseudo_review=review,
+    )
+    [fig] = figures
+    assert fig.axes[0].get_title(loc="left") == (
+        "32 regions the model draws (the 30 largest numbered; all in poi.csv)"
+    )
+    numbered = {int(t.get_text()) for t in fig.axes[0].texts if t.get_text().isdigit()}
+    assert numbered == {*range(1, 30), 32}
+    assert len(fig.axes[0].collections) == 1, "every region is still contoured"
+    expected = (
+        "pseudo-mask (TokEye inside the owner's AE frames; regions not reviewed)"
+        if review is None
+        else "pseudo-mask after the owner's region review (2 of 5 rejected)"
+    )
+    assert fig.axes[1].get_title(loc="left") == expected
+    for ax in fig.axes:
+        scored = [line for line in ax.lines if line.get_label() == "scored: 0-2 s"]
+        assert len(scored) == 1
+        assert list(scored[0].get_xdata()) == [2000, 2000]
+        assert scored[0].get_linestyle() == "--"
+        assert any(t.get_text() == "scored: 0-2 s" for t in ax.texts)
+
+
+@pytest.mark.parametrize("current", [False, True])
+def test_only_a_current_region_decision_is_called_reviewed(
+    tmp_path, monkeypatch, current
+):
+    from labeler.ae.seg import regions
+
+    paths = ae_tree.build(tmp_path, {101: "train"}, tokeye_dt=0.256)
+    ae_tree.env(monkeypatch, paths)
+    assert pseudo.main([]) == 0
+    _model(paths, 1.01)
+    regions.save_decision(
+        paths.label_tables / "alfven_eigenmode",
+        101,
+        [1],
+        pseudo_sha256=(
+            regions.file_sha256(regions.pseudo_file(paths, 101)) if current else "old"
+        ),
+    )
+    captured = []
+    monkeypatch.setattr(poi, "draw", lambda path, **kwargs: captured.append(kwargs))
+    assert poi.main(["--workers", "1"]) == 0
+    assert captured[0]["pseudo_review"] == ((1, 1) if current else None)
