@@ -1,5 +1,5 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -85,11 +85,11 @@ const opened = (shot) => until(`typeof S !== "undefined" && S.shot === ${shot} &
 const mouse = (type, x, y, more = {}) =>
   send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1, ...more });
 
-async function drag(x0, x1, y) {
-  await mouse("mouseMoved", x0, y, { button: "none" });
-  await mouse("mousePressed", x0, y, { buttons: 1 });
-  for (let i = 1; i <= 8; i++) await mouse("mouseMoved", x0 + ((x1 - x0) * i) / 8, y, { buttons: 1 });
-  await mouse("mouseReleased", x1, y, { buttons: 0 });
+async function drag(x0, x1, y, modifiers = 0) {
+  await mouse("mouseMoved", x0, y, { button: "none", modifiers });
+  await mouse("mousePressed", x0, y, { buttons: 1, modifiers });
+  for (let i = 1; i <= 8; i++) await mouse("mouseMoved", x0 + ((x1 - x0) * i) / 8, y, { buttons: 1, modifiers });
+  await mouse("mouseReleased", x1, y, { buttons: 0, modifiers });
 }
 
 /** Draw a span over t0-t1 ms on the label track. */
@@ -103,7 +103,8 @@ async function draw(t0, t1) {
 
 /** A key press; `modifiers` is CDP's bit set: 2 is Ctrl, 8 is Shift. */
 async function press(key, modifiers = 0) {
-  const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowLeft: [37, ""], ArrowRight: [39, ""], " ": [32, " "] }[key];
+  const named = { Enter: [13, "\r"], Escape: [27, ""], ArrowLeft: [37, ""], ArrowRight: [39, ""],
+    Delete: [46, ""], Backspace: [8, ""], " ": [32, " "] }[key];
   const [code, text] = named || [key.toUpperCase().charCodeAt(0), key];
   const event = { key, code: named ? key : `Key${key.toUpperCase()}`, windowsVirtualKeyCode: code, modifiers };
   await send("Input.dispatchKeyEvent", { type: "keyDown", ...event, ...(modifiers || !text ? {} : { text }) });
@@ -490,6 +491,113 @@ async function moves() {
     same(await js("S.label"), draft) && (await js(`!$("dirty").hidden`)), saves);
 }
 
+async function emptyEvent() {
+  const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
+  await draw(500, 800);
+  const edited = await js("S.label"), kept = await drafts();
+  check("the previous shot has a label, an undo and a selection to clear", await js(`
+    S.label.intervals.length === 2 && S.undo.length > 0 && S.selected >= 0 &&
+    $("tier").textContent === "gold" && $("saved").textContent.startsWith("saved ")`));
+
+  await arm("queue", b);
+  await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
+  await held("queue");
+  // A paint queued for the old shot must not run after the empty queue arrives.
+  await js(`render(); window.gates.queue.released = true;
+    window.gates.queue.waiters.forEach((done) => done())`);
+  await until(`S.event === "${b}" && S.queue.length === 0`);
+  await js("new Promise(requestAnimationFrame)");
+  check("the empty roster is a usable event", await js(`
+    S.events.some((row) => row.event === "${b}" && row.n_shots === 0 && !row.error)`));
+  check("an empty queue clears the previous shot and all label state", await js(`
+    [S.shot, S.meta, S.data, S.overview, S.label].every((value) => value === null) &&
+    S.undo.length === 0 && S.selected === -1`), await js(`
+    ({shot: S.shot, hasMeta: !!S.meta, hasData: !!S.data, hasOverview: !!S.overview,
+      label: S.label, undo: S.undo.length, selected: S.selected})`));
+  check("the rows show only the empty-event note", await js(`
+    $("rows").children.length === 1 && $("rows").firstElementChild.className === "failure" &&
+    $("rows").textContent === "${b} has no shots to review."`), await js(`$("rows").textContent`));
+  check("the old shot's top and label canvases are cleared", await js(`
+    [...document.querySelectorAll("#top canvas, .track canvas")].every((canvas) =>
+      canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data.every((v) => v === 0))`));
+  check("empty navigation is finished", await js(`
+    S.opened.ticket === S.ticket && S.opened.event === "${b}" && S.opened.shot === null &&
+    !pendingNavigation()`), await js("[S.ticket, S.opened]"));
+  check("the empty event has an event-only address and an empty header", await js(`
+    location.hash === "#${b}" && $("shot").value === "" && $("count").textContent === "0/0" &&
+    ["tier", "state", "saved", "next-shot"].every((id) => $(id).textContent === "") &&
+    $("dirty").hidden && $("cursor").hidden`));
+  check("empty navigation disables Save, Revert and History", await js(`
+    ["save-next", "revert", "show-versions"].every((id) => $(id).disabled)`));
+
+  const requests = await js("window.requests.length");
+  await js("document.activeElement.blur()");
+  for (const key of [...await js("Object.keys(KEYS)"), "J", "K", "U"]) {
+    await press(key.replace("Shift+", ""), key.startsWith("Shift+") || /^[JKU]$/.test(key) ? 8 : 0);
+    check(`${key} on an empty event neither opens nor saves nor throws`, await js(`
+      S.shot === null && S.label === null && S.opened.ticket === S.ticket &&
+      window.requests.length === ${requests} && window.saves.length === 0 &&
+      !$("versions").open && !$("status").textContent.includes("still opening")`) && errors.length === 0, errors.slice());
+  }
+  await press("z", 2);
+  await js(`$("save-next").click(); $("revert").click(); $("show-versions").click()`);
+  // Exercise the entry points too: disabled controls and key filtering must not hide a null dereference.
+  const actionErrors = await js(`(async () => {
+    const errors = [];
+    for (const action of [() => edit([0, 2000], [[900, 1100, 1]]), undo, revert,
+      () => save(false), () => save(true), toggleVersions]) {
+      try { await action(); } catch (error) { errors.push(String(error)); }
+    }
+    return errors;
+  })()`);
+  check("direct edit, undo, revert, save and History are harmless without a shot",
+    actionErrors.length === 0 && (await js("S.label === null && S.undo.length === 0")), actionErrors);
+  const [x, y] = await js(`(() => {
+    const r = $("rows").getBoundingClientRect(); return [r.left + 150, r.top + 20];
+  })()`);
+  await drag(x, x + 150, y, 8);
+  await draw(1200, 1400);
+  check("drags on the rows and label track add no label or draft", await js(`
+    S.label === null && S.drag === null && S.undo.length === 0`) && same(await drafts(), kept));
+  check("all empty-event actions send no request and show no opening message", await js(`
+    window.requests.length === ${requests} && window.saves.length === 0 &&
+    !$("status").textContent.includes("still opening")`));
+  // Report the empty-state failures before trying navigation that depends on it.
+  if (await js("S.shot !== null || pendingNavigation()")) return;
+
+  // Typing a shot in an empty roster still reaches the server's normal missing-shot path.
+  await js(`$("shot").focus(); $("shot").value = "170815"`);
+  await press("Enter");
+  await until(`S.shot === 170815 && S.opened.ticket === S.ticket`);
+  check("a shot typed from empty uses the normal missing-shot path", await js(`
+    S.meta === null && $("rows").textContent.includes("170815 has nothing to show:") &&
+    location.hash === "#${b}/170815" && window.requests.at(-1).kind === "shot"`));
+  await js(`openShot(null).then(() => document.activeElement.blur())`);
+  await js(`location.hash = "#${a}/170815"`);
+  await settled(a, 170815);
+  check("an address opens another event's shot from empty with its draft", same(await js("S.label"), edited));
+
+  await js(`openEvent("${b}")`);
+  await js(`location.hash = "#${b}/170815"`);
+  await until(`S.shot === 170815 && S.opened.ticket === S.ticket`);
+  check("an address opens a shot in the same empty event through the normal error path", await js(`
+    S.meta === null && $("rows").textContent.includes("170815 has nothing to show:")`));
+  await js("openShot(null)");
+  await js(`$("event").value = "${a}"; $("event").dispatchEvent(new Event("change"))`);
+  await settled(a, 170815);
+  check("switching back from empty opens the first event's shot and draft", same(await js("S.label"), edited));
+  await press("r");
+  await draw(500, 800);
+  const drawn = await js("S.label");
+  check("an edit works after returning from empty", drawn.intervals.length === 2 && (await js("dirty()")));
+  await press("s");
+  await until("!S.saving && !dirty()");
+  const saved = await js("window.saves");
+  check("saving after returning posts only the first event's own label", saved.length === 1 &&
+    saved[0].event === a && saved[0].shot === 170815 && same(saved[0].intervals, drawn.intervals) &&
+    same(await js("S.meta.saved"), drawn), saved);
+}
+
 async function olderServer() {
   check(
     "the link opens its shot on its source label",
@@ -576,11 +684,12 @@ try {
       };
     ` });
   }
-  if (SCENARIO === "race" || SCENARIO === "moves") await recordFetches(SCENARIO === "race");
+  if (["race", "moves", "empty"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   if (SCENARIO !== "race") await opened(170815);
   if (SCENARIO === "race") await navigationRace();
   else if (SCENARIO === "moves") await moves();
+  else if (SCENARIO === "empty") await emptyEvent();
   else if (SCENARIO === "api1") await olderServer();
   else await currentServer();
 } catch (error) {
