@@ -6,6 +6,12 @@ the page opened the shot on (`labels.read_source`), both on `scoring.frames`'
 observable are left out; the counts are pooled over the shots saved from the
 table.
 
+A save counts only when the page opened it on the table the pointer names now:
+the shot's last save in `review/history.jsonl` records that table's name as its
+`source`. A save opened on another table, before the pointer moved to this one,
+compares nothing this method drew; it is left out, and `excluded_saves` counts
+such saves by the table they were opened on.
+
 The saves started from these suggestions, so this is an upper bound on what a
 blind reader would measure: a reviewer who confirms without looking agrees
 perfectly. It answers whether the method's output is close to what the reviewer
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -55,21 +62,31 @@ def pooled(pairs: Iterable[tuple[Assessment, Assessment]]) -> dict:
     }
 
 
+def opened_on(event_dir: Path) -> dict[int, str | None]:
+    """The table each saved shot's last save was opened on, by name."""
+    return {int(e["shot"]): e.get("source") for e in labels.read_history(event_dir)}
+
+
 def agreement(event_dir: Path) -> dict:
     saved, source = labels.read_saved(event_dir), labels.read_source(event_dir)
-    shots = sorted(set(saved) & set(source))
+    table = labels.source_path(event_dir)
+    name = None if table is None else table.name
+    opened = opened_on(event_dir)
+    elsewhere = {shot: opened.get(shot) for shot in saved if opened.get(shot) != name}
+    shots = sorted(set(saved) & set(source) - set(elsewhere))
     scores = pooled(
         (Assessment.from_label(saved[shot]), Assessment.from_label(source[shot]))
         for shot in shots
     )
     precision, recall = scores["precision"], scores["recall"]
-    table = labels.source_path(event_dir)
+    excluded = Counter(str(source) for source in elsewhere.values())
     return {
         "event": Path(event_dir).name,
         "table": None if table is None else str(table),
         "shots": len(shots),
         "unchanged": sum(saved[shot] == source[shot] for shot in shots),
         **scores,
+        "excluded_saves": dict(sorted(excluded.items())),
         "ready": len(shots) >= MIN_SHOTS
         and None not in (precision, recall)
         and min(precision, recall) >= MIN_SCORE,
