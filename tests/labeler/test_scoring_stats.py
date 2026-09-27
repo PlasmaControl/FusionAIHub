@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import math
+from collections import Counter
 from itertools import product
+from pathlib import Path
 from time import perf_counter
 
 import numpy as np
 import pytest
+import yaml
 
 from labeler.scoring.frames import PRESENT, Assessment, frame_counts
 from labeler.scoring.stats import (
@@ -24,6 +28,7 @@ from labeler.scoring.stats import (
     recall,
     replicate_weights,
     stratum_weights,
+    two_stage_weights,
     weighted_median,
 )
 
@@ -553,6 +558,42 @@ def test_median_estimate_keeps_event_free_draws_undefined():
     empty = median_estimate([], [], ["g", "g"], [1, 1], n=100, seed=3)
     assert math.isnan(empty.value) and math.isnan(empty.low) and math.isnan(empty.high)
     assert empty.undefined == empty.replicates == 100
+
+
+def _frozen_release():
+    catalog = Path(__file__).resolve().parents[2] / "data/events/catalog"
+    with (catalog / "cohort.csv").open() as stream:
+        cohort = list(csv.DictReader(stream))
+    manifest = yaml.safe_load((catalog / "cohort_manifest.yaml").read_text())
+    return cohort, manifest["cells"]
+
+
+def test_frozen_release_blind_weights_equal_manifest_d25():
+    from fractions import Fraction
+
+    cohort, cells = _frozen_release()
+    blind = [row for row in cohort if row["split"] == "test"]
+    counts = Counter(row["group"] for row in cohort)
+    blind_counts = Counter(row["group"] for row in blind)
+    assert len(cohort) == 500 and len(blind) == 50
+    assert counts == {"L": 145, "G": 100, "R": 255}
+    assert blind_counts == {"L": 15, "G": 10, "R": 25}
+    expected = []
+    for row in blind:
+        cell, group = cells[row["cell"]], row["group"]
+        expected.append(
+            float(
+                Fraction(cell["N"], cell["n"])
+                * Fraction(counts[group], blind_counts[group])
+            )
+        )
+    weights = two_stage_weights(
+        [float(row["weight"]) for row in blind],
+        [row["group"] for row in blind],
+        counts,
+    )
+    np.testing.assert_allclose(weights, expected, rtol=1e-15)
+    assert round(float(weights.sum()), 2) == 4888.24
 
 
 @pytest.mark.parametrize("bad", [-1, np.nan, np.inf])

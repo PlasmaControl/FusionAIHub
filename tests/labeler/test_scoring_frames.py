@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import numpy as np
 import pytest
 
@@ -13,6 +15,7 @@ from labeler.scoring.frames import (
     PRESENT,
     UNCERTAIN,
     Assessment,
+    FrameCounts,
     agreement_frames,
     frame_counts,
     frame_grid,
@@ -239,3 +242,51 @@ def test_checked_present_span_cannot_start_at_or_after_allowed_end(start, prefix
     rows = ([(8, start, ABSENT)] if prefix else []) + [(start, 5262, PRESENT)]
     with pytest.raises(ValueError, match=rf"span {start}-5262.*allowed end 5260"):
         Assessment.from_checked(rows, (8, 5260), category="disruption")
+
+
+def test_random_frame_counts_against_millisecond_hand_count():
+    rng = np.random.default_rng(97531)
+
+    def draw():
+        lo = int(rng.integers(-60, 60))
+        hi = lo + int(rng.integers(1, 400))
+        cuts = sorted({lo, hi, *map(int, rng.integers(lo, hi + 1, size=10))})
+        spans = tuple(
+            (a, b, int(rng.integers(1, 4)))
+            for a, b in pairwise(cuts)
+            if rng.random() < 0.6
+        )
+        read = Assessment((lo, hi), spans)
+        ticks = {t: 0 for t in range(lo, hi)}
+        for a, b, state in spans:
+            ticks.update(dict.fromkeys(range(a, b), state))
+        frames = []
+        for start in range(-60, 460, 10):
+            values = [ticks.get(t, OUTSIDE) for t in range(start, start + 10)]
+            frames.append(OUTSIDE if OUTSIDE in values else max(values))
+        return read, frames
+
+    totals = np.zeros(8, dtype=int)
+    for _ in range(400):
+        reference, ref = draw()
+        estimate, est = draw()
+        tp = fp = fn = tn = excluded = uncertain = unobserved = reference_only = 0
+        for truth, said in zip(ref, est):
+            if truth == OUTSIDE:
+                continue
+            if said == OUTSIDE:
+                reference_only += truth in (ABSENT, PRESENT)
+            elif truth > PRESENT:
+                excluded += 1
+            else:
+                tp += truth == PRESENT and said == PRESENT
+                fp += truth == ABSENT and said == PRESENT
+                fn += truth == PRESENT and said != PRESENT
+                tn += truth == ABSENT and said != PRESENT
+                uncertain += said == UNCERTAIN
+                unobserved += said == NOT_OBSERVABLE
+        expected = (tp, fp, fn, tn, excluded, uncertain, unobserved, reference_only)
+        assert frame_counts(reference, estimate) == FrameCounts(*expected)
+        assert tp + fp + fn + tn + reference_only == sum(t in (0, 1) for t in ref)
+        totals += expected
+    assert (totals > 0).all()  # Every count field was exercised.
