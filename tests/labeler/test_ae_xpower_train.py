@@ -7,6 +7,7 @@ import pytest
 
 from labeler.ae.xpower import event_dir, train
 from labeler.ae.xpower.model import FrameCNN, FrameCNNConfig
+from labeler.config import Paths
 from labeler.events.review import labels
 
 from . import ae_tree
@@ -43,7 +44,13 @@ def test_owner_save_during_fit_does_not_change_the_training_snapshot(
     assert json.loads((out / "training.json").read_text())["labels_sha256"] == digest
 
 
-def test_training_refuses_a_checkpoint_before_loading_data(tmp_path, capsys):
+def test_training_refuses_a_checkpoint_before_loading_data(
+    tmp_path, monkeypatch, capsys
+):
+    ae_tree.env(
+        monkeypatch,
+        Paths(root=tmp_path / "root", label_tables=tmp_path / "events"),
+    )
     file = tmp_path / "model.pt"
     file.write_bytes(b"original")
     with pytest.raises(SystemExit) as error:

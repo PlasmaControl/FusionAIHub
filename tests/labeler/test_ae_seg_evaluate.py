@@ -91,3 +91,87 @@ def test_the_command_scores_the_test_shots_against_the_baselines(tmp_path, monke
     report = (model_dir(paths) / "evaluation.md").read_text()
     assert report.startswith("# AE segmentation on the test shots")
     assert "Tier: suggestions." in report
+
+
+@pytest.fixture
+def frozen_model(tmp_path, monkeypatch):
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "train", 103: "valid"})
+    ae_tree.chosen(paths, {101: "train", 102: "val", 103: "test"})
+    ae_tree.env(monkeypatch, paths)
+    assert pseudo.main([]) == 0
+    monkeypatch.setattr(
+        train,
+        "fit",
+        lambda *a, **kw: (train.SegNet(train.SegNetConfig(width=4)), [], 0.5),
+    )
+    assert train.main([]) == 0
+    return paths, model_dir(paths)
+
+
+def test_live_owner_edits_do_not_change_frozen_evaluation(frozen_model, tmp_path):
+    import shutil
+
+    from labeler.ae.seg import regions
+    from labeler.config import sha256_of
+    from labeler.events.review import labels
+
+    paths, models = frozen_model
+    # Two copies of one trained bundle, each evaluated once, on synthetic data.
+    copy = tmp_path / "same-bundle"
+    shutil.copytree(models, copy)
+    first = evaluate.run_test(paths, models)
+    directory = paths.label_tables / "alfven_eigenmode"
+    labels.save(directory, 103, labels.normalise((0, 2000), []), source="edit")
+    regions.save_decision(
+        directory,
+        103,
+        [1],
+        pseudo_sha256=regions.file_sha256(regions.pseudo_file(paths, 103)),
+    )
+    second = evaluate.run_test(paths, copy)
+    for key in ("methods", "differences", "counts", "bar"):
+        assert first[key] == second[key]
+    meta = second["meta"]
+    assert meta["model_sha256"] == sha256_of(copy / "model.pt")
+    assert meta["split_sha256"] == sha256_of(copy / "split.csv")
+    assert meta["evaluation_inputs"]["labels_sha256"] == sha256_of(
+        labels.labels_path(copy)
+    )
+    assert meta["evaluation_inputs"]["masks_sha256"] == sha256_of(
+        regions.log_path(copy)
+    )
+
+
+@pytest.mark.parametrize("change", ["npz", "choice", "legacy", "evaluation"])
+def test_evaluation_refuses_drift_and_repeat_scoring(
+    frozen_model, monkeypatch, capsys, change
+):
+    from labeler.ae.seg import regions
+
+    paths, models = frozen_model
+    if change == "npz":
+        file = regions.pseudo_file(paths, 103)
+        file.write_bytes(file.read_bytes() + b"changed")
+    elif change == "choice":
+        choice = train.ae_model_dir(paths) / "chosen.json"
+        other = choice.parent / "other"
+        other.mkdir()
+        (other / "model.pt").write_bytes(b"different xpower model")
+        choice.write_text('{"candidate": "other"}')
+        file = other / "model.pt"
+    elif change == "legacy":
+        file = models / "pseudo_masks.json"
+        file.unlink(missing_ok=True)
+    else:
+        file = models / "evaluation.json"
+        file.write_text("original evaluation")
+    with pytest.raises((ValueError, FileExistsError)) as error:
+        evaluate.run_test(paths, models)
+    assert str(file) in str(error.value)
+    with pytest.raises(SystemExit) as error:
+        evaluate.main([])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(file) in stderr and "Traceback" not in stderr
+    if change == "evaluation":
+        assert file.read_text() == "original evaluation"

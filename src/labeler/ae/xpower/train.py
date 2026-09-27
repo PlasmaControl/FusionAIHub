@@ -301,8 +301,8 @@ def load(path) -> tuple[FrameCNN, dict]:
     return model, blob
 
 
-def read_split(path) -> dict[int, str]:
-    lines = Path(path).read_text().split()
+def read_split(path, *, data: bytes | None = None) -> dict[int, str]:
+    lines = (Path(path).read_bytes() if data is None else data).decode().split()
     return {int(a): b for a, b in (line.split(",") for line in lines[1:])}
 
 

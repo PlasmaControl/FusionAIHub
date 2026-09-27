@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
 from labeler.ae.seg import pseudo
 from labeler.ae.xpower.data import clean_path, tokeye_clean
+from labeler.config import sha256_of
 from labeler.events.review import labels
 from labeler.events.review.rows import Grid
 
@@ -88,3 +91,17 @@ def test_the_command_writes_a_mask_per_saved_shot_and_an_index(tmp_path, monkeyp
     assert index.regions.tolist() == [1, 1]
     assert (index.ae_px > 250).all()
     assert (out / "meta.json").is_file()
+    meta = json.loads((out / "meta.json").read_text())
+    for shot in (101, 102):
+        assert meta["tokeye_sha256"][str(shot)] == sha256_of(
+            clean_path(paths.root / "ae/masks", shot)
+        )
+
+
+def test_writing_a_pseudo_mask_twice_gives_identical_bytes(tmp_path):
+    pm, _ = _mask(tmp_path)
+    path = tmp_path / "mask.npz"
+    pm.save(path)
+    first = path.read_bytes()
+    pm.save(path)
+    assert path.read_bytes() == first

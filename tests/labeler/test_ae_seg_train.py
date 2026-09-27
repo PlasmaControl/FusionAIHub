@@ -11,6 +11,8 @@ import torch
 
 from labeler.ae.seg import model_dir, pseudo, regions, train
 from labeler.ae.seg.pseudo import IGNORE
+from labeler.config import Paths, sha256_of
+from labeler.events.review import labels
 
 from . import ae_tree
 
@@ -128,6 +130,16 @@ def test_the_command_trains_on_the_ae_split_and_saves_the_model(tmp_path, monkey
     assert not loaded.training
     assert blob["train"]["width"] == 4 and blob["threshold"] in train.THRESHOLDS
     assert blob["inputs"]["masks_sha256"] is not None
+    directory = paths.label_tables / "alfven_eigenmode"
+    assert labels.read_saved(out) == labels.read_saved(directory)
+    assert regions.read_decisions(out) == regions.read_decisions(directory)
+    manifest = json.loads((out / "pseudo_masks.json").read_text())
+    assert set(manifest) == {"index.csv", "101.npz", "102.npz", "103.npz", "104.npz"}
+    for name, digest in manifest.items():
+        assert digest == sha256_of(train.pseudo_dir(paths) / name)
+    assert blob["inputs"]["pseudo_masks_sha256"] == sha256_of(out / "pseudo_masks.json")
+    ae_file = train.chosen_model(train.ae_model_dir(paths))
+    assert blob["inputs"]["ae_model_sha256"] == sha256_of(ae_file)
     assert (out / "split.csv").read_text().split() == [
         "shot,split",
         "101,train",
@@ -155,7 +167,7 @@ def test_a_mask_off_the_store_grid_is_refused(tmp_path):
         train.load_example(paths, 101, {})
 
 
-@pytest.mark.parametrize("changed", ["labels", "masks", "index"])
+@pytest.mark.parametrize("changed", ["labels", "masks", "index", "npz", "ae"])
 @pytest.mark.parametrize("when", ["load", "fit"])
 def test_changed_training_inputs_refuse_to_save(
     tmp_path, monkeypatch, capsys, changed, when
@@ -169,6 +181,8 @@ def test_changed_training_inputs_refuse_to_save(
         "labels": directory / "review" / "labels.csv",
         "masks": regions.log_path(directory),
         "index": train.pseudo_dir(paths) / "index.csv",
+        "npz": regions.pseudo_file(paths, 101),
+        "ae": train.chosen_model(train.ae_model_dir(paths)),
     }
     changed_file = files[changed]
     out = tmp_path / "seg-model"
@@ -197,3 +211,18 @@ def test_changed_training_inputs_refuse_to_save(
     assert "changed" in output.err.lower()
     assert "Traceback" not in output.err
     assert not out.exists()
+
+
+def test_train_refuses_an_existing_model_before_inputs(tmp_path, monkeypatch, capsys):
+    ae_tree.env(
+        monkeypatch,
+        Paths(root=tmp_path / "root", label_tables=tmp_path / "events"),
+    )
+    path = tmp_path / "model.pt"
+    path.write_bytes(b"existing")
+    with pytest.raises(SystemExit) as error:
+        train.main(["--out", str(tmp_path)])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(path) in stderr and "Traceback" not in stderr
+    assert path.read_bytes() == b"existing"

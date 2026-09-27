@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import resource
@@ -35,7 +36,9 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import torch
@@ -47,7 +50,7 @@ from ..xpower import event_dir
 from ..xpower import model_dir as ae_model_dir
 from ..xpower.data import SEED, store_rows
 from ..xpower.evaluate import chosen_model
-from ..xpower.train import read_split
+from ..xpower.train import read_split, refuse_checkpoint
 from . import EVENT, model_dir, pseudo_dir, regions
 from .model import SegNet, SegNetConfig
 from .pseudo import IGNORE, LEVEL, PseudoMask
@@ -84,16 +87,22 @@ class Example:
 
 
 def load_example(
-    paths: Paths, shot: int, decisions: dict, margin: int | None = MARGIN_COLS
+    paths: Paths,
+    shot: int,
+    decisions: dict,
+    margin: int | None = MARGIN_COLS,
+    *,
+    pseudo_bytes: bytes | None = None,
 ) -> Example:
     """One shot, cut to its scored columns and `margin` either side; the whole
     shot when `margin` is None."""
     grid, values, y0, dy = store_rows(paths.spectrogram_file(EVENT, shot), LEVEL)
     file = regions.pseudo_file(paths, shot)
-    pm = PseudoMask.load(file)
+    data = file.read_bytes() if pseudo_bytes is None else pseudo_bytes
+    pm = PseudoMask.load(BytesIO(data))
     if values.shape[1:] != pm.mask.shape or abs(pm.t0_ms - grid.t0_ms) > 1e-6:
         raise ValueError(f"{shot}: the pseudo-mask is not on the store's level {LEVEL}")
-    y = regions.reviewed_mask(pm, decisions.get(shot), regions.file_sha256(file))
+    y = regions.reviewed_mask(pm, decisions.get(shot), hashlib.sha256(data).hexdigest())
     scored = np.flatnonzero((y != IGNORE).any(axis=0))
     if not scored.size:
         raise ValueError(f"{shot}: the pseudo-mask scores no pixel")
@@ -272,9 +281,15 @@ def save(
     history: list[dict],
     config: TrainConfig,
     inputs: dict,
+    bundle: dict[str, bytes] | None = None,
+    allow_replace: bool = False,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index)."""
+    refuse_checkpoint(out, allow_replace=allow_replace)
     out.mkdir(parents=True, exist_ok=True)
+    for name, data in (bundle or {}).items():
+        with atomic_path(out / name) as tmp:
+            tmp.write_bytes(data)
     blob = {
         "state_dict": model.state_dict(),
         "config": model.config.as_dict(),
@@ -318,6 +333,16 @@ def _sha(path: Path) -> str | None:
     return sha256_of(path) if path.is_file() else None
 
 
+def read_review_bytes(labels_bytes: bytes, masks_bytes: bytes) -> tuple[dict, dict]:
+    """Parse immutable review snapshots with the review modules' own parsers."""
+    with TemporaryDirectory(prefix="ae-seg-review-") as directory:
+        file = labels.labels_path(directory)
+        file.parent.mkdir(parents=True)
+        file.write_bytes(labels_bytes)
+        regions.log_path(directory).write_bytes(masks_bytes)
+        return labels.read_saved(directory), regions.read_decisions(directory)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--out", type=Path, help="default $LABELER_ROOT/models/ae_seg/v1")
@@ -336,21 +361,62 @@ def main(argv=None) -> int:
     out = args.out or (
         paths.runs / "ae_seg" / "pilot" if args.pilot else model_dir(paths)
     )
-    split = read_split(chosen_model(ae_model_dir(paths)).parent / "split.csv")
+    try:
+        refuse_checkpoint(out, allow_replace=bool(args.pilot))
+    except FileExistsError as error:
+        p.error(str(error))
+    directory = event_dir(paths)
+    labels_file = labels.labels_path(directory)
+    masks_file = regions.log_path(directory)
+    labels_bytes = labels_file.read_bytes()
+    try:
+        masks_bytes = masks_file.read_bytes()
+        masks_hash = hashlib.sha256(masks_bytes).hexdigest()
+    except FileNotFoundError:
+        masks_bytes, masks_hash = b"", None
+    saved, decisions = read_review_bytes(labels_bytes, masks_bytes)
+    ae_file = chosen_model(ae_model_dir(paths))
+    input_files = {
+        "labels_sha256": labels_file,
+        "masks_sha256": masks_file,
+        "pseudo_index_sha256": pseudo_dir(paths) / "index.csv",
+        "ae_model_sha256": ae_file,
+        "ae_split_sha256": ae_file.parent / "split.csv",
+        "ae_chosen_sha256": ae_model_dir(paths) / "chosen.json",
+    }
+    initial = {
+        key: _sha(path)
+        for key, path in input_files.items()
+        if key not in ("labels_sha256", "masks_sha256")
+    }
+    initial.update(
+        labels_sha256=hashlib.sha256(labels_bytes).hexdigest(),
+        masks_sha256=masks_hash,
+    )
+    split = read_split(ae_file.parent / "split.csv")
     have = {s for s in split if regions.pseudo_file(paths, s).is_file()}
     split = {s: v for s, v in split.items() if s in have}
     if args.pilot:
         chosen = sorted(s for s, v in split.items() if v == "train")[: args.pilot - 4]
         chosen += sorted(s for s, v in split.items() if v == "val")[:4]
         split = {s: v for s, v in split.items() if v == "test" or s in chosen}
-    directory = event_dir(paths)
-    input_files = {
-        "labels_sha256": labels.labels_path(directory),
-        "masks_sha256": regions.log_path(directory),
-        "pseudo_index_sha256": pseudo_dir(paths) / "index.csv",
+    missing = sorted(set(split) - saved.keys())
+    if missing:
+        p.error(f"{labels_file}: no archived labels for split shots {missing}")
+    mask_files = {f"{s}.npz": regions.pseudo_file(paths, s) for s in sorted(split)}
+    mask_files["index.csv"] = pseudo_dir(paths) / "index.csv"
+    manifest = {name: sha256_of(path) for name, path in mask_files.items()}
+    manifest_bytes = (json.dumps(manifest, indent=1) + "\n").encode()
+    inputs = {
+        **initial,
+        "masks_sha256": hashlib.sha256(masks_bytes).hexdigest(),
+        "pseudo_masks_sha256": hashlib.sha256(manifest_bytes).hexdigest(),
     }
-    inputs = {key: _sha(path) for key, path in input_files.items()}
-    decisions = regions.read_decisions(directory)
+    bundle = {
+        "review/labels.csv": labels_bytes,
+        "review/masks.jsonl": masks_bytes,
+        "pseudo_masks.json": manifest_bytes,
+    }
     started = time.monotonic()
     examples = {
         s: load_example(paths, s, decisions)
@@ -365,18 +431,27 @@ def main(argv=None) -> int:
         train, val, config, log=lambda m: print(m, flush=True)
     )
     for key, path in input_files.items():
-        if _sha(path) != inputs[key]:
+        if _sha(path) != initial[key]:
             print(f"training input changed: {path}; refusing to save", file=sys.stderr)
             return 1
-    save(
-        out,
-        model,
-        threshold=threshold,
-        split=split,
-        history=history,
-        config=config,
-        inputs=inputs,
-    )
+    for name, path in mask_files.items():
+        if _sha(path) != manifest[name]:
+            print(f"training input changed: {path}; refusing to save", file=sys.stderr)
+            return 1
+    try:
+        save(
+            out,
+            model,
+            threshold=threshold,
+            split=split,
+            history=history,
+            config=config,
+            inputs=inputs,
+            bundle=bundle,
+            allow_replace=bool(args.pilot),
+        )
+    except FileExistsError as error:
+        p.error(str(error))
     print(f"wrote {out}: best epoch {best_epoch(history)}, threshold {threshold}")
     return 0
 
