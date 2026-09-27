@@ -19,21 +19,22 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import resource
-import shutil
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import torch
 from torch.nn import functional as F
 
-from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_sha
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from . import EVENT, event_dir, model_dir, tokeye_masks
@@ -247,7 +248,10 @@ def save(
     band_khz,
     labels_file: Path,
     candidate: str = "",
+    labels_bytes: bytes | None = None,
 ) -> None:
+    if labels_bytes is None:
+        labels_bytes = labels_file.read_bytes()
     out.mkdir(parents=True, exist_ok=True)
     blob = {
         "state_dict": model.state_dict(),
@@ -257,7 +261,7 @@ def save(
         "band_khz": [float(b) for b in band_khz],
         "train": asdict(config),
         "best_epoch": best_epoch(history),
-        "labels_sha256": sha256_of(labels_file),
+        "labels_sha256": hashlib.sha256(labels_bytes).hexdigest(),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
@@ -265,11 +269,12 @@ def save(
         torch.save(blob, tmp)
     # The labels as trained on, where `labels.read_saved(out)` finds them.
     with atomic_path(labels.labels_path(out)) as tmp:
-        shutil.copyfile(labels_file, tmp)
+        tmp.write_bytes(labels_bytes)
     with atomic_path(out / "split.csv") as tmp:
         lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
         tmp.write_text("\n".join(lines) + "\n")
     record = {
+        "labels_sha256": blob["labels_sha256"],
         "history": history,
         "best_epoch": best_epoch(history),
         "threshold": threshold,
@@ -324,7 +329,15 @@ def main(argv=None) -> int:
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate)
     )
     directory = event_dir(paths)
-    saved = labels.read_saved(directory)
+    labels_file = labels.labels_path(directory)
+    labels_bytes = labels_file.read_bytes()
+    # Reuse the review parser and its validation on an immutable snapshot.
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".labels-", dir=out.parent) as snapshot:
+        snapshot_file = labels.labels_path(snapshot)
+        snapshot_file.parent.mkdir()
+        snapshot_file.write_bytes(labels_bytes)
+        saved = labels.read_saved(snapshot)
     split = make_split(saved, seldnet_split(tokeye_masks(paths)))
     config = TrainConfig(
         epochs=2 if args.pilot else args.epochs, mhd_weight=spec["mhd_weight"]
@@ -361,7 +374,8 @@ def main(argv=None) -> int:
         history=history,
         config=config,
         band_khz=spec["band"],
-        labels_file=labels.labels_path(directory),
+        labels_file=labels_file,
+        labels_bytes=labels_bytes,
         candidate=args.candidate,
     )
     print(
