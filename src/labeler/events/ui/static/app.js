@@ -288,7 +288,9 @@ function edit(window, intervals) {
 /** Keep the draft until it is saved or reverted, and mark the shot unsaved. */
 function touch() {
   if (stillOpening()) return;
-  store(draftKey(S.shot), dirty() ? JSON.stringify(S.label) : null);
+  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
+  const keep = dirty() || (saving && !same(S.label, S.saving.label));
+  store(draftKey(S.shot), keep ? JSON.stringify(S.label) : null);
   $("dirty").hidden = !dirty();
   renderQueue();
   render();
@@ -580,7 +582,7 @@ async function save(next) {
   if (stillOpening()) return;
   if (!S.meta || S.saving) return;
   const [event, shot, key, ticket, label] = [S.event, S.shot, draftKey(S.shot), S.ticket, S.label];
-  S.saving = { event, shot };
+  S.saving = { event, shot, label };
   const name = S.api >= 2 ? { name: S.name || null } : {};
   try {
     const response = await api("/api/label", {
