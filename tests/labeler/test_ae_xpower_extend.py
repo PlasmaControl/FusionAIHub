@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from labeler.ae.xpower import extend, gallery
+from labeler.config import Paths
 from labeler.events.catalog.check import CatalogError
 from labeler.events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT
 
@@ -22,6 +23,14 @@ def _cohort(paths):
     paths.catalog.mkdir(parents=True, exist_ok=True)
     frame.to_csv(paths.catalog / "cohort.csv", index=False)
     return frame
+
+
+def _approved_model(paths, split):
+    models = ae_tree.chosen(paths, split)
+    (models / "evaluation.json").write_text(
+        json.dumps({"bar": {"A1": True, "A2": True, "A3": False, "all": False}})
+    )
+    return models
 
 
 def test_frames_the_rows_miss_are_not_observable():
@@ -47,7 +56,7 @@ def test_the_extension_takes_population_shots_with_two_seconds_of_co2(tmp_path):
 
 def test_the_extension_runs_in_shards_and_merges_into_one_table(tmp_path):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = ae_tree.chosen(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
     ae_tree.corpus(tmp_path, (201, 202, 203))
     _cohort(paths)
     pd.DataFrame(
@@ -74,6 +83,7 @@ def test_the_extension_runs_in_shards_and_merges_into_one_table(tmp_path):
     meta_path = Path(merged["table"]).with_suffix(".meta.json")
     meta = json.loads(meta_path.read_text())
     assert meta["tier"] == "suggestions" and meta["candidate"] == "band80-mhd3"
+    assert meta["bar"] == {"A1": True, "A2": True, "A3": False, "all": False}
     summary = pd.read_csv(extend.suggestions_dir(paths) / "summary.csv")
     assert summary.frames.tolist() == [60, 60, 60]
     with np.load(extend.suggestions_dir(paths) / "shards" / "0.npz") as z:
@@ -84,7 +94,7 @@ def test_the_extension_runs_in_shards_and_merges_into_one_table(tmp_path):
 
 def test_blind_shots_are_excluded_before_sharding(tmp_path):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = ae_tree.chosen(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
     cohort = _cohort(paths)
     blind = int(cohort.loc[cohort.blind, "shot"].min())
     eligible = sorted(cohort.loc[~cohort.blind & (cohort.shot > blind), "shot"])[:2]
@@ -126,7 +136,7 @@ def test_an_unreadable_cohort_refuses_with_its_path(
     tmp_path, monkeypatch, capsys, problem
 ):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = ae_tree.chosen(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
     cohort = _cohort(paths)
     pd.DataFrame(
         {
@@ -172,10 +182,53 @@ def test_an_unreadable_cohort_refuses_with_its_path(
 
 def test_a_merge_refuses_a_missing_shard(tmp_path):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = ae_tree.chosen(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"})
     try:
         extend.merge(paths, models=models, of=2)
     except FileNotFoundError as error:
         assert "shards [0, 1] of 2" in str(error)
     else:
         raise AssertionError("merge ran without its shards")
+
+
+@pytest.mark.parametrize("merge", [False, True])
+@pytest.mark.parametrize(
+    "evaluation",
+    [
+        None,
+        {"bar": {"A1": False, "A2": True}},
+        {"bar": {"A1": True, "A2": False}},
+        {"bar": {"A1": True}},
+        {"bar": {"A1": "true", "A2": True}},
+        {"bar": {"A1": True, "A2": 1}},
+        {"bar": None},
+        {},
+        [],
+        "malformed JSON",
+    ],
+)
+def test_extension_requires_a_passing_evaluation(
+    tmp_path, monkeypatch, capsys, merge, evaluation
+):
+    paths = Paths(root=tmp_path / "root")
+    models = tmp_path / "models"
+    models.mkdir()
+    path = models / "evaluation.json"
+    if evaluation is not None:
+        path.write_text(
+            evaluation if isinstance(evaluation, str) else json.dumps(evaluation)
+        )
+    # There are no cohort, population or model inputs: refuse before reading them.
+    with pytest.raises(ValueError, match="evaluation.json"):
+        if merge:
+            extend.merge(paths, models=models, of=1)
+        else:
+            extend.run_shard(paths, models=models, k=0, of=1)
+    ae_tree.env(monkeypatch, paths)
+    with pytest.raises(SystemExit) as exit_code:
+        extend.main(["--models", str(models), *(["--merge"] if merge else [])])
+    assert exit_code.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(path) in stderr and "Traceback" not in stderr
+    assert not extend.suggestions_dir(paths).exists()
+    assert not gallery.gallery_dir(paths).exists()

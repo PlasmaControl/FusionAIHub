@@ -152,6 +152,20 @@ def _init_shard(model_file: str, root: str, corpus: str, pictures: bool) -> None
     _WORKER["pictures"] = pictures
 
 
+def _passing_bar(models: Path) -> dict:
+    """D47: extension requires an evaluation with both A1 and A2 passed."""
+    path = models / "evaluation.json"
+    message = f"{path}: extension requires bar A1 and A2 both true"
+    try:
+        evaluation = json.loads(path.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{message}: {error}") from error
+    bar = evaluation.get("bar") if isinstance(evaluation, dict) else None
+    if not isinstance(bar, dict) or any(bar.get(k) is not True for k in ("A1", "A2")):
+        raise ValueError(message)
+    return bar
+
+
 def run_shard(
     paths: Paths,
     *,
@@ -162,10 +176,12 @@ def run_shard(
     limit: int = 0,
     pictures: bool = True,
 ) -> dict:
+    _passing_bar(models)
     cohort_path = paths.catalog / "cohort.csv"
     try:
         cohort = read_cohort(cohort_path)
     except CatalogError:
+        # Preserve the catalog's diagnostic before the broader ValueError handler.
         raise
     except (OSError, ValueError, TypeError) as error:
         raise CatalogError(f"{cohort_path}: {error}") from error
@@ -204,6 +220,7 @@ def run_shard(
 
 
 def merge(paths: Paths, *, models: Path, of: int) -> dict:
+    bar = _passing_bar(models)
     shards = suggestions_dir(paths) / "shards"
     missing = [k for k in range(of) if not (shards / f"{k}.summary.csv").is_file()]
     if missing:
@@ -222,7 +239,6 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
     ]
     file = chosen_model(models)
     _, blob = load(file)
-    evaluation = models / "evaluation.json"
     meta = {
         "method": METHOD,
         "version": VERSION,
@@ -233,9 +249,7 @@ def merge(paths: Paths, *, models: Path, of: int) -> dict:
         "candidate": blob["candidate"],
         "threshold": blob["threshold"],
         "band_khz": blob["band_khz"],
-        "bar": json.loads(evaluation.read_text())["bar"]
-        if evaluation.is_file()
-        else None,
+        "bar": bar,
         "population": str(paths.catalog / "population.csv"),
         "population_sha256": sha256_of(paths.catalog / "population.csv"),
         "min_co2_s": MIN_CO2_S,
@@ -296,22 +310,22 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     paths = Paths.from_env()
     models = args.models or model_dir(paths)
-    if args.merge:
-        print(json.dumps(merge(paths, models=models, of=args.of)))
-        return 0
-    if not 0 <= args.shard < args.of:
+    if not args.merge and not 0 <= args.shard < args.of:
         p.error("--shard must be in 0 .. --of - 1")
     try:
-        result = run_shard(
-            paths,
-            models=models,
-            k=args.shard,
-            of=args.of,
-            workers=args.workers,
-            limit=args.limit,
-            pictures=not args.no_pictures,
-        )
-    except (CatalogError, FileNotFoundError) as error:
+        if args.merge:
+            result = merge(paths, models=models, of=args.of)
+        else:
+            result = run_shard(
+                paths,
+                models=models,
+                k=args.shard,
+                of=args.of,
+                workers=args.workers,
+                limit=args.limit,
+                pictures=not args.no_pictures,
+            )
+    except (CatalogError, FileNotFoundError, ValueError) as error:
         p.error(str(error))
     print(json.dumps(result))
     return 0

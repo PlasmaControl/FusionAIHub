@@ -393,6 +393,11 @@ def chosen_model(models: Path) -> Path:
 
 
 def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
+    evaluation = models / "evaluation.json"
+    if evaluation.exists():
+        raise FileExistsError(
+            f"{evaluation}: the test shots are scored once; a retry is a new version"
+        )
     file = chosen_model(models)
     saved = labels.read_saved(file.parent)  # the labels it was trained on
     source = labels.read_source(event_dir(paths))
@@ -459,7 +464,10 @@ def main(argv=None) -> int:
         record = run_choose(paths, models, args.limit)
         print(f"chose {record['candidate']}: {record['why']}")
     else:
-        record = run_test(paths, models, args.limit)
+        try:
+            record = run_test(paths, models, args.limit)
+        except FileExistsError as error:
+            p.error(str(error))
         print(json.dumps({"bar": record["bar"], "frames": record["frames"]}))
     return 0
 
