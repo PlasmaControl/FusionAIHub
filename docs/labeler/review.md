@@ -36,14 +36,14 @@ after the newest save.
   the cross-power of chord R0 with V1, V2 and V3. A mode seen by several chords
   shows in all three rows; noise on a single chord averages out. Colour is dB above each
   frequency's own quiet level (its median over 0-6 s), from -3 to 27 dB. Other
-  events show the rows of their panel builder. The tearing-mode spectrogram
-  (MPI66M322D) is dB above each frequency's 20th percentile over the plasma,
-  the shot's v1 rule-4 Ip window from the cohort or the population (without
-  one, the columns louder than the record's median), not over the whole
-  record, which runs seconds past the plasma, from -3 to 42 dB.
-- **Source** is the label the event's newest `format/*_format_*.csv` gives the
-  shot. **Label** is yours; it starts as a copy of the source. Where the two
-  differ, a strip along the top of the label track marks the difference.
+  events show the rows of their panel builder; the four cohort editors' rows
+  are under [The cohort editors](#the-cohort-editors).
+- **Source** is the label the page opens a shot on. It comes from the table the
+  event's `review/source.json` names, when it has one: the four cohort editors
+  point at their draft, `$LABELER_ROOT/suggestions/<method>/v1/<event>_suggest_<method>_v1.csv`.
+  Without a pointer it is the event's newest `format/*_format_*.csv`. **Label**
+  is yours; it starts as a copy of the source. Where the two differ, a strip
+  along the top of the label track marks the difference.
 - **Chips**, one per roster shot, coloured by state: *unreviewed* (never saved),
   *confirmed* (saved as the source had it) or *changed*. A dot marks a shot with
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
@@ -95,6 +95,141 @@ that edit back. Restoring the current label leaves it alone.
 | `M` / click a mask region | AE: hide or show the pseudo-mask / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
+
+## The cohort editors
+
+The ELM (`edge_localized_mode`), H-mode (`high_confinement_mode`), sawtooth
+(`sawtooth_oscillation`) and tearing-mode (`neoclassical_tearing_mode`) editors
+review the frozen cohort's 450 non-blind shots in its queue order
+(`queue_rank`). Any prefix of the queue is therefore a random subsample of
+every group. Blind shots are left to v1's blind review and never get a draft.
+The page opens each shot nobody has saved on its draft, a suggestion table
+written by `labeler.events.spans`.
+
+A draft covers the shot's catalog window, the v1 rule-4 Ip window. Its states
+are these:
+
+- *present*: the method saw the phenomenon.
+- *absent*: the inputs were measured and showed nothing.
+- *uncertain*: see H-mode below.
+- *not observable*: the method's inputs did not measure that time. A shot the
+  method could not run on is not observable throughout, and the table's
+  `.meta.json` records why under `skipped`.
+
+The meta's `rule` holds only the constants that method uses. Its `per_shot`
+records, for each shot, what the page does not show: where the draft started,
+and for ELMs the filterscope read and whether the H-mode gate ran. `gold`
+holds the score from the last `--gold` run.
+
+**ELM and sawtooth drafts start in the plasma.** A span is a run of at least 3
+events (ELMs at most 200 ms apart, sawtooth crashes at most 300 ms), padded by
+5 ms. Only events between the plasma's start and the window's end form runs.
+Events before the start are dropped before the runs are grouped, so the steps
+and spikes of the ramp-up neither make a run nor join one. The start is the
+first time the 25 ms centred mean of |Ip| inside the window reaches 0.8 of its
+plateau (its 95th percentile), the catalog's flat-top fraction. Ip comes from
+the corpus or the raw cache. A shot without Ip starts 700 ms into its window,
+the median on the 450 shots. Time before the start is absent. Sawteeth in the
+ramp-up are left out with it: 189061's 227-530 ms, for one. Add them by hand
+where you see them.
+
+**ELMs** (`elm_clock`).
+
+- Rows: the CO2 R0 chord's power from 0 to 125 kHz, in dB above each
+  frequency's floor over the plasma window, from -3 to 27 dB. Then two traces:
+  the PCPHD03 photodiode, and the filterscope the ELM spans were found on
+  (FS01, or FS02 where FS01 is dark). The filterscope row's title names its
+  channel.
+- PCPHD03 is left out where it cannot be read, or where it is flat over the
+  plasma: its 0.5-99.5 percentile range under 0.011 V, on 33 of the 450
+  shots. The filterscope row's title then says "(PCPHD03 not found)" or
+  "(PCPHD03 flat, left out)".
+- Both traces are clipped to their robust range: the 0.5-99.5 percentiles over
+  the plasma window, widened on each side by the distance between them. The
+  title says so when anything was cut, so a spike at the end of the discharge
+  does not flatten the ELMs.
+- Draft: the runs of ELMs, less any time the H-mode method saw the shot in
+  L-mode, because the clock also counts L-mode D-alpha spikes. A shot whose
+  H-mode inputs are missing keeps its runs whole, and `per_shot` records why
+  under `hmode_gate`.
+
+**H-mode** (`dalpha_lh`).
+
+- Rows:
+  - the D-alpha filterscopes FS01-FS08, what the method reads;
+  - the density, the CO2 R0 chord averaged over 1 ms;
+  - the NBI power summed over the beams, in MW;
+  - beta_N, only on the shots the features store holds (62 of the 450).
+- Draft: present from each L-H transition to the next H-L, or to the end of
+  the stretch the inputs measured. An H-L with no L-H before it makes the time
+  back to the transition before it, or to the start of that stretch,
+  uncertain. The shot was in H-mode then, but the detector did not see it
+  begin: mark the L-H where you can see it.
+- 33 queue shots have no beam power (`pinj`) in the corpus or the raw cache.
+  Nothing fetches it for them, so their drafts are not observable throughout.
+- H-mode has no Ip start: the transitions set their own.
+
+**Sawteeth** (`ece_sawtooth`).
+
+- Rows: the ECE channels 20-35, as four rows of four adjacent channels in keV,
+  so the inversion (inner channels drop as outer ones rise) reads from row to
+  row. Then one SXR row: the first fan of SX90RM1F, SX90RP1F, SX90RM1S and
+  SX90RP1S with 8 chords finite over half the record.
+- The SXR row draws the fan's 4 chords with the most crash-like drops over the
+  Ip flat-top, not its brightest: on about 25 shots the brightest sit near
+  4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
+  falls by more than 6 standard deviations of its own change, taken second by
+  second. The chords are chosen over the whole record, whatever the view.
+- A shot without ECE, or without SXR, gets the other's rows alone.
+- Draft: the runs of crashes, starting in the plasma as above.
+
+**Tearing modes** (`window`).
+
+- Rows:
+  - The spectrogram of MPI66M322D, in dB above each frequency's 20th
+    percentile over the plasma window (without one, over the columns louder
+    than the record's median), from -3 to 42 dB.
+  - The n strip. In each column it takes the strongest line between 1 and
+    30 kHz on the six MPI66M midplane probes and scores each n from -4 to 4
+    (1 is a perfect fit). A column whose peak stands less than 15 dB above
+    the band's median is not scored.
+  - beta_N, as for H-mode.
+- Sign convention: a mode cos(ωt − nφ) has n > 0, with φ each probe's
+  toroidal angle as its name gives it (MPI66M<φ>D). On some shots the strip's
+  sign is the opposite of the catalog's n ≥ 1 convention: 186636's mode shows
+  n = −1. Read the strip's |n|. Its sign is not flipped.
+- Draft: there is no method yet, so the whole window is absent. It gives the
+  page each shot's window.
+
+### Commands
+
+```bash
+# The raw cache the ELM and H-mode rows draw (PCPHD03, and CO2 for old shots):
+# on the login node, one editor at a time.
+pixi run -e labelmaker fdp run python -m labeler.events.raw --event edge_localized_mode
+pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confinement_mode
+# The drafts, over the queue; --force redoes shots already drafted, --gold scores
+# the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
+pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --gold
+# The roster in queue order, and --point opens the page on the draft.
+pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
+    --event sawtooth_oscillation --point
+# The row store ahead of the review; --force rebuilds built shots
+# (sbatch: scripts/labeler/review_build.sbatch).
+pixi run -e labelmaker python -m labeler.events.review.build --event sawtooth_oscillation --workers 8
+# The gate: how close the saved labels came to the draft.
+pixi run -e labelmaker python -m labeler.events.review.agreement --event sawtooth_oscillation
+```
+
+`agreement` counts a saved shot only when its last save in
+`review/history.jsonl` was opened on the table the pointer names now. Saves
+opened on another table, before the pointer moved, are counted under
+`excluded_saves`. It reports frame precision and recall over 10 ms frames. It
+is `ready` at 50 shots with both at least 0.75. `spans --gold` uses the same
+scorer on the roster's gold-tier shots. Its reference is the saved labels
+(`review/labels.csv`), or the label table whose path follows `--gold`. The ten
+gold sawtooth shots have no gold label yet, so their score counts 0 shots, and
+`missing` names the ten.
 
 ## What a save writes
 

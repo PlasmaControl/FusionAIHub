@@ -13,15 +13,25 @@
 # One editor's span suggestions over the frozen cohort's non-blind shots:
 #   python -m labeler.events.spans --event $EVENT --workers $WORKERS
 # merges into $LABELER_ROOT/suggestions/<method>/v1/<event>_suggest_<method>_v1.csv; a
-# shot already there is skipped. The corpus and the raw cache are only read. WORKERS
-# is one a CPU unless set; more than that keeps the CPUs busy through slow reads.
+# shot already there is skipped unless FORCE is set. The corpus and the raw cache are
+# only read (Ip too: the ELM and sawtooth drafts start where it reaches 0.8 of its
+# flat-top). WORKERS is one a CPU unless set; more keeps the CPUs busy through slow
+# reads. SHOTS names shots; LIMIT takes the queue's first N. GOLD=1 also scores the
+# drafts on the event's gold-tier roster shots (`--gold`) and writes the score into
+# the table's meta ("gold"); a later run without it keeps the score. FORCE changes
+# what the page opens unsaved shots on; saved labels are never touched.
 #
 #   pilot:      the full run's shape on the queue's first 20 shots, e.g.
 #               EVENT=high_confinement_mode LIMIT=20 sbatch --cpus-per-task=4 --mem=3G <this>
 #   full run:   EVENT=sawtooth_oscillation sbatch <this>
 #               EVENT=high_confinement_mode sbatch --cpus-per-task=4 --mem=3G <this>
-#               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=3G <this>
+#               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=5G <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
+#   redo:       every shot again, with the gold score, after a rule change, e.g.
+#               EVENT=sawtooth_oscillation FORCE=1 GOLD=1 sbatch <this>
+#               EVENT=edge_localized_mode FORCE=1 GOLD=1 \
+#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#               then rebuild their stores (review_build.sbatch, FORCE=1)
 #   extension:  EVENT=... WINDOWS=population sbatch --time=02:00:00 <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 # The tearing-mode editor's `window` method reads nothing: run it on the login node.
@@ -32,9 +42,12 @@
 #   4.2 s and 0.50 GB. Three 2024-2025 cohort shots read cold: ece_sawtooth 2.6-2.9 s
 #   at 87 % CPU, dalpha_lh and elm_clock 0.7-1.0 s at 99-100 %.
 #   cohort: 450 non-blind shots.
+#   2026-09-27, with the Ip start rule, shot 189061: ece_sawtooth 2.3 s and 2.24 GB,
+#   elm_clock 3.0 s and 0.96 GB (0.95 GB without the Ip read: the shot's own inputs).
 #   cpus-per-task=8   450 x 6 s / 8 workers = 5.6 min; the other two on 4 CPUs,
 #                     450 x 1 s / 4 = 1.9 min, so start-up stays a small part of it.
-#   mem=22G           8 x 2.24 GB x 1.2 for the sawteeth; 3G for the others (4 x 0.5 x 1.2).
+#   mem=22G           8 x 2.24 GB x 1.2 for the sawteeth; 3G for H-mode (4 x 0.5 x 1.2),
+#                     5G for ELMs (4 x 0.96 x 1.2 on 189061).
 #   time=00:30:00     5.6 min x 5 for cold GPFS reads of 600 MB of ECE a shot.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
@@ -49,5 +62,6 @@ cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} $EVENT on $(hostname) at $(date -Is), root $ROOT"
 srun "$ENV/bin/python" -m labeler.events.spans --event "$EVENT" \
     --windows "${WINDOWS:-cohort}" --workers "${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}" \
-    ${LIMIT:+--limit "$LIMIT"}
+    ${LIMIT:+--limit "$LIMIT"} ${SHOTS:+--shots $SHOTS} ${FORCE:+--force} \
+    ${GOLD:+--gold}
 echo "finished at $(date -Is)"

@@ -29,6 +29,11 @@
 #               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=2G <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
 #   rebuild:    EVENT=neoclassical_tearing_mode FORCE=1 sbatch <this>  (--force: rebuilds built shots)
+#               after a panel change, e.g. the ELM D-alpha rows and the sawtooth SXR chords:
+#               EVENT=edge_localized_mode FORCE=1 sbatch --cpus-per-task=4 --mem=2G <this>
+#               WORKERS=8 EVENT=sawtooth_oscillation FORCE=1 SHOTS="<the cohort's 450>" \
+#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#               a store is only the page's rows: labels, drafts and history are untouched
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
