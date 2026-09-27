@@ -599,6 +599,26 @@ def test_links_duplicate_pool_shot_names_the_file(links_inputs, capsys):
     assert not (cache / "papers.csv").exists()
 
 
+@pytest.mark.parametrize("bad_input", ["pool", "hits"])
+def test_links_command_refuses_ragged_pool_or_torn_hits_by_name(
+    links_inputs, capsys, bad_input
+):
+    cache, pool, probes, _, _, args = links_inputs
+    if bad_input == "pool":
+        path = pool
+        path.write_text("shot,year\n185601,2021,extra\n")
+    else:
+        path = probes[0]
+        path.write_text('{"shot": 185601, "records": []}\n{"shot": 185602,')
+    with pytest.raises(SystemExit) as stopped:
+        osti.main(args)
+    assert stopped.value.code == 2
+    message = capsys.readouterr().err
+    assert str(path) in message and "Traceback" not in message
+    assert "row 2" in message if bad_input == "pool" else f"{path}:2:" in message
+    assert not (cache / "papers.csv").exists()
+
+
 def test_osti_corpus_range_comes_from_population():
     from labeler.events.catalog import population
 
