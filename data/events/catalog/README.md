@@ -17,6 +17,8 @@ skip it.
 | `cohort.csv` | `python -m labeler.events.catalog.cohort` | The drawn shots: group, cell, weight, split, review-queue rank and assessed window |
 | `cohort_manifest.yaml` | the same command | The seed, rules, allocation, N and n per cell, the rejection counts and the checksums of every input |
 | `population.csv` | the same command | Every population shot with its group, cell, window, flat-top, legacy sets and `in_cohort`, from which `verify_cohort` draws the cohort again |
+| `runaway.csv` | `python -m labeler.events.catalog.runaway` | Rule 5's scan (D2e): one row per shot passing rules 1-4, with its window's Thomson core Te statistic (`te_p90_ev`), its Thomson and profile sample counts (`n_thomson`, `n_profile`), its beam power (`pinj_kw`), its neutron rates (`neutron_rate_mean`, `;`-joined channels) and `runaway` |
+| `runaway.meta.json` | the same command | The statistic and its 60 eV threshold, the counts (4,885 shots, 13 marked, 77 with no usable Thomson profile) and the sha256 of the pool, the Ip log and the corpus it read; the cohort draws only with the pool and Ip log it names |
 | `papers.csv` | `python -m labeler.literature.osti links` | One row per shot-paper link the context rule verified (below) |
 | `papers.meta.json` | the same command | What the build read and wrote, with sha256s; its commit, rules and coverage: the records by fetch status, the truncated query, the hits in texts it could not read |
 | `osti_probe.py` | kept as it ran, 2026-09-23 | The OSTI probe that wrote the hits `links` reads (`osti_phase1.jsonl`, `osti_phase2.jsonl`); its sha256 is `papers.meta.json`'s `probe_script` |
@@ -28,8 +30,41 @@ cards and the code commit held in the release, with their checksums.
 
 Each file is written under `$LABELER_ROOT` first (`catalog/` for the cohort,
 `literature/osti/` for the links) and copied here only with the owner's
-go-ahead. The cohort is drawn once, from inputs frozen beforehand, and is never
-redrawn in place.
+go-ahead.
+
+The cohort is drawn once, from inputs frozen beforehand, and is never redrawn in
+place: a new draw is a new freeze, whose manifest names the freeze it supersedes and
+why (`supersedes`). The first freeze (commit 10282e8, drawn at d84612f, 2026-09-26)
+was superseded on 2026-09-27, before any label was made, after the literature rule
+dropped a false L link, the Ip windows were measured again with the restrike rule,
+and rule 5 kept the runaway-electron plateaus out of the population. The same seed
+drew both; the first freeze's files stay in git history.
+
+## Columns
+
+`cohort.csv` has one row per drawn shot and `population.csv` one per population
+shot; `verify_cohort` draws the cohort again from `population.csv` and the manifest
+alone. Columns marked "both" are in both files.
+
+| Column | In | Meaning |
+| --- | --- | --- |
+| `shot`, `year` | both | The shot and its campaign year (2021-2025) |
+| `group` | both | `L` if the shot has a verified OSTI link at the freeze (a `papers.csv` row), else `G` if a legacy label table names it, else `R` |
+| `cell` | both | The group and the year (`G2021`): the stratum the draw samples |
+| `in_cohort` | population | Whether the draw took the shot |
+| `weight` | cohort | N_h / n_h: the cell's population shots over its cohort shots. A blind shot's scoring weight is this times its group's cohort shots over its blind shots, n_g / b_g; `labeler.scoring.stats.two_stage_weights` computes it, and it is not stored |
+| `u` | cohort | The order key: the first 8 bytes of sha256(`<seed>:order:<shot>`), big-endian, over 2^64. The cell draw uses the same key with `draw` in place of `order` |
+| `split` | cohort | `test`, the blind subset: each group's smallest u, 50 shots shared across L, G and R by their cohort counts; `val`, the next 50 by the same rule; `train`, the rest |
+| `blind` | cohort | `True` exactly when `split` is `test` |
+| `queue_rank` | cohort | 1-500, the review order: the blind shots by u, then the rest by u, so any prefix of the queue is a random subsample of every group |
+| `window_start_ms`, `window_end_ms` | both | The assessed window in whole ms, half-open [start, end): the longest stretch of Ip at or beyond 50 kA in the plasma's direction, gaps of up to 10 ms bridged, ended at a restrike (`labeler.events.catalog.window`) |
+| `flattop_s` | both | The Ip flat-top inside the window, in s (the recommender's `flattop_from_ip`); the population needs 1 s |
+| `ip_peak_ma` | cohort | The largest current inside the window in the plasma's direction, in MA |
+| `ip_ma`, `pulse_length_s`, `pbeam_max_mw`, `pech_max_mw` | cohort | The shot table's IP, PULSE-LENGTH, PBEAM-MAX and PECH-MAX, which the population's first rule reads, from the screen's `pool.csv`. That table is not released; the manifest holds its sha256. A blank is a missing value, not zero (3 cohort shots have no `pech_max_mw`) |
+| `run_id` | cohort | The run the shot belongs to, from its text bundle |
+| `legacy_sets` | both | The category directories of the legacy tables that name the shot, `;`-joined; blank for none |
+| `n_links_verified` | both | The shot's rows in `papers.csv` |
+| `span_<group>_s` | both | The corpus census's span for the diagnostic group (mhr, ece, filterscopes, co2, sxr, mirnov), in s: the length of its longest record, not the time it covers inside the window (mhr 4.194 and ece 6.193 on every population shot); 0 where the census has none. The population needs 2 s of mhr, ece and filterscopes |
 
 ## The literature links
 
@@ -72,3 +107,33 @@ verified: `verified_by = auto` means the context rule, not a person's reading.
 `papers.meta.json` records, for each build, the records' fetch statuses, the
 truncated query, the hits in unread texts and the `no_context` hits whose number
 is not in the text, beside the sha256 of every input and output.
+
+## Known limits
+
+- **Runaway-electron plateaus (rule 5, D2e).** A shot whose window has a median
+  Thomson core Te p90 under 60 eV, with at least one profile sample (half the
+  core channels valid), is a runaway plateau, not a flat-top; 13 shots are marked
+  and left out of the population (194904-194906, 200809, 200811-200814, 200819,
+  200821, 200823, 200824, 200827). The profile condition is window-wide: on a
+  plateau most channels have no fit, and the profiles lie in the thermal phase
+  before the disruption. So each mark is also checked against neutrons of at
+  least 1e15 /s with beams under 1 MW (`runaway_corroboration` in the manifest):
+  all 13 meet it, and so do two unmarked shots, 201447 and 203629, whose plasmas
+  are thermal (2.5 and 1.8 keV) and stay in. The 77 shots with no usable Thomson
+  profile have no rule-5 verdict and stay in.
+- **203529, a missed restrike (D2b).** Its second hump reaches 0.57 of the peak,
+  under the 0.6 the rule needs, so its window keeps about 600 ms of a second
+  plasma. Its membership does not change. Recorded, not fixed: a threshold moved
+  after one inspection would be tuned to the shot.
+- **Post-quench tails.** Same-sign current above 50 kA after a quench stays in
+  the window; D2b ends a window only at a restrike. In the version-2 audit, 50
+  fast-quench population shots extended more than 25 ms past t20, and 198958 by
+  362 ms.
+- **Flat-tops near 1 s.** 191046's flat-top (1.0005 s) falls on either side of
+  rule 4's 1 s depending on the sampling phase; at the Ip log's sampling it passes.
+- **The literature links.** No person has checked a link (`verified_by = auto`).
+  Two L shots rest on one weak mention each: 187328 (the end of a training-data
+  range) and 189998 (a software input example). D26's join can make one shot of
+  two numbers of three digits each ("Shot 200 400" → 200400, a population shot;
+  "shot 195 196" → 195196); neither is among the links. Recall is bounded
+  (above).
