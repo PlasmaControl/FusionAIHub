@@ -200,6 +200,28 @@ def test_points_keep_their_regions_and_gain_window_flags(tmp_path, monkeypatch, 
     (paths.catalog / "population.csv").write_text(
         "shot,window_start_ms,window_end_ms\n101,0,2000\n102,0,3000\n104,,\n"
     )
+    # The AE Ip log fills only shots the population lacks: 103, not 101 or 104.
+    log = poi.ae_ip_log(paths)
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "shot": shot,
+                    "version": 3,
+                    "status": "ok",
+                    "window_start_ms": start,
+                    "window_end_ms": 3000,
+                    "ip_peak_ma": 1.0,
+                    "ip_sha256": "a" * 64,
+                    "run": "b" * 32,
+                }
+            )
+            + "\n"
+            for shot, start in ((101, 1500), (103, 0), (104, 0))
+        )
+    )
+    log.with_name("ip_runs.jsonl").write_text(json.dumps({"run": "b" * 32}) + "\n")
     grid = Grid(-1000.5, 1, 6100)
     prob = np.zeros((257, grid.n), dtype=np.float32)
     peaks = [-1, 0, 1999, 2000, 4000]
@@ -226,8 +248,8 @@ def test_points_keep_their_regions_and_gain_window_flags(tmp_path, monkeypatch, 
     for shot, frame in table.groupby("shot"):
         assert frame.t_peak_ms.tolist() == peaks
         assert frame.in_scored_window.tolist() == [False, True, True, False, False]
-        if shot in (101, 102):
-            assert frame.in_plasma.tolist() == [False, True, True, shot == 102, False]
+        if shot in (101, 102, 103):
+            assert frame.in_plasma.tolist() == [False, True, True, shot > 101, False]
         else:
             assert frame.in_plasma.isna().all()
     # All pre-existing point values survive, including the regions outside windows.
@@ -236,7 +258,12 @@ def test_points_keep_their_regions_and_gain_window_flags(tmp_path, monkeypatch, 
             if key not in ("in_scored_window", "in_plasma"):
                 assert after[key] == value
     meta = json.loads((poi_dir(paths) / "meta.json").read_text())
-    assert meta["points_in_plasma"] == 5
-    assert meta["points_outside_plasma"] == 5
-    assert meta["points_unknown_plasma"] == 10
+    assert meta["points_in_plasma"] == 8
+    assert meta["points_outside_plasma"] == 7
+    assert meta["points_unknown_plasma"] == 5
+    population = paths.catalog / "population.csv"
+    assert meta["plasma_window_sources"] == {
+        str(population): {"sha256": sha256_of(population), "shots": [101, 102]},
+        str(log): {"sha256": sha256_of(log), "shots": [103]},
+    }
     assert meta["G3"] is g3

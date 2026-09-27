@@ -18,9 +18,12 @@ regions outlined (the 30 largest numbered on crowded shots), and below it the
 pseudo-mask with any current region review applied. Every point is a suggestion:
 nobody has reviewed it.
 The last two table columns flag peaks inside the scored [0, 2000) ms window
-and the v1 rule-4 Ip window in `catalog/population.csv` (start inclusive, end
-exclusive). A missing population window leaves `in_plasma` blank; no point
-is dropped. `meta.json` counts those flags and records the model's G3 verdict.
+and the v1 rule-4 Ip window (start inclusive, end exclusive), from
+`catalog/population.csv` or, for shots it does not list, the same rule measured
+into `$LABELER_ROOT/ae/ip/ip.jsonl` (`python -m labeler.events.catalog.window
+--log`). A missing window leaves `in_plasma` blank; no point is dropped.
+`meta.json` counts those flags, names each window file with its hash and shots,
+and records the model's G3 verdict.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from matplotlib.figure import Figure
 from scipy import ndimage
 
 from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...events.catalog.window import read_log
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
 from ..xpower import tokeye_masks
@@ -266,19 +270,48 @@ def shot_points(shot: int) -> list[dict]:
     return found
 
 
-def plasma_windows(paths: Paths) -> dict[int, tuple[float, float]]:
-    """The same v1 rule-4 Ip windows the xpower extension uses, without its cut."""
+def ae_ip_log(paths: Paths) -> Path:
+    """The rule-4 Ip windows measured for AE shots that v1's population lacks."""
+    return paths.root / "ae" / "ip" / "ip.jsonl"
+
+
+def window_sources(paths: Paths) -> dict[int, tuple[float, float, Path]]:
+    """Each shot's v1 rule-4 Ip window and the file it came from.
+
+    `catalog/population.csv` (the windows the xpower extension uses, without its
+    cut) wins; the AE Ip log only fills shots the population does not list, so a
+    population row without a window stays without one.
+    """
+    found: dict[int, tuple[float, float, Path]] = {}
+    log = ae_ip_log(paths)
+    if log.is_file():
+        frame = read_log(log)
+        for row in frame[frame.status == "ok"].itertuples(index=False):
+            found[int(row.shot)] = (
+                float(row.window_start_ms),
+                float(row.window_end_ms),
+                log,
+            )
     file = paths.catalog / "population.csv"
-    if not file.is_file():
-        return {}
-    frame = pd.read_csv(file)
-    return {
-        int(row.shot): (float(row.window_start_ms), float(row.window_end_ms))
-        for row in frame.itertuples(index=False)
-        if pd.notna(row.window_start_ms)
-        and pd.notna(row.window_end_ms)
-        and row.window_end_ms > row.window_start_ms
-    }
+    if file.is_file():
+        for row in pd.read_csv(file).itertuples(index=False):
+            found.pop(int(row.shot), None)
+            if (
+                pd.notna(row.window_start_ms)
+                and pd.notna(row.window_end_ms)
+                and row.window_end_ms > row.window_start_ms
+            ):
+                found[int(row.shot)] = (
+                    float(row.window_start_ms),
+                    float(row.window_end_ms),
+                    file,
+                )
+    return found
+
+
+def plasma_windows(paths: Paths) -> dict[int, tuple[float, float]]:
+    """Each shot's v1 rule-4 Ip window, from `window_sources`."""
+    return {shot: (a, b) for shot, (a, b, _) in window_sources(paths).items()}
 
 
 def write_points(
@@ -344,9 +377,17 @@ def main(argv=None) -> int:
             rows += outcome
     if sha256_of(model_file) != model_hash:
         p.error(f"{model_file}: model changed while drawing points")
+    sources = window_sources(paths)
     table = write_points(
-        poi_dir(paths) / "poi.csv", done, rows, windows=plasma_windows(paths)
+        poi_dir(paths) / "poi.csv",
+        done,
+        rows,
+        windows={shot: (a, b) for shot, (a, b, _) in sources.items()},
     )
+    used: dict[Path, list[int]] = {}
+    for shot in sorted(done):
+        if shot in sources:
+            used.setdefault(sources[shot][2], []).append(shot)
     completed = table[table.shot.isin(done)]
     evaluation_file = model_file.parent / "evaluation.json"
     evaluation = (
@@ -364,7 +405,10 @@ def main(argv=None) -> int:
         "points_in_plasma": int(completed.in_plasma.eq(True).sum()),
         "points_outside_plasma": int(completed.in_plasma.eq(False).sum()),
         "points_unknown_plasma": int((completed.in_plasma == "").sum()),
-        "plasma_window_source": str(paths.catalog / "population.csv"),
+        "plasma_window_sources": {
+            str(file): {"sha256": sha256_of(file), "shots": shots}
+            for file, shots in used.items()
+        },
         "plasma_window_rule": "v1 rule 4; start <= t_peak_ms < end",
         "G3": evaluation.get("bar", {}).get("G3"),
         "scope": "shots completed in this run; after includes peaks at 2000 ms",
