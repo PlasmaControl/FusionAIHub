@@ -283,9 +283,10 @@ def save(
     inputs: dict,
     bundle: dict[str, bytes] | None = None,
     allow_replace: bool = False,
+    runs: Path | None = None,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index)."""
-    refuse_checkpoint(out, allow_replace=allow_replace)
+    refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
     out.mkdir(parents=True, exist_ok=True)
     for name, data in (bundle or {}).items():
         with atomic_path(out / name) as tmp:
@@ -362,8 +363,8 @@ def main(argv=None) -> int:
         paths.runs / "ae_seg" / "pilot" if args.pilot else model_dir(paths)
     )
     try:
-        refuse_checkpoint(out, allow_replace=bool(args.pilot))
-    except FileExistsError as error:
+        refuse_checkpoint(out, allow_replace=bool(args.pilot), runs=paths.runs)
+    except (FileExistsError, ValueError) as error:
         p.error(str(error))
     directory = event_dir(paths)
     labels_file = labels.labels_path(directory)
@@ -449,8 +450,9 @@ def main(argv=None) -> int:
             inputs=inputs,
             bundle=bundle,
             allow_replace=bool(args.pilot),
+            runs=paths.runs,
         )
-    except FileExistsError as error:
+    except (FileExistsError, ValueError) as error:
         p.error(str(error))
     print(f"wrote {out}: best epoch {best_epoch(history)}, threshold {threshold}")
     return 0

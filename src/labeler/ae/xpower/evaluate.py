@@ -56,7 +56,15 @@ from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...scoring import stats
 from .. import model as seldnet_model
-from . import EVENT, event_dir, model_dir, seldnet_dir, tokeye_masks
+from . import (
+    EVENT,
+    check_limit,
+    event_dir,
+    model_dir,
+    pilot_area,
+    seldnet_dir,
+    tokeye_masks,
+)
 from .data import (
     MIN_FRACTION,
     SEED,
@@ -364,8 +372,9 @@ def _reviewed(split: dict[int, str], which: str, limit: int) -> list[int]:
 
 
 def run_choose(paths: Paths, models: Path, limit: int = 0) -> dict:
+    check_limit(paths, models, limit)
     evaluation = models / "evaluation.json"
-    if evaluation.exists():
+    if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the version is evaluated; a new choice is a new version"
         )
@@ -408,8 +417,9 @@ def chosen_model(models: Path) -> Path:
 
 
 def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
+    check_limit(paths, models, limit)
     evaluation = models / "evaluation.json"
-    if evaluation.exists():
+    if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the test shots are scored once; a retry is a new version"
         )
