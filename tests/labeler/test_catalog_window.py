@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
 import shlex
@@ -778,3 +779,15 @@ def test_legacy_whole_run_record_is_still_read(tmp_path):
         json.dumps({"run": "b" * 32, "this_run": {"ok": 1}}) + "\n"
     )
     assert read_log(log).shot.tolist() == [1]
+
+
+def test_unnamed_log_stream_refuses_when_runs_cannot_be_located():
+    source = io.BytesIO((json.dumps(_ok_line()) + "\n").encode())
+    with pytest.raises(CatalogError, match="runs file cannot be located"):
+        read_log(source)
+
+
+def test_unnamed_log_stream_accepts_supplied_runs_bytes():
+    source = io.BytesIO((json.dumps(_ok_line()) + "\n").encode())
+    runs_data = (json.dumps({"type": "start", "run": "b" * 32}) + "\n").encode()
+    assert read_log(source, runs_data=runs_data).shot.tolist() == [1]
