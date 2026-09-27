@@ -127,7 +127,10 @@ classical_tm / not_tearing_mode;<br />
 <tr>
 <td><code>sawtooth_oscillation</code></td>
 <td><code>period_ms</code>: number > 0, ms;<br />
-<code>inversion_channel</code>: integer ≥ 1 and ≤ 48;<br />
+<code>inversion_channel</code>: integer ≥ 1 and ≤ 48;
+<span>TECEF channel number = corpus 0-based ECE row + 1. Sawtooth panel titles
+and heuristic inversion_channel_lo/_stop use 0-based rows. The owner must
+define which side of the inversion it names before anyone records it.</span><br />
 <code>inversion_radius_m</code>: number > 0, m;<br />
 <code>reason</code>: nonblank string</td>
 <td><code>crash</code></td><td>Yes</td>
@@ -175,7 +178,8 @@ It exits 1 on any finding and 2 on bad arguments.
   above. Attributes remain optional; numeric values are finite and booleans are
   distinct from numbers. Units describe the recorded quantities.
 - When allowed windows are supplied, labelled windows stay inside them. Missing
-  shots in the allowed-window mapping are left alone. Window starts are exact.
+  shots in the allowed-window mapping are left alone. A labelled window may
+  start later than the allowed start, but the start has no slack before it.
   D19 allows only the final present disruption span to end up to 2 ms past the
   allowed window end; absent and uncertain spans receive no extension.
 - Points have the phenomenon's point kinds, finite times and valid attributes,

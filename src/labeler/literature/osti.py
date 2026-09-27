@@ -14,7 +14,8 @@ type}]}`, or `{"shot", "error"}`.
   ended in a `FINAL` status.
 - `links` scans every extracted text for every corpus shot in the catalog's
   range and writes `<cache>/links.csv` (each probe hit and each mention, with
-  its verdict), `<cache>/papers.csv` (the verified links, release schema), and
+  its verdict), `<cache>/papers.csv` (links verified by the context rule, not
+  every paper that names a shot, in the release schema), and
   `<cache>/papers.meta.json` (the build inputs, rules, outputs and coverage).
   A text with no printable character (a scanned PDF) counts as none, and a
   paper dated before its shot's year cannot name it: that pair is `predates`.

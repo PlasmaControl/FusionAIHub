@@ -19,7 +19,8 @@ Rule 4, an Ip flat-top of at least 1 s, is measured from high-rate Ip
 (`catalog.window`) for every shot that passes rules 1-3, not only for the drawn ones,
 so N per cell is exact and no drawn shot is ever replaced. Its rejections are
 `flattop` (a measured flat-top under 1 s), `no_plasma` (the log's `no_plasma`:
-no stretch of |Ip| >= 50 kA was found), and `flattop_unmeasured` (an `error` line,
+no stretch of Ip >= 50 kA in the plasma's own direction was found), and
+`flattop_unmeasured` (an `error` line,
 an `ok` line without a flat-top, or sampling missing or coarser than MAX_IP_DT_MS).
 
     pixi run -e labelmaker python -m labeler.events.catalog.population
