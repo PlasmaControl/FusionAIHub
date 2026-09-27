@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shlex
+import struct
 import subprocess
 import sys
 import types
@@ -12,7 +14,7 @@ import types
 import numpy as np
 import pytest
 
-from labeler.config import Paths
+from labeler.config import Paths, git_dirty, git_sha
 from labeler.events.catalog import window
 from labeler.events.catalog.check import CatalogError
 from labeler.events.catalog.window import (
@@ -187,6 +189,7 @@ def test_workers_measure_the_same(tmp_path, monkeypatch):
         lines = [json.loads(text) for text in log.read_text().splitlines()]
         for line in lines:
             del line["written_at"]
+            del line["run"]  # each fetch invocation owns a different run
         logs.append(sorted(lines, key=lambda line: line["shot"]))
     assert logs[0] == logs[1]
 
@@ -311,6 +314,8 @@ def _ok_line():
         "ip_peak_ma": 1.0,
         "dt_ms": 0.05,
         "version": 3,
+        "ip_sha256": "a" * 64,
+        "run": "b" * 32,
     }
 
 
@@ -573,3 +578,110 @@ def test_d2d_long_opposite_pickup_does_not_choose_the_sign(dt):
 
 def test_d2d_short_record_falls_back_to_largest_finite_sample():
     assert assessed_window([0, 1, 2, 3], [np.nan, -60e3, -70e3, 0]) == (1, 2)
+
+
+@pytest.mark.parametrize("bad", [False, True])
+def test_measured_waveform_hash_is_little_endian_time_then_current(tmp_path, bad):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "absent")
+    t, ip = _trace()
+    if bad:
+        t[-1] = t[-2]  # read successfully, but summarise refuses duplicate times
+    write_group(paths.raw_cache / "1_processed.h5", "ip", t, ip[None])
+    record = window.raw_signal(1, "ip", paths=paths)
+    expected = hashlib.sha256(
+        b"".join(
+            struct.pack("<d", float(value))
+            for values in (record.x, record.y[0])
+            for value in values
+        )
+    ).hexdigest()
+    line = window.measure(1, paths)
+    assert line["status"] == ("error" if bad else "ok")
+    assert line["ip_sha256"] == expected
+
+
+def test_unread_waveform_error_has_no_hash(tmp_path, monkeypatch):
+    monkeypatch.setattr(window, "raw_signal", _fake_ip([]))
+    line = window.measure(3, Paths(root=tmp_path))
+    assert line["status"] == "error" and "ip_sha256" not in line
+
+
+def test_runs_are_append_only_and_lines_keep_their_origin(tmp_path, monkeypatch):
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
+    monkeypatch.setattr(window, "raw_signal", _fake_ip([]))
+    shots = tmp_path / "shots.txt"
+    args = ["--shot-file", str(shots), "--workers", "1"]
+    log = tmp_path / "catalog" / "ip.jsonl"
+    runs = log.with_name("ip_runs.jsonl")
+    shots.write_text("1\n")
+    assert window.main(args) == 0
+    first_lines = log.read_bytes()
+    assert runs.is_file()
+    first_run = runs.read_bytes()
+    shots.write_text("1\n2\n")
+    assert window.main(args) == 0
+    assert runs.read_bytes().startswith(first_run)
+    assert log.read_bytes().startswith(first_lines)
+    lines_before = log.read_bytes()
+    records_before = runs.read_bytes()
+    assert window.main(args) == 0
+    assert log.read_bytes() == lines_before
+    assert runs.read_bytes().startswith(records_before)
+    records = [json.loads(row) for row in runs.read_bytes().splitlines()]
+    assert len(records) == 3
+    ids = [record["run"] for record in records]
+    assert len(set(ids)) == 3
+    assert all(re.fullmatch(r"[0-9a-f]{32}", run) for run in ids)
+    assert [record["this_run"] for record in records] == [
+        {"ok": 1},
+        {"no_plasma": 1},
+        {},
+    ]
+    lines = [json.loads(row) for row in lines_before.splitlines()]
+    assert [line["run"] for line in lines] == ids[:2]
+    assert read_log(log)["run"].tolist() == ids[:2]
+    assert read_log(log)["ip_sha256"].tolist() == [line["ip_sha256"] for line in lines]
+    for record, shot_bytes in zip(records, [b"1\n", b"1\n2\n", b"1\n2\n"]):
+        assert record["git_sha"] == git_sha(full=True)
+        assert record["git_dirty"] == git_dirty()
+        assert record["written_at"] and record["definition"] == window.definition()
+        assert record["log"] == str(log) and record["shot_file"] == str(shots)
+        assert record["shots"] == len(shot_bytes.splitlines())
+        assert record["shot_file_sha256"] == hashlib.sha256(shot_bytes).hexdigest()
+        assert shlex.split(record["command"]) == [
+            "python",
+            "-m",
+            "labeler.events.catalog.window",
+            *args,
+        ]
+    meta = json.loads(log.with_suffix(".meta.json").read_text())
+    assert meta["run"] == ids[-1] and meta["git_dirty"] == git_dirty()
+
+
+@pytest.mark.parametrize("field", ["ip_sha256", "run"])
+@pytest.mark.parametrize("value", [None, "", "f", "G" * 64, 123])
+def test_v3_ok_line_requires_valid_fingerprints(tmp_path, field, value):
+    line = _ok_line() | {"ip_sha256": "a" * 64, "run": "b" * 32}
+    if value is None:
+        del line[field]
+    else:
+        line[field] = value
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(line) + "\n")
+    with pytest.raises(CatalogError, match=field):
+        read_log(log)
+
+
+@pytest.mark.parametrize("status", ["ok", "no_plasma", "error"])
+def test_optional_fingerprints_are_kept_on_any_version(tmp_path, status):
+    line = _ok_line() | {
+        "status": status,
+        "version": 2,
+        "ip_sha256": "a" * 64,
+        "run": "b" * 32,
+    }
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(line) + "\n")
+    table = read_log(log)
+    assert table.loc[0, "ip_sha256"] == "a" * 64
+    assert table.loc[0, "run"] == "b" * 32
