@@ -427,9 +427,24 @@ def verify_cohort(
     *,
     seed: int = SEED,
     n: int = COHORT_SIZE,
+    manifest: Mapping | None = None,
 ) -> list[Finding]:
-    """Rederive the draw from the frozen population and seed, comparing exactly."""
+    """Rederive the draw from the frozen population and seed, comparing exactly.
+
+    If supplied, `manifest` also binds the Ip run records when it names them;
+    older freezes without that record remain valid. The caller supplies `cells`
+    and `seed` from the manifest as before.
+    """
     found = []
+    ip_input = (manifest or {}).get("inputs", {}).get("ip_log", {})
+    if "runs" in ip_input:
+        record = ip_input["runs"]
+        try:
+            path = Path(record["path"])
+            if hashlib.sha256(path.read_bytes()).hexdigest() != record["sha256"]:
+                raise ValueError(f"{path}: sha256 differs")
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            found.append(Finding("inputs", "ip_log.runs", None, str(error)))
     for name, frame in (("population", population), ("cohort", cohort)):
         for shot in frame["shot"]:
             if _shot_id(shot) is None:
@@ -799,7 +814,15 @@ def _run(args, paths) -> int:
             raise ValueError("definition differs from runaway.definition()")
     except (OSError, ValueError, AttributeError) as error:
         raise CatalogError(f"{runaway_meta_path}: {error}") from error
-    frame = pop.population(pool, window.read_log(NamedBytes(log_data, log_path)))
+    runs_path = log_path.with_name("ip_runs.jsonl")
+    try:
+        runs_data = runs_path.read_bytes()
+    except OSError as error:
+        raise CatalogError(f"{runs_path}: {error}") from error
+    log_input["runs"] = _input(runs_path, data=runs_data)
+    frame = pop.population(
+        pool, window.read_log(NamedBytes(log_data, log_path), runs_data=runs_data)
+    )
     evidence = runaway.read_runaway(NamedBytes(runaway_data, runaway_path))
     frame = runaway.apply_rule(frame, evidence, runaway_path)
     legacy_inputs = []

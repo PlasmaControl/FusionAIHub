@@ -323,8 +323,12 @@ def _validate_line(line: dict) -> None:
         raise ValueError("dt_ms must be null or finite and > 0")
 
 
-def read_log(path) -> pd.DataFrame:
-    """Last complete line per shot; skip torn tails, refuse corrupt complete lines."""
+def read_log(path, *, runs_data: bytes | None = None) -> pd.DataFrame:
+    """Last complete line per shot; skip torn tails, refuse corrupt complete lines.
+
+    Supply `runs_data` to check captured run records without reopening the file.
+    Otherwise current-version lines require a named log to locate ip_runs.jsonl.
+    """
     stream = hasattr(path, "read")
     if not stream:
         path = Path(path)
@@ -345,21 +349,28 @@ def read_log(path) -> pd.DataFrame:
                 last[line["shot"]] = line
     current = [line for line in last.values() if line["version"] == LOG_VERSION]
     if current:
-        log_path = Path(path.name) if stream else path
-        runs_path = log_path.with_name("ip_runs.jsonl")
+        log_name = getattr(path, "name", None) if stream else path
+        if log_name is None and runs_data is None:
+            raise CatalogError(f"{path}: runs file cannot be located for unnamed log")
+        runs_path = (
+            Path(log_name).with_name("ip_runs.jsonl")
+            if log_name is not None
+            else Path("ip_runs.jsonl")
+        )
+        if runs_data is None:
+            runs_data = runs_path.read_bytes() if runs_path.is_file() else b""
         starts = set()
-        if runs_path.is_file():
-            for number, text in enumerate(runs_path.read_bytes().splitlines(True), 1):
-                if not text.endswith(b"\n"):
-                    break
-                if not text.strip():
-                    continue
-                try:
-                    record = json.loads(text)
-                    if record.get("type") in (None, "start"):
-                        starts.add(record["run"])
-                except (ValueError, KeyError, AttributeError) as error:
-                    raise CatalogError(f"{runs_path}:{number}: {error}") from error
+        for number, text in enumerate(runs_data.splitlines(True), 1):
+            if not text.endswith(b"\n"):
+                break
+            if not text.strip():
+                continue
+            try:
+                record = json.loads(text)
+                if record.get("type") in (None, "start"):
+                    starts.add(record["run"])
+            except (ValueError, KeyError, AttributeError) as error:
+                raise CatalogError(f"{runs_path}:{number}: {error}") from error
         for line in current:
             if line["run"] not in starts:
                 raise CatalogError(

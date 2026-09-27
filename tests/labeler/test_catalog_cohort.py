@@ -949,6 +949,58 @@ def _command_inputs(tmp_path, monkeypatch):
     return folder, out, args
 
 
+def test_command_hashes_runs_bytes_it_parses_once(tmp_path, monkeypatch):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "ip_runs.jsonl"
+    digest = sha256_of(path)
+    original = Path.read_bytes
+    reads = []
+
+    def replace_after_read(source):
+        data = original(source)
+        if source == path:
+            reads.append(source)
+            path.write_text("replacement\n")
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", replace_after_read)
+    assert cohort.main(args) == 0
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    assert doc["inputs"]["ip_log"]["runs"] == {
+        "path": str(path.resolve()),
+        "sha256": digest,
+    }
+    assert reads == [path]
+
+
+@pytest.mark.parametrize("change", ["changed", "missing"])
+def test_verification_checks_recorded_runs_digest(tmp_path, monkeypatch, change):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "ip_runs.jsonl"
+    assert cohort.main(args) == 0
+    doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
+    # Supply the record explicitly so this exercises verification independently
+    # of the test above, which requires the writer to emit it.
+    doc["inputs"]["ip_log"]["runs"] = {
+        "path": str(path.resolve()),
+        "sha256": sha256_of(path),
+    }
+    drawn = cohort.read_cohort(out / "cohort.csv")
+    population = cohort.read_population(out / "population.csv")
+    cells = {c: v["N"] for c, v in doc["cells"].items()}
+    assert cohort.verify_cohort(drawn, population, cells, manifest=doc) == []
+    if change == "changed":
+        path.write_bytes(path.read_bytes() + b"\n")
+    else:
+        path.unlink()
+    found = cohort.verify_cohort(drawn, population, cells, manifest=doc)
+    assert any(str(path) in str(f) and "runs" in str(f) for f in found)
+    with pytest.raises(CatalogError, match="ip_runs"):
+        cohort.require(found)
+    del doc["inputs"]["ip_log"]["runs"]
+    assert cohort.verify_cohort(drawn, population, cells, manifest=doc) == []
+
+
 def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
     folder, out, args = _command_inputs(tmp_path, monkeypatch)
     path = folder / "runaway.csv"
@@ -1289,7 +1341,11 @@ def test_committed_release_hashes_and_exact_redraw():
         check_exact=True,
     )
     assert cohort.check_cohort(drawn, cells) == []
-    assert cohort.verify_cohort(drawn, population, cells, seed=doc["seed"]) == []
+    assert "runs" not in doc["inputs"]["ip_log"]
+    assert (
+        cohort.verify_cohort(drawn, population, cells, seed=doc["seed"], manifest=doc)
+        == []
+    )
 
 
 def test_supersedes_records_previous_freeze_and_changed_inputs(tmp_path, monkeypatch):
@@ -1364,8 +1420,8 @@ def test_cohort_fingerprints_bytes_consumed_when_input_replaced(
     }[reader]
     original = getattr(module, function)
 
-    def replace_after_read(source):
-        frame = original(source)
+    def replace_after_read(source, **kwargs):
+        frame = original(source, **kwargs)
         path.write_text("replacement\n")
         return frame
 
