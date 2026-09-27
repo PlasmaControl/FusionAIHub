@@ -129,7 +129,8 @@ class Assessment:
         for start, stop, state in assessed.spans:
             if state == PRESENT and start >= hi:
                 raise ValueError(
-                    f"present span {start}-{stop} ms starts at or after allowed end {hi} ms"
+                    f"present span {start}-{stop} ms starts at or after "
+                    f"allowed end {hi} ms"
                 )
         a, b = assessed.window
         if a < lo or a >= hi:

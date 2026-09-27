@@ -679,7 +679,8 @@ def test_frozen_blind_coverage_under_d25(scenario, seed, capsys):
     coverage = hits / draws
     with capsys.disabled():
         print(
-            f"\nFrozen D25 {scenario}: population={sum(c['N'] for c in design.values())}, "
+            f"\nFrozen D25 {scenario}: "
+            f"population={sum(c['N'] for c in design.values())}, "
             f"cohort={dict(counts)}, blind={dict(blind_counts)}, seed={seed}, "
             f"draws={draws}, replicates=2000, nominal=0.95, "
             f"median event shots={np.median(event_shots):g}"
