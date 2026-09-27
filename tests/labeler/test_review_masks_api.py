@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import json
 
 import numpy as np
@@ -62,11 +63,12 @@ def _url(shot=SHOT, event="alfven_eigenmode"):
 
 
 def _body(client, **change):
-    sha = client.get(_url()).json()["pseudo_sha256"]
+    view = client.get(_url()).json()
     body = {
         "event": "alfven_eigenmode",
         "shot": SHOT,
-        "pseudo_sha256": sha,
+        "pseudo_sha256": view["pseudo_sha256"],
+        "revision": view.get("revision", 0),
         "rejected": [2],
         "name": " Ada ",
     }
@@ -100,11 +102,14 @@ def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, 
     assert [r["id"] for r in view["regions"]] == [1, 2]
     assert view["rejected"] == [] and view["stale"] is False
     assert view["last_save"] is None
+    assert view["revision"] == 0
     assert view["grid"] == {"t0_ms": -10.0, "dt_ms": 2.048, "n": 300}
     saved = client.post("/api/masks", json=_body(client))
     assert saved.status_code == 200
     assert saved.json()["rejected"] == [2]
     assert saved.json()["last_save"]["name"] == "Ada"
+    assert saved.json()["revision"] == 1
+    assert saved.json()["last_save"]["reviewer"] == getpass.getuser()
     assert client.get(_url()).json()["rejected"] == [2]
     log = regions.log_path(paths.label_tables / "alfven_eigenmode")
     [line] = log.read_text().splitlines()
@@ -119,6 +124,7 @@ def test_the_last_save_is_the_decision_and_the_earlier_ones_stay(client, paths):
     assert client.get(_url()).json()["rejected"] == []
     log = regions.log_path(paths.label_tables / "alfven_eigenmode")
     assert len(log.read_text().splitlines()) == 2
+    assert client.get(_url()).json()["revision"] == 2
 
 
 def test_a_decision_on_an_older_pseudo_mask_is_stale(client, paths):
@@ -129,6 +135,28 @@ def test_a_decision_on_an_older_pseudo_mask_is_stale(client, paths):
     view = client.get(_url()).json()
     assert view["rejected"] == [] and view["stale"] is True
     assert view["last_save"]["rejected"] == [2]
+    assert view["revision"] == 1
+
+
+def test_a_save_must_name_the_revision_it_replaces(client, paths):
+    body = _body(client)
+    assert client.post("/api/masks", json=body).status_code == 200
+    stale = client.post("/api/masks", json={**body, "rejected": [1]})
+    assert stale.status_code == 409
+    assert "mask decisions changed" in stale.json()["error"]
+    assert client.get(_url()).json()["rejected"] == [2]
+    log = regions.log_path(paths.label_tables / "alfven_eigenmode")
+    assert len(log.read_text().splitlines()) == 1
+    fresh = client.post("/api/masks", json=_body(client, rejected=[1, 2]))
+    assert fresh.status_code == 200 and fresh.json()["revision"] == 2
+
+
+@pytest.mark.parametrize("revision", [None, -1])
+def test_revision_is_required_and_nonnegative(client, revision):
+    body = _body(client, revision=revision)
+    if revision is None:
+        del body["revision"]
+    assert client.post("/api/masks", json=body).status_code == 422
 
 
 @pytest.mark.parametrize(

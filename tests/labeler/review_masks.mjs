@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const [BASE, TOKEN, SHELL, PROFILE] = process.argv.slice(2);
+const [BASE, TOKEN, SHELL, PROFILE, CASE = "happy"] = process.argv.slice(2);
 const browser = spawn(
   SHELL,
   ["--no-sandbox", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${PROFILE}`,
@@ -109,6 +109,7 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   await until(`typeof S !== "undefined" && S.shot === 170815 && S.data !== null && S.masks !== null`);
+  if (CASE === "happy") {
   await js(`$("reviewer-name").focus()`);
   await send("Input.insertText", { text: "Ada" });
   await js("document.activeElement.blur()");
@@ -160,6 +161,79 @@ try {
   await sleep(300);
   check("a shot without a pseudo-mask shows none", await js(`S.masks === null && $("masks").hidden`),
     await js(`[S.masks, $("masks").hidden]`));
+  } else if (CASE === "race") {
+    await js(`window.realFetch = window.fetch.bind(window);
+      window.fetch = async (url, options) => {
+        if (String(url).includes('/api/masks') && options?.method === 'POST') {
+          window.fetch = window.realFetch;
+          await new Promise(resolve => { window.releaseMask = resolve; });
+        }
+        return window.realFetch(url, options);
+      };`);
+    const two = await region(2);
+    await click(two.x, two.y);
+    await until('S.masks.saving && typeof window.releaseMask === "function"');
+    await click(two.x, two.y);
+    check("a pending save blocks another click and says so",
+      await js('$("status").textContent.includes("saving")'), await js('$("status").textContent'));
+    await press("k");
+    await until('S.shot === 170816 && S.data !== null');
+    await press("j");
+    await until('S.shot === 170815 && S.data !== null');
+    await sleep(150);
+    await js('window.releaseMask()');
+    await until('S.masks !== null && !S.masks.saving && S.masks.last_save !== null');
+    check("returning to the shot adopts the pending rejection",
+      same(await js('S.masks.rejected'), [2]), await js('S.masks.rejected'));
+    const one = await region(1);
+    await click(one.x, one.y);
+    await until('!S.masks.saving');
+    check("the next rejection keeps both regions", same(await js('S.masks.rejected'), [1, 2]),
+      await js('S.masks.rejected'));
+  } else if (CASE === "failed") {
+    await js(`window.realFetch = window.fetch.bind(window);
+      window.fetch = async (url, options) => {
+        if (String(url).includes('/api/masks') && options?.method === 'POST') {
+          window.fetch = window.realFetch;
+          return new Response(JSON.stringify({error: 'mask save failed'}), {status: 500});
+        }
+        return window.realFetch(url, options);
+      };`);
+    const two = await region(2);
+    await click(two.x, two.y);
+    await until('!S.masks.saving');
+    check("a failed rejection reverts and shows the error",
+      same(await js('S.masks.rejected'), []) && await js('$("status").textContent.includes("mask save failed")'),
+      await js('[S.masks.rejected, $("status").textContent]'));
+    await click(two.x, two.y);
+    await until('!S.masks.saving && S.masks.last_save !== null');
+  } else if (CASE === "conflict") {
+    await js(`(async () => { await api('/api/masks', {
+      method: 'POST', headers: {'content-type': 'application/json'},
+      body: JSON.stringify({event: S.event, shot: S.shot, rejected: [2],
+        pseudo_sha256: S.masks.pseudo_sha256, revision: S.masks.revision || 0})
+    }); })()`);
+    const one = await region(1);
+    await click(one.x, one.y);
+    await until('!S.masks.saving');
+    await sleep(200);
+    check("a conflict reloads the current decisions and says why",
+      same(await js('S.masks.rejected'), [2]) && await js('$("status").textContent.includes("decisions changed")'),
+      await js('[S.masks.rejected, $("status").textContent]'));
+    await click(one.x, one.y);
+    await until('!S.masks.saving');
+    check("the next click uses the new revision", same(await js('S.masks.rejected'), [1, 2]),
+      await js('S.masks.rejected'));
+  } else if (CASE === "stale_mask") {
+    check("the page explains an old mask decision",
+      await js('$("masks").textContent.includes("older mask was dropped")'), await js('$("masks").textContent'));
+    const one = await region(1);
+    await click(one.x, one.y);
+    await until('!S.masks.saving');
+    check("a click saves on the current mask",
+      await js('!S.masks.stale && S.masks.last_save.pseudo_sha256 === S.masks.pseudo_sha256') &&
+      same(await js('S.masks.rejected'), [1]), await js('S.masks.last_save'));
+  }
 } catch (error) {
   check("the page did what was asked", false, String(error));
 }
