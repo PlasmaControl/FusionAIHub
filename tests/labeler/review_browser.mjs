@@ -253,6 +253,7 @@ async function recordFetches(holdVersion = false) {
       if (held) {
         gate.waiters ||= [];
         if (!gate.released) await new Promise((done) => gate.waiters.push(done));
+        if (gate.reject) throw new TypeError("Failed to fetch");
       }
       return response;
     };
@@ -520,7 +521,9 @@ async function eventQueueInflight() {
 }
 
 async function pendingResponses() {
+  if (["queue_fail", "queue_reject"].includes(CASE)) return pendingQueueFailure();
   if (CASE.startsWith("queue_")) return pendingQueue();
+  if (["next_edit", "save_fail"].includes(CASE)) return pendingSaveMessage();
   const a = "alfven_eigenmode", b = "neoclassical_tearing_mode";
   const key = `labeler:${a}:170815`;
   const original = await js("S.label");
@@ -651,6 +654,79 @@ async function pendingQueue() {
   await until("!pendingNavigation()");
   check("U skips the newly acknowledged shot and reports all reviewed", await js(`
     S.shot === 170815 && $("status").textContent === "all reviewed"`));
+}
+
+async function pendingSaveMessage() {
+  const a = "alfven_eigenmode", key = `labeler:${a}:170815`;
+  await draw(500, 800);
+  const sent = await js("S.label");
+  await arm("label");
+  await press(CASE === "next_edit" ? "Enter" : "s");
+  await held("label");
+  if (CASE === "next_edit") await draw(1200, 1400);
+  const later = await js("S.label");
+  if (CASE === "save_fail") {
+    await press("ArrowRight");
+    await opened(170816);
+  }
+  await release("label");
+  await until("!S.saving");
+  await opened(170816);
+  if (CASE === "next_edit") {
+    check("Save-and-next uses the same unsaved-draft notice as an arrow", await js(`
+      $("status").textContent === "170815: the edit is kept as a draft, not saved"`),
+      await js(`$("status").textContent`));
+    const history = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
+    const saved = history.versions.at(-1);
+    check("Save-and-next saves only what it sent",
+      same({ window: saved.window, intervals: saved.intervals }, sent));
+  } else {
+    check("a failed save names its shot after the reviewer moved", await js(`
+      $("status").textContent === "170815 not saved: [Errno 122] Disk quota exceeded" &&
+      $("status").classList.contains("error")`), await js(`$("status").textContent`));
+  }
+  check("the next shot keeps its own label", same(await js("S.label.intervals"), [[400, 600, 1]]));
+  check("the unsaved label is kept in the original shot's draft",
+    same(await js(`JSON.parse(localStorage.getItem("${key}"))`), later));
+  await press("ArrowLeft");
+  await opened(170815);
+  check("returning shows the unsaved label", same(await js("S.label"), later));
+  check("returning marks the unsaved label in the header and queue", await js(`
+    !$("dirty").hidden && $("queue").querySelector('[data-shot="170815"]').classList.contains("dirty")`));
+}
+
+async function pendingQueueFailure() {
+  const b = "neoclassical_tearing_mode";
+  await arm("queue", b);
+  if (CASE === "queue_reject") await js("window.gates.queue.reject = true");
+  await js(`$("event").value = "${b}"; $("event").dispatchEvent(new Event("change"))`);
+  await held("queue");
+  // Observe completion of the event handler even when the old page leaves navigation pending.
+  const message = CASE === "queue_fail" ? "fixture queue failure" : "Failed to fetch";
+  await release("queue");
+  await until(`$("rows").textContent.includes("${message}") || $("status").textContent.includes("${message}")`);
+  check("a queue failure names its event, explains the error and gives the retry", await js(`
+    $("rows").textContent === "${b}: the queue could not be read: ${message}. Choose the event again to retry."`),
+    await js(`$("rows").textContent`));
+  check("a failed queue clears the old shot and label", await js(`
+    [S.shot, S.meta, S.data, S.overview, S.label].every((value) => value === null) &&
+    S.undo.length === 0 && S.selected === -1`));
+  check("a failed queue finishes navigation and uses an event-only address", await js(`
+    !pendingNavigation() && S.opened.event === "${b}" && S.opened.shot === null &&
+    location.hash === "#${b}" && $("shot").value === ""`));
+  check("a failed queue clears the header and disables shot actions", await js(`
+    $("count").textContent === "0/0" && ["tier", "state", "saved", "next-shot"].every((id) => $(id).textContent === "") &&
+    ["save-next", "revert", "show-versions"].every((id) => $(id).disabled)`));
+  await js("document.activeElement.blur(); edit([0, 2000], [[500, 800, 1]])");
+  await press("s");
+  check("a failed queue refuses no edit as still opening and cannot save", await js(`
+    !$("status").textContent.includes("still opening") && window.saves.length === 0`));
+  await js(`$("event").dispatchEvent(new Event("change"))`);
+  await settled(b, 170815);
+  check("choosing the event again retries and opens its shot", await js(`
+    S.meta.event === "${b}" && location.hash === "#${b}/170815" && !pendingNavigation() &&
+    window.requests.filter((r) => r.kind === "queue" && r.event === "${b}").length === 2`));
+  check("retry opens the event's own label", same(await js("S.label.intervals"), [[900, 1100, 1]]));
 }
 
 async function moves() {

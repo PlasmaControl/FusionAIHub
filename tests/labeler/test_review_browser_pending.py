@@ -72,3 +72,43 @@ def test_pending_queue(pending_events, tmp_path, case):  # noqa: F811
         assert history[-1]["intervals"] == [list(span) for span in saved.intervals]
     assert [entry["shot"] for entry in history] == expected
     assert len(labels.read_history(event_b)) == 1
+
+
+def test_next_later_edit(pending_events, tmp_path):  # noqa: F811
+    base, (event_a, event_b) = pending_events
+    _run_browser(base, tmp_path, "next_edit", 7)
+    history = labels.read_history(event_a)
+    assert [entry["shot"] for entry in history] == [170815, 170816, 170815]
+    assert len(history[-1]["intervals"]) == 2
+    assert len(labels.read_history(event_b)) == 1
+
+
+def test_save_failure(pending_events, tmp_path, monkeypatch):  # noqa: F811
+    base, (event_a, event_b) = pending_events
+
+    def fail_save(*args, **kwargs):
+        raise OSError(122, "Disk quota exceeded")
+
+    monkeypatch.setattr(labels, "save", fail_save)
+    _run_browser(base, tmp_path, "save_fail", 6)
+    assert [entry["shot"] for entry in labels.read_history(event_a)] == [170815, 170816]
+    assert labels.read_saved(event_a)[170815].intervals == ((100, 300, 1),)
+    assert len(labels.read_history(event_b)) == 1
+
+
+@pytest.mark.parametrize("case", ["queue_fail", "queue_reject"])
+def test_queue_failure(pending_events, tmp_path, monkeypatch, case):  # noqa: F811
+    base, (event_a, event_b) = pending_events
+    queue = labels.queue
+
+    def fail_once(directory, roster):
+        if directory == event_b:
+            monkeypatch.setattr(labels, "queue", queue)
+            raise OSError("fixture queue failure")
+        return queue(directory, roster)
+
+    if case == "queue_fail":
+        monkeypatch.setattr(labels, "queue", fail_once)
+    _run_browser(base, tmp_path, case, 8)
+    assert [entry["shot"] for entry in labels.read_history(event_a)] == [170815, 170816]
+    assert len(labels.read_history(event_b)) == 1
