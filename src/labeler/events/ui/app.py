@@ -2,8 +2,10 @@
 
 Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
-its one write is `POST /api/label`, into the event's `review/` directory.
-`GET /api/history` lists a shot's saved versions (see `review.versions`).
+its writes are `POST /api/label` and `POST /api/masks`, both into the event's
+`review/` directory. `GET /api/history` lists a shot's saved versions (see
+`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions and
+the reviewer's last word on them (see `labeler.ae.seg.regions`).
 """
 
 from __future__ import annotations
@@ -25,6 +27,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ...ae import seg
+from ...ae.seg import regions
+from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths
 from .. import raw, rosters
 from ..review import build as review_build
@@ -40,8 +45,8 @@ NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
 #: Bumped when the server gains a route or a field the page depends on. The
 #: page asks `/api/version` first and, from an older server, saves without a
-#: name and hides the history instead of failing every save.
-API_VERSION = 2
+#: name and hides the history instead of failing every save. 3 added the masks.
+API_VERSION = 3
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +58,17 @@ class LabelIn(BaseModel):
     shot: int
     window: tuple[float, float]
     intervals: list[tuple[float, float, int]] = Field(max_length=1000)
+    name: str | None = Field(default=None, max_length=versions.NAME_MAX)
+
+
+class MaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event: str
+    shot: int
+    #: The version of the pseudo-mask the page drew; a save on another is refused.
+    pseudo_sha256: str = Field(min_length=64, max_length=64)
+    rejected: list[int] = Field(max_length=regions.MAX_REGIONS)
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
 
 
@@ -287,5 +303,44 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         roster_tier(_roster(directory), shot)
         return {"shot": shot, "versions": versions.shot_versions(directory, shot)}
 
+    def mask_file(event: str, shot: int) -> tuple[Path, Path]:
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        path = regions.pseudo_file(paths, shot)
+        if event != seg.EVENT or not path.is_file():
+            raise HTTPException(404, f"shot {int(shot)} has no {event} pseudo-mask")
+        return directory, path
+
+    @app.get("/api/masks")
+    def masks_view(event: str, shot: int):
+        directory, _ = mask_file(event, shot)
+        return regions.shot_view(paths, directory, shot)
+
+    @app.post("/api/masks")
+    def save_masks(body: MaskIn):
+        directory, path = mask_file(body.event, body.shot)
+        with mask_lock:
+            if regions.file_sha256(path) != body.pseudo_sha256:
+                raise HTTPException(
+                    409, "the pseudo-mask changed since the page drew it: reopen it"
+                )
+            _, count = regions.label_regions(PseudoMask.load(path).mask)
+            unknown = sorted({k for k in body.rejected if not 1 <= k <= count})
+            if unknown:
+                raise HTTPException(400, f"no region {unknown} (1..{count})")
+            try:
+                name = versions.clean_name(body.name)
+            except ValueError as error:
+                raise HTTPException(400, str(error)) from None
+            entry = regions.save_decision(
+                directory,
+                body.shot,
+                body.rejected,
+                pseudo_sha256=body.pseudo_sha256,
+                name=name,
+            )
+        return {"rejected": entry["rejected"], "last_save": entry}
+
+    mask_lock = threading.Lock()
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
