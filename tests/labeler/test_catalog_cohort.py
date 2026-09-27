@@ -498,6 +498,8 @@ def _inputs(folder: Path):
                 "ip_peak_ma": 1.0,
                 "dt_ms": 0.05,
                 "version": window.LOG_VERSION,
+                "ip_sha256": "a" * 64,
+                "run": "b" * 32,
             }
         )
     rows.append({"shot": 185_602, "year": 2021, "reasons": "heating"})

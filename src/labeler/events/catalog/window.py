@@ -40,6 +40,8 @@ import argparse
 import hashlib
 import json
 import math
+import re
+import shlex
 import sys
 from collections import Counter
 from collections.abc import Iterable, Iterator
@@ -48,13 +50,14 @@ from datetime import UTC, datetime
 from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
 
 from shot_design.shotdb.select import FLATTOP_FRACTION, MIN_FLATTOP_S, flattop_from_ip
 
-from ...config import Paths, atomic_path, git_sha
+from ...config import Paths, atomic_path, git_dirty, git_sha
 from ..raw import raw_signal
 from ..verify import NoDataError
 from .check import CatalogError
@@ -80,6 +83,8 @@ LOG_COLUMNS = (
     "n",
     "error",
     "version",
+    "ip_sha256",
+    "run",
 )
 
 
@@ -245,13 +250,19 @@ def measure(shot: int, paths: Paths) -> dict:
     A failure is the shot's `error` line, whatever raised it, so one bad shot never
     stops a run over thousands; a rerun tries it again.
     """
+    fingerprint = {}
     try:
         record = raw_signal(shot, IP_GROUP, paths=paths)
-        return summarise(shot, record.x, record.y[0]) | {"tier": record.attrs["tier"]}
+        t, ip = record.x, record.y[0]
+        digest = hashlib.sha256()
+        for values in (t, ip):
+            digest.update(np.asarray(values, dtype="<f8").tobytes())
+        fingerprint["ip_sha256"] = digest.hexdigest()
+        return summarise(shot, t, ip) | {"tier": record.attrs["tier"]} | fingerprint
     except NoDataError as error:
-        return _error_line(shot, str(error))
+        return _error_line(shot, str(error)) | fingerprint
     except Exception as error:  # noqa: BLE001 - logged for the shot, then retried
-        return _error_line(shot, f"{type(error).__name__}: {error}")
+        return _error_line(shot, f"{type(error).__name__}: {error}") | fingerprint
 
 
 def _error_line(shot: int, message: str) -> dict:
@@ -276,6 +287,14 @@ def _validate_line(line: dict) -> None:
     version = line.get("version", 1)
     if type(version) is not int or version < 1:
         raise ValueError("version must be an int >= 1")
+    for field, length in (("ip_sha256", 64), ("run", 32)):
+        required = version == 3 and line["status"] == "ok"
+        if field in line or required:
+            value = line.get(field)
+            if not isinstance(value, str) or not re.fullmatch(
+                rf"[0-9a-f]{{{length}}}", value
+            ):
+                raise ValueError(f"{field} must be {length} lowercase hex characters")
     if line["status"] != "ok":
         return
     start, end = line.get("window_start_ms"), line.get("window_end_ms")
@@ -348,10 +367,16 @@ def _set_aside_torn(path: Path) -> None:
 
 
 def fetch(
-    shots: Iterable[int], log: Path, paths: Paths, *, workers: int = 1
+    shots: Iterable[int],
+    log: Path,
+    paths: Paths,
+    *,
+    workers: int = 1,
+    run: str | None = None,
 ) -> Counter:
     """Measure every shot not yet settled in `log`, appending a line for each."""
     table = read_log(log)
+    run = run or uuid4().hex
     settled = set(
         table.loc[
             table["status"].isin(SETTLED) & table["version"].eq(LOG_VERSION), "shot"
@@ -363,6 +388,7 @@ def fetch(
     counts: Counter = Counter()
     with log.open("a", encoding="utf-8") as out:
         for i, line in enumerate(_lines(todo, paths, workers), 1):
+            line["run"] = run
             line["written_at"] = datetime.now(UTC).isoformat(timespec="seconds")
             out.write(json.dumps(line) + "\n")
             out.flush()
@@ -409,6 +435,7 @@ def definition() -> dict:
 
 
 def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
     parser = argparse.ArgumentParser(
         prog="python -m labeler.events.catalog.window",
         description="Measure each listed shot's assessed window and Ip flat-top.",
@@ -421,21 +448,25 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int, help="the first N shots only (a pilot)")
     args = parser.parse_args(argv)
     try:
-        return _run(args, Paths.from_env())
+        return _run(args, Paths.from_env(), argv)
     except CatalogError as error:
         parser.error(str(error))
 
 
-def _run(args, paths) -> int:
+def _run(args, paths, argv) -> int:
     log = args.log or paths.catalog / "ip.jsonl"
     shot_bytes = args.shot_file.read_bytes()
     # The shot-file syntax is one int per line, with blanks and # comments ignored.
     lines = (line.split("#", 1)[0].strip() for line in shot_bytes.decode().splitlines())
     shots = sorted(int(line) for line in lines if line)[: args.limit]
-    counts = fetch(shots, log, paths, workers=args.workers)
+    run = uuid4().hex
+    counts = fetch(shots, log, paths, workers=args.workers, run=run)
     meta = {
+        "run": run,
         "version": LOG_VERSION,
         "git_sha": git_sha(full=True),
+        "git_dirty": git_dirty(),
+        "command": shlex.join(["python", "-m", "labeler.events.catalog.window", *argv]),
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "log": str(log),
         "shot_file": str(args.shot_file),
@@ -444,6 +475,8 @@ def _run(args, paths) -> int:
         "this_run": dict(counts),
         "definition": definition(),
     }
+    with log.with_name("ip_runs.jsonl").open("a", encoding="utf-8") as out:
+        out.write(json.dumps(meta) + "\n")
     with atomic_path(log.with_suffix(".meta.json")) as tmp:
         Path(tmp).write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
     table = read_log(log)

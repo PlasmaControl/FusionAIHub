@@ -230,6 +230,8 @@ def _ok(shot, flattop, bounds=(7, 5000)):
         "ip_peak_ma": 1.2,
         "dt_ms": 0.05,
         "version": window.LOG_VERSION,
+        "ip_sha256": "a" * 64,
+        "run": "b" * 32,
     }
 
 
