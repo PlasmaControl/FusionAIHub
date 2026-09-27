@@ -18,7 +18,7 @@
 # Merge afterwards on the login node (seconds; a SLURM job for it could not meet the gate):
 #   python -m labeler.ae.xpower.extend --merge --of 4
 #
-#   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this>
+#   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this> (shards/pilot/)
 #   full run:   sbatch <this>
 # For N shards, use OF=N together with --array=0-<N-1>.
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only

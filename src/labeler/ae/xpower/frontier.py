@@ -43,11 +43,19 @@ COLUMNS = (
     "chosen",
     "threshold",
     "f1",
+    "f1_low",
+    "f1_high",
     "precision",
     "recall",
     "fp_rate_mhd",
+    "fp_rate_mhd_low",
+    "fp_rate_mhd_high",
     "fp_rate_other",
     "operating_point",
+    "chosen_rule_threshold",
+    "validation_shots",
+    "scored_frames",
+    "mhd_absent_frames",
 )
 
 
@@ -85,8 +93,15 @@ def _candidate(paths: Paths, file: Path, chosen: str | None) -> list[dict]:
         evaluate.shot_frames(s, paths=paths, label=saved[s], model=model, blob=blob)
         for s in validation
     ]
+    counts = {
+        "validation_shots": len(frames),
+        "scored_frames": int(sum(f.scored.sum() for f in frames)),
+        "mhd_absent_frames": int(
+            sum((f.scored & evaluate.mhd_absent(f)).sum() for f in frames)
+        ),
+    }
     rows = []
-    for threshold in THRESHOLDS:
+    for threshold in sorted({*THRESHOLDS, blob["threshold"]}):
         for frame in frames:
             frame.said["ae_xpower"] = frame.prob >= threshold
         totals = evaluate.cells(frames, "ae_xpower").sum(axis=0)
@@ -113,16 +128,40 @@ def _candidate(paths: Paths, file: Path, chosen: str | None) -> list[dict]:
                     )
                 ),
                 "operating_point": False,
+                "chosen_rule_threshold": threshold == blob["threshold"],
+                "f1_low": None,
+                "f1_high": None,
+                "fp_rate_mhd_low": None,
+                "fp_rate_mhd_high": None,
+                **counts,
             }
         )
     point = operating_point(rows)
     if point is not None:
         point["operating_point"] = True
+    for row in rows:
+        if not (row["operating_point"] or row["chosen_rule_threshold"]):
+            continue
+        for frame in frames:
+            frame.said["ae_xpower"] = frame.prob >= row["threshold"]
+        for key, where, metric in (
+            ("f1", None, stats.f1),
+            ("fp_rate_mhd", evaluate.mhd_absent, evaluate.fp_rate),
+        ):
+            interval = evaluate._estimate(
+                evaluate.cells(frames, "ae_xpower", where), metric
+            )
+            row[f"{key}_low"] = interval["low"]
+            row[f"{key}_high"] = interval["high"]
     return rows
 
 
 def _fmt(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.4f}"
+
+
+def _interval(row: dict, key: str) -> str:
+    return f"{_fmt(row[key])} [{_fmt(row[f'{key}_low'])}, {_fmt(row[f'{key}_high'])}]"
 
 
 def report_md(rows: list[dict]) -> str:
@@ -151,7 +190,14 @@ def report_md(rows: list[dict]) -> str:
         "",
         (
             "Any (candidate, threshold) with validation "
-            f"F1 >= 0.90 and MHD FP <= 0.05: {'yes' if feasible else 'no'}."
+            f"F1 >= 0.90 and MHD FP <= 0.05: {'yes' if feasible else 'no'}. "
+            "This feasibility line is on point estimates."
+        ),
+        "",
+        (
+            "F1 and MHD FP at each operating point and each saved chosen-rule "
+            "threshold have 95 % shot-bootstrap intervals (2000 replicates, "
+            f"seed {evaluate.SEED}), computed as in evaluate."
         ),
         "",
         (
@@ -180,11 +226,31 @@ def report_md(rows: list[dict]) -> str:
             )
         else:
             metrics = " | ".join(
-                _fmt(point[key])
+                _interval(point, key)
+                if key in ("f1", "fp_rate_mhd")
+                else _fmt(point[key])
                 for key in ("f1", "precision", "recall", "fp_rate_mhd", "fp_rate_other")
             )
             lines.append(
                 f"| {marked} | {_fmt(best)} | {point['threshold']:.2f} | {metrics} |"
+            )
+    lines += [
+        "",
+        "Saved chosen-rule thresholds (the checkpoint's validation choice):",
+        "",
+        (
+            "| candidate | threshold | F1 [95 %] | MHD FP [95 %] | "
+            "shots | frames | MHD-absent frames |"
+        ),
+        "|---|---|---|---|---|---|---|",
+    ]
+    for row in rows:
+        if row["chosen_rule_threshold"]:
+            lines.append(
+                f"| {row['candidate']} | {row['threshold']:.2f} | "
+                f"{_interval(row, 'f1')} | {_interval(row, 'fp_rate_mhd')} | "
+                f"{row['validation_shots']} | {row['scored_frames']} | "
+                f"{row['mhd_absent_frames']} |"
             )
     return "\n".join([*lines, ""])
 
