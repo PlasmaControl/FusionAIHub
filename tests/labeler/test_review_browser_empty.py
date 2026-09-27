@@ -83,7 +83,7 @@ def test_empty_event_clears_and_settles_then_allows_navigation(
     checks = json.loads(result.stdout.splitlines()[-1])
     failed = [c for c in checks if not c["ok"]]
     assert not failed, json.dumps(failed, indent=2)
-    assert len(checks) == 41
+    assert len(checks) == 42  # one check per page key, and Task 3.3 adds M
     history = labels.read_history(event_a)
     assert len(history) == 2
     assert history[0]["intervals"] == [[100, 300, 1]]
