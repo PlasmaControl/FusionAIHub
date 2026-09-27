@@ -10,7 +10,7 @@ A shot number counts when it lies within `REACH` characters of
   and its unwritten numbers as `range`:
   `189600-189650`, `189600 to 189650`, `189600 through 189650`, or `189600-50`
   (a dash and 2 to 5 closing digits; that closing shot is `range` too). A range
-  spans at most `RANGE_CAP` shots; a wider or reversed one is not a range:
+  has ends differing by at most `RANGE_CAP`; a wider or reversed one is not a range:
   only its six-digit tokens can count, and an abbreviated end counts nothing.
 
 Each context extends `REACH` characters either side of the span covering its

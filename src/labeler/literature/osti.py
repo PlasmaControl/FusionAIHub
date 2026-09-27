@@ -51,11 +51,10 @@ import pandas as pd
 from ..catalog import corpus_shots
 from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from ..events.catalog.check import CatalogError
-from ..events.catalog.population import read_pool
+from ..events.catalog.population import FIRST_SHOT, LAST_SHOT, read_pool
 from . import context
 from .papers import Record, links, papers_frame, write_papers
 
-FIRST_SHOT, LAST_SHOT = 185_601, 204_999  # the FAITH corpus range
 FIRST_YEAR = 2021  # the year of FIRST_SHOT, the corpus' first campaign
 PURL = "https://www.osti.gov/servlets/purl/{}"
 USER_AGENT = "FusionAIHub-literature/0.1 (research; one request at a time)"
@@ -537,11 +536,17 @@ def main(argv=None) -> int:
         "--pool", type=Path, help="links: default $LABELER_ROOT/catalog/pool.csv"
     )
     args = parser.parse_args(argv)
-    paths = Paths.from_env()
+    try:
+        return _run(args, argv, Paths.from_env())
+    except CatalogError as error:
+        parser.error(str(error))
+
+
+def _run(args, argv, paths) -> int:
     cache = args.cache or paths.literature / "osti"
     hit_files = args.hits or sorted(cache.glob("osti_phase*.jsonl"))
     if not hit_files:
-        parser.error(f"no probe output under {cache}")
+        raise CatalogError(f"no probe output under {cache}")
     hits = read_hits(hit_files)
     folder = cache / "fulltext"
     if args.command == "fetch":
@@ -562,7 +567,9 @@ def main(argv=None) -> int:
         return 0
     pool = args.pool or paths.catalog / "pool.csv"
     if not pool.is_file():
-        parser.error(f"no {pool}: links date the shots from the population's pool")
+        raise CatalogError(
+            f"no {pool}: links date the shots from the population's pool"
+        )
     starts = year_starts(read_pool(pool))
     if not starts or min(starts) < FIRST_YEAR:
         raise CatalogError(
