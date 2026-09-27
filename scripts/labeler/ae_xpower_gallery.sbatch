@@ -4,14 +4,15 @@
 #SBATCH --qos=pppl-short-stellar
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=5G
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=1500M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+# Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
 
 # One JPEG per AE180 shot, with the chosen model:
-#   python -m labeler.ae.xpower.gallery --workers 4
+#   python -m labeler.ae.xpower.gallery --workers 1
 # writes $LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-v1/{reviewed,unreviewed}/<shot>.jpg and
 # index.csv. A shot the owner saves later is redrawn by running it again (its row is replaced).
 #
@@ -22,9 +23,9 @@
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
 #   pilot, 3 shots, 1 worker: 6.6 s wall with ~4 s of start-up, i.e. ~1 s a shot, 147 % of one
 #   core (numpy's resampling threads were not pinned there; they are here).
-#   mem=5G          4 workers x ~1.1 GB (torch, one shot's level-1 and level-8 rows) plus the parent;
-#                   reset from the pilot's MaxRSS x 1.15.
-#   time=00:30:00   ~180 shots x ~2 s / 4 workers = 90 s, x 20 for cold reads and start-up.
+#   180-shot run at 4 CPUs / 5G: 28.9 % CPU, 50 % memory; workers use about one core.
+#   1 CPU / 1500M: 82.1 % CPU, 80 % memory in 3 min 39 s.
+#   time=00:30:00   allows for cold reads and start-up beyond the measured run.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
@@ -37,6 +38,6 @@ cd "$REPO"
 echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
 # SHOTS is left unquoted on purpose: it is a list of shot numbers.
 # shellcheck disable=SC2086
-srun "$ENV/bin/python" -m labeler.ae.xpower.gallery --workers "${SLURM_CPUS_PER_TASK:-4}" \
+srun "$ENV/bin/python" -m labeler.ae.xpower.gallery --workers 1 \
     ${SHOTS:+--shots $SHOTS}
 echo "finished at $(date -Is)"

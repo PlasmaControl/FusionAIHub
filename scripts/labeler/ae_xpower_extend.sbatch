@@ -26,9 +26,11 @@
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
 #   probe, 2 shots (2024 and 2025, 5.9 s and 4.7 s windows), 1 worker, pictures on: 10.9 s wall
 #   with ~5 s of start-up, i.e. ~3 s a shot; max RSS 1.46 GB.
-#   population: 1,924 of the frozen population's 4,885 shots have at least 2 s of
-#               corpus CO2, all but 2 of them from 2024-2025.
-#   cpus-per-task=8   481 shots a shard x 3 s / 8 workers = 3.0 min of work a shard.
+#   population: 1,914 of the frozen population's 4,872 shots have at least 2 s of
+#               corpus CO2; 1,901 after the cohort's 13 blind shots are dropped
+#               (Deviation 7). All but 2 of the 1,914 are from 2024-2025.
+#   cpus-per-task=8   about 476 shots a shard (476/475/475/475), x 3 s / 8 workers:
+#                    ~3.0 min of work a shard.
 #   mem=14G           8 x 1.46 GB x 1.2; reset from the pilot's MaxRSS.
 #   time=01:00:00     3.0 min x 20 for cold GPFS reads of 64 MB of CO2 a shot.
 set -euo pipefail

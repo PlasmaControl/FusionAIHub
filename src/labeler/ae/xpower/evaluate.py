@@ -32,7 +32,8 @@ false-positive rate is <= 0.05 and its difference from `seldnet`'s has an upper
 bound < 0; A3 the F1 difference from `always` has a lower bound > 0. Passing or
 not, what the model writes is a suggestion (v1 spec §3): the test shots were
 reviewed from a starting table, not blind, and are 2017-2019 shots where the
-extension runs on 2023-2025 ones.
+extension runs on 2024-2025 ones (1,103 from 2024, 809 from 2025, and 2 from
+2022 of the 1,914 CO2-eligible shots).
 """
 
 from __future__ import annotations
@@ -327,7 +328,10 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
         "",
         summary,
         "",
-        "| method | precision | recall | F1 | FP rate, MHD frames | FP rate, other absent |",
+        (
+            "| method | precision | recall | F1 | FP rate, MHD frames | "
+            "FP rate, other absent |"
+        ),
         "|---|---|---|---|---|---|",
     ]
     for m, s in scores["methods"].items():
@@ -343,7 +347,10 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
             f"Over the owner's whole windows: F1 {_fmt(scores['window']['f1'])}.",
         ]
     said = {k: "pass" if bar[k] else "FAIL" for k in ("A1", "A2", "A3")}
-    verdict_line = f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. Tier: suggestions."
+    verdict_line = (
+        f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. "
+        "Tier: suggestions."
+    )
     lines += ["", verdict_line, ""]
     return "\n".join(lines)
 

@@ -5,11 +5,12 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=2G
+#SBATCH --mem=2800M
 #SBATCH --time=01:30:00
 #SBATCH --array=0-2
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
+# Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
 
 # The AE frame model, one array task per candidate, in `train.CANDIDATES` order:
 #   0 band80-mhd3    1 band0-mhd3    2 band0-mhd10
@@ -21,7 +22,7 @@
 # CPU only: the model has under 100k parameters, and a GPU would idle far below the 70 % gate.
 #
 #   pilot:      PILOT=20 sbatch --array=0 <this>   (20 shots, 2 epochs, into runs/ae_xpower/pilot)
-#   full run:   sbatch --mem=<from the pilot> <this>
+#   full run:   sbatch <this>   (2800M, sized from the full runs below)
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node, 4 threads)
@@ -29,9 +30,11 @@
 #   pilot, 8 shots, 2 epochs: 8-10 s wall, max RSS 1.1-1.4 GB.
 #   one batch of 16 crops x 64 frames: 0.47 s, so 88 train shots x 8 crops = 44 batches, 21 s an
 #   epoch for band80 (175 bins) and ~1.5 x that for band0 (257 bins); 60 epochs: 22-32 min.
-#   mem=2G         1.4 GB x 1.3 plus ~0.2 GB for 104 shots' inputs. Reset it from the pilot's
-#                  training.json `peak_rss_mb` (plan Task 2.9): peak x 1.25 for the full shots,
-#                  and jobstats, which samples every 30 s, then still sees 70 % or more.
+#   mem=2800M     full runs peaked at 2311 MB (band80-mhd3) and 2470 MB
+#                 (band0-mhd3; sacct MaxRSS 2,454,492K at 2400M).
+#                 1700M ran out of memory (MaxRSS ~1.74 GB when killed).
+#                 The 20-shot pilot's peak (1182 MB) under-predicts the 104-shot
+#                 run: size from the full runs, not from the pilot rule.
 #   time=01:30:00  32 min x 2.8.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
