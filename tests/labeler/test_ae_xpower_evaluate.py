@@ -194,3 +194,27 @@ def test_the_whole_run_chooses_on_validation_then_scores_the_test_shots(
     assert set(record["bar"]) == {"A1", "A2", "A3", "all"}
     text = (models / "evaluation.md").read_text()
     assert "| seldnet |" in text and "Tier: suggestions." in text
+
+
+def test_test_scoring_refuses_an_existing_evaluation_before_loading_inputs(
+    tmp_path, monkeypatch, capsys
+):
+    paths = Paths(root=tmp_path / "root")
+    models = tmp_path / "models"
+    models.mkdir()
+    path = models / "evaluation.json"
+    original = b'{"bar": {"A1": true, "A2": false}}\n'
+    path.write_bytes(original)
+    report = models / "evaluation.md"
+    report.write_text("original test report\n")
+    with pytest.raises(FileExistsError, match="test shots are scored once"):
+        evaluate.run_test(paths, models)
+    ae_tree.env(monkeypatch, paths)
+    with pytest.raises(SystemExit) as exit_code:
+        evaluate.main(["--models", str(models)])
+    assert exit_code.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(path) in stderr and "new version" in stderr
+    assert "Traceback" not in stderr
+    assert path.read_bytes() == original
+    assert report.read_text() == "original test report\n"
