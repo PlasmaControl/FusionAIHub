@@ -451,6 +451,7 @@ def test_links_build_record_inputs_outputs_and_reproducibility(
             "sha256": hashlib.sha256(text_lines.encode("utf-8")).hexdigest(),
         },
         "corpus_shots": {
+            "directory": str(pool.parent / "corpus"),
             "count": 4,
             "sha256": hashlib.sha256(shot_lines.encode("utf-8")).hexdigest(),
         },
@@ -501,9 +502,17 @@ def test_links_build_record_coverage_and_last_status(links_inputs, capsys):
                 "unattempted": 1,
             },
             "texts_read": 3,
+            "texts_printable": 2,
+            "texts_empty": 1,
             "empty_text_ids": ["4"],
         },
         "truncated_queries": [{"shot": 189631, "n": 12, "kept": 11}],
+        "no_context": {
+            "pairs": 1,
+            "shots": 1,
+            "number_in_text": {"pairs": 0, "shots": 0},
+            "number_not_in_text": {"pairs": 1, "shots": 1},
+        },
         "no_text": {
             "missing": {"pairs": 5, "shots": 4, "shots_without_verified_link": 1},
             "empty": {"pairs": 2, "shots": 2, "shots_without_verified_link": 0},
@@ -581,3 +590,97 @@ def test_osti_corpus_range_comes_from_population():
         population.FIRST_SHOT,
         population.LAST_SHOT,
     )
+
+
+@pytest.mark.parametrize(
+    "reader, entry",
+    [("read_hits", "hits"), ("read_pool", "pool"), ("fetch_log", "fetch_log")],
+)
+def test_links_hash_the_bytes_parsed_when_inputs_are_replaced(
+    links_inputs, monkeypatch, reader, entry
+):
+    cache, pool, probes, _, _, args = links_inputs
+    path = {
+        "hits": probes[0],
+        "pool": pool,
+        "fetch_log": cache / "fulltext" / "fetched.jsonl",
+    }[entry]
+    original = path.read_bytes()
+    parse = getattr(osti, reader)
+
+    def replace_after_read(*args, **kwargs):
+        result = parse(*args, **kwargs)
+        path.write_bytes(b"replacement, not the parsed input\n")
+        return result
+
+    monkeypatch.setattr(osti, reader, replace_after_read)
+    assert osti.main(args) == 0
+    doc = json.loads((cache / "papers.meta.json").read_text())
+    recorded = doc["inputs"][entry]
+    if entry == "hits":
+        recorded = recorded[0]
+    assert recorded["sha256"] == hashlib.sha256(original).hexdigest()
+    assert doc["summary"]["verified_shots"] == 3
+
+
+def test_links_record_counts_absent_whole_and_split_numbers(links_inputs):
+    cache, _, probes, _, _, args = links_inputs
+    probes[0].write_text(
+        "".join(
+            json.dumps({"shot": s, "records": [{"osti_id": "2"}]}) + "\n"
+            for s in (189631, 189632, 190604, 189633)
+        )
+    )
+    probes[1].write_text("")
+    corpus = cache.parent / "corpus"
+    (corpus / "190604_processed.h5").touch()
+    # Longer digit strings do not contain the shot as a number of its own.
+    (cache / "fulltext" / "2.txt").write_text(
+        "189631, 190 604, 1189632 and 1896330; no keyword here"
+    )
+    assert osti.main(args) == 0
+    doc = json.loads((cache / "papers.meta.json").read_text())
+    assert doc["coverage"]["no_context"] == {
+        "pairs": 4,
+        "shots": 4,
+        "number_in_text": {"pairs": 2, "shots": 2},
+        "number_not_in_text": {"pairs": 2, "shots": 2},
+    }
+
+
+def test_links_hash_outputs_as_written_and_probe_script_once(links_inputs, monkeypatch):
+    cache, _, _, _, _, args = links_inputs
+    probe = cache / "osti_probe.py"
+    probe.write_bytes(b"# probe\r\n")
+    original = probe.read_bytes()
+    read = type(probe).read_bytes
+    reads = []
+
+    def replace_script(path):
+        data = read(path)
+        if path == probe:
+            reads.append(path)
+            path.write_bytes(b"# replaced\n")
+        return data
+
+    monkeypatch.setattr(type(probe), "read_bytes", replace_script)
+    summary = osti._summary
+    written = {}
+
+    def replace_outputs(*args, **kwargs):
+        for name in ("links.csv", "papers.csv"):
+            path = cache / name
+            written[name] = read(path)
+            path.write_bytes(b"replaced\n")
+        return summary(*args, **kwargs)
+
+    monkeypatch.setattr(osti, "_summary", replace_outputs)
+    assert osti.main(args) == 0
+    doc = json.loads((cache / "papers.meta.json").read_text())
+    assert doc["outputs"] == {
+        name: hashlib.sha256(data).hexdigest() for name, data in written.items()
+    }
+    assert doc["inputs"]["probe_script"]["sha256"] == (
+        hashlib.sha256(original).hexdigest()
+    )
+    assert len(reads) == 1

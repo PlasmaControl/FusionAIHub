@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -528,3 +529,22 @@ def test_v2_log_is_remeasured_at_version_3(tmp_path, monkeypatch):
     assert definition["restrike_dip_fraction"] == 0.3
     assert definition["restrike_rise_fraction"] == 0.6
     assert "restrike" in definition
+
+
+def test_shot_file_hash_is_of_the_bytes_measured(tmp_path, monkeypatch):
+    monkeypatch.setenv("LABELER_ROOT", str(tmp_path))
+    shots = tmp_path / "shots.txt"
+    original = b"2\n1 # comment\n"
+    shots.write_bytes(original)
+    calls = []
+    raw = _fake_ip(calls)
+
+    def replace_after_read(*args, **kwargs):
+        shots.write_text("99\n")
+        return raw(*args, **kwargs)
+
+    monkeypatch.setattr(window, "raw_signal", replace_after_read)
+    assert window.main(["--shot-file", str(shots), "--workers", "1"]) == 0
+    meta = json.loads((tmp_path / "catalog" / "ip.meta.json").read_text())
+    assert meta["shot_file_sha256"] == hashlib.sha256(original).hexdigest()
+    assert calls == [1, 2] and meta["shots"] == 2
