@@ -740,6 +740,7 @@ def _run(args, paths) -> int:
         path.read_bytes() for path in (pool_path, log_path, papers_path)
     )
     pool_input = _input(pool_path, data=pool_data)
+    log_input = _input(log_path, data=log_data)
     if pool_meta.get("pool_sha256") != pool_input["sha256"]:
         raise CatalogError(f"{meta_path}: pool_sha256 differs from {pool_path}")
     if pool_meta.get("rules") != pop.rules_record():
@@ -765,12 +766,25 @@ def _run(args, paths) -> int:
     runaway_data = runaway_path.read_bytes()
     runaway_meta_path = runaway_path.with_suffix(".meta.json")
     try:
-        runaway_record = json.loads(runaway_meta_path.read_bytes())
+        runaway_meta_data = runaway_meta_path.read_bytes()
+        runaway_record = json.loads(runaway_meta_data)
         if (
             runaway_record.get("outputs", {}).get("runaway.csv")
             != hashlib.sha256(runaway_data).hexdigest()
         ):
             raise ValueError("runaway.csv sha256 differs")
+        scan_inputs = runaway_record.get("inputs", {})
+        for name, field, expected in (
+            ("pool", "sha256", pool_input["sha256"]),
+            ("ip_log", "sha256", log_input["sha256"]),
+            ("ip_log", "version", window.LOG_VERSION),
+        ):
+            if scan_inputs.get(name, {}).get(field) != expected:
+                raise ValueError(f"inputs.{name}.{field} differs from the pool/Ip log")
+        if {
+            field: runaway_record.get(field) for field in runaway.definition()
+        } != runaway.definition():
+            raise ValueError("definition differs from runaway.definition()")
     except (OSError, ValueError, AttributeError) as error:
         raise CatalogError(f"{runaway_meta_path}: {error}") from error
     frame = pop.population(pool, window.read_log(NamedBytes(log_data, log_path)))
@@ -801,9 +815,13 @@ def _run(args, paths) -> int:
     )
     inputs = {
         "pool": pool_input,
-        "ip_log": _input(log_path, data=log_data),
+        "ip_log": log_input,
         "papers": _input(papers_path, paths.label_tables, data=papers_data),
-        "runaway": _input(runaway_path, paths.label_tables, data=runaway_data),
+        "runaway": {
+            **_input(runaway_path, paths.label_tables, data=runaway_data),
+            "meta_sha256": hashlib.sha256(runaway_meta_data).hexdigest(),
+            **{k: runaway_record.get(k) for k in ("git_sha", "counts")},
+        },
         "legacy_tables": legacy_inputs,
     }
     frame = frame.merge(grouped[["shot", "group", "cell"]], on="shot", how="left")

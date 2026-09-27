@@ -12,7 +12,7 @@ import yaml
 
 from labeler.config import sha256_of
 from labeler.events import databases
-from labeler.events.catalog import cohort, window
+from labeler.events.catalog import cohort, runaway, window
 from labeler.events.catalog import population as pop
 from labeler.events.catalog.check import CatalogError
 from labeler.literature.papers import papers_frame, write_papers
@@ -568,9 +568,32 @@ def _inputs(folder: Path):
     return {185_601 + 20 * k: ("edge_localized_mode",) for k in range(11, 111)}
 
 
-def _runaway_meta(path):
+def _runaway_meta(path, *, marked=0, no_thomson=0):
     path.with_suffix(".meta.json").write_text(
-        json.dumps({"outputs": {"runaway.csv": sha256_of(path)}})
+        json.dumps(
+            {
+                **runaway.definition(),
+                "git_sha": "fixture",
+                "git_dirty": False,
+                "inputs": {
+                    "pool": {
+                        "path": str(path.parent / "pool.csv"),
+                        "sha256": sha256_of(path.parent / "pool.csv"),
+                    },
+                    "ip_log": {
+                        "path": str(path.parent / "ip.jsonl"),
+                        "sha256": sha256_of(path.parent / "ip.jsonl"),
+                        "version": window.LOG_VERSION,
+                    },
+                },
+                "counts": {
+                    "shots": len(path.read_text().splitlines()) - 1,
+                    "marked": marked,
+                    "no_thomson": no_thomson,
+                },
+                "outputs": {"runaway.csv": sha256_of(path)},
+            }
+        )
     )
 
 
@@ -931,7 +954,7 @@ def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
     shot = int(frame.loc[0, "shot"])
     frame.loc[0, ["te_p90_ev", "runaway"]] = [10.0, True]
     frame.to_csv(path, index=False)
-    _runaway_meta(path)
+    _runaway_meta(path, marked=1)
     assert cohort.main(args + ["--runaway", str(path)]) == 0
     assert shot not in set(cohort.read_population(out / "population.csv").shot)
     assert shot not in set(cohort.read_cohort(out / "cohort.csv").shot)
@@ -939,9 +962,48 @@ def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
     assert doc["counts"]["population"] == 629
     assert doc["counts"]["after_rule_5"] == 629
     assert doc["counts"]["rejections"]["runaway_plateau"] == 1
-    assert doc["inputs"]["runaway"] == {"path": str(path), "sha256": sha256_of(path)}
+    assert doc["inputs"]["runaway"] == {
+        "path": str(path),
+        "sha256": sha256_of(path),
+        "meta_sha256": sha256_of(path.with_suffix(".meta.json")),
+        "git_sha": "fixture",
+        "counts": {"shots": 630, "marked": 1, "no_thomson": 0},
+    }
     assert doc["rules"]["rule_5"]["threshold_ev"] == 60.0
     assert "ceil(n_channels / 2)" in doc["rules"]["rule_5"]["statistic"]
+
+
+@pytest.mark.parametrize(
+    "change",
+    ["window", "pool_sha", "log_version", "definition", "missing_inputs"],
+)
+def test_runaway_must_match_the_inputs_it_was_measured_on(
+    tmp_path, monkeypatch, capsys, change
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.meta.json"
+    meta = json.loads(path.read_text())
+    if change == "window":
+        log = folder / "ip.jsonl"
+        lines = [json.loads(line) for line in log.read_text().splitlines()]
+        for line in lines:
+            line["window_end_ms"] = 4500
+        log.write_text("".join(json.dumps(line) + "\n" for line in lines))
+        assert meta["inputs"]["ip_log"]["sha256"] != sha256_of(log)
+    elif change == "pool_sha":
+        meta["inputs"]["pool"]["sha256"] = "0" * 64
+    elif change == "log_version":
+        meta["inputs"]["ip_log"]["version"] = window.LOG_VERSION - 1
+    elif change == "definition":
+        meta["statistic"] = "median over profile samples only"
+    else:
+        del meta["inputs"]
+    path.write_text(json.dumps(meta))
+    with pytest.raises(SystemExit) as stopped:
+        cohort.main(args)
+    assert stopped.value.code == 2
+    assert str(path) in capsys.readouterr().err
+    assert not out.exists()
 
 
 def test_runaway_without_n_profile_is_refused(tmp_path, monkeypatch, capsys):
