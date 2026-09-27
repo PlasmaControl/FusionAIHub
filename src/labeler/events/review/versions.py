@@ -2,8 +2,9 @@
 
 `review/history.jsonl` is append-only: one line per save, never rewritten. A
 shot's versions are its lines in order, numbered from 1. Restoring a version
-in the page loads it as a draft; saving that draft appends a new line, so no
-version is ever lost and the file stays a complete record of who saved what.
+in the page loads it as a draft; a save appends a version and never rewrites
+one, but a crash between writing the label and its history line can leave
+the current label without its version line.
 
 Each line keeps two identities. `reviewer` is the login of the process that
 served the page (`getpass.getuser()`): the checker's blind-read integrity

@@ -51,8 +51,9 @@ after the newest save.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
   each one, when, how many spans, and how many ms changed. The first version
   is compared with the event's current source table; later ones with the version
-  before. **Restore** loads a version as an unsaved edit; saving it adds a new
-  version, so no version is ever lost.
+  before. **Restore** loads a version as an unsaved edit; a save appends a
+  version and never rewrites one, but a crash between writing the label and
+  its history line can leave the current label without its version line.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.
