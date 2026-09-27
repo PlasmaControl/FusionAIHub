@@ -26,9 +26,13 @@ NAME_MAX = 64
 def clean_name(name: str | None) -> str | None:
     """The typed name with its outer whitespace removed; None when empty.
 
-    Refuses a name longer than `NAME_MAX` characters and one holding a control
-    character (a newline, a tab, NUL): the history is a line per save and a
-    name is shown as one line of text.
+    Refuses a name longer than `NAME_MAX` characters, Unicode Cc (C0 and C1
+    controls, including newline, tab, NUL and NEL), Cs (lone surrogates, which
+    UTF-8 cannot encode), line and paragraph separators U+2028 and U+2029,
+    and bidi embedding, override and isolate controls U+202A-U+202E and
+    U+2066-U+2069, which reorder the displayed line, the login included.
+    Every other character is accepted, including ZWNJ (U+200C) and ZWJ
+    (U+200D), so scripts that need joiners can keep them in a name.
     """
     if name is None:
         return None
@@ -37,7 +41,12 @@ def clean_name(name: str | None) -> str | None:
         return None
     if len(name) > NAME_MAX:
         raise ValueError(f"a name is at most {NAME_MAX} characters")
-    if any(unicodedata.category(ch).startswith("C") for ch in name):
+    if any(
+        unicodedata.category(ch) in {"Cc", "Cs"}
+        or "\u2028" <= ch <= "\u202e"
+        or "\u2066" <= ch <= "\u2069"
+        for ch in name
+    ):
         raise ValueError("a name cannot hold control characters")
     return name
 
