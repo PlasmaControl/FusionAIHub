@@ -13,10 +13,13 @@
 
 # The chosen AE model over the population's CO2 shots, as suggestions, in four shards:
 #   python -m labeler.ae.xpower.extend --shard K --of 4 --workers 8
-# writes $LABELER_ROOT/suggestions/ae_xpower/v1/shards/K.{csv,summary.csv,npz,failed.txt} and a
+# writes $LABELER_ROOT/suggestions/ae_xpower/v1/shards/K.{csv,summary.csv,npz,failed.jsonl} and a
 # JPEG per shot into the gallery's extension/. The corpus is only read; nothing is fetched.
 # Merge afterwards on the login node (seconds; a SLURM job for it could not meet the gate):
 #   python -m labeler.ae.xpower.extend --merge --of 4
+# Failures are JSON lines: one {"shot": int, "error": str} per line, including
+# multi-line errors. Merge writes failed.jsonl and refuses if failed shots exceed
+# 2 % of the eligible non-blind population (MAX_FAILED_FRACTION = 0.02).
 #
 #   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this> (shards/pilot/)
 #   full run:   sbatch <this>

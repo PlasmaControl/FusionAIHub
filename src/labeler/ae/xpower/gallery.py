@@ -152,6 +152,20 @@ def draw(
     model.set_ylabel("P(AE)")
     model.set_xlabel("time (ms)")
     model.set_xlim(t0, t1)
+    if t1 > 2000:
+        for ax in axes:
+            colour = "white" if ax in axes[:3] else "black"
+            ax.axvline(2000, color=colour, lw=0.8, ls="--", label="scored: 0-2 s")
+            ax.text(
+                2000,
+                0.98,
+                "scored: 0-2 s",
+                transform=ax.get_xaxis_transform(),
+                ha="right",
+                va="top",
+                color=colour,
+                fontsize=8,
+            )
     keys = (
         ("present", STATE_COLOURS[PRESENT]),
         ("uncertain", STATE_COLOURS[UNCERTAIN]),

@@ -15,10 +15,13 @@ window). A frame the CO2 rows do not cover is not observable.
 
 **Output.** Shard K writes `shards/K.csv` (suggestion rows, `events.suggestions`),
 `shards/K.summary.csv` (one line per shot), `shards/K.npz` (P(AE) per frame)
-and `shards/K.failed.txt` under `$LABELER_ROOT/suggestions/ae_xpower/v1/`, and
+and `shards/K.failed.jsonl` under `$LABELER_ROOT/suggestions/ae_xpower/v1/`, and
 one JPEG per shot into the gallery's `extension/`. `--merge` checks every shard
 is there and writes `alfven_eigenmode_suggest_ae_xpower_v1.csv`, its meta,
 `summary.csv`, and the gallery index rows.
+Failures are JSON lines, each with an integer `shot` and string `error`.
+Merge refuses when failures exceed 2 % of the eligible non-blind population
+(`MAX_FAILED_FRACTION = 0.02`).
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from ...events.catalog.cohort import read_cohort
 from ...events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
+from ...scoring.frames import FRAME_MS
 from . import EVENT, METHOD, VERSION, gallery_dir, model_dir, suggestions_dir
 from .data import raw_rows, window_frames
 from .evaluate import chosen_model
@@ -47,6 +51,7 @@ from .gallery import draw, run_all, write_index
 from .train import load, probabilities
 
 MIN_CO2_S = 2.0
+MAX_FAILED_FRACTION = 0.02
 PICTURE_LEVEL = 8
 SUMMARY_COLUMNS = (
     "shot",
@@ -257,7 +262,9 @@ def run_shard(
     rows, summaries, probs, failed = [], [], {}, []
     for job, outcome in run_all(_work, jobs, workers, _init_shard, init):
         if isinstance(outcome, Exception):
-            failed.append(f"{job[0]}\t{type(outcome).__name__}: {outcome}")
+            failed.append(
+                {"shot": job[0], "error": f"{type(outcome).__name__}: {outcome}"}
+            )
             continue
         rows += outcome["rows"]
         summaries.append(outcome["summary"])
@@ -269,8 +276,8 @@ def run_shard(
         pd.DataFrame(summaries, columns=list(SUMMARY_COLUMNS)).to_csv(tmp, index=False)
     with atomic_path(out / f"{k}.npz") as tmp, open(tmp, "wb") as f:
         np.savez_compressed(f, **probs)
-    with atomic_path(out / f"{k}.failed.txt") as tmp:
-        tmp.write_text("".join(line + "\n" for line in failed))
+    with atomic_path(out / f"{k}.failed.jsonl") as tmp:
+        tmp.write_text("".join(json.dumps(row) + "\n" for row in failed))
     if _shard_inputs(paths, models) != inputs:
         raise ValueError(f"{manifest}: shard inputs changed during execution")
     record = {
@@ -291,6 +298,75 @@ def run_shard(
     }
 
 
+def _check_payload(shards: Path, k: int, summary: pd.DataFrame) -> pd.DataFrame:
+    """Reconcile shot coverage, tiled frame windows/counts and probability arrays."""
+    csv = shards / f"{k}.csv"
+    table = pd.read_csv(csv, keep_default_na=False)
+    done = set(summary.shot)
+    difference = set(table.shot) ^ done
+    if difference:
+        raise ValueError(
+            f"{csv}: shot {sorted(difference)} differs from successful shots"
+        )
+    file = shards / f"{k}.npz"
+    expected_keys = {f"{prefix}{shot}" for shot in done for prefix in ("p", "f")}
+    with np.load(file, allow_pickle=False) as arrays:
+        difference = set(arrays.files) ^ expected_keys
+        if difference or len(arrays.files) != len(expected_keys):
+            raise ValueError(
+                f"{file}: shot keys {sorted(difference)} differ from successful shots"
+            )
+        for row in summary.itertuples(index=False):
+            shot = row.shot
+            rows = table[table.shot == shot].sort_values("t_start")
+            first, n = window_frames((row.window_start_ms, row.window_end_ms))
+            starts = rows.t_start.to_numpy(dtype=float)
+            ends = rows.t_end.to_numpy(dtype=float)
+            if (
+                not len(rows)
+                or starts[0] != first * FRAME_MS
+                or ends[-1] != (first + n) * FRAME_MS
+                or not np.array_equal(starts[1:], ends[:-1])
+                or np.any(ends <= starts)
+                or np.any(starts % FRAME_MS)
+                or np.any(ends % FRAME_MS)
+                or not rows.category.isin([ABSENT, PRESENT, NOT_OBSERVABLE]).all()
+            ):
+                raise ValueError(
+                    f"{csv}: shot {shot} rows do not tile its frame window"
+                )
+            lengths = (ends - starts) / FRAME_MS
+            compared = {
+                "frames": lengths.sum(),
+                "present_frames": lengths[rows.category == PRESENT].sum(),
+                "not_observable_frames": lengths[rows.category == NOT_OBSERVABLE].sum(),
+                "present_runs": int((rows.category == PRESENT).sum()),
+            }
+            for column, value in compared.items():
+                if getattr(row, column) != value:
+                    raise ValueError(
+                        f"{csv}: shot {shot} {column} differs from summary"
+                    )
+            prob, offset = arrays[f"p{shot}"], arrays[f"f{shot}"]
+            if prob.shape != (n,) or offset.shape != () or offset.item() != first:
+                raise ValueError(f"{file}: shot {shot} array grid differs from summary")
+            if not np.isfinite(prob).all() or np.any((prob < 0) | (prob > 1)):
+                raise ValueError(f"{file}: shot {shot} has invalid probabilities")
+    return table
+
+
+def _read_failures(path: Path) -> list[dict]:
+    failures = [json.loads(line) for line in path.read_text().splitlines()]
+    for row in failures:
+        if (
+            not isinstance(row, dict)
+            or type(row.get("shot")) is not int
+            or not isinstance(row.get("error"), str)
+        ):
+            raise ValueError(f"{path}: expected an integer shot and string error")
+    return failures
+
+
 def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dict:
     bar = _passing_bar(models)
     shards = suggestions_dir(paths, version) / "shards"
@@ -301,7 +377,7 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
         for k in range(of)
         if not all(
             (shards / f"{k}{suffix}").is_file()
-            for suffix in (".json", ".summary.csv", ".csv", ".failed.txt", ".npz")
+            for suffix in (".json", ".summary.csv", ".csv", ".failed.jsonl", ".npz")
         )
     ]
     if missing:
@@ -322,12 +398,12 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
             if assigned != expected:
                 raise ValueError("given shots differ from the eligible shard")
             summary = pd.read_csv(shards / f"{k}.summary.csv")
-            failures = (shards / f"{k}.failed.txt").read_text().splitlines()
+            failures = _read_failures(shards / f"{k}.failed.jsonl")
             done = summary.shot.tolist()
-            failed_shots = [int(line.split("\t", 1)[0]) for line in failures]
+            failed_shots = [row["shot"] for row in failures]
             if Counter(done + failed_shots) != Counter(dict.fromkeys(assigned, 1)):
                 raise ValueError("done plus failed must equal given shots exactly once")
-            tables.append(pd.read_csv(shards / f"{k}.csv", keep_default_na=False))
+            tables.append(_check_payload(shards, k, summary))
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             raise ValueError(f"{path}: {error}") from error
         manifests.append(manifest)
@@ -337,6 +413,11 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
     eligible = shard_shots(paths, 0, 1).shot.tolist()
     if Counter(given) != Counter(dict.fromkeys(eligible, 1)):
         raise ValueError(f"{shards}: given shots do not cover the eligible population")
+    if len(failed) > MAX_FAILED_FRACTION * len(eligible):
+        raise ValueError(
+            f"{shards}: {len(failed)} of {len(eligible)} eligible shots failed; "
+            "exceeds 2 % (MAX_FAILED_FRACTION = 0.02)"
+        )
     rows = pd.concat(tables, ignore_index=True)
     summary = pd.concat(summaries, ignore_index=True).sort_values(
         "shot", ignore_index=True
@@ -359,6 +440,7 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
         "min_co2_s": MIN_CO2_S,
         "shards": of,
         "failed": len(failed),
+        "max_failed_fraction": MAX_FAILED_FRACTION,
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
@@ -366,8 +448,8 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
     suggestions.write_table(table, rows.itertuples(index=False), meta)
     with atomic_path(table.parent / "summary.csv") as tmp:
         summary.to_csv(tmp, index=False)
-    with atomic_path(table.parent / "failed.txt") as tmp:
-        tmp.write_text("".join(line + "\n" for line in failed))
+    with atomic_path(table.parent / "failed.jsonl") as tmp:
+        tmp.write_text("".join(json.dumps(row) + "\n" for row in failed))
     index = [
         {
             "shot": int(r.shot),
