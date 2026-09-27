@@ -157,7 +157,7 @@ const S = {
   versionsAt: null, // the finished navigation that asked for these versions
   frame: 0,
   timer: 0,
-  saving: false,
+  saving: false, // or the event and shot whose save is in flight
   api: 1, // what /api/version said: 2 takes a name with each save and lists versions
   name: "", // the reviewer's typed name, sent with each save
   versions: [], // the open shot's saved versions, as /api/history listed them
@@ -522,7 +522,8 @@ function neighbour(delta, shot = S.shot) {
 
 /** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
 async function go(delta) {
-  const left = !pendingNavigation() && dirty() ? S.shot : null;
+  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
+  const left = !pendingNavigation() && !saving && dirty() ? S.shot : null;
   await openShot(neighbour(delta));
   if (left != null && left !== S.shot) say(`${left}: the edit is kept as a draft, not saved`);
 }
@@ -576,26 +577,36 @@ function unpack(buffer, n) {
 async function save(next) {
   if (stillOpening()) return;
   if (!S.meta || S.saving) return;
-  S.saving = true;
-  const [shot, key, ticket] = [S.shot, draftKey(S.shot), S.ticket];
+  const [event, shot, key, ticket, label] = [S.event, S.shot, draftKey(S.shot), S.ticket, S.label];
+  S.saving = { event, shot };
   const name = S.api >= 2 ? { name: S.name || null } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: S.event, shot, ...S.label, ...name }),
+      body: JSON.stringify({ event, shot, ...label, ...name }),
     });
     const body = await response.json();
-    if (ticket !== S.ticket) return;
-    store(key, null);
-    S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
-    if (S.shot === shot) {
-      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save });
-      S.label = body.saved;
-      showHeader();
-      touch();
+    try {
+      if (same(JSON.parse(stored(key)), label)) store(key, null);
+    } catch {
+      // A malformed draft does not prevent the completed save from being shown.
     }
-    if (next) await openShot(neighbour(1, shot));
+    if (!pendingNavigation() && S.opened?.event === event && S.opened.shot === shot && S.meta) {
+      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save });
+      if (same(S.label, label)) {
+        S.label = body.saved;
+        render();
+      } else {
+        touch(); // a Restore may have been clean against the previous save
+      }
+    }
+    if (S.event === event) {
+      S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
+      renderQueue();
+      showHeader();
+    }
+    if (next && ticket === S.ticket) await openShot(neighbour(1, shot));
   } catch (error) {
     say(error.message, true);
   } finally {
