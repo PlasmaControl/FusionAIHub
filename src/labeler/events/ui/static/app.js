@@ -153,6 +153,8 @@ const S = {
   undo: [],
   drag: null,
   ticket: 0, // bumped per shot opened, so an answer for an older shot is dropped
+  opened: null, // the finished navigation: ticket, event and shot, recorded by arrive
+  versionsAt: null, // the finished navigation that asked for these versions
   frame: 0,
   timer: 0,
   saving: false,
@@ -274,6 +276,7 @@ function keepForUndo(label) {
 
 /** Take a new label if the server would accept it. */
 function edit(window, intervals) {
+  if (stillOpening()) return;
   const next = normalise(window, intervals, known());
   if (!next) return;
   keepForUndo(S.label);
@@ -283,6 +286,7 @@ function edit(window, intervals) {
 
 /** Keep the draft until it is saved or reverted, and mark the shot unsaved. */
 function touch() {
+  if (stillOpening()) return;
   store(draftKey(S.shot), dirty() ? JSON.stringify(S.label) : null);
   $("dirty").hidden = !dirty();
   renderQueue();
@@ -295,6 +299,7 @@ function selectAt(t) {
 }
 
 function undo() {
+  if (stillOpening()) return;
   if (!S.undo.length) return;
   S.label = S.undo.pop();
   S.selected = -1;
@@ -302,12 +307,14 @@ function undo() {
 }
 
 function revert() {
+  if (stillOpening()) return;
   const source = S.meta.source || emptyLabel();
   S.selected = -1;
   edit(source.window, source.intervals);
 }
 
 function removeSelected() {
+  if (stillOpening()) return;
   if (S.selected < 0) return;
   const kept = S.label.intervals.filter((_, i) => i !== S.selected);
   S.selected = -1;
@@ -315,6 +322,7 @@ function removeSelected() {
 }
 
 function setCategory(c) {
+  if (stillOpening()) return;
   if (!known().includes(c)) return;
   S.category = c;
   renderSwatches();
@@ -391,7 +399,26 @@ function followHash() {
   }
 }
 
+const pendingNavigation = () => S.ticket !== S.opened?.ticket;
+
+/** Refuse changes to the shot left on screen until its replacement has arrived. */
+function stillOpening() {
+  if (!pendingNavigation()) return false;
+  say("the shot is still opening");
+  return true;
+}
+
+function leave() {
+  closeDialog($("versions"));
+  S.versions = [];
+  S.versionsAt = null;
+  S.drag = null;
+  clearTimeout(S.timer);
+}
+
 async function openEvent(event, shot) {
+  const ticket = ++S.ticket;
+  leave();
   S.event = event;
   S.categories = S.events.find((row) => row.event === event).categories;
   S.category = known()[0] || 1;
@@ -400,14 +427,16 @@ async function openEvent(event, shot) {
   renderSwatches();
   $("queue").replaceChildren();
   const queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
+  if (ticket !== S.ticket) return;
   S.queue = queue.shots;
   renderQueue();
   await openShot(S.queue.some((row) => row.shot === shot) ? shot : queue.resume);
 }
 
 async function openShot(shot) {
-  if (shot == null) return;
   const ticket = ++S.ticket;
+  leave();
+  if (shot == null) return;
   try {
     let response, meta;
     for (;;) {
@@ -442,6 +471,7 @@ async function openShot(shot) {
 
 /** The header, the address and the queue follow the shot just opened. */
 function arrive() {
+  S.opened = { ticket: S.ticket, event: S.event, shot: S.shot };
   busy(null);
   $("cursor").hidden ||= !S.meta;
   for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
@@ -480,7 +510,7 @@ function neighbour(delta, shot = S.shot) {
 
 /** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
 async function go(delta) {
-  const left = dirty() ? S.shot : null;
+  const left = !pendingNavigation() && dirty() ? S.shot : null;
   await openShot(neighbour(delta));
   if (left != null && left !== S.shot) say(`${left}: the edit is kept as a draft, not saved`);
 }
@@ -491,7 +521,7 @@ function fetchRows(delay = 90) {
 }
 
 async function loadRows() {
-  if (!S.meta) return;
+  if (!S.meta || pendingNavigation()) return;
   const [v0, v1] = S.view;
   // A fifth wider than the view either side, so a pan has data while the next one loads.
   const t0 = Math.max(S.meta.t_range[0], v0 - (v1 - v0) * 0.2);
@@ -532,9 +562,10 @@ function unpack(buffer, n) {
 }
 
 async function save(next) {
+  if (stillOpening()) return;
   if (!S.meta || S.saving) return;
   S.saving = true;
-  const [shot, key] = [S.shot, draftKey(S.shot)];
+  const [shot, key, ticket] = [S.shot, draftKey(S.shot), S.ticket];
   const name = S.api >= 2 ? { name: S.name || null } : {};
   try {
     const response = await api("/api/label", {
@@ -543,6 +574,7 @@ async function save(next) {
       body: JSON.stringify({ event: S.event, shot, ...S.label, ...name }),
     });
     const body = await response.json();
+    if (ticket !== S.ticket) return;
     store(key, null);
     S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
     if (S.shot === shot) {
@@ -879,6 +911,7 @@ function renderSwatches() {
 // -- input
 
 function startDrag(event, drag) {
+  if (stillOpening()) return;
   S.drag = { ...drag, base: S.label };
   event.currentTarget.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -914,6 +947,7 @@ function dragTo(clientX) {
     const shift = ((clientX - d.x) / plotWidth()) * (d.view[1] - d.view[0]);
     return setView(d.view[0] - shift, d.view[1] - shift);
   }
+  if (stillOpening()) return;
   const edges = [...d.base.window];
   const spans = d.base.intervals.map((span) => [...span]);
   let moved = null;
@@ -990,14 +1024,16 @@ function closeDialog(dialog) {
 
 /** The shot's saved versions, newest first; H again, Escape or Close shuts them. */
 async function toggleVersions() {
+  if (stillOpening()) return;
   const dialog = $("versions");
   if (dialog.open) return closeDialog(dialog);
   if (!S.meta || S.api < 2) return;
-  const shot = S.shot;
+  const { ticket, event, shot } = S.opened;
   try {
-    const body = await (await api(`/api/history?event=${enc(S.event)}&shot=${shot}`)).json();
-    if (shot !== S.shot) return;
+    const body = await (await api(`/api/history?event=${enc(event)}&shot=${shot}`)).json();
+    if (ticket !== S.ticket) return;
     S.versions = body.versions;
+    S.versionsAt = S.opened;
     renderVersions();
     dialog.showModal();
   } catch (error) {
@@ -1027,6 +1063,11 @@ function renderVersions() {
 
 /** Load a saved version as the draft: saving it appends a new version, so none is lost. */
 function restoreVersion(number) {
+  if (stillOpening()) return;
+  const at = S.versionsAt;
+  if (!at || at !== S.opened || at.event !== S.event || at.shot !== S.shot) {
+    return say("this history belongs to a shot that is no longer open");
+  }
   const found = S.versions.find((version) => version.version === number);
   if (!found || !S.meta) return;
   closeDialog($("versions"));
