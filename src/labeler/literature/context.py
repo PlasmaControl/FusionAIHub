@@ -20,12 +20,19 @@ nearest that number among those in reach of its run or range.
 Numbers immediately after "%" are URL encoding, not shot tokens or range starts.
 Round, equally spaced runs of at least three numbers are axis ticks, not shot
 tokens or range starts, and cannot give the remaining run its context.
+Two consecutive numbers joined only by whitespace are also ticks when at least
+`TICK_PAIR_STEP` apart and both are multiples of their difference.
 Numbers immediately after an ASCII letter and hyphen are identifiers, not shot
 tokens or range starts.
 Numbers after an article-numbering journal's name and volume are citation
 identifiers, not shot tokens or range starts, even when the name is glued to a word.
+This includes J. Phys. D, New J. Phys., Plasma Sources Sci. Technol., Phys. Scr.,
+Meas. Sci. Technol. and J. Phys.: Conf. Ser., abbreviated or in full.
 Numbers followed within 40 characters by a comma and a listed country, without
 intervening digits, are postal codes, not shot tokens or range starts.
+China includes People's Republic of China with a straight, curly or no apostrophe.
+A "#" preceded by a non-space and followed by a non-digit, non-space character
+belongs to a URL fragment or a name; it is not a keyword.
 
 A number counts only as DIII-D's. The machine a number (a run, a range) belongs
 to is the nearest device name within reach before it, else the nearest after
@@ -52,8 +59,12 @@ REACH = 60
 RANGE_CAP = 50
 TICK_MIN_RUN = 3
 TICK_MIN_STEP = 100
+TICK_PAIR_STEP = 1000
 POSTAL_REACH = 40
-KEYWORDS = re.compile(r"\bshot|\bdischarge|#|DIII\s?-\s?D", re.IGNORECASE)
+_HASH_KEYWORD = r"(?:(?<!\S)#|#(?![^\d\s]))"
+KEYWORDS = re.compile(
+    rf"\bshot|\bdischarge|{_HASH_KEYWORD}|DIII\s?-\s?D", re.IGNORECASE
+)
 DIII_D = re.compile(r"DIII\s?-\s?D", re.IGNORECASE)
 #: Other machines, whose own shot numbers can read as DIII-D's.
 OTHER_DEVICES = re.compile(
@@ -85,15 +96,25 @@ _OTHER_JOURNALS = re.compile(
     r"|Rev\.\s*Sci\.\s*Instrum\.|Review\s*of\s*Scientific\s*Instruments"
     r"|Nucl\.\s*Fusion|Nuclear\s*Fusion"
     r"|Plasma\s*Phys\.\s*Control\.\s*Fusion"
-    r"|Plasma\s*Physics\s*and\s*Controlled\s*Fusion)\s*\d{1,4}\s*,?\s*$"
+    r"|Plasma\s*Physics\s*and\s*Controlled\s*Fusion"
+    r"|J\.\s*Phys\.\s*D:\s*Appl\.\s*Phys\."
+    r"|Journal\s*of\s*Physics\s*D:\s*Applied\s*Physics"
+    r"|New\s*J\.\s*Phys\.|New\s*Journal\s*of\s*Physics"
+    r"|Plasma\s*Sources\s*Sci\.\s*Technol\."
+    r"|Plasma\s*Sources\s*Science\s*and\s*Technology"
+    r"|Phys\.\s*Scr\.|Physica\s*Scripta"
+    r"|Meas\.\s*Sci\.\s*Technol\."
+    r"|Measurement\s*Science\s*and\s*Technology"
+    r"|J\.\s*Phys\.:\s*Conf\.\s*Ser\."
+    r"|Journal\s*of\s*Physics:\s*Conference\s*Series)\s*\d{1,4}\s*,?\s*$"
 )
-# Longest normalised prefix: "Plasma Physics and Controlled Fusion 1234 , "
-# (44 characters); 64 keeps a 20-character margin.
+# Longest normalised prefix: "Journal of Physics D: Applied Physics 1234 , "
+# and its peers (45 characters); 64 keeps a 19-character margin.
 _ARTICLE_SPAN = 64
 _IDENTIFIER = re.compile(r"[A-Za-z]-$")
 _POSTAL = re.compile(
     r"[^\d]*?,\s*(?:(?:P\.?\s*R\.?\s*)?China|Russia|Russian Federation"
-    r"|India|Kazakhstan|Singapore)\b"
+    r"|People['’]?s Republic of China|India|Kazakhstan|Singapore)\b"
 )
 
 
@@ -199,6 +220,14 @@ def _runs(text: str) -> list[list[re.Match]]:
     kept = []
     for run in runs:
         ticks = _ticks(run)
+        for a, b in pairwise(run):
+            step = abs(int(b.group()) - int(a.group()))
+            if (
+                text[a.end() : b.start()].isspace()
+                and step >= TICK_PAIR_STEP
+                and int(a.group()) % step == int(b.group()) % step == 0
+            ):
+                ticks.update((a.start(), b.start()))
         kept.append([m for m in run if m.start() not in ticks])
     return [run for run in kept if run]
 

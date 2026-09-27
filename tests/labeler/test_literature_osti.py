@@ -422,6 +422,7 @@ def test_links_build_record_inputs_outputs_and_reproducibility(
         "_ARTICLE_SPAN": context._ARTICLE_SPAN,
         "TICK_MIN_RUN": context.TICK_MIN_RUN,
         "TICK_MIN_STEP": context.TICK_MIN_STEP,
+        "TICK_PAIR_STEP": 1000,
         "POSTAL_REACH": context.POSTAL_REACH,
         "FIRST_SHOT": osti.FIRST_SHOT,
         "LAST_SHOT": osti.LAST_SHOT,

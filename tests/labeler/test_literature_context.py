@@ -414,6 +414,18 @@ def test_d23_identifiers_and_genuine_hyphens(text, expected):
         "Nuclear Fusion",
         "Plasma Phys. Control. Fusion",
         "Plasma Physics and Controlled Fusion",
+        "J. Phys. D: Appl. Phys.",
+        "Journal of Physics D: Applied Physics",
+        "New J. Phys.",
+        "New Journal of Physics",
+        "Plasma Sources Sci. Technol.",
+        "Plasma Sources Science and Technology",
+        "Phys. Scr.",
+        "Physica Scripta",
+        "Meas. Sci. Technol.",
+        "Measurement Science and Technology",
+        "J. Phys.: Conf. Ser.",
+        "Journal of Physics: Conference Series",
     ],
 )
 @pytest.mark.parametrize("comma", ["", ","])
@@ -440,9 +452,9 @@ def test_d23_glued_citations_and_controls(text, expected):
 
 
 def test_d23_article_span_has_a_margin_over_the_longest_prefix():
-    prefix = "Plasma Physics and Controlled Fusion 1234 , "
-    assert len(normalise(prefix)) == 44
-    assert context._ARTICLE_SPAN >= len(normalise(prefix)) + 10
+    prefix = "Journal of Physics D: Applied Physics 1234 , "
+    assert len(normalise(prefix)) == 45
+    assert context._ARTICLE_SPAN >= len(normalise(prefix)) + 16
     assert _found("DIII-D " + prefix + "194101") == []
 
 
@@ -643,3 +655,72 @@ def test_range_cap_counts_difference_of_ends(abbreviated, distance):
 def test_unicode_spaces_keep_shot_mentions(space):
     assert normalise(f"shot{space}189631") == "shot 189631"
     assert _found(f"shot{space}189631") == [(189631, "exact")]
+
+
+@pytest.mark.parametrize(
+    "numbers", ["190000 195000", "195000 190000", "190000\n195000", "190000 191000"]
+)
+def test_round_axis_pairs_are_not_shots(numbers):
+    assert _found(f"DIII-D {numbers} Shot Numbers") == []
+
+
+@pytest.mark.parametrize(
+    "numbers", ["190000 and 195000", "190000, 195000", "190000 190500", "190001 195001"]
+)
+def test_axis_pair_rule_keeps_shot_lists(numbers):
+    assert len(_found(f"DIII-D shots {numbers}")) == 2
+
+
+@pytest.mark.parametrize(
+    "country",
+    [
+        "People's Republic of China",
+        "People’s Republic of China",
+        "Peoples Republic of China",
+        "P. R. China",
+        "China",
+    ],
+)
+def test_peoples_republic_postal_address_is_not_a_shot(country):
+    text = (
+        f"Institute of Plasma Physics, DIII-D collaboration, Shanghai 200240, {country}"
+    )
+    assert _found(text) == []
+
+
+def test_journal_of_physics_d_real_article_number_is_not_a_shot():
+    text = (
+        "J. van Dijk, G. M. W. Kroesen, and A. Bogaerts, "
+        '"Plasma modelling and numerical simulation," J. Phys. D: Appl. Phys. '
+        "42, 190301 (2009). DIII-D"
+    )
+    assert _found(text) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "see report#runs 195123 for details",
+        (
+            "https://www.statista.com/statistics/265612/primary-energy-consumption-"
+            "in-china-by-fuel-type-in-oil-\nequivalent/#:~:text=Primary%20energy%20"
+            "consumption%20in%20China%202018%2D2023%2C%20by%20fuel&text\n"
+            "=Coal%20is%20by%20far%20the,exajoules"
+        ),
+    ],
+)
+def test_url_fragment_hash_does_not_supply_context(text):
+    assert _found(text) == []
+
+
+@pytest.mark.parametrize(
+    "text, shot",
+    [
+        ("shot #195123", 195123),
+        ("discharge # 189051", 189051),
+        ("shot#189051", 189051),
+        ("# Ip (MA)\n192043 1.2", 192043),
+    ],
+)
+def test_hash_shot_keywords_are_retained(text, shot):
+    assert _found(text) == [(shot, "exact")]
