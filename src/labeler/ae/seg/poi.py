@@ -17,6 +17,10 @@ and, unless `--no-pictures`, a JPEG per shot in
 regions outlined (the 30 largest numbered on crowded shots), and below it the
 pseudo-mask with any current region review applied. Every point is a suggestion:
 nobody has reviewed it.
+The last two table columns flag peaks inside the scored [0, 2000) ms window
+and the v1 rule-4 Ip window in `catalog/population.csv` (start inclusive, end
+exclusive). A missing population window leaves `in_plasma` blank; no point
+is dropped. `meta.json` counts those flags and records the model's G3 verdict.
 """
 
 from __future__ import annotations
@@ -58,6 +62,8 @@ POI_COLUMNS = (
     "mean_prob",
     "max_prob",
     "source",
+    "in_scored_window",
+    "in_plasma",
 )
 
 
@@ -260,13 +266,43 @@ def shot_points(shot: int) -> list[dict]:
     return found
 
 
-def write_points(path: Path, shots, rows: list[dict]) -> pd.DataFrame:
+def plasma_windows(paths: Paths) -> dict[int, tuple[float, float]]:
+    """The same v1 rule-4 Ip windows the xpower extension uses, without its cut."""
+    file = paths.catalog / "population.csv"
+    if not file.is_file():
+        return {}
+    frame = pd.read_csv(file)
+    return {
+        int(row.shot): (float(row.window_start_ms), float(row.window_end_ms))
+        for row in frame.itertuples(index=False)
+        if pd.notna(row.window_start_ms)
+        and pd.notna(row.window_end_ms)
+        and row.window_end_ms > row.window_start_ms
+    }
+
+
+def write_points(
+    path: Path,
+    shots,
+    rows: list[dict],
+    *,
+    windows: dict[int, tuple[float, float]] | None = None,
+) -> pd.DataFrame:
     """`poi.csv`, merged: the shots in `shots` replace their old rows."""
     new = pd.DataFrame(rows, columns=list(POI_COLUMNS))
     if path.is_file():
         old = pd.read_csv(path)
         new = pd.concat([old[~old.shot.isin(list(shots))], new], ignore_index=True)
     new = new.sort_values(["shot", "region"], kind="stable").reset_index(drop=True)
+    # Also annotate retained legacy rows without changing their point values.
+    new["in_scored_window"] = (new.t_peak_ms >= 0) & (new.t_peak_ms < 2000)
+    if windows is not None:
+        new["in_plasma"] = [
+            bool(windows[r.shot][0] <= r.t_peak_ms < windows[r.shot][1])
+            if r.shot in windows
+            else ""
+            for r in new.itertuples(index=False)
+        ]
     path.parent.mkdir(parents=True, exist_ok=True)
     with atomic_path(path) as tmp:
         new.to_csv(tmp, index=False)
@@ -308,7 +344,14 @@ def main(argv=None) -> int:
             rows += outcome
     if sha256_of(model_file) != model_hash:
         p.error(f"{model_file}: model changed while drawing points")
-    table = write_points(poi_dir(paths) / "poi.csv", done, rows)
+    table = write_points(
+        poi_dir(paths) / "poi.csv", done, rows, windows=plasma_windows(paths)
+    )
+    completed = table[table.shot.isin(done)]
+    evaluation_file = model_file.parent / "evaluation.json"
+    evaluation = (
+        json.loads(evaluation_file.read_text()) if evaluation_file.is_file() else {}
+    )
     record = {
         "model": str(model_file),
         "model_sha256": model_hash,
@@ -318,6 +361,12 @@ def main(argv=None) -> int:
         "pictures": not args.no_pictures,
         "points_before_2s": int(sum(row["t_peak_ms"] < 2000 for row in rows)),
         "points_after_2s": int(sum(row["t_peak_ms"] >= 2000 for row in rows)),
+        "points_in_plasma": int(completed.in_plasma.eq(True).sum()),
+        "points_outside_plasma": int(completed.in_plasma.eq(False).sum()),
+        "points_unknown_plasma": int((completed.in_plasma == "").sum()),
+        "plasma_window_source": str(paths.catalog / "population.csv"),
+        "plasma_window_rule": "v1 rule 4; start <= t_peak_ms < end",
+        "G3": evaluation.get("bar", {}).get("G3"),
         "scope": "shots completed in this run; after includes peaks at 2000 ms",
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),

@@ -11,7 +11,7 @@ from PIL import Image
 
 from labeler.ae.seg import model_dir, poi, poi_dir, pseudo, train
 from labeler.ae.seg.model import SegNet, SegNetConfig
-from labeler.config import sha256_of
+from labeler.config import Paths, sha256_of
 from labeler.events.review.rows import Grid
 
 from . import ae_tree
@@ -181,3 +181,62 @@ def test_only_a_current_region_decision_is_called_reviewed(
     monkeypatch.setattr(poi, "draw", lambda path, **kwargs: captured.append(kwargs))
     assert poi.main(["--workers", "1"]) == 0
     assert captured[0]["pseudo_review"] == ((1, 1) if current else None)
+
+
+@pytest.mark.parametrize("g3", [False, None])
+def test_points_keep_their_regions_and_gain_window_flags(tmp_path, monkeypatch, g3):
+    paths = Paths(
+        root=tmp_path / "root",
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
+    ae_tree.env(monkeypatch, paths)
+    _model(paths, 0.5)
+    if g3 is not None:
+        (model_dir(paths) / "evaluation.json").write_text(
+            json.dumps({"bar": {"G1": True, "G2": True, "G3": g3}})
+        )
+    paths.catalog.mkdir()
+    (paths.catalog / "population.csv").write_text(
+        "shot,window_start_ms,window_end_ms\n101,0,2000\n102,0,3000\n104,,\n"
+    )
+    grid = Grid(-1000.5, 1, 6100)
+    prob = np.zeros((257, grid.n), dtype=np.float32)
+    peaks = [-1, 0, 1999, 2000, 4000]
+    for row, peak in zip(range(100, 115, 3), peaks):
+        column = peak + 1000
+        prob[row, column - 10 : column + 10] = 0.8
+        prob[row, column] = 0.9
+    expected, _ = poi.points(101, prob, 0.5, grid, 0, DY)
+    monkeypatch.setattr(poi, "predict", lambda *a: prob)
+    monkeypatch.setattr(
+        poi,
+        "shot_rows",
+        lambda *a: (grid, np.zeros((3, 257, grid.n), np.uint8), 0, DY),
+    )
+    assert (
+        poi.main(
+            ["--shots", "101", "102", "103", "104", "--no-pictures", "--workers", "1"]
+        )
+        == 0
+    )
+    table = pd.read_csv(poi_dir(paths) / "poi.csv")
+    assert tuple(table.columns[-2:]) == ("in_scored_window", "in_plasma")
+    assert len(table) == 20 and table.pixels.tolist() == [20] * 20
+    for shot, frame in table.groupby("shot"):
+        assert frame.t_peak_ms.tolist() == peaks
+        assert frame.in_scored_window.tolist() == [False, True, True, False, False]
+        if shot in (101, 102):
+            assert frame.in_plasma.tolist() == [False, True, True, shot == 102, False]
+        else:
+            assert frame.in_plasma.isna().all()
+    # All pre-existing point values survive, including the regions outside windows.
+    for before, after in zip(expected, table[table.shot == 101].to_dict("records")):
+        for key, value in before.items():
+            if key not in ("in_scored_window", "in_plasma"):
+                assert after[key] == value
+    meta = json.loads((poi_dir(paths) / "meta.json").read_text())
+    assert meta["points_in_plasma"] == 5
+    assert meta["points_outside_plasma"] == 5
+    assert meta["points_unknown_plasma"] == 10
+    assert meta["G3"] is g3
