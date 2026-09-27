@@ -107,8 +107,11 @@ def read_hits(
     truncated_queries = {}
     for path in paths:
         data = path.read() if hasattr(path, "read") else Path(path).read_bytes()
-        for line in data.splitlines():
-            row = json.loads(line)
+        for number, line in enumerate(data.splitlines(), 1):
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise CatalogError(f"{path}:{number}: {error}") from error
             shot = int(row["shot"])
             if not first <= shot <= last:
                 continue
@@ -572,7 +575,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         return _run(args, argv, Paths.from_env())
-    except CatalogError as error:
+    except (CatalogError, pd.errors.ParserError) as error:
         parser.error(str(error))
 
 
