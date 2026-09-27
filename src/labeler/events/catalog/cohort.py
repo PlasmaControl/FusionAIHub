@@ -788,11 +788,8 @@ def _run(args, paths) -> int:
     except (OSError, ValueError, AttributeError) as error:
         raise CatalogError(f"{runaway_meta_path}: {error}") from error
     frame = pop.population(pool, window.read_log(NamedBytes(log_data, log_path)))
-    frame = runaway.apply_rule(
-        frame,
-        runaway.read_runaway(NamedBytes(runaway_data, runaway_path)),
-        runaway_path,
-    )
+    evidence = runaway.read_runaway(NamedBytes(runaway_data, runaway_path))
+    frame = runaway.apply_rule(frame, evidence, runaway_path)
     legacy_inputs = []
     legacy, _ = legacy_sets(paths.label_tables, inputs=legacy_inputs)
     grouped = assign_groups(
@@ -839,6 +836,21 @@ def _run(args, paths) -> int:
             name: hashlib.sha256(data).hexdigest() for name, data in encoded.items()
         },
     )
+    corroborated = runaway.corroborated(evidence)
+    doc["runaway_corroboration"] = {
+        "definition": {
+            "min_neutrons_per_s": runaway.RUNAWAY_MIN_NEUTRONS,
+            "max_beam_kw": runaway.RUNAWAY_MAX_BEAM_KW,
+            "comparison": "max(neutron_rate_mean channels) >= min_neutrons_per_s "
+            "and pinj_kw < max_beam_kw; blank pinj_kw = 0; "
+            "missing neutron channels cannot corroborate",
+        },
+        "all_marked_corroborated": bool(corroborated[evidence.runaway].all()),
+        "marked_shots": sorted(evidence.loc[evidence.runaway, "shot"]),
+        "unmarked_shots": sorted(
+            evidence.loc[corroborated & ~evidence.runaway, "shot"]
+        ),
+    }
     if args.supersedes:
         doc["supersedes"] = _supersedes(args.supersedes, args.reason.strip(), doc)
     out = args.out or paths.catalog

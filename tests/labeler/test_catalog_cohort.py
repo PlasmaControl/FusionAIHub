@@ -6,6 +6,8 @@ import json
 import math
 from pathlib import Path
 
+import h5py
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
@@ -953,11 +955,15 @@ def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
     frame = pd.read_csv(path)
     shot = int(frame.loc[0, "shot"])
     frame.loc[0, ["te_p90_ev", "runaway"]] = [10.0, True]
+    frame.loc[:1, "neutron_rate_mean"] = "1e15"
+    frame.loc[:1, "pinj_kw"] = float("nan")
+    thermal = int(frame.loc[1, "shot"])
     frame.to_csv(path, index=False)
     _runaway_meta(path, marked=1)
     assert cohort.main(args + ["--runaway", str(path)]) == 0
     assert shot not in set(cohort.read_population(out / "population.csv").shot)
     assert shot not in set(cohort.read_cohort(out / "cohort.csv").shot)
+    assert thermal in set(cohort.read_population(out / "population.csv").shot)
     doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
     assert doc["counts"]["population"] == 629
     assert doc["counts"]["after_rule_5"] == 629
@@ -971,6 +977,58 @@ def test_runaway_is_dropped_before_drawing_and_recorded(tmp_path, monkeypatch):
     }
     assert doc["rules"]["rule_5"]["threshold_ev"] == 60.0
     assert "ceil(n_channels / 2)" in doc["rules"]["rule_5"]["statistic"]
+    assert doc["runaway_corroboration"] == {
+        "definition": {
+            "min_neutrons_per_s": 1e15,
+            "max_beam_kw": 1000.0,
+            "comparison": "max(neutron_rate_mean channels) >= min_neutrons_per_s "
+            "and pinj_kw < max_beam_kw; blank pinj_kw = 0; "
+            "missing neutron channels cannot corroborate",
+        },
+        "all_marked_corroborated": True,
+        "marked_shots": [shot],
+        "unmarked_shots": [thermal],
+    }
+
+
+@pytest.mark.parametrize("corroborated", [False, True])
+def test_warm_profiles_then_cold_sparse_channels_need_neutrons_and_no_beams(
+    tmp_path, monkeypatch, capsys, corroborated
+):
+    folder, out, args = _command_inputs(tmp_path, monkeypatch)
+    path = folder / "runaway.csv"
+    frame = pd.read_csv(path)
+    shot = int(frame.loc[0, "shot"])
+    diagnostic = tmp_path / f"{shot}_processed.h5"
+    values = np.full((4, 5), np.nan)
+    values[:, :2] = 1000.0
+    values[0, 2:] = 10.0
+    with h5py.File(diagnostic, "w") as f:
+        for name, data in {
+            "ts_core_temp": values,
+            "neutron_rate": [[1e15 if corroborated else 0.0] * 5],
+            **({} if corroborated else {"pinj": [[2e6] * 5]}),
+        }.items():
+            group = f.create_group(name)
+            group["xdata"] = [100, 200, 300, 400, 500]
+            group["ydata"] = data
+    row, _ = runaway.assess(diagnostic, shot, 7, 5000)
+    assert row["runaway"] is True
+    assert row["te_p90_ev"] == 10.0
+    assert row["n_profile"] == 2 and row["n_thomson"] == 5
+    frame.loc[0] = row
+    frame.to_csv(path, index=False)
+    _runaway_meta(path, marked=1)
+    if corroborated:
+        assert cohort.main(args) == 0
+        assert shot not in set(cohort.read_population(out / "population.csv").shot)
+    else:
+        with pytest.raises(SystemExit) as stopped:
+            cohort.main(args)
+        assert stopped.value.code == 2
+        error = capsys.readouterr().err
+        assert str(path) in error and str(shot) in error
+        assert not out.exists()
 
 
 @pytest.mark.parametrize(

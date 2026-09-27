@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -11,6 +12,7 @@ import pytest
 from labeler.config import Paths
 from labeler.events.catalog import population as pop
 from labeler.events.catalog import window
+from labeler.events.catalog.check import CatalogError
 
 
 def _module():
@@ -194,3 +196,79 @@ def test_corpus_digest_binds_measured_values(tmp_path):
         f["ts_core_temp/ydata"][0, 1:4] = 100
     after, changed = _module().assess(path, 1, 100, 300)
     assert before["runaway"] and not after["runaway"] and changed != digest
+
+
+@pytest.mark.parametrize(
+    "neutrons, beams, expected",
+    [
+        ("999999999999999", 0.0, False),
+        ("1000000000000000", 0.0, True),
+        ("1000000000000001", 0.0, True),
+        ("1e15", 999.999, True),
+        ("1e15", 1000.0, False),
+        ("1e15", 1000.001, False),
+        ("1;1e15;", "", True),
+        (";1e15;1", np.nan, True),
+        ("1e15", None, True),
+        ("", 0.0, False),
+        (";;", 0.0, False),
+        (";1;", 0.0, False),
+    ],
+)
+def test_corroboration_checks_the_largest_neutron_channel_and_beam_edges(
+    neutrons, beams, expected
+):
+    evidence = pd.DataFrame(
+        {"neutron_rate_mean": [neutrons], "pinj_kw": [beams]}, index=[73]
+    )
+    result = _module().corroborated(evidence)
+    assert result.index.tolist() == [73]
+    assert result.tolist() == [expected]
+
+
+def test_apply_rule_names_every_uncorroborated_mark_without_changing_evidence():
+    frame = pd.DataFrame({"shot": [1, 2, 3], "reasons": ["", "", ""]})
+    evidence = pd.DataFrame(
+        {
+            "shot": [1, 2, 3],
+            "runaway": [True, True, False],
+            "neutron_rate_mean": ["", "1e15", "1e15"],
+            "pinj_kw": [0.0, 1000.0, 0.0],
+        }
+    )
+    before = evidence.copy(deep=True)
+    with pytest.raises(CatalogError, match=r"runaway.csv.*1.*2"):
+        _module().apply_rule(frame, evidence, Path("runaway.csv"))
+    pd.testing.assert_frame_equal(evidence, before)
+    assert frame.reasons.tolist() == ["", "", ""]
+
+
+def test_committed_runaway_scan_has_the_exact_corroborated_d2e_marks():
+    path = Path(__file__).resolve().parents[2] / "data/events/catalog/runaway.csv"
+    evidence = _module().read_runaway(path)
+    meta = json.loads(path.with_suffix(".meta.json").read_bytes())
+    assert (
+        hashlib.sha256(path.read_bytes()).hexdigest() == meta["outputs"]["runaway.csv"]
+    )
+    assert len(evidence) == 4885
+    assert sorted(evidence.loc[evidence.runaway, "shot"]) == [
+        194904,
+        194905,
+        194906,
+        200809,
+        200811,
+        200812,
+        200813,
+        200814,
+        200819,
+        200821,
+        200823,
+        200824,
+        200827,
+    ]
+    checked = _module().corroborated(evidence)
+    assert checked[evidence.runaway].all()
+    assert sorted(evidence.loc[checked & ~evidence.runaway, "shot"]) == [
+        201447,
+        203629,
+    ]

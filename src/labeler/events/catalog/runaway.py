@@ -10,7 +10,15 @@ positive ts_core_temp channels. Rule 5 excludes a median Thomson channel-p90
 below 60 eV only when the window has at least one profile sample. The median
 still uses all samples with any valid channel. `n_thomson` counts those samples;
 `n_profile` counts profile samples. `no_thomson` means no usable Thomson profile
-in the window: blank Te and retained. Beam power and neutron rates are evidence only.
+in the window: blank Te and retained. Beam power and neutron rates corroborate
+the marks when the cohort consumes them; they never mark or unmark a shot.
+
+The profile condition tests that core Thomson produced a profile somewhere in
+the window (204081's never did), not that it resolved the plateau itself. On a
+runaway plateau, cold plasma after the disruption leaves most channels without
+a fit: plateau samples are sparse and carry the median. Corroboration guards
+against a thermal shot whose Thomson works early, then falls to a few low
+channels: a mark requires high neutron rates with low or absent beam power.
 
 The corpus digest binds each file's three diagnostic groups (their presence,
 shapes, and complete xdata/ydata arrays, encoded as little-endian float64), then
@@ -44,6 +52,8 @@ from .points import validate_csv_fields
 # The geometric middle of the gap between the warmest runaway shot and the
 # coldest usable non-runaway shot over the assessed windows.
 RUNAWAY_TE_EV = 60.0
+RUNAWAY_MIN_NEUTRONS = 1e15  # per second
+RUNAWAY_MAX_BEAM_KW = 1000.0
 COLUMNS = (
     "shot",
     "te_p90_ev",
@@ -186,6 +196,17 @@ def read_runaway(path) -> pd.DataFrame:
     return frame
 
 
+def corroborated(evidence: pd.DataFrame) -> pd.Series:
+    """Check neutron/beam support for each row without changing its Thomson mark."""
+    neutrons = evidence.neutron_rate_mean.map(
+        lambda text: max(
+            (float(token) for token in text.split(";") if token), default=0.0
+        )
+    )
+    beams = pd.to_numeric(evidence.pinj_kw).fillna(0.0)
+    return neutrons.ge(RUNAWAY_MIN_NEUTRONS) & beams.lt(RUNAWAY_MAX_BEAM_KW)
+
+
 def apply_rule(frame: pd.DataFrame, evidence: pd.DataFrame, path: Path) -> pd.DataFrame:
     """Apply rule 5 to the same complete rule-4 set used by the scan."""
     eligible = frame.reasons.eq("")
@@ -193,6 +214,14 @@ def apply_rule(frame: pd.DataFrame, evidence: pd.DataFrame, path: Path) -> pd.Da
     if missing:
         raise CatalogError(
             f"{path}: {len(missing)} rule-4 shots missing: {missing[:5]}"
+        )
+    unsupported = sorted(
+        evidence.loc[evidence.runaway & ~corroborated(evidence), "shot"]
+    )
+    if unsupported:
+        raise CatalogError(
+            f"{path}: marked shots not corroborated by neutrons and beams: "
+            f"{unsupported}"
         )
     marked = set(evidence.loc[evidence.runaway, "shot"])
     result = frame.copy()
