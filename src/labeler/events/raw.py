@@ -354,3 +354,69 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
         shot, group, channels=channels, t_range=t_range, corpus=paths.raw_cache
     )
     return FeatureArray(x=array.x, y=array.y, attrs={**array.attrs, "tier": "fetch"})
+
+
+#: The groups each review editor draws that the corpus lacks on some shots: CO2
+#: before about 197545, and PCPHD03 on every shot. Fetching needs fdp, so the
+#: login node fills the cache ahead of a review (`main`).
+EDITOR_FETCHES = {
+    "edge_localized_mode": ("co2", "pcphd03"),
+    "high_confinement_mode": ("co2",),
+}
+
+
+def fill_cache(shot: int, groups: Sequence[str], paths: Paths) -> dict[str, str]:
+    """Fetch into the cache each group neither tier holds; say where each is."""
+    where = {}
+    for group in groups:
+        if _holds_record(shot, group, paths.corpus):
+            where[group] = "corpus"
+        elif _holds_record(shot, group, paths.raw_cache):
+            where[group] = "cache"
+        else:
+            try:
+                _fetch(shot, group, channels=[0], t_range=None, paths=paths)
+            except NoDataError as error:
+                where[group] = f"missing: {error}"
+            else:
+                where[group] = "fetched"
+    return where
+
+
+def main(argv=None) -> int:
+    """`python -m labeler.events.raw --event E`: fill the cache for E's roster."""
+    import argparse
+    import json
+    from collections import Counter
+
+    from .rosters import read_roster, roster_path
+
+    parser = argparse.ArgumentParser(
+        prog="python -m labeler.events.raw",
+        description="Fetch what a review editor draws into the raw cache (fdp).",
+    )
+    parser.add_argument("--event", required=True, choices=sorted(EDITOR_FETCHES))
+    parser.add_argument("--shots", type=int, nargs="+", help="default: the roster")
+    parser.add_argument("--limit", type=int, default=0, help="only the first N")
+    parser.add_argument(
+        "--pace", type=float, default=1.0, help="seconds to wait after a fetch"
+    )
+    args = parser.parse_args(argv)
+    paths = Paths.from_env()
+    roster = roster_path(args.event, root=paths.label_tables)
+    shots = args.shots or [int(shot) for shot in read_roster(roster).shot]
+    if args.limit:
+        shots = shots[: args.limit]
+    counts: Counter[str] = Counter()
+    for shot in shots:
+        where = fill_cache(shot, EDITOR_FETCHES[args.event], paths)
+        print(json.dumps({"shot": shot, **where}), flush=True)
+        counts.update(value.split(":")[0] for value in where.values())
+        if "fetched" in where.values():
+            time.sleep(args.pace)
+    print(json.dumps({"shots": len(shots), **dict(sorted(counts.items()))}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
