@@ -1,4 +1,4 @@
-"""Joiners belong in names; controls that break or reorder a line do not."""
+"""Names keep joiners but refuse other Unicode C characters and line separators."""
 
 from __future__ import annotations
 
@@ -16,12 +16,9 @@ from .test_review_versions import _label, client, event_dir  # noqa: F401
     [
         "محمد‌رضا",  # Persian with ZWNJ, U+200C
         "क्‍ष",  # Devanagari with ZWJ, U+200D
-        "Ada\u200bLovelace",  # other format characters are allowed too
-        "Ada\ue000Lovelace",  # private use
-        "Ada\u0378Lovelace",  # unassigned
     ],
 )
-def test_joiners_and_other_allowed_characters_are_kept_byte_for_byte(name):
+def test_joiners_are_kept_byte_for_byte(name):
     assert versions.clean_name(name).encode("utf-8") == name.encode("utf-8")
 
 
@@ -44,9 +41,15 @@ def test_joiners_and_other_allowed_characters_are_kept_byte_for_byte(name):
         "\u2068",
         "\u2069",
         "\ud800",
+        "\u200b",  # zero width space
+        "\u2060",  # word joiner
+        "\ufeff",  # zero width no-break space
+        "\u00ad",  # soft hyphen
+        "\ue000",  # private use
+        "\u0378",  # unassigned
     ],
 )
-def test_a_control_separator_bidi_control_or_surrogate_in_a_name_is_refused(character):
+def test_a_non_joiner_c_character_or_line_separator_in_a_name_is_refused(character):
     with pytest.raises(ValueError, match="a name cannot hold control characters"):
         versions.clean_name(f"Ada{character}Lovelace")
 
