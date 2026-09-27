@@ -110,7 +110,7 @@ def test_a_summary_line_says_what_was_measured():
     t, ip = _trace()
     assert summarise(7, t, ip) == {
         "shot": 7,
-        "version": 2,
+        "version": 3,
         "n": t.size,
         "dt_ms": 0.5,
         "status": "ok",
@@ -206,9 +206,9 @@ def test_the_command_logs_under_the_root(tmp_path, monkeypatch, capsys):
     assert summary["log"] == str(tmp_path / "catalog" / "ip.jsonl")
     assert summary["status"] == {"ok": 1, "no_plasma": 1, "error": 1}
     assert summary["flattop_at_least_1s"] == 1
-    assert summary["versions"] == {"2": 3}
+    assert summary["versions"] == {"3": 3}
     meta = json.loads((tmp_path / "catalog" / "ip.meta.json").read_text())
-    assert meta["version"] == 2
+    assert meta["version"] == 3
     assert re.fullmatch(r"[0-9a-f]{64}", meta["shot_file_sha256"])
     assert meta["shot_file"] == str(shots) and meta["shots"] == 3
     assert meta["this_run"] == {"ok": 1, "no_plasma": 1, "error": 1}
@@ -216,7 +216,7 @@ def test_the_command_logs_under_the_root(tmp_path, monkeypatch, capsys):
     assert re.fullmatch(r"[0-9a-f]{40}", meta["git_sha"]) and meta["written_at"]
     definition = meta["definition"]
     assert definition == window.definition()
-    assert definition["log_version"] == 2
+    assert definition["log_version"] == 3
     assert definition["ip"] == "PTDATA ip, native rate"
     assert definition["window_ip_a"] == 50e3
     assert definition["bridge_ms"] == 10.0
@@ -272,7 +272,7 @@ def test_all_nan_current_is_a_retryable_error(tmp_path):
         paths.raw_cache / "1_processed.h5", "ip", t, np.full((1, t.size), np.nan)
     )
     line = window.measure(1, paths)
-    assert line["status"] == "error" and line["version"] == 2
+    assert line["status"] == "error" and line["version"] == 3
     assert line["error"].startswith("ValueError:")
 
 
@@ -309,7 +309,7 @@ def _ok_line():
         "flattop_s": 1.5,
         "ip_peak_ma": 1.0,
         "dt_ms": 0.05,
-        "version": 2,
+        "version": 3,
     }
 
 
@@ -402,7 +402,7 @@ def test_old_log_versions_are_remeasured_once(tmp_path, monkeypatch):
     assert table["version"].tolist() == [1]
     assert str(table["version"].dtype) == "Int64"
     assert fetch([1], log, Paths(root=tmp_path)) == {"ok": 1}
-    assert read_log(log)["version"].tolist() == [2]
+    assert read_log(log)["version"].tolist() == [3]
     assert len(log.read_text().splitlines()) == 2
     assert fetch([1], log, Paths(root=tmp_path)) == {}
     assert calls == [1]
@@ -462,3 +462,69 @@ def test_window_catalog_error_is_a_usage_error(tmp_path, monkeypatch, capsys):
         window.main(["--shot-file", str(shots), "--log", str(tmp_path / "ip.jsonl")])
     assert exc.value.code == 2
     assert "corrupt log fixture" in capsys.readouterr().err
+
+
+def _restrike_trace(dt, *, dip=80e3, rise=800e3, restrike=True):
+    t = np.arange(0, 4000 + dt / 2, dt)
+    knots = [0, 500, 3500, 3620, 3760, 3860, 3872, 4000]
+    levels = [0, 700e3, 700e3, dip, rise, rise, 0, 0]
+    if not restrike:
+        knots, levels = [0, 500, 3500, 3620, 3632, 4000], [0, 700e3, 700e3, dip, 0, 0]
+    return t, np.interp(t, knots, levels)
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.5])
+def test_d2b_ends_at_post_flattop_dip_and_remeasures_peak(dt):
+    t, ip = _restrike_trace(dt)
+    original = window.assessed_window(t, ip)
+    end = window.restrike_end(t, ip, original)
+    assert abs(end - 3620) <= 1
+    line = summarise(204238, t, ip)
+    assert line["window_end_ms"] == end < original[1]
+    assert line["ip_peak_ma"] == 0.7
+    t0, ip0 = _restrike_trace(dt, restrike=False)
+    baseline = summarise(204238, t0, ip0)
+    assert line["flattop_s"] == pytest.approx(baseline["flattop_s"], abs=1e-12)
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.5])
+def test_d2b_keeps_the_early_discharge_dip(dt):
+    t = np.arange(0, 2400 + dt / 2, dt)
+    ip = np.interp(
+        t, [0, 400, 470, 900, 2100, 2300, 2400], [0, 600e3, 170e3, 600e3, 600e3, 0, 0]
+    )
+    original = window.assessed_window(t, ip)
+    assert window.restrike_end(t, ip, original) is None
+    line = summarise(200811, t, ip)
+    assert (line["window_start_ms"], line["window_end_ms"]) == original
+
+
+@pytest.mark.parametrize("dt", [0.05, 0.5])
+@pytest.mark.parametrize("dip, rise", [(0.25, 0.5), (0.35, 0.9)])
+def test_d2b_requires_both_dip_and_rise_thresholds(dt, dip, rise):
+    t, ip = _restrike_trace(dt, dip=dip * 700e3, rise=rise * 700e3)
+    original = window.assessed_window(t, ip)
+    assert window.restrike_end(t, ip, original) is None
+    assert summarise(1, t, ip)["window_end_ms"] == original[1]
+
+
+def test_d2b_sampling_rates_agree_within_one_ms():
+    ends = [summarise(1, *_restrike_trace(dt))["window_end_ms"] for dt in [0.05, 0.5]]
+    assert abs(ends[0] - ends[1]) <= 1
+    assert max(ends) <= 3620
+
+
+def test_v2_log_is_remeasured_at_version_3(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(window, "raw_signal", _fake_ip(calls))
+    log = tmp_path / "ip.jsonl"
+    log.write_text(json.dumps(_ok_line() | {"version": 2}) + "\n")
+    assert window.LOG_VERSION == 3
+    assert fetch([1], log, Paths(root=tmp_path)) == {"ok": 1}
+    assert calls == [1]
+    assert read_log(log).version.tolist() == [3]
+    assert fetch([1], log, Paths(root=tmp_path)) == {}
+    definition = window.definition()
+    assert definition["restrike_dip_fraction"] == 0.3
+    assert definition["restrike_rise_fraction"] == 0.6
+    assert "restrike" in definition

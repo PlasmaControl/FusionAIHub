@@ -11,6 +11,11 @@ with gaps of at most `BRIDGE_MS` bridged. Post-shot pickup of 51-107 kA about
 4.1 s after 188351, are why it is the longest stretch. The opposite-sign quench
 tail of 189013, about -318 kA decaying over 1.1 s, is why the current is signed.
 
+D2b ends that window at a restrike: after the longest flat-top stretch, a mean
+below 30% of the plateau followed by one above 60% marks a second plasma. The
+end is the lowest mean between them, rounded down to whole ms. Shot 204238 is
+such a restrike; 200811's early dip precedes its flat-top and stays in the window.
+
 The flat-top reads centred 25 ms means of |Ip| inside the window, matching the
 feature grid on which its rule was calibrated. This keeps single noisy samples
 and short dips from splitting the plateau and reduces sampling-rate dependence.
@@ -54,7 +59,9 @@ WINDOW_IP_A = 50e3
 #: Samples more than BRIDGE_MS apart split a stretch; exactly 10 ms is bridged.
 BRIDGE_MS = 10.0
 FLATTOP_MEAN_MS = 25.0
-LOG_VERSION = 2
+RESTRIKE_DIP_FRACTION = 0.3
+RESTRIKE_RISE_FRACTION = 0.6
+LOG_VERSION = 3
 #: A shot with one of these is measured for good; an "error" is tried again.
 SETTLED = ("ok", "no_plasma")
 LOG_COLUMNS = (
@@ -141,6 +148,40 @@ def _finite(x: float, digits: int) -> float | None:
     return round(float(x), digits) if math.isfinite(x) else None
 
 
+def restrike_end(t_ms, ip_a, window: tuple[int, int]) -> int | None:
+    """D2b end at the dip before a restrike after the longest flat-top, else None."""
+    t = np.asarray(t_ms, dtype=float).ravel()
+    inside = (t >= window[0]) & (t <= window[1])
+    ip = np.asarray(ip_a, dtype=float).ravel()
+    t, ip = t[inside], np.abs(ip[inside])
+    if t.size < 2:
+        return None
+    half_width = round(FLATTOP_MEAN_MS / 2 / float(np.median(np.diff(t))))
+    means = _centred_mean(ip, half_width)
+    keep = np.isfinite(t) & np.isfinite(means)
+    t, means = t[keep], means[keep]
+    if t.size < 3:
+        return None
+    plateau = float(np.percentile(means, 95))
+    if plateau <= 0:
+        return None
+    above = means >= FLATTOP_FRACTION * plateau
+    edges = np.diff(np.r_[False, above, False].astype(int))
+    starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1) - 1
+    # Like flattop_from_ip, compare durations in seconds; argmax keeps the first tie.
+    stretch_end = ends[np.argmax(t[ends] / 1000 - t[starts] / 1000)]
+    dips = np.flatnonzero(means[stretch_end + 1 :] < RESTRIKE_DIP_FRACTION * plateau)
+    if not dips.size:
+        return None
+    dip = stretch_end + 1 + dips[0]
+    rises = np.flatnonzero(means[dip + 1 :] > RESTRIKE_RISE_FRACTION * plateau)
+    if not rises.size:
+        return None
+    rise = dip + 1 + rises[0]
+    lowest = dip + np.argmin(means[dip : rise + 1])
+    return math.floor(float(t[lowest]))
+
+
 def summarise(shot: int, t_ms, ip_a) -> dict:
     """One log line for a shot's Ip record; ValueError if it cannot be measured."""
     t = np.asarray(t_ms, dtype=float).ravel()
@@ -166,6 +207,9 @@ def summarise(shot: int, t_ms, ip_a) -> dict:
     window = assessed_window(t, ip_a)
     if window is None:
         return line | {"status": "no_plasma"}
+    end = restrike_end(t, ip_a, window)
+    if end is not None:
+        window = (window[0], end)
     ip = np.abs(ip)
     peak = np.max(ip[(t >= window[0]) & (t <= window[1]) & np.isfinite(ip)])
     flat = flattop_s(t, ip_a, window)
@@ -331,6 +375,16 @@ def definition() -> dict:
         "flattop_mean_ms": FLATTOP_MEAN_MS,
         "flattop_fraction": FLATTOP_FRACTION,
         "min_flattop_s": MIN_FLATTOP_S,
+        "restrike": (
+            "Inside the D2a window use the same centred means as flattop; drop "
+            "non-finite means and take their 95th percentile P. After the longest "
+            "run >= flattop_fraction * P (first on a tie), find the first mean "
+            "< restrike_dip_fraction * P and the first later mean "
+            "> restrike_rise_fraction * P. End at the lowest mean between them, "
+            "rounded down to whole ms; remeasure flat-top and peak inside it."
+        ),
+        "restrike_dip_fraction": RESTRIKE_DIP_FRACTION,
+        "restrike_rise_fraction": RESTRIKE_RISE_FRACTION,
     }
 
 
