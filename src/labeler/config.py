@@ -4,9 +4,11 @@ Nothing else in the package hard-codes a path, so pointing labeler at a
 different data root (a scratch copy, a test fixture) is one environment
 variable. Defaults are group storage: Nathan's own scratch is near quota.
 """
+
 from __future__ import annotations
 
 import hashlib
+import io
 import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -192,10 +194,29 @@ class Paths:
         return self.spectrograms / event / f"{int(shot)}.h5"
 
     def mkdirs(self) -> None:
-        for d in (self.features, self.labels, self.models, self.runs,
-                  self.validation, self.events, self.masks, self.annotate,
-                  self.text_cache):
+        for d in (
+            self.features,
+            self.labels,
+            self.models,
+            self.runs,
+            self.validation,
+            self.events,
+            self.masks,
+            self.annotate,
+            self.text_cache,
+        ):
             d.mkdir(parents=True, exist_ok=True)
+
+
+class NamedBytes(io.BytesIO):
+    """Make a reader's refusal name the file the bytes came from."""
+
+    def __init__(self, data: bytes, path):
+        super().__init__(data)
+        self.name = str(path)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 @contextmanager

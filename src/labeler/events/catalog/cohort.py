@@ -47,7 +47,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from ...config import Paths, atomic_path, git_dirty, git_sha
+from ...config import NamedBytes, Paths, atomic_path, git_dirty, git_sha
 from ...literature.papers import read_papers
 from .. import databases
 from . import population as pop
@@ -159,7 +159,7 @@ def legacy_sets(
     for spec in specs:
         path = spec.path(root)
         data = path.read_bytes()
-        source = _stream(data, path)
+        source = NamedBytes(data, path)
         validate_csv_fields(source)
         table = databases._parse(source)
         for column, expected in (
@@ -573,12 +573,6 @@ def _read_table(path, columns, boolean) -> pd.DataFrame:
     return frame.astype({"window_start_ms": "Int64", "window_end_ms": "Int64"})
 
 
-def _stream(data: bytes, path: Path):
-    source = io.BytesIO(data)
-    source.name = str(path)
-    return source
-
-
 def _input(path: Path, root: Path | None = None, *, data: bytes | None = None) -> dict:
     """The path, relative to `root` when it lies under it, and its checksum."""
     path = path.resolve()
@@ -708,7 +702,7 @@ def main(argv=None) -> int:
         parser.error("--reason requires --supersedes")
     try:
         return _run(args, Paths.from_env())
-    except CatalogError as error:
+    except (CatalogError, pd.errors.ParserError) as error:
         parser.error(str(error))
 
 
@@ -737,7 +731,7 @@ def _run(args, paths) -> int:
         raise CatalogError(f"{meta_path}: pool_sha256 differs from {pool_path}")
     if pool_meta.get("rules") != pop.rules_record():
         raise CatalogError(f"{meta_path}: rules differ from population.rules_record()")
-    pool = pop.read_pool(_stream(pool_data, pool_path))
+    pool = pop.read_pool(NamedBytes(pool_data, pool_path))
     for field, expected in {
         "definition": window.definition(),
         "version": window.LOG_VERSION,
@@ -755,12 +749,12 @@ def _run(args, paths) -> int:
         "sha256": hashlib.sha256(papers_meta_data).hexdigest(),
         **{k: papers_record.get(k) for k in ("git_sha", "written_at", "summary")},
     }
-    frame = pop.population(pool, window.read_log(_stream(log_data, log_path)))
+    frame = pop.population(pool, window.read_log(NamedBytes(log_data, log_path)))
     legacy_inputs = []
     legacy, _ = legacy_sets(paths.label_tables, inputs=legacy_inputs)
     grouped = assign_groups(
         frame[frame["reasons"].eq("")],
-        osti_links(read_papers(_stream(papers_data, papers_path))),
+        osti_links(read_papers(NamedBytes(papers_data, papers_path))),
         legacy,
     )
     cohort, cells = draw(grouped, args.seed)
