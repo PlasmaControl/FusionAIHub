@@ -346,13 +346,19 @@ def main(argv=None) -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--limit", type=int, help="the first N shots only (a pilot)")
     args = parser.parse_args(argv)
-    paths = Paths.from_env()
+    try:
+        return _run(args, Paths.from_env())
+    except CatalogError as error:
+        parser.error(str(error))
+
+
+def _run(args, paths) -> int:
     log = args.log or paths.catalog / "ip.jsonl"
     shots = read_shot_file(args.shot_file)[: args.limit]
     counts = fetch(shots, log, paths, workers=args.workers)
     meta = {
         "version": LOG_VERSION,
-        "git_sha": git_sha(),
+        "git_sha": git_sha(full=True),
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "log": str(log),
         "shot_file": str(args.shot_file),

@@ -213,7 +213,7 @@ def test_the_command_logs_under_the_root(tmp_path, monkeypatch, capsys):
     assert meta["shot_file"] == str(shots) and meta["shots"] == 3
     assert meta["this_run"] == {"ok": 1, "no_plasma": 1, "error": 1}
     assert meta["log"] == summary["log"]
-    assert meta["git_sha"] and meta["written_at"]
+    assert re.fullmatch(r"[0-9a-f]{40}", meta["git_sha"]) and meta["written_at"]
     definition = meta["definition"]
     assert definition == window.definition()
     assert definition["log_version"] == 2
@@ -446,3 +446,19 @@ def test_import_does_not_load_torch_or_toksearch():
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_window_catalog_error_is_a_usage_error(tmp_path, monkeypatch, capsys):
+    from labeler.events.catalog.check import CatalogError
+
+    shots = tmp_path / "shots.txt"
+    shots.write_text("190001\n")
+
+    def broken(*args, **kwargs):
+        raise CatalogError("corrupt log fixture")
+
+    monkeypatch.setattr(window, "fetch", broken)
+    with pytest.raises(SystemExit) as exc:
+        window.main(["--shot-file", str(shots), "--log", str(tmp_path / "ip.jsonl")])
+    assert exc.value.code == 2
+    assert "corrupt log fixture" in capsys.readouterr().err

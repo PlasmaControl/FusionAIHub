@@ -238,11 +238,11 @@ def sha256_of(path) -> str:
     return h.hexdigest()
 
 
-def git_sha() -> str:
-    """Short sha of the checkout that produced an artifact, or 'unknown'."""
+def git_sha(full: bool = False) -> str:
+    """Checkout sha (short by default, full on request), or 'unknown'."""
     try:
         out = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
+            ["git", "rev-parse", *([] if full else ["--short"]), "HEAD"],
             cwd=Path(__file__).resolve().parents[2],
             capture_output=True,
             text=True,

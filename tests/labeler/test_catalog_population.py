@@ -822,3 +822,54 @@ def test_the_rule_record_names_the_machine_rule_and_dropped_title_regex():
         },
     }
     assert rules["dropped"]["title"] == pop.select.TITLE_EXCLUDE.pattern
+
+
+def test_git_sha_full_is_40_characters_and_default_stays_short():
+    full = labeler_config.git_sha(full=True)
+    assert re.fullmatch(r"[0-9a-f]{40}", full)
+    short = labeler_config.git_sha()
+    assert len(short) < 40 and full.startswith(short)
+
+
+@pytest.mark.parametrize("which", ["census", "lexicon"])
+def test_population_hashes_parsed_bytes_during_replacement(
+    command_inputs, tmp_path, monkeypatch, which
+):
+    import yaml
+
+    _, census, out = command_inputs
+    config_dir = tmp_path / "lexicon"
+    config_dir.mkdir()
+    lexicon = config_dir / "labels.yaml"
+    lexicon.write_bytes((shot_config.CONFIG_DIR / "labels.yaml").read_bytes())
+    monkeypatch.setattr(shot_config, "CONFIG_DIR", config_dir)
+    path = census if which == "census" else lexicon
+    digest = sha256_of(path)
+    module, name = (pd, "read_parquet") if which == "census" else (yaml, "safe_load")
+    original = getattr(module, name)
+
+    def replacing(*args, **kwargs):
+        parsed = original(*args, **kwargs)
+        path.write_bytes(b"replacement\n")
+        return parsed
+
+    monkeypatch.setattr(module, name, replacing)
+    assert pop.main(["--census", str(census), "--out", str(out)]) == 0
+    meta = json.loads((out / "pool.meta.json").read_text())
+    assert meta[f"{which}_sha256"] == digest
+    assert sha256_of(path) != digest
+    assert re.fullmatch(r"[0-9a-f]{40}", meta["git_sha"])
+    assert pop.read_pool(out / "pool.csv").reasons.tolist() == [""]
+
+
+def test_population_catalog_error_is_a_usage_error(command_inputs, monkeypatch, capsys):
+    _, census, out = command_inputs
+
+    def broken(*args, **kwargs):
+        raise CatalogError("invalid screen fixture")
+
+    monkeypatch.setattr(pop, "screen", broken)
+    with pytest.raises(SystemExit) as exc:
+        pop.main(["--census", str(census), "--out", str(out)])
+    assert exc.value.code == 2
+    assert "invalid screen fixture" in capsys.readouterr().err

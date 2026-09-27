@@ -811,7 +811,7 @@ def test_the_manifest_records_git_dirty(tmp_path, monkeypatch, dirty):
         == 0
     )
     doc = yaml.safe_load((out / "cohort_manifest.yaml").read_text())
-    assert doc["git_dirty"] is dirty and "git_sha" in doc
+    assert doc["git_dirty"] is dirty and len(doc["git_sha"]) == 40
 
 
 @pytest.mark.parametrize(

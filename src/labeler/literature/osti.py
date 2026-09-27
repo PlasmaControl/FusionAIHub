@@ -482,7 +482,7 @@ def _build_record(
     shot_lines = "".join(f"{s}\n" for s in sorted(shots))
     return {
         "written_at": datetime.now(UTC).isoformat(timespec="seconds"),
-        "git_sha": git_sha(),
+        "git_sha": git_sha(full=True),
         "git_dirty": git_dirty(),
         "command": shlex.join(["python", "-m", "labeler.literature.osti", *argv]),
         "rules": {
