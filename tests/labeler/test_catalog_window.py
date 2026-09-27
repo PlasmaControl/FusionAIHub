@@ -237,6 +237,21 @@ def test_live_window_of_a_measured_shot(tmp_path):
     assert line["flattop_s"] == pytest.approx(3.534, abs=0.001)
 
 
+@pytest.mark.live
+def test_live_window_of_a_restrike(tmp_path):
+    line = window.measure(204238, Paths(root=tmp_path))
+    assert (line["window_start_ms"], line["window_end_ms"]) == (11, 3983)
+    assert line["flattop_s"] == pytest.approx(2.903, abs=0.001)
+    assert line["ip_peak_ma"] == pytest.approx(0.7356, abs=0.0001)
+
+
+@pytest.mark.live
+def test_live_window_keeps_an_early_dip(tmp_path):
+    line = window.measure(200811, Paths(root=tmp_path))
+    assert (line["window_start_ms"], line["window_end_ms"]) == (8, 2097)
+    assert line["flattop_s"] == pytest.approx(1.2486, abs=0.001)
+
+
 @pytest.mark.parametrize("workers", [1, 2])
 def test_a_bad_cached_record_does_not_stop_other_shots(tmp_path, workers):
     paths = Paths(root=tmp_path, corpus=tmp_path / "absent-corpus")
