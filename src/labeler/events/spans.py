@@ -19,6 +19,14 @@ page opens unreviewed shots on:
   keeps its runs whole.
 - Sawteeth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
   most `SAWTOOTH_MAX_GAP_MS`.
+
+ELM and sawtooth runs form only from the events inside the shot's window and
+after the plasma starts (`plasma_start`): the first time the 25 ms centred mean
+of |Ip| inside the window reaches `RAMP_FRACTION` of its plateau, the catalog's
+flat-top rule (`catalog.window`), with Ip from the corpus or the raw cache. A
+shot with no Ip starts `RAMP_FALLBACK_MS` into its window. Events before the
+start are dropped before the runs are grouped, so the ramp-up's crash-like
+steps and spikes neither make a run nor join one; the time before is absent.
 - Tearing modes (`window`): no method yet, so the window alone, all absent. It
   gives the page the catalog window to open each shot on.
 
@@ -33,6 +41,8 @@ runs over the frozen cohort's non-blind shots in queue order (`--limit N` takes
 the first N, `--shots` names them; `--windows population` takes the population
 instead) and merges into the method's table. A shot already in the table is
 skipped unless `--force`, so a rerun never changes what a reviewer was shown.
+`--gold` also scores the method's drafts on the event's gold shots (`gold`) and
+writes the score into the table's meta, where a later run without it keeps it.
 """
 
 from __future__ import annotations
@@ -42,16 +52,19 @@ import json
 import logging
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from ..config import DEFAULT_LABEL_TABLES, Paths, git_sha
+from ..scoring.frames import Assessment
 from . import coverage, heuristics, suggestions, transients
 from .catalog.cohort import read_cohort
 from .catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from .catalog.window import FLATTOP_FRACTION, FLATTOP_MEAN_MS, _centred_mean
+from .review import agreement, labels
 from .verify import NoDataError, corpus_signal
 
 log = logging.getLogger(__name__)
@@ -65,6 +78,27 @@ SAWTOOTH_MAX_GAP_MS = 300.0
 ELM_MIN_GAP_S = transients.MIN_DISTANCE_MS * 1e-3
 SAWTOOTH_MIN_GAP_S = heuristics.STEP_SPAN_MS * 1e-3
 LH_MIN_GAP_S = heuristics.LH_DROP_WINDOW_MS * 1e-3
+#: The plasma starts where the centred `RAMP_MEAN_MS` mean of |Ip| inside the
+#: window first reaches `RAMP_FRACTION` of its `PLATEAU_PERCENTILE`th
+#: percentile: the catalog's own flat-top rule (rule 4). Of the fractions tried
+#: on the 450 queue shots (0.5 to 0.8), 0.8 leaves 5 sawtooth drafts and no ELM
+#: draft present before 300 ms; at 0.5, 128 sawtooth drafts still are.
+RAMP_FRACTION = FLATTOP_FRACTION
+RAMP_MEAN_MS = FLATTOP_MEAN_MS
+PLATEAU_PERCENTILE = 95
+#: Without Ip, the start is this far into the window: on the 450 queue shots,
+#: all of which have Ip, the start above falls a median 725 ms in (5-95 %:
+#: 372-1427 ms).
+RAMP_FALLBACK_MS = 700.0
+IP_MISSING = (NoDataError, KeyError, OSError)
+START_RULE = {
+    "ip_fraction": RAMP_FRACTION,
+    "ip_mean_ms": RAMP_MEAN_MS,
+    "plateau_percentile": PLATEAU_PERCENTILE,
+    "fallback_ms": RAMP_FALLBACK_MS,
+    "ip": "the corpus's 'ip', else the raw cache's",
+    "events": "only those in [start, window end] form runs",
+}
 
 Window = tuple[int, int]
 Interval = tuple[float, float]
@@ -156,6 +190,50 @@ def shot_rows(shot: int, window: Window, found: Found | None) -> list[list]:
     return suggestions.span_rows(shot, window, painted)
 
 
+def ramp_start(t_ms, ip, window) -> float | None:
+    """The first time inside `window` that the centred mean of |Ip| reaches
+    `RAMP_FRACTION` of its plateau, or None if nothing there can be measured."""
+    t = np.asarray(t_ms, dtype=np.float64).ravel()
+    y = np.abs(np.asarray(ip, dtype=np.float64).ravel())
+    inside = (t >= window[0]) & (t <= window[1])
+    t, y = t[inside], y[inside]
+    if t.size < 3:
+        return None
+    means = _centred_mean(y, round(RAMP_MEAN_MS / 2 / float(np.median(np.diff(t)))))
+    finite = np.isfinite(means)
+    if not finite.any():
+        return None
+    plateau = float(np.percentile(means[finite], PLATEAU_PERCENTILE))
+    if not plateau > 0:
+        return None
+    return float(t[np.flatnonzero(finite & (means >= RAMP_FRACTION * plateau))[0]])
+
+
+def plasma_start(shot: int, paths: Paths, window: Window) -> tuple[float, str]:
+    """`(start_ms, how)`: `ramp_start` on the shot's Ip, else `RAMP_FALLBACK_MS`
+    into the window, with why."""
+    try:
+        t_s, y = read(shot, "ip", paths)
+        start = ramp_start(t_s * 1000.0, y[0], window)
+        why = None if start is not None else "Ip never measured inside the window"
+    except IP_MISSING as error:
+        start, why = None, f"{type(error).__name__}: {error}"
+    if start is not None:
+        return start, "ip"
+    fallback = f"window start + {RAMP_FALLBACK_MS:g} ms: {why}"
+    return float(window[0]) + RAMP_FALLBACK_MS, fallback
+
+
+def in_plasma(times_ms: Iterable[float], start: float, window: Window) -> list:
+    """The events from the plasma's start to the window's end."""
+    return [t for t in times_ms if start <= t <= window[1]]
+
+
+def from_start(intervals: Iterable[Interval], start: float) -> list[Interval]:
+    """`intervals` from `start` on: a run's padding does not reach before it."""
+    return [(max(a, start), b) for a, b in intervals if b > start]
+
+
 def read(shot: int, group: str, paths: Paths, channels=None):
     """`(t_s, y)` of one group from the corpus, else the raw cache; never fetched."""
     for root in (paths.corpus, paths.raw_cache):
@@ -186,14 +264,20 @@ def dalpha_channel(y, shot: int) -> int:
     return channel
 
 
-def detect_elm(shot: int, paths: Paths) -> Found:
+def detect_elm(shot: int, paths: Paths, window: Window | None = None) -> Found:
+    """ELM runs; with a `window`, only from the plasma's start (`plasma_start`)."""
     t_s, y = _dalpha(shot, paths)
     channel = dalpha_channel(y, shot)
     cov = coverage.Coverage.measured(t_s, y[channel], min_gap_s=ELM_MIN_GAP_S)
     found = transients.elm_clock_events(y[channel], t_s, shot=shot, channel=channel)
     elms = [e.t0_s * 1000 for e in found if e.phenomenon == transients.ELM_PHENOMENON]
+    if window is not None:
+        start, _ = plasma_start(shot, paths, window)
+        elms = in_plasma(elms, start, window)
     spans = runs(elms, max_gap_ms=ELM_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS)
     spans = minus(spans, lmode(shot, paths))
+    if window is not None:
+        spans = from_start(spans, start)
     return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov))
 
 
@@ -207,7 +291,9 @@ def lmode(shot: int, paths: Paths) -> list[Interval]:
     return minus(hmode.measured, [(a, b) for a, b, _ in hmode.spans])
 
 
-def detect_hmode(shot: int, paths: Paths) -> Found:
+def detect_hmode(shot: int, paths: Paths, window: Window | None = None) -> Found:
+    """H-mode spans over what the inputs measured; `window` is not used: the
+    transitions set their own start."""
     dalpha_t, dalpha_y = _dalpha(shot, paths)
     ne_t, ne_y = read(shot, "co2", paths, [0])
     pinj_t, pinj_y = read(shot, "pinj", paths)
@@ -237,30 +323,40 @@ def detect_hmode(shot: int, paths: Paths) -> Found:
     return Found(tuple(hmode_spans(marks, measured)), measured)
 
 
-def detect_sawtooth(shot: int, paths: Paths) -> Found:
+def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Found:
+    """Sawtooth runs; with a `window`, only from the plasma's start."""
     t_s, y = read(shot, "ece", paths)
     cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
     found = heuristics.sawtooth_events(y, t_s, shot=shot, t_cov=cov.hull)
     crashes = [
         e.t0_s * 1000 for e in found if e.phenomenon == heuristics.SAWTOOTH_PHENOMENON
     ]
+    if window is not None:
+        start, _ = plasma_start(shot, paths, window)
+        crashes = in_plasma(crashes, start, window)
     spans = runs(
         crashes, max_gap_ms=SAWTOOTH_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS
     )
+    if window is not None:
+        spans = from_start(spans, start)
     return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov))
 
 
-def detect_window(shot: int, paths: Paths) -> Found:
+def detect_window(shot: int, paths: Paths, window: Window | None = None) -> Found:
     """No method: the window, all absent, for an editor with nothing to suggest."""
     return Found((), ((-np.inf, np.inf),))
 
 
 @dataclass(frozen=True)
 class Method:
+    """An editor's method: `detect(shot, paths, window)`, its inputs, and the
+    constants its rule uses, as the table's meta records them."""
+
     event: str
     name: str
-    detect: Callable[[int, Paths], Found]
+    detect: Callable[[int, Paths, Window | None], Found]
     inputs: tuple[str, ...]
+    rule: dict = field(default_factory=dict)
 
 
 METHODS = {
@@ -270,15 +366,36 @@ METHODS = {
             "edge_localized_mode",
             "elm_clock",
             detect_elm,
-            ("filterscopes", "co2", "pinj"),
+            ("filterscopes", "co2", "pinj", "ip"),
+            {
+                "min_run": MIN_RUN,
+                "pad_ms": PAD_MS,
+                "max_gap_ms": ELM_MAX_GAP_MS,
+                "min_gap_s": ELM_MIN_GAP_S,
+                "start": START_RULE,
+                "l_mode": "less the time the dalpha_lh method saw in L-mode",
+            },
         ),
         Method(
             "high_confinement_mode",
             "dalpha_lh",
             detect_hmode,
             ("filterscopes", "co2", "pinj"),
+            {"min_gap_s": LH_MIN_GAP_S},
         ),
-        Method("sawtooth_oscillation", "ece_sawtooth", detect_sawtooth, ("ece",)),
+        Method(
+            "sawtooth_oscillation",
+            "ece_sawtooth",
+            detect_sawtooth,
+            ("ece", "ip"),
+            {
+                "min_run": MIN_RUN,
+                "pad_ms": PAD_MS,
+                "max_gap_ms": SAWTOOTH_MAX_GAP_MS,
+                "min_gap_s": SAWTOOTH_MIN_GAP_S,
+                "start": START_RULE,
+            },
+        ),
         Method("neoclassical_tearing_mode", "window", detect_window, ()),
     )
 }
@@ -313,7 +430,7 @@ def population(paths: Paths) -> pd.DataFrame:
 def suggest(method: Method, shot: int, window: Window, paths: Paths):
     """`(rows, reason)`: the shot's rows, and why the method could not run, or None."""
     try:
-        found, reason = method.detect(int(shot), paths), None
+        found, reason = method.detect(int(shot), paths, tuple(window)), None
     except Exception as error:  # noqa: BLE001 - one shot's failure is its own
         log.warning("shot %d: %s could not run: %s", shot, method.name, error)
         found, reason = None, f"{type(error).__name__}: {error}"
@@ -324,6 +441,42 @@ def _suggest(args):
     return suggest(*args)
 
 
+def gold(method: Method, paths: Paths, reference=None) -> dict:
+    """The method's drafts scored on the event's gold shots, frame by frame.
+
+    The gold shots are the roster's (`<event>/shots.csv`) tier-gold rows; their
+    labels are `reference`, a format table, by default the event's saved labels
+    (`review/labels.csv`). Each gold label's window is suggested as the page
+    would and scored with the agreement gate's frame counts (`agreement.pooled`):
+    precision and recall of the drafts' present frames. A gold shot with no label
+    is listed under `missing`; one the method could not run on is scored as
+    drafted (not observable throughout) and listed under `could_not_run`.
+    """
+    event_dir = paths.label_tables / method.event
+    reference = labels.labels_path(event_dir) if reference is None else reference
+    roster = pd.read_csv(event_dir / "shots.csv", dtype={"tier": str})
+    shots = sorted(int(s) for s in roster.shot[roster.tier == "gold"])
+    saved = labels.read_labels(reference)
+    missing = {str(s): "no gold label" for s in shots if s not in saved}
+    pairs, failed = [], {}
+    for shot in (s for s in shots if s in saved):
+        label = saved[shot]
+        rows, reason = suggest(method, shot, label.window, paths)
+        if reason:
+            failed[str(shot)] = reason
+        estimate = Assessment.from_rows([(a, b, state) for _, state, a, b, _ in rows])
+        pairs.append((Assessment.from_label(label), estimate))
+    return {
+        "reference": str(reference),
+        "git_sha": git_sha(),
+        "gold_shots": len(shots),
+        "shots": len(pairs),
+        **agreement.pooled(pairs),
+        "missing": missing,
+        "could_not_run": failed,
+    }
+
+
 def run(
     method: Method,
     targets: pd.DataFrame,
@@ -332,8 +485,10 @@ def run(
     windows: str,
     force: bool = False,
     workers: int = 1,
+    scored: dict | None = None,
 ) -> dict:
-    """Suggest `targets`' shots and merge them into the method's table."""
+    """Suggest `targets`' shots and merge them into the method's table; `scored`
+    (`gold`) replaces the meta's gold score, which is otherwise kept."""
     path = suggestions.table_path(paths, method.event, method.name, VERSION)
     meta_path = path.with_suffix(".meta.json")
     old = pd.read_csv(path, keep_default_na=False) if path.is_file() else None
@@ -364,15 +519,13 @@ def run(
         "version": VERSION,
         "git_sha": git_sha(),
         "inputs": list(method.inputs),
-        "rule": {
-            "min_run": MIN_RUN,
-            "pad_ms": PAD_MS,
-            "elm_max_gap_ms": ELM_MAX_GAP_MS,
-            "sawtooth_max_gap_ms": SAWTOOTH_MAX_GAP_MS,
-        },
+        "rule": method.rule,
         "windows": windows,
         "skipped": dict(sorted({**kept, **skipped}.items())),
     }
+    scored = old_meta.get("gold") if scored is None else scored
+    if scored is not None:
+        meta["gold"] = scored
     frame = suggestions.write_table(path, rows, meta)
     return {
         **meta,
@@ -392,6 +545,13 @@ def main(argv=None) -> int:
     parser.add_argument("--limit", type=int, default=0, help="only the first N")
     parser.add_argument("--force", action="store_true", help="rerun shots done")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument(
+        "--gold",
+        nargs="?",
+        const="",
+        metavar="TABLE",
+        help="score the drafts on the gold shots' labels (TABLE, else the saved)",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     paths = Paths.from_env()
@@ -403,16 +563,21 @@ def main(argv=None) -> int:
         targets = targets[targets.shot.isin(args.shots)]
     if args.limit:
         targets = targets.head(args.limit)
+    method = METHODS[args.event]
+    scored = None
+    if args.gold is not None:
+        scored = gold(method, paths, Path(args.gold) if args.gold else None)
     summary = run(
-        METHODS[args.event],
+        method,
         targets,
         paths,
         windows=args.windows,
         force=args.force,
         workers=args.workers,
+        scored=scored,
     )
     keys = ("table", "shots_run", "skipped_run", "rows", "shots")
-    print(json.dumps({k: summary[k] for k in keys}))
+    print(json.dumps({k: summary[k] for k in keys} | {"gold": summary.get("gold")}))
     return 0
 
 

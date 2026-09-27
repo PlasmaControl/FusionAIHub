@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 from ...config import Paths
@@ -39,27 +40,36 @@ def _ratio(num: int, den: int) -> float | None:
     return round(num / den, 4) if den else None
 
 
+def pooled(pairs: Iterable[tuple[Assessment, Assessment]]) -> dict:
+    """`frame_counts` of each `(reference, estimate)` summed, with frame precision
+    and recall (None when nothing was counted)."""
+    totals = dict.fromkeys(CELLS, 0)
+    for reference, estimate in pairs:
+        counts = frame_counts(reference, estimate)
+        for cell in CELLS:
+            totals[cell] += getattr(counts, cell)
+    return {
+        **totals,
+        "precision": _ratio(totals["tp"], totals["tp"] + totals["fp"]),
+        "recall": _ratio(totals["tp"], totals["tp"] + totals["fn"]),
+    }
+
+
 def agreement(event_dir: Path) -> dict:
     saved, source = labels.read_saved(event_dir), labels.read_source(event_dir)
     shots = sorted(set(saved) & set(source))
-    totals = dict.fromkeys(CELLS, 0)
-    for shot in shots:
-        counts = frame_counts(
-            Assessment.from_label(saved[shot]), Assessment.from_label(source[shot])
-        )
-        for cell in CELLS:
-            totals[cell] += getattr(counts, cell)
-    precision = _ratio(totals["tp"], totals["tp"] + totals["fp"])
-    recall = _ratio(totals["tp"], totals["tp"] + totals["fn"])
+    scores = pooled(
+        (Assessment.from_label(saved[shot]), Assessment.from_label(source[shot]))
+        for shot in shots
+    )
+    precision, recall = scores["precision"], scores["recall"]
     table = labels.source_path(event_dir)
     return {
         "event": Path(event_dir).name,
         "table": None if table is None else str(table),
         "shots": len(shots),
         "unchanged": sum(saved[shot] == source[shot] for shot in shots),
-        **totals,
-        "precision": precision,
-        "recall": recall,
+        **scores,
         "ready": len(shots) >= MIN_SHOTS
         and None not in (precision, recall)
         and min(precision, recall) >= MIN_SCORE,

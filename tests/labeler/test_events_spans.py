@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import numpy as np
@@ -167,15 +168,19 @@ def cohort_env(tmp_path, monkeypatch):
         ],
     )
     failing = {4}
+    windows = {}
 
-    def detect(shot, paths):
+    def detect(shot, paths, window=None):
+        windows[shot] = window
         if shot in failing:
             raise NoDataError(f"shot {shot}: no 'filterscopes'")
         return spans.Found(((100, 200, PRESENT),), ((0.0, 800.0),))
 
-    method = spans.Method("edge_localized_mode", "elm_clock", detect, ("x",))
+    method = dataclasses.replace(
+        spans.METHODS["edge_localized_mode"], detect=detect, inputs=("x",)
+    )
     monkeypatch.setitem(spans.METHODS, "edge_localized_mode", method)
-    return p, failing
+    return p, failing, windows
 
 
 def _run(capsys, *args):
@@ -184,7 +189,7 @@ def _run(capsys, *args):
 
 
 def test_the_queue_is_suggested_in_order_and_merged_by_shot(cohort_env, capsys):
-    p, failing = cohort_env
+    p, failing, windows = cohort_env
     assert list(spans.queue(p).shot) == [2, 4, 3, 5]
     first = _run(capsys, "--limit", "2")
     assert (first["shots_run"], first["skipped_run"], first["shots"]) == (2, 1, 2)
@@ -202,6 +207,8 @@ def test_the_queue_is_suggested_in_order_and_merged_by_shot(cohort_env, capsys):
         "5": "no catalog window",
     }
     assert meta["method"] == "elm_clock" and meta["rule"]["min_run"] == spans.MIN_RUN
+    assert meta["rule"] == spans.METHODS["edge_localized_mode"].rule
+    assert windows[2] == (0, 1000), "each shot is detected on its window"
     failing.clear()
     again = _run(capsys, "--shots", "4", "--force")
     assert (again["shots_run"], again["skipped_run"]) == (1, 0)
@@ -225,3 +232,155 @@ def test_with_no_cohort_in_the_tables_the_checkouts_is_read(tmp_path, monkeypatc
     assert spans.cohort_path(p) == own / "catalog" / "cohort.csv"
     tree.cohort(p, [tree.queue_row(2, 1)])
     assert spans.cohort_path(p) == p.label_tables / "catalog" / "cohort.csv"
+
+
+def _ip_ramp(p, *, full_at_ms=300.0, t1_ms=800.0):
+    """Ip as a fetch leaves it, in the raw cache: a linear ramp to 1 MA, then flat."""
+    t = tree.times(0.0, t1_ms, 1_000)
+    ip = 1e6 * np.clip(t / full_at_ms, 0.0, 1.0)
+    tree.write(p.raw_cache / f"{SHOT}_processed.h5", {"ip": (t, ip[None])})
+
+
+def test_the_plasma_starts_where_ip_reaches_its_flat_top_fraction():
+    t = np.arange(0.0, 1000.0, 0.5)
+    ip = -1e6 * np.clip((t - 100) / 400, 0, 1)  # either sign: |Ip|
+    ip[t > 900] = 0.0
+    ip[t < 20] = -3e6  # a spike outside the window is not the plateau
+    start = spans.ramp_start(t, ip, (50, 950))
+    assert start == pytest.approx(100 + 400 * spans.RAMP_FRACTION, abs=1)
+    assert spans.RAMP_FRACTION == 0.8, "the catalog's flat-top fraction"
+    assert spans.ramp_start(t, np.zeros_like(t), (50, 950)) is None
+
+
+def test_sawteeth_before_the_ramp_are_dropped_before_runs_form(tmp_path, synth_shot):
+    p = tree.paths(tmp_path)
+    _write_synth(p, synth_shot)
+    _ip_ramp(p)  # 0.8 MA at 240 ms
+    crashes = np.asarray(synth_shot["crash_times_s"]) * 1000
+    assert spans.plasma_start(SHOT, p, (0, 800)) == (pytest.approx(240, abs=2), "ip")
+    [(start, stop, _)] = spans.detect_sawtooth(SHOT, p, (0, 800)).spans
+    first = crashes[crashes >= 240][0]
+    assert start == pytest.approx(first - spans.PAD_MS, abs=1.5), "not the Ip start"
+    assert stop == pytest.approx(crashes[-1] + spans.PAD_MS, abs=1.5)
+    [(start, _, _)] = spans.detect_sawtooth(SHOT, p).spans  # no window: as before
+    assert start == pytest.approx(crashes[0] - spans.PAD_MS, abs=1.5)
+    rows = spans.suggest(spans.METHODS["sawtooth_oscillation"], SHOT, (0, 800), p)[0]
+    assert rows[0][1:4] == [ABSENT, 0, round(first - spans.PAD_MS)]
+
+
+def test_events_outside_the_window_do_not_form_runs(tmp_path, synth_shot):
+    p = tree.paths(tmp_path)
+    _write_synth(p, synth_shot)
+    _ip_ramp(p, full_at_ms=10.0)
+    crashes = np.asarray(synth_shot["crash_times_s"]) * 1000
+    [(_, stop, _)] = spans.detect_sawtooth(SHOT, p, (0, 500)).spans
+    assert stop == pytest.approx(crashes[crashes <= 500][-1] + spans.PAD_MS, abs=1.5)
+
+
+def test_without_ip_the_plasma_starts_a_fixed_delay_into_the_window(
+    tmp_path, synth_shot
+):
+    p = tree.paths(tmp_path)
+    _write_synth(p, synth_shot)
+    start, source = spans.plasma_start(SHOT, p, (-500, 800))
+    assert start == -500 + spans.RAMP_FALLBACK_MS == 200
+    assert source.startswith("window start + 700 ms: NoDataError")
+    crashes = np.asarray(synth_shot["crash_times_s"]) * 1000
+    [(first, _, _)] = spans.detect_sawtooth(SHOT, p, (-500, 800)).spans
+    assert first == pytest.approx(crashes[crashes >= 200][0] - spans.PAD_MS, abs=1.5)
+
+
+def test_elms_before_the_ramp_are_dropped(tmp_path):
+    p = tree.paths(tmp_path)
+    _elm_train(p)
+    _ip_ramp(p, full_at_ms=362.5, t1_ms=1000.0)  # 0.8 MA at 290 ms
+    [(start, stop, _)] = spans.detect_elm(SHOT, p, (0, 1000)).spans
+    assert start == pytest.approx(295, abs=1) and stop == pytest.approx(405, abs=1)
+
+
+def test_each_method_records_only_the_constants_it_uses():
+    rules = {event: method.rule for event, method in spans.METHODS.items()}
+    start = rules["sawtooth_oscillation"]["start"]
+    assert start["ip_fraction"] == spans.RAMP_FRACTION
+    assert start["fallback_ms"] == spans.RAMP_FALLBACK_MS
+    assert rules["sawtooth_oscillation"]["max_gap_ms"] == spans.SAWTOOTH_MAX_GAP_MS
+    assert rules["edge_localized_mode"]["max_gap_ms"] == spans.ELM_MAX_GAP_MS
+    assert rules["edge_localized_mode"]["start"] == start
+    assert "start" not in rules["high_confinement_mode"]
+    assert "max_gap_ms" not in rules["high_confinement_mode"]
+    assert rules["neoclassical_tearing_mode"] == {}
+    everything = json.dumps(rules)
+    assert "elm_max_gap_ms" not in everything and "sawtooth_max_gap" not in everything
+
+
+GOLD_EVENT = "sawtooth_oscillation"
+
+
+def _gold_tree(p):
+    """A roster of two gold shots and one not, and saved labels for 1 and 3."""
+    event_dir = p.label_tables / GOLD_EVENT
+    (event_dir / "review").mkdir(parents=True)
+    pd.DataFrame(
+        {"shot": [1, 2, 3], "tier": ["gold", "gold", "unverified"], "holdout": False}
+    ).to_csv(event_dir / "shots.csv", index=False)
+    rows = [
+        [1, 0, 0, 100, ""],
+        [1, 1, 100, 300, ""],
+        [1, 0, 300, 1000, ""],
+        [3, 1, 0, 1000, ""],
+    ]
+    pd.DataFrame(
+        rows, columns=["shot", "category", "t_start", "t_end", "confidence"]
+    ).to_csv(event_dir / "review" / "labels.csv", index=False)
+    return event_dir
+
+
+def _gold_method(seen):
+    def detect(shot, paths, window=None):
+        seen[shot] = window
+        return spans.Found(((100, 200, PRESENT),), ((0.0, 1000.0),))
+
+    return dataclasses.replace(spans.METHODS[GOLD_EVENT], detect=detect)
+
+
+def test_the_drafts_are_scored_on_the_gold_shots_frame_by_frame(tmp_path):
+    p = tree.paths(tmp_path)
+    _gold_tree(p)
+    seen = {}
+    got = spans.gold(_gold_method(seen), p)
+    assert seen == {1: (0, 1000)}, "each gold label's own window; shot 3 is not gold"
+    assert (got["shots"], got["tp"], got["fp"], got["fn"], got["tn"]) == (
+        1,
+        10,
+        0,
+        10,
+        80,
+    )
+    assert (got["precision"], got["recall"]) == (1.0, 0.5)
+    assert got["missing"] == {"2": "no gold label"}
+    assert got["reference"].endswith("review/labels.csv")
+
+
+def test_the_gold_score_goes_into_the_meta_and_stays(tmp_path, monkeypatch, capsys):
+    p = tree.paths(tmp_path)
+    tree.use_env(monkeypatch, p)
+    tree.cohort(p, [tree.queue_row(7, 0)])
+    _gold_tree(p)
+    monkeypatch.setitem(spans.METHODS, GOLD_EVENT, _gold_method({}))
+    assert spans.main(["--event", GOLD_EVENT, "--gold"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["gold"]["recall"] == 0.5
+    path = suggestions.table_path(p, GOLD_EVENT, "ece_sawtooth", "v1")
+    meta = json.loads(path.with_suffix(".meta.json").read_text())
+    assert meta["gold"]["shots"] == 1 and meta["gold"]["git_sha"] == meta["git_sha"]
+    assert spans.main(["--event", GOLD_EVENT, "--force"]) == 0
+    capsys.readouterr()
+    again = json.loads(path.with_suffix(".meta.json").read_text())
+    assert again["gold"] == meta["gold"], "a rerun without --gold keeps the score"
+    other = p.label_tables / "other.csv"
+    pd.DataFrame(
+        [[1, 1, 0, 1000, ""]],
+        columns=["shot", "category", "t_start", "t_end", "confidence"],
+    ).to_csv(other, index=False)
+    assert spans.main(["--event", GOLD_EVENT, "--gold", str(other)]) == 0
+    assert json.loads(capsys.readouterr().out)["gold"]["reference"] == str(other)
