@@ -184,3 +184,59 @@ def test_command_refuses_missing_candidates_or_validation_without_outputs(
     assert "Traceback" not in stderr
     assert not (model_dir(paths) / "validation_frontier.csv").exists()
     assert not (model_dir(paths) / "validation_frontier.md").exists()
+
+
+def test_frontier_intervals_and_counts_use_shots_at_both_reported_thresholds(
+    tmp_path, monkeypatch
+):
+    from labeler.ae.xpower import frontier
+    from labeler.scoring import stats
+
+    paths = ae_tree.build(tmp_path, {101: "train", 104: "train"})
+    _save(paths, split={101: "val", 104: "val"})
+    frames = [
+        evaluate.ShotFrames(
+            101,
+            np.array([1, 1, 0, 0]),
+            np.array([0, 0, 1, 1], bool),
+            np.ones(4, bool),
+            {},
+            np.array([0.9, 0.8, 0.7, 0.1]),
+        ),
+        evaluate.ShotFrames(
+            104,
+            np.array([1, 0, 0, 0]),
+            np.array([0, 1, 1, 0], bool),
+            np.array([1, 1, 0, 1], bool),
+            {},
+            np.array([0.9, 0.6, 0.95, 0.1]),
+        ),
+    ]
+    monkeypatch.setattr(
+        evaluate,
+        "shot_frames",
+        lambda shot, **kw: next(f for f in frames if f.shot == shot),
+    )
+    rows = frontier.run(paths, model_dir(paths))
+    selected = [r for r in rows if r["operating_point"] or r["chosen_rule_threshold"]]
+    assert len(selected) == 2
+    for row in rows:
+        assert row["validation_shots"] == 2
+        assert row["scored_frames"] == 7
+        assert row["mhd_absent_frames"] == 3
+    for row in selected:
+        for f in frames:
+            f.said["ae_xpower"] = f.prob >= row["threshold"]
+        expected_f1 = evaluate._estimate(evaluate.cells(frames, "ae_xpower"), stats.f1)
+        expected_mhd = evaluate._estimate(
+            evaluate.cells(frames, "ae_xpower", evaluate.mhd_absent), evaluate.fp_rate
+        )
+        for key, expected in (("f1", expected_f1), ("fp_rate_mhd", expected_mhd)):
+            assert row[key] == expected["value"]
+            assert row[f"{key}_low"] == expected["low"]
+            assert row[f"{key}_high"] == expected["high"]
+    report = (model_dir(paths) / "validation_frontier.md").read_text()
+    assert "point estimates" in report
+    assert "95 % shot-bootstrap" in report and "2000" in report
+    assert "20260923" in report
+    assert "chosen-rule" in report

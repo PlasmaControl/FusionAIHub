@@ -10,7 +10,9 @@
 #SBATCH --array=0-2
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
-# Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
+# Scheduler: training jobs 2942484_2, 2942491_0 and 2942491_1 ran as submitted:
+# QOS pppl-short-stellar, partition serial (sacct). Only evaluate (2942492) and
+# gallery (2942516-2942518) went to partition all / QOS stellar-debug.
 
 # The AE frame model, one array task per candidate, in `train.CANDIDATES` order:
 #   0 band80-mhd3    1 band0-mhd3    2 band0-mhd10

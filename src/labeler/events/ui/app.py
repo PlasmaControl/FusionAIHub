@@ -220,7 +220,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                         "categories": {str(k): v for k, v in categories.items()},
                     }
                 )
-            except Exception as error:  # noqa: BLE001 - one bad roster must not hide the rest
+            # One bad roster must not hide the rest.
+            except Exception as error:  # noqa: BLE001
                 message = str(error) or type(error).__name__
                 found.append({"event": event, "error": message})
         return {"events": found}
