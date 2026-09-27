@@ -148,6 +148,8 @@ def test_the_command_trains_on_the_ae_split_and_saves_the_model(tmp_path, monkey
         "104,test",
     ]
     record = json.loads((out / "training.json").read_text())
+    assert blob["inputs"]["split_sha256"] == sha256_of(out / "split.csv")
+    assert record["inputs"]["split_sha256"] == sha256_of(out / "split.csv")
     assert len(record["history"]) == 2 and record["peak_rss_mb"] > 0
     ex = train.load_example(
         paths, 102, regions.read_decisions(paths.label_tables / "alfven_eigenmode")

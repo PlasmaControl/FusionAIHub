@@ -298,6 +298,10 @@ def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
             f"{model_file}: trained before the frozen bundle; evaluate a new version"
         )
     split_bytes = (models / "split.csv").read_bytes()
+    if hashlib.sha256(split_bytes).hexdigest() != inputs.get("split_sha256"):
+        raise ValueError(
+            f"{models / 'split.csv'}: split hash differs from the training bundle"
+        )
     split = read_split(models / "split.csv", data=split_bytes)
     choice_bytes = (ae_model_dir(paths) / "chosen.json").read_bytes()
     ae_file = ae_model_dir(paths) / json.loads(choice_bytes)["candidate"] / "model.pt"
