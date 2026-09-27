@@ -1,11 +1,11 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir>
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const [BASE, TOKEN, SHELL, PROFILE] = process.argv.slice(2);
+const [BASE, TOKEN, SHELL, PROFILE, SCENARIO] = process.argv.slice(2);
 const browser = spawn(
   SHELL,
   ["--no-sandbox", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${PROFILE}`,
@@ -92,11 +92,7 @@ const checks = [];
 const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), detail });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-try {
-  await send("Runtime.enable");
-  await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
-  await opened(170815);
+async function currentServer() {
   const source = await js("S.meta.source");
   check("the link opens its shot on its source label", same(await js("S.label"), source), source);
 
@@ -207,6 +203,98 @@ try {
   await press("ArrowRight");
   await opened(170815);
   check("→ carries on from it", true);
+}
+
+async function olderServer() {
+  check(
+    "the link opens its shot on its source label",
+    await js(`S.event === "alfven_eigenmode" && S.shot === 170815 &&
+      location.hash === "#alfven_eigenmode/170815" && same(S.label, S.meta.source)`),
+    await js("[S.event, S.shot, S.label]")
+  );
+  check("a missing version route selects API level 1", (await js("S.api")) === 1, await js("S.api"));
+  check("the page remembers the name it must not send", (await js("S.name")) === "Ada Lovelace");
+  check("the name box is hidden", await js(`$("reviewer-name").hidden`));
+  check("the History button is hidden", await js(`$("show-versions").hidden`));
+  check(
+    "the page asks for a server restart for names and history",
+    await js(`!$("stale").hidden && $("stale").textContent === "Restart the server for names and history"`)
+  );
+  await press("h");
+  check(
+    "h opens no dialog and asks for no history",
+    await js(`document.querySelector("dialog[open]") === null && window.api1HistoryRequests === 0`),
+    await js(`[$("versions").open, window.api1HistoryRequests]`)
+  );
+
+  await draw(500, 800);
+  const drawn = await js("S.label");
+  const [kept, span] = drawn.intervals;
+  check(
+    "a drag on the label adds the drawn span",
+    drawn.intervals.length === 2 && same(kept, [100, 300, 1]) &&
+      span[2] === 1 && Math.abs(span[0] - 500) <= 2 && Math.abs(span[1] - 800) <= 2,
+    drawn
+  );
+  await press("s");
+  await until(`!S.saving && (S.meta.saved !== null || $("status").classList.contains("error"))`);
+  check(
+    "s saves the label without an error toast",
+    await js(`S.meta.saved !== null && $("dirty").hidden && $("state").textContent === "changed" &&
+      $("saved").textContent.startsWith("saved ") && !$("status").classList.contains("error")`),
+    await js(`[$("state").textContent, $("saved").textContent, $("status").textContent]`)
+  );
+  check(
+    "the saved label is the one drawn",
+    same(await js("S.meta.saved"), drawn) && same(await js("S.label"), drawn),
+    await js("S.meta.saved")
+  );
+  const saves = await js("window.api1Saves");
+  check(
+    "every save body is JSON without a name key",
+    saves.length > 0 && saves.every(({ method, path, body }) => {
+      try {
+        const label = JSON.parse(body);
+        return method === "POST" && path === "/api/label" &&
+          label !== null && typeof label === "object" && !Object.hasOwn(label, "name");
+      } catch {
+        return false;
+      }
+    }),
+    saves
+  );
+}
+
+try {
+  await send("Runtime.enable");
+  await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+  if (SCENARIO === "api1") {
+    await send("Page.enable");
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: `
+      localStorage.setItem("labeler:name", "Ada Lovelace");
+      window.api1Saves = [];
+      window.api1HistoryRequests = 0;
+      const realFetch = window.fetch.bind(window);
+      window.fetch = async (input, options) => {
+        const request = new Request(input, options);
+        const path = new URL(request.url).pathname;
+        if (path === "/api/version") {
+          return new Response('{"detail": "Not Found"}', {
+            status: 404, statusText: "Not Found", headers: { "content-type": "application/json" }
+          });
+        }
+        if (path === "/api/label" && request.method === "POST") {
+          window.api1Saves.push({ method: request.method, path, body: await request.clone().text() });
+        }
+        if (path === "/api/history") window.api1HistoryRequests++;
+        return realFetch(input, options);
+      };
+    ` });
+  }
+  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
+  await opened(170815);
+  if (SCENARIO === "api1") await olderServer();
+  else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));
 }
