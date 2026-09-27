@@ -111,6 +111,7 @@ def test_fit_learns_a_toy_band_line_and_saves_what_it_learned(tmp_path):
         config=config,
         band_khz=data.BAND_KHZ,
         labels_file=labels_file,
+        candidate="band80-mhd3",
     )
     loaded, blob = train.load(tmp_path / "m" / "model.pt")
     x = shots_val[0].x
@@ -121,6 +122,10 @@ def test_fit_learns_a_toy_band_line_and_saves_what_it_learned(tmp_path):
     assert (tmp_path / "m" / "review" / "labels.csv").read_text() == "shot\n"
     record = json.loads((tmp_path / "m" / "training.json").read_text())
     assert record["counts"] == {"test": 1, "train": 1, "val": 1}
+    assert record["candidate"] == blob["candidate"] == "band80-mhd3"
+    assert record["band_khz"] == blob["band_khz"] == [80.0, 250.0]
+    assert record["git_sha"] == blob["git_sha"]
+    assert record["labels_sha256"] == blob["labels_sha256"]
 
 
 @pytest.mark.parametrize("n", ["5", "21"])
