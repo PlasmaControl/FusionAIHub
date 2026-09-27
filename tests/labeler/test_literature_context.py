@@ -724,3 +724,140 @@ def test_url_fragment_hash_does_not_supply_context(text):
 )
 def test_hash_shot_keywords_are_retained(text, shot):
     assert _found(text) == [(shot, "exact")]
+
+
+@pytest.mark.parametrize(
+    "text, shots",
+    [
+        (
+            "fluctuations on DIII-D during QRE shot 190 604. The observed modes",
+            [190604],
+        ),
+        (
+            "Overview of UEDGE grids based on DIII-D discharge # 189 051 at 3250 ms",
+            [189051],
+        ),
+        (
+            (
+                "The channel #12 of ECE and channel #1308 of ECEI "
+                "of shot 191 506 at 3000 ms"
+            ),
+            [191506],
+        ),
+        (
+            (
+                "successfully avoided TMs. Shots 199 600 and 199 601 "
+                "used additional ECH power"
+            ),
+            [199600, 199601],
+        ),
+        ("Shots 199 600 and 199601", [199600, 199601]),
+        ("Shots 199600 and 199 601", [199600, 199601]),
+        (
+            "the LLAMA diagnostic array for DIII-D shot number 189 337 @ time slice",
+            [189337],
+        ),
+    ],
+)
+def test_d26_real_split_shot_numbers(text, shots):
+    assert _found(text) == [(shot, "exact") for shot in shots]
+    for mention in mentions(text):
+        assert str(mention.shot) in mention.context
+        assert normalise(text)[mention.start : mention.end] == str(mention.shot)
+
+
+def test_d26_real_split_discharge_range():
+    text = "Over the 13 repeated discharges (discharges 187 214-187 226) Te,ped"
+    assert _found(text) == (
+        [(187214, "exact")]
+        + [(shot, "range") for shot in range(187215, 187226)]
+        + [(187226, "exact")]
+    )
+
+
+@pytest.mark.parametrize("space", ["\u2009", "\u00a0", "\n"])
+def test_d26_collapses_whitespace_before_joining(space):
+    assert normalise(f"shot 190{space}604") == "shot 190604"
+    assert _found(f"shot 190{space}604") == [(190604, "exact")]
+
+
+@pytest.mark.parametrize(
+    "anchor",
+    [
+        "shot ",
+        "SHOTS ",
+        "discharge ",
+        "Discharges ",
+        "#",
+        "# ",
+        "shot no. ",
+        "shots nos. ",
+        "shot number ",
+        "shots numbers ",
+        "discharge # ",
+        "shot#",
+        "shots: ",
+        "# no. ",
+    ],
+)
+def test_d26_anchors_join_only_the_number(anchor):
+    text = f"before {anchor}190 604 at 3250 ms; unrelated 189 051 after"
+    expected = f"before {anchor}190604 at 3250 ms; unrelated 189 051 after"
+    assert normalise(text) == expected
+    assert normalise(expected) == expected
+
+
+@pytest.mark.parametrize("gap", [", ", "; ", "/", " & ", " and ", " or ", " "])
+def test_d26_follows_the_whole_run(gap):
+    assert _found(f"Shots 199 601{gap}199603{gap}199 607") == [
+        (199601, "exact"),
+        (199603, "exact"),
+        (199607, "exact"),
+    ]
+
+
+@pytest.mark.parametrize("gap", ["-", " to ", " through ", " thru "])
+def test_d26_follows_ranges(gap):
+    assert _found(f"Shots 190 604{gap}190 606") == [
+        (190604, "exact"),
+        (190605, "range"),
+        (190606, "exact"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        (
+            "0.4 0.6 0.8 0 200 400 600 800 0.4 0.6 0.8 0 200 400 600 800 "
+            "Indices within Shots Normalized Coil Deflection"
+        ),
+        "DIII-D Shots 200 400 600 800",
+        "DIII-D Shots 800 600 400 200 0",
+        (
+            "an H-mode (189 051 at 3250 ms), an L-mode (174 237 at 3500 ms), "
+            "and an I-mode (189 381 at 2850 ms)"
+        ),
+        "see report#runs 190 604 for details",
+        "see equivalent/#:~:text=190 604",
+        "DIII-D 190 604",
+        "snapshot 190 604",
+        "shotgun 190 604",
+        "shot %190 604",
+        "shot .190 604",
+        "shot 1190 604",
+        "shot 190 6040",
+        "shot 190 604.5",
+        "shot 190 604.5 and 190 605",
+        "shot (190 604)",
+    ],
+)
+def test_d26_does_not_join_ticks_unanchored_or_non_numbers(text):
+    assert normalise(text) == text
+    assert _found(text) == []
+
+
+def test_d26_tick_guard_still_joins_a_later_real_shot_in_the_chain():
+    text = "Shots 200 400 600 800 and 190 604"
+    assert normalise(text) == "Shots 200 400 600 800 and 190604"
+    assert _found(text) == [(190604, "exact")]
