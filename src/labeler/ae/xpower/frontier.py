@@ -35,11 +35,12 @@ import torch
 from ...config import Paths, atomic_path
 from ...events.review import labels
 from ...scoring import stats
-from . import evaluate, model_dir, train
+from . import VERSION, evaluate, model_dir, train
 
 THRESHOLDS = tuple(k / 20 for k in range(1, 20))
 COLUMNS = (
     "candidate",
+    "version",
     "chosen",
     "threshold",
     "f1",
@@ -255,13 +256,14 @@ def report_md(rows: list[dict]) -> str:
     return "\n".join([*lines, ""])
 
 
-def run(paths: Paths, models: Path) -> list[dict]:
+def run(paths: Paths, models: Path, version: str = VERSION) -> list[dict]:
     files = sorted(models.glob("*/model.pt"))
     if not files:
         raise ValueError(f"{models}: no saved candidate")
     choice = models / "chosen.json"
     chosen = json.loads(choice.read_text())["candidate"] if choice.is_file() else None
     rows = [row for file in files for row in _candidate(paths, file, chosen)]
+    rows = [{**row, "version": version} for row in rows]
     with (
         atomic_path(models / "validation_frontier.csv") as tmp,
         tmp.open("w", newline="") as stream,
@@ -279,12 +281,13 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
     )
+    parser.add_argument("--version", default=VERSION)
     args = parser.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
-    models = args.models or model_dir(paths)
+    models = args.models or model_dir(paths, args.version)
     try:
-        run(paths, models)
+        run(paths, models, args.version)
     except (OSError, ValueError, KeyError) as error:
         parser.error(str(error))
     print(f"wrote {models / 'validation_frontier.csv'} and validation_frontier.md")

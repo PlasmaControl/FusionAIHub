@@ -34,7 +34,7 @@ from ...config import Paths, atomic_path
 from ...events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ...events.review import labels
 from ...scoring.frames import FRAME_MS
-from . import EVENT, event_dir, gallery_dir, model_dir, tokeye_masks
+from . import EVENT, VERSION, event_dir, gallery_dir, model_dir, tokeye_masks
 from .data import (
     CROSS_ROWS,
     clean_path,
@@ -64,6 +64,7 @@ INDEX_COLUMNS = (
     "f1_vs_owner",
     "threshold",
     "candidate",
+    "version",
 )
 MARGIN_MS = 50.0
 BAND_LINE_KHZ = 80.0
@@ -167,14 +168,17 @@ def draw(
 _WORKER: dict = {}
 
 
-def _init(model_file: str, root: str, label_tables: str) -> None:
+def _init(
+    model_file: str, root: str, label_tables: str, corpus: str, version: str = VERSION
+) -> None:
     import torch
 
     torch.set_num_threads(1)
     model, blob = load(model_file)
-    paths = Paths(root=Path(root), label_tables=Path(label_tables))
+    paths = Paths(root=Path(root), label_tables=Path(label_tables), corpus=Path(corpus))
     split = read_split(Path(model_file).parent / "split.csv")
     _WORKER.update(
+        version=version,
         model=model,
         blob=blob,
         paths=paths,
@@ -188,6 +192,7 @@ def picture(shot: int) -> dict:
     """Draw one AE180 shot; its `index.csv` row."""
     w = _WORKER
     paths, blob = w["paths"], w["blob"]
+    version = w["version"]
     reviewed = shot in w["live"]
     label = w["live"].get(shot) or w["source"].get(shot)
     if label is None:
@@ -204,8 +209,8 @@ def picture(shot: int) -> dict:
     cells = frame_cells(prob, reference, blob["threshold"])
     f1 = f1_of(cells) if reviewed else float("nan")
     group = "reviewed" if reviewed else "unreviewed"
-    file = gallery_dir(paths) / group / f"{shot}.jpg"
-    title = f"{shot}   AE, ae_xpower v1 ({blob['candidate']}), split {split}" + (
+    file = gallery_dir(paths, version) / group / f"{shot}.jpg"
+    title = f"{shot}   AE, ae_xpower {version} ({blob['candidate']}), split {split}" + (
         f", F1 vs owner {f1:.2f}"
         if reviewed
         else ", not reviewed: strip is the source table"
@@ -225,12 +230,12 @@ def picture(shot: int) -> dict:
         mhd=mhd,
     )
     other_group = "unreviewed" if reviewed else "reviewed"
-    (gallery_dir(paths) / other_group / f"{shot}.jpg").unlink(missing_ok=True)
+    (gallery_dir(paths, version) / other_group / f"{shot}.jpg").unlink(missing_ok=True)
     return {
         "shot": shot,
         "group": group,
         "split": split,
-        "file": str(file.relative_to(gallery_dir(paths))),
+        "file": str(file.relative_to(gallery_dir(paths, version))),
         "window_start_ms": label.window[0],
         "window_end_ms": label.window[1],
         "model_present_frames": int((prob >= blob["threshold"]).sum()),
@@ -238,6 +243,7 @@ def picture(shot: int) -> dict:
         "f1_vs_owner": "" if not reviewed else round(f1, 4),
         "threshold": blob["threshold"],
         "candidate": blob["candidate"],
+        "version": version,
     }
 
 
@@ -297,11 +303,19 @@ def main(argv=None) -> int:
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
     )
+    p.add_argument("--version", default=VERSION)
     args = p.parse_args(argv)
+    version = args.version
     paths = Paths.from_env()
-    model_file = chosen_model(args.models or model_dir(paths))
+    model_file = chosen_model(args.models or model_dir(paths, version))
     shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
-    init = (str(model_file), str(paths.root), str(paths.label_tables))
+    init = (
+        str(model_file),
+        str(paths.root),
+        str(paths.label_tables),
+        str(paths.corpus),
+        version,
+    )
     rows, failed = [], []
     for shot, outcome in run_all(picture, shots, args.workers, _init, init):
         if isinstance(outcome, Exception):
@@ -309,8 +323,10 @@ def main(argv=None) -> int:
             print(f"{shot}: {type(outcome).__name__}: {outcome}", flush=True)
         else:
             rows.append(outcome)
-    write_index(gallery_dir(paths) / "index.csv", rows)
-    print(f"drew {len(rows)} shots into {gallery_dir(paths)}; {len(failed)} failed")
+    write_index(gallery_dir(paths, version) / "index.csv", rows)
+    print(
+        f"drew {len(rows)} shots into {gallery_dir(paths, version)}; {len(failed)} failed"
+    )
     return 1 if failed else 0
 
 

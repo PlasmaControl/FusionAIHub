@@ -37,7 +37,7 @@ from torch.nn import functional as F
 from ...config import Paths, atomic_path, git_sha
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
-from . import EVENT, event_dir, model_dir, pilot_area, tokeye_masks
+from . import EVENT, VERSION, event_dir, model_dir, pilot_area, tokeye_masks
 from .data import (
     BAND_KHZ,
     CONTEXT_FRAMES,
@@ -248,6 +248,7 @@ def save(
     band_khz,
     labels_file: Path,
     candidate: str = "",
+    version: str = VERSION,
     labels_bytes: bytes | None = None,
     allow_replace: bool = False,
     runs: Path | None = None,
@@ -260,6 +261,7 @@ def save(
         "state_dict": model.state_dict(),
         "config": model.config.as_dict(),
         "candidate": candidate,
+        "version": version,
         "threshold": threshold,
         "band_khz": [float(b) for b in band_khz],
         "train": asdict(config),
@@ -278,6 +280,7 @@ def save(
         tmp.write_text("\n".join(lines) + "\n")
     record = {
         "candidate": blob["candidate"],
+        "version": version,
         "band_khz": blob["band_khz"],
         "git_sha": blob["git_sha"],
         "labels_sha256": blob["labels_sha256"],
@@ -321,12 +324,13 @@ def refuse_checkpoint(
         )
 
 
-def candidate_dir(paths: Paths, name: str) -> Path:
-    return model_dir(paths) / name
+def candidate_dir(paths: Paths, name: str, version: str = VERSION) -> Path:
+    return model_dir(paths, version) / name
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument("--version", default=VERSION)
     p.add_argument("--candidate", choices=sorted(CANDIDATES), required=True)
     p.add_argument(
         "--out", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1/<candidate>"
@@ -346,7 +350,7 @@ def main(argv=None) -> int:
     spec = CANDIDATES[args.candidate]
     pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.candidate
     out = args.out or (
-        pilot_dir if args.pilot else candidate_dir(paths, args.candidate)
+        pilot_dir if args.pilot else candidate_dir(paths, args.candidate, args.version)
     )
     try:
         refuse_checkpoint(out, allow_replace=bool(args.pilot), runs=paths.runs)
@@ -402,6 +406,7 @@ def main(argv=None) -> int:
             labels_file=labels_file,
             labels_bytes=labels_bytes,
             candidate=args.candidate,
+            version=args.version,
             allow_replace=bool(args.pilot),
             runs=paths.runs,
         )
