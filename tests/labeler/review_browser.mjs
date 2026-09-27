@@ -1,12 +1,12 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty|inflight] [case]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const [BASE, TOKEN, SHELL, PROFILE, SCENARIO] = process.argv.slice(2);
+const [BASE, TOKEN, SHELL, PROFILE, SCENARIO, CASE] = process.argv.slice(2);
 const env = { ...process.env };
 delete env.DISPLAY;
 delete env.WAYLAND_DISPLAY;
@@ -396,6 +396,87 @@ async function navigationRace() {
     window.requests.filter((r) => r.kind === "shot").length === ${requests}`));
 }
 
+async function inflight() {
+  const a = "alfven_eigenmode", key = `labeler:${a}:170815`;
+  const original = await js("S.label");
+  if (CASE === "restore") {
+    await press("s");
+    await until("!S.saving && S.meta.saved !== null");
+  }
+  // Observe every status change, including messages cleared by the next navigation.
+  await js(`window.statuses = [];
+    new MutationObserver(() => window.statuses.push($("status").textContent))
+      .observe($("status"), { childList: true, subtree: true, characterData: true })`);
+  await draw(500, 800);
+  const sent = await js("S.label");
+  await arm("label");
+  await press(CASE === "next" ? "Enter" : "s");
+  await held("label");
+
+  if (["move", "next", "return"].includes(CASE)) {
+    await press("ArrowRight");
+    await opened(170816);
+    if (CASE === "return") {
+      await press("ArrowLeft");
+      await opened(170815);
+    }
+  }
+  if (["edit", "return"].includes(CASE)) await draw(1200, 1400);
+  if (CASE === "restore") {
+    await press("h");
+    await until(`$("versions").open`);
+    await js(`$("version-list").querySelector('[data-version="1"]').click()`);
+    check("Restore loads the older version while the save answer is held",
+      same(await js("S.label"), original));
+  }
+  const later = await js("S.label"), undo = await js("S.undo");
+  const requests = await js(`window.requests.filter((r) => r.kind === "shot").length`);
+  await release("label");
+  await until("!S.saving");
+
+  const versions = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
+  const saved = versions.versions.at(-1);
+  check("the server saved the submitted label, without any later edit or Restore",
+    same({ window: saved.window, intervals: saved.intervals }, sent), saved);
+
+  if (["move", "next"].includes(CASE)) {
+    check("moving during a save never reports that shot as not saved",
+      await js(`!window.statuses.some((text) => text.includes("not saved"))`), await js("window.statuses"));
+    check("a moved save clears its submitted draft", await js(`localStorage.getItem("${key}") === null`));
+    check("the saved shot's chip loses its unsaved mark",
+      await js(`!$("queue").querySelector('[data-shot="170815"]').classList.contains("dirty")`));
+    check("the saved shot's queue row and reviewed count update after moving",
+      await js(`S.queue.find((r) => r.shot === 170815).state === "changed" && $("count").textContent === "2/3"`),
+      await js(`[S.queue, $("count").textContent]`));
+    check("a save answer does not move again or replace the new shot's label",
+      await js(`S.shot === 170816 && window.requests.filter((r) => r.kind === "shot").length === ${requests}`) &&
+      same(await js("S.label.intervals"), [[400, 600, 1]]));
+    await press("ArrowRight");
+    await opened(170817);
+    await press("u");
+    await until(`$("status").textContent === "all reviewed" || S.shot === 170815`);
+    check("U skips the shot whose save finished after moving", (await js("S.shot")) === 170817);
+    await send("Page.reload");
+    await until(`typeof window.statuses === "undefined" && typeof S !== "undefined" &&
+      S.data !== null && !pendingNavigation()`);
+    check("a reload keeps the saved shot free of an unsaved mark",
+      await js(`localStorage.getItem("${key}") === null &&
+        !$("queue").querySelector('[data-shot="170815"]').classList.contains("dirty")`));
+  } else {
+    check("the later edit or Restore remains on screen", same(await js("S.label"), later), await js("S.label"));
+    check("the later label remains in localStorage as a draft",
+      same(await js(`JSON.parse(localStorage.getItem("${key}"))`), later));
+    check("the later label is marked dirty against the completed save",
+      await js(`!$("dirty").hidden && $("queue").querySelector('[data-shot="170815"]').classList.contains("dirty")`));
+    check("the save updates the displayed baseline and timestamp",
+      same(await js("S.meta.saved"), sent) && await js(`Boolean(S.meta.last_save) && $("saved").textContent.startsWith("saved ")`));
+    check("the later edit's undo stack is preserved", same(await js("S.undo"), undo));
+    await press("z", 2);
+    check("Ctrl+Z still undoes the later edit or Restore to the submitted label",
+      same(await js("S.label"), sent) && await js(`$("dirty").hidden && localStorage.getItem("${key}") === null`));
+  }
+}
+
 async function moves() {
   const fetched = await js(`window.requests.filter((r) => r.kind === "shot").map((r) => r.shot)`);
   check("opening 170815 prefetches its next queue shot, the saved 170816",
@@ -687,10 +768,11 @@ try {
       };
     ` });
   }
-  if (["race", "moves", "empty"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
+  if (["race", "moves", "empty", "inflight"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   if (SCENARIO !== "race") await opened(170815);
   if (SCENARIO === "race") await navigationRace();
+  else if (SCENARIO === "inflight") await inflight();
   else if (SCENARIO === "moves") await moves();
   else if (SCENARIO === "empty") await emptyEvent();
   else if (SCENARIO === "api1") await olderServer();
