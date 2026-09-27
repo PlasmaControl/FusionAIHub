@@ -18,6 +18,8 @@ JOBS = {
     "ae_xpower_evaluate.sbatch": ("labeler.ae.xpower.evaluate",) * 2,
     "ae_xpower_gallery.sbatch": ("labeler.ae.xpower.gallery",),
     "ae_xpower_extend.sbatch": ("labeler.ae.xpower.extend",),
+    "ae_seg_train.sbatch": ("labeler.ae.seg.train", "labeler.ae.seg.evaluate"),
+    "ae_seg_poi.sbatch": ("labeler.ae.seg.poi",),
 }
 EXPORTS = (
     'export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"',
