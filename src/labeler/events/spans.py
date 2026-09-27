@@ -175,13 +175,20 @@ def _dalpha(shot: int, paths: Paths):
     return read(shot, "filterscopes", paths, range(heuristics.N_DALPHA_CHANNELS))
 
 
-def detect_elm(shot: int, paths: Paths) -> Found:
-    t_s, y = _dalpha(shot, paths)
-    # Channel 0 unless it has no two finite samples in a row, as `pipeline` picks.
+def dalpha_channel(y, shot: int) -> int:
+    """The filterscope row the ELM clock reads: the first of `y`'s (FS01, FS02,
+    ...) with two finite samples in a row, as `pipeline` picks. The ELM editor
+    draws the same one."""
     finite = (np.isfinite(row[:-1]) & np.isfinite(row[1:]) for row in y)
     channel = next((i for i, ok in enumerate(finite) if ok.any()), -1)
     if channel < 0:
         raise NoDataError(f"shot {shot}: no finite D-alpha in filterscopes 0-7")
+    return channel
+
+
+def detect_elm(shot: int, paths: Paths) -> Found:
+    t_s, y = _dalpha(shot, paths)
+    channel = dalpha_channel(y, shot)
     cov = coverage.Coverage.measured(t_s, y[channel], min_gap_s=ELM_MIN_GAP_S)
     found = transients.elm_clock_events(y[channel], t_s, shot=shot, channel=channel)
     elms = [e.t0_s * 1000 for e in found if e.phenomenon == transients.ELM_PHENOMENON]

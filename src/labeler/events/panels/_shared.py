@@ -24,6 +24,12 @@ log = logging.getLogger(__name__)
 MISSING = (NoDataError, KeyError, OSError)
 #: dB above each frequency bin's own median, the scale every spectrogram shares.
 Z_DB = (-3.0, 27.0)
+#: A trace's robust range: these percentiles over the plasma window, each side
+#: widened by `ROBUST_MARGIN` of the span between them. The page scales a trace
+#: to what it holds, so one spike at the end of a discharge (PCPHD03 on 192003:
+#: 3.6 V against 0.02 V ELMs) would flatten everything else in the row.
+ROBUST_PERCENTILES = (0.5, 99.5)
+ROBUST_MARGIN = 1.0
 
 
 def optional(what: str, shot: int, build: Callable[[], Iterable[Panel]]) -> list:
@@ -123,21 +129,70 @@ def plasma_columns(t_ms, band_power, window) -> np.ndarray:
     return band_power > np.median(band_power)
 
 
-def power_panel(title: str, x_ms, y, *, rate_hz, nperseg, hop, max_khz, bands=()):
-    """One trace's power spectrogram, 0 to `max_khz`, on the shared scale."""
+def power_panel(
+    title: str, x_ms, y, *, rate_hz, nperseg, hop, max_khz, bands=(), plasma=False
+):
+    """One trace's power spectrogram, 0 to `max_khz`, on the shared scale.
+
+    `plasma` is the window (`plasma_window`) whose columns the floor is taken
+    over (`plasma_columns`), or False for the whole record's.
+    """
     t_ms, f_hz, spec = stft(x_ms, finite(y), rate_hz=rate_hz, nperseg=nperseg, hop=hop)
     keep = f_hz <= max_khz * 1000
+    power = np.abs(spec[keep]) ** 2
+    columns = (
+        None if plasma is False else plasma_columns(t_ms, power.sum(axis=0), plasma)
+    )
     return Panel(
         title=title,
         kind="heatmap",
         x=t_ms,
         y=f_hz[keep] / 1000,
-        z=above_floor_db(np.abs(spec[keep]) ** 2),
+        z=above_floor_db(power, columns=columns),
         ylabel="kHz",
         bands=list(bands),
         zmin=Z_DB[0],
         zmax=Z_DB[1],
     )
+
+
+def robust_limits(x_ms, y, window) -> np.ndarray:
+    """`(2, C)`: each channel's robust range over `window` (the record without one).
+
+    The `ROBUST_PERCENTILES` of its finite samples, pushed apart by
+    `ROBUST_MARGIN` of their span; nan for a channel with none.
+    """
+    x_ms = np.asarray(x_ms, dtype=np.float64)
+    y = np.atleast_2d(np.asarray(y, dtype=np.float64))
+    inside = np.ones(len(x_ms), dtype=bool)
+    if window is not None:
+        inside = (x_ms >= window[0]) & (x_ms <= window[1])
+        if not inside.any():
+            inside[:] = True
+    limits = np.full((2, len(y)), np.nan)
+    for i, row in enumerate(y):
+        v = row[inside][np.isfinite(row[inside])]
+        if v.size:
+            lo, hi = np.percentile(v, ROBUST_PERCENTILES)
+            limits[:, i] = (
+                lo - ROBUST_MARGIN * (hi - lo),
+                hi + ROBUST_MARGIN * (hi - lo),
+            )
+    return limits
+
+
+def robust_clip(x_ms, y, window) -> tuple[np.ndarray, bool]:
+    """`(y, clipped)`: `y` inside its `robust_limits`, and whether a sample was not.
+
+    The page takes a trace row's y-range from its samples, so a clipped trace
+    is how a store sets the range: the samples beyond it sit on its edge.
+    """
+    y = np.atleast_2d(np.asarray(y, dtype=np.float32))
+    lo, hi = (v[:, None] for v in robust_limits(x_ms, y, window))
+    with np.errstate(invalid="ignore"):
+        out = np.where(y < lo, lo, np.where(y > hi, hi, y)).astype(np.float32)
+        clipped = bool(((y < lo) | (y > hi)).any())
+    return out, clipped
 
 
 def bin_mean(x_ms, y, width_ms: float) -> tuple[np.ndarray, np.ndarray]:
