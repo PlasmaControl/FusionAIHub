@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from labeler.events import panels
@@ -50,6 +51,67 @@ def test_ntm_rows_and_beta_n(tmp_path):
     assert titles[-1] == "beta_N" and len(titles) == 3
     _grid, rows, _info = panel_rows.build("neoclassical_tearing_mode", SHOT, p)
     assert [row.y_units for row in rows] == ["kHz", "n", "β_N"]
+
+
+def _plasma_mirnov(p, *, end_ms: float = 250.0, quiet_db: float = 40.0):
+    """A plasma from 50 to 150 ms in a record to `end_ms`, the rest `quiet_db` down.
+
+    In the plasma, noise and a steady 10 kHz line from 70 to 130 ms: 60 % of the
+    plasma, so a floor over the plasma stays under it.
+    """
+    t = tree.times(0.0, end_ms, 500_000)
+    y = tree.noise(max(ntm.PROBES) + 1, t)
+    line = (t >= 70) & (t < 130)
+    for row in ntm.PROBES:
+        y[row, line] += 0.4 * np.cos(2 * np.pi * 10.0 * t[line])
+    y[:, (t < 50) | (t >= 150)] *= 10 ** (-quiet_db / 20)
+    tree.write(p.corpus_file(SHOT), {"mirnov": (t, y)})
+
+
+def _window(p, source: str) -> None:
+    """The shot's 50-150 ms plasma window in the cohort or the population."""
+    rows = [tree.queue_row(SHOT + 1, 0)]
+    if source == "cohort":
+        rows.append(tree.queue_row(SHOT, 1, window=(50, 150)))
+    tree.cohort(p, rows)
+    if source == "population":
+        p.catalog.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(
+            {"shot": [SHOT], "window_start_ms": [50], "window_end_ms": [150]}
+        ).to_csv(p.catalog / "population.csv", index=False)
+
+
+def _assert_plasma_on_scale(power) -> None:
+    """The plasma's noise floor near 0 dB, the line well above it, nothing pinned."""
+    plasma = (power.x > 55) & (power.x < 145)
+    on = (power.x > 75) & (power.x < 125)
+    noise = np.abs(power.y - 10.0) > 1.0
+    line = np.argmin(np.abs(power.y - 10.0))
+    z = power.z[:, plasma]
+    assert np.mean(z > ntm.Z_DB[1]) < 0.01, "the plasma is not saturated"
+    assert abs(np.quantile(z[noise], ntm.FLOOR_QUANTILE)) < 1.5
+    assert 0 < np.median(z[noise]) < 8
+    assert power.z[line, on].mean() > np.median(z[noise]) + 10
+    assert np.mean(power.z[line, on] > ntm.Z_DB[1]) < 0.5
+
+
+@pytest.mark.parametrize("source", ["cohort", "population"])
+def test_the_spectrogram_floor_is_the_plasma_windows(tmp_path, source):
+    p = tree.paths(tmp_path)
+    _plasma_mirnov(p)
+    _window(p, source)
+    power = panels.build("neoclassical_tearing_mode", SHOT, paths=p)[0]
+    assert power.x[0] < 10 and power.x[-1] > 240, "the whole record is drawn"
+    _assert_plasma_on_scale(power)
+    quiet = power.x > 160
+    assert power.z[:, quiet].mean() < -30, "off the plasma is 40 dB below it"
+
+
+def test_without_a_window_the_floor_is_the_louder_half_of_the_record(tmp_path):
+    p = tree.paths(tmp_path)
+    _plasma_mirnov(p, end_ms=200.0)
+    _window(p, "none")
+    _assert_plasma_on_scale(panels.build("neoclassical_tearing_mode", SHOT, paths=p)[0])
 
 
 def _sawtooth(p, *, ece=True, sxr=True):

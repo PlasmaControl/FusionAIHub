@@ -36,7 +36,11 @@ after the newest save.
   the cross-power of chord R0 with V1, V2 and V3. A mode seen by several chords
   shows in all three rows; noise on a single chord averages out. Colour is dB above each
   frequency's own quiet level (its median over 0-6 s), from -3 to 27 dB. Other
-  events show the rows of their panel builder.
+  events show the rows of their panel builder. The tearing-mode spectrogram
+  (MPI66M322D) is dB above each frequency's 20th percentile over the plasma,
+  the shot's v1 rule-4 Ip window from the cohort or the population (without
+  one, the columns louder than the record's median), not over the whole
+  record, which runs seconds past the plasma.
 - **Source** is the label the event's newest `format/*_format_*.csv` gives the
   shot. **Label** is yours; it starts as a copy of the source. Where the two
   differ, a strip along the top of the label track marks the difference.

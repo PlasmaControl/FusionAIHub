@@ -2,10 +2,12 @@
 
 A tearing mode is a coherent line below ~30 kHz on the Mirnov probes, with its
 toroidal mode number n from the probe array (v1 spec §6.4). The spectrogram is
-MPI66M322D's. The n strip takes, in each column, the strongest line between 1
-and 30 kHz on the six MPI66M midplane probes and scores each n from -4 to 4
-by how well the probes' phases line up with it: 1 is a perfect fit. A mode
-cos(wt - n phi) has n > 0, phi being each probe's toroidal angle in its name.
+MPI66M322D's, in dB above each frequency's floor over the plasma: the shot's v1
+rule-4 Ip window, not the whole record, which runs seconds past it. The n strip
+takes, in each column, the strongest line between 1 and 30 kHz on the six
+MPI66M midplane probes and scores each n from -4 to 4 by how well the probes'
+phases line up with it: 1 is a perfect fit. A mode cos(wt - n phi) has n > 0,
+phi being each probe's toroidal angle in its name.
 beta_N is the features store's. EFIT q and the ECE cross-phase the sheet also
 names come with v1 Part 7.
 """
@@ -16,7 +18,16 @@ import numpy as np
 
 from ..raw import raw_signal
 from ..verify import Panel
-from ._shared import Z_DB, above_floor_db, betan_panel, finite, optional, stft
+from ._shared import (
+    Z_DB,
+    above_floor_db,
+    betan_panel,
+    finite,
+    optional,
+    plasma_columns,
+    plasma_window,
+    stft,
+)
 
 #: Corpus `mirnov` row -> the probe's toroidal angle in degrees (MPI66M<phi>D).
 PROBES = {15: 322.0, 16: 132.0, 18: 312.0, 20: 20.0, 21: 97.0, 22: 307.0}
@@ -27,6 +38,7 @@ HOP = 256
 BAND_KHZ = (1.0, 30.0)
 N_VALUES = np.arange(-4, 5)
 #: The spectrogram's floor: a tearing mode can hold one frequency for seconds.
+#: It is each bin's quantile over the plasma's columns (`plasma_columns`).
 FLOOR_QUANTILE = 0.2
 #: A column's strongest line must stand this far above the column's median over
 #: the band, or its n is not scored. On the six probes' summed power a peak of
@@ -62,13 +74,15 @@ def magnetics_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     values = np.stack([finite(y) for y in mirnov.y])
     t_ms, f_hz, spec = stft(mirnov.x, values, rate_hz=RATE_HZ, nperseg=NPERSEG, hop=HOP)
     keep = f_hz <= BAND_KHZ[1] * 1000
+    power = np.abs(spec[0, keep]) ** 2
+    plasma = plasma_columns(t_ms, power.sum(axis=0), plasma_window(shot, paths))
     return [
         Panel(
             title="MPI66M322D power",
             kind="heatmap",
             x=t_ms,
             y=f_hz[keep] / 1000,
-            z=above_floor_db(np.abs(spec[0, keep]) ** 2, FLOOR_QUANTILE),
+            z=above_floor_db(power, FLOOR_QUANTILE, columns=plasma),
             ylabel="kHz",
             zmin=Z_DB[0],
             zmax=Z_DB[1],

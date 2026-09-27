@@ -16,6 +16,7 @@ from scipy import signal
 
 from ...config import Paths
 from ...features.store import read_feature
+from .. import spans
 from ..verify import NoDataError, Panel
 
 log = logging.getLogger(__name__)
@@ -71,15 +72,55 @@ def stft(x_ms, y, *, rate_hz: float, nperseg: int, hop: int):
     return x_ms[0] + t_s * 1000, f_hz, spec
 
 
-def above_floor_db(power, quantile: float = 0.5) -> np.ndarray:
+def above_floor_db(power, quantile: float = 0.5, columns=None) -> np.ndarray:
     """Power in dB above each frequency bin's `quantile` over the shot.
 
     The median suits bursts. A mode that holds one frequency for most of the
     shot would sit at its own median and vanish, so its panel takes a lower
-    quantile.
+    quantile. `columns` (a mask over the last axis) takes the floor over those
+    columns only; every column is still returned.
     """
     db = 10 * np.log10(np.asarray(power, dtype=np.float64) + 1e-30)
-    return db - np.quantile(db, quantile, axis=-1, keepdims=True)
+    over = db if columns is None else db[..., np.asarray(columns, dtype=bool)]
+    return db - np.quantile(over, quantile, axis=-1, keepdims=True)
+
+
+def plasma_window(shot: int, paths: Paths | None = None):
+    """`(start_ms, end_ms)`, the shot's v1 rule-4 Ip window, or None.
+
+    The cohort's (`spans.queue`, every roster shot) first, then the population's
+    (`spans.population`); a table that cannot be read is passed over.
+    """
+    paths = Paths.from_env() if paths is None else paths
+    for table in (spans.queue, spans.population):
+        try:
+            frame = table(paths)
+        except (OSError, ValueError, KeyError) as error:
+            log.info("shot %s: no %s window: %s", shot, table.__name__, error)
+            continue
+        for row in frame[frame.shot == int(shot)].itertuples(index=False):
+            start, end = float(row.window_start_ms), float(row.window_end_ms)
+            if np.isfinite(start) and np.isfinite(end) and end > start:
+                return start, end
+    return None
+
+
+def plasma_columns(t_ms, band_power, window) -> np.ndarray:
+    """Which spectrogram columns are the plasma's, for its floor to be taken over.
+
+    A probe's record runs seconds past the plasma, and a floor over the whole
+    record falls there and pins the plasma at the top of the scale. The columns
+    inside `window` when it holds any; otherwise those whose `band_power` is
+    above the record's median, which are the plasma's while it fills at least
+    40 % of the record (a floor at the 20th percentile of that half stays on it).
+    """
+    t_ms = np.asarray(t_ms, dtype=float)
+    if window is not None:
+        inside = (t_ms >= window[0]) & (t_ms <= window[1])
+        if inside.any():
+            return inside
+    band_power = np.asarray(band_power, dtype=float)
+    return band_power > np.median(band_power)
 
 
 def power_panel(title: str, x_ms, y, *, rate_hz, nperseg, hop, max_khz, bands=()):
