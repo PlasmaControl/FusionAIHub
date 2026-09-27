@@ -51,14 +51,23 @@ def _store(paths: Paths, shot: int) -> None:
     bins = np.arange(64)[:, None]
     chirp = np.exp(-((bins - 32 - 20 * np.sin(t / 300)) ** 2) / 6)
     image = ImageRow(
-        "R0xV1", "R0 × V1", (40 + 200 * chirp).astype("uint8"),
-        y0=0.0, dy=4.0, y_units="kHz", z_lo=-3.0, z_hi=27.0, z_units="dB",
+        "R0xV1",
+        "R0 × V1",
+        (40 + 200 * chirp).astype("uint8"),
+        y0=0.0,
+        dy=4.0,
+        y_units="kHz",
+        z_lo=-3.0,
+        z_hi=27.0,
+        z_units="dB",
     )
     wave = np.sin(t / 120)[None]
     trace = TraceRow("p1", "Density", np.stack([wave, wave]), hlines=[0.0])
     review_rows.write(
         paths.spectrogram_file("alfven_eigenmode", shot),
-        Grid(0.0, 0.5, 8000), [image, trace], event="alfven_eigenmode",
+        Grid(0.0, 0.5, 8000),
+        [image, trace],
+        event="alfven_eigenmode",
     )
 
 
@@ -83,7 +92,9 @@ def served(tmp_path):
     (event / "format/alfven_eigenmode_format_2026_v1.csv").write_text(SOURCE)
     for shot in (170815, 170816, 170817):
         _store(paths, shot)
-    labels.save(event, 170816, labels.normalise((0, 2000), [(400, 600, 1)]), source=None)
+    labels.save(
+        event, 170816, labels.normalise((0, 2000), [(400, 600, 1)]), source=None
+    )
     app = create_app(paths=paths, token=TOKEN)
     server = uvicorn.Server(
         uvicorn.Config(app, host="127.0.0.1", port=0, log_level="warning")

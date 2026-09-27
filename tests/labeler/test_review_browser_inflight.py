@@ -42,7 +42,7 @@ def _run_browser(base, tmp_path, case, count):
 
 
 @pytest.mark.parametrize("case", ["move", "edit", "restore", "next", "return"])
-def test_save_finishes_without_losing_a_later_change(served, tmp_path, case):  # noqa: F811
+def test_save_keeps_later_change(served, tmp_path, case):  # noqa: F811
     base, event = served
     _run_browser(base, tmp_path, case, 9 if case in {"move", "next", "restore"} else 8)
     history = labels.read_history(event)
@@ -56,7 +56,7 @@ def test_save_finishes_without_losing_a_later_change(served, tmp_path, case):  #
     assert abs(start - 500) <= 2 and abs(stop - 800) <= 2 and category == 1
 
 
-def test_event_queue_survives_a_newer_shot_choice(served_events, tmp_path):  # noqa: F811
+def test_queue_keeps_newer_shot(served_events, tmp_path):  # noqa: F811
     base, (event_a, event_b) = served_events
     _run_browser(base, tmp_path, "queue", 11)
     assert [(v["shot"], v["intervals"]) for v in labels.read_history(event_a)] == [
