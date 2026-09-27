@@ -277,6 +277,7 @@ function keepForUndo(label) {
 /** Take a new label if the server would accept it. */
 function edit(window, intervals) {
   if (stillOpening()) return;
+  if (!S.meta) return;
   const next = normalise(window, intervals, known());
   if (!next) return;
   keepForUndo(S.label);
@@ -308,6 +309,7 @@ function undo() {
 
 function revert() {
   if (stillOpening()) return;
+  if (!S.meta) return;
   const source = S.meta.source || emptyLabel();
   S.selected = -1;
   edit(source.window, source.intervals);
@@ -436,7 +438,18 @@ async function openEvent(event, shot) {
 async function openShot(shot) {
   const ticket = ++S.ticket;
   leave();
-  if (shot == null) return;
+  if (shot == null) {
+    cancelAnimationFrame(S.frame);
+    Object.assign(S, { shot: null, meta: null, data: null, overview: null, label: null,
+      undo: [], selected: -1, asked: "", frame: 0 });
+    const note = document.createElement("p");
+    note.className = "failure";
+    note.textContent = `${S.event} has no shots to review.`;
+    $("rows").replaceChildren(note);
+    for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
+    arrive();
+    return;
+  }
   try {
     let response, meta;
     for (;;) {
@@ -477,8 +490,8 @@ function arrive() {
   for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
   const next = neighbour(1);
   $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
-  history.replaceState(null, "", `#${S.event}/${S.shot}`);
-  $("shot").value = S.shot;
+  history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
+  $("shot").value = S.shot ?? "";
   showHeader();
   renderQueue();
   $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
