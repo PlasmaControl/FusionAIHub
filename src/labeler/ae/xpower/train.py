@@ -37,7 +37,7 @@ from torch.nn import functional as F
 from ...config import Paths, atomic_path, git_sha
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
-from . import EVENT, event_dir, model_dir, tokeye_masks
+from . import EVENT, event_dir, model_dir, pilot_area, tokeye_masks
 from .data import (
     BAND_KHZ,
     CONTEXT_FRAMES,
@@ -250,8 +250,9 @@ def save(
     candidate: str = "",
     labels_bytes: bytes | None = None,
     allow_replace: bool = False,
+    runs: Path | None = None,
 ) -> None:
-    refuse_checkpoint(out, allow_replace=allow_replace)
+    refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
     if labels_bytes is None:
         labels_bytes = labels_file.read_bytes()
     out.mkdir(parents=True, exist_ok=True)
@@ -306,7 +307,13 @@ def read_split(path, *, data: bytes | None = None) -> dict[int, str]:
     return {int(a): b for a, b in (line.split(",") for line in lines[1:])}
 
 
-def refuse_checkpoint(out: Path, *, allow_replace: bool = False) -> None:
+def refuse_checkpoint(
+    out: Path, *, allow_replace: bool = False, runs: Path | None = None
+) -> None:
+    if allow_replace and (runs is None or not pilot_area(out, runs)):
+        raise ValueError(
+            f"{out}: --pilot replacement requires a directory under {runs}"
+        )
     file = out / "model.pt"
     if file.exists() and not allow_replace:
         raise FileExistsError(
@@ -342,8 +349,8 @@ def main(argv=None) -> int:
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate)
     )
     try:
-        refuse_checkpoint(out, allow_replace=bool(args.pilot))
-    except FileExistsError as error:
+        refuse_checkpoint(out, allow_replace=bool(args.pilot), runs=paths.runs)
+    except (FileExistsError, ValueError) as error:
         p.error(str(error))
     directory = event_dir(paths)
     labels_file = labels.labels_path(directory)
@@ -396,8 +403,9 @@ def main(argv=None) -> int:
             labels_bytes=labels_bytes,
             candidate=args.candidate,
             allow_replace=bool(args.pilot),
+            runs=paths.runs,
         )
-    except FileExistsError as error:
+    except (FileExistsError, ValueError) as error:
         p.error(str(error))
     print(
         f"wrote {out}: best epoch {best_epoch(history)}, threshold {threshold}",

@@ -17,6 +17,19 @@ VERSION = "v1"
 EVENT = "alfven_eigenmode"
 
 
+def pilot_area(directory: Path, runs: Path) -> bool:
+    """Only descendants of runs, resolving symlinks, can replace pilot records."""
+    return runs.resolve() in directory.resolve().parents
+
+
+def check_limit(paths: Paths, models: Path, limit: int) -> None:
+    if limit < 0 or (limit > 0 and not pilot_area(models, paths.runs)):
+        raise ValueError(
+            f"{models}: --limit must be nonnegative and requires a directory "
+            f"under {paths.runs} when positive"
+        )
+
+
 def model_dir(paths: Paths, version: str = VERSION) -> Path:
     """The trained model, its split and its scores."""
     return paths.models / METHOD / version

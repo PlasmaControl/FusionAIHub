@@ -51,8 +51,8 @@ from ...events.review import labels
 from ...events.review.rows import Grid
 from ...scoring import stats
 from ...scoring.frames import FRAME_MS
+from ..xpower import check_limit, pilot_area, tokeye_masks
 from ..xpower import model_dir as ae_model_dir
-from ..xpower import tokeye_masks
 from ..xpower.data import (
     BAND_KHZ,
     MIN_FRACTION,
@@ -267,8 +267,9 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
 
 
 def run_test(paths: Paths, models: Path, limit: int = 0) -> dict:
+    check_limit(paths, models, limit)
     evaluation = models / "evaluation.json"
-    if evaluation.exists():
+    if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the test shots are scored once; a retry is a new version"
         )
