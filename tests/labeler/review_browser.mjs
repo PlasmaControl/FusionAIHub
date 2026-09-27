@@ -1,6 +1,7 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
 //   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty]
 // Prints one JSON line: every check made, [{name, ok, detail}].
+import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -539,6 +540,8 @@ async function emptyEvent() {
       window.requests.length === ${requests} && window.saves.length === 0 &&
       !$("versions").open && !$("status").textContent.includes("still opening")`) && errors.length === 0, errors.slice());
   }
+  assert.equal(await js(`$("status").textContent`), "no shots to review",
+    "U on an empty queue says there are no shots to review");
   await press("z", 2);
   await js(`$("save-next").click(); $("revert").click(); $("show-versions").click()`);
   // Exercise the entry points too: disabled controls and key filtering must not hide a null dereference.

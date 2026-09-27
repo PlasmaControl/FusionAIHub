@@ -435,19 +435,24 @@ async function openEvent(event, shot) {
   await openShot(S.queue.some((row) => row.shot === shot) ? shot : queue.resume);
 }
 
+/** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
+function showNothing(shot, text) {
+  cancelAnimationFrame(S.frame);
+  Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
+    undo: [], selected: -1, asked: "", frame: 0 });
+  const note = document.createElement("p");
+  note.className = "failure";
+  note.textContent = text;
+  $("rows").replaceChildren(note);
+  for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
+  arrive();
+}
+
 async function openShot(shot) {
   const ticket = ++S.ticket;
   leave();
   if (shot == null) {
-    cancelAnimationFrame(S.frame);
-    Object.assign(S, { shot: null, meta: null, data: null, overview: null, label: null,
-      undo: [], selected: -1, asked: "", frame: 0 });
-    const note = document.createElement("p");
-    note.className = "failure";
-    note.textContent = `${S.event} has no shots to review.`;
-    $("rows").replaceChildren(note);
-    for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
-    arrive();
+    showNothing(null, `${S.event} has no shots to review.`);
     return;
   }
   try {
@@ -472,13 +477,7 @@ async function openShot(shot) {
   } catch (error) {
     if (ticket !== S.ticket) return;
     // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
-    Object.assign(S, { shot, meta: null, data: null, overview: null, label: null, undo: [], selected: -1 });
-    const note = document.createElement("p");
-    note.className = "failure";
-    note.textContent = `${shot} has nothing to show: ${error.message}. K opens the next shot.`;
-    $("rows").replaceChildren(note);
-    for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
-    arrive();
+    showNothing(shot, `${shot} has nothing to show: ${error.message}. K opens the next shot.`);
   }
 }
 
@@ -1102,7 +1101,7 @@ const KEYS = {
   k: () => go(1),
   ArrowLeft: () => go(-1),
   ArrowRight: () => go(1),
-  u: () => (nextUnreviewed() == null ? say("all reviewed") : openShot(nextUnreviewed())),
+  u: () => (nextUnreviewed() == null ? say(S.queue.length ? "all reviewed" : "no shots to review") : openShot(nextUnreviewed())),
   "[": () => contrast(-16),
   "]": () => contrast(16),
   Escape: () => {
