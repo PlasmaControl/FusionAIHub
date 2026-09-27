@@ -103,6 +103,7 @@ def test_the_registry_covers_the_events_with_bespoke_panels():
         "fishbone",
         "high_confinement_mode",
         "minimum_safety_factor",
+        "neoclassical_tearing_mode",
         "sawtooth_oscillation",
     }
 
@@ -212,20 +213,21 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
         "ECE ch 24-27",
         "ECE ch 28-31",
         "ECE ch 32-35",
+        "SXR SX90RM1F, the 4 brightest chords",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping
     # while outer ones rise, which only reads if the four overplotted
     # channels actually neighbour each other.
-    assert [row[2] for row in seen] == [
+    assert [row[2] for row in seen if row[1] == "ece"] == [
         [20, 21, 22, 23],
         [24, 25, 26, 27],
         [28, 29, 30, 31],
         [32, 33, 34, 35],
     ]
-    assert all(row[:2] == (192238, "ece") for row in seen)
+    assert [row[:2] for row in seen] == [(192238, "ece")] * 4 + [(192238, "sxr")]
     assert all(row[3] == window and row[4] is None for row in seen)
     assert all(panel.y.shape == (4, 500) for panel in built)
-    assert all(panel.ylabel == "keV" for panel in built)
+    assert all(panel.ylabel == "keV" for panel in built[:4])
     assert built[0].legend == ["ch 20", "ch 21", "ch 22", "ch 23"]
     # `raw_signal` is already in milliseconds; a second conversion here
     # would put the traces a thousand shots downstream of the shot.

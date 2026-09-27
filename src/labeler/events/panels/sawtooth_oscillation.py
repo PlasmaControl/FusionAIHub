@@ -1,9 +1,16 @@
-"""Sawteeth, as the inversion of adjacent ECE channels across the q = 1 surface."""
+"""Sawteeth, as the inversion of adjacent ECE channels across the q = 1 surface,
+and the soft X-ray core chords that drop at each crash.
+
+A shot without ECE, or without SXR, gets the other's rows alone.
+"""
 
 from __future__ import annotations
 
+import numpy as np
+
 from ..raw import raw_signal
-from ..verify import Panel
+from ..verify import NoDataError, Panel
+from ._shared import optional
 
 #: Four rows of four ADJACENT channels covering 20-35, sixteen in all. The
 #: flip a sawtooth crash makes is a RELATIVE thing - inner channels drop as
@@ -15,9 +22,21 @@ CHANNEL_ROWS = (
     (28, 29, 30, 31),
     (32, 33, 34, 35),
 )
+#: The SXR fans tried in order, by their first row in the corpus's 320 (32
+#: chords each). The first with `MIN_CHORDS` chords finite over at least half
+#: the record is drawn: its `BRIGHTEST` brightest, the chords through the core.
+SXR_ARRAYS = (
+    ("SX90RM1F", 192),
+    ("SX90RP1F", 256),
+    ("SX90RM1S", 224),
+    ("SX90RP1S", 288),
+)
+CHORDS = 32
+MIN_CHORDS = 8
+BRIGHTEST = 4
 
 
-def panels(shot, *, t_range=None, paths=None):
+def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     built = []
     for row in CHANNEL_ROWS:
         array = raw_signal(
@@ -33,3 +52,33 @@ def panels(shot, *, t_range=None, paths=None):
             )
         )
     return built
+
+
+def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
+    for name, first in SXR_ARRAYS:
+        rows = list(range(first, first + CHORDS))
+        array = raw_signal(
+            int(shot), "sxr", channels=rows, t_range=t_range, paths=paths
+        )
+        lit = np.isfinite(array.y).mean(axis=1) >= 0.5
+        if lit.sum() < MIN_CHORDS:
+            continue
+        level = np.full(CHORDS, -np.inf)
+        level[lit] = np.nanmedian(array.y[lit], axis=1)
+        top = np.sort(np.argsort(-level, kind="stable")[:BRIGHTEST])
+        return [
+            Panel(
+                title=f"SXR {name}, the {BRIGHTEST} brightest chords",
+                x=array.x,
+                y=array.y[top],
+                legend=[f"{name}{c + 1:02d}" for c in top],
+            )
+        ]
+    raise NoDataError(f"shot {int(shot)}: no SXR fan has {MIN_CHORDS} finite chords")
+
+
+def panels(shot, *, t_range=None, paths=None):
+    kwargs = {"t_range": t_range, "paths": paths}
+    return optional("ECE", shot, lambda: ece_panels(shot, **kwargs)) + optional(
+        "SXR", shot, lambda: sxr_panels(shot, **kwargs)
+    )
