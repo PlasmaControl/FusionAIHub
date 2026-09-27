@@ -1073,9 +1073,11 @@ function restoreVersion(number) {
   closeDialog($("versions"));
   const label = normalise(found.window, found.intervals, known());
   if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  if (same(label, S.label)) return say(`version ${number} is already the current label`);
+  const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
   S.selected = -1;
   edit(label.window, label.intervals);
-  say(`version ${number} restored as a draft: Enter or S saves it as a new version`);
+  say(`version ${number} restored as a draft: Enter or S saves it as a new version${replaced}`);
 }
 
 const KEYS = {
@@ -1112,8 +1114,14 @@ function onKey(event) {
   const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   const key = event.shiftKey && typed.startsWith("Arrow") ? `Shift+${typed}` : typed;
   if (target.closest("input, select, textarea")) return;
+  if ($("versions").open) {
+    if (key === "Enter" || key === "h") {
+      event.preventDefault();
+      closeDialog($("versions"));
+    }
+    return;
+  }
   if (target.closest("button") && (key === "Enter" || key === " ")) return;
-  if ($("versions").open) return key === "h" && toggleVersions();
   if (key === "?" || $("keys").open) return key === "?" && toggleKeys();
   const mod = event.ctrlKey || event.metaKey;
   if (event.altKey || (mod && key !== "z") || (!S.meta && !MOVES.has(key))) return;
