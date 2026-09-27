@@ -100,7 +100,8 @@ def test_paired_difference_of_a_method_with_itself_is_zero():
 def test_weighted_median_is_the_lower_median():
     assert weighted_median([1, 2, 3], [1, 1, 5]) == 3
     assert weighted_median([4, 1, 3, 2], [1, 1, 1, 1]) == 2
-    assert math.isnan(weighted_median([], []))
+    with pytest.raises(ValueError, match="positive"):
+        weighted_median([], [])
 
 
 def test_median_estimate_follows_the_owners_weights():
@@ -484,6 +485,74 @@ def test_two_stage_refuses_invalid_group_inputs(first, counts):
 
     with pytest.raises(ValueError, match="g"):
         two_stage_weights(first, ["g", "g"], counts)
+
+
+def test_two_stage_refuses_first_stage_below_one():
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="first-stage weight"):
+        two_stage_weights([0.5, 1], ["L", "L"], {"L": 145})
+
+
+@pytest.mark.parametrize("bad", [-1, 0.5, np.nan, np.inf, -np.inf, True, "2"])
+def test_two_stage_validates_counts_of_unrepresented_groups(bad):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="G"):
+        two_stage_weights([1, 1], ["L", "L"], {"L": 145, "G": bad})
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_two_stage_refuses_positive_cohort_groups_with_no_blind_shot(empty):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="no blind shot.*G.*R"):
+        two_stage_weights(
+            [] if empty else [1, 1],
+            [] if empty else ["L", "L"],
+            {"L": 145, "G": 100, "R": 255},
+        )
+
+
+def test_two_stage_allows_unrepresented_zero_count_group():
+    from labeler.scoring.stats import two_stage_weights
+
+    assert two_stage_weights([1, 2], ["L", "L"], {"L": 4, "G": 0}).tolist() == [2, 4]
+
+
+@pytest.mark.parametrize(
+    "values, weights, reason",
+    [
+        ([1, 2], [1, 1, 100], "length"),
+        ([1, 2], [1], "length"),
+        ([1, 2], [[1, 1, 100]], "length"),
+        ([1, 2], 1, "length"),
+        ([[1, 2]], [1, 1], "one-dimensional"),
+        ([1, 2, 3], [1, -10, 10], "nonnegative"),
+        ([1, 2], [1, np.nan], "finite"),
+        ([1, 2], [1, np.inf], "finite"),
+        ([1, 2], [1, -np.inf], "finite"),
+        ([1, 2], [0, 0], "positive"),
+        ([1, 2], [[1, 1], [0, 0]], "positive"),
+    ],
+)
+def test_weighted_median_refuses_invalid_weights(values, weights, reason):
+    with pytest.raises(ValueError, match=reason):
+        weighted_median(values, weights)
+
+
+def test_weighted_median_allows_zero_entries_and_leading_replicate_axes():
+    weights = np.array([[[0, 2, 1], [1, 0, 0]], [[1, 0, 5], [1, 1, 1]]])
+    assert weighted_median([1, 2, 3], weights).tolist() == [[2, 1], [3, 2]]
+
+
+def test_median_estimate_keeps_event_free_draws_undefined():
+    got = median_estimate([7], [0], ["g", "g"], [1, 1], n=100, seed=3)
+    assert got.value == got.low == got.high == 7
+    assert 0 < got.undefined < got.replicates
+    empty = median_estimate([], [], ["g", "g"], [1, 1], n=100, seed=3)
+    assert math.isnan(empty.value) and math.isnan(empty.low) and math.isnan(empty.high)
+    assert empty.undefined == empty.replicates == 100
 
 
 @pytest.mark.parametrize("bad", [-1, np.nan, np.inf])

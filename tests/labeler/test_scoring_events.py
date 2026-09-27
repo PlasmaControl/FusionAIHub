@@ -252,6 +252,14 @@ def test_nearest_first_pair_count_is_bounded_by_brute_force_optimum():
         assert len(got.pairs) == optimum([single_ref], [single_est], tolerance)
 
 
+@pytest.mark.parametrize(
+    "window", [(10, 0), (5, 5), (np.nan, 10), (0, np.nan), (-np.inf, 10), (0, np.inf)]
+)
+def test_within_refuses_invalid_windows(window):
+    with pytest.raises(ValueError, match="window"):
+        within([5], window)
+
+
 @pytest.mark.parametrize("bad", [-1, np.nan, np.inf, -np.inf])
 @pytest.mark.parametrize("kind", ["match", "events", "within"])
 def test_timing_options_must_be_finite_nonnegative(bad, kind):

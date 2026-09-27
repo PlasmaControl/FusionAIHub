@@ -171,12 +171,15 @@ def event_cells(matching: Matching) -> np.ndarray:
 def within(times, window, *, end_slack_ms: float = 0.0) -> np.ndarray:
     """Times in `[start, stop)`, plus `[stop, stop + end_slack_ms]` if positive.
 
-    `window` is the allowed window, never an assessment's; use `points_within`
-    to retain the assessed extent and apply D19 exactly once.
+    `window` is the assessed extent; use `points_within` to derive any D19
+    slack from the original allowed window and apply it exactly once.
     A disruption's t_D, t80 and t20 take D19's end slack:
     `labeler.events.catalog.check.DISRUPTION_TIMING_TOLERANCE_MS`.
     """
     _timing_option(end_slack_ms, "end_slack_ms")
+    window = np.asarray(window, dtype=float)
+    if window.shape != (2,) or not np.isfinite(window).all() or window[0] >= window[1]:
+        raise ValueError("window must have two finite bounds with start < end")
     times = _times(times)
     before_end = times < window[1]
     if end_slack_ms > 0:

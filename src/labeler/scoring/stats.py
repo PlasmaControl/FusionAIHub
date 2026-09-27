@@ -131,23 +131,35 @@ def stratum_weights(strata: Sequence, population: Mapping) -> np.ndarray:
 def two_stage_weights(
     first_stage, groups: Sequence, cohort_counts: Mapping
 ) -> np.ndarray:
-    """D25 blind weights: cohort weight times the group's `n_g / b_g`."""
+    """D25 blind weights: cohort weight times the group's `n_g / b_g`.
+
+    `b_g` is counted from `groups`, which must list the whole blind subset.
+    Every group with a positive cohort count must have at least one blind shot.
+    """
     groups = list(groups)
     weights = np.asarray(first_stage, dtype=float)
     if weights.ndim != 1 or len(weights) != len(groups):
         raise ValueError("first_stage and groups must have one entry per blind shot")
     counts = Counter(groups)
-    for g, b in counts.items():
+    for g in counts:
         if g not in cohort_counts:
             raise ValueError(f"no cohort count for group {g!r}")
+    for g, count in cohort_counts.items():
         try:
-            n = whole_number(cohort_counts[g])
+            n = whole_number(count)
         except ValueError as exc:
             raise ValueError(f"group {g!r}: {exc}") from exc
+        b = counts[g]
         if b > n:
             raise ValueError(f"group {g!r}: blind count {b} exceeds cohort count {n}")
+    unscored = sorted(
+        (g for g, count in cohort_counts.items() if count > 0 and g not in counts),
+        key=str,
+    )
+    if unscored:
+        raise ValueError(f"no blind shot for cohort groups {unscored}")
     for g, weight in zip(groups, weights):
-        if not np.isfinite(weight) or weight <= 0:
+        if not np.isfinite(weight) or weight < 1:
             raise ValueError(f"group {g!r}: invalid first-stage weight {weight!r}")
     return weights * np.array([cohort_counts[g] / counts[g] for g in groups])
 
@@ -298,11 +310,28 @@ def difference(
 
 
 def weighted_median(values, weights):
-    """Weighted median of `values`; `weights` may carry leading replicate axes."""
+    """Weighted median of `values`; `weights` may carry leading replicate axes.
+
+    Weights must be finite, nonnegative and aligned with the one-dimensional
+    values, with a positive sum in every replicate.
+    """
+    return _weighted_median(values, weights, allow_undefined=False)
+
+
+def _weighted_median(values, weights, *, allow_undefined):
+    """The median kernel also supports bootstrap draws containing no events."""
     values = np.asarray(values, dtype=float)
+    if values.ndim != 1:
+        raise ValueError("values must be one-dimensional")
     if not np.isfinite(values).all():
         raise ValueError("values must be finite")
     weights = np.asarray(weights, dtype=float)
+    if weights.ndim < 1 or weights.shape[-1] != len(values):
+        raise ValueError("weights' final axis must have the same length as values")
+    if not np.isfinite(weights).all() or (weights < 0).any():
+        raise ValueError("weights must be finite and nonnegative")
+    if not allow_undefined and (weights.sum(axis=-1) <= 0).any():
+        raise ValueError("weights must have a positive sum in every replicate")
     if not len(values):
         return np.full(weights.shape[:-1], np.nan) if weights.ndim > 1 else np.nan
     order = np.argsort(values, kind="stable")
@@ -334,7 +363,9 @@ def median_estimate(
         raise ValueError("each owner must be a shot index in [0, number of shots)")
     owners = np.array(indices, dtype=np.int64)
     _check_level(level)
-    value = float(weighted_median(values, weights[owners]))
+    value = float(_weighted_median(values, weights[owners], allow_undefined=True))
     shots = replicate_weights(strata, weights, n, seed)
-    low, high, undefined = _interval(weighted_median(values, shots[:, owners]), level)
+    low, high, undefined = _interval(
+        _weighted_median(values, shots[:, owners], allow_undefined=True), level
+    )
     return Estimate(value, low, high, undefined, len(shots), seed, level)
