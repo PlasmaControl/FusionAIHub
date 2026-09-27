@@ -90,6 +90,7 @@ class ShotFrames:
     mhd: np.ndarray  # (n,) bool
     scored: np.ndarray  # (n,) bool
     said: dict[str, np.ndarray] = field(default_factory=dict)
+    prob: np.ndarray | None = None  # model P(AE), retained for validation sweeps
 
 
 def fp_rate(totals):
@@ -189,7 +190,7 @@ def shot_frames(
             t_ms = np.asarray(z["t_ms"], dtype=np.float64)
         said["seldnet"] = seldnet_said(seldnet, spec_path, t_ms, first, n)
     mhd = tk["covered"] & (tk["low"] >= MIN_FRACTION)
-    return ShotFrames(int(shot), owner, mhd, scored, said)
+    return ShotFrames(int(shot), owner, mhd, scored, said, prob)
 
 
 def window_cells(shot: int, *, paths: Paths, label, model, blob: dict) -> np.ndarray:
