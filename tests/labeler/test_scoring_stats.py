@@ -1,0 +1,798 @@
+"""Rates, kappas, weights and the stratified bootstrap, against hand values."""
+
+from __future__ import annotations
+
+import csv
+import json
+import math
+import os
+from collections import Counter
+from itertools import product
+from pathlib import Path
+from time import perf_counter
+
+import numpy as np
+import pytest
+import yaml
+
+from labeler.scoring.frames import PRESENT, Assessment, frame_counts
+from labeler.scoring.stats import (
+    cohen_cells,
+    cohen_kappa,
+    difference,
+    estimate,
+    f1,
+    fleiss_cells,
+    fleiss_kappa,
+    median_estimate,
+    precision,
+    recall,
+    replicate_weights,
+    stratum_weights,
+    two_stage_weights,
+    weighted_median,
+)
+
+
+def test_rates_by_hand_and_undefined_as_nan():
+    cells = [2, 2, 2, 2]
+    assert (precision(cells), recall(cells), f1(cells)) == (0.5, 0.5, 0.5)
+    assert math.isnan(precision([0, 0, 3]))
+    assert recall([0, 0, 3]) == 0.0
+    assert np.allclose(f1([[1, 0, 0], [1, 1, 0]]), [1.0, 2 / 3])
+
+
+def test_cohen_kappa_by_hand():
+    # po 0.85; A present 0.5, B present 0.55; chance 0.5; kappa 0.7
+    assert cohen_kappa([40, 10, 5, 45]) == pytest.approx(0.7)
+    frames = np.array([[0, 0], [0, 1], [1, 1], [1, 1]])
+    assert cohen_cells(frames).tolist() == [1, 1, 0, 2]
+
+
+def test_fleiss_kappa_by_hand():
+    frames = np.array([[1, 1, 1], [0, 0, 0], [1, 1, 0], [0, 0, 1]])
+    cells = fleiss_cells(frames)
+    assert cells.tolist() == [4, 16, 6]
+    # observed 16/24; p = 6/12; chance 0.5; kappa 1/3
+    assert fleiss_kappa(cells, 3) == pytest.approx(1 / 3)
+
+
+def test_perfect_agreement_on_one_class_is_undefined():
+    assert math.isnan(cohen_kappa([10, 0, 0, 0]))
+
+
+def test_stratum_weights_are_population_over_sample():
+    assert stratum_weights(["a", "a", "b"], {"a": 10, "b": 5}).tolist() == [5, 5, 5]
+    with pytest.raises(ValueError, match="no population count"):
+        stratum_weights(["a", "c"], {"a": 1})
+
+
+def test_replicates_resample_within_each_stratum():
+    strata = ["a", "a", "b", "b", "b"]
+    draws = replicate_weights(strata, np.ones(5), n=50, seed=1)
+    assert draws.shape == (50, 5)
+    assert (draws[:, :2].sum(axis=1) == 2).all()
+    assert (draws[:, 2:].sum(axis=1) == 3).all()
+    assert np.array_equal(draws, replicate_weights(strata, np.ones(5), n=50, seed=1))
+
+
+def test_tuple_strata_are_one_stratum_each():
+    strata = [("L", 2023), ("L", 2023), ("G", 2024)]
+    draws = replicate_weights(strata, [1.0, 1.0, 4.0], n=10)
+    assert (draws[:, 2] == 4.0).all()
+
+
+def test_weighted_estimate_by_hand():
+    cells = [[1, 0, 0], [0, 1, 0]]  # one true positive, one false positive
+    got = estimate(cells, ["a", "b"], [3.0, 1.0], precision)
+    assert got.value == pytest.approx(0.75)
+    assert got.low == got.high == pytest.approx(0.75)  # one shot per stratum
+    assert got.undefined == 0
+
+
+def test_the_interval_brackets_the_value_when_shots_vary():
+    rng = np.random.default_rng(0)
+    cells = rng.integers(0, 20, size=(40, 3))
+    got = estimate(cells, ["a"] * 40, np.ones(40), f1, n=500)
+    assert got.low <= got.value <= got.high and got.low < got.high
+
+
+def test_paired_difference_of_a_method_with_itself_is_zero():
+    cells = np.random.default_rng(2).integers(0, 9, size=(30, 3))
+    got = difference(cells, cells, ["a"] * 15 + ["b"] * 15, np.ones(30), f1, n=200)
+    assert got.value == got.low == got.high == 0.0
+
+
+def test_weighted_median_is_the_lower_median():
+    assert weighted_median([1, 2, 3], [1, 1, 5]) == 3
+    assert weighted_median([4, 1, 3, 2], [1, 1, 1, 1]) == 2
+    with pytest.raises(ValueError, match="positive"):
+        weighted_median([], [])
+
+
+def test_median_estimate_follows_the_owners_weights():
+    got = median_estimate([1.0, 9.0], [0, 1], ["a", "b"], [10.0, 1.0], n=100)
+    assert got.value == 1.0 and got.low == got.high == 1.0
+
+
+def test_from_frames_to_a_weighted_precision():
+    reference = Assessment((0, 100), ((0, 50, PRESENT),))
+    shots = [
+        Assessment((0, 100), ((0, 50, PRESENT),)),  # 5 tp
+        Assessment((0, 100), ((0, 100, PRESENT),)),  # 5 tp, 5 fp
+    ]
+    cells = np.stack([frame_counts(reference, s).cells() for s in shots])
+    weights = stratum_weights(["a", "b"], {"a": 2, "b": 6})
+    got = estimate(cells, ["a", "b"], weights, precision)
+    assert got.value == pytest.approx((2 * 5 + 6 * 5) / (2 * 5 + 6 * 10))
+    assert got.as_json()["value"] == pytest.approx(got.value)
+
+
+@pytest.mark.parametrize(
+    "strata, weights",
+    [
+        (["a"], [1, 1]),
+        (["a", "b"], [1]),
+        (["a", "b"], [2, -1]),
+        (["a", "b"], [1, np.nan]),
+        (["a", "b"], [1, np.inf]),
+        (["a", "b"], [[1], [1]]),
+    ],
+)
+def test_replicate_weights_refuses_misalignment_and_invalid_weights(strata, weights):
+    with pytest.raises(ValueError):
+        replicate_weights(strata, weights, n=10)
+
+
+@pytest.mark.parametrize("n", [0, -1, 1.5, np.nan, np.inf, "2", True])
+def test_replicate_weights_requires_a_positive_whole_count(n):
+    with pytest.raises(ValueError):
+        replicate_weights(["a"], [1], n=n)
+
+
+def test_replicate_weights_accepts_whole_float_counts_and_zero_weights():
+    assert replicate_weights(["a"], [0], n=2.0).tolist() == [[0], [0]]
+
+
+@pytest.mark.parametrize(
+    "cells, strata, weights",
+    [
+        ([[1, 0, 0], [0, 1, 0]], ["a"], [1, 1]),
+        ([[1, 0, 0], [0, 1, 0]], ["a", "b"], [2, -1]),
+        ([[1, 0, 0], [0, 1, 0]], ["a", "b"], [1]),
+        ([1, 0, 0], ["a"], [1]),
+        ([[[1, 0, 0]]], ["a"], [1]),
+    ],
+)
+def test_estimate_refuses_cells_not_aligned_with_shots(cells, strata, weights):
+    with pytest.raises(ValueError):
+        estimate(cells, strata, weights, precision, n=100)
+
+
+@pytest.mark.parametrize("level", [0, 1, -0.1, 1.1, np.nan, np.inf])
+@pytest.mark.parametrize("kind", ["estimate", "difference", "median"])
+def test_all_intervals_require_a_level_strictly_between_zero_and_one(level, kind):
+    with pytest.raises(ValueError):
+        if kind == "estimate":
+            estimate([[1, 0, 0]], ["a"], [1], f1, n=10, level=level)
+        elif kind == "difference":
+            difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], f1, n=10, level=level)
+        else:
+            median_estimate([1], [0], ["a"], [1], n=10, level=level)
+
+
+@pytest.mark.parametrize(
+    "a, b",
+    [
+        ([[1, 0, 0]], [[1, 0, 0, 0]]),
+        ([[1, 0, 0]], [[1, 0, 0], [0, 1, 0]]),
+        ([1, 0, 0], [1, 0, 0]),
+    ],
+)
+def test_difference_requires_two_dimensional_cells_of_identical_shape(a, b):
+    with pytest.raises(ValueError):
+        difference(a, b, ["a"], [1], f1, n=10)
+
+
+@pytest.mark.parametrize(
+    "values, owners",
+    [
+        ([1, 9], [0]),
+        ([1], [0, 1]),
+        ([1, 9], [0.9, 1.9]),
+        ([1], [-1]),
+        ([1], [2]),
+        ([1], [np.nan]),
+        ([1], [np.inf]),
+        ([[1, 9]], [[0, 1]]),
+    ],
+)
+def test_median_estimate_requires_aligned_values_and_integral_shot_owners(
+    values, owners
+):
+    with pytest.raises(ValueError):
+        median_estimate(values, owners, ["a", "b"], [10, 1], n=10)
+
+
+def test_median_estimate_checks_shot_alignment():
+    with pytest.raises(ValueError):
+        median_estimate([1, 9], [0, 1], ["a"], [10, 1], n=10)
+
+
+def test_stratum_weights_names_every_unscored_population_stratum():
+    with pytest.raises(ValueError) as exc:
+        stratum_weights(["L"] * 20 + ["R"] * 20, {"L": 231, "G": 573, "R": 4081})
+    assert "G" in str(exc.value)
+    with pytest.raises(ValueError) as exc:
+        stratum_weights(["L"], {"L": 231, "G": 573, "R": 4081})
+    assert "G" in str(exc.value) and "R" in str(exc.value)
+
+
+@pytest.mark.parametrize("population", [{"a": -1}, {"a": np.nan}, {"a": np.inf}])
+def test_stratum_weights_refuses_negative_or_nonfinite_population(population):
+    with pytest.raises(ValueError, match="a"):
+        stratum_weights(["a"], population)
+
+
+def test_an_empty_zero_population_stratum_is_allowed():
+    assert stratum_weights(["L2025"], {"L2025": 18, "G2025": 0}).tolist() == [18]
+
+
+@pytest.mark.parametrize("kind", ["estimate", "difference", "median"])
+def test_estimate_records_settings_in_strict_json(kind):
+    options = {"n": 37, "seed": 19, "level": 0.8}
+    if kind == "estimate":
+        got = estimate([[1, 0, 0]], ["a"], [1], f1, **options)
+    elif kind == "difference":
+        got = difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], f1, **options)
+    else:
+        got = median_estimate([2], [0], ["a"], [1], **options)
+    assert (got.replicates, got.seed, got.level) == (37, 19, 0.8)
+    data = json.loads(json.dumps(got.as_json(), allow_nan=False))
+    assert data == {
+        "value": got.value,
+        "low": got.low,
+        "high": got.high,
+        "undefined_replicates": 0,
+        "replicates": 37,
+        "seed": 19,
+        "level": 0.8,
+    }
+
+
+@pytest.mark.parametrize("readers", [2, 3])
+def test_random_frame_kappas_match_textbook_agreement_and_marginals(readers):
+    rng = np.random.default_rng(701)
+    frames = (
+        rng.random((400, readers)) < np.array([0.18, 0.61, 0.83])[:readers]
+    ).astype(int)
+    if readers == 2:
+        observed = np.mean(frames[:, 0] == frames[:, 1])
+        p_a, p_b = frames.mean(axis=0)
+        chance = p_a * p_b + (1 - p_a) * (1 - p_b)
+        expected = (observed - chance) / (1 - chance)
+        assert cohen_kappa(cohen_cells(frames)) == pytest.approx(
+            expected, rel=0, abs=1e-12
+        )
+    present = frames.sum(axis=1)
+    absent = readers - present
+    per_frame = (present * (present - 1) + absent * (absent - 1)) / (
+        readers * (readers - 1)
+    )
+    prevalence = frames.mean()
+    chance = prevalence**2 + (1 - prevalence) ** 2
+    expected = (per_frame.mean() - chance) / (1 - chance)
+    assert fleiss_kappa(fleiss_cells(frames), readers) == pytest.approx(
+        expected, rel=0, abs=1e-12
+    )
+
+
+def _manual_f1(totals):
+    tp, fp, fn = totals[:3]
+    return 2 * tp / (2 * tp + fp + fn)
+
+
+def _manual_median(values, weights):
+    halfway = sum(weights) / 2
+    running = 0
+    for value, weight in sorted(zip(values, weights)):
+        running += weight
+        if running >= halfway:
+            return value
+    raise AssertionError("the enumerable cohort always has positive event weight")
+
+
+@pytest.mark.parametrize("kind", ["f1", "difference", "median"])
+def test_bootstrap_endpoints_equal_the_extremes_of_all_16_ordered_draws(kind):
+    strata, weights = ["a", "a", "b", "b"], np.array([3.0, 3.0, 1.0, 1.0])
+    a = np.array([[4, 0, 0], [0, 2, 1], [1, 0, 2], [0, 1, 0]])
+    b = np.array([[2, 1, 2], [1, 1, 0], [0, 1, 3], [1, 0, 0]])
+    values, owners = [1, 2, 6, 9, 12], [0, 0, 1, 2, 3]
+
+    def answer(w):
+        if kind == "f1":
+            return _manual_f1(w @ a)
+        if kind == "difference":
+            return _manual_f1(w @ a) - _manual_f1(w @ b)
+        return _manual_median(values, [w[i] for i in owners])
+
+    exact = []
+    for first, second in product(product((0, 1), repeat=2), product((2, 3), repeat=2)):
+        counts = [sum(pick == i for pick in first + second) for i in range(4)]
+        exact.append(answer(weights * counts))
+    # Each ordered draw has mass 1/16 > 2.5%; both tails reach the extremes.
+    assert len(exact) == 16 and min(exact) < max(exact)
+    options = {"n": 4000, "seed": 78}
+    if kind == "f1":
+        got = estimate(a, strata, weights, f1, **options)
+    elif kind == "difference":
+        got = difference(a, b, strata, weights, f1, **options)
+    else:
+        got = median_estimate(values, owners, strata, weights, **options)
+    assert [got.value, got.low, got.high] == pytest.approx(
+        [answer(weights), min(exact), max(exact)], rel=0, abs=1e-12
+    )
+    assert got.undefined == 0
+
+
+def test_pairing_detects_a_real_loss_of_true_positives_with_a_narrower_interval():
+    rng = np.random.default_rng(402)
+    a = rng.integers(1, 100, size=(60, 3))
+    b = a.copy()
+    moved = np.maximum(1, rng.binomial(a[:, 0], 0.1))
+    b[:, 0] -= moved
+    b[:, 2] += moved
+    strata = ["a"] * 20 + ["b"] * 40
+    weights = np.array([2.0] * 20 + [8.0] * 40)
+    paired = difference(a, b, strata, weights, f1, n=1000, seed=81)
+    own_a = estimate(a, strata, weights, f1, n=1000, seed=81)
+    own_b = estimate(b, strata, weights, f1, n=1000, seed=82)
+    independent_point = _manual_f1(weights @ a) - _manual_f1(weights @ b)
+    assert paired.value == pytest.approx(independent_point, rel=0, abs=1e-12)
+    assert 0 < paired.low < paired.high
+    assert paired.high - paired.low < math.hypot(
+        own_a.high - own_a.low, own_b.high - own_b.low
+    )
+
+
+def test_undefined_replicates_are_counted_from_the_draws_and_serialize_as_null():
+    cells = np.array([[1, 0, 0], [0, 0, 0]])
+    strata, weights, n, seed = ["a", "a"], [1, 1], 1000, 12
+    draws = replicate_weights(strata, weights, n=n, seed=seed)
+    denominators = draws @ (cells[:, 0] + cells[:, 1])
+    expected = int(np.count_nonzero(denominators == 0))
+    got = estimate(cells, strata, weights, precision, n=n, seed=seed)
+    assert 0 < expected < n
+    assert got.undefined == expected
+    assert got.value == got.low == got.high == 1.0
+    empty = estimate(np.zeros((2, 3)), strata, weights, precision, n=n, seed=seed)
+    data = json.loads(json.dumps(empty.as_json(), allow_nan=False))
+    assert data["value"] is data["low"] is data["high"] is None
+    assert data["undefined_replicates"] == n
+
+
+def test_cohort_design_coverage_and_bias(capsys):
+    started = perf_counter()
+    rng = np.random.default_rng(2026)
+    design = {
+        "G2021": (120, 21),
+        "G2022": (340, 59),
+        "G2023": (112, 19),
+        "G2024": (1, 1),
+        "L2021": (29, 25),
+        "L2022": (73, 63),
+        "L2023": (59, 51),
+        "L2024": (52, 45),
+        "L2025": (18, 16),
+        "R2021": (332, 16),
+        "R2022": (1154, 57),
+        "R2023": (680, 33),
+        "R2024": (1065, 52),
+        "R2025": (850, 42),
+    }
+    populations = {}
+    for h, (size, _) in design.items():
+        prevalence, quality = {"L": (0.35, 0.85), "G": (0.25, 0.75), "R": (0.1, 0.55)}[
+            h[0]
+        ]
+        rows = []
+        for _ in range(size):
+            frames = rng.integers(200, 800)
+            positive = rng.binomial(frames, rng.beta(2, 2 / prevalence - 2))
+            q = rng.beta(8 * quality, 8 * (1 - quality))
+            tp = rng.binomial(positive, q)
+            fp = rng.binomial(frames - positive, (1 - q) * 0.2)
+            rows.append((tp, fp, positive - tp))
+        populations[h] = np.array(rows, dtype=float)
+    totals = np.concatenate(list(populations.values())).sum(axis=0)
+    tp, fp, fn = totals
+    truth = np.array([tp / (tp + fp), tp / (tp + fn), 2 * tp / (2 * tp + fp + fn)])
+    strata = [h for h, (_, size) in design.items() for _ in range(size)]
+    weights = stratum_weights(strata, {h: size for h, (size, _) in design.items()})
+    hits, errors = np.zeros(3, dtype=int), np.zeros((200, 3))
+    for sample in range(200):
+        cells = np.concatenate(
+            [
+                populations[h][rng.choice(size, n, replace=False)]
+                for h, (size, n) in design.items()
+            ]
+        )
+        for j, metric in enumerate((precision, recall, f1)):
+            got = estimate(
+                cells, strata, weights, metric, n=1000, seed=int(rng.integers(1 << 30))
+            )
+            hits[j] += got.low <= truth[j] <= got.high
+            errors[sample, j] = got.value - truth[j]
+    coverage, bias = hits / 200, errors.mean(axis=0)
+    elapsed = perf_counter() - started
+    with capsys.disabled():
+        print(
+            f"\nCohort P/R/F1: coverage={coverage.tolist()}, "
+            f"bias={bias.tolist()}, runtime={elapsed:.3f}s"
+        )
+    assert np.all((0.92 <= coverage) & (coverage <= 0.98))
+    assert np.all(np.abs(bias) < 0.01)
+    assert elapsed < 20
+
+
+def test_two_stage_frozen_g_weights_and_group_resampling():
+    from labeler.scoring.stats import two_stage_weights
+
+    first = [1, 124 / 21] + [345 / 59] * 4 + [113 / 19] * 4 + [2, 4]
+    groups = ["G"] * 10 + ["L"] * 2
+    weights = two_stage_weights(first, groups, {"G": 100, "L": 4})
+    assert weights[:2] == pytest.approx([10, 124 / 21 * 10])
+    draws = replicate_weights(groups, weights, n=50, seed=7) / weights
+    assert (draws[:, :10].sum(axis=1) == 10).all()
+    assert (draws[:, 10:].sum(axis=1) == 2).all()
+
+
+def test_two_stage_exact_unbiased_total_by_enumeration():
+    from fractions import Fraction
+    from itertools import combinations
+
+    from labeler.scoring.stats import two_stage_weights
+
+    # Values differ between cells, so group-only weighting is biased.
+    y = [1, 2, 3, 4, 5, 10, 20, 30]
+    first = [Fraction(5, 3)] * 5 + [Fraction(3)] * 3
+    totals, group_totals = [], []
+    for a, b in product(combinations(range(5), 3), combinations(range(5, 8), 1)):
+        for blind in combinations(a + b, 2):
+            exact = [first[i] * Fraction(4, 2) for i in blind]
+            actual = two_stage_weights(
+                [float(first[i]) for i in blind], ["g"] * 2, {"g": 4}
+            )
+            assert actual == pytest.approx([float(w) for w in exact])
+            totals.append(sum(w * y[i] for w, i in zip(exact, blind)))
+            group_totals.append(sum(Fraction(8, 2) * y[i] for i in blind))
+    assert len(totals) == 180
+    assert sum(totals) / len(totals) == sum(y)
+    assert sum(group_totals) / len(group_totals) != sum(y)
+
+
+@pytest.mark.parametrize(
+    "first, counts",
+    [
+        ([1, 1], {}),
+        ([0, 1], {"g": 4}),
+        ([-1, 1], {"g": 4}),
+        ([np.nan, 1], {"g": 4}),
+        ([np.inf, 1], {"g": 4}),
+        ([1, 1], {"g": 2.5}),
+        ([1, 1], {"g": np.nan}),
+        ([1, 1], {"g": np.inf}),
+        ([1, 1], {"g": True}),
+        ([1, 1], {"g": 1}),
+    ],
+)
+def test_two_stage_refuses_invalid_group_inputs(first, counts):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="g"):
+        two_stage_weights(first, ["g", "g"], counts)
+
+
+def test_two_stage_refuses_first_stage_below_one():
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="first-stage weight"):
+        two_stage_weights([0.5, 1], ["L", "L"], {"L": 145})
+
+
+@pytest.mark.parametrize("bad", [-1, 0.5, np.nan, np.inf, -np.inf, True, "2"])
+def test_two_stage_validates_counts_of_unrepresented_groups(bad):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="G"):
+        two_stage_weights([1, 1], ["L", "L"], {"L": 145, "G": bad})
+
+
+@pytest.mark.parametrize("empty", [False, True])
+def test_two_stage_refuses_positive_cohort_groups_with_no_blind_shot(empty):
+    from labeler.scoring.stats import two_stage_weights
+
+    with pytest.raises(ValueError, match="no blind shot.*G.*R"):
+        two_stage_weights(
+            [] if empty else [1, 1],
+            [] if empty else ["L", "L"],
+            {"L": 145, "G": 100, "R": 255},
+        )
+
+
+def test_two_stage_allows_unrepresented_zero_count_group():
+    from labeler.scoring.stats import two_stage_weights
+
+    assert two_stage_weights([1, 2], ["L", "L"], {"L": 4, "G": 0}).tolist() == [2, 4]
+
+
+@pytest.mark.parametrize(
+    "values, weights, reason",
+    [
+        ([1, 2], [1, 1, 100], "length"),
+        ([1, 2], [1], "length"),
+        ([1, 2], [[1, 1, 100]], "length"),
+        ([1, 2], 1, "length"),
+        ([[1, 2]], [1, 1], "one-dimensional"),
+        ([1, 2, 3], [1, -10, 10], "nonnegative"),
+        ([1, 2], [1, np.nan], "finite"),
+        ([1, 2], [1, np.inf], "finite"),
+        ([1, 2], [1, -np.inf], "finite"),
+        ([1, 2], [0, 0], "positive"),
+        ([1, 2], [[1, 1], [0, 0]], "positive"),
+    ],
+)
+def test_weighted_median_refuses_invalid_weights(values, weights, reason):
+    with pytest.raises(ValueError, match=reason):
+        weighted_median(values, weights)
+
+
+def test_weighted_median_allows_zero_entries_and_leading_replicate_axes():
+    weights = np.array([[[0, 2, 1], [1, 0, 0]], [[1, 0, 5], [1, 1, 1]]])
+    assert weighted_median([1, 2, 3], weights).tolist() == [[2, 1], [3, 2]]
+
+
+def test_median_estimate_keeps_event_free_draws_undefined():
+    got = median_estimate([7], [0], ["g", "g"], [1, 1], n=100, seed=3)
+    assert got.value == got.low == got.high == 7
+    assert 0 < got.undefined < got.replicates
+    empty = median_estimate([], [], ["g", "g"], [1, 1], n=100, seed=3)
+    assert math.isnan(empty.value) and math.isnan(empty.low) and math.isnan(empty.high)
+    assert empty.undefined == empty.replicates == 100
+
+
+def _frozen_release():
+    catalog = Path(__file__).resolve().parents[2] / "data/events/catalog"
+    with (catalog / "cohort.csv").open() as stream:
+        cohort = list(csv.DictReader(stream))
+    manifest = yaml.safe_load((catalog / "cohort_manifest.yaml").read_text())
+    return cohort, manifest["cells"]
+
+
+def test_frozen_release_blind_weights_equal_manifest_d25():
+    from fractions import Fraction
+
+    cohort, cells = _frozen_release()
+    blind = [row for row in cohort if row["split"] == "test"]
+    counts = Counter(row["group"] for row in cohort)
+    blind_counts = Counter(row["group"] for row in blind)
+    assert len(cohort) == 500 and len(blind) == 50
+    assert counts == {"L": 145, "G": 100, "R": 255}
+    assert blind_counts == {"L": 15, "G": 10, "R": 25}
+    expected = []
+    for row in blind:
+        cell, group = cells[row["cell"]], row["group"]
+        expected.append(
+            float(
+                Fraction(cell["N"], cell["n"])
+                * Fraction(counts[group], blind_counts[group])
+            )
+        )
+    weights = two_stage_weights(
+        [float(row["weight"]) for row in blind],
+        [row["group"] for row in blind],
+        counts,
+    )
+    np.testing.assert_allclose(weights, expected, rtol=1e-15)
+    assert round(float(weights.sum()), 2) == 4888.24
+
+
+@pytest.mark.skipif(
+    os.environ.get("LABELER_COVERAGE") != "1", reason="opt-in coverage study"
+)
+@pytest.mark.parametrize("scenario, seed", [("dense", 7), ("sparse", 13)])
+def test_frozen_blind_coverage_under_d25(scenario, seed, capsys):
+    """Synthetic coverage diagnostic, not a claim of nominal calibration.
+
+    Draw the cohort by group-year cell, then the blind 15/10/25 by group.
+    Sparse events occur on 50% of L, 30% of G and 10% of R shots on average.
+    Reproduce with LABELER_COVERAGE=1; 1,000 draws, 2,000 bootstrap replicates.
+    """
+    started = perf_counter()
+    cohort, design = _frozen_release()
+    counts = Counter(row["group"] for row in cohort)
+    blind_counts = Counter(row["group"] for row in cohort if row["split"] == "test")
+    assert blind_counts == {"L": 15, "G": 10, "R": 25}
+    rng = np.random.default_rng(seed)
+    populations = {}
+    for h, cell in design.items():
+        if not cell["N"]:
+            continue
+        group = h[0]
+        prevalence, quality = {"L": (0.35, 0.85), "G": (0.25, 0.75), "R": (0.1, 0.55)}[
+            group
+        ]
+        rows = []
+        for _ in range(cell["N"]):
+            frames = rng.integers(200, 800)
+            p = prevalence
+            if scenario == "sparse":
+                p = 0.3 if rng.random() < {"L": 0.5, "G": 0.3, "R": 0.1}[group] else 0
+            positive = rng.binomial(frames, rng.beta(2, 2 / p - 2)) if p else 0
+            q = rng.beta(8 * quality, 8 * (1 - quality))
+            tp = rng.binomial(positive, q)
+            fp = rng.binomial(frames - positive, (1 - q) * 0.2)
+            rows.append((tp, fp, positive - tp, frames - positive - fp))
+        populations[h] = np.array(rows, dtype=float)
+
+    def kappa(totals):
+        return cohen_kappa(totals[..., [3, 1, 2, 0]])
+
+    metrics = (precision, recall, f1, kappa)
+    names = ("precision", "recall", "f1", "cohen_kappa")
+    totals = np.concatenate(list(populations.values())).sum(axis=0)
+    truth = np.array([metric(totals) for metric in metrics])
+    draws = 1000
+    hits = np.zeros(4, dtype=int)
+    errors, widths = np.zeros((draws, 4)), np.zeros((draws, 4))
+    event_shots = []
+    for draw in range(draws):
+        samples = {
+            h: pop[rng.choice(len(pop), design[h]["n"], replace=False)]
+            for h, pop in populations.items()
+        }
+        selected, first, groups = [], [], []
+        for group, blind_count in sorted(blind_counts.items()):
+            cells = [h for h in samples if h[0] == group]
+            full = np.concatenate([samples[h] for h in cells])
+            weights = np.concatenate(
+                [
+                    np.full(design[h]["n"], design[h]["N"] / design[h]["n"])
+                    for h in cells
+                ]
+            )
+            assert len(full) == counts[group]
+            picked = rng.choice(len(full), blind_count, replace=False)
+            selected.extend(full[picked])
+            first.extend(weights[picked])
+            groups.extend([group] * blind_count)
+        selected = np.array(selected)
+        weights = two_stage_weights(first, groups, counts)
+        event_shots.append(int(np.sum(selected[:, 0] + selected[:, 2] > 0)))
+        for j, metric in enumerate(metrics):
+            got = estimate(selected, groups, weights, metric, n=2000, seed=draw)
+            if draw == 0:
+                assert got.low < got.high  # Detect a collapsed interval immediately.
+            hits[j] += got.low <= truth[j] <= got.high
+            errors[draw, j] = got.value - truth[j]
+            widths[draw, j] = got.high - got.low
+    coverage = hits / draws
+    with capsys.disabled():
+        print(
+            f"\nFrozen D25 {scenario}: "
+            f"population={sum(c['N'] for c in design.values())}, "
+            f"cohort={dict(counts)}, blind={dict(blind_counts)}, seed={seed}, "
+            f"draws={draws}, replicates=2000, nominal=0.95, "
+            f"median event shots={np.median(event_shots):g}"
+        )
+        for j, name in enumerate(names):
+            se = np.sqrt(coverage[j] * (1 - coverage[j]) / draws)
+            print(
+                f"  {name}: truth={truth[j]:.6f}, coverage={coverage[j]:.3f}, "
+                f"MC_SE={se:.4f}, bias={errors[:, j].mean():+.6f}, "
+                f"mean_width={widths[:, j].mean():.6f}"
+            )
+        print(f"  runtime={perf_counter() - started:.3f}s")
+    # Check nondegeneracy, without imposing a minimum calibration target:
+    # sparse recall covers only 0.744 in this seeded population.
+    assert np.all((0 < coverage) & (coverage < 1))
+    assert np.all(np.abs(errors.mean(axis=0)) < 0.03)
+    if scenario == "sparse":
+        assert np.all(coverage[[0, 2]] < 0.93)
+
+
+@pytest.mark.parametrize("bad", [-1, np.nan, np.inf])
+@pytest.mark.parametrize("kind", ["estimate", "difference"])
+def test_count_cells_refuse_first_bad_row(bad, kind):
+    cells = [[1, 0, 0], [2, bad, 0]]
+    with pytest.raises(ValueError, match="row 1"):
+        if kind == "estimate":
+            estimate(cells, ["a", "a"], [1, 1], precision, n=10)
+        else:
+            difference([[1, 0, 0]] * 2, cells, ["a", "a"], [1, 1], precision)
+
+
+@pytest.mark.parametrize("frames", [[[0, 1, 0], [1, 0, 1]], [0, 1], [[[0, 1]]]])
+def test_cohen_refuses_wrong_shape(frames):
+    with pytest.raises(ValueError, match="shape"):
+        cohen_cells(frames)
+
+
+@pytest.mark.parametrize("frames", [[0, 1], [[0]], [[[0, 1]]]])
+def test_fleiss_refuses_wrong_shape(frames):
+    with pytest.raises(ValueError, match="shape"):
+        fleiss_cells(frames)
+
+
+@pytest.mark.parametrize("bad", [-1, 2, 0.5, np.nan, np.inf])
+@pytest.mark.parametrize("function", [cohen_cells, fleiss_cells])
+def test_agreement_refuses_nonbinary_states(function, bad):
+    with pytest.raises(ValueError, match="0 or 1"):
+        function([[0, bad]])
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_median_refuses_nonfinite_values(bad):
+    with pytest.raises(ValueError, match="finite"):
+        median_estimate([1, bad], [0, 1], ["a", "b"], [1, 1], n=10)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2.5, True, "3"])
+def test_stratum_weights_requires_a_whole_population_at_least_sample_size(count):
+    with pytest.raises(ValueError, match="a"):
+        stratum_weights(["a", "a"], {"a": count})
+
+
+def test_strata_with_the_same_string_are_refused():
+    with pytest.raises(ValueError, match="3.*'3'|'3'.*3"):
+        replicate_weights([3, "3"], [1, 1], n=10)
+
+
+@pytest.mark.parametrize(
+    "seed",
+    [
+        None,
+        True,
+        np.bool_(True),
+        -1,
+        1.5,
+        np.inf,
+        np.nan,
+        "2",
+        np.random.default_rng(1),
+    ],
+)
+@pytest.mark.parametrize("kind", ["replicate", "estimate", "difference", "median"])
+def test_public_bootstrap_functions_refuse_invalid_seeds(seed, kind):
+    with pytest.raises(ValueError, match="seed"):
+        if kind == "replicate":
+            replicate_weights(["a"], [1], n=10, seed=seed)
+        elif kind == "estimate":
+            estimate([[1, 0, 0]], ["a"], [1], precision, n=10, seed=seed)
+        elif kind == "difference":
+            difference([[1, 0, 0]], [[1, 1, 0]], ["a"], [1], precision, seed=seed)
+        else:
+            median_estimate([1], [0], ["a"], [1], n=10, seed=seed)
+
+
+def test_mixed_strata_reproduce_across_hash_seeds():
+    import os
+    import subprocess
+    import sys
+
+    code = """
+import json
+from labeler.scoring.stats import estimate, precision
+print(json.dumps(estimate([[1, 2, 0], [3, 1, 0], [2, 4, 0], [4, 1, 0]],
+                         [3, 'a', 3, 'a'], [2, 1, 2, 1], precision,
+                         seed=42).as_json(), sort_keys=True))
+"""
+    results = [
+        subprocess.check_output(
+            [sys.executable, "-c", code],
+            env={**os.environ, "PYTHONHASHSEED": seed},
+            text=True,
+        )
+        for seed in ["0", "1"]
+    ]
+    assert results[0] == results[1]
