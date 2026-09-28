@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from labeler.events import panels
+from labeler.events.panels import _shared
 from labeler.events.panels import neoclassical_tearing_mode as ntm
 from labeler.events.panels import sawtooth_oscillation as saw
 from labeler.events.review import panel_rows
@@ -121,13 +122,15 @@ def _crashes(t, period_ms, *, start=0.0, stop=np.inf, amp=0.05):
 
 
 def _sawtooth(p, *, ece=True, sxr=True, moving=(3, 5, 20, 25), early=()):
-    """ECE, and an SXR fan whose bright core chords sit still while the dim
-    `moving` ones crash every 50 ms; the `early` ones crash every 20 ms, only
-    before 70 ms."""
+    """ECE with a 3-sample spike at 40 ms, and an SXR fan whose bright core
+    chords sit still while the dim `moving` ones crash every 50 ms; the `early`
+    ones crash every 20 ms, only before 70 ms."""
     groups = {}
     if ece:
         t = tree.times(0.0, 100.0, 500_000)
-        groups["ece"] = (t, 1.0 + tree.noise(48, t, 0.01))
+        y = 1.0 + tree.noise(48, t, 0.01)
+        y[:, 20_000:20_003] += 20.0
+        groups["ece"] = (t, y)
     if sxr:
         t = tree.times(0.0, 400.0, 10_000)
         y = np.full((320, len(t)), np.nan)  # the SX90RM1F fan is dark
@@ -150,11 +153,26 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     _sawtooth(p)
     built = panels.build("sawtooth_oscillation", SHOT, paths=p)
     assert [x.title for x in built][:4] == [
-        f"ECE ch {a}-{a + 3}" for a in (20, 24, 28, 32)
+        f"ECE ch {a}-{a + 3} (0.05 ms median)" for a in (20, 24, 28, 32)
     ]
+    ece = built[0]
+    assert ece.y.shape == (4, 2000), "100 ms in 0.05 ms medians"
+    assert np.nanmax(ece.y) < 1.1, "the spike at 40 ms is gone"
     sxr = built[4]
     assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
     assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
+
+
+def test_a_median_bin_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
+    x = np.arange(500) * 0.25  # 25 samples a 6.25 ms bin, exact in binary
+    y = np.where(x < 62.5, 3.0, 2.0)[None, :]  # a drop at bin 10's edge
+    y[0, 100:104] = 40.0  # a 4-sample spike in bin 4
+    y[0, 300:325] = np.nan  # bin 12, only gaps
+    times, medians = _shared.bin_median(x, y, 6.25)
+    assert np.allclose(times, 6.25 * np.arange(20) + 3.0)
+    assert np.isnan(medians[0, 12])
+    want = np.where(np.arange(20) < 10, 3.0, 2.0)
+    assert np.array_equal(np.delete(medians[0], 12), np.delete(want, 12))
 
 
 def test_the_sxr_chords_are_chosen_over_the_ip_flat_top(tmp_path, monkeypatch):
