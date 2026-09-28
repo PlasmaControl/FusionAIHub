@@ -11,7 +11,10 @@ layout and sizes are settled before their numbers exist.
 - `coverage`: reviewed, positive and suggested shots per phenomenon;
 - `shots`: one discharge as the interpreter shows it, and AE examples;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
-  manuscript's `figures/`.
+  manuscript's `figures/`;
+- `snapshot`: each file the build reads, read once and pinned by its sha256;
+- `staging`: the directory the build draws into, and the swap that puts it in
+  the old output's place.
 
 Nothing here trains or fetches. The score figures and tables read the JSON the
 evaluations wrote; to rank and draw the example and interpreter shots, `build`

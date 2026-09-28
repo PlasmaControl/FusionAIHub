@@ -26,13 +26,13 @@ with the reason and the missing paths, and one drawn without some of them under
 `partial`, each missing part with its reason (the extension's from the AE bar,
 D47; a test shot without a saved label by number). Nothing is drawn into `out`
 itself: the build draws into a directory beside it and swaps that in whole at
-the end, the products and the manifest together, so a failure leaves `out` as
-it was. The old output is deleted only once the new one is in place; a swap
-that can neither finish nor put the old output back (another build's output
-landed at `out` meanwhile, say) deletes nothing and raises `Stranded`, which
-names where each one is. The build claims only the names it writes (`OWNED`:
-the manifest and each product's own `.pdf` and `.png`, or `.tex`); anything
-else in `out` stays.
+the end (`staging`), the products and the manifest together, so a failure
+leaves `out` as it was. The old output is deleted only once the new one is in
+place; a swap that can neither finish nor put the old output back (another
+build's output landed at `out` meanwhile, say) deletes nothing and raises
+`Stranded`, which names where each one is. The build claims only the names it
+writes (`OWNED`: the manifest and each product's own `.pdf` and `.png`, or
+`.tex`); anything else in `out` stays.
 
 `--version` (default `v1`) names the frame model's version the inputs come
 from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the
@@ -63,9 +63,9 @@ shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
 the whole window. The shots are ranked by their F1 over 0-2 s
 (`shots.rank_keys`).
 
-**The sha256s are of the bytes drawn** (`Snapshot`): each input is read once,
-hashed, and parsed from those bytes; a second read of one is refused, so its
-pin stays the bytes drawn. At the end every input is hashed again; one
+**The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
+read once, hashed, and parsed from those bytes; a second read of one is refused,
+so its pin stays the bytes drawn. At the end every input is hashed again; one
 that changed while the build ran (the owner saving, say) is listed under
 `changed_during_build`, with both sha256s, and `consistent` is false.
 
@@ -77,28 +77,24 @@ committed or pushed.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import dataclasses
-import hashlib
-import io
 import json
 import math
-import os
 import shutil
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pandas as pd
 import torch
 
 from ..ae import seg as ae_seg
 from ..ae import xpower
-from ..ae.xpower.train import read_split
-from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
+from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
+from .snapshot import Snapshot
+from .staging import Stranded, staging_dir, swap
 
 VERSION = xpower.VERSION  # the frame model's version; `--version` names another
 SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names another
@@ -260,68 +256,6 @@ def extension_reason(ae: dict | None) -> str:
     return NO_SUMMARY
 
 
-def _staging(out: Path) -> Path:
-    """A fresh directory beside `out` to draw into."""
-    for k in range(1000):
-        staged = out.with_name(f".{out.name}.staging-{os.getpid()}-{k}")
-        try:
-            staged.mkdir(parents=True)
-            return staged
-        except FileExistsError:
-            continue
-    raise FileExistsError(f"{out}: no free staging directory beside it")
-
-
-class Stranded(OSError):
-    """The new output could not be put at `out`, nor the old one back (another
-    build put its own there meanwhile, say). Nothing was deleted: `old` holds
-    the old output and `new` the new one, and the message names both."""
-
-    def __init__(self, out: Path, old: Path, new: Path):
-        self.out, self.old, self.new = out, old, new
-        super().__init__(
-            f"{out}: neither the new output nor the old one could be put there, "
-            f"so nothing was deleted: the old output is in {old}, the new one "
-            f"in {new}"
-        )
-
-
-def _swap(staged: Path, out: Path) -> None:
-    """Put `staged` where `out` is, in two renames. The old products and
-    manifest leave together; every other entry of `out` (not in `OWNED`) is
-    copied over first. The old output is deleted only once the new one is in
-    place: if the second rename fails, the old one is renamed back, and if that
-    fails too, both stay where `Stranded` says."""
-    if not out.exists():
-        staged.rename(out)
-        return
-    for kept in out.iterdir():
-        if kept.name not in OWNED and not (staged / kept.name).exists():
-            if kept.is_dir():
-                shutil.copytree(kept, staged / kept.name, symlinks=True)
-            else:
-                shutil.copy2(kept, staged / kept.name, follow_symlinks=False)
-    holder = Path(tempfile.mkdtemp(prefix=f".{out.name}.old-", dir=out.parent))
-    old = holder / out.name
-    try:
-        out.rename(old)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            holder.rmdir()  # never used: `out` did not move
-        raise
-    try:
-        staged.rename(out)
-    except BaseException:
-        try:
-            old.rename(out)
-        except BaseException as undo:
-            raise Stranded(out, old, staged) from undo
-        with contextlib.suppress(OSError):
-            holder.rmdir()  # empty again: the old output is back at `out`
-        raise
-    shutil.rmtree(holder, ignore_errors=True)
-
-
 def build(
     paths: Paths,
     out: Path,
@@ -335,7 +269,7 @@ def build(
     beside `out`, then swap it in whole; on a failure `out` is left as it was,
     and if the swap can neither finish nor undo itself, nothing is deleted."""
     out = Path(out)
-    staged = _staging(out)
+    staged = staging_dir(out)
     try:
         with tempfile.TemporaryDirectory(prefix="paper-inputs-") as scratch:
             snap = Snapshot(Path(scratch))
@@ -348,66 +282,13 @@ def build(
                 version=version,
                 seg_version=seg_version,
             )
-        _swap(staged, out)
+        swap(staged, out, owned=OWNED)
     except Stranded:
         raise  # `staged` holds the new output, and the message says so
     except BaseException:
         shutil.rmtree(staged, ignore_errors=True)
         raise
     return manifest
-
-
-class Snapshot:
-    """Each input read once: its bytes hashed, then parsed from those bytes, so
-    the manifest pins what was drawn. A second read of a key is refused, so its
-    pin stays the bytes drawn. `changed` hashes every input again."""
-
-    def __init__(self, scratch: Path):
-        self.scratch = scratch  # for a parser that needs a file: the bytes' copy
-        self.pinned: dict[str, tuple[Path, str]] = {}
-
-    def read(self, key: str, path: Path) -> bytes:
-        """`path`'s bytes, pinned under `key`; a `ValueError` if `key` was read."""
-        if key in self.pinned:
-            raise ValueError(
-                f"{key}: already read, from {self.pinned[key][0]}; a second read "
-                "could pin other bytes than the ones drawn"
-            )
-        data = Path(path).read_bytes()
-        self.pinned[key] = (Path(path), hashlib.sha256(data).hexdigest())
-        return data
-
-    def sha(self, key: str) -> str | None:
-        return self.pinned[key][1] if key in self.pinned else None
-
-    def json(self, key: str, path: Path) -> dict:
-        return json.loads(self.read(key, path))
-
-    def csv(self, key: str, path: Path) -> pd.DataFrame:
-        return pd.read_csv(io.BytesIO(self.read(key, path)))
-
-    def split(self, key: str, path: Path) -> dict[int, str]:
-        return read_split(path, data=self.read(key, path))
-
-    def labels(self, key: str, path: Path) -> dict:
-        """A `review/labels.csv`, parsed as the review parses it."""
-        event = self.scratch / key
-        copy = labels.labels_path(event)
-        copy.parent.mkdir(parents=True, exist_ok=True)
-        copy.write_bytes(self.read(key, path))
-        return labels.read_saved(event)
-
-    def model(self, key: str, path: Path, split) -> shots.Model:
-        return shots.Model.load(io.BytesIO(self.read(key, path)), split)
-
-    def changed(self) -> dict[str, dict]:
-        """The inputs whose bytes are no longer the ones drawn."""
-        found = {}
-        for key, (path, drawn) in self.pinned.items():
-            now = sha256_of(path) if path.is_file() else None
-            if now != drawn:
-                found[key] = {"path": str(path), "drawn": drawn, "now": now}
-        return found
 
 
 def _draw(
