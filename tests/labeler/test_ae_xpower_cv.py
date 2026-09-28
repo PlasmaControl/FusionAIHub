@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import dataclasses
 import json
 
 import numpy as np
 import pytest
+import torch
 
 from labeler.ae import xpower
 from labeler.ae.xpower import cv, evaluate, model_dir, train
-from labeler.ae.xpower.data import make_split, seldnet_split
+from labeler.ae.xpower.data import make_split, seldnet_split, store_rows
 from labeler.ae.xpower.model import FrameCNN, FrameCNNConfig
 from labeler.config import sha256_of
 from labeler.events.review import labels
@@ -346,3 +348,197 @@ def test_the_choice_refuses_a_fold_record_trained_with_another_config(
     stderr = capsys.readouterr().err
     assert str(file) in stderr and "config" in stderr and "Traceback" not in stderr
     assert not (out / "choice.json").exists()
+
+
+def _source_file(paths):
+    return labels.source_path(xpower.event_dir(paths))
+
+
+def _shorten_source(paths, shot=103, end=990):
+    """The source table's window of `shot` ends at `end` ms, not 2000 ms, so
+    that the frames after it lie outside it; the table's file."""
+    file = _source_file(paths)
+    text = file.read_text()
+    old = f"{shot},0,900,2000,"
+    assert text.count(old) == 1
+    file.write_text(text.replace(old, f"{shot},0,900,{end},"))
+    return file
+
+
+def test_the_out_of_fold_frames_are_the_tests_frames(tree, monkeypatch):
+    """The reviewer's Minor 5: a fold's frames go through the test's frame
+    selection (`evaluate.shot_frames` with the source table's label), its
+    source-window filter included, and the choice counts what that drops."""
+    paths, _ = tree
+    file = _shorten_source(paths)  # 103's frames 99-199 (990-2000 ms) outside
+    _designed(monkeypatch)
+    given, designed = {}, evaluate.shot_frames
+
+    def shot_frames(shot, **kw):
+        given[shot] = kw.get("source")
+        return designed(shot, **kw)
+
+    monkeypatch.setattr(evaluate, "shot_frames", shot_frames)
+    _all_folds(monkeypatch)
+    source = labels.read_labels(file)
+    assert given == {s: source[s] for s in POOL}  # the test's source labels
+    assert cv.main(["--choose"]) == 0
+    out = model_dir(paths, "v2") / "cv"
+    choice = json.loads((out / "choice.json").read_text())
+    assert choice["source_sha256"] == sha256_of(file)
+    # 101 frames dropped, 30 of them MHD frames the owner called absent.
+    assert choice["frames"] == {
+        "shots": 10,
+        "scored": 10 * 200 - 101,
+        "present": 600,
+        "mhd_absent": 300 - 30,
+        "source_dropped": 101,
+    }
+    k = cv.make_folds(POOL)[103]
+    for name in NAMES:
+        for fold in range(5):
+            record = json.loads((out / name / f"fold{fold}.json").read_text())
+            assert record["source_sha256"] == sha256_of(file)
+            assert record["source_dropped"] == (101 if fold == k else 0)
+    # The saved frames are those the test scores.
+    saved = xpower.read_snapshot(paths, "v2")[1]
+    blob = {"band_khz": [80.0, 250.0], "threshold": 0.5, "candidate": NAMES[0]}
+    model = FrameCNN(FrameCNNConfig(width=4))
+    frames = evaluate.shot_frames(
+        103, paths=paths, label=saved[103], model=model, blob=blob, source=source[103]
+    )
+    with np.load(out / NAMES[0] / f"fold{k}.npz") as z:
+        assert np.array_equal(z["s103"], frames.scored)
+        assert z["s103"][:99].all() and not z["s103"][99:].any()
+    assert frames.source_dropped == 101
+    assert "101 frames outside the source table's window" in (
+        out / "frontier.md"
+    ).read_text().replace("\n", " ")
+
+
+def test_a_fold_shot_the_source_table_lacks_is_refused_before_training(
+    tree, monkeypatch, capsys
+):
+    paths, _ = tree
+    file = _source_file(paths)
+    kept = [x for x in file.read_text().splitlines() if not x.startswith("104,")]
+    file.write_text("\n".join(kept) + "\n")
+    calls = []
+    monkeypatch.setattr(train, "fit", _fake_fit(calls))
+    assert cv.main(["--folds"]) == 0
+    k = cv.make_folds(POOL)[104]
+    with pytest.raises(SystemExit) as error:
+        cv.main(["--candidate", NAMES[0], "--fold", str(k)])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(file) in stderr and "104" in stderr and "Traceback" not in stderr
+    assert calls == []  # refused before any training
+    assert not (model_dir(paths, "v2") / "cv" / NAMES[0]).exists()
+
+
+def test_the_choice_refuses_folds_scored_on_another_source_table(
+    tree, monkeypatch, capsys
+):
+    paths, _ = tree
+    _all_folds(monkeypatch)
+    _shorten_source(paths)  # after the fold tasks
+    with pytest.raises(SystemExit) as error:
+        cv.main(["--choose"])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert "source_sha256" in stderr and "Traceback" not in stderr
+    assert not (model_dir(paths, "v2") / "cv" / "choice.json").exists()
+
+
+def test_one_check_names_a_versions_candidates(tree, tmp_path, monkeypatch, capsys):
+    """The reviewer's Minor 9: cv and train refuse another version's candidate
+    through one function, with one message."""
+    assert train.candidate_spec("v2", "band80-mhd10") == {
+        "band": (80.0, 250.0),
+        "mhd_weight": 10.0,
+    }
+    message = (
+        "candidate band0-mhd3 is not one of version v2's: band80-mhd3, "
+        "band80-mhd10, band80-mhd30"
+    )
+    with pytest.raises(ValueError) as error:
+        train.candidate_spec("v2", "band0-mhd3")
+    assert str(error.value) == message
+    assert cv.main(["--folds"]) == 0
+    out = ["--out", str(tmp_path / "v2" / "band0-mhd3")]
+    commands = (
+        (cv.main, ["--candidate", "band0-mhd3", "--fold", "0"]),
+        (train.main, ["--version", "v2", "--candidate", "band0-mhd3", *out]),
+    )
+    for main, args in commands:
+        with pytest.raises(SystemExit):
+            main(args)
+        assert message in capsys.readouterr().err
+
+    def refuse(version, name):
+        raise ValueError(f"the one check refused {name} of {version}")
+
+    monkeypatch.setattr(train, "candidate_spec", refuse)
+    out = ["--out", str(tmp_path / "v1" / "band0-mhd3")]
+    commands = (
+        (cv.main, ["--candidate", NAMES[0], "--fold", "0"]),
+        (train.main, ["--version", "v1", "--candidate", "band0-mhd3", *out]),
+    )
+    for main, args in commands:
+        with pytest.raises(SystemExit):
+            main(args)
+        assert "the one check refused" in capsys.readouterr().err
+    assert not (tmp_path / "v1").exists() and not (tmp_path / "v2").exists()
+
+
+@pytest.fixture
+def two_threads():
+    """Two torch threads: the default, one per core, crawls on a shared node."""
+    before = torch.get_num_threads()
+    torch.set_num_threads(2)
+    yield
+    torch.set_num_threads(before)
+
+
+def test_a_folds_saved_p_ae_is_its_restored_best_epochs(tree, monkeypatch, two_threads):
+    """The reviewer's Minor 10, with the real `fit` on the synthetic tree: fold
+    K's saved P(AE) is its best epoch's model, restored after later epochs
+    trained on and predicted otherwise."""
+    paths, _ = tree
+    _short(monkeypatch, epochs=4)
+    made, states = [], []
+
+    class Recorded(train.FrameCNN):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    monkeypatch.setattr(train, "FrameCNN", Recorded)
+
+    def log(line):  # after each epoch's validation, before fit keeps it or not
+        states.append(copy.deepcopy(made[-1].state_dict()))
+
+    assert cv.main(["--folds"]) == 0
+    models = model_dir(paths, "v2")
+    record = cv.run_fold(
+        paths, models, candidate=NAMES[0], fold=3, version="v2", log=log
+    )
+    (model,) = made
+    best, run = record["best_epoch"], record["epochs_run"]
+    assert 1 <= best < run == len(states) == 4
+    assert [h["kept"] for h in record["history"]].count(True) >= 1
+    band = train.candidates("v2")[NAMES[0]]["band"]
+
+    def p_ae(state, shot):
+        model.load_state_dict(state)
+        rows = store_rows(paths.spectrogram_file(xpower.EVENT, shot))
+        prob, _ = train.probabilities(model, rows, 0, 200, band=band)
+        return np.asarray(prob, dtype=np.float32)
+
+    with np.load(models / "cv" / NAMES[0] / "fold3.npz") as z:
+        saved = {s: z[f"p{s}"] for s in record["shots"]}
+    assert sorted(saved) == [103, 110]
+    for shot, p in saved.items():
+        np.testing.assert_array_equal(p, p_ae(states[best - 1], shot))
+    later = max(np.abs(p - p_ae(states[-1], s)).max() for s, p in saved.items())
+    assert later > 0.01  # the last epoch's model predicts otherwise

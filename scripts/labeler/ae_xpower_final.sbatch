@@ -21,7 +21,9 @@
 #       for the median of its five folds' best epochs, no early stopping, at the
 #       choice's threshold: models/ae_xpower/v2/<candidate>/{model.pt, split.csv,
 #       training.json, review/labels.csv} and models/ae_xpower/v2/chosen.json.
-# Labels come only from the version's frozen snapshot; nothing is fetched. CPU only.
+# The owner's labels come only from the version's frozen snapshot; the choice also
+# checks that the source table ($LABELER_LABEL_TABLES/alfven_eigenmode/format/) is the
+# one every fold record scored with, as the test does. Nothing is fetched. CPU only.
 # The test shots are scored afterwards, once:
 #   VERSION=v2 sbatch --dependency=afterok:<id> ae_xpower_evaluate.sbatch
 #

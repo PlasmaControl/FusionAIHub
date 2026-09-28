@@ -227,7 +227,7 @@ def test_merge_indexes_only_the_merged_shards_pictures(tmp_path, monkeypatch):
 def test_a_snapshot_versions_gallery_reads_only_its_snapshot(tmp_path, monkeypatch):
     paths = ae_tree.build(tmp_path, {101: "train", 102: "train", 103: "valid"})
     ae_tree.env(monkeypatch, paths)
-    ae_tree.snapshot(paths, monkeypatch)
+    digest = ae_tree.snapshot(paths, monkeypatch)
     ae_tree.chosen(paths, {101: "train", 102: "val", 103: "test"}, "v2")
     live = labels.labels_path(xpower.event_dir(paths))
     live.write_bytes(b"the owner kept saving")  # not v2's labels
@@ -238,6 +238,7 @@ def test_a_snapshot_versions_gallery_reads_only_its_snapshot(tmp_path, monkeypat
     assert gallery.main(["--version", "v2", "--workers", "1"]) == 0
     index = pd.read_csv(gallery.gallery_dir(paths, "v2") / "index.csv")
     assert set(index.group) == {"reviewed"} and len(index) == 3
+    assert set(index.snapshot_sha256) == {digest}  # the reviewer's Minor 11
 
 
 def test_a_gallery_from_a_models_directory_under_runs_draws_under_runs(

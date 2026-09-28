@@ -18,9 +18,11 @@
 # Task (c, k) trains candidate c on the three folds other than k and (k+1) mod 5,
 # early-stops on fold (k+1) mod 5 (validation F1 at 0.5), and writes fold k's
 # out-of-fold P(AE) to $LABELER_ROOT/models/ae_xpower/$VERSION/cv/<c>/fold<k>.{npz,json}.
-# Labels come only from the version's frozen snapshot
+# The owner's labels come only from the version's frozen snapshot
 # ($LABELER_ROOT/models/ae_xpower/$VERSION/review/labels.csv, sha256 checked); the
-# live review file is never read. Nothing is fetched. CPU only, 4 threads.
+# live review file is never read. The frames scored are the test's, inside the source
+# table's windows ($LABELER_LABEL_TABLES/alfven_eigenmode/format/, its sha256 in the
+# record). Nothing is fetched. CPU only, 4 threads.
 #
 # Before the array, write the folds once, on the login node (seconds; a SLURM job
 # for it could not meet the gate); a fold task refuses to run without them:

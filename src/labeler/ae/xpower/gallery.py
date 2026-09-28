@@ -13,7 +13,8 @@ not the live file; `--version` must be the models directory's name and the
 checkpoint's version. A version chosen by cross-validation (v2) is drawn only
 after its test: a picture gives the model's F1 against the owner on a test shot
 too, so the gallery refuses until the models directory's `evaluation.json` has
-scored the model it draws (`check_tested`).
+scored the model it draws (`check_tested`). Each index row names the version's
+label snapshot by sha256 (`snapshot_sha256`, blank for v1, which has none).
 
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
 scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
@@ -85,6 +86,7 @@ INDEX_COLUMNS = (
     "threshold",
     "candidate",
     "version",
+    "snapshot_sha256",
 )
 MARGIN_MS = 50.0
 BAND_LINE_KHZ = 80.0
@@ -255,6 +257,7 @@ def _init(
             else labels.read_saved(event_dir(paths))
         ),
         source=labels.read_source(event_dir(paths)),
+        snapshot=LABEL_SNAPSHOTS.get(version, ""),
     )
 
 
@@ -314,6 +317,7 @@ def picture(shot: int) -> dict:
         "threshold": blob["threshold"],
         "candidate": blob["candidate"],
         "version": version,
+        "snapshot_sha256": w["snapshot"],
     }
 
 

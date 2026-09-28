@@ -115,6 +115,17 @@ def candidates(version: str = VERSION) -> dict[str, dict]:
         ) from None
 
 
+def candidate_spec(version: str, name: str) -> dict:
+    """The version's candidate `name`, {band, mhd_weight}; refused, naming the
+    version's candidates, when it is not one of them (for `train` and `cv`)."""
+    names = candidates(version)
+    if name not in names:
+        raise ValueError(
+            f"candidate {name} is not one of version {version}'s: " + ", ".join(names)
+        )
+    return names[name]
+
+
 @dataclass(frozen=True)
 class TrainConfig:
     epochs: int = 60
@@ -436,7 +447,7 @@ def train_from_cv(
             f"{cv.cv_dir(models) / 'folds.csv'} holds"
         )
     name, threshold = choice["candidate"], float(choice["threshold"])
-    spec = candidates(version)[name]
+    spec = candidate_spec(version, name)
     out, chosen_file = models / name, models / "chosen.json"
     if chosen_file.exists() and not in_runs:
         raise FileExistsError(f"{chosen_file}: the version's model is chosen once")
@@ -577,12 +588,9 @@ def main(argv=None) -> int:
     if args.candidate is None:
         p.error("--candidate is required without --from-cv")
     try:
-        spec = candidates(args.version)[args.candidate]
-    except (KeyError, ValueError):
-        p.error(
-            f"--candidate {args.candidate} is not one of version {args.version}'s: "
-            + ", ".join(CANDIDATES_BY_VERSION.get(args.version, ()))
-        )
+        spec = candidate_spec(args.version, args.candidate)
+    except ValueError as error:
+        p.error(str(error))
     if args.version in CV_VERSIONS:
         p.error(
             f"version {args.version} is chosen by cross-validation "

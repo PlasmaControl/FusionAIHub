@@ -458,3 +458,27 @@ def test_a_choice_from_another_snapshot_is_refused(tmp_path, monkeypatch, capsys
     stderr = capsys.readouterr().err
     assert str(file) in stderr and "snapshot" in stderr
     assert not (model_dir(paths, "v2") / "chosen.json").exists()
+
+
+def test_the_test_scores_with_the_choices_source_table_and_records_it(
+    tmp_path, monkeypatch, capsys
+):
+    """The choice's frames are the test's (the reviewer's Minor 5): the check
+    and the test refuse another source table than the one the fold records and
+    the choice name, and the test records the one it scored with."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    file = labels.source_path(xpower.event_dir(paths))
+    data = file.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
+    choice = json.loads((models / "cv" / "choice.json").read_text())
+    assert choice["source_sha256"] == digest
+    file.write_bytes(data.replace(b"112,0,900,2000,", b"112,0,900,1990,"))
+    for command in ("--choose", "--test"):
+        args = [command, "--version", "v2"]
+        _refused(capsys, evaluate.main, args, str(file), "source_sha256")
+    assert not (models / "evaluation.json").exists()
+    file.write_bytes(data)
+    assert evaluate.main(["--test", "--version", "v2"]) == 0
+    meta = json.loads((models / "evaluation.json").read_text())["meta"]
+    assert meta["source_sha256"] == digest

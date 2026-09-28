@@ -21,8 +21,11 @@ version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
-the source table's window. 0-2 s is all TokEye and the earlier detector ever
-saw, so every method is scored on the same frames.
+the source table's window (`source_table`; the record names it by sha256).
+0-2 s is all TokEye and the earlier detector ever saw, so every method is
+scored on the same frames. A cross-validated version's out-of-fold frames are
+these too (`cv`), and its test refuses a source table other than the one they
+were chosen with.
 
 **Methods.** `ae_xpower`, the chosen candidate at its validation threshold;
 `seldnet`, the earlier detector (`ae_seldnet_threeway_sce.pt`), a frame present
@@ -58,6 +61,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -119,6 +123,7 @@ class ShotFrames:
     scored: np.ndarray  # (n,) bool
     said: dict[str, np.ndarray] = field(default_factory=dict)
     prob: np.ndarray | None = None  # model P(AE), retained for validation sweeps
+    source_dropped: int = 0  # frames otherwise scored, outside the source window
 
 
 def fp_rate(totals):
@@ -182,6 +187,29 @@ def seldnet_said(net, spec_path, t_ms, first: int, n: int) -> np.ndarray:
     return frame_share(t_ms, prob >= 0.5, first, n) >= 0.5
 
 
+class SourceTable(NamedTuple):
+    """The table the owner started from (`labels.source_path`): its file, the
+    sha256 of the bytes read, and their labels, one per shot."""
+
+    path: Path | None
+    sha256: str | None
+    labels: dict
+
+
+def source_table(paths: Paths) -> SourceTable:
+    """The source table, parsed from the very bytes its sha256 describes; with
+    no table, no labels. The test and `cv`'s fold tasks read it through here."""
+    file = labels.source_path(event_dir(paths))
+    if file is None:
+        return SourceTable(None, None, {})
+    data = file.read_bytes()
+    with TemporaryDirectory(prefix="ae-source-") as directory:
+        copy = Path(directory) / file.name
+        copy.write_bytes(data)
+        found = labels.read_labels(copy)
+    return SourceTable(file, hashlib.sha256(data).hexdigest(), found)
+
+
 def shot_frames(
     shot: int,
     *,
@@ -193,7 +221,9 @@ def shot_frames(
     seldnet=None,
     spec_path=None,
 ) -> ShotFrames:
-    """Frames 0-2 s of one shot, and every method the arguments allow."""
+    """Frames 0-2 s of one shot, and every method the arguments allow. With
+    `source` (the shot's source-table label), only the frames inside its window
+    are scored, and `source_dropped` counts the others."""
     first, n = EVAL_FRAMES
     rows = store_rows(paths.spectrogram_file(EVENT, shot))
     prob, observed = probabilities(model, rows, first, n, band=blob["band_khz"])
@@ -209,16 +239,18 @@ def shot_frames(
         "uci": tk["ann"] >= MIN_FRACTION,
         "always": np.ones(n, dtype=bool),
     }
+    dropped = 0
     if source is not None:
         src = targets(source, first, n)
         said["source"] = src == PRESENT
+        dropped = int((scored & (src < 0)).sum())
         scored &= src >= 0
     if seldnet is not None:
         with np.load(path) as z:
             t_ms = np.asarray(z["t_ms"], dtype=np.float64)
         said["seldnet"] = seldnet_said(seldnet, spec_path, t_ms, first, n)
     mhd = tk["covered"] & (tk["low"] >= MIN_FRACTION)
-    return ShotFrames(int(shot), owner, mhd, scored, said, prob)
+    return ShotFrames(int(shot), owner, mhd, scored, said, prob, dropped)
 
 
 def window_cells(shot: int, *, paths: Paths, label, model, blob: dict) -> np.ndarray:
@@ -475,13 +507,15 @@ def cv_chosen(
     *,
     split: dict[int, str] | None = None,
     model: bytes | None = None,
+    source: SourceTable | None = None,
 ) -> dict:
     """A cross-validated version's `chosen.json`, checked against `cv/choice.json`
     and `cv/folds.csv` (as the snapshot and TokEye's masks give it now); the
     chosen model's bytes (`model`, else its `model.pt`) against its
-    `model_sha256`; and the model's split (`split`, else its `split.csv`)
-    against the folds: their test shots, and all of their pool shots to train (a
-    pilot's, the first N)."""
+    `model_sha256`; the model's split (`split`, else its `split.csv`) against
+    the folds: their test shots, and all of their pool shots to train (a
+    pilot's, the first N); and the source table (`source`, else the current
+    one) against the one the choice's frames were scored with."""
     from . import cv  # cv imports this module
 
     chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
@@ -519,6 +553,13 @@ def cv_chosen(
         raise ValueError(
             f"{split_file}: shots {', '.join(map(str, differ))} are not split as "
             f"the folds ({folds_file}) have them"
+        )
+    source = source_table(paths) if source is None else source
+    if source.sha256 != choice.get("source_sha256"):
+        raise ValueError(
+            f"{source.path or event_dir(paths)}: not the source table "
+            f"{choice_file}'s frames were scored with (source_sha256); the test "
+            "scores the same frames"
         )
     return chosen
 
@@ -615,6 +656,7 @@ def run_test(
         model, blob = load(frozen / "model.pt")
         split = read_split(frozen / "split.csv")
     check_bound(version, models, blob, file)
+    source = source_table(paths)
     cv_meta = {}
     if version in CV_VERSIONS:
         choice_file = models / "cv" / "choice.json"
@@ -628,11 +670,15 @@ def run_test(
                 f"once, outside {paths.runs}"
             )
         chosen = cv_chosen(
-            paths, models, version, split=split, model=snapshots["model.pt"]
+            paths,
+            models,
+            version,
+            split=split,
+            model=snapshots["model.pt"],
+            source=source,
         )
         cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
-    source = labels.read_source(event_dir(paths))
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
     shots, windows = [], []
@@ -645,7 +691,7 @@ def run_test(
                 label=saved[s],
                 model=model,
                 blob=blob,
-                source=source.get(s),
+                source=source.labels.get(s),
                 seldnet=seldnet,
                 spec_path=spec,
             )
@@ -682,6 +728,7 @@ def run_test(
         "band_khz": blob["band_khz"],
         "model_git_sha": blob["git_sha"],
         "labels_sha256": blob["labels_sha256"],
+        "source_sha256": source.sha256,
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tier": "suggestions",
