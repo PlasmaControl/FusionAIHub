@@ -14,7 +14,9 @@ refuses to run when that file's sha256 is not the one recorded here.
 **Binding.** Every command's `--version` must be its models directory's name and
 the version its checkpoints record (`check_bound`). A full scoring is never made
 under `runs/`, and a pilot scoring there is 20 test shots at most (`check_full`);
-the extension's gate is never read from there.
+the extension's gate is never read from there. A cross-validated version is
+tested and drawn only from its own models directory or a pilot's under `runs/`
+(`check_own_dir`).
 """
 
 from __future__ import annotations
@@ -69,6 +71,21 @@ def check_full(paths: Paths, models: Path, limit: int) -> None:
         raise ValueError(
             f"{models}: a pilot scoring under {paths.runs} is at most "
             f"{PILOT_MAX} test shots, not --limit {limit}"
+        )
+
+
+def check_own_dir(paths: Paths, models: Path, version: str) -> None:
+    """A cross-validated version's test, taken once, and its pictures, which show
+    the test shots, come from its own models directory (by any path resolving
+    to it) or a pilot's under `runs/`: a copy anywhere else would take the one
+    look again, in full, and draw into the version's gallery."""
+    if version not in CV_VERSIONS or pilot_area(models, paths.runs):
+        return
+    own = model_dir(paths, version)
+    if models.resolve() != own.resolve():
+        raise ValueError(
+            f"{models}: version {version} is tested and drawn only from its own "
+            f"models directory {own} or a pilot's under {paths.runs}"
         )
 
 

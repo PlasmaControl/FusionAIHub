@@ -66,7 +66,7 @@ import io
 import json
 import os
 import resource
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -235,10 +235,10 @@ def _by_fold(folds: dict[int, int], pilot: int) -> dict[int, list[int]]:
 
 
 def fold_config(spec: dict, pilot: int) -> train.TrainConfig:
-    """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight;
-    a pilot's, for `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
-    config = train.TrainConfig(mhd_weight=spec["mhd_weight"])
-    return replace(config, epochs=PILOT_EPOCHS) if pilot else config
+    """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight
+    (`train.cv_config`, which the final model's is too); a pilot's, for
+    `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
+    return train.cv_config(spec, PILOT_EPOCHS if pilot else None)
 
 
 def _record_paths(models: Path, candidate: str, k: int) -> tuple[Path, Path]:
@@ -559,8 +559,8 @@ def frontier_md(choice: dict) -> str:
         (
             f"**Chosen: {choice['candidate']} at {choice['threshold']:.2f}, by "
             f"branch {choice['branch']}**; the final model trains on all "
-            f"{n['shots']} shots for {choice['final_epochs']} epochs, the median "
-            f"of its folds' best epochs {epochs}."
+            f"{n['shots']} shots for {train.epochs_text(choice['final_epochs'])}, "
+            f"the median of its folds' best epochs {epochs}."
         ),
         "",
         "| candidate | fold best epochs |",

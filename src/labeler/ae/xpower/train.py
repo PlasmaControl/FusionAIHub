@@ -42,7 +42,7 @@ import os
 import resource
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -137,6 +137,21 @@ class TrainConfig:
     mhd_weight: float = 3.0
     patience: int = 10
     seed: int = SEED
+
+
+def cv_config(spec: dict, epochs: int | None = None) -> TrainConfig:
+    """A cross-validated version's training, made only here: v1's `TrainConfig`
+    with the candidate's MHD weight, for `epochs` when given. Its fold tasks take
+    it as it is (`cv.fold_config`; a pilot's for `cv.PILOT_EPOCHS`), its final
+    model for the choice's `final_epochs` (`train_from_cv`), and the test checks
+    the final checkpoint's `train` against it (`evaluate.check_cv_model`)."""
+    config = TrainConfig(mhd_weight=spec["mhd_weight"])
+    return config if epochs is None else replace(config, epochs=epochs)
+
+
+def epochs_text(n: int) -> str:
+    """An epoch count in words: "1 epoch", else "N epochs"."""
+    return f"{n} epoch" if n == 1 else f"{n} epochs"
 
 
 def frame_weights(states, mhd, mhd_weight: float, observed=None) -> np.ndarray:
@@ -454,7 +469,7 @@ def train_from_cv(
     pool = sorted(folds.folds)  # exactly the folds' shots; a pilot, the first N
     epochs = int(choice["final_epochs"])
     if pilot:
-        pool, epochs = pool[:pilot], 2
+        pool, epochs = pool[:pilot], cv.PILOT_EPOCHS
     elif len(pool) != choice["frames"]["shots"]:
         raise ValueError(
             f"{choice_file}: pooled {choice['frames']['shots']} shots; the folds "
@@ -478,7 +493,7 @@ def train_from_cv(
         refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
         split = {s: "test" for s, v in folds.split.items() if v == "test"}
         split |= dict.fromkeys(pool, "train")
-        config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
+        config = cv_config(spec, epochs)
         shots = [
             load_shot(
                 s,
@@ -513,7 +528,7 @@ def train_from_cv(
         "why": (
             f"cross-validation ({choice_file.name}), Deviation 11 branch "
             f"{choice['branch']}: {cv.BRANCHES[choice['branch']]}; trained on "
-            f"{len(pool)} shots for {epochs} epochs, no early stopping"
+            f"{len(pool)} shots for {epochs_text(epochs)}, no early stopping"
         ),
         "branch": choice["branch"],
         "final_epochs": epochs,

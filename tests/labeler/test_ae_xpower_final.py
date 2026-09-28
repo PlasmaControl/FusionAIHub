@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import shutil
@@ -230,6 +231,66 @@ def test_the_final_model_takes_no_epochs(tmp_path, monkeypatch, capsys):
     assert not (models / "chosen.json").exists()
 
 
+@pytest.mark.parametrize("epochs, count", [(1, "1 epoch"), (4, "4 epochs")])
+def test_the_final_models_records_count_its_epochs(
+    tmp_path, monkeypatch, epochs, count
+):
+    """The reviewer's Minor 7: "1 epoch", "N epochs", in `chosen.json`'s `why`
+    and in `frontier.md`, for a choice whose folds' best epochs are `epochs`."""
+    paths, _ = cv_tree(tmp_path, monkeypatch)
+    _designed(monkeypatch)
+
+    def fit(train_shots, val_shots, config, log=print):
+        history = [
+            {"epoch": e, "val_f1": 0.5, "kept": e <= epochs}
+            for e in range(1, epochs + 2)
+        ]
+        return train.FrameCNN(train.FrameCNNConfig(width=4)), history, 0.5
+
+    monkeypatch.setattr(train, "fit", fit)
+    assert cv.main(["--folds"]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k)]) == 0
+    assert cv.main(["--choose"]) == 0
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    models = model_dir(paths, "v2")
+    chosen = json.loads((models / "chosen.json").read_text())
+    assert chosen["final_epochs"] == epochs
+    assert f"trained on 10 shots for {count}, no early stopping" in chosen["why"]
+    frontier = (models / "cv" / "frontier.md").read_text()
+    assert f"on all 10 shots for {count}, the median" in frontier
+
+
+def test_a_pilot_final_model_trains_for_the_pilots_epochs(tmp_path, monkeypatch):
+    """`cv.PILOT_EPOCHS`, by name (the reviewer's Minor 7)."""
+    paths, _ = cv_tree(tmp_path, monkeypatch)
+    _designed(monkeypatch)
+    monkeypatch.setattr(train, "fit", _fake_fit([]))
+    pilot = ["--pilot", "5"]  # one shot a fold
+    assert cv.main(["--folds", *pilot]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k), *pilot]) == 0
+    assert cv.main(["--choose", *pilot]) == 0
+    configs = []
+
+    def fit(train_shots, val_shots, config, log=print):
+        configs.append(config)
+        return _untrained(train_shots, val_shots, config, log)
+
+    monkeypatch.setattr(train, "fit", fit)
+    monkeypatch.setattr(cv, "PILOT_EPOCHS", 1)
+    assert train.main(["--version", "v2", "--from-cv", "--pilot", "6"]) == 0
+    runs = paths.runs / "ae_xpower" / "pilot" / "v2"
+    chosen = json.loads((runs / "chosen.json").read_text())
+    assert [c.epochs for c in configs] == [1] and chosen["final_epochs"] == 1
+    _, blob = train.load(runs / chosen["candidate"] / "model.pt")
+    assert blob["fixed_epochs"] == 1 and blob["train"]["epochs"] == 1
+    assert "trained on 6 shots for 1 epoch, no early stopping" in chosen["why"]
+
+
 def _final_and_v1(tmp_path, monkeypatch):
     """v2's final model from its choice, and a v1 that tests 111; the paths."""
     paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
@@ -253,6 +314,59 @@ def test_a_copy_of_the_final_model_under_runs_is_never_scored(
     args = ["--test", "--version", "v2", "--models", str(copy), "--limit", "1"]
     _refused(capsys, evaluate.main, args, str(copy / "cv" / "choice.json"), "pilot")
     assert not (copy / "evaluation.json").exists()
+
+
+def _files(directory: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(directory)): p.read_bytes()
+        for p in sorted(directory.rglob("*"))
+        if p.is_file()
+    }
+
+
+def test_a_copy_of_the_final_model_elsewhere_is_never_tested(
+    tmp_path, monkeypatch, capsys
+):
+    """The reviewer's probe B: the test is taken once per models directory, so a
+    copy of v2's outside runs/ would take the one look in full, again and again.
+    Its own directory, by any path that resolves to it, is tested once."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    real = model_dir(paths, "v2")
+    copy = tmp_path / "elsewhere" / "v2"
+    shutil.copytree(real, copy)
+    before = _files(copy)
+    args = ["--test", "--version", "v2", "--models"]
+    own = ("own models directory", str(real))
+    _refused(capsys, evaluate.main, [*args, str(copy)], str(copy), *own)
+    assert _files(copy) == before
+    assert not (real / "evaluation.json").exists()
+    link = tmp_path / "link" / "v2"  # the version's own directory, by a link
+    link.parent.mkdir()
+    link.symlink_to(real, target_is_directory=True)
+    assert evaluate.main([*args, str(link)]) == 0
+    assert (real / "evaluation.json").is_file()
+    _refused(capsys, evaluate.main, [*args, str(real)], "scored once")
+
+
+def test_a_copy_of_the_final_model_elsewhere_is_never_drawn(
+    tmp_path, monkeypatch, capsys
+):
+    """Probe B's gallery: a copy of v2's models directory outside runs/, made
+    after the test (its evaluation names its model), would draw into the
+    version's gallery. Only its own directory draws there."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    real = model_dir(paths, "v2")
+    assert evaluate.main(["--test", "--version", "v2"]) == 0
+    copy = tmp_path / "elsewhere" / "v2"
+    shutil.copytree(real, copy)
+    before = _files(copy)
+    args = ["--version", "v2", "--workers", "1", "--shots", "111"]
+    own = ("own models directory", str(real))
+    _refused(capsys, gallery.main, [*args, "--models", str(copy)], str(copy), *own)
+    assert _files(copy) == before
+    assert not gallery.gallery_dir(paths, "v2").exists()
+    assert gallery.main(args) == 0
+    assert (gallery.gallery_dir(paths, "v2") / "reviewed" / "111.jpg").is_file()
 
 
 def test_a_pilot_choices_model_is_scored_and_drawn_under_runs(
@@ -330,6 +444,39 @@ def test_the_checks_compare_the_models_bytes_with_chosen_json(
     args = [command, "--version", "v2"]
     _refused(capsys, evaluate.main, args, str(file), "model_sha256")
     assert not (model_dir(paths, "v2") / "evaluation.json").exists()
+
+
+@pytest.mark.parametrize("key", ["fixed_epochs", "band_khz", "train"])
+def test_the_test_checks_the_final_models_training_facts(
+    tmp_path, monkeypatch, capsys, key
+):
+    """The reviewer's Minor 2: the final model trains for the choice's
+    `final_epochs`, on its candidate's band, with `fold_config`'s TrainConfig for
+    that many epochs; a checkpoint recording otherwise is refused, by name, even
+    with a `chosen.json` that names its bytes."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    choice = json.loads((models / "cv" / "choice.json").read_text())
+    spec = train.candidate_spec("v2", choice["candidate"])
+    config = dataclasses.replace(cv.fold_config(spec, 0), epochs=choice["final_epochs"])
+    file = models / choice["candidate"] / "model.pt"
+    blob = torch.load(file, map_location="cpu", weights_only=False)
+    assert blob["fixed_epochs"] == choice["final_epochs"] == 4
+    assert blob["band_khz"] == list(spec["band"])
+    assert blob["train"] == dataclasses.asdict(config)
+    blob[key] = {
+        "fixed_epochs": 5,
+        "band_khz": [0.0, 250.0],
+        "train": {**blob["train"], "mhd_weight": 30.0},
+    }[key]
+    torch.save(blob, file)
+    chosen_file = models / "chosen.json"
+    chosen = json.loads(chosen_file.read_text())
+    chosen["model_sha256"] = sha256_of(file)
+    chosen_file.write_text(json.dumps(chosen, indent=1) + "\n")
+    args = ["--test", "--version", "v2"]
+    _refused(capsys, evaluate.main, args, str(file), f": {key} differs")
+    assert not (models / "evaluation.json").exists()
 
 
 def _crashed(tmp_path, monkeypatch):
