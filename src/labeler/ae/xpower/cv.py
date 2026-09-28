@@ -25,9 +25,12 @@ and the choice, the final model and `chosen.json` name the file's sha256.
 `TrainConfig` with the candidate's MHD weight, `fold_config`; there is no
 `--epochs`); the other three train. Fold K's shots never train or stop the
 model that predicts them. It writes `cv/<candidate>/fold<K>.npz`, per fold-K
-shot the 0-2 s frames `evaluate.shot_frames` gives (`p<shot>` P(AE), `o<shot>`
-the owner's states, `m<shot>` MHD, `s<shot>` scored), then `fold<K>.json`, the
-record that marks the task done.
+shot the 0-2 s frames the test scores (`evaluate.shot_frames` with the shot's
+source-table label, so only inside that table's window; a fold shot the table
+lacks is refused before training): `p<shot>` P(AE), `o<shot>` the owner's
+states, `m<shot>` MHD, `s<shot>` scored. Then `fold<K>.json`, the record that
+marks the task done, with the source table's sha256 and the frames its window
+dropped.
 
 **The choice.** The out-of-fold frames of all five folds, pooled per candidate
 (every pool shot once), at thresholds 0.10 to 0.90 in steps of 0.05, as
@@ -43,9 +46,10 @@ against 0.55, which the rule leaves open) to the lower threshold, as
 `train.pick_threshold` orders them. A row with an undefined F1 never counts; one
 with an undefined MHD FP (no MHD frame) is never in branch 1 or 2. `--choose`
 refuses while any of the 15 records is missing, or one differs from what its
-task gives (its shots, stop fold, snapshot, folds and `TrainConfig`), naming
-them. It writes `cv/choice.json` (the choice, its branch, the whole table and
-each fold's best epoch; the final model trains for the median of the chosen
+task gives (its shots, stop fold, snapshot, folds, source table and
+`TrainConfig`), naming them. It writes `cv/choice.json` (the choice, its branch,
+the whole table, the frames and how many the source window dropped, and each
+fold's best epoch; the final model trains for the median of the chosen
 candidate's five) and `cv/frontier.md`. Run again, it checks the saved choice
 and changes nothing.
 
@@ -77,6 +81,7 @@ from . import (
     EVENT,
     LABEL_SNAPSHOTS,
     evaluate,
+    event_dir,
     model_dir,
     pilot_area,
     read_snapshot,
@@ -229,16 +234,6 @@ def _by_fold(folds: dict[int, int], pilot: int) -> dict[int, list[int]]:
     return by
 
 
-def _spec(version: str, candidate: str) -> dict:
-    names = train.candidates(version)
-    if candidate not in names:
-        raise ValueError(
-            f"--candidate {candidate} is not one of version {version}'s: "
-            + ", ".join(names)
-        )
-    return names[candidate]
-
-
 def fold_config(spec: dict, pilot: int) -> train.TrainConfig:
     """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight;
     a pilot's, for `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
@@ -263,7 +258,7 @@ def run_fold(
 ) -> dict:
     """Train on three folds, stop on fold `fold` + 1, predict fold `fold`."""
     check_version(models, version)
-    spec = _spec(version, candidate)
+    spec = train.candidate_spec(version, candidate)
     if not 0 <= fold < N_FOLDS:
         raise ValueError(f"--fold must be 0 to {N_FOLDS - 1}")
     in_runs = pilot_area(models, paths.runs)
@@ -273,7 +268,15 @@ def run_fold(
     if record_file.exists() and not in_runs:
         raise FileExistsError(f"{record_file}: a fold is trained once")
     digest, saved, _, folds, folds_sha = checked_folds(paths, models, version)
+    source = evaluate.source_table(paths)  # the test's source-window filter
     by = _by_fold(folds, pilot)
+    lacking = [s for s in by[fold] if s not in source.labels]
+    if lacking:
+        raise ValueError(
+            f"{source.path or event_dir(paths)}: no source-table label for fold "
+            f"{fold}'s shots {', '.join(map(str, lacking))}; the test scores only "
+            "frames inside that table's windows"
+        )
     stop = stop_fold(fold)
     train_folds = [f for f in range(N_FOLDS) if f not in (fold, stop)]
     train_shots = [s for f in train_folds for s in by[f]]
@@ -287,11 +290,17 @@ def run_fold(
         [shot(s) for s in train_shots], [shot(s) for s in by[stop]], config, log
     )
     blob = {"band_khz": list(spec["band"]), "threshold": 0.5, "candidate": candidate}
-    arrays = {}
+    arrays, dropped = {}, 0
     for s in by[fold]:
         frames = evaluate.shot_frames(
-            s, paths=paths, label=saved[s], model=model, blob=blob
+            s,
+            paths=paths,
+            label=saved[s],
+            model=model,
+            blob=blob,
+            source=source.labels[s],
         )
+        dropped += frames.source_dropped
         arrays[f"p{s}"] = np.asarray(frames.prob, dtype=np.float32)
         arrays[f"o{s}"] = np.asarray(frames.owner, dtype=np.int8)
         arrays[f"m{s}"] = np.asarray(frames.mhd, dtype=bool)
@@ -320,6 +329,8 @@ def run_fold(
         "pilot": pilot,
         "labels_sha256": digest,
         "folds_sha256": folds_sha,
+        "source_sha256": source.sha256,
+        "source_dropped": dropped,
         "npz_sha256": _sha(buffer.getvalue()),
         "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024),
         "git_sha": git_sha(),
@@ -410,6 +421,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
     """Pool the 15 fold records, apply the rule, write choice.json and frontier.md."""
     check_version(models, version)
     digest, _, _, folds, folds_sha = checked_folds(paths, models, version)
+    source_sha = evaluate.source_table(paths).sha256
     names = train.candidates(version)
     missing = [
         f"{name} fold {k}"
@@ -430,7 +442,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
     by = _by_fold(folds, pilot)
     table, fold_info, best, sources, counted = [], {}, {}, {}, None
     for name, spec in names.items():
-        frames, fold_info[name], best[name] = [], {}, []
+        frames, records, fold_info[name], best[name] = [], [], {}, []
         # As a record holds it: v1's TrainConfig, the weight, a pilot's epochs.
         config = json.loads(json.dumps(asdict(fold_config(spec, pilot))))
         for k in range(N_FOLDS):
@@ -438,6 +450,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
                 "version": version,
                 "labels_sha256": digest,
                 "folds_sha256": folds_sha,
+                "source_sha256": source_sha,
                 "pilot": pilot,
                 "shots": by[k],
                 "stop_fold": stop_fold(k),
@@ -447,6 +460,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
             }
             record, fold_frames = _load_fold(models, name, k, expect)
             frames += fold_frames
+            records.append(record)
             best[name].append(record["best_epoch"])
             fold_info[name][str(k)] = {
                 "best_epoch": record["best_epoch"],
@@ -465,6 +479,8 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
             "mhd_absent": int(
                 sum((f.scored & evaluate.mhd_absent(f)).sum() for f in frames)
             ),
+            # Frames the test's source-window filter dropped (outside a window).
+            "source_dropped": sum(int(r["source_dropped"]) for r in records),
         }
         if counted not in (None, counts):
             raise ValueError(f"{cv_dir(models) / name}: scores other frames")
@@ -490,6 +506,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
         "table": table,
         "labels_sha256": digest,
         "folds_sha256": folds_sha,
+        "source_sha256": source_sha,
         "sources": sources,
         "pilot": pilot,
         "git_sha": git_sha(),
@@ -527,8 +544,10 @@ def frontier_md(choice: dict) -> str:
             f"Out-of-fold frames of {n['shots']} shots in {N_FOLDS} folds "
             f"(each predicted by a model that neither trained nor stopped on it): "
             f"{n['scored']} frames of 0-2 s, {n['present']} present, "
-            f"{n['mhd_absent']} MHD frames the owner called absent. Labels "
-            f"sha256 {choice['labels_sha256'][:12]}..."
+            f"{n['mhd_absent']} MHD frames the owner called absent; "
+            f"{n['source_dropped']} frames outside the source table's window "
+            f"dropped, as the test drops them. Labels sha256 "
+            f"{choice['labels_sha256'][:12]}..."
         ),
         "",
         "The rule (the ledger's Deviation 11), over every (candidate, threshold):",

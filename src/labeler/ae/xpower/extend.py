@@ -22,7 +22,9 @@ pilot (`--limit M`) writes all of these under `shards/pilot/`, its pictures in
 `shards/pilot/extension/`, never into the gallery. `--merge` checks every shard
 is there and writes `alfven_eigenmode_suggest_ae_xpower_<version>.csv`, its
 meta, `summary.csv`, and gallery index rows for the pictures the merged shards'
-manifests list, and no others.
+manifests list, and no others. The meta and those rows name the version's
+label snapshot by sha256 (v1 has none), and the meta the labels the model was
+trained on.
 
 **Gate.** The chosen model's full test evaluation must pass A1 and A2 (D47) and
 name the model and choice by sha256; a models directory under `runs/` is never
@@ -54,6 +56,7 @@ from ...events.verify import corpus_signal
 from ...scoring.frames import FRAME_MS
 from . import (
     EVENT,
+    LABEL_SNAPSHOTS,
     METHOD,
     VERSION,
     check_bound,
@@ -479,6 +482,8 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
         "candidate": blob["candidate"],
         "threshold": blob["threshold"],
         "band_khz": blob["band_khz"],
+        "labels_sha256": blob.get("labels_sha256"),  # the labels it learned from
+        "snapshot_sha256": LABEL_SNAPSHOTS.get(version),
         "bar": bar,
         "population": str(paths.catalog / "population.csv"),
         "population_sha256": sha256_of(paths.catalog / "population.csv"),
@@ -509,6 +514,7 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
             "threshold": blob["threshold"],
             "candidate": blob["candidate"],
             "version": version,
+            "snapshot_sha256": LABEL_SNAPSHOTS.get(version, ""),
         }
         for r in summary.itertuples(index=False)
         # Only the pictures these shards drew: never a pilot's or an earlier run's.
