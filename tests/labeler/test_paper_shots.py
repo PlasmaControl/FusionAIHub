@@ -198,31 +198,50 @@ def _owner(*spans: tuple[int, int, int], n: int = 200) -> np.ndarray:
     return owner
 
 
-def test_owner_mixed_counts_absent_frames_after_the_onset_not_the_lead_in():
+def test_owner_mixed_counts_absent_frames_inside_the_ae_span():
     lead_in = _owner((30, 200, 1), n=250)  # absent before breakdown, then after 2 s
     gap = _owner((30, 100, 1), (120, 200, 1))  # AE turns off for 200 ms, then on
+    trailing = _owner((30, 150, 1))  # AE turns off at 1.5 s and never comes back
+    late = _owner((30, 190, 1), (210, 250, 1), n=250)  # back on only after 2 s
     assert shots.owner_mixed(lead_in, first=0) == 0
     assert shots.owner_mixed(gap, first=0) == 20
+    assert shots.owner_mixed(trailing, first=0) == 0, "off for good is not a gap"
+    assert shots.owner_mixed(late, first=0) == 0, "the scored window is 0-2 s"
     assert shots.owner_mixed(_owner(), first=0) == 0, "no AE at all"
     assert shots.owner_mixed(gap, first=100) == 0, "frames 100.. : 1-2 s only"
 
 
 def test_the_interpreter_shows_a_shot_where_ae_turns_off_and_on():
     lead_in, gap = _owner((30, 200, 1)), _owner((30, 100, 1), (120, 200, 1))
-    gaps = {1: shots.owner_mixed(lead_in, first=0), 2: shots.owner_mixed(gap, first=0)}
-    f1 = {1: 1.0, 2: 0.99}
-    poi = pd.DataFrame({"shot": [1] * 3 + [2] * 9})
+    trailing = _owner((30, 150, 1))  # AE ends before 2 s and never returns
+    owners = {1: lead_in, 2: gap, 3: trailing}
+    gaps = {s: shots.owner_mixed(owner, first=0) for s, owner in owners.items()}
+    f1 = {1: 1.0, 2: 0.99, 3: 0.995}
+    poi = pd.DataFrame({"shot": [1] * 3 + [2] * 9 + [3] * 4})
     pick = shots.interpreter_pick(f1, poi, gaps)
-    assert pick["shot"] == 2, "the best F1 among the shots with an absent stretch"
+    assert pick["shot"] == 2, "the best F1 among the shots where AE comes back"
     assert pick["branch"] == shots.POOL_GAP
-    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "absent_after_onset": 20}}
-    fallback = shots.interpreter_pick(f1, poi, {1: 0, 2: 0})
-    assert (fallback["shot"], fallback["branch"]) == (1, shots.POOL_FALLBACK)
-    assert sorted(fallback["pool"]) == ["1", "2"]
-    unmarked = shots.interpreter_pick(f1, pd.DataFrame({"shot": [1]}), gaps)
-    assert (unmarked["shot"], unmarked["branch"]) == (1, shots.POOL_FALLBACK), (
+    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "absent_inside_ae": 20}}
+
+
+def test_the_fallback_says_which_case_fired():
+    f1 = {1: 1.0, 2: 0.99, 3: 0.98}
+    poi = pd.DataFrame({"shot": [1, 1, 2, 3]})
+    none = shots.interpreter_pick(f1, poi, {1: 0, 2: 0, 3: 0})
+    assert (none["shot"], none["branch"]) == (1, shots.POOL_FALLBACK)
+    assert sorted(none["pool"]) == ["1", "2", "3"], "D40 as written"
+    marked = pd.DataFrame({"shot": [1]})
+    unmarked = shots.interpreter_pick(f1, marked, {1: 0, 2: 20, 3: 5})
+    assert unmarked["branch"] == shots.POOL_UNMARKED.format(shots="2, 3")
+    assert "2, 3" in unmarked["branch"], "the shots are named"
+    assert (unmarked["shot"], sorted(unmarked["pool"])) == (1, ["1"]), (
         "the pool keeps D40's point of interest"
     )
+    bare = shots.interpreter_pick(f1, None, {1: 0, 2: 0, 3: 0})
+    assert (bare["branch"], sorted(bare["pool"])) == (
+        shots.POOL_FALLBACK,
+        ["1", "2", "3"],
+    ), "no point of interest anywhere: every test shot"
 
 
 def test_the_interpreter_ties_go_to_fewer_points_then_the_lower_shot():
