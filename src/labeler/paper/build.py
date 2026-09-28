@@ -131,6 +131,8 @@ OWNED = frozenset({MANIFEST, *(f for p in PRODUCTS for f in files_of(p))})
 MISSING = "missing inputs"
 NO_EVALUATION = "extension not run: no AE evaluation to gate it (D47)"
 NO_SUMMARY = "the extension passed its gate (D47) but has not written summary.csv"
+NO_BAR = "extension not run: the AE evaluation records no bar (D47)"
+UNDECIDED = "extension not run: the AE evaluation's bar leaves {bars} undecided (D47)"
 EXTENSION_BARS = ("A1", "A2")  # D47: the extension runs only if both pass
 NO_CHOSEN = "no model chosen, so no split"
 NO_SPLIT = "the chosen model has no split.csv"
@@ -234,12 +236,21 @@ def _write(path: Path, text: str) -> None:
 
 
 def extension_reason(ae: dict | None) -> str:
-    """Why the extension's summary is missing: D47 runs it only if A1 and A2 pass."""
+    """Why the extension's summary is missing, from the AE evaluation's `bar`:
+    D47 runs the extension only if A1 and A2 pass. It passed its gate only when
+    both are recorded True; one recorded False is named as failed, and one
+    missing or neither True nor False leaves the gate undecided."""
     if ae is None:
         return NO_EVALUATION
-    failed = [k for k in EXTENSION_BARS if ae.get("bar", {}).get(k) is False]
+    bar = ae.get("bar")
+    if not isinstance(bar, dict):
+        return NO_BAR
+    failed = [k for k in EXTENSION_BARS if bar.get(k) is False]
     if failed:
         return f"extension not run: {' and '.join(failed)} failed (D47)"
+    undecided = [k for k in EXTENSION_BARS if bar.get(k) is not True]
+    if undecided:
+        return UNDECIDED.format(bars=" and ".join(undecided))
     return NO_SUMMARY
 
 
