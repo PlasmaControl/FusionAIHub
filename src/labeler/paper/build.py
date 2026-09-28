@@ -32,7 +32,8 @@ place; a swap that can neither finish nor put the old output back (another
 build's output landed at `out` meanwhile, say) deletes nothing and raises
 `Stranded`, which names where each one is. The build claims only the names it
 writes (`OWNED`: the manifest and each product's own `.pdf` and `.png`, or
-`.tex`); anything else in `out` stays.
+`.tex`); anything else in `out` stays, moved into the new output (a symlink as
+itself), and a failed build deletes none of it.
 
 `--version` (default `v1`) names the frame model's version the inputs come
 from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the
@@ -94,7 +95,7 @@ from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
 from .snapshot import Snapshot
-from .staging import Stranded, staging_dir, swap
+from .staging import Stranded, discard, staging_dir, swap
 
 VERSION = xpower.VERSION  # the frame model's version; `--version` names another
 SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names another
@@ -286,7 +287,7 @@ def build(
     except Stranded:
         raise  # `staged` holds the new output, and the message says so
     except BaseException:
-        shutil.rmtree(staged, ignore_errors=True)
+        discard(staged, owned=OWNED)  # the build's own files, never the owner's
         raise
     return manifest
 
