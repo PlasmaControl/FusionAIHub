@@ -21,6 +21,13 @@ from . import ae_tree
 from . import paper_tree as tree
 
 
+@pytest.fixture(autouse=True)
+def paths(tmp_path, monkeypatch):
+    """A temporary Paths, set before every call; `runs` sets its tree's, laid
+    out the same way, over it."""
+    return tree.temporary_paths(tmp_path, monkeypatch)
+
+
 @pytest.fixture
 def runs(tmp_path, monkeypatch):
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})
@@ -665,6 +672,53 @@ def test_version_v2_draws_from_v2_records(runs, tmp_path):
         models / "band80-mhd3" / "review" / "labels.csv"
     )
     assert manifest["interpreter_shot"] == 102
+
+
+V1_DATASETS = (
+    "% Shots per phenomenon: reviewed by a person, with any present span, the "
+    "model's split of the reviewed shots and those in no split (reviewed = "
+    "train + val + test + no split), and the extension's suggestions (not "
+    "labels); -- where that run has not happened\n"
+    "\\begin{tabular}{lccccccc}\n"
+    "\\toprule\n"
+    "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
+    "& No split & Suggested & Suggested positive \\\\\n"
+    "\\midrule\n"
+    "AE & 3 & 3 & 1.8 & 1 / 0 / 2 & 0 & -- & -- \\\\\n"
+    + "".join(
+        f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\\n"
+        for name in ("NTM", "H-mode", "ELMing", "sawteeth", "disruption")
+    )
+    + "\\bottomrule\n\\end{tabular}\n"
+)  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn
+
+
+def test_a_cross_validated_version_shows_its_folds(runs, tmp_path):
+    """v2 is cross-validated: its `cv/folds.csv` is pinned, and the coverage
+    shows the train shots as folds, with no validation split. v1, with no
+    folds, draws its three-way split as before, byte for byte."""
+    v1 = build.build(runs, tmp_path / "v1")
+    assert (tmp_path / "v1" / "table_datasets.tex").read_text() == V1_DATASETS
+    assert "ae_folds" not in v1["inputs"]
+    models = tree.as_version(runs, "v2")
+    (models / "band80-mhd3" / "split.csv").write_text(
+        "shot,split\n101,train\n102,train\n103,test\n"
+    )  # the final model's: the folds' shots are its train shots
+    folds = models / "cv" / "folds.csv"
+    folds.parent.mkdir()
+    folds.write_text("shot,split,fold\n101,train,0\n102,val,1\n103,test,\n")
+    manifest = build.build(runs, tmp_path / "v2", version="v2")
+    assert manifest["inputs"]["ae_folds"] == {
+        "path": str(folds),
+        "sha256": hashlib.sha256(folds.read_bytes()).hexdigest(),
+    }
+    assert "fig_coverage" in manifest["products"]
+    lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
+    assert lines[5] == "AE & 3 & 3 & 1.8 & 2 / -- / 1 & 0 & -- & -- \\\\"
+    assert "AE's train shots are cross-validated over 2 folds" in lines[0]
+    (models / "chosen.json").unlink()  # the folds made, no model chosen yet
+    manifest = build.build(runs, tmp_path / "v2", version="v2")
+    assert "ae_folds" not in manifest["inputs"], "no split to show the folds in"
 
 
 def _seg_products_of(manifest: dict) -> dict:

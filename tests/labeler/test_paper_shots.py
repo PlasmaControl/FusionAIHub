@@ -17,6 +17,13 @@ from labeler.scoring.frames import FRAME_MS
 from . import ae_tree, paper_tree
 
 
+@pytest.fixture(autouse=True)
+def paths(tmp_path, monkeypatch):
+    """A temporary Paths, set before every call; `tree` lays its own out the
+    same way."""
+    return paper_tree.temporary_paths(tmp_path, monkeypatch)
+
+
 @pytest.fixture
 def tree(tmp_path):
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})

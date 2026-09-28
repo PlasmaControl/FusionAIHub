@@ -11,7 +11,9 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `table_differences.tex`: the paired differences both evaluations hold;
 - `fig_coverage`, `table_datasets.tex`: the owner's live AE review, with the
   chosen model's split (the reviewed shots in no split apart) and the
-  extension's summary where they exist;
+  extension's summary where they exist; a cross-validated version's train
+  shots (its `cv/folds.csv`, read and pinned with the split) are one group
+  marked with the number of folds, with no validation split;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
   `<candidate>/review/labels.csv` (D18), with the points of interest where they
@@ -36,11 +38,12 @@ writes (`OWNED`: the manifest and each product's own `.pdf` and `.png`, or
 itself), and a failed build deletes none of it.
 
 `--version` (default `v1`) names the frame model's version the inputs come
-from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the
-chosen `<candidate>/{model.pt, split.csv, review/labels.csv}`) and the
-extension's summary. Until a version's records exist its AE products are
-`skipped`, with the paths missing, and the coverage is still drawn from the
-owner's live labels, which have no version.
+from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json`, the
+chosen `<candidate>/{model.pt, split.csv, review/labels.csv}` and, for a
+cross-validated version such as v2, `cv/folds.csv`) and the extension's
+summary. Until a version's records exist its AE products are `skipped`, with
+the paths missing, and the coverage is still drawn from the owner's live
+labels, which have no version.
 
 `--seg-version` (default `v1`) names the segmentation's, apart: a new frame
 model does not retrain SegNet, so v2's frame figures stand beside SegNet v1.
@@ -168,6 +171,7 @@ def inputs(
     return {
         "ae_evaluation": models / "evaluation.json",
         "ae_chosen": models / "chosen.json",
+        "ae_folds": models / "cv" / "folds.csv",  # cross-validated versions only
         "ae_labels": labels.labels_path(xpower.event_dir(paths)),
         "seg_evaluation": seg / "evaluation.json",
         "seg_labels": labels.labels_path(seg),
@@ -372,7 +376,9 @@ def _draw(
     counted = ("fig_coverage", "table_datasets")
     if ready(counted, "ae_labels"):
         summary = read("summary", snap.csv)
-        counts = {AE: coverage.ae_counts(live, split, summary)}
+        folds = None if split is None else read("ae_folds", snap.csv)
+        n = None if folds is None else coverage.fold_count(folds)
+        counts = {AE: coverage.ae_counts(live, split, summary, folds=n)}
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
         if chosen is None:

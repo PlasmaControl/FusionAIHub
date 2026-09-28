@@ -11,6 +11,21 @@ from labeler.ae import xpower
 from labeler.config import Paths
 from labeler.paper import scores
 
+from . import ae_tree
+
+
+def temporary_paths(tmp_path: Path, monkeypatch) -> Paths:
+    """A temporary Paths (root, label tables, corpus) under `tmp_path`, laid
+    out as `ae_tree.build` lays its tree, and set in the environment, so a test
+    whose code reads no Paths still has one set before the call."""
+    paths = Paths(
+        root=tmp_path / "root",
+        label_tables=tmp_path / "events",
+        corpus=tmp_path / "corpus",
+    )
+    ae_tree.env(monkeypatch, paths)
+    return paths
+
 
 def est(value, low=None, high=None) -> dict:
     """A `stats.Estimate.as_json`."""
