@@ -22,11 +22,14 @@ fainter when the peak lies after the scored 2 s (`in_scored_window` false); only
 the `LABEL_CAP` largest by `pixels` carry their `region` number (`poi.csv`). A
 dashed line at 2 s marks the scored window whenever a shot runs past it.
 
-**The interpreter's shot** (`interpreter_shot`, `INTERPRETER_RULE`): among the
-test shots with a point of interest (all test shots when none has one), the best
-F1 at three decimals; ties go to a shot where the owner's AE track has both
-present and absent frames inside 0-2 s, then to fewer points of interest, then
-to the lower shot number.
+**The interpreter's shot** (`interpreter_pick`, `INTERPRETER_RULE`) shows AE
+turning off and on. Its pool is the test shots with a point of interest (all
+test shots when none has one) where the owner calls frames absent after the
+first frame they call present, inside 0-2 s (`owner_mixed`): the lead-in before
+breakdown, absent on every shot, does not count. The pick is the best F1 at
+three decimals in the pool, ties to fewer points of interest, then to the lower
+shot number. Only when no shot has such an absent stretch does the same rule
+run over all those test shots (`POOL_FALLBACK`).
 
 Every legend lists only what some panel draws: it is built from the drawn
 artists' own labels, so its keys have their style.
@@ -75,11 +78,14 @@ POI_AFTER_LABEL = "point of interest, after 2 s"
 MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
 INTERPRETER_RULE = (
-    "the test shots with a point of interest (all test shots if none has one), "
-    f"best F1 over 0-2 s at {F1_DECIMALS} decimals; ties go to a shot whose "
-    "owner's AE track has both present and absent frames in 0-2 s, then to "
-    "fewer points of interest, then to the lower shot number"
+    "among the test shots with a point of interest (all test shots if none has "
+    "one), those whose owner's AE track has absent frames after its first "
+    f"present frame in 0-2 s; the best F1 over 0-2 s at {F1_DECIMALS} decimals, "
+    "ties to fewer points of interest, then to the lower shot number; if no "
+    "shot has such absent frames, the same over all those test shots"
 )
+POOL_GAP = "AE turns off after its onset in 0-2 s"
+POOL_FALLBACK = "no shot has AE turning off after its onset in 0-2 s: all of them"
 EXAMPLES_RULE = (
     "the reviewed test shots ranked by F1 over 0-2 s (ties by the lower shot "
     "number), taken evenly from the best to the worst"
@@ -98,10 +104,12 @@ def scored_f1(prob, owner, threshold: float, *, first: int) -> float:
     return f1_of(frame_cells(np.asarray(prob)[inside], owner[inside], threshold))
 
 
-def owner_mixed(owner, *, first: int) -> bool:
-    """Whether the owner's frames in 0-2 s hold both present and absent."""
+def owner_mixed(owner, *, first: int) -> int:
+    """The owner's absent frames in 0-2 s after their first present frame there:
+    AE turning off, not the lead-in before breakdown. 0 without a present frame."""
     inside = np.asarray(owner)[in_scored(first, len(owner))]
-    return bool((inside == PRESENT).any() and (inside == ABSENT).any())
+    present = np.flatnonzero(inside == PRESENT)
+    return int((inside[present[0] :] == ABSENT).sum()) if len(present) else 0
 
 
 @dataclass(frozen=True)
@@ -130,12 +138,13 @@ class AEShot:
 
 @dataclass(frozen=True)
 class ShotScore:
-    """A test shot's rank keys: F1 over 0-2 s and whether the owner's 0-2 s mix."""
+    """A test shot's rank keys: F1 over 0-2 s, and the owner's absent frames
+    after their AE's onset in 0-2 s (`owner_mixed`)."""
 
     shot: int
     f1: float
     f1_window: float
-    mixed: bool
+    gap: int
 
 
 def runs(flags: np.ndarray) -> list[tuple[int, int]]:
@@ -162,7 +171,7 @@ def score_shot(paths: Paths, shot: int, *, model_file: Path) -> ShotScore:
         shot=shot,
         f1=scored_f1(prob, owner, threshold, first=first),
         f1_window=f1_of(frame_cells(prob, owner, threshold)),
-        mixed=owner_mixed(owner, first=first),
+        gap=owner_mixed(owner, first=first),
     )
 
 
@@ -196,23 +205,16 @@ def reviewed_test_shots(index: pd.DataFrame) -> list[int]:
     return [int(s) for s in test.shot]
 
 
-def _tested(index: pd.DataFrame, f1: Mapping[int, float] | None) -> pd.DataFrame:
-    """The reviewed test shots with an F1, best first, ties by shot. `f1` maps a
-    shot to its F1 over 0-2 s; without it, the gallery's whole-window F1."""
-    test = index[(index.group == "reviewed") & (index.split == "test")].copy()
-    if f1 is None:
-        test["f1"] = pd.to_numeric(test.f1_vs_owner, errors="coerce")
-    else:
-        test["f1"] = [f1.get(int(s), np.nan) for s in test.shot]
-    test = test[test.f1.notna()]
-    return test.sort_values(["f1", "shot"], ascending=[False, True])
+def _ranked(f1: Mapping[int, float]) -> list[int]:
+    """The shots with an F1, best first, ties by the lower shot."""
+    scored = [(float(v), int(s)) for s, v in f1.items() if not np.isnan(v)]
+    return [s for _, s in sorted(scored, key=lambda x: (-x[0], x[1]))]
 
 
-def pick_examples(
-    index: pd.DataFrame, n: int = 3, *, f1: Mapping[int, float] | None = None
-) -> list[int]:
-    """`n` test shots spread from the best F1 to the worst (`EXAMPLES_RULE`)."""
-    ranked = [int(s) for s in _tested(index, f1).shot]
+def pick_examples(f1: Mapping[int, float], n: int = 3) -> list[int]:
+    """`n` test shots spread from the best F1 to the worst (`EXAMPLES_RULE`);
+    `f1` maps each test shot to its F1 over 0-2 s."""
+    ranked = _ranked(f1)
     if len(ranked) <= n:
         return ranked
     if n <= 1:
@@ -221,30 +223,41 @@ def pick_examples(
     return list(dict.fromkeys(ranked[round(i * step)] for i in range(n)))
 
 
-def interpreter_shot(
-    index: pd.DataFrame,
+def interpreter_pick(
+    f1: Mapping[int, float],
     poi: pd.DataFrame | None,
-    *,
-    f1: Mapping[int, float] | None = None,
-    mixed: Collection[int] = (),
-) -> int:
-    """The shot `INTERPRETER_RULE` picks; `mixed` holds the test shots whose
-    owner's 0-2 s has both present and absent frames."""
-    test = _tested(index, f1)
-    if test.empty:
-        raise ValueError("the gallery index has no reviewed test shot with an F1")
+    gaps: Mapping[int, int] | None = None,
+) -> dict:
+    """The shot `INTERPRETER_RULE` picks, the branch that fired and its pool:
+    each pool shot's F1, points of interest and `owner_mixed` count. `f1` maps
+    each test shot to its F1 over 0-2 s, `gaps` to its `owner_mixed`."""
+    ranked = _ranked(f1)
+    if not ranked:
+        raise ValueError("no test shot has an F1")
+    gaps = gaps or {}
     points = (
         pd.Series(dtype=int) if poi is None else poi.shot.astype(int).value_counts()
     )
-    marked = test[test.shot.astype(int).isin(points.index)]
-    pool = (marked if not marked.empty else test).copy()
-    pool["key"] = pool.f1.round(F1_DECIMALS)
-    tied = pool[pool.key == pool.key.max()].copy()
-    tied["mixed"] = [int(s) in set(mixed) for s in tied.shot]
-    tied["points"] = [int(points.get(int(s), 0)) for s in tied.shot]
-    tied["shot"] = tied.shot.astype(int)
-    best = tied.sort_values(["mixed", "points", "shot"], ascending=[False, True, True])
-    return int(best.shot.iloc[0])
+    marked = [s for s in ranked if s in points.index] or ranked
+    pool = [s for s in marked if gaps.get(s, 0) > 0]
+    branch = POOL_GAP if pool else POOL_FALLBACK
+    pool = pool or marked
+
+    def key(s: int) -> tuple:
+        return (-round(float(f1[s]), F1_DECIMALS), int(points.get(s, 0)), s)
+
+    return {
+        "shot": min(pool, key=key),
+        "branch": branch,
+        "pool": {
+            str(s): {
+                "f1": round(float(f1[s]), 4),
+                "poi": int(points.get(s, 0)),
+                "absent_after_onset": int(gaps.get(s, 0)),
+            }
+            for s in sorted(pool)
+        },
+    }
 
 
 def _spectrogram(ax, s: AEShot) -> None:

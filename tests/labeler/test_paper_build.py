@@ -63,6 +63,11 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     assert manifest["interpreter_shot"] == 102, "the best test shot; no POI yet"
     assert manifest["example_shots"] == [102, 103]
     assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
+    assert manifest["interpreter_branch"] == shots.POOL_GAP, "AE ends at 900 ms"
+    pool = manifest["interpreter_pool"]
+    assert sorted(pool) == ["102", "103"]
+    assert set(pool["102"]) == {"f1", "poi", "absent_after_onset"}
+    assert pool["102"]["absent_after_onset"] == 110, "900 ms to 2 s"
     assert manifest["example_rule"] == shots.EXAMPLES_RULE
     assert sorted(manifest["shot_f1"]) == ["102", "103"], "the shots drawn"
     assert set(manifest["shot_f1"]["102"]) == {"f1_0_2s", "f1_window"}
