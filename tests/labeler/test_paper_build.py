@@ -51,7 +51,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "table_datasets",
         "table_differences",
     ]
-    missing = f"missing {build.inputs(runs)['seg_evaluation']}"
+    missing = _missing(build.inputs(runs)["seg_evaluation"])
     assert printed["skipped"] == {
         "fig_segmentation": missing,
         "table_seg_scores": missing,
@@ -85,10 +85,14 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         assert all((out / f).is_file() for f in files), name
 
 
+def _missing(*paths) -> dict:
+    return {"reason": build.MISSING, "missing": [str(p) for p in paths]}
+
+
 def test_without_the_chosen_model_the_shot_figures_wait(runs, tmp_path):
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, tmp_path / "paper")
-    missing = f"missing {build.inputs(runs)['ae_chosen']}"
+    missing = _missing(build.inputs(runs)["ae_chosen"])
     assert manifest["skipped"]["fig_interpreter"] == missing
     assert manifest["skipped"]["fig_examples"] == missing
     assert "fig_coverage" in manifest["products"], "the split is left empty"
@@ -104,20 +108,103 @@ def test_the_interpreter_shot_can_be_named(runs, tmp_path):
 def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path):
     found = build.inputs(runs)
     manifest = build.build(runs, tmp_path / "paper")
-    no_summary, no_poi = [str(found["summary"])], [str(found["poi"])]
+    no_summary = {
+        "reason": "extension not run: A2 failed (D47)",
+        "missing": [str(found["summary"])],
+    }
+    no_poi = {"reason": build.NO_POI, "missing": [str(found["poi"])]}
     assert manifest["partial"] == {
-        "fig_coverage": no_summary,
-        "table_datasets": no_summary,
-        "fig_interpreter": no_poi,
-        "fig_examples": no_poi,
-        "table_differences": [str(found["seg_evaluation"])],
+        "fig_coverage": [no_summary],
+        "table_datasets": [no_summary],
+        "fig_interpreter": [no_poi],
+        "fig_examples": [no_poi],
+        "table_differences": [_missing(found["seg_evaluation"])],
     }
     assert set(manifest["partial"]) <= set(manifest["products"])
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, tmp_path / "paper")
-    no_split = [str(found["ae_chosen"]), *no_summary]
-    assert manifest["partial"]["fig_coverage"] == no_split
-    assert manifest["partial"]["table_datasets"] == no_split
+    no_split = {"reason": build.NO_CHOSEN, "missing": [str(found["ae_chosen"])]}
+    assert manifest["partial"]["fig_coverage"] == [no_split, no_summary]
+    assert manifest["partial"]["table_datasets"] == [no_split, no_summary]
+
+
+def test_the_extension_reason_comes_from_the_bar(runs, tmp_path):
+    evaluation = xpower.model_dir(runs) / "evaluation.json"
+    record = json.loads(evaluation.read_text())
+    record["bar"].update(A1=False, A2=False)
+    evaluation.write_text(json.dumps(record))
+    [entry] = build.build(runs, tmp_path / "paper")["partial"]["fig_coverage"]
+    assert entry["reason"] == "extension not run: A1 and A2 failed (D47)"
+    record["bar"].update(A1=True, A2=True)
+    evaluation.write_text(json.dumps(record))
+    [entry] = build.build(runs, tmp_path / "paper")["partial"]["fig_coverage"]
+    assert entry["reason"] == build.NO_SUMMARY, "A1 and A2 pass: not written yet"
+    evaluation.unlink()
+    [entry] = build.build(runs, tmp_path / "paper")["partial"]["fig_coverage"]
+    assert entry["reason"] == build.NO_EVALUATION
+
+
+def _files(out: Path) -> dict[str, bytes]:
+    return {p.name: p.read_bytes() for p in sorted(out.iterdir())}
+
+
+def test_labels_missing_entirely_skip_and_never_crash(runs, tmp_path):
+    live = build.inputs(runs)["ae_labels"]
+    live.unlink()
+    out = tmp_path / "paper"
+    manifest = build.build(runs, out)
+    for product in (
+        "fig_coverage",
+        "table_datasets",
+        "fig_interpreter",
+        "fig_examples",
+    ):
+        assert manifest["skipped"][product] == _missing(live)
+    assert "fig_scores" in manifest["products"], "the rest is drawn"
+    assert set(_files(out)) == {
+        f for files in manifest["products"].values() for f in files
+    } | {"manifest.json"}
+
+
+def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_path):
+    live = build.inputs(runs)["ae_labels"]
+    rows = live.read_text().splitlines()
+    live.write_text("\n".join(r for r in rows if not r.startswith("103,")) + "\n")
+    manifest = build.build(runs, tmp_path / "paper")
+    for product in ("fig_interpreter", "fig_examples"):
+        assert product in manifest["products"]
+        assert {"reason": build.NO_LABEL, "shots": [103]} in manifest["partial"][
+            product
+        ]
+    assert manifest["example_shots"] == [102]
+    assert sorted(manifest["interpreter_pool"]) == ["102"]
+
+
+def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "notes.txt").write_text("the owner's, not a product")
+    before = _files(out)
+
+    def fails(*args):
+        raise RuntimeError("drawing failed")
+
+    evaluation = xpower.model_dir(runs) / "evaluation.json"
+    record = json.loads(evaluation.read_text())
+    record["methods"]["ae_xpower"]["f1"] = tree.est(0.5, 0.4, 0.6)
+    evaluation.write_text(json.dumps(record))  # new scores, drawn before the failure
+    monkeypatch.setattr(shots, "draw_examples", fails)
+    with pytest.raises(RuntimeError, match="drawing failed"):
+        build.build(runs, out)
+    assert _files(out) == before
+    assert sorted(p.name for p in tmp_path.iterdir() if "paper" in p.name) == ["paper"]
+    monkeypatch.undo()
+    (xpower.model_dir(runs) / "chosen.json").unlink()
+    manifest = build.build(runs, out)
+    after = _files(out)
+    assert "fig_examples.pdf" not in after, "a skipped product leaves with its files"
+    assert after["notes.txt"] == before["notes.txt"], "a file not ours is kept"
+    assert json.loads(after["manifest.json"]) == manifest
 
 
 def _spy_reads(monkeypatch, opened: set[str]) -> None:
@@ -182,5 +269,5 @@ def test_the_version_names_the_models_drawn(runs, tmp_path, capsys):
     assert build.main(["--out", str(out), "--version", "v2"]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["version"] == "v2"
-    assert "/ae_xpower/v2/" in manifest["skipped"]["fig_scores"]
+    assert "/ae_xpower/v2/" in manifest["skipped"]["fig_scores"]["missing"][0]
     assert "fig_coverage" in manifest["products"], "the owner's labels have no version"
