@@ -3,45 +3,111 @@
 `ae_shot` reads what a shot viewer shows for AE: the review store's first
 cross-power row (R0 x V1), 0-250 kHz; the owner's frames; the chosen
 `ae_xpower` model's P(AE) per 10 ms frame, run here on the CPU as the gallery
-runs it; and the segmentation's points of interest (`poi.csv`), each a box
-labelled AE. `draw_interpreter` is the paper's one-discharge figure: that
-spectrogram and its points of interest over one track per catalog phenomenon,
-AE's holding the owner's frames above the model's, the other five coming.
-`draw_examples` stacks a few test shots, which `pick_examples` takes from the
-gallery's index: the best, the median and the worst F1 against the owner.
+runs it; and the segmentation's points of interest (`poi.csv`). `draw_interpreter`
+is the paper's one-discharge figure: that spectrogram and its points of interest
+over one track per catalog phenomenon, AE's holding the owner's frames above the
+model's, the other five coming. `draw_examples` stacks a few test shots, which
+`pick_examples` takes from the gallery's index: the best, the median and the
+worst F1 against the owner.
+
+**The F1 of a shot** is over the 10 ms frames of the scored 0-2 s that the owner
+called present or absent (`scored_f1`), the window the paper's headline F1 is
+over; the gallery's `f1_vs_owner` is over the owner's whole window. The build
+ranks by the 0-2 s F1 (`score_shot`), so its picks can differ from a ranking by
+the gallery's. The evaluation's own frames also need TokEye's record and the
+source table's window (`labeler.ae.xpower.evaluate`); a shot's F1 here does not.
+
+**The points of interest** are thin outlines, clipped to the axes, dashed and
+fainter when the peak lies after the scored 2 s (`in_scored_window` false); only
+the `LABEL_CAP` largest by `pixels` carry their `region` number (`poi.csv`). A
+dashed line at 2 s marks the scored window whenever a shot runs past it.
+
+**The interpreter's shot** (`interpreter_shot`, `INTERPRETER_RULE`): among the
+test shots with a point of interest (all test shots when none has one), the best
+F1 at three decimals; ties go to a shot where the owner's AE track has both
+present and absent frames inside 0-2 s, then to fewer points of interest, then
+to the lower shot number.
+
+Every legend lists only what some panel draws: it is built from the drawn
+artists' own labels, so its keys have their style.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch, Rectangle
+from matplotlib.patches import Rectangle
 
 from ..ae.xpower import EVENT, event_dir
 from ..ae.xpower.data import BAND_KHZ, CROSS_ROWS, store_rows, targets, window_frames
 from ..ae.xpower.gallery import STATE_COLOURS
 from ..ae.xpower.train import f1_of, frame_cells, load, probabilities, read_split
 from ..config import Paths
-from ..events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ..events.review import labels
 from ..events.review.rows import Grid
 from ..scoring.frames import FRAME_MS
-from . import AE, COMING, ORDER, PAGE_IN, save, style, title
+from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, save, style, title
 
 MARGIN_MS = 50.0
 PICTURE_LEVEL = 8
 MODEL_COLOUR = "#222222"
 POI_COLOUR = "#00e5ff"
+POI_LW = 0.4
+POI_ALPHA = 0.75
+POI_AFTER_ALPHA = 0.4
+LABEL_CAP = 10  # number at most the 10 largest points of interest (by pixels)
+SCORED_MS = 2000.0  # the scored window is 0-2 s
+SCORED_LABEL = "scored: 0-2 s"
+F1_DECIMALS = 3
+STATE_NAMES = {
+    PRESENT: "present",
+    UNCERTAIN: "uncertain",
+    NOT_OBSERVABLE: "not observable",
+}
+POI_LABEL = "point of interest"
+POI_AFTER_LABEL = "point of interest, after 2 s"
+MODEL_LABEL = "model: present"
+THRESHOLD_LABEL = "model threshold"
+INTERPRETER_RULE = (
+    "the test shots with a point of interest (all test shots if none has one), "
+    f"best F1 over 0-2 s at {F1_DECIMALS} decimals; ties go to a shot whose "
+    "owner's AE track has both present and absent frames in 0-2 s, then to "
+    "fewer points of interest, then to the lower shot number"
+)
+EXAMPLES_RULE = (
+    "the reviewed test shots ranked by F1 over 0-2 s (ties by the lower shot "
+    "number), taken evenly from the best to the worst"
+)
+
+
+def in_scored(first: int, n: int) -> np.ndarray:
+    """Whether each frame `first .. first + n - 1` lies inside the scored 0-2 s."""
+    start = (first + np.arange(n)) * FRAME_MS
+    return (start >= 0) & (start + FRAME_MS <= SCORED_MS)
+
+
+def scored_f1(prob, owner, threshold: float, *, first: int) -> float:
+    """F1 over the frames of 0-2 s the owner called present or absent."""
+    inside = in_scored(first, len(prob))
+    return f1_of(frame_cells(np.asarray(prob)[inside], owner[inside], threshold))
+
+
+def owner_mixed(owner, *, first: int) -> bool:
+    """Whether the owner's frames in 0-2 s hold both present and absent."""
+    inside = np.asarray(owner)[in_scored(first, len(owner))]
+    return bool((inside == PRESENT).any() and (inside == ABSENT).any())
 
 
 @dataclass(frozen=True)
 class AEShot:
-    """One shot's AE picture. `owner` and `prob` are per frame from `first`."""
+    """One shot's AE picture. `owner` and `prob` are per frame from `first`;
+    `f1` is over 0-2 s, `f1_window` over the owner's whole window."""
 
     shot: int
     split: str
@@ -54,11 +120,22 @@ class AEShot:
     prob: np.ndarray
     threshold: float
     f1: float
+    f1_window: float = float("nan")
     boxes: tuple[dict, ...] = ()
 
     @property
     def edges(self) -> np.ndarray:
         return (self.first + np.arange(len(self.prob) + 1)) * FRAME_MS
+
+
+@dataclass(frozen=True)
+class ShotScore:
+    """A test shot's rank keys: F1 over 0-2 s and whether the owner's 0-2 s mix."""
+
+    shot: int
+    f1: float
+    f1_window: float
+    mixed: bool
 
 
 def runs(flags: np.ndarray) -> list[tuple[int, int]]:
@@ -67,10 +144,7 @@ def runs(flags: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(edges[::2], edges[1::2], strict=True))
 
 
-def ae_shot(
-    paths: Paths, shot: int, *, model_file: Path, poi: pd.DataFrame | None = None
-) -> AEShot:
-    """A reviewed AE shot, with the model at `model_file` run over its store."""
+def _frames(paths: Paths, shot: int, model_file: Path):
     label = labels.read_saved(event_dir(paths)).get(shot)
     if label is None:
         raise KeyError(f"{shot}: the owner has not saved an AE label")
@@ -78,9 +152,26 @@ def ae_shot(
     first, n = window_frames(label.window)
     store = paths.spectrogram_file(EVENT, shot)
     prob, _ = probabilities(model, store_rows(store), first, n, band=blob["band_khz"])
+    return store, first, targets(label, first, n), prob, float(blob["threshold"])
+
+
+def score_shot(paths: Paths, shot: int, *, model_file: Path) -> ShotScore:
+    """The model at `model_file` run over one reviewed shot, scored."""
+    _, first, owner, prob, threshold = _frames(paths, shot, model_file)
+    return ShotScore(
+        shot=shot,
+        f1=scored_f1(prob, owner, threshold, first=first),
+        f1_window=f1_of(frame_cells(prob, owner, threshold)),
+        mixed=owner_mixed(owner, first=first),
+    )
+
+
+def ae_shot(
+    paths: Paths, shot: int, *, model_file: Path, poi: pd.DataFrame | None = None
+) -> AEShot:
+    """A reviewed AE shot, with the model at `model_file` run over its store."""
+    store, first, owner, prob, threshold = _frames(paths, shot, model_file)
     grid, values, y0, dy = store_rows(store, level=PICTURE_LEVEL)
-    owner = targets(label, first, n)
-    threshold = float(blob["threshold"])
     boxes = () if poi is None else tuple(poi[poi.shot == shot].to_dict("records"))
     return AEShot(
         shot=shot,
@@ -93,22 +184,35 @@ def ae_shot(
         owner=owner,
         prob=prob,
         threshold=threshold,
-        f1=f1_of(frame_cells(prob, owner, threshold)),
+        f1=scored_f1(prob, owner, threshold, first=first),
+        f1_window=f1_of(frame_cells(prob, owner, threshold)),
         boxes=boxes,
     )
 
 
-def _tested(index: pd.DataFrame) -> pd.DataFrame:
-    """The gallery's reviewed test shots with an F1, best first, ties by shot."""
+def reviewed_test_shots(index: pd.DataFrame) -> list[int]:
+    """The gallery's reviewed test shots."""
+    test = index[(index.group == "reviewed") & (index.split == "test")]
+    return [int(s) for s in test.shot]
+
+
+def _tested(index: pd.DataFrame, f1: Mapping[int, float] | None) -> pd.DataFrame:
+    """The reviewed test shots with an F1, best first, ties by shot. `f1` maps a
+    shot to its F1 over 0-2 s; without it, the gallery's whole-window F1."""
     test = index[(index.group == "reviewed") & (index.split == "test")].copy()
-    test["f1"] = pd.to_numeric(test.f1_vs_owner, errors="coerce")
+    if f1 is None:
+        test["f1"] = pd.to_numeric(test.f1_vs_owner, errors="coerce")
+    else:
+        test["f1"] = [f1.get(int(s), np.nan) for s in test.shot]
     test = test[test.f1.notna()]
     return test.sort_values(["f1", "shot"], ascending=[False, True])
 
 
-def pick_examples(index: pd.DataFrame, n: int = 3) -> list[int]:
-    """`n` test shots spread from the best F1 to the worst."""
-    ranked = [int(s) for s in _tested(index).shot]
+def pick_examples(
+    index: pd.DataFrame, n: int = 3, *, f1: Mapping[int, float] | None = None
+) -> list[int]:
+    """`n` test shots spread from the best F1 to the worst (`EXAMPLES_RULE`)."""
+    ranked = [int(s) for s in _tested(index, f1).shot]
     if len(ranked) <= n:
         return ranked
     if n <= 1:
@@ -117,13 +221,30 @@ def pick_examples(index: pd.DataFrame, n: int = 3) -> list[int]:
     return list(dict.fromkeys(ranked[round(i * step)] for i in range(n)))
 
 
-def interpreter_shot(index: pd.DataFrame, poi: pd.DataFrame | None) -> int:
-    """The best-F1 test shot with a point of interest (else the best test shot)."""
-    ranked = [int(s) for s in _tested(index).shot]
-    if not ranked:
+def interpreter_shot(
+    index: pd.DataFrame,
+    poi: pd.DataFrame | None,
+    *,
+    f1: Mapping[int, float] | None = None,
+    mixed: Collection[int] = (),
+) -> int:
+    """The shot `INTERPRETER_RULE` picks; `mixed` holds the test shots whose
+    owner's 0-2 s has both present and absent frames."""
+    test = _tested(index, f1)
+    if test.empty:
         raise ValueError("the gallery index has no reviewed test shot with an F1")
-    marked = set() if poi is None else {int(s) for s in poi.shot}
-    return next((s for s in ranked if s in marked), ranked[0])
+    points = (
+        pd.Series(dtype=int) if poi is None else poi.shot.astype(int).value_counts()
+    )
+    marked = test[test.shot.astype(int).isin(points.index)]
+    pool = (marked if not marked.empty else test).copy()
+    pool["key"] = pool.f1.round(F1_DECIMALS)
+    tied = pool[pool.key == pool.key.max()].copy()
+    tied["mixed"] = [int(s) in set(mixed) for s in tied.shot]
+    tied["points"] = [int(points.get(int(s), 0)) for s in tied.shot]
+    tied["shot"] = tied.shot.astype(int)
+    best = tied.sort_values(["mixed", "points", "shot"], ascending=[False, True, True])
+    return int(best.shot.iloc[0])
 
 
 def _spectrogram(ax, s: AEShot) -> None:
@@ -148,8 +269,29 @@ def _spectrogram(ax, s: AEShot) -> None:
     ax.set_ylabel(f"{CROSS_ROWS[0].replace('x', ' × ')}\nkHz")
 
 
+def _scored(box: dict) -> bool:
+    return bool(box.get("in_scored_window", True))
+
+
+def numbered(boxes: Sequence[dict], xlim, ylim) -> list[dict]:
+    """The `LABEL_CAP` largest points (by `pixels`) whose number would sit inside
+    the axes, at the top left of the box."""
+    (x0, x1), (y0, y1) = sorted(xlim), sorted(ylim)
+    inside = [
+        b
+        for b in boxes
+        if x0 <= float(b["t_start_ms"]) <= x1 and y0 <= float(b["f_hi_khz"]) <= y1
+    ]
+    return sorted(inside, key=lambda b: -float(b.get("pixels", 0)))[:LABEL_CAP]
+
+
 def _boxes(ax, s: AEShot) -> None:
-    for i, box in enumerate(s.boxes, 1):
+    """Thin clipped outlines; the `LABEL_CAP` largest numbered. Call it after the
+    axes' limits are set."""
+    labelled = {POI_LABEL: False, POI_AFTER_LABEL: False}
+    for box in s.boxes:
+        inside = _scored(box)
+        name = POI_LABEL if inside else POI_AFTER_LABEL
         ax.add_patch(
             Rectangle(
                 (box["t_start_ms"], box["f_lo_khz"]),
@@ -157,17 +299,49 @@ def _boxes(ax, s: AEShot) -> None:
                 box["f_hi_khz"] - box["f_lo_khz"],
                 fill=False,
                 ec=POI_COLOUR,
-                lw=0.8,
+                lw=POI_LW,
+                ls="-" if inside else "--",
+                alpha=POI_ALPHA if inside else POI_AFTER_ALPHA,
+                clip_on=True,
+                label=name if not labelled[name] else "_" + name,
             )
         )
+        labelled[name] = True
+    for box in numbered(s.boxes, ax.get_xlim(), ax.get_ylim()):
+        x, y = float(box["t_start_ms"]), float(box["f_hi_khz"])
         ax.text(
-            box["t_start_ms"],
-            box["f_hi_khz"],
-            f"AE {i}",
+            x,
+            y,
+            f"{int(box['region'])}",
             color=POI_COLOUR,
-            fontsize=5,
-            va="bottom",
+            fontsize=FONT_PT - 1,
+            ha="left",
+            va="top",
+            alpha=POI_ALPHA if _scored(box) else POI_AFTER_ALPHA,
+            clip_on=True,
         )
+
+
+def _scored_line(axes, s: AEShot, *, dark: Collection) -> None:
+    """A dashed line at 2 s on each axis, labelled on the first, when the shot
+    runs past it."""
+    if s.edges[-1] <= SCORED_MS:
+        return
+    for k, ax in enumerate(axes):
+        colour = "white" if ax in dark else "black"
+        ax.axvline(SCORED_MS, color=colour, lw=0.6, ls="--", label="_scored")
+        if k == 0:
+            ax.text(
+                SCORED_MS,
+                0.97,
+                SCORED_LABEL,
+                transform=ax.get_xaxis_transform(),
+                ha="right",
+                va="top",
+                color=colour,
+                fontsize=FONT_PT - 1,
+                clip_on=True,
+            )
 
 
 def _owner_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
@@ -175,26 +349,43 @@ def _owner_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
     for state, colour in STATE_COLOURS.items():
         spans = [(edges[a], edges[b] - edges[a]) for a, b in runs(s.owner == state)]
         if spans:
-            ax.broken_barh(spans, y, color=colour, lw=0)
+            ax.broken_barh(
+                spans, y, color=colour, lw=0, label=f"owner: {STATE_NAMES[state]}"
+            )
 
 
 def _model_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
     edges = s.edges
     spans = [(edges[a], edges[b] - edges[a]) for a, b in runs(s.prob >= s.threshold)]
     if spans:
-        ax.broken_barh(spans, y, color=MODEL_COLOUR, lw=0)
+        ax.broken_barh(spans, y, color=MODEL_COLOUR, lw=0, label=MODEL_LABEL)
 
 
-def _keys(poi: bool) -> list[Patch]:
-    keys = [
-        Patch(color=STATE_COLOURS[PRESENT], label="owner: present"),
-        Patch(color=STATE_COLOURS[UNCERTAIN], label="owner: uncertain"),
-        Patch(color=STATE_COLOURS[NOT_OBSERVABLE], label="owner: not observable"),
-        Patch(color=MODEL_COLOUR, label="model: present"),
-    ]
-    if poi:
-        keys.append(Patch(fill=False, ec=POI_COLOUR, label="point of interest"))
-    return keys
+LEGEND_ORDER = (
+    *(f"owner: {name}" for name in STATE_NAMES.values()),
+    MODEL_LABEL,
+    THRESHOLD_LABEL,
+    POI_LABEL,
+    POI_AFTER_LABEL,
+)
+
+
+def _legend(fig: Figure) -> None:
+    """One key per label some panel draws, with that artist's own style."""
+    found: dict[str, object] = {}
+    for ax in fig.axes:
+        for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
+            found.setdefault(name, handle)
+    names = sorted(
+        found, key=lambda n: LEGEND_ORDER.index(n) if n in LEGEND_ORDER else 99
+    )
+    if names:
+        fig.legend(
+            [found[n] for n in names],
+            names,
+            loc="outside lower center",
+            ncols=min(len(names), 5),
+        )
 
 
 def draw_interpreter(s: AEShot, stem: Path) -> Figure:
@@ -209,6 +400,7 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
             gridspec_kw={"height_ratios": [4] + [0.45] * len(ORDER)},
         )
         _spectrogram(spec, s)
+        spec.set_xlim(t0, t1)
         _boxes(spec, s)
         spec.set_title(f"shot {s.shot}: what the interpreter marks")
         for ax, category in zip(tracks, ORDER, strict=True):
@@ -229,18 +421,18 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
                 continue
             _owner_bars(ax, s, (1.05, 0.9))
             _model_bars(ax, s, (0.05, 0.9))
+        _scored_line([spec, *tracks], s, dark={spec})
         for ax in tracks[:-1]:
             ax.tick_params(bottom=False)
         tracks[-1].set_xlabel("time (ms)")
-        spec.set_xlim(t0, t1)
-        fig.legend(handles=_keys(bool(s.boxes)), loc="outside lower center", ncols=5)
+        _legend(fig)
         save(fig, stem)
     return fig
 
 
 def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
     """Each shot: the spectrogram, the owner's strip, and P(AE) with the model's
-    present frames shaded."""
+    present frames shaded; each title gives the shot's F1 over 0-2 s."""
     with style():
         fig = Figure(figsize=(PAGE_IN, 2.0 * len(shots) + 0.3), layout="constrained")
         axes = fig.subplots(
@@ -249,29 +441,34 @@ def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
         for k, s in enumerate(shots):
             spec, strip, model = axes[3 * k : 3 * k + 3]
             t0, t1 = s.edges[0] - MARGIN_MS, s.edges[-1] + MARGIN_MS
+            for ax in (spec, strip, model):
+                ax.set_xlim(t0, t1)
             _spectrogram(spec, s)
             _boxes(spec, s)
-            spec.set_title(
-                f"shot {s.shot} ({s.split}): F1 against the owner {s.f1:.2f}"
-            )
+            spec.set_title(f"shot {s.shot} ({s.split}): F1 (0-2 s) {s.f1:.2f}")
             _owner_bars(strip, s, (0, 1))
             strip.set_yticks([])
             strip.set_ylabel("owner", rotation=0, ha="right", va="center")
             centres = s.edges[:-1] + FRAME_MS / 2
-            for a, b in runs(s.prob >= s.threshold):
+            for i, (a, b) in enumerate(runs(s.prob >= s.threshold)):
                 model.axvspan(
-                    s.edges[a], s.edges[b], color=MODEL_COLOUR, alpha=0.15, lw=0
+                    s.edges[a],
+                    s.edges[b],
+                    color=MODEL_COLOUR,
+                    alpha=0.15,
+                    lw=0,
+                    label=MODEL_LABEL if i == 0 else "_" + MODEL_LABEL,
                 )
-            model.plot(centres, s.prob, color=MODEL_COLOUR, lw=0.6)
-            model.axhline(s.threshold, color=MODEL_COLOUR, lw=0.5, ls=":")
+            model.plot(centres, s.prob, color=MODEL_COLOUR, lw=0.6, label="_P(AE)")
+            model.axhline(
+                s.threshold, color=MODEL_COLOUR, lw=0.5, ls=":", label=THRESHOLD_LABEL
+            )
             model.set_ylim(0, 1)
             model.set_ylabel("P(AE)")
-            for ax in (spec, strip, model):
-                ax.set_xlim(t0, t1)
+            _scored_line([spec, strip, model], s, dark={spec})
             for ax in (spec, strip):
                 ax.tick_params(labelbottom=False)
         axes[-1].set_xlabel("time (ms)")
-        poi = any(s.boxes for s in shots)
-        fig.legend(handles=_keys(poi), loc="outside lower center", ncols=5)
+        _legend(fig)
         save(fig, stem)
     return fig
