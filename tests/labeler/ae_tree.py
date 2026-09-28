@@ -130,9 +130,9 @@ def corpus(tmp_path: Path, shots, *, seconds=(-0.1, 0.7), tone_s=(0.2, 0.4)) -> 
     return out
 
 
-def chosen(paths: Paths, split: dict[int, str]) -> Path:
-    """An untrained `band80-mhd3` model saved as the chosen one, threshold 0.5;
-    its models directory."""
+def chosen(paths: Paths, split: dict[int, str], version: str = "v1") -> Path:
+    """An untrained `band80-mhd3` model of `version` saved as the chosen one,
+    threshold 0.5; its models directory."""
     import json
 
     import torch
@@ -141,7 +141,7 @@ def chosen(paths: Paths, split: dict[int, str]) -> Path:
     from labeler.ae.xpower.model import FrameCNN
 
     torch.manual_seed(0)
-    models = paths.root / "models" / "ae_xpower" / "v1"
+    models = paths.root / "models" / "ae_xpower" / version
     train.save(
         models / "band80-mhd3",
         FrameCNN(),
@@ -152,6 +152,7 @@ def chosen(paths: Paths, split: dict[int, str]) -> Path:
         band_khz=(80.0, 250.0),
         labels_file=paths.label_tables / "alfven_eigenmode/review/labels.csv",
         candidate="band80-mhd3",
+        version=version,
     )
     (models / "chosen.json").write_text(json.dumps({"candidate": "band80-mhd3"}))
     return models
@@ -162,3 +163,21 @@ def env(monkeypatch, paths: Paths) -> None:
     monkeypatch.setenv("LABELER_ROOT", str(paths.root))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(paths.label_tables))
     monkeypatch.setenv("LABELER_CORPUS", str(paths.corpus))
+
+
+def snapshot(paths: Paths, monkeypatch, version: str = "v2") -> str:
+    """Freeze the tree's saved labels as `version`'s snapshot, as the controller
+    froze the owner's (`models/ae_xpower/<version>/review/labels.csv`), and make
+    its sha256 the one the version expects; the sha256."""
+    import hashlib
+
+    from labeler.ae import xpower
+    from labeler.events.review import labels
+
+    data = labels.labels_path(xpower.event_dir(paths)).read_bytes()
+    file = xpower.snapshot_file(paths, version)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    monkeypatch.setitem(xpower.LABEL_SNAPSHOTS, version, digest)
+    return digest

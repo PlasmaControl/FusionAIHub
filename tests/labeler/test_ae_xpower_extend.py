@@ -25,8 +25,8 @@ def _cohort(paths):
     return frame
 
 
-def _approved_model(paths, split):
-    models = ae_tree.chosen(paths, split)
+def _approved_model(paths, split, version="v1"):
+    models = ae_tree.chosen(paths, split, version)
     (models / "evaluation.json").write_text(
         json.dumps(
             {
@@ -280,9 +280,9 @@ def test_extension_requires_a_passing_evaluation(
     assert not gallery.gallery_dir(paths).exists()
 
 
-def _three_shots(tmp_path, monkeypatch):
+def _three_shots(tmp_path, monkeypatch, version="v1"):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = _approved_model(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"}, version)
     _cohort(paths)
     pd.DataFrame(
         {
@@ -364,3 +364,26 @@ def test_merge_checks_identity_and_exact_shot_accounting(
     assert error.value.code != 0
     stderr = capsys.readouterr().err
     assert str(manifest) in stderr and "Traceback" not in stderr
+
+
+@pytest.mark.parametrize("version", ["v1", "v2"])
+def test_the_extension_names_the_labels_it_learned_from(tmp_path, monkeypatch, version):
+    """The reviewer's Minor 11: the table's meta names the labels the model was
+    trained on and the version's label snapshot (v1 has none), and so does each
+    of its gallery index rows."""
+    paths, models = _three_shots(tmp_path, monkeypatch, version)
+    snapshot = ae_tree.snapshot(paths, monkeypatch) if version == "v2" else None
+    monkeypatch.setattr(extend, "run_all", gallery.run_all)
+    ae_tree.corpus(tmp_path, (201, 202, 203))
+    result = extend.run_shard(paths, models=models, k=0, of=1, version=version)
+    assert result["failed"] == 0
+    merged = extend.merge(paths, models=models, of=1, version=version)
+    meta_path = Path(merged["table"]).with_suffix(".meta.json")
+    meta = json.loads(meta_path.read_text())
+    _, blob = extend.load(extend.chosen_model(models))
+    assert meta["labels_sha256"] == blob["labels_sha256"]
+    assert meta["snapshot_sha256"] == snapshot
+    index = pd.read_csv(
+        gallery.gallery_dir(paths, version) / "index.csv", keep_default_na=False
+    )
+    assert index.snapshot_sha256.tolist() == [snapshot or ""] * 3

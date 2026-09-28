@@ -1,11 +1,28 @@
 """Train FrameCNN on the owner's reviewed AE shots.
 
     python -m labeler.ae.xpower.train --candidate NAME [--out DIR] [--pilot N]
+    python -m labeler.ae.xpower.train --from-cv --version v2 [--pilot N]
 
-reads the owner's labels (`data/events/alfven_eigenmode/review/labels.csv`), the
-review page's AE stores and TokEye's masks, and writes `model.pt`, `split.csv`
-and `training.json` to `--out` (default `$LABELER_ROOT/models/ae_xpower/v1/NAME`).
-`CANDIDATES` names the input band and MHD weight of each version.
+The first (v1) reads the owner's labels (`data/events/alfven_eigenmode/review/
+labels.csv`), the review page's AE stores and TokEye's masks, and writes
+`model.pt`, `split.csv`, `training.json` and the labels it read
+(`review/labels.csv`) to `--out` (default
+`$LABELER_ROOT/models/ae_xpower/<version>/NAME`; its parent must be named for
+`--version`; a pilot writes to `runs/ae_xpower/pilot/<version>/NAME`).
+`candidates(version)` names the input band and MHD weight of each candidate.
+
+The second is the final model of a version chosen by cross-validation (`cv`,
+the ledger's Deviation 11): `cv/choice.json`'s candidate, trained on exactly
+the pool shots of `cv/folds.csv` (every train and validation shot of the
+version's label snapshot; the file is checked against the snapshot and TokEye's
+masks, and its sha256 against the choice's) for the choice's fixed epoch count
+(the median of its folds' best epochs) with no early stopping, saved at the
+choice's threshold with the choice's, the folds' and the snapshot's sha256,
+into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json` beside it.
+`model.pt` is written after the files beside it, so a job that ends between it
+and `chosen.json` leaves a whole model: run again, it writes `chosen.json` if
+the current choice, folds and snapshot made that model, and otherwise refuses;
+it never trains a second one.
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -34,10 +51,21 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from ...config import Paths, atomic_path, git_sha
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
-from . import EVENT, VERSION, event_dir, model_dir, pilot_area, tokeye_masks
+from . import (
+    CV_VERSIONS,
+    EVENT,
+    VERSION,
+    check_bound,
+    event_dir,
+    model_dir,
+    pilot_area,
+    read_snapshot,
+    snapshot_file,
+    tokeye_masks,
+)
 from .data import (
     BAND_KHZ,
     CONTEXT_FRAMES,
@@ -55,13 +83,47 @@ from .data import (
 from .model import FrameCNN, FrameCNNConfig
 
 THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
-#: The versions `evaluate --choose` picks between on the validation shots: the
-#: earlier detector's band, and the full band at two weights on MHD frames.
-CANDIDATES = {
-    "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
-    "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
-    "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
+#: Each version's candidates, in the order ties and array tasks use. v1's are
+#: the earlier detector's band and the full band at two weights on MHD frames,
+#: chosen on the validation shots (`evaluate --choose`); v2's keep v1's band
+#: and vary only the MHD weight, chosen by cross-validation (`cv`, the ledger's
+#: Deviation 11).
+CANDIDATES_BY_VERSION = {
+    "v1": {
+        "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
+        "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
+        "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
+    },
+    "v2": {
+        "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
+        "band80-mhd10": {"band": BAND_KHZ, "mhd_weight": 10.0},
+        "band80-mhd30": {"band": BAND_KHZ, "mhd_weight": 30.0},
+    },
 }
+#: The default version's candidates (v1's), for readers that name no version.
+CANDIDATES = CANDIDATES_BY_VERSION[VERSION]
+
+
+def candidates(version: str = VERSION) -> dict[str, dict]:
+    """The version's candidates, name -> {band, mhd_weight}, in their order."""
+    try:
+        return CANDIDATES_BY_VERSION[version]
+    except KeyError:
+        known = ", ".join(CANDIDATES_BY_VERSION)
+        raise ValueError(
+            f"version {version!r} has no candidates (known: {known})"
+        ) from None
+
+
+def candidate_spec(version: str, name: str) -> dict:
+    """The version's candidate `name`, {band, mhd_weight}; refused, naming the
+    version's candidates, when it is not one of them (for `train` and `cv`)."""
+    names = candidates(version)
+    if name not in names:
+        raise ValueError(
+            f"candidate {name} is not one of version {version}'s: " + ", ".join(names)
+        )
+    return names[name]
 
 
 @dataclass(frozen=True)
@@ -175,8 +237,12 @@ def fit(
     val: Sequence[Shot],
     config: TrainConfig | None = None,
     log: Callable[[str], None] = print,
-) -> tuple[FrameCNN, list[dict], float]:
-    """The model at its best validation epoch, the per-epoch history, the threshold."""
+) -> tuple[FrameCNN, list[dict], float | None]:
+    """The model at its best validation epoch, the per-epoch history, the threshold.
+
+    With no validation shots, every epoch is kept and none stops the run: the
+    model after `config.epochs` epochs, and no threshold (None).
+    """
     config = config or TrainConfig()
     torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
@@ -207,10 +273,13 @@ def fit(
             loss.backward()
             optimiser.step()
             losses.append(loss.item())
-        probs = [predict(model, shot.x) for shot in val]
-        cells = sum(frame_cells(p, s.states, 0.5) for p, s in zip(probs, val))
-        score = f1_of(cells)
-        kept = bool(np.isfinite(score) and score > best)
+        if val:
+            probs = [predict(model, shot.x) for shot in val]
+            cells = sum(frame_cells(p, s.states, 0.5) for p, s in zip(probs, val))
+            score = f1_of(cells)
+            kept = bool(np.isfinite(score) and score > best)
+        else:
+            score, kept = float("nan"), True
         history.append(
             {
                 "epoch": epoch,
@@ -228,6 +297,8 @@ def fit(
             if stale >= config.patience:
                 break
     model.load_state_dict(best_state)
+    if not val:
+        return model, history, None
     probs = [predict(model, shot.x) for shot in val]
     return model, history, pick_threshold(probs, [s.states for s in val])
 
@@ -252,7 +323,11 @@ def save(
     labels_bytes: bytes | None = None,
     allow_replace: bool = False,
     runs: Path | None = None,
+    extra: dict | None = None,
 ) -> None:
+    """`review/labels.csv`, `split.csv`, `training.json`, then `model.pt` in
+    `out`, so a model is never there without the files beside it; `extra` goes
+    into the checkpoint and the record as it is."""
     refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
     if labels_bytes is None:
         labels_bytes = labels_file.read_bytes()
@@ -269,9 +344,8 @@ def save(
         "labels_sha256": hashlib.sha256(labels_bytes).hexdigest(),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        **(extra or {}),
     }
-    with atomic_path(out / "model.pt") as tmp:
-        torch.save(blob, tmp)
     # The labels as trained on, where `labels.read_saved(out)` finds them.
     with atomic_path(labels.labels_path(out)) as tmp:
         tmp.write_bytes(labels_bytes)
@@ -291,9 +365,12 @@ def save(
         "counts": {
             v: sum(x == v for x in split.values()) for v in sorted(set(split.values()))
         },
+        **(extra or {}),
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
+    with atomic_path(out / "model.pt") as tmp:
+        torch.save(blob, tmp)
 
 
 def load(path) -> tuple[FrameCNN, dict]:
@@ -324,36 +401,208 @@ def refuse_checkpoint(
         )
 
 
+def check_made_by(file: Path, wanted: dict) -> None:
+    """Refuse a saved model whose checkpoint does not hold `wanted`."""
+    _, blob = load(file)
+    differ = [key for key, value in wanted.items() if blob.get(key) != value]
+    if differ:
+        raise FileExistsError(
+            f"{file}: a trained candidate is not replaced; train a new version "
+            f"(it differs from the current choice in {', '.join(differ)})"
+        )
+
+
 def candidate_dir(paths: Paths, name: str, version: str = VERSION) -> Path:
     return model_dir(paths, version) / name
+
+
+def train_from_cv(
+    paths: Paths, models: Path, *, version: str, pilot: int = 0, log=print
+) -> dict:
+    """The final model of a cross-validated version: `cv/choice.json`'s candidate
+    on exactly the shots of `cv/folds.csv`'s folds, for its fixed epoch count, with
+    no early stopping, at its threshold; then `chosen.json`, in the shape
+    `evaluate --test` reads. A model saved without `chosen.json` gets it, if
+    the current choice made that model; it is never trained again."""
+    from . import cv  # cv imports this module
+
+    cv.check_version(models, version)
+    in_runs = pilot_area(models, paths.runs)
+    if pilot and not in_runs:
+        raise ValueError(f"{models}: a pilot writes under {paths.runs}")
+    choice_file = cv.cv_dir(models) / "choice.json"
+    if not choice_file.is_file():
+        raise FileNotFoundError(f"{choice_file}: no choice; run cv --choose first")
+    choice_bytes = choice_file.read_bytes()
+    choice = json.loads(choice_bytes)
+    data, _ = read_snapshot(paths, version)
+    digest = hashlib.sha256(data).hexdigest()
+    if choice.get("version") != version or choice.get("labels_sha256") != digest:
+        raise ValueError(f"{choice_file}: made for another version or label snapshot")
+    # The folds as the snapshot and TokEye's masks give them now, and the choice's.
+    folds = cv.checked_folds(paths, models, version)
+    if choice.get("folds_sha256") != folds.sha256:
+        raise ValueError(
+            f"{choice_file}: made from other folds than "
+            f"{cv.cv_dir(models) / 'folds.csv'} holds"
+        )
+    name, threshold = choice["candidate"], float(choice["threshold"])
+    spec = candidate_spec(version, name)
+    out, chosen_file = models / name, models / "chosen.json"
+    if chosen_file.exists() and not in_runs:
+        raise FileExistsError(f"{chosen_file}: the version's model is chosen once")
+    pool = sorted(folds.folds)  # exactly the folds' shots; a pilot, the first N
+    epochs = int(choice["final_epochs"])
+    if pilot:
+        pool, epochs = pool[:pilot], 2
+    elif len(pool) != choice["frames"]["shots"]:
+        raise ValueError(
+            f"{choice_file}: pooled {choice['frames']['shots']} shots; the folds "
+            f"have {len(pool)}"
+        )
+    choice_sha = hashlib.sha256(choice_bytes).hexdigest()
+    extra = {
+        "from_cv": True,
+        "choice_sha256": choice_sha,
+        "folds_sha256": folds.sha256,
+        "snapshot_sha256": digest,
+        "fixed_epochs": epochs,
+        "cv_branch": choice["branch"],
+    }
+    if (out / "model.pt").exists() and not pilot:
+        # Saved, and the job gone before chosen.json: that model's record, if
+        # the current choice, folds and snapshot made it; never a second model.
+        made = {"candidate": name, "version": version, "threshold": threshold}
+        check_made_by(out / "model.pt", made | extra | {"labels_sha256": digest})
+    else:
+        refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
+        split = {s: "test" for s, v in folds.split.items() if v == "test"}
+        split |= dict.fromkeys(pool, "train")
+        config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
+        shots = [
+            load_shot(
+                s,
+                folds.saved[s],
+                store_rows(paths.spectrogram_file(EVENT, s)),
+                tokeye_masks(paths),
+                band=spec["band"],
+            )
+            for s in pool
+        ]
+        model, history, _ = fit(shots, [], config, log=log)
+        save(
+            out,
+            model,
+            threshold=threshold,
+            split=split,
+            history=history,
+            config=config,
+            band_khz=spec["band"],
+            labels_file=snapshot_file(paths, version),
+            labels_bytes=data,
+            candidate=name,
+            version=version,
+            allow_replace=bool(pilot),
+            runs=paths.runs,
+            extra=extra,
+        )
+    chosen = {
+        "candidate": name,
+        "version": version,
+        "threshold": threshold,
+        "why": (
+            f"cross-validation ({choice_file.name}), Deviation 11 branch "
+            f"{choice['branch']}: {cv.BRANCHES[choice['branch']]}; trained on "
+            f"{len(pool)} shots for {epochs} epochs, no early stopping"
+        ),
+        "branch": choice["branch"],
+        "final_epochs": epochs,
+        "choice_sha256": choice_sha,
+        "folds_sha256": folds.sha256,
+        "labels_sha256": digest,
+        "model_sha256": sha256_of(out / "model.pt"),
+        "git_sha": git_sha(),
+        "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    with atomic_path(chosen_file) as tmp:
+        tmp.write_text(json.dumps(chosen, indent=1) + "\n")
+    return chosen
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--version", default=VERSION)
-    p.add_argument("--candidate", choices=sorted(CANDIDATES), required=True)
+    names = sorted({n for c in CANDIDATES_BY_VERSION.values() for n in c})
+    p.add_argument("--candidate", choices=names, help="one of the version's")
     p.add_argument(
-        "--out", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1/<candidate>"
+        "--from-cv",
+        action="store_true",
+        help="the final model of a cross-validated version, from cv/choice.json",
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        help="default $LABELER_ROOT/models/ae_xpower/<version>/<candidate>",
     )
     p.add_argument(
         "--pilot",
         type=int,
         default=0,
-        help="6-20 shots (4 of them validation), 2 epochs, to runs/ae_xpower/pilot",
+        help=(
+            "6-20 shots (4 of them validation; with --from-cv, pool shots), "
+            "2 epochs, to runs/ae_xpower/pilot/<version>"
+        ),
     )
-    p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
+    p.add_argument(
+        "--epochs",
+        type=int,
+        help=(
+            f"default {TrainConfig.epochs}; not with --from-cv, which trains for "
+            "the choice's final_epochs"
+        ),
+    )
     args = p.parse_args(argv)
     if args.pilot and not 6 <= args.pilot <= 20:
         p.error("a pilot is 6 to 20 shots")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
-    spec = CANDIDATES[args.candidate]
-    pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.candidate
+    if args.from_cv:
+        if args.candidate or args.out:
+            p.error("--from-cv takes its candidate and directory from the choice")
+        if args.epochs is not None:
+            p.error("--from-cv trains for the choice's final_epochs; no --epochs")
+        pilot_models = paths.runs / "ae_xpower" / "pilot" / args.version
+        models = pilot_models if args.pilot else model_dir(paths, args.version)
+        try:
+            chosen = train_from_cv(
+                paths,
+                models,
+                version=args.version,
+                pilot=args.pilot,
+                log=lambda m: print(m, flush=True),
+            )
+        except (OSError, ValueError, KeyError) as error:
+            p.error(str(error))
+        print(f"wrote {models / chosen['candidate']}: {chosen['why']}", flush=True)
+        return 0
+    if args.candidate is None:
+        p.error("--candidate is required without --from-cv")
+    try:
+        spec = candidate_spec(args.version, args.candidate)
+    except ValueError as error:
+        p.error(str(error))
+    if args.version in CV_VERSIONS:
+        p.error(
+            f"version {args.version} is chosen by cross-validation "
+            "(python -m labeler.ae.xpower.cv); its model is trained with --from-cv"
+        )
+    pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.version / args.candidate
     out = args.out or (
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate, args.version)
     )
     try:
         refuse_checkpoint(out, allow_replace=bool(args.pilot), runs=paths.runs)
+        check_bound(args.version, out.parent)
     except (FileExistsError, ValueError) as error:
         p.error(str(error))
     directory = event_dir(paths)
@@ -367,8 +616,9 @@ def main(argv=None) -> int:
         snapshot_file.write_bytes(labels_bytes)
         saved = labels.read_saved(snapshot)
     split = make_split(saved, seldnet_split(tokeye_masks(paths)))
+    epochs = TrainConfig.epochs if args.epochs is None else args.epochs
     config = TrainConfig(
-        epochs=2 if args.pilot else args.epochs, mhd_weight=spec["mhd_weight"]
+        epochs=2 if args.pilot else epochs, mhd_weight=spec["mhd_weight"]
     )
     if args.pilot:
         chosen = sorted(s for s, v in split.items() if v == "train")[: args.pilot - 4]

@@ -13,15 +13,17 @@
 
 # The chosen AE model over the population's CO2 shots, as suggestions, in four shards:
 #   python -m labeler.ae.xpower.extend --shard K --of 4 --workers 8
-# writes $LABELER_ROOT/suggestions/ae_xpower/v1/shards/K.{csv,summary.csv,npz,failed.jsonl} and a
-# JPEG per shot into the gallery's extension/. The corpus is only read; nothing is fetched.
+# writes $LABELER_ROOT/suggestions/ae_xpower/$VERSION/shards/K.{csv,summary.csv,npz,failed.jsonl}
+# and a JPEG per shot into the gallery's extension/ (VERSION defaults to v1). The corpus is
+# only read; nothing is fetched. The gate is the version's full test evaluation (A1 and
+# A2), never one under runs/; merge indexes only the pictures its shards drew.
 # Merge afterwards on the login node (seconds; a SLURM job for it could not meet the gate):
-#   python -m labeler.ae.xpower.extend --merge --of 4
+#   python -m labeler.ae.xpower.extend --merge --of 4 --version $VERSION
 # Failures are JSON lines: one {"shot": int, "error": str} per line, including
 # multi-line errors. Merge writes failed.jsonl and refuses if failed shots exceed
 # 2 % of the eligible non-blind population (MAX_FAILED_FRACTION = 0.02).
 #
-#   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this> (shards/pilot/)
+#   pilot:      LIMIT=20 sbatch --array=0 --cpus-per-task=4 --mem=7G <this> (shards/pilot/, its pictures in shards/pilot/extension/)
 #   full run:   sbatch <this>
 # For N shards, use OF=N together with --array=0-<N-1>.
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
@@ -45,9 +47,10 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
+VERSION="${VERSION:-v1}"  # v1 by default, so v1's commands still mean v1
 K="${SLURM_ARRAY_TASK_ID:-0}"
 OF="${OF:-4}"
-echo "job ${SLURM_JOB_ID:-none} shard $K of $OF on $(hostname) at $(date -Is), root $ROOT"
-srun "$ENV/bin/python" -m labeler.ae.xpower.extend --shard "$K" --of "$OF" \
+echo "job ${SLURM_JOB_ID:-none} shard $K of $OF ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
+srun "$ENV/bin/python" -m labeler.ae.xpower.extend --shard "$K" --of "$OF" --version "$VERSION" \
     --workers "${SLURM_CPUS_PER_TASK:-8}" ${LIMIT:+--limit "$LIMIT"}
 echo "finished at $(date -Is)"

@@ -2,7 +2,8 @@
 
     python -m labeler.ae.xpower.frontier [--models DIR]
 
-For each saved candidate under DIR (default `$LABELER_ROOT/models/ae_xpower/v1`),
+For each saved candidate of the version (`train.candidates`) under DIR (default
+`$LABELER_ROOT/models/ae_xpower/<version>`),
 score only its split.csv validation shots, using its archived review labels.
 Reuse `evaluate.shot_frames` for the same 0-2 s frame selection and MHD definition
 as validation in `evaluate.run_choose`, and its cells/rates and `scoring.stats`
@@ -35,7 +36,7 @@ import torch
 from ...config import Paths, atomic_path
 from ...events.review import labels
 from ...scoring import stats
-from . import VERSION, evaluate, model_dir, train
+from . import VERSION, check_bound, evaluate, model_dir, train
 
 THRESHOLDS = tuple(k / 20 for k in range(1, 20))
 COLUMNS = (
@@ -83,8 +84,11 @@ def operating_point(rows: list[dict]) -> dict | None:
     )
 
 
-def _candidate(paths: Paths, file: Path, chosen: str | None) -> list[dict]:
+def _candidate(
+    paths: Paths, file: Path, chosen: str | None, version: str = VERSION
+) -> list[dict]:
     model, blob = train.load(file)
+    check_bound(version, file.parent.parent, blob, file)
     split = train.read_split(file.parent / "split.csv")
     validation = sorted(shot for shot, which in split.items() if which == "val")
     if not validation:
@@ -257,12 +261,16 @@ def report_md(rows: list[dict]) -> str:
 
 
 def run(paths: Paths, models: Path, version: str = VERSION) -> list[dict]:
-    files = sorted(models.glob("*/model.pt"))
+    # Only the version's own candidates; another version's directory is not read.
+    check_bound(version, models)
+    names = train.candidates(version)
+    files = [models / name / "model.pt" for name in names]
+    files = [file for file in files if file.is_file()]
     if not files:
         raise ValueError(f"{models}: no saved candidate")
     choice = models / "chosen.json"
     chosen = json.loads(choice.read_text())["candidate"] if choice.is_file() else None
-    rows = [row for file in files for row in _candidate(paths, file, chosen)]
+    rows = [row for file in files for row in _candidate(paths, file, chosen, version)]
     rows = [{**row, "version": version} for row in rows]
     with (
         atomic_path(models / "validation_frontier.csv") as tmp,
