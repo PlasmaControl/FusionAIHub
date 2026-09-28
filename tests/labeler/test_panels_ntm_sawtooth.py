@@ -221,6 +221,20 @@ def test_the_te_chords_are_the_windows_hottest_and_clipped_only_above(
         saw.te_panels(dark, paths=p)
 
 
+def test_without_a_window_the_te_chords_are_lit_like_the_best_lit_one(tmp_path):
+    # No window: the record, which a plasma fills under half of (192238: 45 %).
+    p = tree.paths(tmp_path)
+    t = tree.times(0.0, 100.0, 100)
+    chords = np.arange(44)[:, None]
+    y = np.where((t >= 30) & (t < 70), 3000.0, 0.0) * np.exp(-((chords - 41.5) ** 2))
+    y[9] = 0.0
+    y[9, 5] = 9000.0  # the hottest, on 1 of the 4 samples the core has
+    tree.write(p.corpus_file(SHOT), {"ts_core_temp": (t, y)})
+    tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
+    [te] = saw.te_panels(SHOT, paths=p)
+    assert te.legend == [f"chord {c}" for c in (40, 41, 42, 43)]
+
+
 def test_despike_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
     # Bins of 10, 10, 2 and 2 samples, exact in binary.
     x = np.r_[np.arange(0.0, 10.0, 0.5), np.arange(10.0, 20.0, 2.5)]
