@@ -55,15 +55,17 @@ beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
 The manifest pins every file the build reads (the chosen `model.pt`, its
 `split.csv`, its labels and each spectrogram store among them) with its
 sha256, and records the full commit and whether the tree was dirty, whether the
-model's copy of the labels is the one every evaluation names (`labels_match`,
-with each sha256 in `labels_sha256`, the live table's too), the time, the
+frame model's copy of the labels is the one its evaluation names
+(`labels_match`; the segmentation's own check is `seg_labels_match`), each
+sha256 in `labels_sha256` (the live table's too), the time, the
 interpreter's shot, its pool and the branch of the rule that fired, the example
 shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
 the whole window. The shots are ranked by their F1 over 0-2 s
 (`shots.rank_keys`).
 
 **The sha256s are of the bytes drawn** (`Snapshot`): each input is read once,
-hashed, and parsed from those bytes. At the end every input is hashed again; one
+hashed, and parsed from those bytes; a second read of one is refused, so its
+pin stays the bytes drawn. At the end every input is hashed again; one
 that changed while the build ran (the owner saving, say) is listed under
 `changed_during_build`, with both sha256s, and `consistent` is false.
 
@@ -140,6 +142,10 @@ NO_POI = "no points of interest: the segmentation has not run over the test shot
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
 NO_SCORED_SHOT = "no test shot has both a saved label and a store"
+NO_F1 = (
+    "no test shot has an F1 over 0-2 s: neither the owner nor the model calls "
+    "a scored frame there present"
+)
 NO_NAMED = "the named shot has no saved label in the model's copy, or no store"
 AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
 LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
@@ -353,20 +359,22 @@ def build(
 
 class Snapshot:
     """Each input read once: its bytes hashed, then parsed from those bytes, so
-    the manifest pins what was drawn. `changed` hashes every input again."""
+    the manifest pins what was drawn. A second read of a key is refused, so its
+    pin stays the bytes drawn. `changed` hashes every input again."""
 
     def __init__(self, scratch: Path):
         self.scratch = scratch  # for a parser that needs a file: the bytes' copy
         self.pinned: dict[str, tuple[Path, str]] = {}
-        self._kept: dict[str, bytes] = {}
 
-    def read(self, key: str, path: Path, *, keep: bool = True) -> bytes:
-        if key in self._kept:
-            return self._kept[key]
+    def read(self, key: str, path: Path) -> bytes:
+        """`path`'s bytes, pinned under `key`; a `ValueError` if `key` was read."""
+        if key in self.pinned:
+            raise ValueError(
+                f"{key}: already read, from {self.pinned[key][0]}; a second read "
+                "could pin other bytes than the ones drawn"
+            )
         data = Path(path).read_bytes()
         self.pinned[key] = (Path(path), hashlib.sha256(data).hexdigest())
-        if keep:
-            self._kept[key] = data
         return data
 
     def sha(self, key: str) -> str | None:
@@ -390,7 +398,7 @@ class Snapshot:
         return labels.read_saved(event)
 
     def model(self, key: str, path: Path, split) -> shots.Model:
-        return shots.Model.load(io.BytesIO(self.read(key, path, keep=False)), split)
+        return shots.Model.load(io.BytesIO(self.read(key, path)), split)
 
     def changed(self) -> dict[str, dict]:
         """The inputs whose bytes are no longer the ones drawn."""
@@ -453,7 +461,7 @@ def _draw(
         table("table_seg_scores", scores.table_segmentation(seg))
         copy = found["seg_labels"]
         if copy.is_file():
-            snap.read("seg_labels", copy, keep=False)
+            snap.read("seg_labels", copy)
         seg_match, seg_shas = seg_check(snap.sha("seg_labels"), seg)
         if not copy.is_file():
             lacking(SEG_PRODUCTS, NO_SEG_COPY, missing=[str(copy)])
@@ -566,12 +574,14 @@ def _shot_figures(
 
     def one(s: int) -> shots.AEShot:
         """The shot's picture, its store read once."""
-        data = snap.read(f"store_{s}", _store(paths, s), keep=False)
+        data = snap.read(f"store_{s}", _store(paths, s))
         return shots.picture(s, label=saved[s], model=model, store=data)
 
     pictures = {s: one(s) for s in usable}
     ranked = [shots.rank_keys(p) for p in pictures.values()]
     f1 = {r.shot: r.f1 for r in ranked}
+    if all(math.isnan(v) for v in f1.values()):
+        return NO_F1, {}
     pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
     picked = {
         "interpreter_shot": pick["shot"] if shot is None else shot,

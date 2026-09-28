@@ -32,7 +32,7 @@ from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, placeholder, save, style, tit
 from .scores import tabular
 
 SPLITS = ("train", "val", "test")
-UNSPLIT = "no split"
+UNSPLIT = "no\nsplit"  # the split panel's tick, on two lines: clear of "test"
 UNSPLIT_COLOUR = "#cccccc"
 NOT_RUN = "not run"
 MISSING = "--"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 import pytest
 
@@ -142,6 +143,24 @@ def test_the_segmentation_fp_axis_reaches_a_wider_interval(tmp_path):
     assert fig.axes[1].get_ylim()[1] == pytest.approx(0.3)
 
 
+def test_the_segmentation_fp_axis_ignores_undefined_ends():
+    seg = tree.seg_evaluation()
+    methods = list(scores.SEG_NAMES)
+    seg["methods"][methods[0]]["fp_rate_mhd"] = tree.est(None)
+    seg["methods"][methods[-1]]["fp_rate_mhd"] = tree.est(0.2, 0.15, 0.27)
+    assert scores.fp_top(seg, methods) == pytest.approx(0.3), "a first NaN hides none"
+    seg["methods"][methods[1]]["fp_rate_mhd"] = tree.est(0.02, 0.01, None)
+    assert scores.fp_top(seg, methods) == pytest.approx(0.3)
+    for m in methods:
+        seg["methods"][m]["fp_rate_mhd"] = tree.est(None)
+    assert scores.fp_top(seg, methods) == scores.SEG_FP_TOP, "nothing to reach"
+
+
+def _score(value: str, up: str, down: str) -> str:
+    """A score cell as the tables write it."""
+    return rf"$\text{{{value}}}^{{+\text{{{up}}}}}_{{-\text{{{down}}}}}$"
+
+
 def test_the_tables():
     ae = tree.ae_evaluation()
     ae["methods"] = {m: ae["methods"][m] for m in ("ae_xpower", "always")}
@@ -155,19 +174,25 @@ def test_the_tables():
         "\\toprule\n"
         "Method & Precision & Recall & F1 & FP (MHD) & FP (other) \\\\\n"
         "\\midrule\n"
-        "ae\\_xpower & $0.900^{+0.030}_{-0.050}$ & $0.880^{+0.030}_{-0.050}$ "
-        "& $0.890^{+0.030}_{-0.050}$ & $0.020^{+0.010}_{-0.010}$ & 0.010 \\\\\n"
-        "always & $0.400^{+0.030}_{-0.050}$ & $0.380^{+0.030}_{-0.050}$ "
-        "& $0.390^{+0.030}_{-0.050}$ & $0.049^{+0.002}_{-0.009}$ & -- \\\\\n"
+        f"ae\\_xpower & {_score('0.900', '0.030', '0.050')} & "
+        f"{_score('0.880', '0.030', '0.050')} & {_score('0.890', '0.030', '0.050')} & "
+        f"{_score('0.020', '0.010', '0.010')} & 0.010 \\\\\n"
+        f"always & {_score('0.400', '0.030', '0.050')} & "
+        f"{_score('0.380', '0.030', '0.050')} & {_score('0.390', '0.030', '0.050')} & "
+        f"{_score('0.049', '0.002', '0.009')} & -- \\\\\n"
         "\\bottomrule\n"
         "\\end{tabular}\n"
     )
     assert "high - value" in scores.INTERVAL_NOTE, "the format, said once"
+    assert _score("0.900", "0.030", "0.050") == (
+        "$\\text{0.900}^{+\\text{0.030}}_{-\\text{0.050}}$"
+    ), "the digits in the text font, the signs math symbols"
     table = scores.table_segmentation(tree.seg_evaluation())
     assert table.splitlines()[3] == (
         "Method & Dice & Frame P & Frame R & Frame F1 & FP (MHD) \\\\"
     )
-    assert table.splitlines()[5].startswith("ae\\_seg & $0.800^{+0.040}_{-0.040}$ & ")
+    first = f"ae\\_seg & {_score('0.800', '0.040', '0.040')} & "
+    assert table.splitlines()[5].startswith(first)
     assert len(table.splitlines()) == 10
 
 
@@ -189,21 +214,21 @@ def test_the_differences_table_gives_the_verdicts_they_decide():
         (
             "AE F1: ae\\_xpower $-$ SELDnet",
             "+0.100 [$-$0.020, +0.200]",
-            "low $\\geq -0.03$",
+            "low $\\geq -\\text{0.03}$",
             "yes",
             "A1 pass",
         ),
         (
             "AE MHD FP: ae\\_xpower $-$ SELDnet",
             "$-$0.020 [$-$0.050, +0.010]",
-            "high $< 0$",
+            "high $< \\text{0}$",
             "no",
             "A2 fail",
         ),
         (
             "AE F1: ae\\_xpower $-$ always",
             "+0.500 [+0.400, +0.600]",
-            "low $> 0$",
+            "low $> \\text{0}$",
             "yes",
             "A3 pass",
         ),
@@ -222,4 +247,25 @@ def test_the_differences_table_gives_the_verdicts_they_decide():
     ae = tree.ae_evaluation()
     ae["bar_thresholds"]["f1_vs_seldnet_low"] = -0.05
     moved = scores.table_differences(ae, None).splitlines()[5].split(" & ")
-    assert moved[2] == "low $\\geq -0.05$", "A1's condition is the record's"
+    assert moved[2] == "low $\\geq -\\text{0.05}$", "A1's condition is the record's"
+
+
+def _math_digits(table: str) -> list[str]:
+    """The math in a table's rows that has a digit outside `\\text{}`, so in
+    the math font (Computer Modern under Times)."""
+    rows = "\n".join(r for r in table.splitlines() if not r.startswith("%"))
+    maths = re.findall(r"\$([^$]*)\$", rows)
+    return [m for m in maths if re.search(r"\d", re.sub(r"\\text\{[^{}]*\}", "", m))]
+
+
+def test_the_tables_print_their_digits_in_the_text_font():
+    ae, seg = tree.ae_evaluation(), tree.seg_evaluation()
+    ae["bar_thresholds"]["f1_vs_seldnet_low"] = 0.02
+    for table in (
+        scores.table_ae(ae),
+        scores.table_segmentation(seg),
+        scores.table_differences(ae, seg),
+        scores.table_differences(tree.ae_evaluation(), None),
+    ):
+        assert "$" in table
+        assert _math_digits(table) == []

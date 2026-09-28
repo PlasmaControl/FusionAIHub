@@ -20,8 +20,12 @@ pseudo-masks the segmentation is scored against. `table_ae`,
 **The tables fit ICML's 487.8 pt text width** at `\small` or larger, in Times.
 A score is written `$v^{+a}_{-b}$`, its 95 % interval's ends `v + a` and `v - b`
 (`INTERVAL_NOTE`, said once in each table's `%` comment), exact where
-`v ± half-width` would not be: the bootstrap intervals are not symmetric. A
-negative number is written `$-$0.188`, and one that rounds to zero `0.000`.
+`v ± half-width` would not be: the bootstrap intervals are not symmetric. Its
+numbers, and those of table_differences' conditions, are set in amsmath's
+`\text{}` (the manuscript loads amsmath), so their digits print in the text
+font, Times, and not in Computer Modern, the math font `times` leaves; the
+signs stay math symbols. A negative number elsewhere is written `$-$0.188`,
+and one that rounds to zero `0.000`.
 
 The AE methods are the same six everywhere (`AE_METHODS`): the model, the two
 detectors it is compared with, the start table, the UCI windows and the
@@ -108,7 +112,7 @@ DIFFERENCES = (
         "f1_minus_seldnet",
         "AE F1: ae_xpower $-$ SELDnet",
         "A1",
-        lambda t: rf"low $\geq {t['f1_vs_seldnet_low']:g}$",
+        lambda t: rf"low $\geq {text_number(t['f1_vs_seldnet_low'], 'g')}$",
         lambda lo, hi, t: lo >= t["f1_vs_seldnet_low"],
     ),
     (
@@ -116,7 +120,7 @@ DIFFERENCES = (
         "mhd_fp_minus_seldnet",
         "AE MHD FP: ae_xpower $-$ SELDnet",
         "A2",
-        lambda t: "high $< 0$",
+        lambda t: r"high $< \text{0}$",
         lambda lo, hi, t: hi < 0,
     ),
     (
@@ -124,7 +128,7 @@ DIFFERENCES = (
         "f1_minus_always",
         "AE F1: ae_xpower $-$ always",
         "A3",
-        lambda t: "low $> 0$",
+        lambda t: r"low $> \text{0}$",
         lambda lo, hi, t: lo > 0,
     ),
     ("seg", "dice_minus_recipe", "Seg Dice: ae_seg $-$ recipe", None, None, None),
@@ -338,12 +342,11 @@ def _seg_bars(ax, seg: dict, metrics: Sequence[str], drawn: dict) -> None:
 
 
 def fp_top(seg: dict, methods: Sequence[str]) -> float:
-    """`SEG_FP_TOP`, or the next `SEG_FP_STEP` past the highest interval end."""
-    highest = max(
-        (v for m in methods for v in interval(seg["methods"][m][SEG_FP])[::2]),
-        default=0.0,
-    )
-    steps = math.ceil(round(np.nan_to_num(highest) / SEG_FP_STEP, 6))
+    """`SEG_FP_TOP`, or the next `SEG_FP_STEP` past the highest value or upper
+    interval end; one undefined (NaN) is left out, so it hides none after it."""
+    ends = (v for m in methods for v in interval(seg["methods"][m][SEG_FP])[::2])
+    highest = max((v for v in ends if not math.isnan(v)), default=0.0)
+    steps = math.ceil(round(highest / SEG_FP_STEP, 6))
     return max(SEG_FP_TOP, steps * SEG_FP_STEP)
 
 
@@ -400,8 +403,15 @@ def number(x: float, signed: bool = False) -> str:
     return f"+{text}" if signed else text
 
 
+def text_number(x: float, spec: str) -> str:
+    r"""`x` for math mode, formatted by `spec`: its digits in amsmath's
+    `\text{}`, so in the text font, and its minus a math symbol."""
+    return rf"{'-' if x < 0 else ''}\text{{{format(abs(x), spec)}}}"
+
+
 def _fmt(estimate: dict) -> str:
-    """A score and its interval, `$v^{+a}_{-b}$` (`INTERVAL_NOTE`)."""
+    """A score and its interval, `$v^{+a}_{-b}$` (`INTERVAL_NOTE`), each number
+    in the text font (`text_number`)."""
     v, lo, hi = interval(estimate)
     if math.isnan(v):
         return "--"
@@ -409,7 +419,8 @@ def _fmt(estimate: dict) -> str:
         return number(v)
     value, low, high = (round(x, DECIMALS) for x in (v, lo, hi))
     up, down = max(high - value, 0.0), max(value - low, 0.0)
-    return f"${value:.{DECIMALS}f}^{{+{up:.{DECIMALS}f}}}_{{-{down:.{DECIMALS}f}}}$"
+    value, up, down = (text_number(x, f".{DECIMALS}f") for x in (value, up, down))
+    return f"${value}^{{+{up}}}_{{-{down}}}$"
 
 
 def _fmt_difference(estimate: dict) -> str:

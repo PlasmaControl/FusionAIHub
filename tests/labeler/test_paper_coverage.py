@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+
 import pandas as pd
 
 from labeler.ae.xpower.train import read_split
@@ -79,12 +81,27 @@ def test_the_coverage_figure(tmp_path):
         "train",
         "val",
         "test",
-        coverage.UNSPLIT,
+        "no\nsplit",
     ]
     assert [bar.get_height() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
     assert [t.get_text() for t in years.get_xticklabels()] == ["2024", "2025", "?"]
     assert "suggest" in years.get_title()
     assert tree.small_text(fig) == []
+
+
+def test_the_split_ticks_do_not_touch(tmp_path):
+    today = coverage.Counts(
+        reviewed=180,
+        positive=180,
+        present_s=316.3,
+        split={"train": 88, "val": 16, "test": 58},
+        unsplit=18,
+    )  # AE's counts on 2026-09-28, so the axis is as wide as the paper's
+    fig = coverage.draw_coverage({"alfven_eigenmode": today}, tmp_path / "fig")
+    fig.draw_without_rendering()  # lay out at the figure's own dpi again
+    boxes = [t.get_window_extent() for t in fig.axes[2].get_xticklabels()]
+    gaps = [(b.x0 - a.x1) * 72 / fig.dpi for a, b in pairwise(boxes)]
+    assert min(gaps) >= coverage.FONT_PT - 1, f"at least an em apart (pt): {gaps}"
 
 
 def test_without_the_extension_the_year_panel_says_not_run(tmp_path):

@@ -101,6 +101,33 @@ def test_the_interpreter_shot_can_be_named(runs, tmp_path):
     assert manifest["interpreter_rule"] == "named by --shot"
 
 
+def _skipped_shot_figures(manifest: dict, reason: str) -> None:
+    for product in ("fig_interpreter", "fig_examples"):
+        assert manifest["skipped"][product] == {"reason": reason, "missing": []}
+        assert product not in manifest["products"]
+    assert "fig_scores" in manifest["products"], "the rest is drawn"
+
+
+def test_a_named_shot_without_a_label_or_a_store_is_refused(runs, tmp_path):
+    manifest = build.build(runs, tmp_path / "paper", shot=999)
+    _skipped_shot_figures(manifest, f"{build.NO_NAMED}: 999")
+    assert manifest["interpreter_shot"] == 999, "the manifest says which"
+    runs.spectrogram_file(xpower.EVENT, 103).unlink()
+    manifest = build.build(runs, tmp_path / "paper", shot=103)
+    _skipped_shot_figures(manifest, f"{build.NO_NAMED}: 103")
+
+
+def test_no_test_shot_with_an_f1_skips_the_shot_products(runs, tmp_path):
+    copy = tree.scored_labels(runs)
+    rows = [r for r in copy.read_text().splitlines() if r[:4] not in ("102,", "103,")]
+    rows += ["102,2,0,2000,", "103,2,0,2000,"]  # uncertain: no frame is scored
+    copy.write_text("\n".join(rows) + "\n")
+    tree.record_labels(runs)
+    manifest = build.build(runs, tmp_path / "paper")
+    _skipped_shot_figures(manifest, build.NO_F1)
+    assert "interpreter_shot" not in manifest
+
+
 def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path):
     found = build.inputs(runs)
     manifest = build.build(runs, tmp_path / "paper")
@@ -254,12 +281,13 @@ def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
     record = json.loads(evaluation.read_text())
     record["methods"]["ae_xpower"]["f1"] = tree.est(0.5, 0.4, 0.6)
     evaluation.write_text(json.dumps(record))  # new scores, drawn before the failure
-    monkeypatch.setattr(shots, "draw_examples", fails)
-    with pytest.raises(RuntimeError, match="drawing failed"):
-        build.build(runs, out)
+    with monkeypatch.context() as failing:
+        failing.setattr(shots, "draw_examples", fails)
+        with pytest.raises(RuntimeError, match="drawing failed"):
+            build.build(runs, out)
     assert _files(out) == before
     assert sorted(p.name for p in tmp_path.iterdir() if "paper" in p.name) == ["paper"]
-    monkeypatch.undo()
+    assert os.environ["LABELER_ROOT"] == str(runs.root), "the fixture's Paths stay"
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, out)
     after = _files(out)
@@ -401,6 +429,32 @@ def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatc
         assert entry["sha256"] == hashlib.sha256(data).hexdigest()
 
 
+def test_the_snapshot_refuses_a_second_read(runs, tmp_path):
+    snap = build.Snapshot(tmp_path / "scratch")
+    evaluation = xpower.model_dir(runs) / "evaluation.json"
+    model = xpower.model_dir(runs) / "band80-mhd3" / "model.pt"
+    record = snap.json("ae_evaluation", evaluation)
+    snap.model("ae_model", model, {102: "test"})
+    drawn = {key: snap.sha(key) for key in ("ae_evaluation", "ae_model")}
+    evaluation.write_text(json.dumps({**record, "rerun": True}))  # a run rewrites it
+    again = {
+        "ae_evaluation": lambda: snap.json("ae_evaluation", evaluation),
+        "ae_model": lambda: snap.model("ae_model", model, {102: "test"}),
+    }
+    for key, read in again.items():
+        with pytest.raises(ValueError, match=f"{key}: already read"):
+            read()
+        assert snap.sha(key) == drawn[key], "the pin stays the bytes drawn"
+    now = hashlib.sha256(evaluation.read_bytes()).hexdigest()
+    assert snap.changed() == {
+        "ae_evaluation": {
+            "path": str(evaluation),
+            "drawn": drawn["ae_evaluation"],
+            "now": now,
+        }
+    }
+
+
 def test_an_input_changed_mid_build_is_recorded(runs, tmp_path, monkeypatch):
     live = build.inputs(runs)["ae_labels"]
     drawn = hashlib.sha256(live.read_bytes()).hexdigest()
@@ -460,6 +514,33 @@ def test_labels_unlike_the_evaluations_refuse_the_shot_products(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper")
     assert manifest["labels_match"] is None
     assert manifest["skipped"]["fig_examples"]["reason"] == build.LABELS_UNNAMED
+
+
+def _name_copy(paths, sha: str) -> None:
+    evaluation = xpower.model_dir(paths) / "evaluation.json"
+    record = json.loads(evaluation.read_text())
+    record["meta"]["labels_copy_sha256"] = sha
+    evaluation.write_text(json.dumps(record))
+
+
+def test_a_copy_unlike_labels_copy_sha256_refuses_the_shot_products(runs, tmp_path):
+    scored = hashlib.sha256(tree.scored_labels(runs).read_bytes()).hexdigest()
+    other = "f" * 64
+    why = (
+        f"{build.LABELS_DIFFER}: the copy is {scored[:12]}, "
+        f"the record names labels_copy_sha256 {other[:12]}"
+    )
+    for named in (scored, None):  # labels_sha256 matches, or is absent
+        _name_labels(runs, named)
+        _name_copy(runs, other)
+        manifest = build.build(runs, tmp_path / "paper")
+        assert manifest["labels_match"] is False, named
+        assert manifest["labels_sha256"]["ae_evaluation_copy"] == other
+        _skipped_shot_figures(manifest, why)
+    _name_copy(runs, scored)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["labels_match"] is True, "the copy's own sha256 is enough"
+    assert "fig_interpreter" in manifest["products"]
 
 
 def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_path):
