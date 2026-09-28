@@ -31,7 +31,7 @@
 #   mem=2500M       1.85 GB x 1.35; the scores held per shot are a few kB.
 #   time=00:30:00   3 x 16 validation shots x ~1.5 s + 58 test shots x ~4 s = ~5 min, x 6.
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
