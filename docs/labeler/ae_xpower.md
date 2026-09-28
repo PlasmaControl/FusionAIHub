@@ -245,6 +245,27 @@ there; and each record carries its seed. The post-hoc record's (c) pools each
 seed's five folds at 0.70: F1, precision, recall, MHD FP, whether F1 ≥ 0.90,
 and the range and standard deviation across seeds.
 
+## Caveats for the paper
+
+- **The choice sits on seed noise.** At 0.70, band80-mhd10's pooled out-of-fold
+  F1 is 0.902 at the default seed and 0.889, 0.888 and 0.886 at the three study
+  seeds, so only the default seed clears branch 2's F1 ≥ 0.90. The study
+  retrains only the chosen candidate, so it does not measure whether the choice
+  rule would still pick band80-mhd10 at 0.70 under another seed.
+- **Best epochs move with the seed.** The five folds' best epochs have medians of
+  15 at the default seed and 14, 20 and 15 at the study seeds. Fold 0's best
+  epoch is 23 at the default seed and 7 at 20260924.
+- **The final model's epochs are longer than a fold's.** A fold's model trains on
+  three folds (72 shots; the next fold early-stops it), so at 8 crops a shot an
+  epoch is 576 crops. The final model trains on all 120 shots, 960 crops an
+  epoch, so its 15 epochs are about 1.67 times the training steps of a fold at
+  the median, and it is saved at the threshold chosen on the folds.
+- **The test shots were looked at before.** 58 of the 60 are v1's test shots.
+  v1's A2 failure on them (MHD FP 0.241) is why v2 weighs MHD frames. v2's
+  choice read only out-of-fold frames, but its design answered a result on the
+  test shots, so the test is not fully fresh. A clean confirmation needs shots
+  that no version has seen.
+
 ## The jobs, in run order
 
 Each script's header gives its sizing and the measured runs behind it. Prefix
