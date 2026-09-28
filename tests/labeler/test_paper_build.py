@@ -83,3 +83,20 @@ def test_the_interpreter_shot_can_be_named(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper", shot=103, examples=1)
     assert (manifest["interpreter_shot"], manifest["example_shots"]) == (103, [102])
     assert manifest["interpreter_rule"] == "named by --shot"
+
+
+def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path):
+    found = build.inputs(runs)
+    manifest = build.build(runs, tmp_path / "paper")
+    no_summary, no_poi = [str(found["summary"])], [str(found["poi"])]
+    assert manifest["partial"] == {
+        "fig_coverage": no_summary,
+        "table_datasets": no_summary,
+        "fig_interpreter": no_poi,
+        "fig_examples": no_poi,
+    }
+    assert set(manifest["partial"]) <= set(manifest["products"])
+    (xpower.model_dir(runs) / "chosen.json").unlink()
+    manifest = build.build(runs, tmp_path / "paper")
+    no_split = [str(found["ae_chosen"]), *no_summary]
+    assert manifest["partial"] == {"fig_coverage": no_split, "table_datasets": no_split}

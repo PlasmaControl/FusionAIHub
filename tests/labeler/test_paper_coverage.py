@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from labeler.paper import COMING, coverage
 
+from . import paper_tree as tree
+
 SUMMARY = (
     "shot,year,window_start_ms,window_end_ms,frames,present_frames,"
     "not_observable_frames,present_runs,max_prob\n"
@@ -38,30 +40,55 @@ def test_ae_counts(tmp_path):
     assert counts.by_year == {coverage.UNKNOWN_YEAR: (1, 0), 2024: (2, 1), 2025: (1, 1)}
     assert (counts.suggested, counts.suggested_positive) == (4, 2)
     bare = coverage.ae_counts(event, None, tmp_path / "missing.csv")
-    assert bare.split == {"train": 0, "val": 0, "test": 0} and bare.by_year == {}
+    assert bare.split is None, "no split: the model was not chosen"
+    assert bare.by_year is None, "no summary: the extension did not run"
+    assert (bare.suggested, bare.suggested_positive) == (None, None)
 
 
 def _coming(ax) -> int:
     return sum(t.get_text() == COMING for t in ax.texts)
 
 
+def _texts(ax) -> list[str]:
+    return [t.get_text() for t in ax.texts]
+
+
 def test_the_coverage_figure(tmp_path):
     counts = {"alfven_eigenmode": coverage.ae_counts(*_inputs(tmp_path))}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert (tmp_path / "fig_coverage.pdf").is_file()
-    left, right = fig.axes
-    assert _coming(left) == 5
-    assert [left.patches[6 * i].get_height() for i in range(4)] == [3, 2, 4, 2]
-    assert [bar.get_height() for bar in right.patches] == [2, 1, 1, 1, 1, 0]
-    assert [t.get_text() for t in right.get_xticklabels()] == ["2024", "2025", "?"]
+    shots, present, split, years = fig.axes
+    assert _coming(shots) == 5 and _coming(present) == 5
+    assert [bar.get_width() for bar in shots.patches] == [3, 2], "reviewed, positive"
+    [legend] = fig.legends
+    assert [t.get_text() for t in legend.get_texts()] == [
+        "reviewed",
+        "with a present span",
+    ]
+    assert [bar.get_width() for bar in present.patches] == [0.9]
+    assert "0.9" in _texts(present)
+    assert [bar.get_height() for bar in split.patches] == [1, 1, 1]
+    assert [t.get_text() for t in split.get_xticklabels()] == ["train", "val", "test"]
+    assert [bar.get_height() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
+    assert [t.get_text() for t in years.get_xticklabels()] == ["2024", "2025", "?"]
+    assert "suggest" in years.get_title()
+    assert tree.small_text(fig) == []
 
 
-def test_without_suggestions_the_year_panel_is_coming(tmp_path):
-    counts = {"alfven_eigenmode": coverage.Counts(3, 2, 0.9)}
+def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
+    event, _, _ = _inputs(tmp_path)
+    counts = {"alfven_eigenmode": coverage.ae_counts(event, None, None)}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
-    _, right = fig.axes
-    assert _coming(right) == 1
-    assert right.get_title() == "AE suggestions by campaign year"
+    _, _, split, years = fig.axes
+    for ax in (split, years):
+        assert _texts(ax) == [coverage.NOT_RUN]
+        assert ax.get_legend() is None and len(ax.patches) == 0
+    [legend] = fig.legends
+    assert [t.get_text() for t in legend.get_texts()] == [
+        "reviewed",
+        "with a present span",
+    ]
+    assert tree.small_text(fig) == []
 
 
 def test_the_datasets_table(tmp_path):
@@ -77,3 +104,10 @@ def test_the_datasets_table(tmp_path):
         f"{name} & \\multicolumn{{6}}{{c}}{{coming}} \\\\"
         for name in ("NTM", "H-mode", "ELMing", "sawteeth", "disruption")
     ]
+
+
+def test_without_the_extension_the_table_says_so(tmp_path):
+    event, _, _ = _inputs(tmp_path)
+    counts = {"alfven_eigenmode": coverage.ae_counts(event, None, None)}
+    lines = coverage.table_datasets(counts).splitlines()
+    assert lines[5] == "AE & 3 & 2 & 0.9 & -- & -- & -- \\\\"

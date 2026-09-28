@@ -12,7 +12,7 @@ from matplotlib.patches import Rectangle
 from labeler.ae.xpower.evaluate import chosen_model
 from labeler.paper import COMING, shots
 
-from . import ae_tree
+from . import ae_tree, paper_tree
 
 
 @pytest.fixture
@@ -99,6 +99,7 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
     assert (extent.x0, extent.x1) == (300.0, 900.0), "the owner's present frames"
     labels = [t.get_text() for t in fig.legends[0].get_texts()]
     assert labels[-1] == "point of interest"
+    assert paper_tree.small_text(fig) == []
 
 
 def test_the_examples_figure(tree, tmp_path):
@@ -110,6 +111,7 @@ def test_the_examples_figure(tree, tmp_path):
     assert fig.axes[0].get_title().startswith("shot 102 (test): F1 (0-2 s) ")
     assert fig.axes[3].get_title().startswith("shot 103 (test): ")
     assert "point of interest" not in [t.get_text() for t in fig.legends[0].get_texts()]
+    assert paper_tree.small_text(fig) == []
 
 
 def _many(shot: int, n: int) -> pd.DataFrame:
@@ -233,9 +235,11 @@ def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     ]
     fig = shots.draw_examples(two, tmp_path / "fig_examples")
     _legend_matches_drawn(fig)
+    assert paper_tree.small_text(fig) == []
     shown = [t.get_text() for t in fig.legends[0].get_texts()]
     assert "owner: uncertain" not in shown and "owner: not observable" not in shown
     assert "owner: present" in shown and "model: present" in shown
     assert fig.axes[0].get_title() == (f"shot 102 (test): F1 (0-2 s) {two[0].f1:.2f}")
     fig = shots.draw_interpreter(two[0], tmp_path / "fig_interpreter")
     _legend_matches_drawn(fig)
+    assert paper_tree.small_text(fig) == []

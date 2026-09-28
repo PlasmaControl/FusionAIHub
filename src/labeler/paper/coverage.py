@@ -7,12 +7,17 @@ it calls positive, by campaign year. AE's come from the owner's review
 (`data/events/alfven_eigenmode/review/labels.csv`), the chosen `ae_xpower`
 model's `split.csv` and the extension's `summary.csv`; the other five are
 coming. A suggested shot is a suggestion, not a label (v1 spec §3).
+
+A part whose input is missing is not a zero: without `split.csv` (no model
+chosen) or `summary.csv` (the extension did not run) its panel says "not run"
+and the table prints `--`. Why it did not run goes in the build's manifest
+(`partial`), not in the figure.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -22,51 +27,49 @@ from matplotlib.figure import Figure
 from ..ae.xpower.train import read_split
 from ..events.catalog.states import PRESENT
 from ..events.review import labels
-from . import AE, COMING, ORDER, PAGE_IN, placeholder, save, style, title
+from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, placeholder, save, style, title
 from .scores import tabular
 
 SPLITS = ("train", "val", "test")
-BARS = {
-    "reviewed": "#bbbbbb",
-    "positive": "#d62728",
-    "suggested": "#9ecae1",
-    "suggested positive": "#1f77b4",
-}
+NOT_RUN = "not run"
+MISSING = "--"
+SHOT_BARS = {"reviewed": "#bbbbbb", "with a present span": "#d62728"}
+PRESENT_COLOUR = "#d62728"
+SPLIT_COLOUR = "#7f7f7f"
+SUGGESTED = {"suggested": "#9ecae1", "suggested with AE": "#1f77b4"}
 UNKNOWN_YEAR = 0
+VALUE_PT = FONT_PT - 1
 
 
 @dataclass(frozen=True)
 class Counts:
-    """One phenomenon's shots. `by_year` maps a campaign year to (suggested,
-    suggested positive); `UNKNOWN_YEAR` holds shots without one."""
+    """One phenomenon's shots. `split` maps train/val/test to reviewed shots, and
+    `by_year` a campaign year to (suggested, suggested positive), `UNKNOWN_YEAR`
+    holding shots without one; None where the input is missing (not run)."""
 
     reviewed: int
     positive: int
     present_s: float
-    split: Mapping[str, int] = field(default_factory=dict)
-    by_year: Mapping[int, tuple[int, int]] = field(default_factory=dict)
+    split: Mapping[str, int] | None = None
+    by_year: Mapping[int, tuple[int, int]] | None = None
 
     @property
-    def suggested(self) -> int:
+    def suggested(self) -> int | None:
+        if self.by_year is None:
+            return None
         return sum(n for n, _ in self.by_year.values())
 
     @property
-    def suggested_positive(self) -> int:
+    def suggested_positive(self) -> int | None:
+        if self.by_year is None:
+            return None
         return sum(k for _, k in self.by_year.values())
-
-    def bar(self, name: str) -> int:
-        return {
-            "reviewed": self.reviewed,
-            "positive": self.positive,
-            "suggested": self.suggested,
-            "suggested positive": self.suggested_positive,
-        }[name]
 
 
 def ae_counts(
     event_dir: Path, split_csv: Path | None, summary_csv: Path | None
 ) -> Counts:
-    """AE's counts; a missing `split_csv` or `summary_csv` leaves its part empty."""
+    """AE's counts; a missing `split_csv` or `summary_csv` leaves its part None."""
     saved = labels.read_saved(event_dir)
     positive = sum(
         any(c == PRESENT for _, _, c in label.intervals) for label in saved.values()
@@ -74,78 +77,135 @@ def ae_counts(
     present_ms = sum(
         b - a for label in saved.values() for a, b, c in label.intervals if c == PRESENT
     )
-    split = dict.fromkeys(SPLITS, 0)
+    split = None
     if split_csv is not None and Path(split_csv).is_file():
+        split = dict.fromkeys(SPLITS, 0)
         for shot, which in read_split(split_csv).items():
             if shot in saved:
                 split[which] = split.get(which, 0) + 1
-    by_year = {}
+    by_year = None
     if summary_csv is not None and Path(summary_csv).is_file():
         summary = pd.read_csv(summary_csv)
         years = summary["year"].fillna(UNKNOWN_YEAR).astype(int)
-        for year, group in summary.groupby(years):
-            by_year[int(year)] = (len(group), int((group.present_frames > 0).sum()))
+        by_year = {
+            int(year): (len(group), int((group.present_frames > 0).sum()))
+            for year, group in summary.groupby(years)
+        }
     return Counts(len(saved), positive, round(present_ms / 1000, 3), split, by_year)
 
 
+def _coming_rows(ax, rows: np.ndarray, counts: Mapping[str, Counts]) -> None:
+    for y, category in zip(rows, ORDER, strict=True):
+        if category not in counts:
+            ax.text(
+                0.5,
+                y,
+                COMING,
+                transform=ax.get_yaxis_transform(),
+                ha="center",
+                va="center",
+                color="#888888",
+                style="italic",
+            )
+
+
+def _room(ax, top: float) -> None:
+    """Room past the longest bar for its value."""
+    ax.set_xlim(0, 1.3 * top if top > 0 else 1)
+
+
+def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
+    height = 0.8 / len(SHOT_BARS)
+    top = 0.0
+    for i, (name, colour) in enumerate(SHOT_BARS.items()):
+        at, values = [], []
+        for y, category in zip(rows, ORDER, strict=True):
+            c = counts.get(category)
+            v = None if c is None else (c.reviewed, c.positive)[i]
+            if v:  # nothing drawn, and no key, for a series without data
+                at.append(y + 0.4 - (i + 0.5) * height)  # reviewed on top
+                values.append(v)
+        if values:
+            bars = ax.barh(at, values, height, color=colour, label=name)
+            ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
+            top = max(top, *values)
+    _coming_rows(ax, rows, counts)
+    _room(ax, top)
+    ax.set_yticks(rows, [title(c) for c in ORDER])
+    ax.set_ylim(rows.min() - 0.6, rows.max() + 0.6)
+    ax.set_title("shots")
+
+
+def _present_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
+    at, values = [], []
+    for y, category in zip(rows, ORDER, strict=True):
+        c = counts.get(category)
+        if c is not None and c.present_s > 0:
+            at.append(y)
+            values.append(c.present_s)
+    if values:
+        bars = ax.barh(at, values, 0.5, color=PRESENT_COLOUR)
+        ax.bar_label(
+            bars, labels=[f"{v:.1f}" for v in values], padding=1, fontsize=VALUE_PT
+        )
+    _coming_rows(ax, rows, counts)
+    _room(ax, max(values, default=0))
+    ax.set_yticks(rows, [])
+    ax.set_title("present time (s)")
+
+
+def _split_panel(ax, ae: Counts | None) -> None:
+    heading = f"{title(AE)}: model split"
+    if ae is None or ae.split is None:
+        placeholder(ax, heading, NOT_RUN)
+        return
+    values = [ae.split.get(s, 0) for s in SPLITS]
+    bars = ax.bar(range(len(SPLITS)), values, color=SPLIT_COLOUR)
+    ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
+    ax.set_xticks(range(len(SPLITS)), list(SPLITS))
+    ax.set_ylim(0, 1.2 * max(max(values), 1))
+    ax.set_ylabel("reviewed shots")
+    ax.set_title(heading)
+
+
+def _years_panel(ax, ae: Counts | None) -> None:
+    heading = f"{title(AE)} suggestions by year"
+    if ae is None or ae.by_year is None:
+        placeholder(ax, heading, NOT_RUN)
+        return
+    years = sorted(ae.by_year, key=lambda y: (y == UNKNOWN_YEAR, y))
+    at = np.arange(len(years))
+    for k, (name, colour) in enumerate(SUGGESTED.items()):
+        ax.bar(at, [ae.by_year[y][k] for y in years], color=colour, label=name)
+    ax.set_xticks(at, ["?" if y == UNKNOWN_YEAR else str(y) for y in years])
+    ax.set_xlabel("campaign year")
+    ax.set_ylabel("shots")
+    ax.set_title(heading)
+    if years:
+        ax.legend(frameon=False)
+
+
 def draw_coverage(counts: Mapping[str, Counts], stem: Path) -> Figure:
-    """Shots per phenomenon (log scale), and AE's suggestions by campaign year."""
+    """Per phenomenon the shots reviewed and positive, and their present time;
+    AE's model split; and AE's suggestions by campaign year."""
     with style():
         fig = Figure(figsize=(PAGE_IN, 2.3), layout="constrained")
-        left, right = fig.subplots(1, 2, width_ratios=[3, 2])
-        x = np.arange(len(ORDER))
-        width = 0.8 / len(BARS)
-        for i, (name, colour) in enumerate(BARS.items()):
-            values = [counts[c].bar(name) if c in counts else 0 for c in ORDER]
-            shown = [v if v > 0 else np.nan for v in values]  # nothing on a log axis
-            bars = left.bar(
-                x - 0.4 + (i + 0.5) * width, shown, width, color=colour, label=name
-            )
-            left.bar_label(
-                bars, labels=[f"{v}" if v > 0 else "" for v in values], fontsize=4
-            )
-        for k, category in enumerate(ORDER):
-            if category not in counts:
-                left.text(
-                    k,
-                    0.5,
-                    COMING,
-                    transform=left.get_xaxis_transform(),
-                    ha="center",
-                    va="center",
-                    color="#888888",
-                    style="italic",
-                )
-        left.set_yscale("log")
-        left.set_ylim(bottom=1)
-        left.set_xticks(x, [title(c) for c in ORDER])
-        left.set_ylabel("shots")
-        left.legend(frameon=False, ncols=2, loc="upper right")
-        ae = counts.get(AE)
-        if ae is None or not ae.by_year:
-            placeholder(right, "AE suggestions by campaign year")
-        else:
-            years = sorted(ae.by_year, key=lambda y: (y == UNKNOWN_YEAR, y))
-            names = ["?" if y == UNKNOWN_YEAR else str(y) for y in years]
-            at = np.arange(len(years))
-            right.bar(
-                at,
-                [ae.by_year[y][0] for y in years],
-                color=BARS["suggested"],
-                label="suggested",
-            )
-            right.bar(
-                at,
-                [ae.by_year[y][1] for y in years],
-                color=BARS["suggested positive"],
-                label="with AE",
-            )
-            right.set_xticks(at, names)
-            right.set_title("AE suggestions by campaign year")
-            right.set_ylabel("shots")
-            right.legend(frameon=False)
+        axes = fig.subplots(1, 4, width_ratios=[1.5, 1.1, 1, 1.3])
+        rows = np.arange(len(ORDER))[::-1].astype(float)
+        _shots_panel(axes[0], counts, rows)
+        _present_panel(axes[1], counts, rows)
+        axes[1].set_ylim(axes[0].get_ylim())
+        _split_panel(axes[2], counts.get(AE))
+        _years_panel(axes[3], counts.get(AE))
+        handles, names = axes[0].get_legend_handles_labels()
+        if handles:  # a key only for a series with data
+            fig.legend(handles, names, loc="outside lower left", ncols=len(names))
         save(fig, stem)
     return fig
+
+
+def _cell(value) -> str:
+    return MISSING if value is None else str(value)
 
 
 def table_datasets(counts: Mapping[str, Counts]) -> str:
@@ -169,20 +229,25 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
                 ]
             )
             continue
+        split = (
+            MISSING
+            if c.split is None
+            else " / ".join(str(c.split.get(s, 0)) for s in SPLITS)
+        )
         rows.append(
             [
                 title(category),
                 str(c.reviewed),
                 str(c.positive),
                 f"{c.present_s:.1f}",
-                " / ".join(str(c.split.get(s, 0)) for s in SPLITS),
-                str(c.suggested),
-                str(c.suggested_positive),
+                split,
+                _cell(c.suggested),
+                _cell(c.suggested_positive),
             ]
         )
     comment = (
         "Shots per phenomenon: reviewed by a person, with any present span, the "
         "model's split of the reviewed shots, and the extension's suggestions "
-        "(not labels)"
+        f"(not labels); {MISSING} where that run has not happened"
     )
     return tabular(header, rows, comment)
