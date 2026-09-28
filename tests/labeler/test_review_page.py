@@ -94,6 +94,25 @@ def test_a_change_is_where_the_label_leaves_its_source():
 
 
 @needs_node
+def test_each_saved_version_counts_the_ms_it_changed_from_the_one_before():
+    """The history's `ms changed`: the first version against the source, if any."""
+    source = {"window": [0, 2000], "intervals": [[100, 300, 1]]}
+    versions = [
+        {"window": [0, 2000], "intervals": [[100, 300, 1]]},
+        {"window": [0, 2000], "intervals": [[100, 300, 1], [500, 800, 1]]},
+        {"window": [0, 2000], "intervals": [[150, 300, 1], [500, 800, 1]]},
+        {"window": [0, 2100], "intervals": [[150, 300, 1], [500, 800, 1]]},
+    ]
+    found = _node(
+        "[m.versionChanges(input.versions, input.source),"
+        " m.versionChanges(input.versions.slice(0, 2), null),"
+        " m.versionChanges([], input.source)]",
+        {"source": source, "versions": versions},
+    )
+    assert found == [[0, 300, 50, 100], [None, 300], []]
+
+
+@needs_node
 def test_ticks_step_by_one_two_or_five():
     spans = [[1000, 10], [9000, 8], [50, 10], [3.7, 5]]
     assert _node("input.map(([s, n]) => m.niceStep(s, n))", spans) == [100, 2000, 5, 1]
@@ -124,3 +143,27 @@ def test_the_colour_map_runs_from_inferno_black_to_its_yellow():
     """Packed as RGBA bytes; values under the contrast floor take its colour."""
     found = _node("[m.lut(0)[0], m.lut(0)[255], m.lut(128)[100] === m.lut(128)[0]]")
     assert found == [0xFF040000, 0xFFA4FFFC, True]
+
+
+@needs_node
+def test_a_click_picks_the_mask_region_nearest_it_within_reach():
+    """Runs are `[bin, first column, length]`; reach is in bins and columns."""
+    found = _node(
+        "input.points.map(([j, k, tj, tk]) => m.regionAt(input.regions, j, k, tj, tk)?.id ?? null)",
+        {
+            "regions": [
+                {"id": 1, "runs": [[100, 10, 5], [101, 10, 5]]},
+                {"id": 2, "runs": [[104, 16, 3]]},
+            ],
+            "points": [
+                [100, 12, 0, 0],
+                [102, 12, 0, 0],
+                [102, 12, 1, 0],
+                [103, 15, 2, 2],
+                [104, 20, 0, 2],
+                [104, 21, 0, 2],
+                [90, 12, 3, 3],
+            ],
+        },
+    )
+    assert found == [1, None, 1, 2, 2, None, None]

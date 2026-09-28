@@ -32,19 +32,47 @@ after the newest save.
 
 ## The page
 
-- **Rows.** Alfvén eigenmode shots show the CO2 interferometer: the power of
-  chords R0, V1, V2 and V3, then the cross-power of R0 with each of the other
-  three. A mode seen by several chords shows in all seven rows. Noise on one
-  chord shows only in that chord's power row. Colour is dB above each
+- **Rows.** Alfvén eigenmode shots show the CO2 interferometer as three rows:
+  the cross-power of chord R0 with V1, V2 and V3. A mode seen by several chords
+  shows in all three rows; noise on a single chord averages out. Colour is dB above each
   frequency's own quiet level (its median over 0-6 s), from -3 to 27 dB. Other
-  events show the rows of their panel builder.
-- **Source** is the label the event's newest `format/*_format_*.csv` gives the
-  shot. **Label** is yours; it starts as a copy of the source. Where the two
-  differ, a strip along the top of the label track marks the difference.
+  events show the rows of their panel builder; the four cohort editors' rows
+  are under [The cohort editors](#the-cohort-editors).
+- **Source** is the label the page opens a shot on. It comes from the table the
+  event's `review/source.json` names, when it has one: the four cohort editors
+  point at their draft, `$LABELER_ROOT/suggestions/<method>/v1/<event>_suggest_<method>_v1.csv`.
+  Without a pointer it is the event's newest `format/*_format_*.csv`. **Label**
+  is yours; it starts as a copy of the source. Where the two differ, a strip
+  along the top of the label track marks the difference.
 - **Chips**, one per roster shot, coloured by state: *unreviewed* (never saved),
   *confirmed* (saved as the source had it) or *changed*. A dot marks a shot with
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
   a reload keeps them.
+- **Your name**, in the box at the top right, goes with every save and is shown
+  beside it (`saved Sep 26, 14:02 by Ada Lovelace`). The browser remembers it.
+  It is an attribution, not a login: the history also records the login that
+  runs the server.
+- **History** (`H`) lists the shot's saved versions, newest first: who saved
+  each one, when, how many spans, and how many ms changed. The first version
+  is compared with the event's current source table; later ones with the version
+  before. **Restore** loads a version as an unsaved edit; a save appends a
+  version and never rewrites one, but a crash between writing the label and
+  its history line can leave the current label without its version line.
+- **Mask** (Alfvén eigenmode shots with a pseudo-mask): TokEye's coherent lines
+  inside the label's AE frames, 80-250 kHz, drawn in cyan over the rows
+  (`labeler.ae.seg.pseudo` builds them). The segmentation model learns from
+  them. A click on a region that is not the mode (an MHD harmonic, pickup)
+  rejects it, grey; a second click takes that back. Each click is saved at
+  once, with your name. `M` hides and shows the mask, and the browser
+  remembers which. The header counts the regions kept.
+- **Save and next** shows the shot it goes to. It is the next shot in the
+  queue, reviewed or not, wrapping at the end; `U` still jumps to the next
+  unreviewed one.
+
+While the next shot is still opening, you cannot edit, save or restore a
+label. History closes when you move on. Enter closes History too; click
+Restore to load a version. If it replaces an unsaved edit, Ctrl+Z brings
+that edit back. Restoring the current label leaves it alone.
 
 | Key or gesture | Does |
 |---|---|
@@ -56,15 +84,152 @@ after the newest save.
 | Wheel | scroll the rows |
 | Ctrl/⌘ + wheel, or any wheel over the axis or tracks | zoom at the cursor |
 | Double-click, `0` | fit the window |
-| `←` `→`, `-` `=` | pan, zoom |
+| Shift + `←` `→`, `-` `=` | pan, zoom |
 | `1`-`9` | category for new spans and the selected one |
 | `Delete` | remove the selected span |
 | Ctrl/⌘ + `Z` | undo |
-| `Enter` | save and open the next unreviewed shot |
+| `Enter` | save and open the next shot in the queue |
 | `S` / `R` | save / revert to the source |
-| `J` `K` / `U` | previous, next shot / next unreviewed |
+| `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
+| `H` | saved versions, and restore one |
+| `M` / click a mask region | AE: hide or show the pseudo-mask / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
+
+## The cohort editors
+
+The ELM (`edge_localized_mode`), H-mode (`high_confinement_mode`), sawtooth
+(`sawtooth_oscillation`) and tearing-mode (`neoclassical_tearing_mode`) editors
+review the frozen cohort's 450 non-blind shots in its queue order
+(`queue_rank`). Any prefix of the queue is therefore a random subsample of
+every group. Blind shots are left to v1's blind review and never get a draft.
+The page opens each shot nobody has saved on its draft, a suggestion table
+written by `labeler.events.spans`.
+
+A draft covers the shot's catalog window, the v1 rule-4 Ip window. Its states
+are these:
+
+- *present*: the method saw the phenomenon.
+- *absent*: the inputs were measured and showed nothing.
+- *uncertain*: see H-mode below.
+- *not observable*: the method's inputs did not measure that time. A shot the
+  method could not run on is not observable throughout, and the table's
+  `.meta.json` records why under `skipped`.
+
+The meta's `rule` holds only the constants that method uses. Its `per_shot`
+records, for each shot, what the page does not show: where the draft started,
+and for ELMs the filterscope read and whether the H-mode gate ran. `gold`
+holds the score from the last `--gold` run.
+
+**ELM and sawtooth drafts start in the plasma.** A span is a run of at least 3
+events (ELMs at most 200 ms apart, sawtooth crashes at most 300 ms), padded by
+5 ms. Only events between the plasma's start and the window's end form runs.
+Events before the start are dropped before the runs are grouped, so the steps
+and spikes of the ramp-up neither make a run nor join one. The start is the
+first time the 25 ms centred mean of |Ip| inside the window reaches 0.8 of its
+plateau (its 95th percentile), the catalog's flat-top fraction. Ip comes from
+the corpus or the raw cache. A shot without Ip starts 700 ms into its window,
+the median on the 450 shots. Time before the start is absent. Sawteeth in the
+ramp-up are left out with it: 189061's 227-530 ms, for one. Add them by hand
+where you see them.
+
+**ELMs** (`elm_clock`).
+
+- Rows: the CO2 R0 chord's power from 0 to 125 kHz, in dB above each
+  frequency's floor over the plasma window, from -3 to 27 dB. Then two traces:
+  the PCPHD03 photodiode, and the filterscope the ELM spans were found on
+  (FS01, or FS02 where FS01 is dark). The filterscope row's title names its
+  channel.
+- PCPHD03 is left out where it cannot be read, or where it is flat over the
+  plasma: its 0.5-99.5 percentile range under 0.011 V, on 33 of the 450
+  shots. The filterscope row's title then says "(PCPHD03 not found)" or
+  "(PCPHD03 flat, left out)".
+- Both traces are clipped to their robust range: the 0.5-99.5 percentiles over
+  the plasma window, widened on each side by the distance between them. The
+  title says so when anything was cut, so a spike at the end of the discharge
+  does not flatten the ELMs.
+- Draft: the runs of ELMs, less any time the H-mode method saw the shot in
+  L-mode, because the clock also counts L-mode D-alpha spikes. A shot whose
+  H-mode inputs are missing keeps its runs whole, and `per_shot` records why
+  under `hmode_gate`.
+
+**H-mode** (`dalpha_lh`).
+
+- Rows:
+  - the D-alpha filterscopes FS01-FS08, what the method reads;
+  - the density, the CO2 R0 chord averaged over 1 ms;
+  - the NBI power summed over the beams, in MW;
+  - beta_N, only on the shots the features store holds (62 of the 450).
+- Draft: present from each L-H transition to the next H-L, or to the end of
+  the stretch the inputs measured. An H-L with no L-H before it makes the time
+  back to the transition before it, or to the start of that stretch,
+  uncertain. The shot was in H-mode then, but the detector did not see it
+  begin: mark the L-H where you can see it.
+- 33 queue shots have no beam power (`pinj`) in the corpus or the raw cache.
+  Nothing fetches it for them, so their drafts are not observable throughout.
+- H-mode has no Ip start: the transitions set their own.
+
+**Sawteeth** (`ece_sawtooth`).
+
+- Rows: the ECE channels 20-35, as four rows of four adjacent channels in keV,
+  so the inversion (inner channels drop as outer ones rise) reads from row to
+  row. Then one SXR row: the first fan of SX90RM1F, SX90RP1F, SX90RM1S and
+  SX90RP1S with 8 chords finite over half the record.
+- The SXR row draws the fan's 4 chords with the most crash-like drops over the
+  Ip flat-top, not its brightest: on about 25 shots the brightest sit near
+  4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
+  falls by more than 6 standard deviations of its own change, taken second by
+  second. The chords are chosen over the whole record, whatever the view.
+- A shot without ECE, or without SXR, gets the other's rows alone.
+- Draft: the runs of crashes, starting in the plasma as above.
+
+**Tearing modes** (`window`).
+
+- Rows:
+  - The spectrogram of MPI66M322D, in dB above each frequency's 20th
+    percentile over the plasma window (without one, over the columns louder
+    than the record's median), from -3 to 42 dB.
+  - The n strip. In each column it takes the strongest line between 1 and
+    30 kHz on the six MPI66M midplane probes and scores each n from -4 to 4
+    (1 is a perfect fit). A column whose peak stands less than 15 dB above
+    the band's median is not scored.
+  - beta_N, as for H-mode.
+- Sign convention: a mode cos(ωt − nφ) has n > 0, with φ each probe's
+  toroidal angle as its name gives it (MPI66M<φ>D). On some shots the strip's
+  sign is the opposite of the catalog's n ≥ 1 convention: 186636's mode shows
+  n = −1. Read the strip's |n|. Its sign is not flipped.
+- Draft: there is no method yet, so the whole window is absent. It gives the
+  page each shot's window.
+
+### Commands
+
+```bash
+# The raw cache the ELM and H-mode rows draw (PCPHD03, and CO2 for old shots):
+# on the login node, one editor at a time.
+pixi run -e labelmaker fdp run python -m labeler.events.raw --event edge_localized_mode
+pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confinement_mode
+# The drafts, over the queue; --force redoes shots already drafted, --gold scores
+# the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
+pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --gold
+# The roster in queue order, and --point opens the page on the draft.
+pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
+    --event sawtooth_oscillation --point
+# The row store ahead of the review; --force rebuilds built shots
+# (sbatch: scripts/labeler/review_build.sbatch).
+pixi run -e labelmaker python -m labeler.events.review.build --event sawtooth_oscillation --workers 8
+# The gate: how close the saved labels came to the draft.
+pixi run -e labelmaker python -m labeler.events.review.agreement --event sawtooth_oscillation
+```
+
+`agreement` counts a saved shot only when its last save in
+`review/history.jsonl` was opened on the table the pointer names now. Saves
+opened on another table, before the pointer moved, are counted under
+`excluded_saves`. It reports frame precision and recall over 10 ms frames. It
+is `ready` at 50 shots with both at least 0.75. `spans --gold` uses the same
+scorer on the roster's gold-tier shots. Its reference is the saved labels
+(`review/labels.csv`), or the label table whose path follows `--gold`. The ten
+gold sawtooth shots have no gold label yet, so their score counts 0 shots, and
+`missing` names the ten.
 
 ## What a save writes
 
@@ -76,8 +241,30 @@ Saves go under the event's directory in the label tables
   A shot's rows tile its window, and the gaps are category 0. Each save replaces
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
-- `review/history.jsonl` gets one line per save: shot, reviewer, time, the
-  window and spans saved, and the source file they were compared with.
+- `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
+  running the server), `name` (what the name box held, or null), time, the
+  window and spans saved, and the source file they were compared with. It is
+  only ever appended to: a shot's versions are its lines in order, numbered
+  from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
+  names existed have no `name` and read as unnamed.
+- `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
+  shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
+  (the server's login), `name` (the name box, or null), and time. A shot's last
+  line is its decision. Its `revision` is the number of that shot's log lines,
+  including decisions on older masks; it is derived from the log rather than
+  stored as a separate field. GET returns the revision and each POST must name
+  the revision it replaces. A successful save returns the incremented revision.
+  A changed revision or pseudo-mask returns HTTP 409: the page reloads the
+  current mask decisions, explains the conflict, and asks for another click.
+  A decision made on an older pseudo-mask (another sha256) is dropped: the page
+  says so and training
+  ignores it. A failed save restores the previous rejection list and keeps its
+  error for that shot across navigation, until a successful retry. Returning to
+  the shot shows the error and the saved decisions.
+
+A page newer than its server asks `/api/version` first. From an older server it
+saves without a name, hides the name box and history, and says to restart the
+server, so a page reload before a restart never breaks a save.
 
 ## The row store
 

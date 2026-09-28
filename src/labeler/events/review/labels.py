@@ -3,15 +3,15 @@
 `review/labels.csv` holds the current label of every reviewed shot in the format
 schema (`shot, category, t_start, t_end, confidence`, ms): a shot's rows tile its
 window, each span with its category and the gaps as category 0. `history.jsonl`
-gets one line per save. A shot nobody has saved opens on its source label, the
-newest `format/*_format_*.csv`.
+gets one line per save. A shot nobody has saved opens on its source label: the
+table `review/source.json` points at (a suggestion table), else the newest
+`format/*_format_*.csv`.
 """
 
 from __future__ import annotations
 
 import getpass
 import json
-import math
 import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -22,7 +22,10 @@ import numpy as np
 import pandas as pd
 
 from ...config import atomic_path
+from ..catalog.points import validate_csv_fields
+from ..catalog.states import NOT_OBSERVABLE, PHENOMENA
 from ..interval_tables import INTERVAL_COLUMNS, category_labels, validate_intervals
+from ..times import whole_ms
 
 LONGEST_WINDOW_MS = 20_000
 REVIEW = "review"
@@ -50,13 +53,22 @@ class Label:
 
 
 def categories(event: str) -> dict[int, str]:
-    """The categories a span can carry; 0 (absent) is the gaps."""
-    return {int(k): v for k, v in category_labels(event).items() if k != "0"}
+    """The categories a span can carry; 0 (absent) is the gaps.
+
+    A catalog phenomenon's spans carry its states: present, uncertain and not
+    observable, except phenomena that are always observable.
+    """
+    excluded = {0}
+    if event in PHENOMENA and PHENOMENA[event].observable_always:
+        excluded.add(NOT_OBSERVABLE)
+    return {
+        int(k): v for k, v in category_labels(event).items() if int(k) not in excluded
+    }
 
 
 def _ms(t) -> int:
     """Whole ms, halves up (JavaScript's `Math.floor(t + 0.5)`, so the page agrees)."""
-    return math.floor(float(t) + 0.5)
+    return whole_ms(t)
 
 
 def normalise(window, intervals, known: set[int] | None = None) -> Label:
@@ -113,10 +125,43 @@ def history_path(event_dir) -> Path:
     return Path(event_dir) / REVIEW / "history.jsonl"
 
 
+def pointer_path(event_dir) -> Path:
+    return Path(event_dir) / REVIEW / "source.json"
+
+
 def source_path(event_dir) -> Path | None:
-    """The newest format table by name. `*_format_*`: RWM's has no event prefix."""
+    """The table a shot nobody has saved opens on.
+
+    The one `review/source.json` names, when the event has one; else the newest
+    format table by name (`*_format_*`: RWM's has no event prefix). A pointer
+    to a table that is gone raises: falling back would open every shot on
+    another method's labels.
+    """
+    pointer = pointer_path(event_dir)
+    if pointer.is_file():
+        table = Path(json.loads(pointer.read_text())["table"])
+        if not table.is_file():
+            raise FileNotFoundError(f"{pointer} names {table}, which does not exist")
+        return table
     tables = Path(event_dir).glob("format/*_format_*.csv")
     return max(tables, key=lambda path: path.name, default=None)
+
+
+def write_pointer(event_dir, table, *, method: str, version: str) -> dict:
+    """Point the event's review page at `table`, a suggestion table."""
+    table = Path(table).resolve()
+    if not table.is_file():
+        raise FileNotFoundError(f"no suggestion table at {table}")
+    entry = {
+        "table": str(table),
+        "method": method,
+        "version": version,
+        "set_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "set_by": getpass.getuser(),
+    }
+    with atomic_path(pointer_path(event_dir)) as tmp:
+        tmp.write_text(json.dumps(entry, indent=1) + "\n")
+    return entry
 
 
 def read_source(event_dir) -> dict[int, Label]:
@@ -125,6 +170,11 @@ def read_source(event_dir) -> dict[int, Label]:
 
 def read_saved(event_dir) -> dict[int, Label]:
     return _table(labels_path(event_dir))
+
+
+def read_labels(path) -> dict[int, Label]:
+    """One label per shot of any format table at `path`; none if it is absent."""
+    return _table(Path(path))
 
 
 def _table(path) -> dict[int, Label]:
@@ -137,7 +187,8 @@ def _table(path) -> dict[int, Label]:
 @lru_cache(maxsize=64)
 def _read_table(path, _mtime_ns, _ino, _size) -> dict[int, Label]:
     """One label per shot of a format table; cached per file version, never mutate."""
-    frame = validate_intervals(pd.read_csv(path))
+    validate_csv_fields(path)
+    frame = validate_intervals(pd.read_csv(path, index_col=False))
     frame = frame[frame.t_end - frame.t_start >= 1]  # a point event has no span to edit
     found = {}
     for shot, rows in frame.groupby("shot", sort=False):
@@ -156,21 +207,62 @@ def read_history(event_dir) -> list[dict]:
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def save(event_dir, shot: int, label: Label, *, source: str | None) -> dict:
-    """Replace one shot's rows in `labels.csv` and append the save to the history."""
+class SaveRefused(ValueError):
+    """The page cannot save safely over the existing table."""
+
+
+def save(
+    event_dir, shot: int, label: Label, *, source: str | None, name: str | None = None
+) -> dict:
+    """Replace one shot's rows in `labels.csv` and append the save to history.
+
+    Refuse malformed CSV records, ragged rows or duplicate headers, and any
+    nonblank attrs on the selected shot (the page cannot edit them). Validate
+    both the existing and replacement-combined interval tables: exact columns,
+    nonnegative integral int64 shot/category values, finite time bounds with
+    end >= start, confidence missing or in [0, 1], and plain JSON object attrs
+    without duplicate keys or nonfinite values. These checks precede writing.
+    Other shots retain their original precision and attrs text. This validates
+    interval schema; catalog tiling, observability, points and allowed windows
+    are checked separately by the catalog checker.
+
+    `reviewer` is the server's login; `name` is what the reviewer typed, or None
+    (see `versions`).
+    """
     with _write_lock:
-        saved = dict(read_saved(event_dir))  # a copy: the cached dict is shared
-        saved[int(shot)] = label
-        frame = pd.DataFrame(
-            [row for s in sorted(saved) for row in saved[s].rows(s)],
-            columns=list(INTERVAL_COLUMNS),
+        path = labels_path(event_dir)
+        if path.is_file():
+            try:
+                validate_csv_fields(path)
+            except pd.errors.ParserError as error:
+                raise SaveRefused(str(error)) from error
+        # Read cells as written: other shots keep their precision and attrs text.
+        current = (
+            pd.read_csv(path, dtype=str, keep_default_na=False, index_col=False)
+            if path.is_file()
+            else pd.DataFrame(columns=list(INTERVAL_COLUMNS))
         )
+        selected = pd.to_numeric(current.shot, errors="coerce") == int(shot)
+        if (
+            "attrs" in current
+            and current.loc[selected, "attrs"].str.strip().ne("").any()
+        ):
+            raise SaveRefused(
+                f"shot {shot} has attrs that the review page cannot edit; save refused"
+            )
+        validate_intervals(current)
+        replacement = pd.DataFrame(label.rows(shot), columns=list(INTERVAL_COLUMNS))
+        if "attrs" in current:
+            replacement["attrs"] = ""
+        frame = pd.concat([current.loc[~selected], replacement], ignore_index=True)
+        frame = frame.sort_values("shot", key=pd.to_numeric, kind="stable")
         validate_intervals(frame)
-        with atomic_path(labels_path(event_dir)) as tmp:
+        with atomic_path(path) as tmp:
             frame.to_csv(tmp, index=False)
         entry = {
             "shot": int(shot),
             "reviewer": getpass.getuser(),
+            "name": name,
             "saved_at": datetime.now(UTC).isoformat(timespec="seconds"),
             **label.as_json(),
             "source": source,

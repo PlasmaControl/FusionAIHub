@@ -1028,9 +1028,10 @@ def test_every_category_has_a_verification_notebook():
     import json
 
     from labeler.config import Paths
+    from labeler.events.databases import category_dirs
 
     root = Paths.from_env().label_tables
-    categories = sorted(p.name for p in root.iterdir() if p.is_dir())
+    categories = [p.name for p in category_dirs(root)]
     # No count: a pinned 16 fails the next time a category is added or
     # removed, which happened twice while this surface was being built, and
     # fails as `assert 17 == 16`. The per-category assertions below are the

@@ -1,0 +1,96 @@
+"""Synthetic shots for the review editors' tests: corpus files, the cache, features."""
+
+from __future__ import annotations
+
+import h5py
+import numpy as np
+import pandas as pd
+
+from labeler.config import Paths
+from labeler.events import raw
+from labeler.events.catalog.cohort import COHORT_COLUMNS
+from labeler.events.verify import NoDataError
+from labeler.features.store import FeatureArray, write_features
+
+RNG = np.random.default_rng(7)
+
+
+def paths(tmp_path) -> Paths:
+    return Paths(
+        root=tmp_path / "root",
+        corpus=tmp_path / "corpus",
+        text_root=tmp_path / "text",
+        logs_jsonl=tmp_path / "logs.jsonl",
+        label_tables=tmp_path / "events",
+        raw_cache=tmp_path / "raw",
+    )
+
+
+def write(path, groups: dict) -> None:
+    """A corpus-format file: each group's `xdata` in seconds, `ydata` `(C, T)`."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with h5py.File(path, "a") as f:
+        for name, (t_ms, y) in groups.items():
+            g = f.create_group(name)
+            g.create_dataset("xdata", data=np.asarray(t_ms, "float64") / 1000.0)
+            g.create_dataset("ydata", data=np.atleast_2d(np.asarray(y, "float32")))
+
+
+def times(t0_ms: float, t1_ms: float, rate_hz: float) -> np.ndarray:
+    return t0_ms + np.arange(round((t1_ms - t0_ms) * rate_hz / 1000)) * 1000 / rate_hz
+
+
+def noise(n_channels: int, t_ms, scale: float = 1.0) -> np.ndarray:
+    return scale * RNG.standard_normal((n_channels, len(t_ms)))
+
+
+def features(p: Paths, shot: int, t_ms, betan) -> None:
+    arrays = {
+        "betan": FeatureArray(
+            x=np.asarray(t_ms) / 1000.0, y=np.atleast_2d(betan), attrs={}
+        )
+    }
+    write_features(p.features_file(shot), shot, arrays, {})
+
+
+def no_fetch(monkeypatch) -> list:
+    """Every live fetch fails, as it does off the login node; returns the tries."""
+    tried = []
+
+    def refuse(shot, exprs, **kwargs):
+        tried.append((shot, list(exprs)))
+        raise NoDataError("no fdp here")
+
+    monkeypatch.setattr(raw, "fdp_signal", refuse)
+    monkeypatch.setattr(raw, "RETRY_DELAY_S", 0.0)
+    return tried
+
+
+def use_env(monkeypatch, p: Paths) -> None:
+    """Point `Paths.from_env()` at `p`, as a CLI under test reads it."""
+    for name, value in {
+        "LABELER_ROOT": p.root,
+        "LABELER_CORPUS": p.corpus,
+        "LABELER_LABEL_TABLES": p.label_tables,
+        "LABELER_RAW_CACHE": p.raw_cache,
+    }.items():
+        monkeypatch.setenv(name, str(value))
+
+
+def queue_row(shot: int, rank: int, *, blind=False, window=(0, 1000)) -> dict:
+    return {
+        "shot": shot,
+        "queue_rank": rank,
+        "blind": blind,
+        "window_start_ms": window[0],
+        "window_end_ms": window[1],
+    }
+
+
+def cohort(p: Paths, rows) -> None:
+    """A frozen cohort at `data/events/catalog/cohort.csv`; unnamed columns blank."""
+    blank = dict.fromkeys(COHORT_COLUMNS, "")
+    frame = pd.DataFrame([blank | row for row in rows], columns=list(COHORT_COLUMNS))
+    path = p.label_tables / "catalog" / "cohort.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False)
