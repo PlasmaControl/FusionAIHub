@@ -3,18 +3,34 @@
 `data` turns the review page's AE rows and the owner's labels into 10 ms frames,
 `model` is the network, `train` fits it, `evaluate` scores it against the earlier
 methods on the held-out shots, `gallery` draws one JPEG per shot, and `extend`
-runs it over shots nobody has labelled, as suggestions.
+runs it over shots nobody has labelled, as suggestions. `cv` cross-validates the
+candidates of a version chosen that way (v2).
+
+**Label snapshots.** v1 read the owner's live `review/labels.csv` and copied it
+into each model directory. A version in `LABEL_SNAPSHOTS` reads its labels only
+from its frozen snapshot, `models/ae_xpower/<version>/review/labels.csv`, and
+refuses to run when that file's sha256 is not the one recorded here.
 """
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from ...config import Paths
+from ...events.review import labels
 
 METHOD = "ae_xpower"
 VERSION = "v1"
 EVENT = "alfven_eigenmode"
+#: The owner's labels as the controller froze them for a version (the ledger's
+#: Deviation 11: 180 shots as of 2026-09-27 22:05 EDT, for v2), by sha256.
+LABEL_SNAPSHOTS = {
+    "v2": "5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de",
+}
+#: Versions whose candidate and threshold `cv` chooses, not `evaluate --choose`.
+CV_VERSIONS = frozenset({"v2"})
 
 
 def pilot_area(directory: Path, runs: Path) -> bool:
@@ -33,6 +49,40 @@ def check_limit(paths: Paths, models: Path, limit: int) -> None:
 def model_dir(paths: Paths, version: str = VERSION) -> Path:
     """The trained model, its split and its scores."""
     return paths.models / METHOD / version
+
+
+def snapshot_file(paths: Paths, version: str) -> Path:
+    """Where a version's frozen labels are: its models directory's `review/`."""
+    return labels.labels_path(model_dir(paths, version))
+
+
+def parse_labels(data: bytes) -> dict[int, labels.Label]:
+    """`labels.read_saved` of these bytes, with the review parser's checks."""
+    with TemporaryDirectory(prefix="ae-labels-") as directory:
+        file = labels.labels_path(directory)
+        file.parent.mkdir()
+        file.write_bytes(data)
+        return labels.read_saved(directory)
+
+
+def check_snapshot(digest: str, version: str, where) -> None:
+    """Refuse labels whose sha256 is not the version's snapshot's."""
+    expected = LABEL_SNAPSHOTS[version]
+    if digest != expected:
+        raise ValueError(
+            f"{where}: labels sha256 {digest} is not version {version}'s "
+            f"snapshot {expected}"
+        )
+
+
+def read_snapshot(paths: Paths, version: str) -> tuple[bytes, dict]:
+    """The version's snapshot bytes and labels, after checking its sha256."""
+    if version not in LABEL_SNAPSHOTS:
+        raise ValueError(f"version {version} has no label snapshot")
+    file = snapshot_file(paths, version)
+    data = file.read_bytes()
+    check_snapshot(hashlib.sha256(data).hexdigest(), version, file)
+    return data, parse_labels(data)
 
 
 def suggestions_dir(paths: Paths, version: str = VERSION) -> Path:
