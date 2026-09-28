@@ -2,11 +2,12 @@
 
 The manuscript (`dev/label_paper`: "Tokamak-SI: Automatic Shot Interpreter with
 a Catalog of Fusion Reactor Data") shows the interpreter on one phenomenon, AE,
-first. A figure that will show every catalog phenomenon draws all six now: AE
-from the round-two runs, the other five as empty panels marked "coming", so the
-layout and sizes are settled before their numbers exist.
+first. A figure that will show every paper phenomenon (`ORDER`: the catalog's,
+less disruption for now) draws all five now: AE from the round-two runs, the
+other four as empty panels marked "coming", so the layout and sizes are settled
+before their numbers exist.
 
-- `scores`: the AE methods' frame scores (the six-phenomenon grid), their
+- `scores`: the AE methods' frame scores (one panel per phenomenon), their
   false-positive rates on MHD frames, the segmentation's scores, and tables;
 - `coverage`: reviewed, positive and suggested shots per phenomenon;
 - `shots`: one discharge as the interpreter shows it, and AE examples;
@@ -34,7 +35,10 @@ from ..config import Paths, atomic_path
 from ..events.catalog.states import PHENOMENA
 
 AE = "alfven_eigenmode"
-ORDER = tuple(PHENOMENA)  # AE first, then the five still to come
+#: The paper's phenomena, AE first, then the four still to come. Disruption is
+#: left out for now (the owner, 2026-09-28: "ignore/remove disruptions for now").
+LEFT_OUT = ("disruption",)
+ORDER = tuple(p for p in PHENOMENA if p not in LEFT_OUT)
 COLUMN_IN = 3.25  # ICML \columnwidth, inches
 PAGE_IN = 6.75  # ICML \textwidth
 FONT_PT = 7

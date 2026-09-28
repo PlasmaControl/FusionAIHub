@@ -7,7 +7,7 @@ model was trained); and the shots the extension suggested labels for, with
 those it calls positive, by campaign year. AE's come from the owner's live
 review (`data/events/alfven_eigenmode/review/labels.csv`), the chosen
 `ae_xpower` model's `split.csv` and the extension's `summary.csv`; the other
-five are coming. So the reviewed count is the split's three plus "no split". A
+four are coming. So the reviewed count is the split's three plus "no split". A
 suggested shot is a suggestion, not a label (v1 spec §3).
 
 A cross-validated version (v2: its `chosen.json` names `folds_sha256`, or its

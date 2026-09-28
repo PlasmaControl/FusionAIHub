@@ -82,7 +82,7 @@ def test_the_coverage_figure(tmp_path):
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert (tmp_path / "fig_coverage.pdf").is_file()
     shots, present, split, years = fig.axes
-    assert _coming(shots) == 5 and _coming(present) == 5
+    assert _coming(shots) == 4 and _coming(present) == 4
     assert [bar.get_width() for bar in shots.patches] == [4, 2], "reviewed, positive"
     [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
@@ -218,9 +218,9 @@ def test_the_datasets_table(tmp_path):
         "& No split & Suggested & Suggested positive \\\\"
     )
     assert lines[5] == "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 \\\\"
-    assert lines[6:11] == [
+    assert lines[6:10] == [
         f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\"
-        for name in ("NTM", "H-mode", "ELMing", "sawteeth", "disruption")
+        for name in ("NTM", "H-mode", "ELMing", "sawteeth")
     ]
 
 

@@ -781,10 +781,11 @@ V1_DATASETS = (
     "AE & 3 & 3 & 1.8 & 1 / 0 / 2 & 0 & -- & -- \\\\\n"
     + "".join(
         f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\\n"
-        for name in ("NTM", "H-mode", "ELMing", "sawteeth", "disruption")
+        for name in ("NTM", "H-mode", "ELMing", "sawteeth")
     )
     + "\\bottomrule\n\\end{tabular}\n"
-)  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn
+)  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn,
+#   less the disruption row the paper has left out since 2026-09-28
 
 
 def _split_panels(monkeypatch) -> list:

@@ -1,9 +1,9 @@
 r"""Frame scores: the AE methods, their MHD check, and the segmentation.
 
-`draw_scores` is the six-phenomenon grid: frame precision, recall and F1 with
-95 % shot-bootstrap intervals, one panel per catalog phenomenon. AE's panel is
-`models/ae_xpower/<version>/evaluation.json` (`labeler.ae.xpower.evaluate`);
-the other five are coming. Its dots and whiskers sit on an axis from
+`draw_scores` is one panel per paper phenomenon (`ORDER`): frame precision,
+recall and F1 with 95 % shot-bootstrap intervals. AE's panel, across the top,
+is `models/ae_xpower/<version>/evaluation.json` (`labeler.ae.xpower.evaluate`);
+the other four, below it, are coming. Its dots and whiskers sit on an axis from
 `SCORE_FLOOR`, so the differences A1 tests show; a value below the floor is
 drawn on it, with its number. `draw_mhd` is AE's alone: each method's
 false-positive rate on MHD frames (the owner says absent and TokEye sees a
@@ -336,10 +336,12 @@ def a2_said(ae: dict) -> str | None:
 
 
 def draw_scores(ae: dict, stem: Path) -> Figure:
-    """The six-phenomenon grid of frame scores; AE filled, the rest coming."""
+    """The phenomena's frame scores: AE across the top, the rest coming below."""
     with style():
         fig = Figure(figsize=(PAGE_IN, 3.2), layout="constrained")
-        axes = fig.subplots(2, 3).ravel()
+        grid = fig.add_gridspec(2, len(ORDER) - 1)
+        axes = [fig.add_subplot(grid[0, :])]
+        axes += [fig.add_subplot(grid[1, i]) for i in range(len(ORDER) - 1)]
         for ax, category in zip(axes, ORDER, strict=True):
             if category != AE:
                 placeholder(ax, title(category))
