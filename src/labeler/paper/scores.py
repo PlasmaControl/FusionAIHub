@@ -476,6 +476,8 @@ def table_segmentation(seg: dict) -> str:
         f"pixels ({c['ae_pixels']} AE), {c['frames']} frames; {INTERVAL_NOTE}; "
         f"bar {_verdict(seg.get('bar', {}))}"
     )
+    if beside := seg.get("meta", {}).get("ae_model"):
+        comment += f"; evaluated beside {'/'.join(Path(beside).parts[-4:-1])}"
     header = ("Method", "Dice", "Frame P", "Frame R", "Frame F1", "FP (MHD)")
     return tabular(header, rows, comment)
 
