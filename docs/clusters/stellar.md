@@ -1,6 +1,5 @@
 ---
 title: Stellar (Princeton)
-sidebar_position: 1
 ---
 
 Where FusionAIHub lives on Stellar, what it expects to find there, and what

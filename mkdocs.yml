@@ -1,0 +1,112 @@
+site_name: FusionAIHub (FAITH)
+site_description: Multimodal foundation models for tokamak plasma data
+site_url: https://plasmacontrol.github.io/FusionAIHub/
+repo_url: https://github.com/PlasmaControl/FusionAIHub
+repo_name: PlasmaControl/FusionAIHub
+edit_uri: edit/nathan_dev/docs/
+copyright: Copyright &copy; PlasmaControl
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+plugins:
+  - search
+
+# A broken link or anchor is a warning; CI builds with --strict so it fails the build.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - mdx_breakless_lists
+  - mdx_truly_sane_lists:
+      nested_indent: 2
+      truly_sane: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - getting-started/install.md
+  - Clusters:
+      - clusters/stellar.md
+      - clusters/frontier.md
+      - clusters/adding-a-cluster.md
+  - Data:
+      - data/corpus.md
+  - Models:
+      - models/foundation-model.md
+      - models/ignite.md
+      - models/ignite-codec-retrain-spec.md
+      - models/spectrogram-tokenizer-plan.md
+      - models/video-tokenizer-plan.md
+      - models/stage2-genvid-integration-plan.md
+      - models/stage2-with-video-plan.md
+      - models/ignite-rollout-quality-plan.md
+      - models/ignite-v4-diagnosis.md
+  - Shot Design:
+      - shot-design/overview.md
+      - shot-design/cli.md
+      - shot-design/mcp.md
+      - shot-design/llm-providers.md
+      - shot-design/programs.md
+      - shot-design/simulation.md
+      - shot-design/database-build.md
+  - Labeler:
+      - labeler/overview.md
+      - labeler/review.md
+      - labeler/ae_xpower.md
+  - Examples:
+      - examples/index.md
+  - Reference:
+      - reference/environment-variables.md
+      - reference/slurm-scripts.md
+      - reference/research-plan.md
+      - reference/pixi-environments.md

@@ -1,6 +1,5 @@
 ---
 title: Environment variables
-sidebar_position: 1
 ---
 
 Every environment variable `shot_design`, `labeler` and the Frontier SLURM

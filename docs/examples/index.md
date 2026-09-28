@@ -1,6 +1,5 @@
 ---
 title: Examples
-sidebar_position: 1
 ---
 
 A worked demo walkthrough — three shot-design prompts run end to end

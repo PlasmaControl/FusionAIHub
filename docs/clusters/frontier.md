@@ -1,6 +1,5 @@
 ---
 title: Frontier (OLCF)
-sidebar_position: 2
 ---
 
 The AMD/ROCm side of FusionAIHub, on OLCF's Frontier. The foundation-model

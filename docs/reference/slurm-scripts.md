@@ -1,6 +1,5 @@
 ---
 title: Frontier SLURM scripts
-sidebar_position: 2
 ---
 
 `scripts/slurm_frontier/` holds two things: a handful of shared setup

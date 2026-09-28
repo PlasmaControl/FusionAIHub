@@ -1,6 +1,5 @@
 ---
 title: "IGNITE Rollout Quality Plan"
-sidebar_position: 8
 ---
 
 # IGNITE Rollout Quality — Applying Self-Forcing / Self-Forcing++, Cosmos, and PAN

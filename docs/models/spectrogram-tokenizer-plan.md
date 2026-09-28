@@ -1,6 +1,5 @@
 ---
 title: "Spectrogram Tokenizer Plan"
-sidebar_position: 4
 ---
 
 # Spectrogram Tokenizer — Design & Implementation Plan (Phase B)

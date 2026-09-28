@@ -1,6 +1,5 @@
 ---
 title: "Research Plan"
-sidebar_position: 3
 ---
 
 # Research Plan: End-to-End Foundation Model for Multi-Modal Tokamak Plasma Prediction

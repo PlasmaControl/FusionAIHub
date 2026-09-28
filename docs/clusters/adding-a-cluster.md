@@ -1,6 +1,5 @@
 ---
 title: Adding a cluster
-sidebar_position: 3
 ---
 
 The pattern used to port `shot_design`/`labeler` from Stellar to Frontier,

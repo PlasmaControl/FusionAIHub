@@ -1,6 +1,5 @@
 ---
 title: "Actuator Programs"
-sidebar_position: 5
 ---
 
 # Actuator programs for IGNITE

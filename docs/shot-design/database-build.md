@@ -1,6 +1,5 @@
 ---
 title: Database build
-sidebar_position: 7
 ---
 
 How the Frontier `shot_design` database — the shot list `recommender_frontier_v1`

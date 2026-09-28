@@ -1,6 +1,5 @@
 ---
 title: "IGNITE — Design Note"
-sidebar_position: 2
 ---
 
 # IGNITE — Design Note

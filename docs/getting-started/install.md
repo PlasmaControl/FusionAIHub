@@ -1,6 +1,5 @@
 ---
 title: Install
-sidebar_position: 1
 ---
 
 FusionAIHub uses [pixi](https://pixi.sh) for environment management, with

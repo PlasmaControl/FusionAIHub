@@ -1,6 +1,5 @@
 ---
 title: "Stage 2 with Video"
-sidebar_position: 7
 ---
 
 # Stage 2 with video — implementation plan

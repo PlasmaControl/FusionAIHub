@@ -25,3 +25,6 @@ Full docs, including every platform, are published at
 <https://plasmacontrol.github.io/FusionAIHub/> — start with
 [Getting started](docs/getting-started/install.md) and
 [Frontier](docs/clusters/frontier.md).
+The site is built with MkDocs and Material from `docs/` and `mkdocs.yml`;
+preview it locally with
+`uvx --with-requirements requirements-docs.txt --from 'mkdocs<2' mkdocs serve`.

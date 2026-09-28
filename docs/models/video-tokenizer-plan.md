@@ -1,6 +1,5 @@
 ---
 title: "Video Tokenizer Plan"
-sidebar_position: 5
 ---
 
 # Video Tokenizer — Implementation Plan (Revised)
