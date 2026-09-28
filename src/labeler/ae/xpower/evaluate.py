@@ -826,8 +826,6 @@ def frames_of_test(
     return frames, windows
 
 
-
-
 def run_test(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:

@@ -352,7 +352,6 @@ def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     assert paper_tree.small_text(fig) == []
 
 
-
 def test_a_point_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
     paths, model_file = tree
     off = _poi(102)
@@ -394,3 +393,38 @@ def test_region_numbers_never_print_over_each_other(tree, tmp_path):
     assert [t.get_text() for t in numbers] == ["1", "2", "3", "4"], (
         "largest first; the fifth finds every corner taken and is left off"
     )
+    # two different boxes whose top left corners meet, as 170675's 33 and 37:
+    # the second number moves, and only to a corner of its own box
+    two = pd.DataFrame(
+        [
+            {
+                "shot": 102,
+                "region": region,
+                "t_start_ms": t0,
+                "t_end_ms": t1,
+                "f_lo_khz": f0,
+                "f_hi_khz": f1,
+                "pixels": pixels,
+            }
+            for region, t0, t1, f0, f1, pixels in (
+                (1, 300.0, 900.0, 120.0, 200.0, 50),
+                (2, 320.0, 1500.0, 100.0, 205.0, 40),
+            )
+        ]
+    )
+    s = shots.ae_shot(paths, 102, model_file=model_file, poi=two)
+    fig = shots.draw_examples([s], tmp_path / "fig_two")
+    fig.draw_without_rendering()
+    own = {
+        int(r.region): {
+            (x, y) for x in (r.t_start_ms, r.t_end_ms) for y in (r.f_lo_khz, r.f_hi_khz)
+        }
+        for r in two.itertuples()
+    }
+    numbers = _numbers(fig.axes[0])
+    assert sorted(t.get_text() for t in numbers) == ["1", "2"]
+    assert all(t.get_position() in own[int(t.get_text())] for t in numbers), (
+        "each at a corner of its own box"
+    )
+    boxes = [t.get_window_extent() for t in numbers]
+    assert not boxes[0].overlaps(boxes[1])

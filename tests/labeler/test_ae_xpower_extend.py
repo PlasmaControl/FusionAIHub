@@ -389,7 +389,6 @@ def test_the_extension_names_the_labels_it_learned_from(tmp_path, monkeypatch, v
     assert index.snapshot_sha256.tolist() == [snapshot or ""] * 3
 
 
-
 def test_a_shard_asked_for_pictures_must_have_every_one(tmp_path, monkeypatch):
     """With pictures requested, the merge takes a shard whose every labelled shot
     has its picture listed and on disk, and refuses one that lacks any."""
