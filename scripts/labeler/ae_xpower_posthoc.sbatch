@@ -39,7 +39,7 @@
 #   mem=2800M      2392 MiB plus 15 % is 2751 MiB; rounded up to 2800M.
 #   time=00:30:00  E's 5 min 8 s, x 5.8.
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"

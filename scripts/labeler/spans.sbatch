@@ -50,7 +50,7 @@
 #                     5G for ELMs (4 x 0.96 x 1.2 on 189061).
 #   time=00:30:00     5.6 min x 5 for cold GPFS reads of 600 MB of ECE a shot.
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"

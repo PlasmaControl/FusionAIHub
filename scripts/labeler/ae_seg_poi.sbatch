@@ -30,7 +30,7 @@
 #                The 2-shot pilot under-predicted: 2700M ran out of memory (2942538).
 #   time=00:30:00   ~180 shots x ~2 s / 4 workers = 90 s, x 20 for cold reads and start-up.
 set -euo pipefail
-REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
+REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
 ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")"
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
