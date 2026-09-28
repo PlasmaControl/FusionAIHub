@@ -125,12 +125,20 @@ async function currentServer() {
     g.font = \`600 \${FONT}\`;
     const width = GUTTER - 12;
     const lines = wrapped(g, "toroidal mode number n (MPI66M probes)", width);
-    return { lines, widest: Math.max(...lines.map((l) => g.measureText(l).width)), width };
+    const long = "D-alpha FSnn, the ELM spans' channel, clipped to its plasma range (PCPHD03 flat, left out)";
+    const cut = capped(g, wrapped(g, long, width), width, 3);
+    const widest = (ls) => Math.max(...ls.map((l) => g.measureText(l).width));
+    return { lines, widest: widest(lines), width, cut, cutWidest: widest(cut) };
   })()`);
   check(
     "a long row title wraps between words to the gutter, never squeezed",
     title.lines.join(" ") === "toroidal mode number n (MPI66M probes)" && title.lines.length > 1 &&
       title.widest <= title.width,
+    title
+  );
+  check(
+    "a title too long for its row keeps the lines that fit, the last ending in an ellipsis",
+    title.cut.length === 3 && title.cut[2].endsWith("…") && title.cutWidest <= title.width,
     title
   );
 

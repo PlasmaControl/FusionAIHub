@@ -188,7 +188,9 @@ CV_VAL = (
     "validation, but its split.csv calls these reviewed shots val: they are in "
     "no bar or cell"
 )
-NO_POI = "no points of interest: the segmentation has not run over the test shots"
+NO_POI = (
+    "no points of interest (poi.csv): the interpreter pick cannot prefer shots with one"
+)
 NO_MASK = "no mask: the segmentation has no model.pt to run over the test shots"
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
@@ -649,9 +651,7 @@ def _shot_figures(
     named = picked["interpreter_shot"]
     if named not in pictures and named in saved and _store(paths, named).is_file():
         pictures[named] = one(named)
-    drawn = {
-        s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures
-    }
+    drawn = {s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures}
     if named not in drawn:
         return f"{NO_NAMED}: {named}", picked
     figure("fig_interpreter", shots.draw_interpreter, drawn[named])
