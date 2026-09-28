@@ -2,15 +2,24 @@
 
 from __future__ import annotations
 
+import dataclasses
 from itertools import pairwise
 
 import pandas as pd
+import pytest
 
 from labeler.ae.xpower.train import read_split
 from labeler.events.review import labels
 from labeler.paper import COMING, coverage
 
 from . import paper_tree as tree
+
+
+@pytest.fixture(autouse=True)
+def paths(tmp_path, monkeypatch):
+    """A temporary Paths, set before every call, though these read none."""
+    return tree.temporary_paths(tmp_path, monkeypatch)
+
 
 SUMMARY = (
     "shot,year,window_start_ms,window_end_ms,frames,present_frames,"
@@ -45,6 +54,8 @@ def test_ae_counts(tmp_path):
     assert (counts.reviewed, counts.positive, counts.present_s) == (4, 2, 0.9)
     assert counts.split == {"train": 1, "val": 1, "test": 1}, "104 was not reviewed"
     assert counts.unsplit == 1, "105 was reviewed after the split"
+    assert counts.folds is None, "a validation split, not cross-validated"
+    assert coverage.ae_counts(saved, split, summary, folds=3).folds == 3
     assert counts.by_year == {coverage.UNKNOWN_YEAR: (1, 0), 2024: (2, 1), 2025: (1, 1)}
     assert (counts.suggested, counts.suggested_positive) == (4, 2)
     bare = coverage.ae_counts(saved, None, None)
@@ -89,15 +100,67 @@ def test_the_coverage_figure(tmp_path):
     assert tree.small_text(fig) == []
 
 
-def test_the_split_ticks_do_not_touch(tmp_path):
-    today = coverage.Counts(
-        reviewed=180,
-        positive=180,
-        present_s=316.3,
-        split={"train": 88, "val": 16, "test": 58},
-        unsplit=18,
-    )  # AE's counts on 2026-09-28, so the axis is as wide as the paper's
-    fig = coverage.draw_coverage({"alfven_eigenmode": today}, tmp_path / "fig")
+TODAY = {
+    "reviewed": 180,
+    "positive": 180,
+    "present_s": 316.3,
+    "split": {"train": 88, "val": 16, "test": 58},
+    "unsplit": 18,
+}  # AE's counts on 2026-09-28, so the axis is as wide as the paper's
+CROSS_VALIDATED = {
+    "reviewed": 198,
+    "positive": 198,
+    "present_s": 316.3,
+    "split": {"train": 120, "val": 0, "test": 60},
+    "unsplit": 18,
+    "folds": 5,
+}  # v2 as it is made: 120 shots dealt into five folds, and 60 test shots
+
+
+def test_the_fold_count_is_the_distinct_folds(tmp_path):
+    (tmp_path / "folds.csv").write_text(
+        "shot,split,fold\n101,train,0\n102,val,2\n103,test,\n106,train,1\n"
+    )
+    folds = pd.read_csv(tmp_path / "folds.csv")
+    assert coverage.fold_count(folds) == 3, "folds 0-2; a test shot has none"
+    ten = pd.DataFrame({"shot": range(10), "fold": [k % 5 for k in range(10)]})
+    assert coverage.fold_count(ten) == 5
+
+
+def test_a_cross_validated_split_shows_its_folds(tmp_path):
+    folded = coverage.Counts(**CROSS_VALIDATED)
+    fig = coverage.draw_coverage(
+        {"alfven_eigenmode": folded}, tmp_path / "fig_coverage"
+    )
+    split = fig.axes[2]
+    assert [bar.get_height() for bar in split.patches] == [120, 60, 18]
+    assert [t.get_text() for t in split.get_xticklabels()] == [
+        "train\n(5 folds)",
+        "test",
+        "no\nsplit",
+    ], "the folds' shots as one group, and no validation bar"
+    assert tree.small_text(fig) == []
+    lines = coverage.table_datasets({"alfven_eigenmode": folded}).splitlines()
+    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert "AE's train shots are cross-validated over 5 folds" in lines[0]
+    assert "no shot is held out for validation (--)" in lines[0]
+    with_val = dataclasses.replace(folded, split={"train": 100, "val": 20, "test": 60})
+    fig = coverage.draw_coverage({"alfven_eigenmode": with_val}, tmp_path / "fig")
+    assert [t.get_text() for t in fig.axes[2].get_xticklabels()] == [
+        "train\n(5 folds)",
+        "val",
+        "test",
+        "no\nsplit",
+    ], "validation shots beside the folds are still drawn"
+    lines = coverage.table_datasets({"alfven_eigenmode": with_val}).splitlines()
+    assert "& 100 / 20 / 60 &" in lines[5]
+    assert "held out" not in lines[0]
+
+
+@pytest.mark.parametrize("counts", [TODAY, CROSS_VALIDATED], ids=["v1", "folds"])
+def test_the_split_ticks_do_not_touch(tmp_path, counts):
+    counts = coverage.Counts(**counts)
+    fig = coverage.draw_coverage({"alfven_eigenmode": counts}, tmp_path / "fig")
     fig.draw_without_rendering()  # lay out at the figure's own dpi again
     boxes = [t.get_window_extent() for t in fig.axes[2].get_xticklabels()]
     gaps = [(b.x0 - a.x1) * 72 / fig.dpi for a, b in pairwise(boxes)]
@@ -123,6 +186,12 @@ def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
 def test_the_datasets_table(tmp_path):
     counts = {"alfven_eigenmode": coverage.ae_counts(*_inputs(tmp_path))}
     lines = coverage.table_datasets(counts).splitlines()
+    assert lines[0] == (
+        "% Shots per phenomenon: reviewed by a person, with any present span, the "
+        "model's split of the reviewed shots and those in no split (reviewed = "
+        "train + val + test + no split), and the extension's suggestions (not "
+        "labels); -- where that run has not happened"
+    ), "a validation split's comment, as before"
     assert lines[1] == "\\begin{tabular}{lccccccc}"
     assert lines[3] == (
         "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "

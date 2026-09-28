@@ -10,6 +10,13 @@ review (`data/events/alfven_eigenmode/review/labels.csv`), the chosen
 five are coming. So the reviewed count is the split's three plus "no split". A
 suggested shot is a suggestion, not a label (v1 spec §3).
 
+A cross-validated version (one whose models directory holds `cv/folds.csv`, as
+v2's does) holds no shot out for validation: its train shots are dealt into
+folds that choose the model. The panel draws them as one group marked with the
+number of folds (the distinct `fold` values, `fold_count`), with no validation
+bar, and the table's validation cell is `--`, its comment saying why. A
+validation split's three bars are drawn as they always were.
+
 A part whose input is missing is not a zero: without `split.csv` (no model
 chosen) or `summary.csv` (the extension did not run) its panel says "not run"
 and the table prints `--`. Why it did not run goes in the build's manifest
@@ -49,7 +56,9 @@ class Counts:
     """One phenomenon's shots. `split` maps train/val/test to reviewed shots,
     `unsplit` counts the reviewed shots in none of them, and `by_year` maps a
     campaign year to (suggested, suggested positive), `UNKNOWN_YEAR` holding
-    shots without one; None where the input is missing (not run)."""
+    shots without one; None where the input is missing (not run). `folds` is
+    the number of folds the train shots are cross-validated over, None for a
+    validation split."""
 
     reviewed: int
     positive: int
@@ -57,6 +66,7 @@ class Counts:
     split: Mapping[str, int] | None = None
     by_year: Mapping[int, tuple[int, int]] | None = None
     unsplit: int | None = None
+    folds: int | None = None
 
     @property
     def suggested(self) -> int | None:
@@ -75,10 +85,13 @@ def ae_counts(
     saved: Mapping[int, Label],
     model_split: Mapping[int, str] | None,
     summary: pd.DataFrame | None,
+    *,
+    folds: int | None = None,
 ) -> Counts:
     """AE's counts from the owner's saved labels (`labels.read_saved`), the
     chosen model's split (`read_split`) and the extension's `summary.csv`; a
-    missing split or summary (None) leaves its part None."""
+    missing split or summary (None) leaves its part None. `folds` is a
+    cross-validated split's number of folds (`fold_count`)."""
     positive = sum(
         any(c == PRESENT for _, _, c in label.intervals) for label in saved.values()
     )
@@ -100,8 +113,41 @@ def ae_counts(
             for year, group in summary.groupby(years)
         }
     return Counts(
-        len(saved), positive, round(present_ms / 1000, 3), split, by_year, unsplit
+        len(saved),
+        positive,
+        round(present_ms / 1000, 3),
+        split=split,
+        by_year=by_year,
+        unsplit=unsplit,
+        folds=folds,
     )
+
+
+def fold_count(folds: pd.DataFrame) -> int:
+    """The number of folds in a `cv/folds.csv` (shot, split, fold): its
+    distinct `fold` values, the test shots having none."""
+    return int(folds["fold"].dropna().nunique())
+
+
+def _n_folds(n: int) -> str:
+    return f"{n} fold{'' if n == 1 else 's'}"
+
+
+def _splits(c: Counts) -> tuple[str, ...]:
+    """The splits drawn and counted: all three, or train and test alone when
+    the train shots are cross-validated and no shot is held out for
+    validation."""
+    if c.folds is not None and not (c.split or {}).get("val"):
+        return ("train", "test")
+    return SPLITS
+
+
+def _split_tick(which: str, c: Counts) -> str:
+    """A split's tick: cross-validated train shots name their folds on a
+    second line, as "no split" is on two."""
+    if which == "train" and c.folds is not None:
+        return f"train\n({_n_folds(c.folds)})"
+    return which
 
 
 def _coming_rows(ax, rows: np.ndarray, counts: Mapping[str, Counts]) -> None:
@@ -169,11 +215,13 @@ def _split_panel(ax, ae: Counts | None) -> None:
     if ae is None or ae.split is None:
         placeholder(ax, heading, NOT_RUN)
         return
-    values = [ae.split.get(s, 0) for s in SPLITS] + [ae.unsplit or 0]
-    colours = [SPLIT_COLOUR] * len(SPLITS) + [UNSPLIT_COLOUR]
+    splits = _splits(ae)
+    values = [ae.split.get(s, 0) for s in splits] + [ae.unsplit or 0]
+    colours = [SPLIT_COLOUR] * len(splits) + [UNSPLIT_COLOUR]
     bars = ax.bar(range(len(values)), values, color=colours)
     ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
-    ax.set_xticks(range(len(values)), [*SPLITS, UNSPLIT])
+    ticks = [_split_tick(s, ae) for s in splits]
+    ax.set_xticks(range(len(values)), [*ticks, UNSPLIT])
     ax.set_ylim(0, 1.2 * max(max(values), 1))
     ax.set_ylabel("reviewed shots")
     ax.set_title(heading)
@@ -244,7 +292,9 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
         split = (
             MISSING
             if c.split is None
-            else " / ".join(str(c.split.get(s, 0)) for s in SPLITS)
+            else " / ".join(
+                str(c.split.get(s, 0)) if s in _splits(c) else MISSING for s in SPLITS
+            )
         )
         rows.append(
             [
@@ -264,4 +314,13 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
         "train + val + test + no split), and the extension's suggestions (not "
         f"labels); {MISSING} where that run has not happened"
     )
+    for category in ORDER:
+        c = counts.get(category)
+        if c is not None and c.split is not None and c.folds is not None:
+            comment += (
+                f"; {title(category)}'s train shots are cross-validated over "
+                f"{_n_folds(c.folds)}"
+            )
+            if "val" not in _splits(c):
+                comment += f", so no shot is held out for validation ({MISSING})"
     return tabular(header, rows, comment)
