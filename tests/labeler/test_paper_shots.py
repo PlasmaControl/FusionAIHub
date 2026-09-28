@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import dataclasses
-import itertools
 import re
 
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib.patches import Rectangle
 
+from labeler.ae.xpower.data import BAND_KHZ
 from labeler.ae.xpower.evaluate import chosen_model
 from labeler.events.catalog.states import UNCERTAIN
 from labeler.paper import COMING, shots
@@ -33,31 +32,35 @@ def tree(tmp_path):
     return paths, chosen_model(models)
 
 
-def _poi(shot: int) -> pd.DataFrame:
-    return pd.DataFrame(
-        [
-            {
-                "shot": shot,
-                "region": 1,
-                "t_start_ms": 300.0,
-                "t_end_ms": 900.0,
-                "f_lo_khz": 140.0,
-                "f_hi_khz": 152.0,
-            }
-        ]
+def _masked(s: shots.AEShot, t_ms: tuple[float, float], f_khz=(140.0, 152.0)):
+    """`s` with a mask over `t_ms` x `f_khz` alone."""
+    times = s.grid.t0_ms + (np.arange(s.grid.n) + 0.5) * s.grid.dt_ms
+    freqs = s.y0 + np.arange(s.image.shape[0]) * s.dy
+    mask = np.outer(
+        (freqs >= f_khz[0]) & (freqs < f_khz[1]),
+        (times >= t_ms[0]) & (times < t_ms[1]),
     )
+    return dataclasses.replace(s, mask=mask)
+
+
+def _mask_images(ax) -> list:
+    return [im for im in ax.images if im.get_label().endswith(shots.MASK_LABEL)]
 
 
 def test_ae_shot_reads_the_store_the_owner_and_the_model(tree):
     paths, model_file = tree
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=_poi(102))
+    seg_file = paper_tree.seg_model(paths)  # threshold 0: the whole band is AE
+    s = shots.ae_shot(paths, 102, model_file=model_file, seg_file=seg_file)
     assert (s.first, len(s.prob), s.split, s.threshold) == (0, 200, "test", 0.5)
     assert (s.owner == 1).sum() == 60, "the owner's AE, 300-900 ms"
     assert s.image.shape[0] == 257
     assert s.grid.dt_ms == pytest.approx(0.256 * shots.PICTURE_LEVEL)
     assert (s.edges[0], s.edges[-1]) == (0, 2000)
-    assert [box["region"] for box in s.boxes] == [1]
-    assert shots.ae_shot(paths, 103, model_file=model_file).boxes == ()
+    assert s.mask.shape == s.image.shape and s.mask.dtype == bool
+    freqs = s.y0 + np.arange(s.image.shape[0]) * s.dy
+    band = (freqs >= BAND_KHZ[0]) & (freqs <= BAND_KHZ[1])
+    assert s.mask[band].all() and not s.mask[~band].any(), "80-250 kHz only"
+    assert shots.ae_shot(paths, 103, model_file=model_file).mask is None
     with pytest.raises(KeyError, match="has not saved"):
         shots.ae_shot(paths, 999, model_file=model_file)
 
@@ -78,7 +81,7 @@ def test_examples_run_from_the_best_test_shot_to_the_worst():
 
 def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
     paths, model_file = tree
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=_poi(102))
+    s = _masked(shots.ae_shot(paths, 102, model_file=model_file), (300.0, 900.0))
     fig = shots.draw_interpreter(s, tmp_path / "fig_interpreter")
     assert (tmp_path / "fig_interpreter.pdf").is_file()
     spec, *tracks = fig.axes
@@ -91,19 +94,19 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
         "disruption",
     ]
     assert [t.get_text() for ax in tracks for t in ax.texts] == [COMING] * 5
-    assert [t.get_text() for t in spec.texts] == ["1"], "the region, numbered"
-    [box] = spec.patches
-    assert (box.get_x(), box.get_y(), box.get_width(), box.get_height()) == (
-        300.0,
-        140.0,
-        600.0,
-        12.0,
-    )
+    assert not spec.texts and not spec.patches, "no boxes, no numbers"
+    [mask] = _mask_images(spec)
+    assert mask.get_label() == shots.MASK_LABEL and mask.get_alpha() < 1
+    assert mask.get_extent() == spec.images[0].get_extent(), "on the picture's pixels"
+    [outline] = [c for c in spec.collections if c.get_paths()]
+    x0, y0, x1, y1 = outline.get_paths()[0].get_extents().extents
+    assert (x0, x1) == pytest.approx((300.0, 900.0), abs=s.grid.dt_ms)
+    assert (y0, y1) == pytest.approx((140.0, 152.0), abs=s.dy)
     [present] = tracks[0].collections[0].get_paths()
     extent = present.get_extents()
     assert (extent.x0, extent.x1) == (300.0, 900.0), "the owner's present frames"
     labels = [t.get_text() for t in fig.legends[0].get_texts()]
-    assert labels[-1] == "point of interest"
+    assert labels[-1] == shots.MASK_LABEL
     assert paper_tree.small_text(fig) == []
 
 
@@ -115,33 +118,9 @@ def test_the_examples_figure(tree, tmp_path):
     assert len(fig.axes) == 6
     assert fig.axes[0].get_title().startswith("shot 102 (test): F1 (0-2 s) ")
     assert fig.axes[3].get_title().startswith("shot 103 (test): ")
-    assert "point of interest" not in [t.get_text() for t in fig.legends[0].get_texts()]
+    assert shots.MASK_LABEL not in [t.get_text() for t in fig.legends[0].get_texts()]
+    assert all(_mask_images(ax) == [] for ax in fig.axes), "no segmentation run"
     assert paper_tree.small_text(fig) == []
-
-
-def _many(shot: int, n: int) -> pd.DataFrame:
-    """`n` points of interest over 0-4 s, the later half after the scored 2 s,
-    the last one reaching past the right edge of the axes."""
-    rows = []
-    for i in range(n):
-        t = 4200.0 * i / n
-        rows.append(
-            {
-                "shot": shot,
-                "region": i + 1,
-                "t_start_ms": t,
-                "t_end_ms": t + 150.0,
-                "f_lo_khz": 90.0 + (i % 7) * 20,
-                "f_hi_khz": 100.0 + (i % 7) * 20 + (i % 3) * 20,
-                "pixels": 10 + i,
-                "in_scored_window": t + 75.0 < 2000.0,
-            }
-        )
-    return pd.DataFrame(rows)
-
-
-def _numbers(ax) -> list:
-    return [t for t in ax.texts if t.get_text().isdigit()]
 
 
 def _legend_matches_drawn(fig) -> None:
@@ -159,34 +138,9 @@ def _legend_matches_drawn(fig) -> None:
     assert shown and set(shown) <= drawn, set(shown) - drawn
 
 
-def test_points_are_thin_clipped_outlines_numbered_at_most_to_the_cap(tree, tmp_path):
-    paths, model_file = tree
-    many = _many(102, 3 * shots.LABEL_CAP)
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=many)
-    fig = shots.draw_interpreter(s, tmp_path / "fig_interpreter")
-    spec = fig.axes[0]
-    boxes = [p for p in spec.patches if isinstance(p, Rectangle)]
-    assert len(boxes) == len(many)
-    assert all(b.get_clip_on() and b.get_linewidth() <= 0.5 for b in boxes)
-    assert all(b.get_alpha() is not None and b.get_alpha() < 1 for b in boxes)
-    after = [b for b in boxes if b.get_linestyle() != "-"]
-    assert len(after) == (~many.in_scored_window).sum(), "after 2 s: drawn dashed"
-    numbers = _numbers(spec)
-    assert len(numbers) == shots.LABEL_CAP, "more regions in view than the cap"
-    (x0, x1), (y0, y1) = spec.get_xlim(), spec.get_ylim()
-    seen = many[(many.t_start_ms >= x0) & (many.t_start_ms <= x1)]
-    largest = seen.nlargest(shots.LABEL_CAP, "pixels").region.astype(str)
-    assert {t.get_text() for t in numbers} == set(largest)
-    for t in spec.texts:
-        x, y = t.get_position()
-        if t.get_transform() is spec.transData:
-            assert x0 <= x <= x1 and y0 <= y <= y1, t.get_text()
-        assert t.get_clip_on(), t.get_text()
-
-
 def test_the_scored_window_is_marked(tree, tmp_path):
     paths, model_file = tree
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=_many(102, 8))
+    s = _masked(shots.ae_shot(paths, 102, model_file=model_file), (300.0, 900.0))
     late = dataclasses.replace(
         s,
         prob=np.r_[s.prob, np.zeros(100)],
@@ -337,7 +291,7 @@ def test_the_scored_f1_is_over_0_to_2_s():
 def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     paths, model_file = tree
     two = [
-        shots.ae_shot(paths, 102, model_file=model_file, poi=_many(102, 4)),
+        _masked(shots.ae_shot(paths, 102, model_file=model_file), (300.0, 900.0)),
         shots.ae_shot(paths, 103, model_file=model_file),
     ]
     fig = shots.draw_examples(two, tmp_path / "fig_examples")
@@ -352,79 +306,19 @@ def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     assert paper_tree.small_text(fig) == []
 
 
-def test_a_point_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
+def test_a_mask_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
     paths, model_file = tree
-    off = _poi(102)
-    off.loc[1] = [102, 3, 3734.0, 3838.0, 140.0, 152.0]  # drawn to 2050 ms
-    off["in_scored_window"] = [True, False]
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=off)
-    fig = shots.draw_interpreter(s, tmp_path / "fig_interpreter")
-    assert fig.axes[0].get_xlim()[1] < 3734.0
-    assert len(fig.axes[0].patches) == 2, "both drawn, the second clipped away"
+    s = shots.ae_shot(paths, 102, model_file=model_file)
+    late = _masked(s, (2100.0, 2180.0))  # drawn to 2050 ms; the store to 2200
+    fig = shots.draw_interpreter(late, tmp_path / "fig_interpreter")
+    assert fig.axes[0].get_xlim()[1] < 2100.0
+    [mask] = _mask_images(fig.axes[0])
+    assert mask.get_label() == "_" + shots.MASK_LABEL, "drawn, clipped away"
     shown = [t.get_text() for t in fig.legends[0].get_texts()]
-    assert shots.POI_LABEL in shown and shots.POI_AFTER_LABEL not in shown
+    assert shots.MASK_LABEL not in shown
     _legend_matches_drawn(fig)
-
-
-def test_region_numbers_never_print_over_each_other(tree, tmp_path):
-    paths, model_file = tree
-    same = pd.DataFrame(
-        [
-            {
-                "shot": 102,
-                "region": k + 1,
-                "t_start_ms": 300.0,
-                "t_end_ms": 900.0,
-                "f_lo_khz": 120.0,
-                "f_hi_khz": 200.0,
-                "pixels": 50 - k,
-            }
-            for k in range(5)
-        ]
-    )
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=same)
-    fig = shots.draw_examples([s], tmp_path / "fig_examples")
-    fig.draw_without_rendering()
-    numbers = _numbers(fig.axes[0])
-    boxes = [t.get_window_extent() for t in numbers]
-    assert not any(a.overlaps(b) for a, b in itertools.combinations(boxes, 2))
-    corners = {(x, y) for x in (300.0, 900.0) for y in (120.0, 200.0)}
-    assert {t.get_position() for t in numbers} == corners, "each at its own box"
-    assert [t.get_text() for t in numbers] == ["1", "2", "3", "4"], (
-        "largest first; the fifth finds every corner taken and is left off"
-    )
-    # two different boxes whose top left corners meet, as 170675's 33 and 37:
-    # the second number moves, and only to a corner of its own box
-    two = pd.DataFrame(
-        [
-            {
-                "shot": 102,
-                "region": region,
-                "t_start_ms": t0,
-                "t_end_ms": t1,
-                "f_lo_khz": f0,
-                "f_hi_khz": f1,
-                "pixels": pixels,
-            }
-            for region, t0, t1, f0, f1, pixels in (
-                (1, 300.0, 900.0, 120.0, 200.0, 50),
-                (2, 320.0, 1500.0, 100.0, 205.0, 40),
-            )
-        ]
-    )
-    s = shots.ae_shot(paths, 102, model_file=model_file, poi=two)
-    fig = shots.draw_examples([s], tmp_path / "fig_two")
-    fig.draw_without_rendering()
-    own = {
-        int(r.region): {
-            (x, y) for x in (r.t_start_ms, r.t_end_ms) for y in (r.f_lo_khz, r.f_hi_khz)
-        }
-        for r in two.itertuples()
-    }
-    numbers = _numbers(fig.axes[0])
-    assert sorted(t.get_text() for t in numbers) == ["1", "2"]
-    assert all(t.get_position() in own[int(t.get_text())] for t in numbers), (
-        "each at a corner of its own box"
-    )
-    boxes = [t.get_window_extent() for t in numbers]
-    assert not boxes[0].overlaps(boxes[1])
+    both = dataclasses.replace(late, mask=late.mask | _masked(s, (300.0, 900.0)).mask)
+    fig = shots.draw_interpreter(both, tmp_path / "fig_interpreter")
+    shown = [t.get_text() for t in fig.legends[0].get_texts()]
+    assert shots.MASK_LABEL in shown, "a pixel in view: keyed"
+    _legend_matches_drawn(fig)

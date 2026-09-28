@@ -65,6 +65,9 @@ class Snapshot:
     def model(self, key: str, path: Path, split) -> shots.Model:
         return shots.Model.load(io.BytesIO(self.read(key, path)), split)
 
+    def segmentation(self, key: str, path: Path) -> shots.Segmentation:
+        return shots.Segmentation.load(io.BytesIO(self.read(key, path)))
+
     def changed(self) -> dict[str, dict]:
         """The inputs whose bytes are no longer the ones drawn."""
         found = {}
