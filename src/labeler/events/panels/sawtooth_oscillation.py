@@ -21,7 +21,7 @@ from ...config import Paths
 from .. import spans
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
-from ._shared import despike, optional, plasma_window
+from ._shared import despike, optional, plasma_window, robust_limits
 
 #: Four rows of four ADJACENT channels covering 20-35, sixteen in all. The
 #: flip a sawtooth crash makes is a RELATIVE thing - inner channels drop as
@@ -44,13 +44,19 @@ CHANNEL_ROWS = (
 #: ms on the corpus's float32 seconds, and left 698 of its columns empty.
 ECE_BIN_MS = 0.05
 #: Thomson scattering's core Te, the corpus's `ts_core_temp`: 44 chords in eV
-#: every 10 ms. The `TE_CHORDS` hottest by their median over the plasma window
-#: are drawn in keV: the core, chords 40-43 on 32 of 40 roster shots surveyed and
-#: 38-41 on the 2024 ones. A fit that failed reads 0 or below (1-9 % of samples)
-#: and is left out; on those 40 shots no other sample stood outside the traces'
-#: robust range (`_shared.robust_limits`), so nothing is clipped.
+#: every 10 ms. Of the chords with a Te over at least half the plasma window, the
+#: `TE_CHORDS` hottest by their median over it are drawn in keV. A fit that
+#: failed reads 0 or below (1-9 % of samples) and is left out. A bad one reads
+#: high (17 keV over 195786's 2 keV core, before its window) and would set the
+#: row's range, so the row is clipped above its robust range
+#: (`_shared.robust_limits`) with a `TE_MARGIN` of its span, and only above: a
+#: ramp's cooler Te stays as it is. The traces' margin of a whole span left the
+#: opening view over 1.5 times the window's hottest Te on 58 roster shots; a
+#: quarter leaves at most 1.24.
 TE_GROUP = "ts_core_temp"
 TE_CHORDS = 4
+TE_MARGIN = 0.25
+TE_CLIPPED = ", clipped above its plasma range"
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
 #: the record is drawn: its `CHOSEN` chords with the most crash-like drops.
@@ -123,8 +129,8 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
 
 
 def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
-    """The `TE_CHORDS` hottest Thomson core chords, chosen over the whole record
-    whatever the view."""
+    """The `TE_CHORDS` hottest Thomson core chords, chosen and clipped over the
+    whole record whatever the view."""
     array = raw_signal(int(shot), TE_GROUP, paths=paths)
     x = np.asarray(array.x, dtype=np.float64)
     with np.errstate(invalid="ignore"):
@@ -133,20 +139,26 @@ def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     inside = np.ones(len(x), dtype=bool)
     if window is not None and ((x >= window[0]) & (x <= window[1])).any():
         inside = (x >= window[0]) & (x <= window[1])
-    lit = np.isfinite(y[:, inside]).any(axis=1)
+    lit = np.isfinite(y[:, inside]).mean(axis=1) >= 0.5
     if not lit.any():
         raise NoDataError(f"shot {int(shot)}: no Thomson core chord has a Te")
     level = np.full(len(y), -np.inf)
     level[lit] = np.nanmedian(y[lit][:, inside], axis=1)
     top = np.sort(np.argsort(-level, kind="stable")[: min(TE_CHORDS, lit.sum())])
+    y = y[top]
+    high = robust_limits(x, y, window, TE_MARGIN)[1][:, None]
     if t_range is not None:
         keep = (x >= t_range[0]) & (x <= t_range[1])
         x, y = x[keep], y[:, keep]
+    with np.errstate(invalid="ignore"):
+        clipped = bool((y > high).any())
+        y = np.where(y > high, high, y).astype(np.float32)
     return [
         Panel(
-            title=f"Te, Thomson core: the {len(top)} hottest chords",
+            title=f"Te, Thomson core: the {len(top)} hottest chords"
+            + (TE_CLIPPED if clipped else ""),
             x=x,
-            y=y[top],
+            y=y,
             ylabel="keV",
             legend=[f"chord {c}" for c in top],
         )

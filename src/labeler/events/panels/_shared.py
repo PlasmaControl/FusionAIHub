@@ -157,11 +157,11 @@ def power_panel(
     )
 
 
-def robust_limits(x_ms, y, window) -> np.ndarray:
+def robust_limits(x_ms, y, window, margin: float = ROBUST_MARGIN) -> np.ndarray:
     """`(2, C)`: each channel's robust range over `window` (the record without one).
 
-    The `ROBUST_PERCENTILES` of its finite samples, pushed apart by
-    `ROBUST_MARGIN` of their span; nan for a channel with none.
+    The `ROBUST_PERCENTILES` of its finite samples, pushed apart by `margin` of
+    their span; nan for a channel with none.
     """
     x_ms = np.asarray(x_ms, dtype=np.float64)
     y = np.atleast_2d(np.asarray(y, dtype=np.float64))
@@ -175,10 +175,7 @@ def robust_limits(x_ms, y, window) -> np.ndarray:
         v = row[inside][np.isfinite(row[inside])]
         if v.size:
             lo, hi = np.percentile(v, ROBUST_PERCENTILES)
-            limits[:, i] = (
-                lo - ROBUST_MARGIN * (hi - lo),
-                hi + ROBUST_MARGIN * (hi - lo),
-            )
+            limits[:, i] = (lo - margin * (hi - lo), hi + margin * (hi - lo))
     return limits
 
 

@@ -175,10 +175,14 @@ where you see them.
   row to row. Each sample is the median of its 0.05 ms, the page's finest
   column: the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core)
   otherwise set the row's range and flatten the crashes. Then one Te row from
-  Thomson scattering (`ts_core_temp`, every 10 ms): its 4 hottest core chords
-  by their median over the plasma window, in keV, a failed fit (0 or below)
-  left as a gap. Then one SXR row: the first fan of SX90RM1F, SX90RP1F,
-  SX90RM1S and SX90RP1S with 8 chords finite over half the record.
+  Thomson scattering (`ts_core_temp`, every 10 ms), in keV: of the chords with
+  a Te over at least half the plasma window, the 4 hottest by their median over
+  it. A failed fit (0 or below) is a gap. A bad fit reads high (17 keV over a
+  2 keV core) and would set the row's range, so the row is clipped a quarter of
+  its span above its 99.5th percentile over the window, and the title says so;
+  it is not clipped below, so a ramp's cooler Te stays. Then one SXR row: the
+  first fan of SX90RM1F, SX90RP1F, SX90RM1S and SX90RP1S with 8 chords finite
+  over half the record.
 - The SXR row draws the fan's 4 chords with the most crash-like drops over the
   Ip flat-top, not its brightest: on about 25 shots the brightest sit near
   4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
