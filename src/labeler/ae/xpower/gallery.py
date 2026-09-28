@@ -18,6 +18,12 @@ directory or a pilot's under `runs/` (`check_own_dir`), never from a copy
 elsewhere. Each index row names the version's label snapshot by sha256
 (`snapshot_sha256`, blank for v1, which has none).
 
+**The F1 in a reviewed picture's title** is over the frames the test scores,
+0-2 s (`f1_0_2s` in `index.csv`): `evaluate.shot_frames` selects them, with
+the source table's window, and `evaluate.cells` counts them, as the test does.
+`f1_vs_owner` stays the F1 over the owner's whole window. Both are blank for an
+unreviewed shot.
+
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
 scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
 at 80 kHz, where the model's band starts; a strip of the owner's frames
@@ -44,6 +50,7 @@ from matplotlib.patches import Patch
 from ...config import Paths, atomic_path, sha256_of
 from ...events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ...events.review import labels
+from ...scoring import stats
 from ...scoring.frames import FRAME_MS
 from . import (
     CV_VERSIONS,
@@ -68,7 +75,7 @@ from .data import (
     targets,
     window_frames,
 )
-from .evaluate import chosen_model
+from .evaluate import cells, chosen_model, shot_frames
 from .train import f1_of, frame_cells, load, probabilities, read_split
 
 STATE_COLOURS = {
@@ -90,6 +97,7 @@ INDEX_COLUMNS = (
     "candidate",
     "version",
     "snapshot_sha256",
+    "f1_0_2s",
 )
 MARGIN_MS = 50.0
 BAND_LINE_KHZ = 80.0
@@ -282,12 +290,22 @@ def picture(shot: int) -> dict:
     reference = targets(label, first, n)
     mhd = mhd_frames(clean_path(tokeye_masks(paths), shot), first, n)
     split = w["split"].get(shot, "unreviewed" if not reviewed else "after training")
-    cells = frame_cells(prob, reference, blob["threshold"])
-    f1 = f1_of(cells) if reviewed else float("nan")
+    f1 = f1_of(frame_cells(prob, reference, blob["threshold"])) if reviewed else None
+    scored = None
+    if reviewed:  # the test's frames and rule, 0-2 s
+        frames = shot_frames(
+            shot,
+            paths=paths,
+            label=label,
+            model=w["model"],
+            blob=blob,
+            source=w["source"].get(shot),
+        )
+        scored = float(stats.f1(cells([frames], "ae_xpower")[0]))
     group = "reviewed" if reviewed else "unreviewed"
     file = out / group / f"{shot}.jpg"
     title = f"{shot}   AE, ae_xpower {version} ({blob['candidate']}), split {split}" + (
-        f", F1 vs owner {f1:.2f}"
+        f", F1 vs owner, 0-2 s {scored:.2f}"
         if reviewed
         else ", not reviewed: strip is the source table"
     )
@@ -321,6 +339,7 @@ def picture(shot: int) -> dict:
         "candidate": blob["candidate"],
         "version": version,
         "snapshot_sha256": w["snapshot"],
+        "f1_0_2s": "" if not reviewed else round(scored, 4),
     }
 
 

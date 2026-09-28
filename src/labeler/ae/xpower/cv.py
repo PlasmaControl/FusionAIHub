@@ -3,6 +3,7 @@
     python -m labeler.ae.xpower.cv --folds                       # once, first
     python -m labeler.ae.xpower.cv --candidate NAME --fold K     # 3 x 5 tasks
     python -m labeler.ae.xpower.cv --choose                      # after all 15
+    python -m labeler.ae.xpower.cv --candidate NAME --fold K --seed S  # seed study
 
 all for `--version` (default v2) in `--models` (default
 `$LABELER_ROOT/models/ae_xpower/<version>`), under `cv/`.
@@ -56,6 +57,18 @@ and changes nothing.
 **Pilots.** `--pilot N` (5-20 shots): each fold's first N // 5 shots, 2 epochs
 (`PILOT_EPOCHS`), into `runs/ae_xpower/pilot/<version>`, where a record can be
 replaced.
+
+**The seed study** (post hoc: no decision depends on it). `--seed S`, a
+`TrainConfig.seed` other than the default 20260923 (`STUDY_SEEDS`: 20260924-26),
+trains the chosen candidate (`chosen.json`'s) in its fold, as `cv/` did, with
+only the seed changed. It reads the version's own `cv/folds.csv` (checked as
+every step checks it, and its sha256 against `chosen.json`'s `folds_sha256`)
+and writes only under `runs/ae_xpower/seeds/<version>/seed<S>/` (`seed_dir`; a
+pilot's under its `pilot/`): a seed aimed at any other directory, the version's
+`cv/` or the pilot's `runs/ae_xpower/pilot/<version>` among them, is refused, and
+so is a record already there, which a seeded run never replaces. Each record
+carries its `seed`. `seed_study` pools each seed's five folds, as the choice
+pools them, into one row at the chosen threshold, for `posthoc`.
 """
 
 from __future__ import annotations
@@ -66,7 +79,7 @@ import io
 import json
 import os
 import resource
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -104,12 +117,21 @@ TIES = (
     "threshold"
 )
 PILOT_EPOCHS = 2
+#: The seed study's training seeds, beside the default (`data.SEED`).
+STUDY_SEEDS = (20260924, 20260925, 20260926)
 #: The fields a saved choice must repeat when `--choose` runs again.
 DECISION = ("candidate", "threshold", "branch", "table", "final_epochs", "sources")
 
 
 def cv_dir(models: Path) -> Path:
     return models / "cv"
+
+
+def seed_dir(paths: Paths, version: str, seed: int, pilot: int = 0) -> Path:
+    """The only models directory a fold trained with a non-default `seed` writes
+    to: `runs/ae_xpower/seeds/<version>/seed<S>`, a pilot's under its `pilot/`."""
+    out = paths.runs / "ae_xpower" / "seeds" / version / f"seed{seed}"
+    return out / "pilot" if pilot else out
 
 
 def stop_fold(k: int) -> int:
@@ -254,10 +276,19 @@ def run_fold(
     fold: int,
     version: str,
     pilot: int = 0,
+    seed: int = SEED,
     log=print,
 ) -> dict:
-    """Train on three folds, stop on fold `fold` + 1, predict fold `fold`."""
-    check_version(models, version)
+    """Train on three folds, stop on fold `fold` + 1, predict fold `fold`; with
+    another `seed`, the seed study's fold, into `seed_dir` only, never replaced."""
+    seeded = seed != SEED
+    own = seed_dir(paths, version, seed, pilot)
+    if seeded and models.resolve() != own.resolve():
+        raise ValueError(
+            f"{models}: a fold trained with seed {seed} writes only under {own}"
+        )
+    folds_from = model_dir(paths, version) if seeded else models  # the cv/ folds
+    check_version(folds_from, version)
     spec = train.candidate_spec(version, candidate)
     if not 0 <= fold < N_FOLDS:
         raise ValueError(f"--fold must be 0 to {N_FOLDS - 1}")
@@ -265,9 +296,15 @@ def run_fold(
     if pilot and not in_runs:
         raise ValueError(f"{models}: a pilot writes under {paths.runs}")
     record_file, npz_file = _record_paths(models, candidate, fold)
+    if seeded and (record_file.exists() or npz_file.exists()):
+        raise FileExistsError(
+            f"{record_file}: a seeded fold is trained once; nothing is replaced"
+        )
     if record_file.exists() and not in_runs:
         raise FileExistsError(f"{record_file}: a fold is trained once")
-    digest, saved, _, folds, folds_sha = checked_folds(paths, models, version)
+    digest, saved, _, folds, folds_sha = checked_folds(paths, folds_from, version)
+    if seeded:
+        _chosen_for_seeds(folds_from, candidate, folds_sha)
     source = evaluate.source_table(paths)  # the test's source-window filter
     by = _by_fold(folds, pilot)
     lacking = [s for s in by[fold] if s not in source.labels]
@@ -285,7 +322,7 @@ def run_fold(
         rows = store_rows(paths.spectrogram_file(EVENT, s))
         return load_shot(s, saved[s], rows, tokeye_masks(paths), band=spec["band"])
 
-    config = fold_config(spec, pilot)
+    config = replace(fold_config(spec, pilot), seed=seed)
     model, history, _ = train.fit(
         [shot(s) for s in train_shots], [shot(s) for s in by[stop]], config, log
     )
@@ -326,6 +363,7 @@ def run_fold(
         "epochs_run": len(history),
         "history": history,
         "config": asdict(config),
+        "seed": seed,
         "pilot": pilot,
         "labels_sha256": digest,
         "folds_sha256": folds_sha,
@@ -339,6 +377,133 @@ def run_fold(
     with atomic_path(record_file) as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
     return record
+
+
+def _chosen_for_seeds(models: Path, candidate: str, folds_sha: str) -> dict:
+    """`chosen.json`, when the seed study may train `candidate` on these folds:
+    the chosen candidate, on the folds (by sha256) it was chosen from."""
+    file = models / "chosen.json"
+    chosen = json.loads(file.read_text())
+    if chosen.get("folds_sha256") != folds_sha:
+        raise ValueError(
+            f"{cv_dir(models) / 'folds.csv'}: sha256 {folds_sha} differs from "
+            f"{file}'s folds_sha256 {chosen.get('folds_sha256')}"
+        )
+    if candidate != chosen.get("candidate"):
+        raise ValueError(
+            f"{file}: the seed study trains the chosen candidate "
+            f"{chosen.get('candidate')}, not {candidate}"
+        )
+    return chosen
+
+
+def _study_inputs(paths: Paths, version: str) -> tuple:
+    """The version's models directory, `chosen.json`, and its checked folds."""
+    models = model_dir(paths, version)
+    check_version(models, version)
+    folds = checked_folds(paths, models, version)
+    chosen = json.loads((models / "chosen.json").read_text())
+    _chosen_for_seeds(models, chosen["candidate"], folds.sha256)
+    return models, chosen, folds
+
+
+def _lacking(models: Path, name: str) -> list[int]:
+    return [
+        k
+        for k in range(N_FOLDS)
+        if not all(p.is_file() for p in _record_paths(models, name, k))
+    ]
+
+
+def oof_frames(paths: Paths, version: str, seed: int = SEED) -> list:
+    """The chosen candidate's out-of-fold frames of all five folds trained with
+    `seed` (the default: `cv/`'s; another: `seed_dir`'s), each fold record
+    checked as `--choose` checks it, with the seed in its `TrainConfig`."""
+    models, chosen, folds = _study_inputs(paths, version)
+    name = chosen["candidate"]
+    where = models if seed == SEED else seed_dir(paths, version, seed)
+    lacking = _lacking(where, name)
+    if lacking:
+        raise FileNotFoundError(
+            f"{cv_dir(where) / name}: seed {seed}'s folds {lacking} are missing"
+        )
+    spec = train.candidate_spec(version, name)
+    config = asdict(replace(fold_config(spec, 0), seed=seed))
+    config = json.loads(json.dumps(config))  # as a record holds it
+    source_sha = evaluate.source_table(paths).sha256
+    by = _by_fold(folds.folds, 0)
+    frames = []
+    for k in range(N_FOLDS):
+        expect = {
+            "version": version,
+            "labels_sha256": folds.labels_sha256,
+            "folds_sha256": folds.sha256,
+            "source_sha256": source_sha,
+            "pilot": 0,
+            "shots": by[k],
+            "stop_fold": stop_fold(k),
+            "mhd_weight": spec["mhd_weight"],
+            "band_khz": list(spec["band"]),
+            "config": config,
+        }
+        frames += _load_fold(where, name, k, expect)[1]
+    return frames
+
+
+def seed_study(paths: Paths, version: str, seeds=STUDY_SEEDS) -> dict:
+    """Per training seed, the chosen candidate's out-of-fold frames (`oof_frames`)
+    pooled as the choice pools them, at the chosen threshold: F1, precision,
+    recall and MHD FP, and whether F1 meets branch 2's 0.90. A study seed with no
+    fold record is "not run", one with some but not all "incomplete", and
+    neither is a row. With two rows or more, each metric's range and sample
+    standard deviation (ddof 1)."""
+    models, chosen, folds = _study_inputs(paths, version)
+    name, threshold = chosen["candidate"], float(chosen["threshold"])
+    weight = train.candidate_spec(version, name)["mhd_weight"]
+    rows, not_run, incomplete = [], [], {}
+    for seed in (SEED, *seeds):
+        where = models if seed == SEED else seed_dir(paths, version, seed)
+        lacking = _lacking(where, name)
+        if lacking and seed != SEED:  # cv/'s own folds must all be there
+            if len(lacking) == N_FOLDS:
+                not_run.append(seed)
+            else:
+                incomplete[str(seed)] = lacking
+            continue
+        frames = oof_frames(paths, version, seed)
+        (row,) = _rows(name, weight, frames, (threshold,))
+        rows.append(
+            {
+                "seed": seed,
+                "records": str(cv_dir(where) / name),
+                **{k: row[k] for k in ("f1", "precision", "recall", "fp_rate_mhd")},
+                "meets_f1_min": row["f1"] is not None and row["f1"] >= F1_MIN,
+                "cells": row["cells"],
+                "mhd_cells": row["mhd_cells"],
+            }
+        )
+    spread = {}
+    for key in ("f1", "precision", "recall", "fp_rate_mhd"):
+        values = [r[key] for r in rows if r[key] is not None]
+        if len(values) > 1:
+            spread[key] = {
+                "range": float(max(values) - min(values)),
+                "std": float(np.std(values, ddof=1)),
+            }
+    return {
+        "version": version,
+        "candidate": name,
+        "threshold": threshold,
+        "f1_min": F1_MIN,
+        "default_seed": SEED,
+        "seeds": list(seeds),
+        "rows": rows,
+        "not_run": not_run,
+        "incomplete": incomplete,
+        "spread": spread,
+        "labels_sha256": folds.labels_sha256,
+        "folds_sha256": folds.sha256,
+    }
 
 
 def _number(value) -> float | None:
@@ -392,9 +557,9 @@ def _load_fold(models: Path, candidate: str, k: int, expect: dict) -> tuple:
     return record, frames
 
 
-def _rows(candidate: str, weight: float, frames) -> list[dict]:
+def _rows(candidate: str, weight: float, frames, thresholds=THRESHOLDS) -> list[dict]:
     rows = []
-    for threshold in THRESHOLDS:
+    for threshold in thresholds:
         for f in frames:
             f.said["ae_xpower"] = f.prob >= threshold
         cells = evaluate.cells(frames, "ae_xpower").sum(axis=0)
@@ -602,6 +767,15 @@ def main(argv=None) -> int:
         default=0,
         help="5-20 shots (N // 5 a fold), 2 epochs, to runs/ae_xpower/pilot/<version>",
     )
+    p.add_argument(
+        "--seed",
+        type=int,
+        default=SEED,
+        help=(
+            f"a fold task's TrainConfig seed (default {SEED}); another is the seed "
+            "study's, into runs/ae_xpower/seeds/<version>/seed<S>"
+        ),
+    )
     args = p.parse_args(argv)
     task = args.candidate is not None or args.fold is not None
     if args.folds + args.choose + task != 1:
@@ -610,11 +784,17 @@ def main(argv=None) -> int:
         p.error("a fold task needs both --candidate and --fold")
     if args.pilot and not 5 <= args.pilot <= 20:
         p.error("a pilot is 5 to 20 shots")
+    if args.seed != SEED and not task:
+        p.error("--seed is for a fold task")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
     pilot_models = paths.runs / "ae_xpower" / "pilot" / args.version
     models = args.models or (
-        pilot_models if args.pilot else model_dir(paths, args.version)
+        seed_dir(paths, args.version, args.seed, args.pilot)
+        if args.seed != SEED
+        else pilot_models
+        if args.pilot
+        else model_dir(paths, args.version)
     )
     try:
         if args.folds:
@@ -633,6 +813,7 @@ def main(argv=None) -> int:
                 fold=args.fold,
                 version=args.version,
                 pilot=args.pilot,
+                seed=args.seed,
                 log=lambda m: print(m, flush=True),
             )
             print(

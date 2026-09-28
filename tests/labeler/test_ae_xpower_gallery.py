@@ -7,6 +7,7 @@ import csv
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 from PIL import Image
 
 from labeler.ae.xpower import gallery
@@ -117,3 +118,32 @@ def test_a_newly_reviewed_shot_replaces_its_row_and_picture(
         assert redrawn[redrawn.group == "reviewed"].iloc[0].equals(reviewed)
         extended = redrawn[redrawn.group == "extension"].iloc[0]
         assert int(extended.model_present_frames) == 7
+
+
+def test_the_title_gives_the_f1_over_the_scored_0_to_2_s(tmp_path, monkeypatch):
+    """The owner's window runs to 2.2 s, AE present again after 2 s; every
+    frame is called present, so the whole window's F1 (80 of 220 frames
+    present) differs from the scored 0-2 s's (60 of 200)."""
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"}, reviewed={101})
+    spans = ((0, 300, 0), (300, 900, 1), (900, 2000, 0), (2000, 2200, 1))
+    saved = labels.labels_path(gallery.event_dir(paths))
+    saved.write_text(
+        "shot,category,t_start,t_end,confidence\n"
+        + "".join(f"101,{c},{a},{b},\n" for a, b, c in spans)
+    )
+    models = ae_tree.chosen(paths, {101: "train"})
+    file = models / "band80-mhd3" / "model.pt"
+    torch.save(torch.load(file, weights_only=False) | {"threshold": 0.0}, file)
+    ae_tree.env(monkeypatch, paths)
+    titles, draw = {}, gallery.draw
+    monkeypatch.setattr(
+        gallery, "draw", lambda f, **kw: draw(f, **kw) or titles.update({f.stem: kw})
+    )
+    assert gallery.main(["--workers", "1"]) == 0
+    index = pd.read_csv(gallery.gallery_dir(paths) / "index.csv", dtype=str)
+    index = index.fillna("").set_index("shot")
+    assert tuple(index.reset_index()) == gallery.INDEX_COLUMNS
+    assert index.loc["101", "f1_vs_owner"] == str(round(160 / 300, 4))
+    assert index.loc["101", "f1_0_2s"] == str(round(120 / 260, 4))
+    assert titles["101"]["title"].endswith(", F1 vs owner, 0-2 s 0.46")
+    assert index.loc["102", "f1_0_2s"] == "", "not reviewed"

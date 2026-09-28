@@ -387,3 +387,18 @@ def test_the_extension_names_the_labels_it_learned_from(tmp_path, monkeypatch, v
         gallery.gallery_dir(paths, version) / "index.csv", keep_default_na=False
     )
     assert index.snapshot_sha256.tolist() == [snapshot or ""] * 3
+
+
+def test_a_shard_asked_for_pictures_must_have_every_one(tmp_path, monkeypatch):
+    """With pictures requested, the merge takes a shard whose every labelled shot
+    has its picture listed and on disk, and refuses one that lacks any."""
+    paths, models = _three_shots(tmp_path, monkeypatch)
+    monkeypatch.setattr(extend, "run_all", gallery.run_all)
+    ae_tree.corpus(tmp_path, (201, 202, 203))
+    extend.run_shard(paths, models=models, k=0, of=1)
+    manifest = extend.suggestions_dir(paths) / "shards" / "0.json"
+    assert json.loads(manifest.read_text())["pictures_requested"] is True
+    assert extend.merge(paths, models=models, of=1)["pictures"] == 3
+    (gallery.gallery_dir(paths) / "extension" / "203.jpg").unlink()
+    with pytest.raises(ValueError, match=r"0\.json: shard 0 .* shots \[203\]"):
+        extend.merge(paths, models=models, of=1)
