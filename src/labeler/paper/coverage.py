@@ -26,9 +26,8 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
-from ..ae.xpower.train import read_split
 from ..events.catalog.states import PRESENT
-from ..events.review import labels
+from ..events.review.labels import Label
 from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, placeholder, save, style, title
 from .scores import tabular
 
@@ -73,10 +72,13 @@ class Counts:
 
 
 def ae_counts(
-    event_dir: Path, split_csv: Path | None, summary_csv: Path | None
+    saved: Mapping[int, Label],
+    model_split: Mapping[int, str] | None,
+    summary: pd.DataFrame | None,
 ) -> Counts:
-    """AE's counts; a missing `split_csv` or `summary_csv` leaves its part None."""
-    saved = labels.read_saved(event_dir)
+    """AE's counts from the owner's saved labels (`labels.read_saved`), the
+    chosen model's split (`read_split`) and the extension's `summary.csv`; a
+    missing split or summary (None) leaves its part None."""
     positive = sum(
         any(c == PRESENT for _, _, c in label.intervals) for label in saved.values()
     )
@@ -84,16 +86,14 @@ def ae_counts(
         b - a for label in saved.values() for a, b, c in label.intervals if c == PRESENT
     )
     split = unsplit = None
-    if split_csv is not None and Path(split_csv).is_file():
+    if model_split is not None:
         split = dict.fromkeys(SPLITS, 0)
-        model_split = read_split(split_csv)
         for shot, which in model_split.items():
             if shot in saved:
                 split[which] = split.get(which, 0) + 1
         unsplit = sum(shot not in model_split for shot in saved)
     by_year = None
-    if summary_csv is not None and Path(summary_csv).is_file():
-        summary = pd.read_csv(summary_csv)
+    if summary is not None:
         years = summary["year"].fillna(UNKNOWN_YEAR).astype(int)
         by_year = {
             int(year): (len(group), int((group.present_frames > 0).sum()))

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pandas as pd
+
+from labeler.ae.xpower.train import read_split
+from labeler.events.review import labels
 from labeler.paper import COMING, coverage
 
 from . import paper_tree as tree
@@ -30,18 +34,18 @@ def _inputs(tmp_path):
     split.write_text("shot,split\n101,train\n102,val\n103,test\n104,test\n")
     summary = tmp_path / "summary.csv"
     summary.write_text(SUMMARY)
-    return event, split, summary
+    return labels.read_saved(event), read_split(split), pd.read_csv(summary)
 
 
 def test_ae_counts(tmp_path):
-    event, split, summary = _inputs(tmp_path)
-    counts = coverage.ae_counts(event, split, summary)
+    saved, split, summary = _inputs(tmp_path)
+    counts = coverage.ae_counts(saved, split, summary)
     assert (counts.reviewed, counts.positive, counts.present_s) == (4, 2, 0.9)
     assert counts.split == {"train": 1, "val": 1, "test": 1}, "104 was not reviewed"
     assert counts.unsplit == 1, "105 was reviewed after the split"
     assert counts.by_year == {coverage.UNKNOWN_YEAR: (1, 0), 2024: (2, 1), 2025: (1, 1)}
     assert (counts.suggested, counts.suggested_positive) == (4, 2)
-    bare = coverage.ae_counts(event, None, tmp_path / "missing.csv")
+    bare = coverage.ae_counts(saved, None, None)
     assert bare.split is None, "no split: the model was not chosen"
     assert bare.unsplit is None
     assert bare.by_year is None, "no summary: the extension did not run"
@@ -84,8 +88,8 @@ def test_the_coverage_figure(tmp_path):
 
 
 def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
-    event, _, _ = _inputs(tmp_path)
-    counts = {"alfven_eigenmode": coverage.ae_counts(event, None, None)}
+    saved, _, _ = _inputs(tmp_path)
+    counts = {"alfven_eigenmode": coverage.ae_counts(saved, None, None)}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     _, _, split, years = fig.axes
     for ax in (split, years):
@@ -115,7 +119,7 @@ def test_the_datasets_table(tmp_path):
 
 
 def test_without_the_extension_the_table_says_so(tmp_path):
-    event, _, _ = _inputs(tmp_path)
-    counts = {"alfven_eigenmode": coverage.ae_counts(event, None, None)}
+    saved, _, _ = _inputs(tmp_path)
+    counts = {"alfven_eigenmode": coverage.ae_counts(saved, None, None)}
     lines = coverage.table_datasets(counts).splitlines()
     assert lines[5] == "AE & 4 & 2 & 0.9 & -- & -- & -- & -- \\\\"
