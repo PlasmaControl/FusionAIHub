@@ -44,15 +44,17 @@ CHANNEL_ROWS = (
 #: ms on the corpus's float32 seconds, and left 698 of its columns empty.
 ECE_BIN_MS = 0.05
 #: Thomson scattering's core Te, the corpus's `ts_core_temp`: 44 chords in eV
-#: every 10 ms. Of the chords with a Te over at least half the plasma window, the
-#: `TE_CHORDS` hottest by their median over it are drawn in keV. A fit that
-#: failed reads 0 or below (1-9 % of samples) and is left out. A bad one reads
-#: high (17 keV over 195786's 2 keV core, before its window) and would set the
-#: row's range, so the row is clipped above its robust range
-#: (`_shared.robust_limits`) with a `TE_MARGIN` of its span, and only above: a
-#: ramp's cooler Te stays as it is. The traces' margin of a whole span left the
-#: opening view over 1.5 times the window's hottest Te on 58 roster shots; a
-#: quarter leaves at most 1.24.
+#: every 10 ms. Of the chords with a Te on at least half as many of the plasma
+#: window's samples as the best-lit chord, the `TE_CHORDS` hottest by their
+#: median over it are drawn in keV. A share of the best's, not of the window:
+#: without a window it is the record's 14 s, which a plasma fills under half of
+#: (192238: 45 %). A fit that failed reads 0 or below (1-9 % of samples) and is
+#: left out. A bad one reads high (17 keV over 195786's 2 keV core, just after
+#: its window) and would set the row's range, so the row is clipped above its
+#: robust range (`_shared.robust_limits`) with a `TE_MARGIN` of its span, and
+#: only above: a ramp's cooler Te stays as it is. The traces' margin of a whole
+#: span left the opening view over 1.5 times the window's hottest Te on 58
+#: roster shots; a quarter leaves at most 1.24.
 TE_GROUP = "ts_core_temp"
 TE_CHORDS = 4
 TE_MARGIN = 0.25
@@ -139,9 +141,10 @@ def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     inside = np.ones(len(x), dtype=bool)
     if window is not None and ((x >= window[0]) & (x <= window[1])).any():
         inside = (x >= window[0]) & (x <= window[1])
-    lit = np.isfinite(y[:, inside]).mean(axis=1) >= 0.5
-    if not lit.any():
+    share = np.isfinite(y[:, inside]).mean(axis=1)
+    if not share.max() > 0:
         raise NoDataError(f"shot {int(shot)}: no Thomson core chord has a Te")
+    lit = share >= 0.5 * share.max()
     level = np.full(len(y), -np.inf)
     level[lit] = np.nanmedian(y[lit][:, inside], axis=1)
     top = np.sort(np.argsort(-level, kind="stable")[: min(TE_CHORDS, lit.sum())])

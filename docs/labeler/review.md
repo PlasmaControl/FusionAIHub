@@ -176,7 +176,8 @@ where you see them.
   column: the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core)
   otherwise set the row's range and flatten the crashes. Then one Te row from
   Thomson scattering (`ts_core_temp`, every 10 ms), in keV: of the chords with
-  a Te over at least half the plasma window, the 4 hottest by their median over
+  a Te on at least half as many of the plasma window's samples as the best-lit
+  chord (without a window, the record's), the 4 hottest by their median over
   it. A failed fit (0 or below) is a gap. A bad fit reads high (17 keV over a
   2 keV core) and would set the row's range, so the row is clipped a quarter of
   its span above its 99.5th percentile over the window, and the title says so;
