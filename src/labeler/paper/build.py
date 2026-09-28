@@ -199,15 +199,15 @@ def build(
             if _store(paths, s).is_file()
         ]
         f1 = {r.shot: r.f1 for r in ranked}
-        mixed = {r.shot for r in ranked if r.mixed}
+        pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
         picked = {
-            "interpreter_shot": shot
-            if shot is not None
-            else shots.interpreter_shot(index, poi, f1=f1, mixed=mixed),
-            "interpreter_rule": "named by --shot"
-            if shot is not None
-            else shots.INTERPRETER_RULE,
-            "example_shots": shots.pick_examples(index, examples, f1=f1),
+            "interpreter_shot": pick["shot"] if shot is None else shot,
+            "interpreter_rule": shots.INTERPRETER_RULE
+            if shot is None
+            else "named by --shot",
+            "interpreter_branch": pick["branch"] if shot is None else None,
+            "interpreter_pool": pick["pool"],
+            "example_shots": shots.pick_examples(f1, examples),
             "example_rule": shots.EXAMPLES_RULE,
         }
         drawn: dict[int, shots.AEShot] = {}

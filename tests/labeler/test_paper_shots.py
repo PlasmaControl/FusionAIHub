@@ -51,24 +51,18 @@ def test_ae_shot_reads_the_store_the_owner_and_the_model(tree):
         shots.ae_shot(paths, 999, model_file=model_file)
 
 
-INDEX = pd.DataFrame(
-    {
-        "shot": [1, 2, 3, 4, 5, 6, 7],
-        "group": ["reviewed"] * 6 + ["unreviewed"],
-        "split": ["test", "test", "train", "test", "test", "test", "unreviewed"],
-        "f1_vs_owner": [0.9, 0.5, 0.99, 0.7, 0.7, "", ""],
-    }
-)
+F1 = {1: 0.9, 2: 0.5, 4: 0.7, 5: 0.7, 6: float("nan")}
 
 
 def test_examples_run_from_the_best_test_shot_to_the_worst():
-    assert shots.pick_examples(INDEX) == [1, 5, 2]
-    assert shots.pick_examples(INDEX, n=5) == [1, 4, 5, 2]
-    assert shots.pick_examples(INDEX, n=1) == [1]
-    assert shots.interpreter_shot(INDEX, pd.DataFrame({"shot": [4, 2]})) == 4
-    assert shots.interpreter_shot(INDEX, None) == 1
-    with pytest.raises(ValueError, match="no reviewed test shot"):
-        shots.interpreter_shot(INDEX[INDEX.split == "train"], None)
+    assert shots.pick_examples(F1) == [1, 5, 2]
+    assert shots.pick_examples(F1, n=5) == [1, 4, 5, 2]
+    assert shots.pick_examples(F1, n=1) == [1]
+    points = pd.DataFrame({"shot": [4, 2]})
+    assert shots.interpreter_pick(F1, points)["shot"] == 4
+    assert shots.interpreter_pick(F1, None)["shot"] == 1
+    with pytest.raises(ValueError, match="no test shot"):
+        shots.interpreter_pick({6: float("nan")}, None)
 
 
 def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
@@ -196,25 +190,50 @@ def test_the_scored_window_is_marked(tree, tmp_path):
         )
 
 
-def test_the_interpreter_shot_breaks_ties_by_the_recorded_rule():
-    index = pd.DataFrame(
-        {
-            "shot": [10, 11, 12, 13, 14],
-            "group": ["reviewed"] * 5,
-            "split": ["test"] * 5,
-            "f1_vs_owner": [0.5] * 5,
-        }
+def _owner(*spans: tuple[int, int, int], n: int = 200) -> np.ndarray:
+    """Per-frame owner states from `(first, stop, state)` spans; absent elsewhere."""
+    owner = np.zeros(n, dtype=np.int8)
+    for a, b, state in spans:
+        owner[a:b] = state
+    return owner
+
+
+def test_owner_mixed_counts_absent_frames_after_the_onset_not_the_lead_in():
+    lead_in = _owner((30, 200, 1), n=250)  # absent before breakdown, then after 2 s
+    gap = _owner((30, 100, 1), (120, 200, 1))  # AE turns off for 200 ms, then on
+    assert shots.owner_mixed(lead_in, first=0) == 0
+    assert shots.owner_mixed(gap, first=0) == 20
+    assert shots.owner_mixed(_owner(), first=0) == 0, "no AE at all"
+    assert shots.owner_mixed(gap, first=100) == 0, "frames 100.. : 1-2 s only"
+
+
+def test_the_interpreter_shows_a_shot_where_ae_turns_off_and_on():
+    lead_in, gap = _owner((30, 200, 1)), _owner((30, 100, 1), (120, 200, 1))
+    gaps = {1: shots.owner_mixed(lead_in, first=0), 2: shots.owner_mixed(gap, first=0)}
+    f1 = {1: 1.0, 2: 0.99}
+    poi = pd.DataFrame({"shot": [1] * 3 + [2] * 9})
+    pick = shots.interpreter_pick(f1, poi, gaps)
+    assert pick["shot"] == 2, "the best F1 among the shots with an absent stretch"
+    assert pick["branch"] == shots.POOL_GAP
+    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "absent_after_onset": 20}}
+    fallback = shots.interpreter_pick(f1, poi, {1: 0, 2: 0})
+    assert (fallback["shot"], fallback["branch"]) == (1, shots.POOL_FALLBACK)
+    assert sorted(fallback["pool"]) == ["1", "2"]
+    unmarked = shots.interpreter_pick(f1, pd.DataFrame({"shot": [1]}), gaps)
+    assert (unmarked["shot"], unmarked["branch"]) == (1, shots.POOL_FALLBACK), (
+        "the pool keeps D40's point of interest"
     )
-    f1 = {10: 1.0, 11: 1.0, 12: 0.99996, 13: 0.99, 14: 1.0}
-    poi = pd.DataFrame({"shot": [10] * 5 + [11] * 30 + [12] * 8 + [13] * 2})
-    mixed = {11, 12, 13}
-    assert shots.interpreter_shot(index, poi, f1=f1, mixed=mixed) == 12
-    assert shots.interpreter_shot(index, poi, f1=f1) == 10, "then fewer points"
-    even = pd.DataFrame({"shot": [11] * 3 + [10] * 3})
-    assert shots.interpreter_shot(index, even, f1=f1) == 10, "then the lower shot"
-    assert shots.interpreter_shot(index, poi, f1=f1, mixed={13}) == 10, "F1 first"
-    assert "mixed" in shots.INTERPRETER_RULE or "absent" in shots.INTERPRETER_RULE
-    assert shots.pick_examples(index, 2, f1=f1) == [10, 13]
+
+
+def test_the_interpreter_ties_go_to_fewer_points_then_the_lower_shot():
+    f1 = {10: 0.9, 11: 0.99, 12: 0.99004, 13: 0.99, 14: 1.0}
+    gaps = {10: 5, 11: 5, 12: 5, 13: 5, 14: 0}
+    poi = pd.DataFrame({"shot": [10] * 5 + [11] * 30 + [12] * 8 + [13] * 2 + [14]})
+    assert shots.interpreter_pick(f1, poi, gaps)["shot"] == 13, "F1 at 3 decimals"
+    even = pd.DataFrame({"shot": [11] * 3 + [13] * 3 + [12] * 3})
+    assert shots.interpreter_pick(f1, even, gaps)["shot"] == 11, "then the lower shot"
+    assert "absent" in shots.INTERPRETER_RULE
+    assert shots.pick_examples(f1, 2) == [14, 10]
 
 
 def test_the_scored_f1_is_over_0_to_2_s():
