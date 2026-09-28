@@ -19,6 +19,8 @@ statement of how much each model's labels can be trusted.
 
 Code: `src/labeler/`. Tests: `tests/labeler/`.
 
+The AE frame model trained on the owner's reviewed labels, from its inputs to its post-hoc record: [AE from cross-power](ae_xpower.md).
+
 ## Running it
 
 ```bash

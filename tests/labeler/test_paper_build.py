@@ -937,6 +937,8 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     checked against its own record's labels, not the frame model's."""
     sha = tree.seg_record(runs, "v1")
     models = tree.as_version(runs, "v2", keep=True)
+    earlier = xpower.model_dir(runs) / "band80-mhd3" / "split.csv"
+    earlier.write_text("shot,split\n101,train\n102,test\n103,train\n")
     live = tree.scored_labels(runs, "v2")
     live.write_text(live.read_text() + "104,0,0,2000,\n")  # v2 has more labels
     frame = tree.record_labels(runs, "v2")
@@ -966,6 +968,12 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     assert manifest["seg_ae_model"] == beside
     comment = (out / "table_seg_scores.tex").read_text().splitlines()[0]
     assert comment.startswith("%") and "ae_xpower/v1/band80-mhd3" in comment
+    look = manifest["second_look"]
+    assert (look["shots"], look["of"], look["candidate"]) == (1, 2, "band80-mhd3")
+    assert pinned["ae_earlier_split"]["sha256"] == _sha(earlier.read_text())
+    said = "1 of the 2 test shots were v1's test shots, scored with v1's model"
+    comment = (out / "table_ae_scores.tex").read_text().splitlines()[0]
+    assert f"; {said} band80-mhd3" in comment, "counted from v1's records"
     assert manifest["interpreter_pool"]["102"]["poi"] == 1, "the v1 POI boxes"
     for product in ("fig_interpreter", "fig_examples"):
         assert product not in manifest["partial"], manifest["partial"]
@@ -1004,7 +1012,11 @@ def test_a_seg_version_not_run_skips_only_the_segmentation(runs, tmp_path):
         "fig_segmentation": _missing(seg),
         "table_seg_scores": _missing(seg),
     }
-    assert manifest["partial"]["table_differences"] == [_missing(seg)]
+    unlooked = {
+        "reason": build.NO_EARLIER,
+        "missing": [str(xpower.model_dir(runs) / "evaluation.json")],
+    }
+    assert manifest["partial"]["table_differences"] == [_missing(seg), unlooked]
     assert {"fig_scores", "fig_interpreter", "fig_examples"} <= set(
         manifest["products"]
     )

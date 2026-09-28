@@ -6,6 +6,7 @@ import math
 import re
 
 import pytest
+from matplotlib.text import Text
 
 from labeler.paper import COMING, coverage, scores
 
@@ -69,9 +70,40 @@ def test_the_scores_axis_starts_at_the_floor_and_marks_what_is_below(tmp_path):
         assert list(dots[scores.AE_NAMES[m]]) == pytest.approx(drawn), m
         below += [f"{v:.2f}" for v in values if v < scores.SCORE_FLOOR]
     assert below and sorted(_texts(first)) == sorted(below)
-    marks = [c for c in first.collections if "bar" in c.get_label()]
+    marks = [c for c in first.collections if scores.FLOORS_LABEL in c.get_label()]
     levels = sorted(float(c.get_segments()[0][0][1]) for c in marks)
     assert levels == [0.75, 0.75, 0.9], "A1: precision, recall, F1"
+
+
+def _clear(fig, text) -> None:
+    """`text` lies inside the figure and over no other text drawn."""
+    fig.draw_without_rendering()
+    box = text.get_window_extent()
+    assert fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1, text.get_text()
+    others = [
+        t
+        for t in fig.findobj(Text)
+        if t is not text and t.get_visible() and t.get_text().strip()
+    ]
+    assert [t.get_text() for t in others if box.overlaps(t.get_window_extent())] == []
+
+
+def test_the_scores_figure_states_a1s_verdict_from_the_record(tmp_path):
+    passed = tree.ae_evaluation()
+    passed["methods"]["ae_xpower"]["f1"] = tree.est(0.93, 0.91, 0.95)
+    failed = tree.ae_evaluation()
+    failed["bar"]["A1"] = False
+    failed["differences"]["f1_minus_seldnet"] = tree.est(-0.017, -0.032, 0.0005)
+    for ae, said in (
+        (passed, "A1 pass:\nF1 − SELDnet lower bound −0.020 ≥ −0.03"),
+        (failed, "A1 fail:\nF1 − SELDnet lower bound −0.032 < −0.03\nF1 0.890 < 0.9"),
+    ):
+        fig = scores.draw_scores(ae, tmp_path / "fig_scores")
+        first = fig.axes[0]
+        assert first.get_xlabel() == said
+        assert _legend(fig)[-1] == "A1 floors"
+        assert tree.small_text(fig) == []
+        _clear(fig, first.xaxis.label)
 
 
 def test_the_figures_and_the_table_show_the_same_ae_methods(tmp_path):
@@ -97,6 +129,33 @@ def test_the_mhd_figure_has_every_method_against_the_bar(tmp_path):
     assert ax.get_xlim() == (0, scores.MHD_CAP)
     assert "MHD ≤ 0.05" in ax.get_xlabel()
     assert tree.small_text(fig) == []
+
+
+def test_the_mhd_figure_states_a2s_verdict_from_the_record(tmp_path):
+    passed = tree.ae_evaluation()
+    passed["bar"]["A2"] = True
+    passed["differences"]["mhd_fp_minus_seldnet"] = tree.est(-0.069, -0.13, -0.022)
+    for ae, said in (
+        (
+            passed,
+            (
+                "A2 pass: MHD FP 0.020 ≤ 0.05\n"
+                "MHD FP − SELDnet upper bound −0.022 < 0"
+            ),
+        ),
+        (
+            tree.ae_evaluation(),
+            (
+                "A2 fail: MHD FP 0.020 ≤ 0.05\n"
+                "MHD FP − SELDnet upper bound 0.010 ≥ 0"
+            ),
+        ),
+    ):
+        fig = scores.draw_mhd(ae, tmp_path / "fig_mhd")
+        [ax] = fig.axes
+        assert ax.get_xlabel().endswith("\n" + said)
+        assert tree.small_text(fig) == []
+        _clear(fig, ax.xaxis.label)
 
 
 def test_the_mhd_figure_draws_a_bar_past_its_cap_to_the_edge(tmp_path):

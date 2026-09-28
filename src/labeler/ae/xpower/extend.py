@@ -24,7 +24,10 @@ is there and writes `alfven_eigenmode_suggest_ae_xpower_<version>.csv`, its
 meta, `summary.csv`, and gallery index rows for the pictures the merged shards'
 manifests list, and no others. The meta and those rows name the version's
 label snapshot by sha256 (v1 has none), and the meta the labels the model was
-trained on.
+trained on. A shard's manifest says whether pictures were requested
+(`pictures_requested`); when they were, every shot the shard labelled must have
+its picture, listed in the manifest and on disk, or the merge refuses, naming
+the shard and the shots without one.
 
 **Gate.** The chosen model's full test evaluation must pass A1 and A2 (D47) and
 name the model and choice by sha256; a models directory under `runs/` is never
@@ -326,6 +329,7 @@ def run_shard(
         "of": of,
         "shots": [job[0] for job in jobs],
         "pictures": sorted(drawn),
+        "pictures_requested": pictures,
         **inputs,
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -450,6 +454,18 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
             pictures = manifest.get("pictures", [])
             if not isinstance(pictures, list) or not set(pictures) <= set(done):
                 raise ValueError("pictures must be shots the shard labelled")
+            if manifest.get("pictures_requested"):
+                on_disk = gallery_dir(paths, version) / "extension"
+                lacking = [
+                    shot
+                    for shot in sorted(done)
+                    if shot not in pictures or not (on_disk / f"{shot}.jpg").is_file()
+                ]
+                if lacking:
+                    raise ValueError(
+                        f"shard {k} was asked for pictures, but shots {lacking} "
+                        f"have none listed and in {on_disk}"
+                    )
             tables.append(_check_payload(shards, k, summary))
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             raise ValueError(f"{path}: {error}") from error
