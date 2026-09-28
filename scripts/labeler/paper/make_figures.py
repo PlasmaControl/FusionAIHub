@@ -2,7 +2,7 @@
 
     PYTHONPATH=src pixi run --frozen -e labelmaker \\
         python scripts/labeler/paper/make_figures.py \\
-        --copy-to dev/label_paper/figures
+        [--version v1] --copy-to dev/label_paper/figures
 
 See `labeler.paper.build` for what it reads, draws and skips.
 """

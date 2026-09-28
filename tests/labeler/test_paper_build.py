@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import builtins
+import hashlib
+import io
 import json
+import os
+from pathlib import Path
 
+import h5py
 import pytest
 
 from labeler.ae import xpower
@@ -64,7 +70,11 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "ae_chosen",
         "ae_evaluation",
         "ae_labels",
+        "ae_model",
+        "ae_split",
         "gallery_index",
+        "store_102",
+        "store_103",
     ]
     for name, files in manifest["products"].items():
         assert all((out / f).is_file() for f in files), name
@@ -103,3 +113,69 @@ def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path)
     no_split = [str(found["ae_chosen"]), *no_summary]
     assert manifest["partial"]["fig_coverage"] == no_split
     assert manifest["partial"]["table_datasets"] == no_split
+
+
+def _spy_reads(monkeypatch, opened: set[str]) -> None:
+    """Record every file opened for reading through Python, pathlib, pandas,
+    torch and h5py."""
+
+    def wrap(real):
+        def spy(file, mode="r", *args, **kwargs):
+            if isinstance(file, str | os.PathLike) and not set(mode) & set("wax+"):
+                opened.add(str(Path(file).resolve()))
+            return real(file, mode, *args, **kwargs)
+
+        return spy
+
+    monkeypatch.setattr(builtins, "open", wrap(builtins.open))
+    monkeypatch.setattr(io, "open", wrap(io.open))
+    monkeypatch.setattr(h5py, "File", wrap(h5py.File))
+
+
+def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatch):
+    poi = build.inputs(runs)["poi"]
+    poi.parent.mkdir(parents=True)
+    poi.write_text(
+        "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
+        "102,1,300,900,140,152,40,True\n"
+    )
+    opened: set[str] = set()
+    _spy_reads(monkeypatch, opened)
+    out = tmp_path / "paper"
+    manifest = build.build(runs, out)
+    tree_root = str(tmp_path.resolve())
+    read = {p for p in opened if p.startswith(tree_root) and not p.startswith(str(out))}
+    pinned = {str(Path(v["path"]).resolve()) for v in manifest["inputs"].values()}
+    assert read and read <= pinned, sorted(read - pinned)
+    assert {"ae_model", "ae_split", "store_102", "store_103"} <= set(manifest["inputs"])
+    for entry in manifest["inputs"].values():
+        data = Path(entry["path"]).read_bytes()
+        assert entry["sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_the_manifest_records_the_commit_and_the_labels_check(runs, tmp_path):
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["git_sha"] == "unknown" or len(manifest["git_sha"]) == 40
+    assert manifest["git_dirty"] in (True, False, None)
+    assert manifest["version"] == "v1"
+    assert manifest["labels_match"] is None, "no record names the labels' sha256"
+    evaluation = xpower.model_dir(runs) / "evaluation.json"
+    record = json.loads(evaluation.read_text())
+    live = build.inputs(runs)["ae_labels"]
+    record["meta"]["labels_sha256"] = hashlib.sha256(live.read_bytes()).hexdigest()
+    evaluation.write_text(json.dumps(record))
+    assert build.build(runs, tmp_path / "paper")["labels_match"] is True
+    record["meta"]["labels_sha256"] = "0" * 64
+    evaluation.write_text(json.dumps(record))
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["labels_match"] is False, "recorded, not refused"
+    assert "fig_scores" in manifest["products"]
+
+
+def test_the_version_names_the_models_drawn(runs, tmp_path, capsys):
+    out = tmp_path / "paper"
+    assert build.main(["--out", str(out), "--version", "v2"]) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["version"] == "v2"
+    assert "/ae_xpower/v2/" in manifest["skipped"]["fig_scores"]
+    assert "fig_coverage" in manifest["products"], "the owner's labels have no version"
