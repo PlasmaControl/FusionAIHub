@@ -9,7 +9,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labeler.ae.xpower.data import BAND_KHZ
+from labeler.ae.seg import EVENT as SEG_EVENT
+from labeler.ae.seg import train as seg_train
+from labeler.ae.seg.poi import ae_pixels
+from labeler.ae.xpower.data import BAND_KHZ, band_slice, store_rows
 from labeler.ae.xpower.evaluate import chosen_model
 from labeler.events.catalog.states import UNCERTAIN
 from labeler.paper import COMING, shots
@@ -65,6 +68,26 @@ def test_ae_shot_reads_the_store_the_owner_and_the_model(tree):
         shots.ae_shot(paths, 999, model_file=model_file)
 
 
+def test_the_mask_is_segnets_call_at_its_threshold(tree):
+    """At a threshold inside SegNet's outputs the mask is `ae_pixels` of its
+    P(AE) on the picture's own rows: some of the band, not all of it."""
+    paths, model_file = tree
+    segmentation = shots.Segmentation.load(paper_tree.seg_model(paths))
+    _, values, y0, dy = store_rows(
+        paths.spectrogram_file(SEG_EVENT, 102), level=shots.PICTURE_LEVEL
+    )
+    prob = seg_train.predict(segmentation.net, values)
+    band = band_slice(y0, dy, prob.shape[0], BAND_KHZ)
+    threshold = float(np.median(prob[band]))
+    seg_file = paper_tree.seg_model(
+        paths, "v1-median", threshold=threshold, net=segmentation.net
+    )
+    s = shots.ae_shot(paths, 102, model_file=model_file, seg_file=seg_file)
+    expected = ae_pixels(prob, threshold, y0, dy)
+    assert 0 < expected.sum() < expected[band].size
+    np.testing.assert_array_equal(s.mask, expected)
+
+
 F1 = {1: 0.9, 2: 0.5, 4: 0.7, 5: 0.7, 6: float("nan")}
 
 
@@ -96,7 +119,10 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
     assert [t.get_text() for ax in tracks for t in ax.texts] == [COMING] * 5
     assert not spec.texts and not spec.patches, "no boxes, no numbers"
     [mask] = _mask_images(spec)
-    assert mask.get_label() == shots.MASK_LABEL and mask.get_alpha() < 1
+    assert mask.get_label() == shots.MASK_LABEL
+    alpha = mask.get_array()[..., 3]
+    assert mask.get_alpha() is None, "a PDF would apply an image's alpha twice"
+    assert set(np.unique(alpha)) == {0.0, shots.MASK_ALPHA}, "the fill's, in the data"
     assert mask.get_extent() == spec.images[0].get_extent(), "on the picture's pixels"
     [outline] = [c for c in spec.collections if c.get_paths()]
     x0, y0, x1, y1 = outline.get_paths()[0].get_extents().extents

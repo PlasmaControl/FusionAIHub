@@ -154,13 +154,15 @@ POI_CSV = (
 )
 
 
-def seg_model(paths: Paths, seg_version: str = "v1", threshold: float = 0.0) -> Path:
-    """A small SegNet saved as training saves it, at `threshold` (0: every pixel
-    of 80-250 kHz is AE). Its `model.pt`."""
+def seg_model(
+    paths: Paths, seg_version: str = "v1", threshold: float = 0.0, net=None
+) -> Path:
+    """A small SegNet (`net`, else a new one) saved as training saves it, at
+    `threshold` (0: every pixel of 80-250 kHz is AE). Its `model.pt`."""
     seg = paths.root / "models" / "ae_seg" / seg_version
     seg_train.save(
         seg,
-        SegNet(SegNetConfig(width=4)),
+        SegNet(SegNetConfig(width=4)) if net is None else net,
         threshold=threshold,
         split={},
         history=[],

@@ -909,10 +909,24 @@ function wrapped(g, text, width) {
   return lines;
 }
 
-/** A row's title, wrapped to the gutter, then its units, from the top left; then
+/** The first `most` of `lines`, the last one kept ending in an ellipsis when
+ * any are left out; measured in the context's current font. */
+function capped(g, lines, width, most) {
+  if (lines.length <= most) return lines;
+  const kept = lines.slice(0, Math.max(most, 0));
+  if (!kept.length) return kept;
+  let last = `${kept[kept.length - 1]}…`;
+  while (last.length > 1 && g.measureText(last).width > width) last = `${last.slice(0, -2)}…`;
+  kept[kept.length - 1] = last;
+  return kept;
+}
+
+/** A row's title, wrapped to the gutter, then its units, from the top left, in
+ * at most the row's top half (so a short row keeps room for its y scale); then
  * the y ticks, each one that would touch that text left off. */
 function drawGutter(g, row, range, h) {
   const width = GUTTER - 12;
+  const most = Math.max(1, Math.floor((h / 2 - 3) / GUTTER_LINE));
   const text = [];  // [right, top, bottom] of each line drawn
   let y = 16;
   const line = (words) => {
@@ -923,10 +937,11 @@ function drawGutter(g, row, range, h) {
   g.textAlign = "left";
   g.fillStyle = T.ink;
   g.font = `600 ${FONT}`;
-  wrapped(g, row.title, width).forEach(line);
+  const title = wrapped(g, row.title, width);
+  capped(g, title, width, most).forEach(line);
   g.font = FONT;
   g.fillStyle = T.muted;
-  wrapped(g, row.y_units, width).forEach(line);
+  capped(g, wrapped(g, row.y_units, width), width, most - title.length).forEach(line);
   if (!range) return;
   const [lo, hi] = range;
   g.textAlign = "right";

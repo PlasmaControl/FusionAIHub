@@ -22,7 +22,8 @@ source table's window (`labeler.ae.xpower.evaluate`); a shot's F1 here does not.
 
 **The mask** is what the segmentation says, semantically: every pixel SegNet
 calls AE, P(AE) at its threshold inside 80-250 kHz (`labeler.ae.seg.poi.ae_pixels`,
-the pixels its evaluation scores), a translucent fill with a thin outline. It is
+the call its evaluation scores, there only over the pseudo-mask's scored pixels
+of 0-2 s), a translucent fill with a thin outline. It is
 run on the picture's own rows, at the store level it reads (`PICTURE_LEVEL`), so
 it lies on the picture's pixels. Its regions, the points of interest of
 `poi.csv`, are not drawn: they are a table for tools, which the interpreter's
@@ -63,7 +64,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from matplotlib.colors import ListedColormap, to_rgba
+from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
@@ -394,6 +395,14 @@ def _spectrogram(ax, s: AEShot) -> None:
     ax.set_ylabel(f"{CROSS_ROWS[0].replace('x', ' × ')}\nkHz")
 
 
+def mask_rgba(mask: np.ndarray) -> np.ndarray:
+    """The fill as RGBA pixels, its alpha in the data: `imshow(alpha=...)` over
+    another image is applied twice when a PDF composites the two into one."""
+    rgba = np.zeros((*mask.shape, 4))
+    rgba[mask] = to_rgba(MASK_COLOUR, MASK_ALPHA)
+    return rgba
+
+
 def _mask(ax, s: AEShot) -> None:
     """SegNet's AE pixels, a translucent fill with a thin outline, labelled for
     the legend when some pixel lies in view. Call it after the axes' limits are
@@ -405,14 +414,10 @@ def _mask(ax, s: AEShot) -> None:
     freqs = s.y0 + np.arange(s.mask.shape[0]) * s.dy
     seen = s.mask[np.ix_((freqs >= y0) & (freqs <= y1), (times >= x0) & (times <= x1))]
     ax.imshow(
-        np.ma.masked_where(~s.mask, np.ones(s.mask.shape)),
+        mask_rgba(s.mask),
         origin="lower",
         aspect="auto",
         extent=_extent(s),
-        cmap=ListedColormap([MASK_COLOUR]),
-        vmin=0,
-        vmax=1,
-        alpha=MASK_ALPHA,
         interpolation="nearest",
         label=MASK_LABEL if seen.any() else "_" + MASK_LABEL,
     )
