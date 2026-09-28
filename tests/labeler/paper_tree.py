@@ -25,7 +25,18 @@ def ae_evaluation() -> dict:
     return {
         "meta": {"candidate": "band80-mhd3", "threshold": 0.42, "tier": "suggestions"},
         "bar": {"A1": True, "A2": False, "A3": True, "all": False},
-        "bar_thresholds": {"f1": 0.9, "mhd_fp_rate": 0.05},
+        "bar_thresholds": {
+            "f1": 0.9,
+            "precision": 0.75,
+            "recall": 0.75,
+            "f1_vs_seldnet_low": -0.03,
+            "mhd_fp_rate": 0.05,
+        },
+        "differences": {
+            "f1_minus_seldnet": est(0.1, -0.02, 0.2),
+            "mhd_fp_minus_seldnet": est(-0.02, -0.05, 0.01),
+            "f1_minus_always": est(0.5, 0.4, 0.6),
+        },
         "methods": methods,
         "frames": {
             "shots": 40,
@@ -54,6 +65,10 @@ def seg_evaluation() -> dict:
             "dice_low": 0.65,
             "frame_precision": 0.9,
             "mhd_fp_rate": 0.05,
+        },
+        "differences": {
+            "dice_minus_recipe": est(0.1, 0.05, 0.15),
+            "frame_f1_minus_recipe": est(-0.0003, -0.008, 0.007),
         },
         "methods": methods,
         "counts": {
