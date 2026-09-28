@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 from pathlib import Path
 
 from labeler.ae import xpower
@@ -117,3 +118,21 @@ def record_labels(paths: Paths, version: str = "v1") -> str:
     record["meta"]["labels_sha256"] = sha
     evaluation.write_text(json.dumps(record))
     return sha
+
+
+def as_version(paths: Paths, version: str = "v2", *, seg: bool = True) -> Path:
+    """Move the v1 records to `version`, laid out as v2 will be:
+    `models/ae_xpower/<version>/<candidate>/{model.pt, split.csv,
+    review/labels.csv}`, `chosen.json`, `evaluation.json`, and with `seg` the
+    segmentation's record, naming the copy; v1 is left with nothing. Its models
+    directory."""
+    old, new = xpower.model_dir(paths), xpower.model_dir(paths, version)
+    shutil.move(old, new)
+    sha = record_labels(paths, version)
+    if seg:
+        record = seg_evaluation()
+        record["meta"]["inputs"] = {"labels_sha256": sha}
+        path = paths.root / "models" / "ae_seg" / version / "evaluation.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(record))
+    return new
