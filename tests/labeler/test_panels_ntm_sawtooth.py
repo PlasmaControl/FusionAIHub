@@ -138,7 +138,7 @@ def _sawtooth(p, *, ece=True, sxr=True, te=False, moving=(3, 5, 20, 25), early=(
     if te:
         t = tree.times(0.0, 100.0, 100)
         chords = np.arange(44)[:, None]
-        y = 3000.0 * np.exp(-(((chords - 41.5) / 2.5) ** 2)) + 0 * t
+        y = np.repeat(3000.0 * np.exp(-(((chords - 41.5) / 2.5) ** 2)), len(t), axis=1)
         y[40, 3], y[41, 5], y[42, 7] = 0.0, -12.0, 0.0
         groups["ts_core_temp"] = (t, y)
     if ece:
@@ -184,13 +184,41 @@ def test_the_te_row_is_thomsons_hottest_core_chords_in_kev(tmp_path, monkeypatch
     _sawtooth(p, ece=False, te=True)
     te, sxr = panels.build("sawtooth_oscillation", SHOT, paths=p)
     assert te.title == "Te, Thomson core: the 4 hottest chords"
-    assert (te.ylabel, te.legend) == ("keV", ["chord 40", "chord 41", "chord 42", "chord 43"])
+    assert te.ylabel == "keV"
+    assert te.legend == ["chord 40", "chord 41", "chord 42", "chord 43"]
     assert te.y[1, 0] == pytest.approx(3.0 * np.exp(-0.04)) and te.y.shape == (4, 10)
     assert np.isnan(te.y[:3]).sum() == 3, "a failed fit is a gap, not a 0 keV dip"
     assert np.isnan(te.y[0, 3]) and np.isnan(te.y[1, 5]) and np.isnan(te.y[2, 7])
     assert sxr.title.startswith("SXR")
-    view, _sxr = panels.build("sawtooth_oscillation", SHOT, paths=p, t_range=(0, 45))
-    assert view.legend == te.legend and view.x.max() <= 45, "chosen over the record"
+
+
+def test_the_te_chords_are_the_windows_hottest_and_clipped_only_above(
+    tmp_path, monkeypatch
+):
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    t = tree.times(0.0, 100.0, 100)  # 0, 10, ... 90 ms
+    chords = np.arange(44)[:, None]
+    centre = np.where(t >= 60, 38.5, 20.0)  # the core is at 38-39 in the window
+    y = 3000.0 * np.exp(-(((chords - centre) / 2.5) ** 2)) * (1 + 0.1 * np.sin(t))
+    y[10] = 0.0
+    y[10, 7] = 9000.0  # the hottest, on 1 of the window's 4 samples
+    y[38, 1] = 50_000.0  # a bad fit, before the window
+    tree.write(p.corpus_file(SHOT), {"ts_core_temp": (t, y)})
+    tree.cohort(p, [tree.queue_row(SHOT, 0, window=(60, 90))])
+    [te] = panels.build("sawtooth_oscillation", SHOT, paths=p)
+    # The window's, not the record's (20's), a fixed 40-43, or a sparse chord's.
+    assert te.legend == [f"chord {c}" for c in (37, 38, 39, 40)]
+    assert te.title.endswith(saw.TE_CLIPPED)
+    assert te.y[1, 1] == np.nanmax(te.y[1]) < 3.3, "the bad fit sits on the edge"
+    assert te.y[1, 0] < 0.01, "a cooler Te is not raised to the window's range"
+    [view] = panels.build("sawtooth_oscillation", SHOT, paths=p, t_range=(0, 45))
+    assert view.legend == te.legend and view.x.max() <= 45, "not the view's chords"
+    assert view.y[1, 1] == te.y[1, 1], "clipped as over the record"
+    dark = SHOT + 2
+    tree.write(p.corpus_file(dark), {"ts_core_temp": (t, np.zeros((44, len(t))))})
+    with pytest.raises(NoDataError, match="no Thomson core chord"):
+        saw.te_panels(dark, paths=p)
 
 
 def test_despike_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
