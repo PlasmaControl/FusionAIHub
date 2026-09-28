@@ -98,6 +98,84 @@ def test_an_entry_written_as_the_swap_starts_survives(tmp_path, monkeypatch):
     assert _beside(out) == ["paper"]
 
 
+def _write_at(held: int, name: str, text: str) -> None:
+    """Write `name` through the directory handle `held`, not through a path."""
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644, dir_fd=held)
+    with os.fdopen(fd, "w") as file:
+        file.write(text)
+
+
+def _swap_with_a_late_write(out, staged, monkeypatch, name, text) -> Path | None:
+    """The reviewer's probe B: a writer holding the old output (a shell's cwd
+    in `out`, say) writes `name` into it after the swap has listed it, just
+    before the new output's rename. The swap's answer."""
+    held = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    rename = Path.rename
+
+    def writes_late(self, target):
+        if Path(self) == staged:
+            _write_at(held, name, text)
+        return rename(self, target)
+
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(Path, "rename", writes_late)
+            return staging.swap(staged, out, owned=OWNED)
+    finally:
+        os.close(held)
+
+
+NEW = {
+    "fig_scores.pdf": "new",
+    "manifest.json": '{"new": true}',
+    "notes.txt": "the owner's",
+}
+
+
+def test_an_entry_written_late_through_a_held_handle_survives(tmp_path, monkeypatch):
+    """Only the build's names are deleted from the old output: `late.txt`,
+    written into it after the listing, is moved into the new output, and no
+    holder is left."""
+    out, staged = _outputs(tmp_path)
+    late = "written after the listing"
+    kept = _swap_with_a_late_write(out, staged, monkeypatch, "late.txt", late)
+    assert _tree(out) == NEW | {"late.txt": late}
+    assert kept is None
+    assert _beside(out) == ["paper"]
+
+
+def test_a_late_entry_whose_name_is_taken_keeps_the_holder(tmp_path, monkeypatch):
+    """The late entry is a `notes.txt`, which the new output already holds (the
+    owner's, moved there): it is neither deleted nor moved over the owner's, so
+    the old output's directory is kept, holding it alone, and the swap names
+    its holder."""
+    out, staged = _outputs(tmp_path)
+    late = "saved again, late"
+    kept = _swap_with_a_late_write(out, staged, monkeypatch, "notes.txt", late)
+    assert _tree(out) == NEW
+    assert kept is not None and kept.name.startswith(".paper.old-")
+    assert _tree(kept) == {"paper": None, "paper/notes.txt": late}
+    assert _beside(out) == sorted(["paper", kept.name])
+
+
+def test_the_old_outputs_own_names_go_and_no_link_is_followed(tmp_path):
+    """Of the old output only the build's names are deleted: one that is a real
+    directory with what it holds, one that is a link as itself, its target
+    untouched."""
+    out, staged = _outputs(tmp_path)
+    (out / "fig_scores.pdf").unlink()
+    (out / "fig_scores.pdf").mkdir()
+    (out / "fig_scores.pdf" / "inside.txt").write_text("in an owned directory")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "keep.txt").write_text("not the build's")
+    (out / "fig_mhd.pdf").symlink_to(elsewhere, target_is_directory=True)
+    assert staging.swap(staged, out, owned=OWNED) is None
+    assert _tree(out) == NEW
+    assert _tree(elsewhere) == {"keep.txt": "not the build's"}, "never followed"
+    assert _beside(out) == ["paper"]
+
+
 def test_a_symlink_stays_a_symlink(tmp_path):
     """The reviewer's swap_probe case 1, with a link to a file and a broken
     one: each is moved as itself, never followed or copied."""
