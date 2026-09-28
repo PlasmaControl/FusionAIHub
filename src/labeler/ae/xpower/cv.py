@@ -21,8 +21,9 @@ exactly the folds the snapshot and TokEye's masks give then (`checked_folds`),
 and the choice, the final model and `chosen.json` name the file's sha256.
 
 **A fold task.** Fold K is predicted; fold (K + 1) mod 5 stops the training
-(`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs, v1's
-`TrainConfig`); the other three train. Fold K's shots never train or stop the
+(`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs: v1's
+`TrainConfig` with the candidate's MHD weight, `fold_config`; there is no
+`--epochs`); the other three train. Fold K's shots never train or stop the
 model that predicts them. It writes `cv/<candidate>/fold<K>.npz`, per fold-K
 shot the 0-2 s frames `evaluate.shot_frames` gives (`p<shot>` P(AE), `o<shot>`
 the owner's states, `m<shot>` MHD, `s<shot>` scored), then `fold<K>.json`, the
@@ -41,13 +42,16 @@ Ties go to the lower MHD weight, then to the threshold nearest 0.5, then (0.45
 against 0.55, which the rule leaves open) to the lower threshold, as
 `train.pick_threshold` orders them. A row with an undefined F1 never counts; one
 with an undefined MHD FP (no MHD frame) is never in branch 1 or 2. `--choose`
-refuses while any of the 15 records is missing, naming them, and writes
-`cv/choice.json` (the choice, its branch, the whole table and each fold's best
-epoch; the final model trains for the median of the chosen candidate's five)
-and `cv/frontier.md`. Run again, it checks the saved choice and changes nothing.
+refuses while any of the 15 records is missing, or one differs from what its
+task gives (its shots, stop fold, snapshot, folds and `TrainConfig`), naming
+them. It writes `cv/choice.json` (the choice, its branch, the whole table and
+each fold's best epoch; the final model trains for the median of the chosen
+candidate's five) and `cv/frontier.md`. Run again, it checks the saved choice
+and changes nothing.
 
-**Pilots.** `--pilot N` (5-20 shots): each fold's first N // 5 shots, 2 epochs,
-into `runs/ae_xpower/pilot/<version>`, where a record can be replaced.
+**Pilots.** `--pilot N` (5-20 shots): each fold's first N // 5 shots, 2 epochs
+(`PILOT_EPOCHS`), into `runs/ae_xpower/pilot/<version>`, where a record can be
+replaced.
 """
 
 from __future__ import annotations
@@ -58,7 +62,7 @@ import io
 import json
 import os
 import resource
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -235,6 +239,13 @@ def _spec(version: str, candidate: str) -> dict:
     return names[candidate]
 
 
+def fold_config(spec: dict, pilot: int) -> train.TrainConfig:
+    """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight;
+    a pilot's, for `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
+    config = train.TrainConfig(mhd_weight=spec["mhd_weight"])
+    return replace(config, epochs=PILOT_EPOCHS) if pilot else config
+
+
 def _record_paths(models: Path, candidate: str, k: int) -> tuple[Path, Path]:
     out = cv_dir(models) / candidate
     return out / f"fold{k}.json", out / f"fold{k}.npz"
@@ -248,7 +259,6 @@ def run_fold(
     fold: int,
     version: str,
     pilot: int = 0,
-    epochs: int = train.TrainConfig.epochs,
     log=print,
 ) -> dict:
     """Train on three folds, stop on fold `fold` + 1, predict fold `fold`."""
@@ -272,9 +282,7 @@ def run_fold(
         rows = store_rows(paths.spectrogram_file(EVENT, s))
         return load_shot(s, saved[s], rows, tokeye_masks(paths), band=spec["band"])
 
-    config = train.TrainConfig(
-        epochs=PILOT_EPOCHS if pilot else epochs, mhd_weight=spec["mhd_weight"]
-    )
+    config = fold_config(spec, pilot)
     model, history, _ = train.fit(
         [shot(s) for s in train_shots], [shot(s) for s in by[stop]], config, log
     )
@@ -423,6 +431,8 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
     table, fold_info, best, sources, counted = [], {}, {}, {}, None
     for name, spec in names.items():
         frames, fold_info[name], best[name] = [], {}, []
+        # As a record holds it: v1's TrainConfig, the weight, a pilot's epochs.
+        config = json.loads(json.dumps(asdict(fold_config(spec, pilot))))
         for k in range(N_FOLDS):
             expect = {
                 "version": version,
@@ -433,6 +443,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
                 "stop_fold": stop_fold(k),
                 "mhd_weight": spec["mhd_weight"],
                 "band_khz": list(spec["band"]),
+                "config": config,
             }
             record, fold_frames = _load_fold(models, name, k, expect)
             frames += fold_frames
@@ -566,7 +577,6 @@ def main(argv=None) -> int:
     p.add_argument("--choose", action="store_true", help="after all 15 fold tasks")
     p.add_argument("--candidate", help="one of the version's candidates")
     p.add_argument("--fold", type=int, help="0-4: the fold this task predicts")
-    p.add_argument("--epochs", type=int, default=train.TrainConfig.epochs)
     p.add_argument(
         "--pilot",
         type=int,
@@ -604,7 +614,6 @@ def main(argv=None) -> int:
                 fold=args.fold,
                 version=args.version,
                 pilot=args.pilot,
-                epochs=args.epochs,
                 log=lambda m: print(m, flush=True),
             )
             print(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import dataclasses
 import json
 
 import numpy as np
@@ -129,9 +130,8 @@ def test_fold_k_trains_on_three_stops_on_the_next_and_predicts_its_own(
     (call,) = calls
     assert call["val"] == by[0]  # stop fold (4 + 1) mod 5
     assert call["train"] == sorted(by[1] + by[2] + by[3])
-    assert call["config"].mhd_weight == 10.0
-    assert call["config"].epochs == train.TrainConfig.epochs
-    assert call["config"].patience == train.TrainConfig.patience
+    # v1's TrainConfig, with the candidate's MHD weight.
+    assert call["config"] == train.TrainConfig(mhd_weight=10.0)
     assert frames_called == by[4]
     out = model_dir(paths, "v2") / "cv" / "band80-mhd10"
     record = json.loads((out / "fold4.json").read_text())
@@ -139,6 +139,7 @@ def test_fold_k_trains_on_three_stops_on_the_next_and_predicts_its_own(
     assert record["train_folds"] == [1, 2, 3]
     assert record["shots"] == by[4] and record["stop_shots"] == by[0]
     assert record["best_epoch"] == 3 and record["version"] == "v2"
+    assert record["config"] == dataclasses.asdict(train.TrainConfig(mhd_weight=10.0))
     assert record["labels_sha256"] == digest
     assert record["folds_sha256"] == sha256_of(model_dir(paths, "v2") / "cv/folds.csv")
     assert record["npz_sha256"] == sha256_of(out / "fold4.npz")
@@ -154,16 +155,38 @@ def test_fold_k_trains_on_three_stops_on_the_next_and_predicts_its_own(
     assert len(calls) == 1
 
 
-def test_a_fold_runs_the_real_training_loop(tree):
+def _short(monkeypatch, epochs=1):
+    """A fold task's `fold_config`, for `epochs` epochs (there is no --epochs)."""
+    real = cv.fold_config
+    monkeypatch.setattr(
+        cv,
+        "fold_config",
+        lambda spec, pilot: dataclasses.replace(real(spec, pilot), epochs=epochs),
+    )
+
+
+def test_a_fold_runs_the_real_training_loop(tree, monkeypatch):
     paths, _ = tree
+    _short(monkeypatch)
     assert cv.main(["--folds"]) == 0
-    args = ["--candidate", "band80-mhd3", "--fold", "0", "--epochs", "1"]
-    assert cv.main(args) == 0
+    assert cv.main(["--candidate", "band80-mhd3", "--fold", "0"]) == 0
     record = json.loads(
         (model_dir(paths, "v2") / "cv/band80-mhd3/fold0.json").read_text()
     )
     assert len(record["history"]) == 1 and record["history"][0]["epoch"] == 1
     assert record["config"]["epochs"] == 1 and record["config"]["mhd_weight"] == 3.0
+
+
+def test_a_fold_task_takes_no_epochs(tree, monkeypatch, capsys):
+    paths, _ = tree
+    calls = []
+    monkeypatch.setattr(train, "fit", _fake_fit(calls))
+    assert cv.main(["--folds"]) == 0
+    with pytest.raises(SystemExit) as error:
+        cv.main(["--candidate", NAMES[0], "--fold", "0", "--epochs", "1"])
+    assert error.value.code == 2 and "--epochs" in capsys.readouterr().err
+    assert calls == []
+    assert not (model_dir(paths, "v2") / "cv" / NAMES[0]).exists()
 
 
 def test_a_candidate_of_another_version_or_a_bad_fold_is_refused(tree, capsys):
@@ -283,9 +306,43 @@ def test_a_pilot_writes_under_runs_and_can_run_again(tree, monkeypatch):
     assert cv.main(["--folds", "--pilot", "5"]) == 0
     for _ in range(2):
         assert cv.main(["--candidate", NAMES[0], "--fold", "1", "--pilot", "5"]) == 0
-    assert calls[0]["config"].epochs == 2
+    assert calls[0]["config"] == train.TrainConfig(epochs=2, mhd_weight=3.0)
     assert len(calls[0]["train"]) == 3 and len(calls[0]["val"]) == 1
     pilot = paths.runs / "ae_xpower" / "pilot" / "v2" / "cv"
     record = json.loads((pilot / NAMES[0] / "fold1.json").read_text())
     assert record["pilot"] == 5 and len(record["shots"]) == 1
     assert not (model_dir(paths, "v2") / "cv").exists()
+
+
+@pytest.mark.parametrize(
+    "pilot, key, value",
+    [
+        (0, "epochs", 1),  # what `cv --epochs 1` trained
+        (0, "patience", 5),
+        (0, "mhd_weight", 30.0),  # another candidate's weight
+        (5, "epochs", 60),  # a pilot's fold, trained as a full one
+    ],
+)
+def test_the_choice_refuses_a_fold_record_trained_with_another_config(
+    tree, monkeypatch, capsys, pilot, key, value
+):
+    paths, _ = tree
+    extra = ["--pilot", str(pilot)] if pilot else []
+    monkeypatch.setattr(train, "fit", _fake_fit([]))
+    assert cv.main(["--folds", *extra]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k), *extra]) == 0
+    runs = paths.runs / "ae_xpower" / "pilot" / "v2"
+    out = (runs if pilot else model_dir(paths, "v2")) / "cv"
+    file = out / "band80-mhd10" / "fold2.json"
+    record = json.loads(file.read_text())
+    assert record["config"][key] != value and record["mhd_weight"] == 10.0
+    record["config"][key] = value
+    file.write_text(json.dumps(record, indent=1) + "\n")
+    with pytest.raises(SystemExit) as error:
+        cv.main(["--choose", *extra])
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert str(file) in stderr and "config" in stderr and "Traceback" not in stderr
+    assert not (out / "choice.json").exists()

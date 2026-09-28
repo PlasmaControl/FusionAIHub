@@ -518,7 +518,14 @@ def main(argv=None) -> int:
             "2 epochs, to runs/ae_xpower/pilot/<version>"
         ),
     )
-    p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
+    p.add_argument(
+        "--epochs",
+        type=int,
+        help=(
+            f"default {TrainConfig.epochs}; not with --from-cv, which trains for "
+            "the choice's final_epochs"
+        ),
+    )
     args = p.parse_args(argv)
     if args.pilot and not 6 <= args.pilot <= 20:
         p.error("a pilot is 6 to 20 shots")
@@ -527,6 +534,8 @@ def main(argv=None) -> int:
     if args.from_cv:
         if args.candidate or args.out:
             p.error("--from-cv takes its candidate and directory from the choice")
+        if args.epochs is not None:
+            p.error("--from-cv trains for the choice's final_epochs; no --epochs")
         pilot_models = paths.runs / "ae_xpower" / "pilot" / args.version
         models = pilot_models if args.pilot else model_dir(paths, args.version)
         try:
@@ -575,8 +584,9 @@ def main(argv=None) -> int:
         snapshot_file.write_bytes(labels_bytes)
         saved = labels.read_saved(snapshot)
     split = make_split(saved, seldnet_split(tokeye_masks(paths)))
+    epochs = TrainConfig.epochs if args.epochs is None else args.epochs
     config = TrainConfig(
-        epochs=2 if args.pilot else args.epochs, mhd_weight=spec["mhd_weight"]
+        epochs=2 if args.pilot else epochs, mhd_weight=spec["mhd_weight"]
     )
     if args.pilot:
         chosen = sorted(s for s, v in split.items() if v == "train")[: args.pilot - 4]
