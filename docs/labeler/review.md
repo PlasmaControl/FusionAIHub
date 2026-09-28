@@ -172,10 +172,11 @@ where you see them.
 
 - Rows: the ECE channels 20-35, as four rows of four adjacent channels in keV,
   so the inversion (inner channels drop as outer ones rise) reads from row to
-  row. Each channel is its median over every 0.05 ms, the page's finest
-  column: the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core)
-  otherwise set the row's range and flatten the crashes. Then one SXR row: the first fan of SX90RM1F, SX90RP1F, SX90RM1S and
-  SX90RP1S with 8 chords finite over half the record.
+  row. Each sample is the median of its 0.05 ms, the page's finest column:
+  the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core) otherwise
+  set the row's range and flatten the crashes. Then one SXR row: the first
+  fan of SX90RM1F, SX90RP1F, SX90RM1S and SX90RP1S with 8 chords finite over
+  half the record.
 - The SXR row draws the fan's 4 chords with the most crash-like drops over the
   Ip flat-top, not its brightest: on about 25 shots the brightest sit near
   4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
