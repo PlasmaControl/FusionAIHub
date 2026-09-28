@@ -13,8 +13,10 @@ not the live file; `--version` must be the models directory's name and the
 checkpoint's version. A version chosen by cross-validation (v2) is drawn only
 after its test: a picture gives the model's F1 against the owner on a test shot
 too, so the gallery refuses until the models directory's `evaluation.json` has
-scored the model it draws (`check_tested`). Each index row names the version's
-label snapshot by sha256 (`snapshot_sha256`, blank for v1, which has none).
+scored the model it draws (`check_tested`), and only from its own models
+directory or a pilot's under `runs/` (`check_own_dir`), never from a copy
+elsewhere. Each index row names the version's label snapshot by sha256
+(`snapshot_sha256`, blank for v1, which has none).
 
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
 scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
@@ -49,6 +51,7 @@ from . import (
     LABEL_SNAPSHOTS,
     VERSION,
     check_bound,
+    check_own_dir,
     event_dir,
     gallery_dir,
     model_dir,
@@ -384,6 +387,7 @@ def main(argv=None) -> int:
     models = args.models or model_dir(paths, version)
     out = pictures_dir(paths, models, version)
     try:
+        check_own_dir(paths, models, version)
         check_bound(version, models)
         model_file = chosen_model(models)
         check_bound(version, models, load(model_file)[1], model_file)
