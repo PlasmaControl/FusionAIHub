@@ -921,12 +921,12 @@ function capped(g, lines, width, most) {
   return kept;
 }
 
-/** A row's title, wrapped to the gutter, then its units, from the top left, in
- * at most the row's top half (so a short row keeps room for its y scale); then
+/** A row's title, wrapped to the gutter, then its units, from the top left,
+ * cut with an ellipsis only where it would run into the row's last 20 px; then
  * the y ticks, each one that would touch that text left off. */
 function drawGutter(g, row, range, h) {
   const width = GUTTER - 12;
-  const most = Math.max(1, Math.floor((h / 2 - 3) / GUTTER_LINE));
+  const most = Math.max(1, Math.floor((h - 20) / GUTTER_LINE));
   const text = [];  // [right, top, bottom] of each line drawn
   let y = 16;
   const line = (words) => {
