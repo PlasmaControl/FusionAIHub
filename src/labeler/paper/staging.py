@@ -6,11 +6,15 @@ failure leaves `out` as it was. The swap claims only the names it is given (the
 build's `OWNED`). Once the old output is renamed aside, every other entry of it
 is renamed into the new output: moved, never copied, and a symlink moves as
 itself, never followed. The old output is deleted only once the new one is in
-place. A swap that fails moves those entries back and renames the old output
-back; one that cannot (another build's output landed at `out` meanwhile, say)
-deletes nothing and raises `Stranded`, which names where everything is. After
-a failure the build deletes the staging directory only if nothing but its own
-files is left in it (`discard`).
+place, and then only its names the swap claims (`_clear`): an entry written
+into it later, through a handle held on it (a shell's working directory, say),
+is moved into the new output as well, or, if its name is taken there, kept with
+the old directory, which the swap then names. A swap that fails moves those
+entries back and renames the old output back; one that cannot (another build's
+output landed at `out` meanwhile, say) deletes nothing and raises `Stranded`,
+which names where everything is. After a failure the build deletes the staging
+directory only if nothing but its own files is left in it (`discard`). `out` is
+never a link here: the build resolves it first, and the swap refuses one.
 """
 
 from __future__ import annotations
@@ -76,23 +80,37 @@ class Stranded(OSError):
         return self.message
 
 
+NOT_EMPTY = (errno.ENOTEMPTY, errno.EEXIST)  # rmdir: the directory has entries
+
+
 def _move(src: Path, dst: Path) -> None:
     """Rename `src` to `dst`, which must not exist; a symlink moves as itself."""
+    # A window: the check and the rename are two calls, so an entry made at
+    # `dst` between them is replaced. Into `staged` no one else writes; back
+    # into the old output (`_undo`) or late into `out` (`_clear`), a writer
+    # could make that name in those microseconds. renameat2's RENAME_NOREPLACE
+    # would close it, but whether GPFS supports it is uncertain: not used.
     if os.path.lexists(dst):
         raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), str(dst))
     src.rename(dst)
 
 
-def swap(staged: Path, out: Path, *, owned: Collection[str]) -> None:
+def swap(staged: Path, out: Path, *, owned: Collection[str]) -> Path | None:
     """Put `staged` where `out` is. `out` is renamed into a holder beside it,
     each of its entries not in `owned` is renamed from there into `staged`,
-    and `staged` is renamed to `out`, all under one `try`; only then is the
-    holder, with the old products and manifest, deleted. On a failure the
-    entries are moved back and the old output renamed back to `out`; if that
-    fails too, everything stays where `Stranded` says."""
+    and `staged` is renamed to `out`, all under one `try`; only then is the old
+    output deleted, and of it only the names in `owned` (`_clear`). On a
+    failure the entries are moved back and the old output renamed back to
+    `out`; if that fails too, everything stays where `Stranded` says. None, or
+    the holder `_clear` had to keep, for the caller to name. A symlinked `out`
+    is refused before anything moves (the build resolves it first): the swap
+    would replace the link, and deleting the old output would follow it."""
+    if out.is_symlink():
+        why = "a symlink: swap into its target (the build resolves --out)"
+        raise OSError(errno.EINVAL, why, str(out))
     if not os.path.lexists(out):
         staged.rename(out)
-        return
+        return None
     holder = Path(tempfile.mkdtemp(prefix=f".{out.name}.old-", dir=out.parent))
     old = holder / out.name
     theirs: list[str] = []
@@ -105,13 +123,70 @@ def swap(staged: Path, out: Path, *, owned: Collection[str]) -> None:
             moved.add(name)
         staged.rename(out)
     except BaseException:
-        _undo(staged, out, old, theirs, moved)
+        _undo(staged, out, old, theirs, moved, owned)
         raise
-    shutil.rmtree(holder, ignore_errors=True)
+    return _clear(old, out, owned)
+
+
+def _delete(path: Path) -> None:
+    """Delete `path` if it is there: a real directory with what it holds, and
+    anything else, a link among them, as itself, never followed. A failure
+    leaves it, and the directory holding it then stays."""
+    with contextlib.suppress(OSError):
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink()
+
+
+def _rmdir(path: Path) -> OSError | None:
+    """Remove the empty directory `path`: None once it is gone, else the error."""
+    try:
+        path.rmdir()
+    except OSError as error:
+        return error
+    return None
+
+
+def _clear(old: Path, out: Path, owned: Collection[str]) -> Path | None:
+    """Delete the old output `old`, the new one being at `out`: its names in
+    `owned` alone, then the directory and its holder. Once the directory is
+    gone no handle held on it can add to it; until then an entry can arrive
+    through one after the listing, and the directory is not empty. Each such
+    entry not in `owned` is moved into `out`, unless `out` has that name, and
+    the directory removed again. If it still cannot be removed, the holder is
+    kept with what is left in it and returned; None when all is gone. Nothing
+    here raises: the new output is in place."""
+    holder = old.parent
+    for name in owned:
+        _delete(old / name)
+    error = _rmdir(old)
+    if error is not None and error.errno in NOT_EMPTY:
+        for name in _late(old, owned):
+            with contextlib.suppress(OSError):
+                _move(old / name, out / name)  # never over a name `out` has
+        error = _rmdir(old)
+    if error is not None or _rmdir(holder) is not None:
+        return holder
+    return None
+
+
+def _late(old: Path, owned: Collection[str]) -> list[str]:
+    """The entries of the old output not in `owned`: those that came in after
+    the swap listed it."""
+    try:
+        return sorted(p.name for p in old.iterdir() if p.name not in owned)
+    except OSError:
+        return []
 
 
 def _undo(
-    staged: Path, out: Path, old: Path, theirs: list[str], moved: set[str]
+    staged: Path,
+    out: Path,
+    old: Path,
+    theirs: list[str],
+    moved: set[str],
+    owned: Collection[str],
 ) -> None:
     """Undo a failed `swap`: the owner's entries back from `staged` into the
     old output, then the old output back to `out`."""
@@ -129,7 +204,7 @@ def _undo(
             holder.rmdir()
         return
     if not os.path.lexists(staged):  # the new output reached `out` after all
-        shutil.rmtree(holder, ignore_errors=True)
+        _clear(old, out, owned)  # the build's names alone, as a finished swap
         return
     try:
         for name in reversed(theirs):
