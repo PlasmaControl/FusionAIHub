@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=9G
+#SBATCH --mem=8G
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -45,12 +45,15 @@
 #   (pilot job 2943818): 26 s, 83 % CPU by sacct, 5.23 GB MaxRSS, still --mem=6G.
 #   Tearing modes since the n-coloured row (2026-09-28, pilot job 2943811, 20 shots):
 #   8 workers on 8 CPUs, 28 s, 40 % CPU (start-up and a half-empty last round are most
-#   of 20 shots; each shot is 5 s), 7.19 GB MaxRSS (0.90 GB a worker), so --mem=9G.
+#   of 20 shots; each shot is 5 s), 7.19 GB MaxRSS (0.90 GB a worker). The full
+#   rebuild (job 2943826, 450 shots): 4 min 51 s, 72.9 % CPU, and 5.7 GiB by jobstats
+#   (63 % of 9G) against sacct's 6.96 GiB, which sums the forked workers' shared
+#   pages, so --mem=8G.
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
 #   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).
 #   cpus-per-task=8   450 x 5.1 s / 8 workers = 4.8 min; the others 1-2 min on 2-4 CPUs.
-#   mem=9G            the tearing-mode pilot's 7.19 GB x 1.2; sawteeth 12 x 0.41 x 1.2,
+#   mem=8G            tearing modes' 5.7 GiB by jobstats x 1.4; sawteeth 12 x 0.41 x 1.2,
 #                     H-mode 6 x 0.32 x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
 #   time=00:30:00     4.8 min x 6 for cold GPFS reads.
 set -euo pipefail
