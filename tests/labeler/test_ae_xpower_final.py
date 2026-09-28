@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import shutil
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from labeler.ae import xpower
 from labeler.ae.xpower import cv, evaluate, gallery, model_dir, train
@@ -310,6 +313,106 @@ def test_the_gallery_of_a_cross_validated_version_waits_for_its_test(
     record["meta"]["model_sha256"] = hashlib.sha256(b"another model").hexdigest()
     evaluation.write_text(json.dumps(record))
     _refused(capsys, gallery.main, args, str(evaluation), "another model")
+
+
+@pytest.mark.parametrize("command", ["--choose", "--test"])
+def test_the_checks_compare_the_models_bytes_with_chosen_json(
+    tmp_path, monkeypatch, capsys, command
+):
+    """The reviewer's Minor 4: another model with the same record is refused."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    file = model_dir(paths, "v2") / "band80-mhd3" / "model.pt"
+    blob = torch.load(file, map_location="cpu", weights_only=False)
+    blob["state_dict"] = {
+        k: v + 1 if v.is_floating_point() else v for k, v in blob["state_dict"].items()
+    }
+    torch.save(blob, file)
+    args = [command, "--version", "v2"]
+    _refused(capsys, evaluate.main, args, str(file), "model_sha256")
+    assert not (model_dir(paths, "v2") / "evaluation.json").exists()
+
+
+def _crashed(tmp_path, monkeypatch):
+    """v2's final model saved, and the job gone before `chosen.json` (the
+    reviewer's probe 5); training again fails the test. Its models directory and
+    the `chosen.json` it lost."""
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    before = json.loads((models / "chosen.json").read_text())
+    (models / "chosen.json").unlink()
+
+    def fit(*args, **kwargs):
+        raise AssertionError("the final model was trained again")
+
+    monkeypatch.setattr(train, "fit", fit)
+    return models, before
+
+
+def test_a_final_model_without_its_record_gets_the_record_not_a_second_model(
+    tmp_path, monkeypatch
+):
+    models, before = _crashed(tmp_path, monkeypatch)
+    file = models / "band80-mhd3" / "model.pt"
+    data = file.read_bytes()
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    assert file.read_bytes() == data
+    chosen = json.loads((models / "chosen.json").read_text())
+    assert {**chosen, "made_at": 0} == {**before, "made_at": 0}
+    assert chosen["model_sha256"] == hashlib.sha256(data).hexdigest()
+    assert evaluate.main(["--choose", "--version", "v2"]) == 0
+
+
+@pytest.mark.parametrize(
+    "change", ["choice", "from_cv", "choice_sha256", "folds_sha256", "snapshot_sha256"]
+)
+def test_a_final_model_the_current_choice_did_not_make_is_never_recorded(
+    tmp_path, monkeypatch, capsys, change
+):
+    models, _ = _crashed(tmp_path, monkeypatch)
+    file = models / "band80-mhd3" / "model.pt"
+    if change == "choice":  # the choice was made again since the model
+        choice_file = models / "cv" / "choice.json"
+        choice = json.loads(choice_file.read_text())
+        choice["made_at"] = "2026-09-29T00:00:00+00:00"
+        choice_file.write_text(json.dumps(choice, indent=1) + "\n")
+        needle = "choice_sha256"
+    else:  # a checkpoint of another choice, folds or snapshot
+        blob = torch.load(file, map_location="cpu", weights_only=False)
+        other = hashlib.sha256(b"another").hexdigest()
+        blob[change] = False if change == "from_cv" else other
+        torch.save(blob, file)
+        needle = change
+    data = file.read_bytes()
+    args = ["--version", "v2", "--from-cv"]
+    _refused(capsys, train.main, args, str(file), "not replaced", needle)
+    assert file.read_bytes() == data
+    assert not (models / "chosen.json").exists()
+
+
+def test_the_model_is_written_last_and_its_record_after_it(tmp_path, monkeypatch):
+    """A crash while saving leaves no `model.pt`, so a rerun trains; after it,
+    only `chosen.json` is left to write, which a rerun writes."""
+    _chosen_by_cv(tmp_path, monkeypatch)
+    monkeypatch.setattr(train, "fit", _untrained)
+    written, real = [], train.atomic_path
+
+    @contextlib.contextmanager
+    def spy(path):
+        written.append(Path(path).name)
+        with real(path) as tmp:
+            yield tmp
+
+    monkeypatch.setattr(train, "atomic_path", spy)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    assert written == [
+        "labels.csv",
+        "split.csv",
+        "training.json",
+        "model.pt",
+        "chosen.json",
+    ]
 
 
 def _env(tmp_path, monkeypatch) -> Paths:

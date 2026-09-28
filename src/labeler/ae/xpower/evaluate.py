@@ -469,12 +469,19 @@ def run_choose(
 
 
 def cv_chosen(
-    paths: Paths, models: Path, version: str, *, split: dict[int, str] | None = None
+    paths: Paths,
+    models: Path,
+    version: str,
+    *,
+    split: dict[int, str] | None = None,
+    model: bytes | None = None,
 ) -> dict:
     """A cross-validated version's `chosen.json`, checked against `cv/choice.json`
-    and `cv/folds.csv` (as the snapshot and TokEye's masks give it now), and the
-    chosen model's split (`split`, else its `split.csv`) against the folds: their
-    test shots, and all of their pool shots to train (a pilot's, the first N)."""
+    and `cv/folds.csv` (as the snapshot and TokEye's masks give it now); the
+    chosen model's bytes (`model`, else its `model.pt`) against its
+    `model_sha256`; and the model's split (`split`, else its `split.csv`)
+    against the folds: their test shots, and all of their pool shots to train (a
+    pilot's, the first N)."""
     from . import cv  # cv imports this module
 
     chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
@@ -495,6 +502,12 @@ def cv_chosen(
     for key, value in wanted.items():
         if chosen.get(key) != value:
             raise ValueError(f"{chosen_file}: {key} differs from {choice_file}")
+    model_file = models / choice["candidate"] / "model.pt"
+    model = model_file.read_bytes() if model is None else model
+    if hashlib.sha256(model).hexdigest() != chosen.get("model_sha256"):
+        raise ValueError(
+            f"{model_file}: its sha256 is not {chosen_file}'s model_sha256"
+        )
     split_file = models / choice["candidate"] / "split.csv"
     split = read_split(split_file) if split is None else split
     pool = sorted(folds.folds)
@@ -614,7 +627,9 @@ def run_test(
                 f"{choice_file}: not a pilot's choice; its final model is scored "
                 f"once, outside {paths.runs}"
             )
-        chosen = cv_chosen(paths, models, version, split=split)
+        chosen = cv_chosen(
+            paths, models, version, split=split, model=snapshots["model.pt"]
+        )
         cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
     source = labels.read_source(event_dir(paths))
