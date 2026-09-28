@@ -324,6 +324,8 @@ def posthoc_md(record: dict) -> str:
         lines.append(f"- {key}: range {s['range']:.4f}, std {s['std']:.4f} (ddof 1)")
     if study["incomplete"]:
         lines.append(f"- incomplete (folds missing): {study['incomplete']}")
+    if study["status"] == "run" and study["not_run"]:
+        lines.append(f"- not run (no folds): seeds {study['not_run']}")
     missed = study["test_missed_by"]
     how = (
         "has no lower bound"

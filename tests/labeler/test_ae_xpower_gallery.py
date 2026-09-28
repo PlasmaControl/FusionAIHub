@@ -120,7 +120,6 @@ def test_a_newly_reviewed_shot_replaces_its_row_and_picture(
         assert int(extended.model_present_frames) == 7
 
 
-
 def test_the_title_gives_the_f1_over_the_scored_0_to_2_s(tmp_path, monkeypatch):
     """The owner's window runs to 2.2 s, AE present again after 2 s; every
     frame is called present, so the whole window's F1 (80 of 220 frames
