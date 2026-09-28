@@ -27,7 +27,12 @@ with the reason and the missing paths, and one drawn without some of them under
 D47; a test shot without a saved label by number). Nothing is drawn into `out`
 itself: the build draws into a directory beside it and swaps that in whole at
 the end, the products and the manifest together, so a failure leaves `out` as
-it was. A file in `out` that is no product's stays.
+it was. The old output is deleted only once the new one is in place; a swap
+that can neither finish nor put the old output back (another build's output
+landed at `out` meanwhile, say) deletes nothing and raises `Stranded`, which
+names where each one is. The build claims only the names it writes (`OWNED`:
+the manifest and each product's own `.pdf` and `.png`, or `.tex`); anything
+else in `out` stays.
 
 `--version` (default `v1`) names the frame model's version the inputs come
 from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the
@@ -70,6 +75,7 @@ committed or pushed.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import hashlib
 import io
@@ -97,18 +103,30 @@ SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names anothe
 LOGIN_THREADS = 2
 COPIED = (".pdf", ".tex")
 MANIFEST = "manifest.json"
-PRODUCTS = (
-    "fig_scores",
-    "fig_mhd",
-    "table_ae_scores",
-    "fig_segmentation",
-    "table_seg_scores",
-    "table_differences",
-    "fig_coverage",
-    "table_datasets",
-    "fig_interpreter",
-    "fig_examples",
-)
+FIGURE = (".pdf", ".png")  # what `paper.save` writes for a figure
+TABLE = (".tex",)
+PRODUCTS = {
+    "fig_scores": FIGURE,
+    "fig_mhd": FIGURE,
+    "table_ae_scores": TABLE,
+    "fig_segmentation": FIGURE,
+    "table_seg_scores": TABLE,
+    "table_differences": TABLE,
+    "fig_coverage": FIGURE,
+    "table_datasets": TABLE,
+    "fig_interpreter": FIGURE,
+    "fig_examples": FIGURE,
+}
+
+
+def files_of(product: str) -> list[str]:
+    """The files a product writes into `out`."""
+    return [product + suffix for suffix in PRODUCTS[product]]
+
+
+# Every name the build writes into `out`; the swap keeps anything else there.
+OWNED = frozenset({MANIFEST, *(f for p in PRODUCTS for f in files_of(p))})
+
 # Why a product is skipped or drawn in part (`skipped`, `partial`).
 MISSING = "missing inputs"
 NO_EVALUATION = "extension not run: no AE evaluation to gate it (D47)"
@@ -237,32 +255,54 @@ def _staging(out: Path) -> Path:
     raise FileExistsError(f"{out}: no free staging directory beside it")
 
 
-def _ours(name: str) -> bool:
-    """A file the build owns in `out`: a product's or the manifest."""
-    return name == MANIFEST or Path(name).stem in PRODUCTS
+class Stranded(OSError):
+    """The new output could not be put at `out`, nor the old one back (another
+    build put its own there meanwhile, say). Nothing was deleted: `old` holds
+    the old output and `new` the new one, and the message names both."""
+
+    def __init__(self, out: Path, old: Path, new: Path):
+        self.out, self.old, self.new = out, old, new
+        super().__init__(
+            f"{out}: neither the new output nor the old one could be put there, "
+            f"so nothing was deleted: the old output is in {old}, the new one "
+            f"in {new}"
+        )
 
 
 def _swap(staged: Path, out: Path) -> None:
     """Put `staged` where `out` is, in two renames. The old products and
-    manifest leave together; a file in `out` that is not the build's stays."""
+    manifest leave together; every other entry of `out` (not in `OWNED`) is
+    copied over first. The old output is deleted only once the new one is in
+    place: if the second rename fails, the old one is renamed back, and if that
+    fails too, both stay where `Stranded` says."""
     if not out.exists():
         staged.rename(out)
         return
     for kept in out.iterdir():
-        if not _ours(kept.name) and not (staged / kept.name).exists():
+        if kept.name not in OWNED and not (staged / kept.name).exists():
             if kept.is_dir():
                 shutil.copytree(kept, staged / kept.name, symlinks=True)
             else:
                 shutil.copy2(kept, staged / kept.name, follow_symlinks=False)
     holder = Path(tempfile.mkdtemp(prefix=f".{out.name}.old-", dir=out.parent))
-    out.rename(holder / out.name)
+    old = holder / out.name
+    try:
+        out.rename(old)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            holder.rmdir()  # never used: `out` did not move
+        raise
     try:
         staged.rename(out)
     except BaseException:
-        (holder / out.name).rename(out)
+        try:
+            old.rename(out)
+        except BaseException as undo:
+            raise Stranded(out, old, staged) from undo
+        with contextlib.suppress(OSError):
+            holder.rmdir()  # empty again: the old output is back at `out`
         raise
-    finally:
-        shutil.rmtree(holder, ignore_errors=True)
+    shutil.rmtree(holder, ignore_errors=True)
 
 
 def build(
@@ -275,7 +315,8 @@ def build(
     seg_version: str = SEG_VERSION,
 ) -> dict:
     """Draw every product the inputs allow, and the manifest, into a directory
-    beside `out`, then swap it in whole; on a failure `out` is left as it was."""
+    beside `out`, then swap it in whole; on a failure `out` is left as it was,
+    and if the swap can neither finish nor undo itself, nothing is deleted."""
     out = Path(out)
     staged = _staging(out)
     try:
@@ -291,6 +332,8 @@ def build(
                 seg_version=seg_version,
             )
         _swap(staged, out)
+    except Stranded:
+        raise  # `staged` holds the new output, and the message says so
     except BaseException:
         shutil.rmtree(staged, ignore_errors=True)
         raise
@@ -377,11 +420,12 @@ def _draw(
 
     def figure(name: str, draw: Callable, *args) -> None:
         draw(*args, out / name)
-        made[name] = [f"{name}.pdf", f"{name}.png"]
+        made[name] = files_of(name)
 
     def table(name: str, text: str) -> None:
-        _write(out / f"{name}.tex", text)
-        made[name] = [f"{name}.tex"]
+        [file] = files_of(name)
+        _write(out / file, text)
+        made[name] = [file]
 
     def read(key: str, parse: Callable):
         return parse(key, found[key]) if found[key].is_file() else None

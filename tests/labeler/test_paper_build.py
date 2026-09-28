@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import errno
 import hashlib
 import io
 import json
@@ -200,6 +201,98 @@ def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
     assert "fig_examples.pdf" not in after, "a skipped product leaves with its files"
     assert after["notes.txt"] == before["notes.txt"], "a file not ours is kept"
     assert json.loads(after["manifest.json"]) == manifest
+
+
+def _tree(root: Path) -> dict[str, bytes | None]:
+    """Every entry under `root` by its relative path: a file's bytes, or None
+    for a directory."""
+    return {
+        p.relative_to(root).as_posix(): None if p.is_dir() else p.read_bytes()
+        for p in sorted(root.rglob("*"))
+    }
+
+
+def _beside(tmp_path: Path) -> list[str]:
+    """What sits beside `out` (`tmp_path / "paper"`): it, and any staging or
+    holding directory the build left."""
+    return sorted(p.name for p in tmp_path.iterdir() if "paper" in p.name)
+
+
+def test_a_failed_swap_puts_the_old_output_back(runs, tmp_path, monkeypatch):
+    """The new output's rename fails and the old one is renamed back: `out` is
+    as it was, file for file, and nothing is left beside it."""
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "notes.txt").write_text("the owner's, not a product")
+    before = _tree(out)
+    rename = Path.rename
+
+    def refuses_the_new_output(self, target):
+        if Path(self).name.startswith(f".{out.name}.staging-"):
+            raise OSError(errno.EIO, "the swap's rename failed")
+        return rename(self, target)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "rename", refuses_the_new_output)
+        with pytest.raises(OSError, match="the swap's rename failed"):
+            build.build(runs, out)
+    assert _tree(out) == before
+    assert _beside(tmp_path) == ["paper"], "no staging or holding directory left"
+
+
+def test_a_second_build_between_the_renames_deletes_nothing(
+    runs, tmp_path, monkeypatch
+):
+    """Another build puts its output at `out` while this one has the old output
+    moved aside, so neither can be put there. Nothing is deleted: the old output
+    and the new one are kept, and the error says where."""
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "notes.txt").write_text("the owner's, not a product")
+    before = _tree(out)
+    rename = Path.rename
+
+    def the_other_build_lands(self, target):
+        moved = rename(self, target)
+        if Path(self) == out:  # the old output is aside: the other build's lands
+            out.mkdir()
+            (out / "fig_scores.pdf").write_text("the other build's")
+        return moved
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "rename", the_other_build_lands)
+        with pytest.raises(OSError) as caught:
+            build.build(runs, out)
+    near = [*tmp_path.glob("*paper*"), *tmp_path.glob("*paper*/*")]
+    homes = [d for d in near if d.is_dir() and _tree(d) == before]
+    assert homes, "every file of the old output still exists, together"
+    error = caught.value
+    assert isinstance(error, build.Stranded), repr(error)
+    assert homes == [error.old] and str(error.old) in str(error), "named"
+    assert str(error.new) in str(error), "the new output is named too"
+    new = _tree(error.new)
+    assert "manifest.json" in new and new["notes.txt"] == before["notes.txt"]
+    assert _tree(out) == {"fig_scores.pdf": b"the other build's"}, "not touched"
+
+
+def test_only_the_builds_own_files_leave_out(runs, tmp_path):
+    """The build claims the manifest and its products' own files, by exact
+    name: an owner's `fig_scores.svg`, or a `fig_scores/` directory, stays."""
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "fig_scores.svg").write_text("the owner's own drawing")
+    (out / "fig_scores").mkdir()
+    (out / "fig_scores" / "notes.txt").write_text("the owner's notes")
+    theirs = {
+        k: v
+        for k, v in _tree(out).items()
+        if k in ("fig_scores.svg", "fig_scores", "fig_scores/notes.txt")
+    }
+    manifest = build.build(runs, out)
+    after = _tree(out)
+    assert {k: after.get(k, "gone") for k in theirs} == theirs
+    drawn = {f for files in manifest["products"].values() for f in files}
+    assert set(after) == drawn | {"manifest.json"} | set(theirs)
 
 
 def _spy_reads(monkeypatch, opened: Counter) -> None:
