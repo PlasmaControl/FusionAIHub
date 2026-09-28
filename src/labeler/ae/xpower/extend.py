@@ -15,13 +15,14 @@ window). A frame the CO2 rows do not cover is not observable.
 
 **Output.** Shard K writes `shards/K.csv` (suggestion rows, `events.suggestions`),
 `shards/K.summary.csv` (one line per shot), `shards/K.npz` (P(AE) per frame)
-and `shards/K.failed.jsonl` under `$LABELER_ROOT/suggestions/ae_xpower/v1/`, and
-one JPEG per shot into the gallery's `extension/`; the shard's manifest lists
-the shots it drew. A pilot (`--limit M`) writes all of these under `shards/pilot/`,
-its pictures in `shards/pilot/extension/`, never into the gallery. `--merge`
-checks every shard is there and writes `alfven_eigenmode_suggest_ae_xpower_v1.csv`,
-its meta, `summary.csv`, and gallery index rows for the pictures the merged
-shards' manifests list, and no others.
+and `shards/K.failed.jsonl` under
+`$LABELER_ROOT/suggestions/ae_xpower/<version>/`, and one JPEG per shot into
+the gallery's `extension/`; the shard's manifest lists the shots it drew. A
+pilot (`--limit M`) writes all of these under `shards/pilot/`, its pictures in
+`shards/pilot/extension/`, never into the gallery. `--merge` checks every shard
+is there and writes `alfven_eigenmode_suggest_ae_xpower_<version>.csv`, its
+meta, `summary.csv`, and gallery index rows for the pictures the merged shards'
+manifests list, and no others.
 
 **Gate.** The chosen model's full test evaluation must pass A1 and A2 (D47) and
 name the model and choice by sha256; a models directory under `runs/` is never
@@ -538,7 +539,7 @@ def main(argv=None) -> int:
     )
     p.add_argument("--no-pictures", action="store_true")
     p.add_argument(
-        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
+        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/<version>"
     )
     p.add_argument("--version", default=VERSION)
     args = p.parse_args(argv)
