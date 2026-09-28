@@ -9,7 +9,7 @@ the ones it was trained and scored on (D18), never the live table the owner
 keeps saving; `ae_shot` reads them from disk. `draw_interpreter` is the paper's
 one-discharge figure: that spectrogram and its mask over one
 track per catalog phenomenon, AE's holding the owner's frames above the
-model's, the other five coming. `draw_examples` stacks a few test shots (the
+model's, the other four coming. `draw_examples` stacks a few test shots (the
 model's `split.csv`), which `pick_examples` takes: the best, the median and the
 worst F1 against the owner.
 

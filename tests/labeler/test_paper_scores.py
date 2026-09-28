@@ -46,7 +46,6 @@ def test_the_scores_grid_fills_ae_and_marks_the_rest_coming(tmp_path):
         "H-mode",
         "ELMing",
         "sawteeth",
-        "disruption",
     ]
     assert all(_texts(ax) == [COMING] for ax in rest)
     assert COMING not in _texts(first)

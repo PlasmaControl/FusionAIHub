@@ -114,9 +114,8 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
         "H-mode",
         "ELMing",
         "sawteeth",
-        "disruption",
     ]
-    assert [t.get_text() for ax in tracks for t in ax.texts] == [COMING] * 5
+    assert [t.get_text() for ax in tracks for t in ax.texts] == [COMING] * 4
     assert not spec.texts and not spec.patches, "no boxes, no numbers"
     [mask] = _mask_images(spec)
     assert mask.get_label() == shots.MASK_LABEL
