@@ -8,6 +8,7 @@ out (and logged), the rest of the shot is still drawn.
 from __future__ import annotations
 
 import logging
+import warnings
 from collections.abc import Callable, Iterable
 from fractions import Fraction
 
@@ -218,6 +219,29 @@ def bin_mean(x_ms, y, width_ms: float) -> tuple[np.ndarray, np.ndarray]:
     with np.errstate(invalid="ignore", divide="ignore"):
         means = sums[:, used] / counts[:, used]
     return times, means.astype(np.float32)
+
+
+def bin_median(x_ms, y, width_ms: float) -> tuple[np.ndarray, np.ndarray]:
+    """`(times, medians)` of `(C, T)` samples over bins `width_ms` wide, binned
+    as `bin_mean` bins them (`x_ms` ascending).
+
+    A spike narrower than half a bin is gone, where a mean would only spread it
+    over the bin; a step stays a step, blurred into one bin at most.
+    """
+    x_ms = np.asarray(x_ms, dtype=np.float64)
+    y = np.atleast_2d(np.asarray(y, dtype=np.float32))
+    if not len(x_ms):
+        raise NoDataError("no samples to take the median of")
+    index = np.floor((x_ms - x_ms[0]) / width_ms).astype(np.int64)
+    starts = np.flatnonzero(np.r_[True, np.diff(index) > 0])
+    taken = np.diff(np.r_[starts, len(index)])
+    slot = np.arange(len(index)) - np.repeat(starts, taken)
+    table = np.full((len(y), len(starts), taken.max()), np.nan, dtype=np.float32)
+    table[:, np.repeat(np.arange(len(starts)), taken), slot] = y
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # a bin of gaps is nan
+        medians = np.nanmedian(table, axis=-1)
+    return np.add.reduceat(x_ms, starts) / taken, medians.astype(np.float32)
 
 
 def betan_panel(shot, *, t_range=None, paths=None) -> list[Panel]:

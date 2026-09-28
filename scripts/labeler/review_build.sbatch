@@ -32,13 +32,15 @@
 #               after a panel change, e.g. the ELM D-alpha rows and the sawtooth SXR chords:
 #               EVENT=edge_localized_mode FORCE=1 sbatch --cpus-per-task=4 --mem=2G <this>
 #               WORKERS=8 EVENT=sawtooth_oscillation FORCE=1 SHOTS="<the cohort's 450>" \
-#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#                 sbatch --cpus-per-task=4 --mem=8G <this>
 #               a store is only the page's rows: labels, drafts and history are untouched
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
 #   one shot (202713), one worker, fetching off: tearing modes 5.1 s and 1.12 GB max
 #   RSS, sawteeth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB.
+#   Sawteeth since the ECE medians (2026-09-28, 185838 and 189370 in one process):
+#   3.2 s a shot and 0.81 GB, so 8 workers take 8 x 0.81 x 1.2 = 7.8 GB.
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
 #   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).

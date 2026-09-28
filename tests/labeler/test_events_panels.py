@@ -210,10 +210,10 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
     built = registry.build("sawtooth_oscillation", 192238, t_range=window)
 
     assert [panel.title for panel in built] == [
-        "ECE ch 20-23",
-        "ECE ch 24-27",
-        "ECE ch 28-31",
-        "ECE ch 32-35",
+        "ECE ch 20-23 (0.05 ms median)",
+        "ECE ch 24-27 (0.05 ms median)",
+        "ECE ch 28-31 (0.05 ms median)",
+        "ECE ch 32-35 (0.05 ms median)",
         "SXR SX90RM1F, the 4 chords with the most crash-like drops",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping

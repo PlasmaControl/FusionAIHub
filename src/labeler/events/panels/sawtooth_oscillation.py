@@ -1,6 +1,9 @@
 """Sawteeth, as the inversion of adjacent ECE channels across the q = 1 surface,
 and the soft X-ray chords that drop at each crash.
 
+The ECE rows draw each channel's median over every `ECE_BIN_MS`, not its raw
+500 kHz samples (`ece_panels`).
+
 The SXR row draws the `CHOSEN` chords of the first lit fan with the most
 crash-like drops over the Ip flat-top (`crash_drops`), not the brightest: on
 about 25 shots the brightest sit near 4.6 V and barely move (189061's chords 10
@@ -17,7 +20,7 @@ from ...config import Paths
 from .. import spans
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
-from ._shared import optional, plasma_window
+from ._shared import bin_median, optional, plasma_window
 
 #: Four rows of four ADJACENT channels covering 20-35, sixteen in all. The
 #: flip a sawtooth crash makes is a RELATIVE thing - inner channels drop as
@@ -29,6 +32,13 @@ CHANNEL_ROWS = (
     (28, 29, 30, 31),
     (32, 33, 34, 35),
 )
+#: Each ECE channel as the median of every 0.05 ms (25 samples), the review
+#: grid's finest column (`panel_rows.FINEST_DT_MS`), so the page loses no time
+#: it could show. The radiometer's spikes are 1-4 samples wide and reach 22 keV
+#: over a 3 keV core (185838 at 1.4 s; 44 keV at most): they set a trace row's
+#: range and flattened the crashes under them. A median drops them where a mean
+#: would spread them, and keeps a crash's drop within one column.
+ECE_BIN_MS = 0.05
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
 #: the record is drawn: its `CHOSEN` chords with the most crash-like drops.
@@ -88,11 +98,12 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         array = raw_signal(
             int(shot), "ece", channels=list(row), t_range=t_range, paths=paths
         )
+        x, y = bin_median(array.x, array.y, ECE_BIN_MS)
         built.append(
             Panel(
-                title=f"ECE ch {row[0]}-{row[-1]}",
-                x=array.x,
-                y=array.y,
+                title=f"ECE ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median)",
+                x=x,
+                y=y,
                 ylabel="keV",
                 legend=[f"ch {c}" for c in row],
             )
