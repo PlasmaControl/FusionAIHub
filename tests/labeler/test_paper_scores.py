@@ -7,9 +7,15 @@ import re
 
 import pytest
 
-from labeler.paper import COMING, scores
+from labeler.paper import COMING, coverage, scores
 
 from . import paper_tree as tree
+
+
+@pytest.fixture(autouse=True)
+def paths(tmp_path, monkeypatch):
+    """A temporary Paths, set before every call, though these read none."""
+    return tree.temporary_paths(tmp_path, monkeypatch)
 
 
 def _texts(ax) -> list[str]:
@@ -169,7 +175,7 @@ def test_the_tables():
     assert scores.table_ae(ae) == (
         "% AE frame scores: 40 test shots, 9000 frames (2500 present, 600 MHD); "
         f"{scores.INTERVAL_NOTE}; band80-mhd3 at 0.42; "
-        "bar A1 pass, A2 fail, A3 pass, all fail\n"
+        "bar A1 pass, A2 fail, A3 pass, all fail; needs amsmath for its \\text{}\n"
         "\\begin{tabular}{lccccc}\n"
         "\\toprule\n"
         "Method & Precision & Recall & F1 & FP (MHD) & FP (other) \\\\\n"
@@ -202,6 +208,13 @@ def test_numbers_are_signed_with_a_minus_and_zero_is_unsigned():
     assert scores.number(-0.0003, signed=True) == "0.000"
     assert scores.number(0.0101, signed=True) == "+0.010"
     assert scores.number(0.5) == "0.500"
+    assert scores.text_number(-0.0004, ".3f") == "\\text{0.000}", "as number does"
+    assert scores.text_number(-0.0, "g") == "\\text{0}"
+    assert scores.text_number(-0.03, "g") == "-\\text{0.03}"
+    assert scores.text_number(0.0004, ".3f") == "\\text{0.000}"
+    for x in (-0.188, -0.0015, -0.0004, -0.0, 0.0, 0.0004, 0.5):
+        minus = scores.number(x).startswith("$-$")
+        assert scores.text_number(x, ".3f").startswith("-") == minus, x
 
 
 def test_the_differences_table_gives_the_verdicts_they_decide():
@@ -269,3 +282,22 @@ def test_the_tables_print_their_digits_in_the_text_font():
     ):
         assert "$" in table
         assert _math_digits(table) == []
+
+
+def test_each_table_that_uses_text_says_once_it_needs_amsmath():
+    ae, seg = tree.ae_evaluation(), tree.seg_evaluation()
+    for table in (
+        scores.table_ae(ae),
+        scores.table_segmentation(seg),
+        scores.table_differences(ae, seg),
+        scores.table_differences(ae, None),
+    ):
+        comment, *body = table.splitlines()
+        assert "\\text{" in "\n".join(body)
+        assert comment.startswith("% ")
+        assert comment.count("amsmath") == table.count("amsmath") == 1, comment
+        assert comment.endswith(f"; {scores.AMSMATH}")
+    seg_only = scores.table_differences(None, seg)
+    assert "\\text{" not in seg_only and "amsmath" not in seg_only, "no \\text used"
+    counts = {"alfven_eigenmode": coverage.Counts(3, 2, 0.9)}
+    assert "amsmath" not in coverage.table_datasets(counts)
