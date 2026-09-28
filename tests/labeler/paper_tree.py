@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
+
+from labeler.ae import xpower
+from labeler.config import Paths
 from labeler.paper import scores
 
 
@@ -94,3 +100,20 @@ def small_text(fig) -> list[tuple[str, float]]:
         for t in fig.findobj(Text)
         if t.get_visible() and t.get_text().strip() and t.get_fontsize() < MIN_PT
     ]
+
+
+def scored_labels(paths: Paths, version: str = "v1") -> Path:
+    """The chosen model's copy of the labels it was trained and scored on (D18)."""
+    models = xpower.model_dir(paths, version)
+    candidate = json.loads((models / "chosen.json").read_text())["candidate"]
+    return models / candidate / "review" / "labels.csv"
+
+
+def record_labels(paths: Paths, version: str = "v1") -> str:
+    """Name the model's copy in its `evaluation.json`, as `evaluate` does."""
+    sha = hashlib.sha256(scored_labels(paths, version).read_bytes()).hexdigest()
+    evaluation = xpower.model_dir(paths, version) / "evaluation.json"
+    record = json.loads(evaluation.read_text())
+    record["meta"]["labels_sha256"] = sha
+    evaluation.write_text(json.dumps(record))
+    return sha

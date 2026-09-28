@@ -24,6 +24,7 @@ def _inputs(tmp_path):
         "101,0,0,300,\n101,1,300,900,\n101,0,900,2000,\n"
         "102,0,0,2000,\n"
         "103,2,0,100,\n103,1,100,400,\n103,0,400,2000,\n"
+        "105,0,0,2000,\n"
     )
     split = tmp_path / "split.csv"
     split.write_text("shot,split\n101,train\n102,val\n103,test\n104,test\n")
@@ -35,12 +36,14 @@ def _inputs(tmp_path):
 def test_ae_counts(tmp_path):
     event, split, summary = _inputs(tmp_path)
     counts = coverage.ae_counts(event, split, summary)
-    assert (counts.reviewed, counts.positive, counts.present_s) == (3, 2, 0.9)
+    assert (counts.reviewed, counts.positive, counts.present_s) == (4, 2, 0.9)
     assert counts.split == {"train": 1, "val": 1, "test": 1}, "104 was not reviewed"
+    assert counts.unsplit == 1, "105 was reviewed after the split"
     assert counts.by_year == {coverage.UNKNOWN_YEAR: (1, 0), 2024: (2, 1), 2025: (1, 1)}
     assert (counts.suggested, counts.suggested_positive) == (4, 2)
     bare = coverage.ae_counts(event, None, tmp_path / "missing.csv")
     assert bare.split is None, "no split: the model was not chosen"
+    assert bare.unsplit is None
     assert bare.by_year is None, "no summary: the extension did not run"
     assert (bare.suggested, bare.suggested_positive) == (None, None)
 
@@ -59,7 +62,7 @@ def test_the_coverage_figure(tmp_path):
     assert (tmp_path / "fig_coverage.pdf").is_file()
     shots, present, split, years = fig.axes
     assert _coming(shots) == 5 and _coming(present) == 5
-    assert [bar.get_width() for bar in shots.patches] == [3, 2], "reviewed, positive"
+    assert [bar.get_width() for bar in shots.patches] == [4, 2], "reviewed, positive"
     [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
         "reviewed",
@@ -67,8 +70,13 @@ def test_the_coverage_figure(tmp_path):
     ]
     assert [bar.get_width() for bar in present.patches] == [0.9]
     assert "0.9" in _texts(present)
-    assert [bar.get_height() for bar in split.patches] == [1, 1, 1]
-    assert [t.get_text() for t in split.get_xticklabels()] == ["train", "val", "test"]
+    assert [bar.get_height() for bar in split.patches] == [1, 1, 1, 1]
+    assert [t.get_text() for t in split.get_xticklabels()] == [
+        "train",
+        "val",
+        "test",
+        coverage.UNSPLIT,
+    ]
     assert [bar.get_height() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
     assert [t.get_text() for t in years.get_xticklabels()] == ["2024", "2025", "?"]
     assert "suggest" in years.get_title()
@@ -94,14 +102,14 @@ def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
 def test_the_datasets_table(tmp_path):
     counts = {"alfven_eigenmode": coverage.ae_counts(*_inputs(tmp_path))}
     lines = coverage.table_datasets(counts).splitlines()
-    assert lines[1] == "\\begin{tabular}{lcccccc}"
+    assert lines[1] == "\\begin{tabular}{lccccccc}"
     assert lines[3] == (
         "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
-        "& Suggested & Suggested positive \\\\"
+        "& No split & Suggested & Suggested positive \\\\"
     )
-    assert lines[5] == "AE & 3 & 2 & 0.9 & 1 / 1 / 1 & 4 & 2 \\\\"
+    assert lines[5] == "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 \\\\"
     assert lines[6:11] == [
-        f"{name} & \\multicolumn{{6}}{{c}}{{coming}} \\\\"
+        f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\"
         for name in ("NTM", "H-mode", "ELMing", "sawteeth", "disruption")
     ]
 
@@ -110,4 +118,4 @@ def test_without_the_extension_the_table_says_so(tmp_path):
     event, _, _ = _inputs(tmp_path)
     counts = {"alfven_eigenmode": coverage.ae_counts(event, None, None)}
     lines = coverage.table_datasets(counts).splitlines()
-    assert lines[5] == "AE & 3 & 2 & 0.9 & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 4 & 2 & 0.9 & -- & -- & -- & -- \\\\"

@@ -2,11 +2,13 @@
 
 For each catalog phenomenon: the shots a person reviewed, those with any
 present span and their present time; how the model split the reviewed shots
-(train, val, test); and the shots the extension suggested labels for, with those
-it calls positive, by campaign year. AE's come from the owner's review
-(`data/events/alfven_eigenmode/review/labels.csv`), the chosen `ae_xpower`
-model's `split.csv` and the extension's `summary.csv`; the other five are
-coming. A suggested shot is a suggestion, not a label (v1 spec §3).
+(train, val, test) and, apart, the reviewed shots in no split (saved after the
+model was trained); and the shots the extension suggested labels for, with
+those it calls positive, by campaign year. AE's come from the owner's live
+review (`data/events/alfven_eigenmode/review/labels.csv`), the chosen
+`ae_xpower` model's `split.csv` and the extension's `summary.csv`; the other
+five are coming. So the reviewed count is the split's three plus "no split". A
+suggested shot is a suggestion, not a label (v1 spec §3).
 
 A part whose input is missing is not a zero: without `split.csv` (no model
 chosen) or `summary.csv` (the extension did not run) its panel says "not run"
@@ -31,6 +33,8 @@ from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, placeholder, save, style, tit
 from .scores import tabular
 
 SPLITS = ("train", "val", "test")
+UNSPLIT = "no split"
+UNSPLIT_COLOUR = "#cccccc"
 NOT_RUN = "not run"
 MISSING = "--"
 SHOT_BARS = {"reviewed": "#bbbbbb", "with a present span": "#d62728"}
@@ -43,15 +47,17 @@ VALUE_PT = FONT_PT - 1
 
 @dataclass(frozen=True)
 class Counts:
-    """One phenomenon's shots. `split` maps train/val/test to reviewed shots, and
-    `by_year` a campaign year to (suggested, suggested positive), `UNKNOWN_YEAR`
-    holding shots without one; None where the input is missing (not run)."""
+    """One phenomenon's shots. `split` maps train/val/test to reviewed shots,
+    `unsplit` counts the reviewed shots in none of them, and `by_year` maps a
+    campaign year to (suggested, suggested positive), `UNKNOWN_YEAR` holding
+    shots without one; None where the input is missing (not run)."""
 
     reviewed: int
     positive: int
     present_s: float
     split: Mapping[str, int] | None = None
     by_year: Mapping[int, tuple[int, int]] | None = None
+    unsplit: int | None = None
 
     @property
     def suggested(self) -> int | None:
@@ -77,12 +83,14 @@ def ae_counts(
     present_ms = sum(
         b - a for label in saved.values() for a, b, c in label.intervals if c == PRESENT
     )
-    split = None
+    split = unsplit = None
     if split_csv is not None and Path(split_csv).is_file():
         split = dict.fromkeys(SPLITS, 0)
-        for shot, which in read_split(split_csv).items():
+        model_split = read_split(split_csv)
+        for shot, which in model_split.items():
             if shot in saved:
                 split[which] = split.get(which, 0) + 1
+        unsplit = sum(shot not in model_split for shot in saved)
     by_year = None
     if summary_csv is not None and Path(summary_csv).is_file():
         summary = pd.read_csv(summary_csv)
@@ -91,7 +99,9 @@ def ae_counts(
             int(year): (len(group), int((group.present_frames > 0).sum()))
             for year, group in summary.groupby(years)
         }
-    return Counts(len(saved), positive, round(present_ms / 1000, 3), split, by_year)
+    return Counts(
+        len(saved), positive, round(present_ms / 1000, 3), split, by_year, unsplit
+    )
 
 
 def _coming_rows(ax, rows: np.ndarray, counts: Mapping[str, Counts]) -> None:
@@ -159,10 +169,11 @@ def _split_panel(ax, ae: Counts | None) -> None:
     if ae is None or ae.split is None:
         placeholder(ax, heading, NOT_RUN)
         return
-    values = [ae.split.get(s, 0) for s in SPLITS]
-    bars = ax.bar(range(len(SPLITS)), values, color=SPLIT_COLOUR)
+    values = [ae.split.get(s, 0) for s in SPLITS] + [ae.unsplit or 0]
+    colours = [SPLIT_COLOUR] * len(SPLITS) + [UNSPLIT_COLOUR]
+    bars = ax.bar(range(len(values)), values, color=colours)
     ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
-    ax.set_xticks(range(len(SPLITS)), list(SPLITS))
+    ax.set_xticks(range(len(values)), [*SPLITS, UNSPLIT])
     ax.set_ylim(0, 1.2 * max(max(values), 1))
     ax.set_ylabel("reviewed shots")
     ax.set_title(heading)
@@ -215,6 +226,7 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
         "Positive",
         "Present (s)",
         "Train / val / test",
+        "No split",
         "Suggested",
         "Suggested positive",
     )
@@ -241,13 +253,15 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
                 str(c.positive),
                 f"{c.present_s:.1f}",
                 split,
+                _cell(c.unsplit),
                 _cell(c.suggested),
                 _cell(c.suggested_positive),
             ]
         )
     comment = (
         "Shots per phenomenon: reviewed by a person, with any present span, the "
-        "model's split of the reviewed shots, and the extension's suggestions "
-        f"(not labels); {MISSING} where that run has not happened"
+        "model's split of the reviewed shots and those in no split (reviewed = "
+        "train + val + test + no split), and the extension's suggestions (not "
+        f"labels); {MISSING} where that run has not happened"
     )
     return tabular(header, rows, comment)

@@ -1,19 +1,22 @@
 """One discharge as the interpreter shows it, and AE examples from the test shots.
 
-`ae_shot` reads what a shot viewer shows for AE: the review store's first
+`picture` is what a shot viewer shows for AE: the review store's first
 cross-power row (R0 x V1), 0-250 kHz; the owner's frames; the chosen
 `ae_xpower` model's P(AE) per 10 ms frame, run here on the CPU as the gallery
-runs it; and the segmentation's points of interest (`poi.csv`). `draw_interpreter`
-is the paper's one-discharge figure: that spectrogram and its points of interest
-over one track per catalog phenomenon, AE's holding the owner's frames above the
-model's, the other five coming. `draw_examples` stacks a few test shots, which
-`pick_examples` takes from the gallery's index: the best, the median and the
+runs it; and the segmentation's points of interest (`poi.csv`). The owner's
+frames are the model's own copy of the labels, `<candidate>/review/labels.csv`,
+the ones it was trained and scored on (D18), never the live table the owner
+keeps saving; `ae_shot` reads them from disk. `draw_interpreter` is the paper's
+one-discharge figure: that spectrogram and its points of interest over one
+track per catalog phenomenon, AE's holding the owner's frames above the
+model's, the other five coming. `draw_examples` stacks a few test shots (the
+model's `split.csv`), which `pick_examples` takes: the best, the median and the
 worst F1 against the owner.
 
 **The F1 of a shot** is over the 10 ms frames of the scored 0-2 s that the owner
 called present or absent (`scored_f1`), the window the paper's headline F1 is
 over; the gallery's `f1_vs_owner` is over the owner's whole window. The build
-ranks by the 0-2 s F1 (`score_shot`), so its picks can differ from a ranking by
+ranks by the 0-2 s F1 (`rank_keys`), so its picks can differ from a ranking by
 the gallery's. The evaluation's own frames also need TokEye's record and the
 source table's window (`labeler.ae.xpower.evaluate`); a shot's F1 here does not.
 
@@ -46,13 +49,14 @@ import pandas as pd
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
-from ..ae.xpower import EVENT, event_dir
+from ..ae.xpower import EVENT
 from ..ae.xpower.data import BAND_KHZ, CROSS_ROWS, store_rows, targets, window_frames
 from ..ae.xpower.gallery import STATE_COLOURS
 from ..ae.xpower.train import f1_of, frame_cells, load, probabilities, read_split
 from ..config import Paths
 from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ..events.review import labels
+from ..events.review.labels import Label
 from ..events.review.rows import Grid
 from ..scoring.frames import FRAME_MS
 from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, save, style, title
@@ -153,38 +157,45 @@ def runs(flags: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(edges[::2], edges[1::2], strict=True))
 
 
-def _frames(paths: Paths, shot: int, model_file: Path):
-    label = labels.read_saved(event_dir(paths)).get(shot)
-    if label is None:
-        raise KeyError(f"{shot}: the owner has not saved an AE label")
-    model, blob = load(model_file)
-    first, n = window_frames(label.window)
-    store = paths.spectrogram_file(EVENT, shot)
-    prob, _ = probabilities(model, store_rows(store), first, n, band=blob["band_khz"])
-    return store, first, targets(label, first, n), prob, float(blob["threshold"])
+@dataclass(frozen=True)
+class Model:
+    """The chosen model, loaded once: the network, its saved record and split."""
+
+    net: object
+    blob: Mapping
+    split: Mapping[int, str]
+
+    @property
+    def threshold(self) -> float:
+        return float(self.blob["threshold"])
+
+    @classmethod
+    def load(cls, model_file, split: Mapping[int, str] | None = None) -> Model:
+        """`model_file` a path or file object; the split beside it by default."""
+        net, blob = load(model_file)
+        if split is None:
+            split = read_split(Path(model_file).parent / "split.csv")
+        return cls(net, blob, split)
 
 
-def score_shot(paths: Paths, shot: int, *, model_file: Path) -> ShotScore:
-    """The model at `model_file` run over one reviewed shot, scored."""
-    _, first, owner, prob, threshold = _frames(paths, shot, model_file)
-    return ShotScore(
-        shot=shot,
-        f1=scored_f1(prob, owner, threshold, first=first),
-        f1_window=f1_of(frame_cells(prob, owner, threshold)),
-        gap=owner_mixed(owner, first=first),
-    )
+def test_shots(split: Mapping[int, str]) -> list[int]:
+    """The model's test shots, as its evaluation scores them."""
+    return sorted(int(s) for s, which in split.items() if which == "test")
 
 
-def ae_shot(
-    paths: Paths, shot: int, *, model_file: Path, poi: pd.DataFrame | None = None
+def picture(
+    shot: int, *, label: Label, model: Model, store, boxes: Sequence[dict] = ()
 ) -> AEShot:
-    """A reviewed AE shot, with the model at `model_file` run over its store."""
-    store, first, owner, prob, threshold = _frames(paths, shot, model_file)
+    """One labelled shot with `model` run over its review `store` (a path or file
+    object, each read opening it afresh)."""
+    first, n = window_frames(label.window)
+    rows = store_rows(store)
+    prob, _ = probabilities(model.net, rows, first, n, band=model.blob["band_khz"])
     grid, values, y0, dy = store_rows(store, level=PICTURE_LEVEL)
-    boxes = () if poi is None else tuple(poi[poi.shot == shot].to_dict("records"))
+    owner = targets(label, first, n)
     return AEShot(
         shot=shot,
-        split=read_split(Path(model_file).parent / "split.csv").get(shot, ""),
+        split=model.split.get(shot, ""),
         grid=grid,
         image=values[0],
         y0=y0,
@@ -192,17 +203,43 @@ def ae_shot(
         first=first,
         owner=owner,
         prob=prob,
-        threshold=threshold,
-        f1=scored_f1(prob, owner, threshold, first=first),
-        f1_window=f1_of(frame_cells(prob, owner, threshold)),
-        boxes=boxes,
+        threshold=model.threshold,
+        f1=scored_f1(prob, owner, model.threshold, first=first),
+        f1_window=f1_of(frame_cells(prob, owner, model.threshold)),
+        boxes=tuple(boxes),
     )
 
 
-def reviewed_test_shots(index: pd.DataFrame) -> list[int]:
-    """The gallery's reviewed test shots."""
-    test = index[(index.group == "reviewed") & (index.split == "test")]
-    return [int(s) for s in test.shot]
+def boxes_of(poi: pd.DataFrame | None, shot: int) -> tuple[dict, ...]:
+    """The shot's points of interest as records."""
+    return () if poi is None else tuple(poi[poi.shot == shot].to_dict("records"))
+
+
+def rank_keys(s: AEShot) -> ShotScore:
+    """A drawn shot's rank keys."""
+    return ShotScore(
+        shot=s.shot,
+        f1=s.f1,
+        f1_window=s.f1_window,
+        gap=owner_mixed(s.owner, first=s.first),
+    )
+
+
+def ae_shot(
+    paths: Paths, shot: int, *, model_file: Path, poi: pd.DataFrame | None = None
+) -> AEShot:
+    """A shot in the copy of the labels saved beside `model_file` (D18), with that
+    model run over its store."""
+    label = labels.read_saved(Path(model_file).parent).get(shot)
+    if label is None:
+        raise KeyError(f"{shot}: the owner has not saved an AE label")
+    return picture(
+        shot,
+        label=label,
+        model=Model.load(model_file),
+        store=paths.spectrogram_file(EVENT, shot),
+        boxes=boxes_of(poi, shot),
+    )
 
 
 def _ranked(f1: Mapping[int, float]) -> list[int]:

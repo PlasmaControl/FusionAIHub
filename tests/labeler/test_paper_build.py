@@ -13,7 +13,6 @@ import h5py
 import pytest
 
 from labeler.ae import xpower
-from labeler.ae.xpower import gallery
 from labeler.paper import build, shots
 
 from . import ae_tree
@@ -25,14 +24,7 @@ def runs(tmp_path, monkeypatch):
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})
     models = ae_tree.chosen(paths, {101: "train", 102: "test", 103: "test"})
     (models / "evaluation.json").write_text(json.dumps(tree.ae_evaluation()))
-    gallery.write_index(
-        gallery.gallery_dir(paths) / "index.csv",
-        [
-            {"shot": 101, "group": "reviewed", "split": "train", "f1_vs_owner": 0.99},
-            {"shot": 102, "group": "reviewed", "split": "test", "f1_vs_owner": 0.8},
-            {"shot": 103, "group": "reviewed", "split": "test", "f1_vs_owner": 0.6},
-        ],
-    )
+    tree.record_labels(paths)
     ae_tree.env(monkeypatch, paths)
     return paths
 
@@ -76,8 +68,8 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "ae_evaluation",
         "ae_labels",
         "ae_model",
+        "ae_scored_labels",
         "ae_split",
-        "gallery_index",
         "store_102",
         "store_103",
     ]
@@ -153,13 +145,14 @@ def test_labels_missing_entirely_skip_and_never_crash(runs, tmp_path):
     live.unlink()
     out = tmp_path / "paper"
     manifest = build.build(runs, out)
-    for product in (
-        "fig_coverage",
-        "table_datasets",
-        "fig_interpreter",
-        "fig_examples",
-    ):
+    for product in ("fig_coverage", "table_datasets"):
         assert manifest["skipped"][product] == _missing(live)
+    assert "fig_examples" in manifest["products"], "from the model's own copy"
+    copy = tree.scored_labels(runs)
+    copy.unlink()
+    manifest = build.build(runs, out)
+    for product in ("fig_interpreter", "fig_examples"):
+        assert manifest["skipped"][product] == _missing(copy)
     assert "fig_scores" in manifest["products"], "the rest is drawn"
     assert set(_files(out)) == {
         f for files in manifest["products"].values() for f in files
@@ -167,9 +160,10 @@ def test_labels_missing_entirely_skip_and_never_crash(runs, tmp_path):
 
 
 def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_path):
-    live = build.inputs(runs)["ae_labels"]
-    rows = live.read_text().splitlines()
-    live.write_text("\n".join(r for r in rows if not r.startswith("103,")) + "\n")
+    copy = tree.scored_labels(runs)
+    rows = copy.read_text().splitlines()
+    copy.write_text("\n".join(r for r in rows if not r.startswith("103,")) + "\n")
+    tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
     for product in ("fig_interpreter", "fig_examples"):
         assert product in manifest["products"]
@@ -250,18 +244,54 @@ def test_the_manifest_records_the_commit_and_the_labels_check(runs, tmp_path):
     assert manifest["git_sha"] == "unknown" or len(manifest["git_sha"]) == 40
     assert manifest["git_dirty"] in (True, False, None)
     assert manifest["version"] == "v1"
-    assert manifest["labels_match"] is None, "no record names the labels' sha256"
-    evaluation = xpower.model_dir(runs) / "evaluation.json"
+    scored = hashlib.sha256(tree.scored_labels(runs).read_bytes()).hexdigest()
+    assert manifest["labels_match"] is True
+    assert manifest["labels_sha256"] == {
+        "scored": scored,
+        "live": scored,
+        "ae_evaluation": scored,
+    }
+
+
+def _name_labels(paths, sha: str | None) -> None:
+    evaluation = xpower.model_dir(paths) / "evaluation.json"
     record = json.loads(evaluation.read_text())
-    live = build.inputs(runs)["ae_labels"]
-    record["meta"]["labels_sha256"] = hashlib.sha256(live.read_bytes()).hexdigest()
+    record["meta"].pop("labels_sha256", None)
+    if sha is not None:
+        record["meta"]["labels_sha256"] = sha
     evaluation.write_text(json.dumps(record))
-    assert build.build(runs, tmp_path / "paper")["labels_match"] is True
-    record["meta"]["labels_sha256"] = "0" * 64
-    evaluation.write_text(json.dumps(record))
+
+
+def test_labels_unlike_the_evaluations_refuse_the_shot_products(runs, tmp_path):
+    _name_labels(runs, "0" * 64)
     manifest = build.build(runs, tmp_path / "paper")
-    assert manifest["labels_match"] is False, "recorded, not refused"
-    assert "fig_scores" in manifest["products"]
+    assert manifest["labels_match"] is False
+    assert "fig_scores" in manifest["products"], "the scores are the record's own"
+    for product in ("fig_interpreter", "fig_examples"):
+        entry = manifest["skipped"][product]
+        assert entry["reason"].startswith(build.LABELS_DIFFER), entry
+    assert "interpreter_shot" not in manifest
+    _name_labels(runs, None)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["labels_match"] is None
+    assert manifest["skipped"]["fig_examples"]["reason"] == build.LABELS_UNNAMED
+
+
+def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_path):
+    before = build.build(runs, tmp_path / "before")
+    live = build.inputs(runs)["ae_labels"]
+    rows = [r for r in live.read_text().splitlines() if not r.startswith("102,")]
+    rows += ["102,0,0,300,", "102,1,300,1500,", "102,0,1500,2000,"]  # changed
+    rows += ["104,0,0,500,", "104,1,500,700,", "104,0,700,2000,"]  # in no split
+    live.write_text("\n".join(rows) + "\n")
+    after = build.build(runs, tmp_path / "after")
+    for key in ("shot_f1", "interpreter_pool", "example_shots", "interpreter_shot"):
+        assert after[key] == before[key], key
+    assert after["labels_match"] is True, "the copy is the evaluation's"
+    shas = after["labels_sha256"]
+    assert shas["live"] != shas["scored"] == shas["ae_evaluation"]
+    table = (tmp_path / "after" / "table_datasets.tex").read_text().splitlines()
+    assert table[5].startswith("AE & 4 & 4 & 2.6 & 1 / 0 / 2 & 1 & "), table[5]
 
 
 def test_the_version_names_the_models_drawn(runs, tmp_path, capsys):
