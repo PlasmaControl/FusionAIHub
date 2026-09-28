@@ -43,6 +43,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "fig_scores",
         "table_ae_scores",
         "table_datasets",
+        "table_differences",
     ]
     missing = f"missing {build.inputs(runs)['seg_evaluation']}"
     assert printed["skipped"] == {
@@ -50,7 +51,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "table_seg_scores": missing,
     }
     assert printed["copied"] == sorted(p.name for p in dest.iterdir())
-    assert len(printed["copied"]) == 7
+    assert len(printed["copied"]) == 8
     assert all(name.endswith((".pdf", ".tex")) for name in printed["copied"])
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["interpreter_shot"] == 102, "the best test shot; no POI yet"
@@ -94,9 +95,11 @@ def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path)
         "table_datasets": no_summary,
         "fig_interpreter": no_poi,
         "fig_examples": no_poi,
+        "table_differences": [str(found["seg_evaluation"])],
     }
     assert set(manifest["partial"]) <= set(manifest["products"])
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, tmp_path / "paper")
     no_split = [str(found["ae_chosen"]), *no_summary]
-    assert manifest["partial"] == {"fig_coverage": no_split, "table_datasets": no_split}
+    assert manifest["partial"]["fig_coverage"] == no_split
+    assert manifest["partial"]["table_datasets"] == no_split

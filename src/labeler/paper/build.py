@@ -8,6 +8,7 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 
 - `fig_scores`, `fig_mhd`, `table_ae_scores.tex`: the AE evaluation;
 - `fig_segmentation`, `table_seg_scores.tex`: the segmentation's evaluation;
+- `table_differences.tex`: the paired differences both evaluations hold;
 - `fig_coverage`, `table_datasets.tex`: the owner's AE review, with the chosen
   model's split and the extension's summary where they exist;
 - `fig_interpreter`, `fig_examples`: the gallery's index and the chosen model,
@@ -113,6 +114,21 @@ def build(
         seg = scores.read(found["seg_evaluation"])
         figure("fig_segmentation", scores.draw_segmentation, seg)
         table("table_seg_scores", scores.table_segmentation(seg))
+    evaluations = ("ae_evaluation", "seg_evaluation")
+    if any(found[k].is_file() for k in evaluations):
+        table(
+            "table_differences",
+            scores.table_differences(
+                scores.read(found["ae_evaluation"]),
+                scores.read(found["seg_evaluation"]),
+            ),
+        )
+        lacking(
+            ("table_differences",),
+            [found[k] for k in evaluations if not found[k].is_file()],
+        )
+    else:
+        ready(("table_differences",), *evaluations)
     model_file = (
         chosen_model(xpower.model_dir(paths)) if found["ae_chosen"].is_file() else None
     )
