@@ -398,7 +398,7 @@ def _spectrogram(ax, s: AEShot) -> None:
 def mask_rgba(mask: np.ndarray) -> np.ndarray:
     """The fill as RGBA pixels, its alpha in the data: `imshow(alpha=...)` over
     another image is applied twice when a PDF composites the two into one."""
-    rgba = np.zeros((*mask.shape, 4))
+    rgba = np.zeros((*mask.shape, 4), dtype=np.float32)
     rgba[mask] = to_rgba(MASK_COLOUR, MASK_ALPHA)
     return rgba
 

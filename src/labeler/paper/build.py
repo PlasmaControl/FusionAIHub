@@ -662,8 +662,8 @@ def _shot_figures(
     )
     if segmentation is None:
         lacking(figures, NO_MASK, missing=[str(found["seg_model"])])
-    if poi is None:
-        lacking(figures, NO_POI, missing=[str(found["poi"])])
+    if poi is None:  # only the interpreter's pick reads the points of interest
+        lacking(("fig_interpreter",), NO_POI, missing=[str(found["poi"])])
     if unlabelled:
         lacking(figures, NO_LABEL, shots=unlabelled)
     if unstored:

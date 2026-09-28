@@ -152,7 +152,7 @@ def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path)
         "fig_coverage": [no_summary],
         "table_datasets": [no_summary],
         "fig_interpreter": [no_mask, no_poi],
-        "fig_examples": [no_mask, no_poi],
+        "fig_examples": [no_mask],
         "table_differences": [_missing(found["seg_evaluation"])],
     }
     assert set(manifest["partial"]) <= set(manifest["products"])

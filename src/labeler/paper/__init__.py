@@ -90,10 +90,11 @@ def placeholder(ax, heading: str, mark: str = COMING) -> None:
 
 
 def save(fig, stem: Path) -> list[Path]:
-    """`stem.pdf` for the manuscript and `stem.png` to look at."""
+    """`stem.pdf` for the manuscript and `stem.png` to look at, both with their
+    images rastered at 300 dpi (a PDF's default, 100, blurs a spectrogram)."""
     out = []
     for suffix, extra in (
-        (".pdf", {"metadata": {"CreationDate": None}}),
+        (".pdf", {"metadata": {"CreationDate": None}, "dpi": 300}),
         (".png", {"dpi": 300}),
     ):
         path = Path(stem).with_suffix(suffix)

@@ -122,7 +122,7 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
     assert mask.get_label() == shots.MASK_LABEL
     alpha = mask.get_array()[..., 3]
     assert mask.get_alpha() is None, "a PDF would apply an image's alpha twice"
-    assert set(np.unique(alpha)) == {0.0, shots.MASK_ALPHA}, "the fill's, in the data"
+    assert np.unique(alpha).tolist() == [0, np.float32(shots.MASK_ALPHA)], "data"
     assert mask.get_extent() == spec.images[0].get_extent(), "on the picture's pixels"
     [outline] = [c for c in spec.collections if c.get_paths()]
     x0, y0, x1, y1 = outline.get_paths()[0].get_extents().extents
