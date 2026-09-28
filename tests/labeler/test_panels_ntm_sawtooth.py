@@ -178,15 +178,16 @@ def test_despike_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
 
 
 def test_the_ece_rows_keep_the_review_grid(tmp_path, monkeypatch):
-    """On the corpus's float32 seconds the grid stays `FINEST_DT_MS` and every
-    ECE column inside the record holds a sample."""
+    """On the corpus's float32 seconds (4.0-4.1 s, where one median a bin at its
+    samples' mean time spaced them 0.05001068 ms) the grid stays
+    `FINEST_DT_MS` and every ECE column inside the record holds a sample."""
     p = tree.paths(tmp_path)
     tree.no_fetch(monkeypatch)
-    t_s = (tree.times(0.0, 6000.0, 500_000) / 1000).astype(np.float32)
+    t_s = (tree.times(4000.0, 4100.0, 500_000) / 1000).astype(np.float32)
     p.corpus_file(SHOT).parent.mkdir(parents=True)
     with h5py.File(p.corpus_file(SHOT), "w") as f:
         f["ece/xdata"] = t_s
-        f["ece/ydata"] = np.ones((48, len(t_s)), dtype=np.float32)
+        f["ece/ydata"] = np.ones((36, len(t_s)), dtype=np.float32)
     tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
     grid, rows, _ = panel_rows.build("sawtooth_oscillation", SHOT, p)
     assert grid.dt_ms == panel_rows.FINEST_DT_MS
