@@ -255,6 +255,59 @@ def test_a_copy_of_the_final_model_under_runs_is_never_scored(
     assert not (copy / "evaluation.json").exists()
 
 
+def _files(directory: Path) -> dict[str, bytes]:
+    return {
+        str(p.relative_to(directory)): p.read_bytes()
+        for p in sorted(directory.rglob("*"))
+        if p.is_file()
+    }
+
+
+def test_a_copy_of_the_final_model_elsewhere_is_never_tested(
+    tmp_path, monkeypatch, capsys
+):
+    """The reviewer's probe B: the test is taken once per models directory, so a
+    copy of v2's outside runs/ would take the one look in full, again and again.
+    Its own directory, by any path that resolves to it, is tested once."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    real = model_dir(paths, "v2")
+    copy = tmp_path / "elsewhere" / "v2"
+    shutil.copytree(real, copy)
+    before = _files(copy)
+    args = ["--test", "--version", "v2", "--models"]
+    own = ("own models directory", str(real))
+    _refused(capsys, evaluate.main, [*args, str(copy)], str(copy), *own)
+    assert _files(copy) == before
+    assert not (real / "evaluation.json").exists()
+    link = tmp_path / "link" / "v2"  # the version's own directory, by a link
+    link.parent.mkdir()
+    link.symlink_to(real, target_is_directory=True)
+    assert evaluate.main([*args, str(link)]) == 0
+    assert (real / "evaluation.json").is_file()
+    _refused(capsys, evaluate.main, [*args, str(real)], "scored once")
+
+
+def test_a_copy_of_the_final_model_elsewhere_is_never_drawn(
+    tmp_path, monkeypatch, capsys
+):
+    """Probe B's gallery: a copy of v2's models directory outside runs/, made
+    after the test (its evaluation names its model), would draw into the
+    version's gallery. Only its own directory draws there."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    real = model_dir(paths, "v2")
+    assert evaluate.main(["--test", "--version", "v2"]) == 0
+    copy = tmp_path / "elsewhere" / "v2"
+    shutil.copytree(real, copy)
+    before = _files(copy)
+    args = ["--version", "v2", "--workers", "1", "--shots", "111"]
+    own = ("own models directory", str(real))
+    _refused(capsys, gallery.main, [*args, "--models", str(copy)], str(copy), *own)
+    assert _files(copy) == before
+    assert not gallery.gallery_dir(paths, "v2").exists()
+    assert gallery.main(args) == 0
+    assert (gallery.gallery_dir(paths, "v2") / "reviewed" / "111.jpg").is_file()
+
+
 def test_a_pilot_choices_model_is_scored_and_drawn_under_runs(
     tmp_path, monkeypatch, capsys
 ):

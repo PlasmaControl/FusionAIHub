@@ -16,8 +16,9 @@ table and a `v1_subset` block; the bar is judged on the whole split only.
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
 repeated, and a pilot there scores 20 test shots at most, and for a
 cross-validated version only a pilot choice's model (never a copy of the
-version's final model); `--version` must be the models directory's name and the
-version its checkpoints record.
+version's final model); nor is a cross-validated version scored from any other
+directory than its own models directory (`check_own_dir`); `--version` must be
+the models directory's name and the version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -79,6 +80,7 @@ from . import (
     check_bound,
     check_full,
     check_limit,
+    check_own_dir,
     check_snapshot,
     event_dir,
     model_dir,
@@ -631,6 +633,7 @@ def run_test(
 ) -> dict:
     check_limit(paths, models, limit)
     check_full(paths, models, limit)
+    check_own_dir(paths, models, version)  # before any file is read
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
