@@ -55,7 +55,11 @@ def test_ae_counts(tmp_path):
     assert counts.split == {"train": 1, "val": 1, "test": 1}, "104 was not reviewed"
     assert counts.unsplit == 1, "105 was reviewed after the split"
     assert counts.folds is None, "a validation split, not cross-validated"
-    assert coverage.ae_counts(saved, split, summary, folds=3).folds == 3
+    assert counts.cross_validated is False
+    folded = coverage.ae_counts(saved, split, summary, folds=3)
+    assert (folded.folds, folded.cross_validated) == (3, True)
+    uncounted = coverage.ae_counts(saved, split, summary, cross_validated=True)
+    assert (uncounted.folds, uncounted.cross_validated) == (None, True)
     assert counts.by_year == {coverage.UNKNOWN_YEAR: (1, 0), 2024: (2, 1), 2025: (1, 1)}
     assert (counts.suggested, counts.suggested_positive) == (4, 2)
     bare = coverage.ae_counts(saved, None, None)
@@ -114,6 +118,7 @@ CROSS_VALIDATED = {
     "split": {"train": 120, "val": 0, "test": 60},
     "unsplit": 18,
     "folds": 5,
+    "cross_validated": True,
 }  # v2 as it is made: 120 shots dealt into five folds, and 60 test shots
 
 
@@ -125,6 +130,9 @@ def test_the_fold_count_is_the_distinct_folds(tmp_path):
     assert coverage.fold_count(folds) == 3, "folds 0-2; a test shot has none"
     ten = pd.DataFrame({"shot": range(10), "fold": [k % 5 for k in range(10)]})
     assert coverage.fold_count(ten) == 5
+    unfolded = pd.DataFrame({"shot": [101], "split": ["train"]})
+    assert coverage.fold_count(unfolded) is None, "no fold column: not counted"
+    assert coverage.fold_count(pd.DataFrame()) is None
 
 
 def test_a_cross_validated_split_shows_its_folds(tmp_path):
@@ -146,15 +154,27 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
     assert "no shot is held out for validation (--)" in lines[0]
     with_val = dataclasses.replace(folded, split={"train": 100, "val": 20, "test": 60})
     fig = coverage.draw_coverage({"alfven_eigenmode": with_val}, tmp_path / "fig")
+    assert [bar.get_height() for bar in fig.axes[2].patches] == [100, 60, 18]
     assert [t.get_text() for t in fig.axes[2].get_xticklabels()] == [
         "train\n(5 folds)",
-        "val",
         "test",
         "no\nsplit",
-    ], "validation shots beside the folds are still drawn"
+    ], "no validation bar in every case (the build names such shots, `CV_VAL`)"
     lines = coverage.table_datasets({"alfven_eigenmode": with_val}).splitlines()
-    assert "& 100 / 20 / 60 &" in lines[5]
-    assert "held out" not in lines[0]
+    assert "& 100 / -- / 60 &" in lines[5]
+    uncounted = dataclasses.replace(folded, folds=None)
+    fig = coverage.draw_coverage({"alfven_eigenmode": uncounted}, tmp_path / "fig")
+    assert [t.get_text() for t in fig.axes[2].get_xticklabels()] == [
+        "train",
+        "test",
+        "no\nsplit",
+    ], "cross-validated, its folds not counted: no count, and still no val"
+    lines = coverage.table_datasets({"alfven_eigenmode": uncounted}).splitlines()
+    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert lines[0].endswith(
+        "; AE's train shots are cross-validated, so no shot is held out for "
+        "validation (--)"
+    )
 
 
 @pytest.mark.parametrize("counts", [TODAY, CROSS_VALIDATED], ids=["v1", "folds"])

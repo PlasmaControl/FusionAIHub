@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -58,6 +59,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "table_seg_scores": missing,
     }
     assert printed["copied"] == sorted(p.name for p in dest.iterdir())
+    assert printed["old_output_kept"] is None, "the old output was deleted whole"
     assert len(printed["copied"]) == 8
     assert all(name.endswith((".pdf", ".tex")) for name in printed["copied"])
     manifest = json.loads((out / "manifest.json").read_text())
@@ -65,7 +67,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     assert manifest["example_shots"] == [102, 103]
     assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
     rule = manifest["interpreter_rule"]
-    assert "at least 5 consecutive absent frames (50 ms)" in rule, "MIN_GAP_FRAMES"
+    assert "at least 5 whole consecutive absent 10 ms frames" in rule, "MIN_GAP_FRAMES"
     assert manifest["interpreter_branch"] == shots.POOL_FALLBACK, (
         "AE ends at 900 ms and never comes back"
     )
@@ -262,35 +264,45 @@ def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_p
 
 
 @pytest.mark.parametrize(
-    ("back_on", "branch", "pool", "off"),
+    ("off_ms", "branch", "pool", "off"),
     [
-        (600, shots.POOL_GAP, ["103"], 10),
-        (550, shots.POOL_GAP, ["103"], 5),
-        (540, shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((500, 600), shots.POOL_GAP, ["103"], 10),
+        ((500, 550), shots.POOL_GAP, ["103"], 5),
+        ((500, 540), shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((502, 556), shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((496, 550), shots.POOL_GAP, ["103"], 5),
     ],
+    ids=["100-ms", "50-ms", "40-ms", "54-ms-in-4-frames", "54-ms-in-5-frames"],
 )
 def test_the_pool_is_the_test_shots_where_ae_comes_back(
-    runs, tmp_path, back_on, branch, pool, off
+    runs, tmp_path, off_ms, branch, pool, off
 ):
+    """AE is off from `off_ms[0]` to `off_ms[1]`; a frame a present span touches
+    is present, so 54 ms off the 10 ms grid is 4 whole absent frames (the
+    review's 175240, out) or 5 (170672, in)."""
     copy = tree.scored_labels(runs)
     rows = [r for r in copy.read_text().splitlines() if not r.startswith("103,")]
+    start, stop = off_ms
     back = (
         (0, 300, 0),
-        (300, 500, 1),
-        (500, back_on, 0),
-        (back_on, 900, 1),
+        (300, start, 1),
+        (start, stop, 0),
+        (stop, 900, 1),
         (900, 2000, 0),
     )
     copy.write_text("\n".join([*rows, *(f"103,{c},{a},{b}," for a, b, c in back)]))
     tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
-    assert manifest["interpreter_branch"] == branch, "off from 500 ms: 50 ms is in"
+    assert manifest["interpreter_branch"] == branch, "5 whole absent frames are in"
     if branch == shots.POOL_GAP:
         assert manifest["interpreter_shot"] == 103, "the one shot where AE comes back"
+    else:
+        said = re.findall(r"\d+ ms", manifest["interpreter_branch"])
+        assert said == ["10 ms"], "nothing that AE off for 54 ms would make false"
     drawn = manifest["interpreter_pool"]
     assert sorted(drawn) == pool
     assert (drawn["103"]["longest_off_frames"], drawn["103"]["poi"]) == (off, 0), (
-        "from 500 ms; 900 ms to 2 s does not count"
+        "the off-period only; 900 ms to 2 s does not count"
     )
 
 
@@ -418,6 +430,84 @@ def test_only_the_builds_own_files_leave_out(runs, tmp_path):
     drawn = {f for files in manifest["products"].values() for f in files}
     assert set(after) == drawn | {"manifest.json"} | set(theirs)
     assert os.readlink(out / "linked") == str(elsewhere), "still a link"
+
+
+def test_a_symlinked_out_keeps_its_link(runs, tmp_path):
+    """The reviewer's probe A through the build: `--out` is a link to the
+    owner's real directory. The build draws beside the link's target and swaps
+    the new output in there: the link still points at it, the owner's files
+    stay in it, and no stale product is left anywhere."""
+    target = tmp_path / "real" / "paper"
+    build.build(runs, target, examples=1)  # an old output, with the shot figures
+    (target / "notes.txt").write_text("the owner's")
+    out = tmp_path / "paper"
+    out.symlink_to(target, target_is_directory=True)
+    (xpower.model_dir(runs) / "chosen.json").unlink()  # now the shot figures skip
+    manifest = build.build(runs, out)
+    assert out.is_symlink() and os.readlink(out) == str(target), "still that link"
+    drawn = {f for files in manifest["products"].values() for f in files}
+    assert "fig_examples.pdf" not in drawn
+    files = _files(target)
+    assert set(files) == drawn | {"manifest.json", "notes.txt"}
+    assert files["notes.txt"] == b"the owner's"
+    assert json.loads(files["manifest.json"]) == manifest, "the new output"
+    assert list(tmp_path.rglob("fig_examples*")) == [], "no stale product anywhere"
+    assert sorted(p.name for p in target.parent.iterdir()) == ["paper"]
+    assert _beside(tmp_path) == ["paper"], "nothing left beside the link"
+
+
+def test_a_broken_link_as_out_is_built_into_its_target(runs, tmp_path):
+    """A link whose target is not there yet is built into its target, as a
+    new `--out` is: the build makes it (its parents too), the link then
+    points at the new output, and nothing is left beside either."""
+    target = tmp_path / "later" / "paper"
+    out = tmp_path / "paper"
+    out.symlink_to(target, target_is_directory=True)
+    manifest = build.build(runs, out)
+    assert out.is_symlink() and os.readlink(out) == str(target)
+    drawn = {f for files in manifest["products"].values() for f in files}
+    assert set(_files(target)) == drawn | {"manifest.json"}
+    assert sorted(p.name for p in target.parent.iterdir()) == ["paper"]
+    assert _beside(tmp_path) == ["paper"]
+
+
+def test_a_kept_old_output_is_named_and_the_build_succeeds(
+    runs, tmp_path, monkeypatch, capsys
+):
+    """The owner saves `notes.txt` again through a handle held on the old
+    output, after the swap has moved the first one into the new output: the
+    late one cannot be moved over it, so the old output's directory is kept.
+    The build still succeeds, its output in place, and names the directory on
+    stderr and in its JSON line."""
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "notes.txt").write_text("the owner's")
+    held = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    rename = Path.rename
+
+    def saves_late(self, target):
+        if Path(self).name.startswith(f".{out.name}.staging-"):
+            fd = os.open("notes.txt", os.O_WRONLY | os.O_CREAT, 0o644, dir_fd=held)
+            with os.fdopen(fd, "w") as file:
+                file.write("saved again, late")
+        return rename(self, target)
+
+    capsys.readouterr()
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(Path, "rename", saves_late)
+            assert build.main(["--out", str(out)]) == 0
+    finally:
+        os.close(held)
+    said = capsys.readouterr()
+    kept = Path(json.loads(said.out)["old_output_kept"])
+    assert kept.parent == tmp_path and kept.name.startswith(".paper.old-")
+    assert _tree(kept) == {"paper": None, "paper/notes.txt": b"saved again, late"}
+    assert str(kept) in said.err
+    assert (out / "notes.txt").read_text() == "the owner's", "not moved over"
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert "fig_examples" in manifest["products"], "the new output is in place"
+    assert _beside(tmp_path) == sorted(["paper", kept.name])
 
 
 def _spy_reads(monkeypatch, opened: Counter) -> None:
@@ -693,32 +783,146 @@ V1_DATASETS = (
 )  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn
 
 
-def test_a_cross_validated_version_shows_its_folds(runs, tmp_path):
-    """v2 is cross-validated: its `cv/folds.csv` is pinned, and the coverage
-    shows the train shots as folds, with no validation split. v1, with no
-    folds, draws its three-way split as before, byte for byte."""
+def _split_panels(monkeypatch) -> list:
+    """The coverage figures the build draws, each as its split panel."""
+    panels = []
+    draw = coverage.draw_coverage
+
+    def spy(counts, stem):
+        fig = draw(counts, stem)
+        panels.append(fig.axes[2])
+        return fig
+
+    monkeypatch.setattr(coverage, "draw_coverage", spy)
+    return panels
+
+
+def _ticks(ax) -> list[str]:
+    return [t.get_text() for t in ax.get_xticklabels()]
+
+
+def test_v1_is_not_cross_validated(runs, tmp_path, monkeypatch):
+    """v1, with no folds, draws its three-way split as before, byte for byte,
+    and records no folds check."""
+    panels = _split_panels(monkeypatch)
     v1 = build.build(runs, tmp_path / "v1")
     assert (tmp_path / "v1" / "table_datasets.tex").read_text() == V1_DATASETS
+    assert _ticks(panels[0]) == ["train", "val", "test", "no\nsplit"]
     assert "ae_folds" not in v1["inputs"]
-    models = tree.as_version(runs, "v2")
-    (models / "band80-mhd3" / "split.csv").write_text(
-        "shot,split\n101,train\n102,train\n103,test\n"
-    )  # the final model's: the folds' shots are its train shots
-    folds = models / "cv" / "folds.csv"
-    folds.parent.mkdir()
-    folds.write_text("shot,split,fold\n101,train,0\n102,val,1\n103,test,\n")
+    assert v1["folds_match"] is None
+
+
+FOLDS = "shot,split,fold\n101,train,0\n102,val,1\n103,test,\n"
+NO_FOLD_COLUMN = "shot,split\n101,train\n102,val\n103,test\n"
+FINAL_SPLIT = "shot,split\n101,train\n102,train\n103,test\n"  # train_from_cv's
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _cross_validated(paths, folds: str | None, named: str | None) -> Path:
+    """v2 as `train_from_cv` leaves it: the final model's split (the folds'
+    shots are its train shots), `cv/folds.csv` holding `folds` (None: no file)
+    and `chosen.json` naming `named` as its `folds_sha256` (None: no key). The
+    folds file's path."""
+    models = tree.as_version(paths, "v2")
+    (models / "band80-mhd3" / "split.csv").write_text(FINAL_SPLIT)
+    path = models / "cv" / "folds.csv"
+    path.parent.mkdir()
+    if folds is not None:
+        path.write_text(folds)
+    if named is not None:
+        chosen = models / "chosen.json"
+        record = json.loads(chosen.read_text())
+        chosen.write_text(json.dumps(record | {"folds_sha256": named}))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("folds", "named", "match", "why", "tick"),
+    [
+        (FOLDS, _sha(FOLDS), True, None, "train\n(2 folds)"),
+        (FOLDS, "0" * 64, False, "FOLDS_DIFFER", "train"),
+        (None, _sha(FOLDS), None, "NO_FOLDS", "train"),
+        (NO_FOLD_COLUMN, _sha(NO_FOLD_COLUMN), True, "FOLDS_NO_COLUMN", "train"),
+        ("", _sha(""), True, "FOLDS_NO_COLUMN", "train"),
+        (FOLDS, None, None, "FOLDS_UNNAMED", "train"),
+    ],
+    ids=["matching", "unlike", "missing", "no-fold-column", "empty", "unnamed"],
+)
+def test_a_cross_validated_version_is_checked_against_its_record(
+    runs, tmp_path, monkeypatch, folds, named, match, why, tick
+):
+    """v2 is cross-validated: its train and test shots are drawn, with no
+    validation bar or cell, whatever its folds. The train shots carry their
+    fold count only when `cv/folds.csv` is there, is the one `chosen.json`
+    names and has a `fold` column; otherwise the coverage is partial, saying
+    why, and the build never crashes."""
+    panels = _split_panels(monkeypatch)
+    path = _cross_validated(runs, folds, named)
     manifest = build.build(runs, tmp_path / "v2", version="v2")
-    assert manifest["inputs"]["ae_folds"] == {
-        "path": str(folds),
-        "sha256": hashlib.sha256(folds.read_bytes()).hexdigest(),
-    }
-    assert "fig_coverage" in manifest["products"]
+    [split] = panels
+    assert _ticks(split) == [tick, "test", "no\nsplit"], "no validation bar"
+    assert [bar.get_height() for bar in split.patches] == [2, 1, 0]
     lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
     assert lines[5] == "AE & 3 & 3 & 1.8 & 2 / -- / 1 & 0 & -- & -- \\\\"
-    assert "AE's train shots are cross-validated over 2 folds" in lines[0]
-    (models / "chosen.json").unlink()  # the folds made, no model chosen yet
+    over = " over 2 folds" if why is None else ""
+    assert (
+        f"AE's train shots are cross-validated{over}, so no shot is held out for "
+        "validation (--)"
+    ) in lines[0]
+    assert manifest["folds_match"] is match
+    pinned = {"path": str(path), "sha256": _sha(folds)} if folds is not None else None
+    assert manifest["inputs"].get("ae_folds") == pinned
+    extension = {
+        "reason": "extension not run: A2 failed (D47)",
+        "missing": [str(build.inputs(runs, "v2")["summary"])],
+    }
+    entries = manifest["partial"]["fig_coverage"]
+    assert manifest["partial"]["table_datasets"] == entries
+    assert entries[-1] == extension
+    if why is None:
+        assert entries == [extension]
+        return
+    [entry] = entries[:-1]
+    assert entry["reason"].startswith(getattr(build, why)), entry
+    if why == "FOLDS_DIFFER":
+        assert entry["reason"].endswith(
+            f": the file is {_sha(FOLDS)[:12]}, chosen.json names {'0' * 12}"
+        )
+    assert entry.get("missing") == ([str(path)] if folds is None else None)
+
+
+def test_folds_without_a_chosen_model_are_not_read(runs, tmp_path):
+    path = _cross_validated(runs, FOLDS, _sha(FOLDS))
+    (path.parent.parent / "chosen.json").unlink()  # the folds made, no model yet
     manifest = build.build(runs, tmp_path / "v2", version="v2")
     assert "ae_folds" not in manifest["inputs"], "no split to show the folds in"
+    assert manifest["folds_match"] is None, "no record to check them against"
+    assert manifest["partial"]["fig_coverage"][0]["reason"] == build.NO_CHOSEN
+
+
+def test_validation_shots_in_a_cross_validated_split_are_named(
+    runs, tmp_path, monkeypatch
+):
+    """A cross-validated version holds no shot out for validation; one its
+    split calls `val` anyway is in no bar or cell, and named as such."""
+    panels = _split_panels(monkeypatch)
+    path = _cross_validated(runs, FOLDS, _sha(FOLDS))
+    (path.parent.parent / "band80-mhd3" / "split.csv").write_text(
+        "shot,split\n101,train\n102,val\n103,test\n"
+    )
+    manifest = build.build(runs, tmp_path / "v2", version="v2")
+    [split] = panels
+    assert _ticks(split) == ["train\n(2 folds)", "test", "no\nsplit"]
+    assert [bar.get_height() for bar in split.patches] == [1, 1, 0]
+    lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
+    assert lines[5] == "AE & 3 & 3 & 1.8 & 1 / -- / 1 & 0 & -- & -- \\\\"
+    assert manifest["folds_match"] is True
+    held = {"reason": build.CV_VAL, "shots": [102]}
+    for product in ("fig_coverage", "table_datasets"):
+        assert held in manifest["partial"][product]
 
 
 def _seg_products_of(manifest: dict) -> dict:

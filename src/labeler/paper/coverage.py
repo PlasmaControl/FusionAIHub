@@ -10,12 +10,15 @@ review (`data/events/alfven_eigenmode/review/labels.csv`), the chosen
 five are coming. So the reviewed count is the split's three plus "no split". A
 suggested shot is a suggestion, not a label (v1 spec §3).
 
-A cross-validated version (one whose models directory holds `cv/folds.csv`, as
-v2's does) holds no shot out for validation: its train shots are dealt into
-folds that choose the model. The panel draws them as one group marked with the
-number of folds (the distinct `fold` values, `fold_count`), with no validation
-bar, and the table's validation cell is `--`, its comment saying why. A
-validation split's three bars are drawn as they always were.
+A cross-validated version (v2: its `chosen.json` names `folds_sha256`, or its
+models directory holds `cv/folds.csv`) holds no shot out for validation: its
+train shots are dealt into folds that choose the model. The panel draws its
+train and test shots alone, with no validation bar, whatever its folds, and the
+table's validation cell is `--`, its comment saying why. The train shots are
+marked with the number of folds (the distinct `fold` values, `fold_count`) only
+when the build has checked `cv/folds.csv` against `chosen.json`
+(`build.folds_check`). A validation split's three bars are drawn as they always
+were.
 
 A part whose input is missing is not a zero: without `split.csv` (no model
 chosen) or `summary.csv` (the extension did not run) its panel says "not run"
@@ -56,9 +59,10 @@ class Counts:
     """One phenomenon's shots. `split` maps train/val/test to reviewed shots,
     `unsplit` counts the reviewed shots in none of them, and `by_year` maps a
     campaign year to (suggested, suggested positive), `UNKNOWN_YEAR` holding
-    shots without one; None where the input is missing (not run). `folds` is
-    the number of folds the train shots are cross-validated over, None for a
-    validation split."""
+    shots without one; None where the input is missing (not run).
+    `cross_validated` says the train shots are dealt into folds, with no shot
+    held out for validation, and `folds` is their number: None for a
+    validation split, or for folds that could not be counted."""
 
     reviewed: int
     positive: int
@@ -67,6 +71,7 @@ class Counts:
     by_year: Mapping[int, tuple[int, int]] | None = None
     unsplit: int | None = None
     folds: int | None = None
+    cross_validated: bool = False
 
     @property
     def suggested(self) -> int | None:
@@ -87,11 +92,13 @@ def ae_counts(
     summary: pd.DataFrame | None,
     *,
     folds: int | None = None,
+    cross_validated: bool = False,
 ) -> Counts:
     """AE's counts from the owner's saved labels (`labels.read_saved`), the
     chosen model's split (`read_split`) and the extension's `summary.csv`; a
     missing split or summary (None) leaves its part None. `folds` is a
-    cross-validated split's number of folds (`fold_count`)."""
+    cross-validated split's number of folds (`fold_count`), which makes it
+    `cross_validated`; so does `cross_validated` alone, its folds not counted."""
     positive = sum(
         any(c == PRESENT for _, _, c in label.intervals) for label in saved.values()
     )
@@ -120,12 +127,16 @@ def ae_counts(
         by_year=by_year,
         unsplit=unsplit,
         folds=folds,
+        cross_validated=cross_validated or folds is not None,
     )
 
 
-def fold_count(folds: pd.DataFrame) -> int:
+def fold_count(folds: pd.DataFrame) -> int | None:
     """The number of folds in a `cv/folds.csv` (shot, split, fold): its
-    distinct `fold` values, the test shots having none."""
+    distinct `fold` values, the test shots having none; None for a table with
+    no `fold` column."""
+    if "fold" not in folds.columns:
+        return None
     return int(folds["fold"].dropna().nunique())
 
 
@@ -134,12 +145,10 @@ def _n_folds(n: int) -> str:
 
 
 def _splits(c: Counts) -> tuple[str, ...]:
-    """The splits drawn and counted: all three, or train and test alone when
-    the train shots are cross-validated and no shot is held out for
-    validation."""
-    if c.folds is not None and not (c.split or {}).get("val"):
-        return ("train", "test")
-    return SPLITS
+    """The splits drawn and counted: train and test alone when the train shots
+    are cross-validated, which holds no shot out for validation (whether or not
+    their folds were counted); all three otherwise."""
+    return ("train", "test") if c.cross_validated else SPLITS
 
 
 def _split_tick(which: str, c: Counts) -> str:
@@ -316,11 +325,10 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
     )
     for category in ORDER:
         c = counts.get(category)
-        if c is not None and c.split is not None and c.folds is not None:
+        if c is not None and c.split is not None and c.cross_validated:
+            over = "" if c.folds is None else f" over {_n_folds(c.folds)}"
             comment += (
-                f"; {title(category)}'s train shots are cross-validated over "
-                f"{_n_folds(c.folds)}"
+                f"; {title(category)}'s train shots are cross-validated{over}, so "
+                f"no shot is held out for validation ({MISSING})"
             )
-            if "val" not in _splits(c):
-                comment += f", so no shot is held out for validation ({MISSING})"
     return tabular(header, rows, comment)
