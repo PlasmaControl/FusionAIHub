@@ -1,14 +1,15 @@
 """Sawteeth, as the inversion of adjacent ECE channels across the q = 1 surface,
-and the soft X-ray chords that drop at each crash.
+the core electron temperature, and the soft X-ray chords that drop at each crash.
 
 The ECE rows draw each 500 kHz sample as the median of its `ECE_BIN_MS`, so
-the radiometer's spikes do not set the rows' range (`ece_panels`).
+the radiometer's spikes do not set the rows' range (`ece_panels`). The Te row
+is Thomson scattering's hottest core chords, every 10 ms (`te_panels`).
 
 The SXR row draws the `CHOSEN` chords of the first lit fan with the most
 crash-like drops over the Ip flat-top (`crash_drops`), not the brightest: on
 about 25 shots the brightest sit near 4.6 V and barely move (189061's chords 10
-and 12, against 9 and 11 that crash). A shot without ECE, or without SXR, gets
-the other's rows alone.
+and 12, against 9 and 11 that crash). A shot without ECE, Thomson or SXR gets
+the others' rows alone.
 """
 
 from __future__ import annotations
@@ -42,6 +43,14 @@ CHANNEL_ROWS = (
 #: times: one median a bin at its samples' mean time put the grid at 0.050000655
 #: ms on the corpus's float32 seconds, and left 698 of its columns empty.
 ECE_BIN_MS = 0.05
+#: Thomson scattering's core Te, the corpus's `ts_core_temp`: 44 chords in eV
+#: every 10 ms. The `TE_CHORDS` hottest by their median over the plasma window
+#: are drawn in keV: the core, chords 40-43 on 32 of 40 roster shots surveyed and
+#: 38-41 on the 2024 ones. A fit that failed reads 0 or below (1-9 % of samples)
+#: and is left out; on those 40 shots no other sample stood outside the traces'
+#: robust range (`_shared.robust_limits`), so nothing is clipped.
+TE_GROUP = "ts_core_temp"
+TE_CHORDS = 4
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
 #: the record is drawn: its `CHOSEN` chords with the most crash-like drops.
@@ -103,7 +112,7 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         )
         built.append(
             Panel(
-                title=f"ECE ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median)",
+                title=f"ECE Te, ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median)",
                 x=array.x,
                 y=despike(array.x, array.y, ECE_BIN_MS),
                 ylabel="keV",
@@ -111,6 +120,37 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
             )
         )
     return built
+
+
+def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
+    """The `TE_CHORDS` hottest Thomson core chords, chosen over the whole record
+    whatever the view."""
+    array = raw_signal(int(shot), TE_GROUP, paths=paths)
+    x = np.asarray(array.x, dtype=np.float64)
+    with np.errstate(invalid="ignore"):
+        y = np.where(np.asarray(array.y) > 0, array.y / 1000, np.nan).astype(np.float32)
+    window = plasma_window(shot, paths)
+    inside = np.ones(len(x), dtype=bool)
+    if window is not None and ((x >= window[0]) & (x <= window[1])).any():
+        inside = (x >= window[0]) & (x <= window[1])
+    lit = np.isfinite(y[:, inside]).any(axis=1)
+    if not lit.any():
+        raise NoDataError(f"shot {int(shot)}: no Thomson core chord has a Te")
+    level = np.full(len(y), -np.inf)
+    level[lit] = np.nanmedian(y[lit][:, inside], axis=1)
+    top = np.sort(np.argsort(-level, kind="stable")[: min(TE_CHORDS, lit.sum())])
+    if t_range is not None:
+        keep = (x >= t_range[0]) & (x <= t_range[1])
+        x, y = x[keep], y[:, keep]
+    return [
+        Panel(
+            title=f"Te, Thomson core: the {len(top)} hottest chords",
+            x=x,
+            y=y[top],
+            ylabel="keV",
+            legend=[f"chord {c}" for c in top],
+        )
+    ]
 
 
 def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
@@ -146,6 +186,8 @@ def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
 
 def panels(shot, *, t_range=None, paths=None):
     kwargs = {"t_range": t_range, "paths": paths}
-    return optional("ECE", shot, lambda: ece_panels(shot, **kwargs)) + optional(
-        "SXR", shot, lambda: sxr_panels(shot, **kwargs)
+    return (
+        optional("ECE", shot, lambda: ece_panels(shot, **kwargs))
+        + optional("Te", shot, lambda: te_panels(shot, **kwargs))
+        + optional("SXR", shot, lambda: sxr_panels(shot, **kwargs))
     )

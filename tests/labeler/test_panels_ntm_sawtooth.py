@@ -128,11 +128,19 @@ def _crashes(t, period_ms, *, start=0.0, stop=np.inf, amp=0.05):
     return np.where(on, amp * ((t - start) % period_ms) / period_ms, 0.0)
 
 
-def _sawtooth(p, *, ece=True, sxr=True, moving=(3, 5, 20, 25), early=()):
+def _sawtooth(p, *, ece=True, sxr=True, te=False, moving=(3, 5, 20, 25), early=()):
     """ECE with a 3-sample spike at 40 ms, and an SXR fan whose bright core
     chords sit still while the dim `moving` ones crash every 50 ms; the `early`
-    ones crash every 20 ms, only before 70 ms."""
+    ones crash every 20 ms, only before 70 ms. `te`: Thomson's 44 core chords
+    every 10 ms, hottest between chords 41 and 42, with failed fits (0 and
+    below) on 40-42."""
     groups = {}
+    if te:
+        t = tree.times(0.0, 100.0, 100)
+        chords = np.arange(44)[:, None]
+        y = 3000.0 * np.exp(-(((chords - 41.5) / 2.5) ** 2)) + 0 * t
+        y[40, 3], y[41, 5], y[42, 7] = 0.0, -12.0, 0.0
+        groups["ts_core_temp"] = (t, y)
     if ece:
         t = tree.times(0.0, 100.0, 500_000)
         y = 1.0 + tree.noise(48, t, 0.01)
@@ -160,7 +168,7 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     _sawtooth(p)
     built = panels.build("sawtooth_oscillation", SHOT, paths=p)
     assert [x.title for x in built][:4] == [
-        f"ECE ch {a}-{a + 3} (0.05 ms median)" for a in (20, 24, 28, 32)
+        f"ECE Te, ch {a}-{a + 3} (0.05 ms median)" for a in (20, 24, 28, 32)
     ]
     ece = built[0]
     assert ece.y.shape == (4, 50_000), "every 500 kHz sample, at its own time"
@@ -168,6 +176,21 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     sxr = built[4]
     assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
     assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
+
+
+def test_the_te_row_is_thomsons_hottest_core_chords_in_kev(tmp_path, monkeypatch):
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    _sawtooth(p, ece=False, te=True)
+    te, sxr = panels.build("sawtooth_oscillation", SHOT, paths=p)
+    assert te.title == "Te, Thomson core: the 4 hottest chords"
+    assert (te.ylabel, te.legend) == ("keV", ["chord 40", "chord 41", "chord 42", "chord 43"])
+    assert te.y[1, 0] == pytest.approx(3.0 * np.exp(-0.04)) and te.y.shape == (4, 10)
+    assert np.isnan(te.y[:3]).sum() == 3, "a failed fit is a gap, not a 0 keV dip"
+    assert np.isnan(te.y[0, 3]) and np.isnan(te.y[1, 5]) and np.isnan(te.y[2, 7])
+    assert sxr.title.startswith("SXR")
+    view, _sxr = panels.build("sawtooth_oscillation", SHOT, paths=p, t_range=(0, 45))
+    assert view.legend == te.legend and view.x.max() <= 45, "chosen over the record"
 
 
 def test_despike_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():

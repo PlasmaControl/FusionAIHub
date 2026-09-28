@@ -197,10 +197,11 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
     seen = []
 
     def fake_raw_signal(shot, group, *, channels=None, t_range=None, paths=None):
+        channels = range(44) if channels is None else channels
         seen.append((shot, group, list(channels), t_range, paths))
         return FeatureArray(
             x=2000.0 + np.arange(500.0),
-            y=np.zeros((len(channels), 500), dtype="float32"),
+            y=np.full((len(channels), 500), group == "ts_core_temp", dtype="float32"),
             attrs={},
         )
 
@@ -210,10 +211,11 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
     built = registry.build("sawtooth_oscillation", 192238, t_range=window)
 
     assert [panel.title for panel in built] == [
-        "ECE ch 20-23 (0.05 ms median)",
-        "ECE ch 24-27 (0.05 ms median)",
-        "ECE ch 28-31 (0.05 ms median)",
-        "ECE ch 32-35 (0.05 ms median)",
+        "ECE Te, ch 20-23 (0.05 ms median)",
+        "ECE Te, ch 24-27 (0.05 ms median)",
+        "ECE Te, ch 28-31 (0.05 ms median)",
+        "ECE Te, ch 32-35 (0.05 ms median)",
+        "Te, Thomson core: the 4 hottest chords",
         "SXR SX90RM1F, the 4 chords with the most crash-like drops",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping
@@ -225,12 +227,16 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
         [28, 29, 30, 31],
         [32, 33, 34, 35],
     ]
-    assert [row[:2] for row in seen] == [(192238, "ece")] * 4 + [(192238, "sxr")]
-    # The SXR chords are chosen over the whole record, then cut to the view.
-    assert [row[3] for row in seen] == [window] * 4 + [None]
+    assert [row[:2] for row in seen] == [(192238, "ece")] * 4 + [
+        (192238, "ts_core_temp"),
+        (192238, "sxr"),
+    ]
+    # The Te and SXR chords are chosen over the whole record, then cut to the view.
+    assert [row[3] for row in seen] == [window] * 4 + [None, None]
     assert all(row[4] is None for row in seen)
     assert all(panel.y.shape == (4, 500) for panel in built[:4])
-    assert built[4].y.shape == (4, 301)
+    assert built[4].y.shape == built[5].y.shape == (4, 301)
+    assert built[4].ylabel == "keV" and np.nanmax(built[4].y) == pytest.approx(0.001)
     assert all(panel.ylabel == "keV" for panel in built[:4])
     assert built[0].legend == ["ch 20", "ch 21", "ch 22", "ch 23"]
     # `raw_signal` is already in milliseconds; a second conversion here
