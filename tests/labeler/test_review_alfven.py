@@ -41,9 +41,7 @@ def made():
 def test_the_grid_is_the_heidbrink_stft(made):
     grid, rows = made
     assert grid.dt_ms == pytest.approx(0.256)
-    assert [row.name for row in rows] == [
-        "R0", "V1", "V2", "V3", "R0xV1", "R0xV2", "R0xV3"
-    ]
+    assert [row.name for row in rows] == ["R0xV1", "R0xV2", "R0xV3"]
     for row in rows:
         assert row.values.shape == (257, grid.n) and row.values.dtype == np.uint8
         assert row.y0 == 0 and row.dy == pytest.approx(500 / 512)
@@ -56,11 +54,10 @@ def test_a_mode_on_every_chord_shows_on_every_row(made):
         assert _db(grid, row, (160, 240), 120) >= 12, row.name
 
 
-def test_a_burst_on_one_chord_shows_there_and_nowhere_else(made):
+def test_a_burst_on_one_chord_stays_out_of_the_other_rows(made):
     grid, rows = made
     by_name = {row.name: row for row in rows}
-    assert _db(grid, by_name["V2"], (60, 110), 180) >= 12
-    for name in ("R0", "V1", "V3", "R0xV1", "R0xV3"):
+    for name in ("R0xV1", "R0xV3"):
         assert _db(grid, by_name[name], (60, 110), 180) <= 3, name
     cross = by_name["R0xV2"]
     assert _db(grid, cross, (160, 240), 120) - _db(grid, cross, (60, 110), 180) >= 10
@@ -74,4 +71,4 @@ def test_build_reads_co2_through_the_raw_tiers_and_says_where_it_came_from(tmp_p
     assert info["source"]["tier"] == "cache"
     assert info["source"]["path"] == str(tmp_path / "raw" / "170790_processed.h5")
     assert info["params"] == alfven.PARAMS
-    assert len(rows) == 7 and rows[0].values.shape[1] == grid.n
+    assert len(rows) == 3 and rows[0].values.shape[1] == grid.n

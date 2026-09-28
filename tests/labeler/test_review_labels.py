@@ -5,6 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from labeler.events.catalog.check import states
+from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
 from labeler.events.interval_tables import validate_intervals
 from labeler.events.review import labels
 from labeler.events.review.labels import Label, normalise
@@ -128,6 +130,31 @@ def test_saving_replaces_one_shots_rows_and_appends_the_history(event_dir, monke
     ]
 
 
+def test_saving_another_shot_refuses_a_ragged_table_without_changes(event_dir):
+    review = event_dir / "review"
+    review.mkdir()
+    (review / "labels.csv").write_text(
+        "shot,category,t_start,t_end,confidence\n190001,190002,1,0,100,\n"
+    )
+    (review / "history.jsonl").write_text('{"shot": 190001}\n')
+    before = {name: (review / name).read_bytes() for name in (
+        "labels.csv", "history.jsonl"
+    )}
+    with pytest.raises(labels.SaveRefused, match="row 2: expected 5 fields, got 6"):
+        labels.save(event_dir, 190003, Label((0, 100)), source=None)
+    assert {name: (review / name).read_bytes() for name in before} == before
+
+
+def test_reading_a_ragged_saved_table_refuses_index_inference(event_dir):
+    path = labels.labels_path(event_dir)
+    path.parent.mkdir()
+    path.write_text(
+        "shot,category,t_start,t_end,confidence\n190001,190002,1,0,100,\n"
+    )
+    with pytest.raises(pd.errors.ParserError, match="row 2: expected 5 fields, got 6"):
+        labels.read_saved(event_dir)
+
+
 def test_states():
     source = normalise((0, 2000), [(100, 300, 1)])
     assert labels.state(None, source) == "unreviewed"
@@ -191,10 +218,106 @@ def test_shot_labels_carries_source_saved_state_and_last_save(event_dir):
 
 
 def test_categories_leave_out_absent():
-    assert labels.categories("alfven_eigenmode") == {1: "present"}
+    assert labels.categories("resistive_wall_mode") == {1: "present"}
+    assert labels.categories("alfven_eigenmode") == {
+        1: "present",
+        2: "uncertain",
+        3: "not_observable",
+    }
     assert labels.categories("minimum_safety_factor") == {
         1: "low",
         2: "hybrid",
         3: "elevated",
         4: "high",
     }
+
+
+def test_saving_another_shot_preserves_existing_attributes(tmp_path):
+    from labeler.events.interval_tables import WITH_ATTRS
+
+    event = tmp_path / "disruption"
+    review = event / "review"
+    review.mkdir(parents=True)
+    attrs = '{"intentional": false, "phase": "flattop"}'
+    original = pd.DataFrame(
+        [[190001, 1, "0.25", "100.50", "0.750", attrs]], columns=WITH_ATTRS
+    )
+    original.to_csv(review / "labels.csv", index=False)
+    before = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
+    labels.save(event, 190002, normalise([0, 100], [[20, 40, 2]]), source=None)
+    after = pd.read_csv(review / "labels.csv", dtype=str, keep_default_na=False)
+    assert "attrs" in after.columns
+    pd.testing.assert_frame_equal(after[after.shot == "190001"], before)
+    assert (after.loc[after.shot == "190002", "attrs"] == "").all()
+    before_refusal = {
+        name: (review / name).read_bytes() for name in ("labels.csv", "history.jsonl")
+    }
+    with pytest.raises(ValueError, match="category 3"):
+        label = normalise(
+            [0, 100], [[30, 50, 3]], known=set(labels.categories(event.name))
+        )
+        labels.save(event, 190002, label, source=None)
+    assert {
+        name: (review / name).read_bytes() for name in before_refusal
+    } == before_refusal
+
+
+@pytest.mark.parametrize("event", PHENOMENA)
+def test_review_menu_and_checker_accept_the_same_span_states(event):
+    accepted = set()
+    for state in STATE_NAMES:
+        frame = pd.DataFrame({"shot": [190001], "category": [state], "t_start": [0]})
+        if not states(frame, category=event):
+            accepted.add(state)
+    assert set(labels.categories(event)) == accepted - {0}
+
+
+@pytest.mark.parametrize(
+    "event", [key for key, spec in PHENOMENA.items() if spec.observable_always]
+)
+def test_review_refuses_states_that_its_checker_always_rejects(tmp_path, event):
+    from fastapi.testclient import TestClient
+
+    from labeler.config import Paths
+    from labeler.events.ui.app import COOKIE, create_app
+
+    tables = tmp_path / "events"
+    directory = tables / event
+    directory.mkdir(parents=True)
+    (directory / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n190001,unverified,false,,,\n"
+    )
+    paths = Paths(
+        root=tmp_path / "root", corpus=tmp_path / "corpus",
+        text_root=tmp_path / "text", logs_jsonl=tmp_path / "logs.jsonl",
+        label_tables=tables, raw_cache=tmp_path / "raw",
+    )
+    with TestClient(create_app(paths=paths, token="secret")) as client:
+        client.cookies.set(COOKIE, "secret")
+        response = client.post("/api/label", json={
+            "event": event, "shot": 190001,
+            "window": [0, 100], "intervals": [[0, 100, 3]],
+        })
+    assert response.status_code == 400
+    assert "category 3" in response.json()["error"]
+    assert not labels.labels_path(directory).exists()
+    assert not labels.history_path(directory).exists()
+
+
+@pytest.mark.parametrize("attrs", ['{"intentional": false}', '{}'])
+def test_saving_a_shot_with_attrs_refuses_without_changing_either_file(tmp_path, attrs):
+    from labeler.events.interval_tables import WITH_ATTRS
+
+    event = tmp_path / "disruption"
+    review = event / "review"
+    review.mkdir(parents=True)
+    pd.DataFrame(
+        [[190001, 1, 0, 100, None, attrs]], columns=WITH_ATTRS
+    ).to_csv(review / "labels.csv", index=False)
+    (review / "history.jsonl").write_text('{"shot": 190001}\n')
+    before = {name: (review / name).read_bytes() for name in [
+        "labels.csv", "history.jsonl"
+    ]}
+    with pytest.raises(ValueError, match="190001.*attrs"):
+        labels.save(event, 190001, normalise([0, 100], [[20, 40, 2]]), source=None)
+    assert {name: (review / name).read_bytes() for name in before} == before

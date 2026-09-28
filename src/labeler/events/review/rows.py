@@ -136,20 +136,22 @@ def write(path, grid: Grid, rows, **info) -> None:
                 )
 
 
-def meta(path) -> dict:
-    """The grid, the time range and every row's description."""
+def meta(path, hide=frozenset()) -> dict:
+    """The grid, the time range and every row's description, less `hide`."""
     with h5py.File(path, "r") as f:
         t0, dt, n = float(f.attrs["t0_ms"]), float(f.attrs["dt_ms"]), int(f.attrs["n"])
         rows = [
             {"name": name, **json.loads(f["rows"][name].attrs["meta"])}
-            for name in json.loads(f.attrs["rows"])
+            for name in _names(f, hide)
         ]
     grid = {"t0": t0, "dt": dt, "n": n}
     return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows}
 
 
-def read_window(path, t0: float, t1: float, cols: int) -> tuple[bytes, dict]:
-    """Every row over `t0`-`t1` ms at about `cols` columns, as one byte string.
+def read_window(
+    path, t0: float, t1: float, cols: int, hide=frozenset()
+) -> tuple[bytes, dict]:
+    """Every row but `hide` over `t0`-`t1` ms at about `cols` columns, as bytes.
 
     Rows follow each other in store order: images as `uint8` `(n_y, k)`,
     traces as little-endian `float32` `(2, n_channels, k)`. The dict is the
@@ -167,10 +169,14 @@ def read_window(path, t0: float, t1: float, cols: int) -> tuple[bytes, dict]:
         factor = math.ceil((j1 - j0) / cols)
         k = math.ceil((j1 - j0) / factor)
         parts = []
-        for name in json.loads(f.attrs["rows"]):
+        for name in _names(f, hide):
             group = f["rows"][name]
             kind = json.loads(group.attrs["meta"])["kind"]
             block = pool(group[str(level)][..., j0:j1], factor, kind)
             parts.append(block.astype("uint8" if kind == "image" else "<f4").tobytes())
     start = g0 + j0 * level * dt
     return b"".join(parts), {"t0": start, "t1": start + k * factor * level * dt, "n": k}
+
+
+def _names(f, hide) -> list[str]:
+    return [name for name in json.loads(f.attrs["rows"]) if name not in hide]

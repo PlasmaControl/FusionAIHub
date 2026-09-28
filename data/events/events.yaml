@@ -29,6 +29,21 @@ label_grid:
       2: hybrid
       3: elevated
       4: high
+    # The event catalog's six phenomena: in their tables the category is the state.
+    alfven_eigenmode: &catalog_states
+      0: absent
+      1: present
+      2: uncertain
+      3: not_observable
+    neoclassical_tearing_mode: *catalog_states
+    high_confinement_mode: *catalog_states
+    edge_localized_mode: *catalog_states
+    sawtooth_oscillation: *catalog_states
+    disruption: *catalog_states
+
+# Directories here that are not event categories; category scans skip them.
+non_category_dirs:
+  - catalog
 
 format_datasets:
   - name: resistive_wall_mode

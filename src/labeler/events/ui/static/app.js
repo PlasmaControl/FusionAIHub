@@ -6,6 +6,8 @@
 const LONGEST_WINDOW_MS = 20000;
 const HANDLE_BAND = 10; // px at the foot of the label track that hold the window's edges
 const GRAB = 5; // px either side of an edge that grab it
+const CLICK_PX = 4; // a press that moves less than this is a click; a click this close picks a region
+const MASK_EVENT = "alfven_eigenmode"; // the one event with pseudo-masks
 const INFERNO = [
   "000004", "0b0724", "210c4a", "3d0965", "57106e", "71196e", "8a226a", "a32c61", "bc3754",
   "d24644", "e45a31", "f1731d", "f98e09", "fcac11", "f9cb35", "f2ea69", "fcffa4",
@@ -75,6 +77,14 @@ function diffRuns(a, b) {
     .map(([s, e]) => [lo + s, lo + e]);
 }
 
+/** Per saved version, the ms it changed from the one before; the first, from the source or null. */
+function versionChanges(versions, source) {
+  return versions.map((version, i) => {
+    const before = i ? versions[i - 1] : source;
+    return before ? diffRuns(before, version).reduce((n, [s, e]) => n + e - s, 0) : null;
+  });
+}
+
 /** A tick step giving about `n` ticks over `span`: 1, 2 or 5 times a power of ten. */
 function niceStep(span, n) {
   const raw = span / n;
@@ -101,6 +111,23 @@ function hitTest(label, x, y, height, px) {
     if (x > px(spans[index][0]) && x < px(spans[index][1])) return { kind: "move", index };
   }
   return { kind: "new" };
+}
+
+/** The pseudo-mask region with a pixel nearest bin `j`, column `k`, at most `tj` bins
+ * and `tk` columns away; null if none. A region's `runs` are `[bin, first column,
+ * length]`; on a tie the lower-numbered region wins. */
+function regionAt(regions, j, k, tj = 0, tk = 0) {
+  let [best, nearest] = [null, Infinity];
+  for (const region of regions) {
+    for (const [y, x, n] of region.runs) {
+      const dy = Math.abs(y - j);
+      const dx = k < x ? x - k : k >= x + n ? k - (x + n - 1) : 0;
+      if (dy > tj || dx > tk) continue;
+      const d = Math.hypot(dy / (tj + 1), dx / (tk + 1));
+      if (d < nearest) [best, nearest] = [region, d];
+    }
+  }
+  return best;
 }
 
 /** Colours for the byte values 0-255: inferno from `lo` up, its floor below `lo`. */
@@ -132,6 +159,9 @@ const S = {
   categories: {},
   category: 1,
   queue: [],
+  queueEvent: null, // whose queue has arrived; null while loading
+  saveCount: 0,
+  savedRows: new Map(), // event -> shot -> {count, row}, from acknowledged saves
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
   label: null, // the label being edited, always normalised
@@ -145,9 +175,16 @@ const S = {
   undo: [],
   drag: null,
   ticket: 0, // bumped per shot opened, so an answer for an older shot is dropped
+  opened: null, // the finished navigation: ticket, event and shot, recorded by arrive
+  versionsAt: null, // the finished navigation that asked for these versions
   frame: 0,
   timer: 0,
-  saving: false,
+  saving: false, // or the event and shot whose save is in flight
+  api: 1, // what /api/version said: 2 takes a name with each save and lists versions
+  name: "", // the reviewer's typed name, sent with each save
+  versions: [], // the open shot's saved versions, as /api/history listed them
+  masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
+  showMasks: true, // M shows and hides them; the browser remembers which
 };
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
@@ -179,9 +216,17 @@ async function api(path, options) {
   const response = await fetch(path, { credentials: "same-origin", ...options });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `${response.status} ${response.statusText}`);
+    const error = new Error(body.error || `${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
   }
   return response;
+}
+
+/** A save time as the header shows it. */
+function when(iso) {
+  const style = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" };
+  return new Date(iso).toLocaleString([], style);
 }
 
 function say(message, error = false) {
@@ -191,7 +236,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -257,6 +302,8 @@ function keepForUndo(label) {
 
 /** Take a new label if the server would accept it. */
 function edit(window, intervals) {
+  if (stillOpening()) return;
+  if (!S.meta) return;
   const next = normalise(window, intervals, known());
   if (!next) return;
   keepForUndo(S.label);
@@ -266,7 +313,10 @@ function edit(window, intervals) {
 
 /** Keep the draft until it is saved or reverted, and mark the shot unsaved. */
 function touch() {
-  store(draftKey(S.shot), dirty() ? JSON.stringify(S.label) : null);
+  if (stillOpening()) return;
+  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot;
+  const keep = dirty() || (saving && !same(S.label, S.saving.label));
+  store(draftKey(S.shot), keep ? JSON.stringify(S.label) : null);
   $("dirty").hidden = !dirty();
   renderQueue();
   render();
@@ -278,6 +328,7 @@ function selectAt(t) {
 }
 
 function undo() {
+  if (stillOpening()) return;
   if (!S.undo.length) return;
   S.label = S.undo.pop();
   S.selected = -1;
@@ -285,12 +336,15 @@ function undo() {
 }
 
 function revert() {
+  if (stillOpening()) return;
+  if (!S.meta) return;
   const source = S.meta.source || emptyLabel();
   S.selected = -1;
   edit(source.window, source.intervals);
 }
 
 function removeSelected() {
+  if (stillOpening()) return;
   if (S.selected < 0) return;
   const kept = S.label.intervals.filter((_, i) => i !== S.selected);
   S.selected = -1;
@@ -298,6 +352,7 @@ function removeSelected() {
 }
 
 function setCategory(c) {
+  if (stillOpening()) return;
   if (!known().includes(c)) return;
   S.category = c;
   renderSwatches();
@@ -326,7 +381,17 @@ async function boot() {
   });
   S.lo = clamp(Number(stored("labeler:contrast")) || 0, 0, 192);
   S.lut = lut(S.lo);
+  S.name = stored("labeler:name") || "";
+  $("reviewer-name").value = S.name;
+  S.showMasks = stored("labeler:masks") !== "hidden";
   wire();
+  try {
+    S.api = (await (await api("/api/version")).json()).api;
+  } catch {
+    S.api = 1; // a server older than this page: save without a name, no history
+  }
+  for (const id of ["reviewer-name", "show-versions"]) $(id).hidden = S.api < 2;
+  $("stale").hidden = S.api >= 2;
   try {
     S.events = (await (await api("/api/events")).json()).events;
     $("event").replaceChildren(
@@ -365,23 +430,81 @@ function followHash() {
   }
 }
 
+const pendingNavigation = () => S.ticket !== S.opened?.ticket;
+
+/** Refuse changes to the shot left on screen until its replacement has arrived. */
+function stillOpening() {
+  if (!pendingNavigation()) return false;
+  say("the shot is still opening");
+  return true;
+}
+
+function leave() {
+  closeDialog($("versions"));
+  S.versions = [];
+  S.versionsAt = null;
+  S.drag = null;
+  clearTimeout(S.timer);
+}
+
 async function openEvent(event, shot) {
+  const ticket = ++S.ticket;
+  leave();
+  S.queue = [];
+  S.queueEvent = null;
   S.event = event;
   S.categories = S.events.find((row) => row.event === event).categories;
   S.category = known()[0] || 1;
   $("event").value = event;
   store("labeler:event", event);
   renderSwatches();
-  $("queue").replaceChildren();
-  const queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
-  S.queue = queue.shots;
   renderQueue();
+  showHeader();
+  const saveCount = S.saveCount;
+  let queue;
+  try {
+    queue = await (await api(`/api/queue?event=${enc(event)}`)).json();
+  } catch (error) {
+    if (S.event !== event) return;
+    S.queueEvent = event;
+    showNothing(null, `${event}: the queue could not be read: ${error.message}. Choose the event again to retry.`);
+    return;
+  }
+  if (S.event !== event) return;
+  const saved = S.savedRows.get(event);
+  S.queue = queue.shots.map((row) => {
+    const newer = saved?.get(row.shot);
+    return newer && newer.count > saveCount ? newer.row : row;
+  });
+  S.queueEvent = event;
+  if ($("status").textContent === "the queue is still loading") say("");
+  renderQueue();
+  showHeader();
+  if (ticket !== S.ticket) return;
   await openShot(S.queue.some((row) => row.shot === shot) ? shot : queue.resume);
 }
 
+/** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
+function showNothing(shot, text) {
+  cancelAnimationFrame(S.frame);
+  Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
+    undo: [], selected: -1, asked: "", frame: 0, masks: null });
+  showMasks();
+  const note = document.createElement("p");
+  note.className = "failure";
+  note.textContent = text;
+  $("rows").replaceChildren(note);
+  for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
+  arrive();
+}
+
 async function openShot(shot) {
-  if (shot == null) return;
   const ticket = ++S.ticket;
+  leave();
+  if (shot == null) {
+    showNothing(null, `${S.event} has no shots to review.`);
+    return;
+  }
   try {
     let response, meta;
     for (;;) {
@@ -394,33 +517,29 @@ async function openShot(shot) {
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
-    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1 });
+    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null });
     S.label = draft(shot) || baseline();
     buildRows();
     arrive();
     fit();
     fetchRows(0);
     prefetch();
+    loadMasks(ticket);
   } catch (error) {
     if (ticket !== S.ticket) return;
     // Stay on the shot, with nothing to edit, so J, K and U carry on from it.
-    Object.assign(S, { shot, meta: null, data: null, overview: null, label: null, undo: [], selected: -1 });
-    const note = document.createElement("p");
-    note.className = "failure";
-    note.textContent = `${shot} has nothing to show: ${error.message}. K opens the next shot.`;
-    $("rows").replaceChildren(note);
-    for (const canvas of document.querySelectorAll("#top canvas, .track canvas")) context(canvas);
-    arrive();
+    showNothing(shot, `${shot} has nothing to show: ${error.message}. K opens the next shot.`);
   }
 }
 
 /** The header, the address and the queue follow the shot just opened. */
 function arrive() {
+  S.opened = { ticket: S.ticket, event: S.event, shot: S.shot };
   busy(null);
   $("cursor").hidden ||= !S.meta;
-  for (const id of ["save-next", "revert"]) $(id).disabled = !S.meta;
-  history.replaceState(null, "", `#${S.event}/${S.shot}`);
-  $("shot").value = S.shot;
+  for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
+  history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
+  $("shot").value = S.shot ?? "";
   showHeader();
   renderQueue();
   $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
@@ -434,8 +553,14 @@ function busy(text) {
 
 /** Ask for the next shot now, so a build it needs is done when the reviewer gets there. */
 function prefetch() {
-  const next = nextUnreviewed() ?? neighbour(1);
+  const next = neighbour(1);
   if (next != null && next !== S.shot) api(`/api/shot?event=${enc(S.event)}&shot=${next}`).catch(() => {});
+}
+
+function stillLoadingQueue() {
+  if (S.queueEvent === S.event) return false;
+  say("the queue is still loading");
+  return true;
 }
 
 function nextUnreviewed() {
@@ -444,9 +569,20 @@ function nextUnreviewed() {
   return after.find((row) => row.state === "unreviewed")?.shot ?? null;
 }
 
-function neighbour(delta) {
-  const i = S.queue.findIndex((row) => row.shot === S.shot);
+/** The shot `delta` places from `shot` in queue order, wrapping at the ends. */
+function neighbour(delta, shot = S.shot) {
+  const i = S.queue.findIndex((row) => row.shot === shot);
   return S.queue[(i + delta + S.queue.length) % S.queue.length]?.shot ?? null;
+}
+
+/** Open the shot `delta` places along; an unsaved edit stays behind as a draft. */
+async function go(delta) {
+  if (stillLoadingQueue()) return;
+  const saving = S.saving && S.saving.event === S.event && S.saving.shot === S.shot &&
+    same(S.label, S.saving.label);
+  const left = !pendingNavigation() && !saving && dirty() ? S.shot : null;
+  await openShot(neighbour(delta));
+  if (left != null && left !== S.shot) say(`${left}: the edit is kept as a draft, not saved`);
 }
 
 function fetchRows(delay = 90) {
@@ -455,7 +591,7 @@ function fetchRows(delay = 90) {
 }
 
 async function loadRows() {
-  if (!S.meta) return;
+  if (!S.meta || pendingNavigation()) return;
   const [v0, v1] = S.view;
   // A fifth wider than the view either side, so a pan has data while the next one loads.
   const t0 = Math.max(S.meta.t_range[0], v0 - (v1 - v0) * 0.2);
@@ -496,27 +632,43 @@ function unpack(buffer, n) {
 }
 
 async function save(next) {
+  if (stillOpening()) return;
   if (!S.meta || S.saving) return;
-  S.saving = true;
-  const [shot, key] = [S.shot, draftKey(S.shot)];
+  const [event, shot, key, ticket, label] = [S.event, S.shot, draftKey(S.shot), S.ticket, S.label];
+  S.saving = { event, shot, label };
+  const name = S.api >= 2 ? { name: S.name || null } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event: S.event, shot, ...S.label }),
+      body: JSON.stringify({ event, shot, ...label, ...name }),
     });
     const body = await response.json();
-    store(key, null);
-    S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
-    if (S.shot === shot) {
-      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save });
-      S.label = body.saved;
-      showHeader();
-      touch();
+    const saved = S.savedRows.get(event) || new Map();
+    saved.set(shot, { count: ++S.saveCount, row: body.row });
+    S.savedRows.set(event, saved);
+    try {
+      if (same(JSON.parse(stored(key)), label)) store(key, null);
+    } catch {
+      // A malformed draft does not prevent the completed save from being shown.
     }
-    if (next) await openShot(nextUnreviewed() ?? neighbour(1));
+    if (!pendingNavigation() && S.opened?.event === event && S.opened.shot === shot && S.meta) {
+      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save });
+      if (same(S.label, label)) {
+        S.label = body.saved;
+        render();
+      } else {
+        touch(); // a Restore may have been clean against the previous save
+      }
+    }
+    if (S.event === event) {
+      S.queue = S.queue.map((row) => (row.shot === shot ? body.row : row));
+      renderQueue();
+      showHeader();
+    }
+    if (next && ticket === S.ticket) await go(1);
   } catch (error) {
-    say(error.message, true);
+    say(`${shot} not saved: ${error.message}`, true);
   } finally {
     S.saving = false;
   }
@@ -584,6 +736,7 @@ function drawRows() {
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
+    if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
     g.restore();
@@ -613,6 +766,26 @@ function drawImage(g, row, i, h) {
     if (!data) continue;
     const [x0, x1] = [px(data.t0), px(data.t1)];
     g.drawImage(bitmap(row, data, i), 0, row.n_y - stop, data.n, stop - first, x0, 0, x1 - x0, h - 1);
+  }
+}
+
+/** The pseudo-mask over an image row: `--mask` where TokEye's line lies inside the
+ * label's AE frames, `--rejected` where the reviewer rejected the region. */
+function drawMasks(g, row, h) {
+  const m = S.masks;
+  if (!m || !S.showMasks) return;
+  const [lo, hi] = imageRange(row);
+  const y = (f) => (h - 1) * (1 - (f - lo) / (hi - lo));
+  const x = (k) => px(m.grid.t0_ms + k * m.grid.dt_ms);
+  const rejected = new Set(m.rejected);
+  for (const region of m.regions) {
+    g.fillStyle = rejected.has(region.id) ? T.rejected : T.mask;
+    for (const [j, k, n] of region.runs) {
+      const [top, bottom] = [y(m.y0_khz + (j + 0.5) * m.dy_khz), y(m.y0_khz + (j - 0.5) * m.dy_khz)];
+      if (bottom < 0 || top > h) continue;
+      const left = x(k);
+      g.fillRect(left, top, Math.max(1, x(k + n) - left), Math.max(1, bottom - top));
+    }
   }
 }
 
@@ -792,14 +965,14 @@ function drawTrack(canvas, label, editable) {
 }
 
 function showHeader() {
+  const next = neighbour(1);
+  $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   const row = S.queue.find((r) => r.shot === S.shot) || {};
   const last = S.meta?.last_save;
   $("tier").textContent = row.tier || "";
-  $("state").textContent = row.state || "";
+  $("state").textContent = S.queueEvent !== S.event ? "the queue is still loading" : row.state || "";
   $("state").className = `pill ${row.state || ""}`;
-  $("saved").textContent = last
-    ? `saved ${new Date(last.saved_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
-    : "";
+  $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
   const reviewed = S.queue.filter((row) => row.state !== "unreviewed").length;
   $("count").textContent = `${reviewed}/${S.queue.length}`;
@@ -844,6 +1017,7 @@ function renderSwatches() {
 // -- input
 
 function startDrag(event, drag) {
+  if (stillOpening()) return;
   S.drag = { ...drag, base: S.label };
   event.currentTarget.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -852,7 +1026,7 @@ function startDrag(event, drag) {
 function onRowsDown(event) {
   if (event.button !== 0 || !S.meta || event.target.tagName !== "CANVAS") return;
   if (event.shiftKey) startDrag(event, { kind: "new", from: timeAt(event.clientX) });
-  else startDrag(event, { kind: "pan", x: event.clientX, view: S.view });
+  else startDrag(event, { kind: "pan", x: event.clientX, y: event.clientY, view: S.view, canvas: event.target });
 }
 
 function onLabelDown(event) {
@@ -876,9 +1050,11 @@ function dragTo(clientX) {
   const d = S.drag;
   const t = timeAt(clientX);
   if (d.kind === "pan") {
+    d.moved ||= Math.abs(clientX - d.x) > CLICK_PX;
     const shift = ((clientX - d.x) / plotWidth()) * (d.view[1] - d.view[0]);
     return setView(d.view[0] - shift, d.view[1] - shift);
   }
+  if (stillOpening()) return;
   const edges = [...d.base.window];
   const spans = d.base.intervals.map((span) => [...span]);
   let moved = null;
@@ -908,12 +1084,144 @@ function dragTo(clientX) {
   render();
 }
 
-function endDrag() {
+function endDrag(event) {
   const d = S.drag;
   S.drag = null;
+  if (d?.kind === "pan" && d.canvas && !d.moved && event?.type === "pointerup") return clickMask(d);
   if (!d || d.kind === "pan" || same(d.base, S.label)) return;
   keepForUndo(d.base);
   touch();
+}
+
+// -- the AE pseudo-mask: TokEye's lines inside the label, one click per region
+
+const maskSaves = new Map(); // shot -> pending save, survives navigation
+const maskErrors = new Map(); // shot -> last failed save, until a successful retry
+
+/** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
+async function loadMasks(ticket) {
+  if (S.api >= 3 && S.event === MASK_EVENT) {
+    const event = S.event, shot = S.shot;
+    try {
+      await maskSaves.get(shot);
+      if (ticket !== S.ticket) return;
+      const body = await (await api(`/api/masks?event=${enc(event)}&shot=${shot}`)).json();
+      if (ticket !== S.ticket) return;
+      S.masks = body;
+      const failure = maskErrors.get(shot);
+      if (failure) say(failure, true);
+    } catch {
+      // no pseudo-mask for this shot: nothing to draw
+    }
+  }
+  if (ticket !== S.ticket) return;
+  showMasks();
+  render();
+}
+
+function showMasks() {
+  const m = S.masks;
+  $("masks").hidden = !m;
+  if (!m) return;
+  const n = m.regions.length;
+  const kept = n - m.rejected.length;
+  const last = !m.stale && m.last_save;
+  const by = last ? ` · saved${last.name ? ` by ${last.name}` : ""}` : "";
+  const notes = [m.stale ? " · a decision on an older mask was dropped" : "", by, S.showMasks ? "" : " · hidden"];
+  $("masks").textContent = `mask ${kept}/${n} kept${notes.join("")}`;
+}
+
+function toggleMasks() {
+  if (!S.masks) return say("this shot has no pseudo-mask");
+  S.showMasks = !S.showMasks;
+  store("labeler:masks", S.showMasks ? null : "hidden");
+  showMasks();
+  render();
+}
+
+/** A click on an image row, not a drag: reject the region under it, or take that back. */
+function clickMask(d) {
+  if (maskSaves.has(S.shot)) return say("mask is saving; wait for it to finish");
+  const m = S.masks;
+  if (!m || !S.showMasks || m.saving) return;
+  const row = S.meta.rows[[...$("rows").children].indexOf(d.canvas)];
+  if (!row || row.kind !== "image") return;
+  const rect = d.canvas.getBoundingClientRect();
+  const [lo, hi] = imageRange(row);
+  const f = hi - ((d.y - rect.top) / (rect.height - 1)) * (hi - lo);
+  const j = Math.round((f - m.y0_khz) / m.dy_khz);
+  const k = Math.floor((timeAt(d.x) - m.grid.t0_ms) / m.grid.dt_ms);
+  const binPx = ((rect.height - 1) * m.dy_khz) / (hi - lo);
+  const columnPx = (plotWidth() * m.grid.dt_ms) / (S.view[1] - S.view[0]);
+  const reach = (size) => Math.ceil(CLICK_PX / Math.max(size, 1e-6));
+  const region = regionAt(m.regions, j, k, reach(binPx), reach(columnPx));
+  if (!region) return;
+  const rejected = new Set(m.rejected);
+  if (!rejected.delete(region.id)) rejected.add(region.id);
+  saveMasks(m, [...rejected].sort((a, b) => a - b));
+}
+
+/** Save the rejected regions at once, with the typed name; drawn before the answer. */
+function saveMasks(m, rejected) {
+  if (maskSaves.has(m.shot)) return say("mask is saving; wait for it to finish");
+  const pending = persistMasks(m, rejected, S.event);
+  maskSaves.set(m.shot, pending);
+  return pending;
+}
+
+async function persistMasks(m, rejected, event) {
+  const before = m.rejected;
+  const current = () => S.event === event && S.masks?.shot === m.shot &&
+    S.masks.pseudo_sha256 === m.pseudo_sha256;
+  let conflict = false;
+  Object.assign(m, { rejected, saving: true });
+  showMasks();
+  render();
+  try {
+    const response = await api("/api/masks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        event,
+        shot: m.shot,
+        pseudo_sha256: m.pseudo_sha256,
+        revision: m.revision,
+        rejected,
+        name: S.name || null,
+      }),
+    });
+    const body = await response.json();
+    const saved = { rejected: body.rejected, last_save: body.last_save,
+      revision: body.revision, stale: false };
+    Object.assign(m, saved);
+    maskErrors.delete(m.shot);
+    if (current()) Object.assign(S.masks, saved);
+    const n = body.rejected.length;
+    if (current()) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
+  } catch (error) {
+    m.rejected = before;
+    conflict = error.status === 409;
+    maskErrors.set(m.shot, conflict
+      ? "mask decisions changed; reloaded the current masks — click again"
+      : error.message);
+    if (current()) {
+      S.masks.rejected = before;
+      say(error.message, true);
+    }
+  } finally {
+    m.saving = false;
+    if (current()) S.masks.saving = false;
+    maskSaves.delete(m.shot);
+  }
+  if (conflict && S.event === event && S.shot === m.shot) {
+    await loadMasks(S.ticket);
+    if (S.event === event && S.shot === m.shot) {
+      say("mask decisions changed; reloaded the current masks — click again", true);
+    }
+  }
+  if (!current()) return;
+  showMasks();
+  render();
 }
 
 function onWheel(event, zoomAlways) {
@@ -943,17 +1251,89 @@ function showCursor(clientX) {
 
 function toggleKeys() {
   const dialog = $("keys");
-  if (dialog.open) dialog.close();
+  if (dialog.open) closeDialog(dialog);
   else dialog.showModal();
+}
+
+/** Close a dialog and give the keys back to the page, not to a button left inside it. */
+function closeDialog(dialog) {
+  if (dialog.contains(document.activeElement)) document.activeElement.blur();
+  dialog.close();
+}
+
+/** The shot's saved versions, newest first; H again, Escape or Close shuts them. */
+async function toggleVersions() {
+  if (stillOpening()) return;
+  const dialog = $("versions");
+  if (dialog.open) return closeDialog(dialog);
+  if (!S.meta || S.api < 2) return;
+  const { ticket, event, shot } = S.opened;
+  try {
+    const body = await (await api(`/api/history?event=${enc(event)}&shot=${shot}`)).json();
+    if (ticket !== S.ticket) return;
+    S.versions = body.versions;
+    S.versionsAt = S.opened;
+    renderVersions();
+    dialog.showModal();
+  } catch (error) {
+    say(error.message, true);
+  }
+}
+
+function renderVersions() {
+  const changes = versionChanges(S.versions, S.meta.source);
+  const items = S.versions.map((version, i) => {
+    const item = document.createElement("li");
+    const who = version.name ? `${version.name} (${version.reviewer})` : version.reviewer || "unknown";
+    const n = version.intervals.length;
+    const moved = changes[i] == null ? "first label" : `${changes[i]} ms changed`;
+    const text = document.createElement("span");
+    text.textContent = `v${version.version} · ${when(version.saved_at)} · ${who} · ${n} span${n === 1 ? "" : "s"} · ${moved}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.version = version.version;
+    button.textContent = "Restore";
+    item.append(text, button);
+    return item;
+  });
+  const none = Object.assign(document.createElement("li"), { textContent: "Not saved yet." });
+  $("version-list").replaceChildren(...(items.length ? items.reverse() : [none]));
+}
+
+/** Load a saved version as the draft: saving it appends a new version, so none is lost. */
+function restoreVersion(number) {
+  if (stillOpening()) return;
+  const at = S.versionsAt;
+  if (!at || at !== S.opened || at.event !== S.event || at.shot !== S.shot) {
+    return say("this history belongs to a shot that is no longer open");
+  }
+  const found = S.versions.find((version) => version.version === number);
+  if (!found || !S.meta) return;
+  closeDialog($("versions"));
+  const label = normalise(found.window, found.intervals, known());
+  if (!label) return say(`version ${number} does not fit this event's categories`, true);
+  if (same(label, S.label)) return say(`version ${number} is already the current label`);
+  const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
+  S.selected = -1;
+  edit(label.window, label.intervals);
+  say(`version ${number} restored as a draft: Enter or S saves it as a new version${replaced}`);
 }
 
 const KEYS = {
   Enter: () => save(true),
   s: () => save(false),
   r: revert,
-  j: () => openShot(neighbour(-1)),
-  k: () => openShot(neighbour(1)),
-  u: () => (nextUnreviewed() == null ? say("all reviewed") : openShot(nextUnreviewed())),
+  h: toggleVersions,
+  m: toggleMasks,
+  j: () => go(-1),
+  k: () => go(1),
+  ArrowLeft: () => go(-1),
+  ArrowRight: () => go(1),
+  u: () => {
+    if (stillLoadingQueue()) return;
+    if (nextUnreviewed() == null) say(S.queue.length ? "all reviewed" : "no shots to review");
+    else openShot(nextUnreviewed());
+  },
   "[": () => contrast(-16),
   "]": () => contrast(16),
   Escape: () => {
@@ -962,20 +1342,29 @@ const KEYS = {
   },
   Delete: removeSelected,
   Backspace: removeSelected,
-  ArrowLeft: () => pan(-0.1),
-  ArrowRight: () => pan(0.1),
+  "Shift+ArrowLeft": () => pan(-0.1),
+  "Shift+ArrowRight": () => pan(0.1),
   "-": () => zoomAt(middle(), 1.25),
   "=": () => zoomAt(middle(), 0.8),
   "+": () => zoomAt(middle(), 0.8),
   0: fit,
 };
 
-const MOVES = new Set(["j", "k", "u"]); // the keys that work on a shot with nothing to show
+// The keys that work on a shot with nothing to show.
+const MOVES = new Set(["j", "k", "u", "ArrowLeft", "ArrowRight"]);
 
 function onKey(event) {
   const target = event.target;
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+  const key = event.shiftKey && typed.startsWith("Arrow") ? `Shift+${typed}` : typed;
   if (target.closest("input, select, textarea")) return;
+  if ($("versions").open) {
+    if (key === "Enter" || key === "h") {
+      event.preventDefault();
+      closeDialog($("versions"));
+    }
+    return;
+  }
   if (target.closest("button") && (key === "Enter" || key === " ")) return;
   if (key === "?" || $("keys").open) return key === "?" && toggleKeys();
   const mod = event.ctrlKey || event.metaKey;
@@ -1030,7 +1419,31 @@ function wire() {
   });
   $("save-next").addEventListener("click", () => save(true));
   $("revert").addEventListener("click", () => S.meta && revert());
+  $("show-versions").addEventListener("click", toggleVersions);
   $("help").addEventListener("click", toggleKeys);
+  for (const dialog of document.querySelectorAll("dialog")) {
+    // Chrome can leave focus on a button in a closed dialog, and Enter would then click it
+    // instead of saving: let go of it as Escape cancels the dialog, and again once closed.
+    const release = () => dialog.contains(document.activeElement) && document.activeElement.blur();
+    dialog.addEventListener("cancel", release);
+    dialog.addEventListener("close", release);
+  }
+  // A button clicked with the mouse gives the keys back, so Enter saves instead of clicking it again.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.("button");
+    if (button && event.detail > 0) button.blur();
+  });
+  $("version-list").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-version]");
+    if (button) restoreVersion(Number(button.dataset.version));
+  });
+  $("reviewer-name").addEventListener("input", () => {
+    S.name = $("reviewer-name").value.trim();
+    store("labeler:name", S.name || null);
+  });
+  $("reviewer-name").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === "Escape") $("reviewer-name").blur();
+  });
   new ResizeObserver(() => {
     sizeCanvases();
     render();
@@ -1039,7 +1452,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, niceStep, hitTest, lut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, regionAt, lut };
 } else {
   boot();
 }

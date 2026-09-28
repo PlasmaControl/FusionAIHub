@@ -1,7 +1,13 @@
 """Paths resolve from the environment and nothing else hard-codes a root."""
+
 from pathlib import Path
 
+import pandas as pd
+import pytest
+
+from labeler import config
 from labeler.config import Paths, git_sha
+from labeler.events.catalog.points import validate_csv_fields
 
 
 def test_default_root_is_group_storage():
@@ -68,15 +74,15 @@ def test_git_sha_is_a_string():
 
 
 def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
-    monkeypatch, tmp_path,
+    monkeypatch,
+    tmp_path,
 ):
     # The shot-scope text source: one 616 MB file with a JSON record per
     # line, read-only like the corpus. What labeler writes is the SUBSET
     # of it for the shots in hand, under our own root, so the cache is a
     # thing we own and can delete and the source is a thing we never touch.
     assert Paths().logs_jsonl == Path(
-        "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text"
-        "/sql/logs.jsonl"
+        "/scratch/gpfs/EKOLEMEN/big_d3d_data/foundation_model_text/sql/logs.jsonl"
     )
     monkeypatch.setenv("LABELER_LOGS_JSONL", str(tmp_path / "logs.jsonl"))
     assert Paths.from_env().logs_jsonl == tmp_path / "logs.jsonl"
@@ -92,7 +98,8 @@ def test_the_logbook_jsonl_is_a_read_only_file_and_the_cache_is_ours(
 
 
 def test_the_label_tables_root_is_the_repo_and_is_overridable(
-    monkeypatch, tmp_path,
+    monkeypatch,
+    tmp_path,
 ):
     # Curated label tables are DATA and live under `data/events/`, never
     # under `src/`. The default resolves relative to the package rather
@@ -127,3 +134,23 @@ def test_spectrograms_live_under_the_root(tmp_path):
 def test_raw_cache_honours_the_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("LABELER_RAW_CACHE", str(tmp_path / "elsewhere"))
     assert Paths.from_env().raw_cache == tmp_path / "elsewhere"
+
+
+def test_named_bytes_reads_snapshot_and_names_source(tmp_path):
+    path = tmp_path / "snapshot.csv"
+    data = b"snapshot\x00\xff\n"
+    source = config.NamedBytes(data, path)
+    assert source.read() == data
+    assert source.name == str(path)
+    assert str(source) == str(path)
+
+
+def test_named_bytes_reader_refusal_names_source(tmp_path):
+    path = tmp_path / "ragged.csv"
+    source = config.NamedBytes(b"shot,time\n185601,1,extra\n", path)
+    with pytest.raises(pd.errors.ParserError) as exc:
+        validate_csv_fields(source)
+    error = str(exc.value)
+    assert "row 2: expected 2 fields, got 3" in error
+    assert str(path) in error
+    assert "BytesIO" not in error

@@ -94,9 +94,15 @@ def read_roster(path) -> pd.DataFrame:
     return validate_roster(frame)
 
 
-def write_roster(frame: pd.DataFrame, path) -> None:
-    """Validate, sort by shot, and write one roster."""
-    validated = validate_roster(frame).sort_values("shot", ignore_index=True)
+def write_roster(frame: pd.DataFrame, path, *, keep_order: bool = False) -> None:
+    """Validate and write one roster, sorted by shot unless `keep_order`.
+
+    The review page takes shots in roster order; a cohort roster is in queue order
+    (`review.cohort_rosters`).
+    """
+    validated = validate_roster(frame)
+    if not keep_order:
+        validated = validated.sort_values("shot", ignore_index=True)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     validated.to_csv(path, index=False)
 

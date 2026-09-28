@@ -1,12 +1,13 @@
-"""The Heidbrink AE rows: CO2 power per chord and cross-power against R0.
+"""The Heidbrink AE rows: CO2 cross-power of R0 against each other chord.
 
 The CO2 interferometer's four chords (R0, V1, V2, V3) are resampled to
 500 kHz and given a Hann STFT of 512 samples every 128: 0.256 ms columns,
 257 bins 0.977 kHz apart up to 250 kHz. Each frequency bin is flattened by
 its median over 0-6 s, so the colour is dB above that bin's own background
-and one scale (-3 to 27 dB) serves every shot. The cross-power rows average
+and one scale (-3 to 27 dB) serves every shot. Each row averages
 R0 x conj(chord) over 8 columns before the magnitude: a coherent mode adds
-up, incoherent noise cancels.
+up, incoherent noise cancels. The chords' own power rows are not kept; noise
+on one chord is what the cross-power removes.
 """
 
 from __future__ import annotations
@@ -29,6 +30,8 @@ QUIET_MS = (0.0, 6000.0)
 Z_DB = (-3.0, 27.0)
 BAND_KHZ = (80.0, 250.0)
 CHORDS = ("R0", "V1", "V2", "V3")
+# Stores built before 2026-09-23 also hold each chord's own power, named by chord.
+DROPPED = frozenset(CHORDS)
 PARAMS = {
     "rate_hz": RATE_HZ,
     "nperseg": NPERSEG,
@@ -42,7 +45,7 @@ PARAMS = {
 
 
 def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
-    """Seven image rows (four powers, three cross-powers) on one grid."""
+    """Three cross-power image rows, R0 against V1, V2 and V3, on one grid."""
     time_ms = np.asarray(time_ms, dtype=np.float64)
     # The rate from the span, not a median step: float32 time vectors quantise.
     rate = (len(time_ms) - 1) / ((time_ms[-1] - time_ms[0]) / 1000)
@@ -63,7 +66,6 @@ def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
     quiet = (centres >= QUIET_MS[0]) & (centres <= QUIET_MS[1])
     if not quiet.any():
         quiet[:] = True
-    power = 10 * np.log10(np.abs(spec) ** 2 + 1e-30)
     cross = []
     for k in range(1, len(CHORDS)):
         product = spec[0] * np.conj(spec[k])
@@ -71,8 +73,8 @@ def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
             uniform_filter1d(product.imag, CROSS_COLUMNS, axis=-1)
         )
         cross.append(10 * np.log10(np.abs(mean) + 1e-30))
-    names = [*CHORDS, *(f"R0x{c}" for c in CHORDS[1:])]
-    titles = [*CHORDS, *(f"R0 × {c}" for c in CHORDS[1:])]
+    names = [f"R0x{c}" for c in CHORDS[1:]]
+    titles = [f"R0 × {c}" for c in CHORDS[1:]]
     grid = Grid(float(centres[0] - dt_ms / 2), float(dt_ms), len(centres))
     rows = [
         ImageRow(
@@ -80,7 +82,7 @@ def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
             y0=float(freq[0] / 1000), dy=float((freq[1] - freq[0]) / 1000),
             y_units="kHz", z_lo=Z_DB[0], z_hi=Z_DB[1], z_units="dB", band=BAND_KHZ,
         )
-        for name, title, db in zip(names, titles, [*power, *cross])
+        for name, title, db in zip(names, titles, cross)
     ]
     return grid, rows
 

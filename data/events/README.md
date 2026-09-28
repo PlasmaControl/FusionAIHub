@@ -22,9 +22,26 @@ data/events/<category>/
     <shot-list>/
       <shot>.npz                            # sampled time × rho labels
   review/
-    <shot>__<reviewer>__<stamp>.csv         # what a human asserts; append-only
+    labels.csv                              # catalog review page's intervals
+    history.jsonl                           # catalog review page's save history
+    points.csv                              # catalog review points
+    blind/
+      <reader>/
+        labels.csv
+        points.csv
+        history.jsonl
+    adjudicated/
+      labels.csv
+      points.csv
+      history.jsonl
+    <shot>__<reviewer>__<stamp>.csv           # notebook corrections; append-only
     _cache/                                 # fetch cache, not a claim; deletable
 ```
+
+`catalog/` sits beside the categories but is not one: it holds the event
+catalog's shared tables (the cohort, its manifest and the literature links; see
+[`catalog/README.md`](catalog/README.md)). `events.yaml` lists it under
+`non_category_dirs`, and category scans skip it.
 
 ## Interval CSVs
 
@@ -45,12 +62,145 @@ The per-shot binary grid represents their union.
 The interval table is retained even for large exports; it is no longer replaced
 by a shot-count summary above 50,000 rows. The CSV category is a nonnegative integer, matching the grid IDs. Every JSON
 sidecar has a `categories` ID-to-name mapping, also listed under **Category**
-in the event README. Binary labels use 0=absent, 1=present. Missing is not 0.
+in the event README. For other categories, binary labels use 0=absent, 1=present.
+Missing is not 0.
 
 `labeler.events.interval_tables.validate_intervals` validates this public
 schema. The event loader reads it through `events.yaml` and converts milliseconds
 to seconds internally. It also supports the older internal event-table schema.
 Undated `format_datasets` entries are pending and are not loaded.
+
+## Catalog categories
+
+The six catalog categories are `alfven_eigenmode`, `neoclassical_tearing_mode`,
+`high_confinement_mode`, `edge_localized_mode`, `sawtooth_oscillation` and `disruption`.
+For these categories, the `category` column is the state: 0 absent, 1 present,
+2 uncertain, 3 not observable. Time with no row was not assessed; it is not absent.
+
+An optional sixth column, `attrs`, holds a JSON object per row (interval schema 6;
+five-column tables stay valid). A blank cell means no attributes.
+
+The table lists every allowed attribute key, including the shared `reason`.
+Attributes are optional. Numbers must be finite; booleans are not numeric values.
+Units are given for physical quantities; other attributes have no physical units.
+NTM is always observable because magnetics are an inclusion rule; disruption is
+always observable because Ip always exists.
+
+<table id="catalog-phenomena">
+<thead>
+<tr><th>Phenomenon</th><th>Attributes: types, values and units</th>
+<th>Point kinds</th><th>Can be not observable?</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><code>alfven_eigenmode</code></td>
+<td><code>type</code>: string, RSAE / TAE / other;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>Yes</td>
+</tr>
+<tr>
+<td><code>neoclassical_tearing_mode</code></td>
+<td><code>m</code>: integer ≥ 2;<br />
+<code>n</code>: integer ≥ 1;<br />
+<code>efit_tree</code>: string, efit01 / efit02;<br />
+<code>seed</code>: string, sawtooth / elm / fishbone / none;<br />
+<code>confinement</code>: string, L / H;<br />
+<code>locked</code>: boolean, true / false;<br />
+<code>override</code>: string, island_not_resolved / q_unreliable /
+classical_tm / not_tearing_mode;<br />
+<code>other_mhd</code>: string, m1 / classical_tm / fishbone / eho / kink;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>No</td>
+</tr>
+<tr>
+<td><code>high_confinement_mode</code></td>
+<td><code>variant</code>: string, standard / QH / other;<br />
+<code>reason</code>: nonblank string</td>
+<td>None</td><td>Yes</td>
+</tr>
+<tr>
+<td><code>edge_localized_mode</code></td>
+<td><code>frequency_hz</code>: number > 0, Hz;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>elm</code></td><td>Yes</td>
+</tr>
+<tr>
+<td><code>sawtooth_oscillation</code></td>
+<td><code>period_ms</code>: number > 0, ms;<br />
+<code>inversion_channel</code>: integer ≥ 1 and ≤ 48;
+<span>TECEF channel number = corpus 0-based ECE row + 1. Sawtooth panel titles
+and heuristic inversion_channel_lo/_stop use 0-based rows. The owner must
+define which side of the inversion it names before anyone records it.</span><br />
+<code>inversion_radius_m</code>: number > 0, m;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>crash</code></td><td>Yes</td>
+</tr>
+<tr>
+<td><code>disruption</code></td>
+<td><code>intentional</code>: boolean, true / false;<br />
+<code>phase</code>: string, flattop / rampdown;<br />
+<code>reason</code>: nonblank string</td>
+<td><code>t_D</code>, <code>t80</code>, <code>t20</code></td><td>No</td>
+</tr>
+</tbody>
+</table>
+
+`inversion_radius_m` is the sawtooth inversion radius as a minor radius:
+the distance from the magnetic axis along the ECE's midplane line of sight,
+in metres. It is neither the major radius R nor a normalised radius.
+
+`review/points.csv` holds point events with these columns:
+
+```csv
+shot,phenomenon,kind,t_ms,attrs,window_start_ms,window_end_ms
+```
+
+`t_ms` keeps the signal's own resolution in milliseconds. For points checked in a
+blind window, set both bounds of the half-open window
+`[window_start_ms, window_end_ms)`; otherwise leave both blank.
+
+Run the checker with:
+
+```text
+python -m labeler.events.catalog.check [categories ...] [--root DIR] [--windows CSV]
+```
+
+It exits 1 on any finding and 2 on bad arguments.
+
+### What the checker certifies
+
+- Each shot's rows have positive length and tile their labelled window without
+  gaps or overlaps. States are 0 absent, 1 present, 2 uncertain or 3 not observable;
+  NTM and disruption cannot use state 3. Unlabelled time remains unassessed.
+- Label boundaries are whole milliseconds; writers use half-up `whole_ms`.
+  Point times retain the signal's fractional millisecond resolution.
+- Attributes use only the keys, types, allowed words and bounds in the table
+  above. Attributes remain optional; numeric values are finite and booleans are
+  distinct from numbers. Units describe the recorded quantities.
+- When allowed windows are supplied, labelled windows stay inside them. Missing
+  shots in the allowed-window mapping are left alone. A labelled window may
+  start later than the allowed start, but the start has no slack before it.
+  A labelled window may not start at or after the allowed end. D19 allows only
+  the final present disruption span to end up to 2 ms past the allowed window
+  end, and that span must start before the allowed end; absent and uncertain
+  spans receive no extension.
+- Points have the phenomenon's point kinds, finite times and valid attributes,
+  with no repeated `(shot, phenomenon, kind, t_ms)` entries. They require a labels
+  table and lie in its assessed `[start, end)` window. If a disruption's labelled
+  window reaches the allowed end, D19 admits t80, t_D and t20 from that end through
+  end + 2 ms, inclusive. This does not extend other phenomena or earlier labelled
+  windows. Explicit blind point windows remain half-open, with both bounds set.
+- A present disruption requires t80 and t20. Any disruption points require all
+  three kinds, t80, t_D and t20, at most once each. t80 precedes t20, and the pair
+  requires exactly one present span whose bounds agree with them within 1 ms.
+  D17 places t_D in `[t80 - margin, t20 + margin]`, inclusive, where
+  `margin = max(2 ms, (t20 - t80) / 4)`. D19 leaves this margin unchanged.
+- An uncertain disruption span alone does not require quench points. If points
+  are supplied, they still face the same checks and cannot replace the required
+  present span. Uncertain spans still obey tiling, attributes and window checks.
+- Empty CSV records are skipped. Ragged rows and repeated header names are
+  refused before parsing can shift fields or rename columns. Windows files may
+  include uniquely named cohort columns alongside their three required columns.
 
 ## Review rosters
 
@@ -83,6 +233,13 @@ agreeing with `reviewers`. It does not check `tier` against the reviewer
 list.
 
 ## Verification notebooks
+
+The verification notebooks write per-shot correction files and update `shots.csv`,
+as described below. The catalog's review page writes `review/labels.csv` and appends
+to `review/history.jsonl`. It replaces the selected shot's intervals while keeping
+every other shot's rows exactly, including their attribute text. Saving over a shot
+whose rows carry `attrs` is refused with HTTP 409; its labels and history stay
+unchanged. Catalog point events belong in `review/points.csv` beside these files.
 
 `verification.ipynb` in each category shows one shot's signals against its
 saved labels, where there are any, and takes back corrections:
