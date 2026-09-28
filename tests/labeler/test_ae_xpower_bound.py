@@ -21,6 +21,7 @@ from labeler.ae.xpower import (
     suggestions_dir,
     train,
 )
+from labeler.config import Paths, sha256_of
 from labeler.events.review import labels
 
 from . import ae_tree
@@ -230,6 +231,40 @@ def test_a_snapshot_versions_gallery_reads_only_its_snapshot(tmp_path, monkeypat
     ae_tree.chosen(paths, {101: "train", 102: "val", 103: "test"}, "v2")
     live = labels.labels_path(xpower.event_dir(paths))
     live.write_bytes(b"the owner kept saving")  # not v2's labels
+    # v2's pictures come after its test: the record of it, as evaluate writes it.
+    models = model_dir(paths, "v2")
+    meta = {"model_sha256": sha256_of(models / "band80-mhd3" / "model.pt")}
+    (models / "evaluation.json").write_text(json.dumps({"meta": meta}))
     assert gallery.main(["--version", "v2", "--workers", "1"]) == 0
     index = pd.read_csv(gallery.gallery_dir(paths, "v2") / "index.csv")
     assert set(index.group) == {"reviewed"} and len(index) == 3
+
+
+def test_a_gallery_from_a_models_directory_under_runs_draws_under_runs(
+    tmp_path, monkeypatch
+):
+    """The reviewer's Minor 6: a pilot's pictures never overwrite the version's."""
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"})
+    ae_tree.env(monkeypatch, paths)
+    ae_tree.chosen(paths, {101: "train", 102: "test"})
+    pilot = paths.runs / "ae_xpower" / "pilot" / "v1"
+    shutil.copytree(model_dir(paths, "v1"), pilot)
+    assert gallery.main(["--models", str(pilot), "--workers", "1"]) == 0
+    assert (pilot / "gallery" / "reviewed" / "101.jpg").is_file()
+    assert sorted(pd.read_csv(pilot / "gallery" / "index.csv").shot) == [101, 102]
+    assert not gallery.gallery_dir(paths, "v1").exists()
+
+
+@pytest.mark.parametrize("module", [evaluate, gallery, extend])
+def test_the_models_help_names_the_versions_directory(
+    tmp_path, monkeypatch, capsys, module
+):
+    ae_tree.env(
+        monkeypatch,
+        Paths(root=tmp_path / "root", corpus=tmp_path, label_tables=tmp_path),
+    )
+    with pytest.raises(SystemExit) as error:
+        module.main(["--help"])
+    assert error.value.code == 0
+    text = " ".join(capsys.readouterr().out.split())
+    assert "models/ae_xpower/<version>" in text and "ae_xpower/v1" not in text

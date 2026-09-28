@@ -14,8 +14,10 @@ v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
 model's `split.csv`, checked before scoring to be v2 test shots) as a second
 table and a `v1_subset` block; the bar is judged on the whole split only.
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
-repeated, and a pilot there scores 20 test shots at most; `--version` must be
-the models directory's name and the version its checkpoints record.
+repeated, and a pilot there scores 20 test shots at most, and for a
+cross-validated version only a pilot choice's model (never a copy of the
+version's final model); `--version` must be the models directory's name and the
+version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -602,6 +604,16 @@ def run_test(
     check_bound(version, models, blob, file)
     cv_meta = {}
     if version in CV_VERSIONS:
+        choice_file = models / "cv" / "choice.json"
+        if pilot_area(models, paths.runs) and not json.loads(
+            choice_file.read_bytes()
+        ).get("pilot"):
+            # A look there can be repeated: a pilot's model only, never a copy
+            # of the final model of a full choice.
+            raise ValueError(
+                f"{choice_file}: not a pilot's choice; its final model is scored "
+                f"once, outside {paths.runs}"
+            )
         chosen = cv_chosen(paths, models, version, split=split)
         cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
@@ -683,7 +695,7 @@ def main(argv=None) -> int:
         help="score the chosen model once on the test shots (the default)",
     )
     p.add_argument(
-        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
+        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/<version>"
     )
     p.add_argument("--version", default=VERSION)
     p.add_argument("--limit", type=int, default=0, help="the first N shots (pilots)")

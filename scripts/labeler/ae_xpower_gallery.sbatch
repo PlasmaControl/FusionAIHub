@@ -16,6 +16,8 @@
 # writes $LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-$VERSION/{reviewed,unreviewed}/<shot>.jpg
 # (VERSION defaults to v1; v2's owner labels are its snapshot) and
 # index.csv. A shot the owner saves later is redrawn by running it again (its row is replaced).
+# v2 is drawn only after its test: it refuses until models/ae_xpower/v2/evaluation.json has
+# scored the chosen model, since the pictures give F1 against the owner on the test shots.
 #
 #   pilot:      SHOTS="170659 170813" sbatch <this>
 #   full run:   sbatch <this>

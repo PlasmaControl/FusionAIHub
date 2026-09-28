@@ -4,17 +4,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from labeler.ae import xpower
-from labeler.ae.xpower import cv, evaluate, model_dir, train
+from labeler.ae.xpower import cv, evaluate, gallery, model_dir, train
 from labeler.config import Paths, sha256_of
 from labeler.events.review import labels
 
 from . import ae_tree
-from .test_ae_xpower_cv import POOL, TEST, _all_folds, _designed, cv_tree
+from .test_ae_xpower_cv import (
+    NAMES,
+    POOL,
+    TEST,
+    _all_folds,
+    _designed,
+    _fake_fit,
+    cv_tree,
+)
 from .test_ae_xpower_evaluate import _Fires
 from .test_ae_xpower_model import _toy
 
@@ -215,6 +225,91 @@ def test_the_final_model_takes_no_epochs(tmp_path, monkeypatch, capsys):
     _refused(capsys, train.main, args, "--epochs", "final_epochs")
     assert not (models / "band80-mhd3").exists()
     assert not (models / "chosen.json").exists()
+
+
+def _final_and_v1(tmp_path, monkeypatch):
+    """v2's final model from its choice, and a v1 that tests 111; the paths."""
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    ae_tree.chosen(paths, {**dict.fromkeys(POOL, "train"), 111: "test"})  # v1
+    monkeypatch.setattr(
+        evaluate, "load_seldnet", lambda paths: _Fires(np.ones(783, bool))
+    )
+    return paths
+
+
+def test_a_copy_of_the_final_model_under_runs_is_never_scored(
+    tmp_path, monkeypatch, capsys
+):
+    """The reviewer's probe 2: a full choice's model copied under runs/ would take
+    20-shot looks at the test shots, again and again."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    copy = paths.runs / "ae_xpower" / "pilot" / "v2"
+    shutil.copytree(model_dir(paths, "v2"), copy)
+    args = ["--test", "--version", "v2", "--models", str(copy), "--limit", "1"]
+    _refused(capsys, evaluate.main, args, str(copy / "cv" / "choice.json"), "pilot")
+    assert not (copy / "evaluation.json").exists()
+
+
+def test_a_pilot_choices_model_is_scored_and_drawn_under_runs(
+    tmp_path, monkeypatch, capsys
+):
+    paths, _ = cv_tree(tmp_path, monkeypatch)
+    _designed(monkeypatch)
+    monkeypatch.setattr(train, "fit", _fake_fit([]))
+    pilot = ["--pilot", "5"]  # one shot a fold
+    assert cv.main(["--folds", *pilot]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k), *pilot]) == 0
+    assert cv.main(["--choose", *pilot]) == 0
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv", "--pilot", "6"]) == 0
+    runs = paths.runs / "ae_xpower" / "pilot" / "v2"
+    name = json.loads((runs / "chosen.json").read_text())["candidate"]
+    split = train.read_split(runs / name / "split.csv")
+    assert split == {**dict.fromkeys(POOL[:6], "train"), **dict.fromkeys(TEST, "test")}
+    ae_tree.chosen(paths, {**dict.fromkeys(POOL, "train"), 111: "test"})  # v1
+    monkeypatch.setattr(
+        evaluate, "load_seldnet", lambda paths: _Fires(np.ones(783, bool))
+    )
+    args = ["--version", "v2", "--models", str(runs)]
+    drawn = [*args, "--workers", "1", "--shots", "101", "111"]
+    # Its pictures show F1 on test shots: not before the pilot's own scoring.
+    _refused(capsys, gallery.main, drawn, str(runs / "evaluation.json"))
+    assert evaluate.main(["--choose", *args, "--limit", "1"]) == 0
+    assert evaluate.main(["--test", *args, "--limit", "1"]) == 0
+    record = json.loads((runs / "evaluation.json").read_text())
+    assert record["frames"]["shots"] == 1 and record["meta"]["limit"] == 1
+    assert gallery.main(drawn) == 0
+    # A pilot's pictures stay under runs/, never in the version's gallery.
+    index = pd.read_csv(runs / "gallery" / "index.csv")
+    assert sorted(index.shot) == [101, 111]
+    assert (runs / "gallery" / "reviewed" / "111.jpg").is_file()
+    assert not gallery.gallery_dir(paths, "v2").exists()
+    assert not (model_dir(paths, "v2") / "evaluation.json").exists()
+
+
+def test_the_gallery_of_a_cross_validated_version_waits_for_its_test(
+    tmp_path, monkeypatch, capsys
+):
+    """The reviewer's probe 4: the pictures' F1 vs the owner on the test shots is
+    a look at them, so it comes after the one test of the model it draws."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    evaluation = models / "evaluation.json"
+    args = ["--version", "v2", "--workers", "1", "--shots", "101", "111"]
+    _refused(capsys, gallery.main, args, str(evaluation), "evaluate --test")
+    assert not gallery.gallery_dir(paths, "v2").exists()
+    assert evaluate.main(["--test", "--version", "v2"]) == 0
+    assert gallery.main(args) == 0
+    index = pd.read_csv(gallery.gallery_dir(paths, "v2") / "index.csv")
+    assert index.set_index("shot").split.to_dict() == {101: "train", 111: "test"}
+    record = json.loads(evaluation.read_text())
+    record["meta"]["model_sha256"] = hashlib.sha256(b"another model").hexdigest()
+    evaluation.write_text(json.dumps(record))
+    _refused(capsys, gallery.main, args, str(evaluation), "another model")
 
 
 def _env(tmp_path, monkeypatch) -> Paths:

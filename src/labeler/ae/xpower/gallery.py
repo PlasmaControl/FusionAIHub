@@ -3,12 +3,17 @@
     python -m labeler.ae.xpower.gallery [--workers N] [--shots S ...] [--models DIR]
 
 draws every AE180 shot from its review store into
-`$LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-v1/reviewed/<shot>.jpg` (the
-owner has saved it) or `unreviewed/<shot>.jpg` (not yet: the strip is then the
-source table's), and writes `index.csv` beside the folders. `extend` draws its
-shots into `extension/` with the same `draw`. A version with a label snapshot (v2)
-takes the owner's labels from its snapshot, not the live file; `--version` must
-be the models directory's name and the checkpoint's version.
+`$LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-<version>/reviewed/<shot>.jpg`
+(the owner has saved it) or `unreviewed/<shot>.jpg` (not yet: the strip is then
+the source table's), and writes `index.csv` beside the folders; from a models
+directory under `runs/` (a pilot's), into its own `gallery/` instead, never the
+version's. `extend` draws its shots into `extension/` with the same `draw`. A
+version with a label snapshot (v2) takes the owner's labels from its snapshot,
+not the live file; `--version` must be the models directory's name and the
+checkpoint's version. A version chosen by cross-validation (v2) is drawn only
+after its test: a picture gives the model's F1 against the owner on a test shot
+too, so the gallery refuses until the models directory's `evaluation.json` has
+scored the model it draws (`check_tested`).
 
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
 scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
@@ -22,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import os
 from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -32,11 +38,12 @@ import numpy as np
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
 
-from ...config import Paths, atomic_path
+from ...config import Paths, atomic_path, sha256_of
 from ...events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ...events.review import labels
 from ...scoring.frames import FRAME_MS
 from . import (
+    CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
     VERSION,
@@ -44,6 +51,7 @@ from . import (
     event_dir,
     gallery_dir,
     model_dir,
+    pilot_area,
     read_snapshot,
     tokeye_masks,
 )
@@ -191,11 +199,41 @@ def draw(
         fig.savefig(tmp, format="jpeg", pil_kwargs={"quality": 85})
 
 
+def pictures_dir(paths: Paths, models: Path, version: str) -> Path:
+    """The version's gallery; for a models directory under `runs/` (a pilot's),
+    its own `gallery/`, so that a pilot never draws over the version's."""
+    if pilot_area(models, paths.runs):
+        return models / "gallery"
+    return gallery_dir(paths, version)
+
+
+def check_tested(models: Path, version: str, model_file: Path) -> None:
+    """A cross-validated version's pictures give its model's F1 against the owner
+    on the test shots too, so they come after the one test of that model:
+    `evaluation.json` in its models directory, naming the model's sha256."""
+    if version not in CV_VERSIONS:
+        return
+    evaluation = models / "evaluation.json"
+    if not evaluation.is_file():
+        raise FileNotFoundError(
+            f"{evaluation}: no test yet; version {version}'s pictures are drawn "
+            "after evaluate --test"
+        )
+    meta = json.loads(evaluation.read_text()).get("meta", {})
+    if meta.get("model_sha256") != sha256_of(model_file):
+        raise ValueError(f"{evaluation}: scored another model than {model_file}")
+
+
 _WORKER: dict = {}
 
 
 def _init(
-    model_file: str, root: str, label_tables: str, corpus: str, version: str = VERSION
+    model_file: str,
+    root: str,
+    label_tables: str,
+    corpus: str,
+    version: str,
+    out: str,
 ) -> None:
     import torch
 
@@ -205,6 +243,7 @@ def _init(
     split = read_split(Path(model_file).parent / "split.csv")
     _WORKER.update(
         version=version,
+        out=Path(out),
         model=model,
         blob=blob,
         paths=paths,
@@ -223,7 +262,7 @@ def picture(shot: int) -> dict:
     """Draw one AE180 shot; its `index.csv` row."""
     w = _WORKER
     paths, blob = w["paths"], w["blob"]
-    version = w["version"]
+    version, out = w["version"], w["out"]
     reviewed = shot in w["live"]
     label = w["live"].get(shot) or w["source"].get(shot)
     if label is None:
@@ -240,7 +279,7 @@ def picture(shot: int) -> dict:
     cells = frame_cells(prob, reference, blob["threshold"])
     f1 = f1_of(cells) if reviewed else float("nan")
     group = "reviewed" if reviewed else "unreviewed"
-    file = gallery_dir(paths, version) / group / f"{shot}.jpg"
+    file = out / group / f"{shot}.jpg"
     title = f"{shot}   AE, ae_xpower {version} ({blob['candidate']}), split {split}" + (
         f", F1 vs owner {f1:.2f}"
         if reviewed
@@ -261,12 +300,12 @@ def picture(shot: int) -> dict:
         mhd=mhd,
     )
     other_group = "unreviewed" if reviewed else "reviewed"
-    (gallery_dir(paths, version) / other_group / f"{shot}.jpg").unlink(missing_ok=True)
+    (out / other_group / f"{shot}.jpg").unlink(missing_ok=True)
     return {
         "shot": shot,
         "group": group,
         "split": split,
-        "file": str(file.relative_to(gallery_dir(paths, version))),
+        "file": str(file.relative_to(out)),
         "window_start_ms": label.window[0],
         "window_end_ms": label.window[1],
         "model_present_frames": int((prob >= blob["threshold"]).sum()),
@@ -332,17 +371,19 @@ def main(argv=None) -> int:
         "--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
     )
     p.add_argument(
-        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
+        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/<version>"
     )
     p.add_argument("--version", default=VERSION)
     args = p.parse_args(argv)
     version = args.version
     paths = Paths.from_env()
     models = args.models or model_dir(paths, version)
+    out = pictures_dir(paths, models, version)
     try:
         check_bound(version, models)
         model_file = chosen_model(models)
         check_bound(version, models, load(model_file)[1], model_file)
+        check_tested(models, version, model_file)
     except (OSError, ValueError, KeyError) as error:
         p.error(str(error))
     shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
@@ -352,6 +393,7 @@ def main(argv=None) -> int:
         str(paths.label_tables),
         str(paths.corpus),
         version,
+        str(out),
     )
     rows, failed = [], []
     for shot, outcome in run_all(picture, shots, args.workers, _init, init):
@@ -360,11 +402,8 @@ def main(argv=None) -> int:
             print(f"{shot}: {type(outcome).__name__}: {outcome}", flush=True)
         else:
             rows.append(outcome)
-    write_index(gallery_dir(paths, version) / "index.csv", rows)
-    print(
-        f"drew {len(rows)} shots into {gallery_dir(paths, version)}; "
-        f"{len(failed)} failed"
-    )
+    write_index(out / "index.csv", rows)
+    print(f"drew {len(rows)} shots into {out}; {len(failed)} failed")
     return 1 if failed else 0
 
 
