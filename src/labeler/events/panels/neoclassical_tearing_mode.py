@@ -33,9 +33,10 @@ from ._shared import (
     stft,
 )
 
-#: Corpus `mirnov` row -> the probe's toroidal angle in degrees, from
-#: pyspecview's DIII-D probe table (loaders_DIIID/Magnetics.py,
-#: `BpDot_probes_R0`): MPI66M322D sits at 317.4 degrees whatever its name.
+#: Corpus `mirnov` row -> the probe's toroidal angle in degrees, as measured: the
+#: table in pyspecview's loaders_DIIID/Magnetics.py (`BpDot_probes_R0`), where
+#: MPI66M322D sits at 317.4 degrees whatever its name. pyspecview's own fit takes
+#: the angle in the name (322); a line fits within 0.1 % either way at n = 1.
 PROBES = {15: 317.4, 16: 132.5, 18: 312.4, 20: 19.5, 21: 97.4, 22: 307.0}
 #: 100 kHz, 1024-sample windows every 256: 0.1 kHz bins, 2.56 ms columns.
 RATE_HZ = 100_000
@@ -44,7 +45,8 @@ HOP = 256
 MAX_KHZ = 30.0
 #: pyspecview's DIII-D range, -5 to 4 on its clockwise angle, turned round.
 N_VALUES = np.arange(-4, 6)
-#: Each n's colour: 1, 2 and 3 far apart, and each n far from -n.
+#: Each n's colour: 1, 2 and 3 far apart, 1 and 2 red and blue so red-green
+#: colour blindness still tells a 2/1 from a 3/2, and each n far from -n.
 N_COLOURS = {
     -4: "#a2845e",
     -3: "#b28dff",
@@ -52,8 +54,8 @@ N_COLOURS = {
     -1: "#00e5ff",
     0: "#c8c8c8",
     1: "#ff3b30",
-    2: "#34c759",
-    3: "#3d8bff",
+    2: "#3d8bff",
+    3: "#34c759",
     4: "#ffcc00",
     5: "#ff2dd4",
 }
