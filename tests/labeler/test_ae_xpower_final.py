@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import shutil
@@ -383,6 +384,39 @@ def test_the_checks_compare_the_models_bytes_with_chosen_json(
     args = [command, "--version", "v2"]
     _refused(capsys, evaluate.main, args, str(file), "model_sha256")
     assert not (model_dir(paths, "v2") / "evaluation.json").exists()
+
+
+@pytest.mark.parametrize("key", ["fixed_epochs", "band_khz", "train"])
+def test_the_test_checks_the_final_models_training_facts(
+    tmp_path, monkeypatch, capsys, key
+):
+    """The reviewer's Minor 2: the final model trains for the choice's
+    `final_epochs`, on its candidate's band, with `fold_config`'s TrainConfig for
+    that many epochs; a checkpoint recording otherwise is refused, by name, even
+    with a `chosen.json` that names its bytes."""
+    paths = _final_and_v1(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    choice = json.loads((models / "cv" / "choice.json").read_text())
+    spec = train.candidate_spec("v2", choice["candidate"])
+    config = dataclasses.replace(cv.fold_config(spec, 0), epochs=choice["final_epochs"])
+    file = models / choice["candidate"] / "model.pt"
+    blob = torch.load(file, map_location="cpu", weights_only=False)
+    assert blob["fixed_epochs"] == choice["final_epochs"] == 4
+    assert blob["band_khz"] == list(spec["band"])
+    assert blob["train"] == dataclasses.asdict(config)
+    blob[key] = {
+        "fixed_epochs": 5,
+        "band_khz": [0.0, 250.0],
+        "train": {**blob["train"], "mhd_weight": 30.0},
+    }[key]
+    torch.save(blob, file)
+    chosen_file = models / "chosen.json"
+    chosen = json.loads(chosen_file.read_text())
+    chosen["model_sha256"] = sha256_of(file)
+    chosen_file.write_text(json.dumps(chosen, indent=1) + "\n")
+    args = ["--test", "--version", "v2"]
+    _refused(capsys, evaluate.main, args, str(file), f": {key} differs")
+    assert not (models / "evaluation.json").exists()
 
 
 def _crashed(tmp_path, monkeypatch):

@@ -58,7 +58,7 @@ import hashlib
 import json
 import os
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -67,7 +67,7 @@ from typing import NamedTuple
 import numpy as np
 import torch
 
-from ...config import Paths, atomic_path, git_sha, sha256_of
+from ...config import Paths, atomic_path, git_sha
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...scoring import stats
@@ -99,7 +99,14 @@ from .data import (
     tokeye_frames,
     window_frames,
 )
-from .train import candidates, load, probabilities, read_split
+from .train import (
+    candidate_spec,
+    candidates,
+    cv_config,
+    load,
+    probabilities,
+    read_split,
+)
 
 EVAL_FRAMES = (0, 200)  # 0-2 s
 F1_MARGIN = 0.02
@@ -510,26 +517,28 @@ def cv_chosen(
     split: dict[int, str] | None = None,
     model: bytes | None = None,
     source: SourceTable | None = None,
+    choice: bytes | None = None,
 ) -> dict:
     """A cross-validated version's `chosen.json`, checked against `cv/choice.json`
-    and `cv/folds.csv` (as the snapshot and TokEye's masks give it now); the
-    chosen model's bytes (`model`, else its `model.pt`) against its
-    `model_sha256`; the model's split (`split`, else its `split.csv`) against
-    the folds: their test shots, and all of their pool shots to train (a
-    pilot's, the first N); and the source table (`source`, else the current
-    one) against the one the choice's frames were scored with."""
+    (`choice`, else the file's bytes) and `cv/folds.csv` (as the snapshot and
+    TokEye's masks give it now); the chosen model's bytes (`model`, else its
+    `model.pt`) against its `model_sha256`; the model's split (`split`, else its
+    `split.csv`) against the folds: their test shots, and all of their pool
+    shots to train (a pilot's, the first N); and the source table (`source`,
+    else the current one) against the one the choice's frames were scored with."""
     from . import cv  # cv imports this module
 
     chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
     choice_file, folds_file = cv_files / "choice.json", cv_files / "folds.csv"
     chosen = json.loads(chosen_file.read_text())
-    choice = json.loads(choice_file.read_bytes())
+    choice_bytes = choice_file.read_bytes() if choice is None else choice
+    choice = json.loads(choice_bytes)
     folds = cv.checked_folds(paths, models, version)
     if choice.get("folds_sha256") != folds.sha256:
         raise ValueError(f"{choice_file}: made from other folds than {folds_file}")
     wanted = {
         "version": version,
-        "choice_sha256": sha256_of(choice_file),
+        "choice_sha256": hashlib.sha256(choice_bytes).hexdigest(),
         "candidate": choice["candidate"],
         "threshold": choice["threshold"],
         "labels_sha256": LABEL_SNAPSHOTS[version],
@@ -566,9 +575,13 @@ def cv_chosen(
     return chosen
 
 
-def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> dict:
+def check_cv_model(
+    blob: dict, chosen: dict, choice: dict, labels_copy: bytes, file: Path
+) -> dict:
     """The final model of a cross-validated version is the one `chosen.json`
-    names: its choice, threshold and label snapshot; the meta it adds."""
+    names: its choice, threshold and label snapshot and, outside a pilot, trained
+    as `choice` (the `cv/choice.json` it names) says: for its `final_epochs`, on
+    the candidate's band, with `train.cv_config`'s TrainConfig; the meta it adds."""
     version = chosen["version"]
     expected = LABEL_SNAPSHOTS[version]
     check_snapshot(hashlib.sha256(labels_copy).hexdigest(), version, file.parent)
@@ -581,9 +594,19 @@ def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> 
         "snapshot_sha256": expected,
         "from_cv": True,
     }
+    if not choice.get("pilot"):  # a pilot's trains for cv.PILOT_EPOCHS instead
+        spec = candidate_spec(version, choice["candidate"])
+        epochs = choice["final_epochs"]
+        wanted |= {
+            "fixed_epochs": epochs,
+            "band_khz": [float(b) for b in spec["band"]],
+            "train": asdict(cv_config(spec, epochs)),
+        }
     for key, value in wanted.items():
         if blob.get(key) != value:
-            raise ValueError(f"{file}: {key} differs from chosen.json or the snapshot")
+            raise ValueError(
+                f"{file}: {key} differs from chosen.json, its choice or the snapshot"
+            )
     return {
         "choice_sha256": chosen["choice_sha256"],
         "folds_sha256": chosen["folds_sha256"],
@@ -663,9 +686,9 @@ def run_test(
     cv_meta = {}
     if version in CV_VERSIONS:
         choice_file = models / "cv" / "choice.json"
-        if pilot_area(models, paths.runs) and not json.loads(
-            choice_file.read_bytes()
-        ).get("pilot"):
+        choice_bytes = choice_file.read_bytes()  # one read, for every check below
+        choice = json.loads(choice_bytes)
+        if pilot_area(models, paths.runs) and not choice.get("pilot"):
             # A look there can be repeated: a pilot's model only, never a copy
             # of the final model of a full choice.
             raise ValueError(
@@ -679,8 +702,10 @@ def run_test(
             split=split,
             model=snapshots["model.pt"],
             source=source,
+            choice=choice_bytes,
         )
-        cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
+        labels_copy = snapshots["review/labels.csv"]
+        cv_meta = check_cv_model(blob, chosen, choice, labels_copy, file)
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))

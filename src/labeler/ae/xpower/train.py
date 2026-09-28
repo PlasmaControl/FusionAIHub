@@ -42,7 +42,7 @@ import os
 import resource
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -137,6 +137,16 @@ class TrainConfig:
     mhd_weight: float = 3.0
     patience: int = 10
     seed: int = SEED
+
+
+def cv_config(spec: dict, epochs: int | None = None) -> TrainConfig:
+    """A cross-validated version's training, made only here: v1's `TrainConfig`
+    with the candidate's MHD weight, for `epochs` when given. Its fold tasks take
+    it as it is (`cv.fold_config`; a pilot's for `cv.PILOT_EPOCHS`), its final
+    model for the choice's `final_epochs` (`train_from_cv`), and the test checks
+    the final checkpoint's `train` against it (`evaluate.check_cv_model`)."""
+    config = TrainConfig(mhd_weight=spec["mhd_weight"])
+    return config if epochs is None else replace(config, epochs=epochs)
 
 
 def frame_weights(states, mhd, mhd_weight: float, observed=None) -> np.ndarray:
@@ -478,7 +488,7 @@ def train_from_cv(
         refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
         split = {s: "test" for s, v in folds.split.items() if v == "test"}
         split |= dict.fromkeys(pool, "train")
-        config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
+        config = cv_config(spec, epochs)
         shots = [
             load_shot(
                 s,

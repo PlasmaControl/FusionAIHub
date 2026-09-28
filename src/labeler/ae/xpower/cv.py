@@ -66,7 +66,7 @@ import io
 import json
 import os
 import resource
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -235,10 +235,10 @@ def _by_fold(folds: dict[int, int], pilot: int) -> dict[int, list[int]]:
 
 
 def fold_config(spec: dict, pilot: int) -> train.TrainConfig:
-    """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight;
-    a pilot's, for `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
-    config = train.TrainConfig(mhd_weight=spec["mhd_weight"])
-    return replace(config, epochs=PILOT_EPOCHS) if pilot else config
+    """A fold task's training: v1's `TrainConfig` with the candidate's MHD weight
+    (`train.cv_config`, which the final model's is too); a pilot's, for
+    `PILOT_EPOCHS`. `--choose` refuses a record trained otherwise."""
+    return train.cv_config(spec, PILOT_EPOCHS if pilot else None)
 
 
 def _record_paths(models: Path, candidate: str, k: int) -> tuple[Path, Path]:
