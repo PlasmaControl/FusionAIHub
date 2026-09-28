@@ -17,7 +17,7 @@
 # VERSION defaults to v1. For v2 (after ae_xpower_final.sbatch), --choose only checks
 # chosen.json against cv/choice.json and writes nothing, and the test also reports
 # v1's 58 test shots beside the full 60 (the bar is judged on the 60 only).
-# A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT.
+# A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT, 20 or fewer.
 # Each candidate is scored against the labels it was trained with (its review/labels.csv copy).
 #
 #   after the array:  sbatch --dependency=afterok:<array id> <this>
