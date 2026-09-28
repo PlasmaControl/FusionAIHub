@@ -176,6 +176,22 @@ def test_the_old_outputs_own_names_go_and_no_link_is_followed(tmp_path):
     assert _beside(out) == ["paper"]
 
 
+def test_the_swap_refuses_a_symlinked_out(tmp_path):
+    """`build` resolves `--out`, so the swap never sees a link; one it is given
+    anyway is refused before anything moves. Swapping the link itself would
+    replace it with a directory, and deleting the old output would follow it."""
+    real, staged = _outputs(tmp_path / "real")
+    before = _tree(real)
+    out = tmp_path / "paper"
+    out.symlink_to(real, target_is_directory=True)
+    with pytest.raises(OSError, match="a symlink"):
+        staging.swap(staged, out, owned=OWNED)
+    assert out.is_symlink() and os.readlink(out) == str(real)
+    assert _tree(real) == before
+    assert set(_tree(staged)) == {"fig_scores.pdf", "manifest.json"}
+    assert _beside(out) == ["paper"], "no holder beside the link"
+
+
 def test_a_symlink_stays_a_symlink(tmp_path):
     """The reviewer's swap_probe case 1, with a link to a file and a broken
     one: each is moved as itself, never followed or copied."""

@@ -13,7 +13,8 @@ the old directory, which the swap then names. A swap that fails moves those
 entries back and renames the old output back; one that cannot (another build's
 output landed at `out` meanwhile, say) deletes nothing and raises `Stranded`,
 which names where everything is. After a failure the build deletes the staging
-directory only if nothing but its own files is left in it (`discard`).
+directory only if nothing but its own files is left in it (`discard`). `out` is
+never a link here: the build resolves it first, and the swap refuses one.
 """
 
 from __future__ import annotations
@@ -101,7 +102,12 @@ def swap(staged: Path, out: Path, *, owned: Collection[str]) -> Path | None:
     output deleted, and of it only the names in `owned` (`_clear`). On a
     failure the entries are moved back and the old output renamed back to
     `out`; if that fails too, everything stays where `Stranded` says. None, or
-    the holder `_clear` had to keep, for the caller to name."""
+    the holder `_clear` had to keep, for the caller to name. A symlinked `out`
+    is refused before anything moves (the build resolves it first): the swap
+    would replace the link, and deleting the old output would follow it."""
+    if out.is_symlink():
+        why = "a symlink: swap into its target (the build resolves --out)"
+        raise OSError(errno.EINVAL, why, str(out))
     if not os.path.lexists(out):
         staged.rename(out)
         return None
