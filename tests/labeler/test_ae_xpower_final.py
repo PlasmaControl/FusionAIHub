@@ -207,6 +207,16 @@ def test_the_test_checks_the_final_model_against_the_folds(
     assert not (models / "evaluation.json").exists()
 
 
+def test_the_final_model_takes_no_epochs(tmp_path, monkeypatch, capsys):
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    monkeypatch.setattr(train, "fit", _untrained)
+    args = ["--version", "v2", "--from-cv", "--epochs", "5"]
+    _refused(capsys, train.main, args, "--epochs", "final_epochs")
+    assert not (models / "band80-mhd3").exists()
+    assert not (models / "chosen.json").exists()
+
+
 def _env(tmp_path, monkeypatch) -> Paths:
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"})
     ae_tree.env(monkeypatch, paths)
