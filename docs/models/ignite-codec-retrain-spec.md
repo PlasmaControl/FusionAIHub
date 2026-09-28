@@ -1,6 +1,5 @@
 ---
 title: "IGNITE Codec Retrain Spec"
-sidebar_position: 3
 ---
 
 # IGNITE spectro codec retrain spec (post gate-campaign, 2026-08-01)

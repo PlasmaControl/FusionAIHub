@@ -1,6 +1,5 @@
 ---
 title: The DIII-D corpus
-sidebar_position: 1
 ---
 
 The FAITH corpus is a set of per-shot HDF5 files from the DIII-D tokamak.

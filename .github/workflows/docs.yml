@@ -1,4 +1,4 @@
-name: Deploy Docusaurus to GitHub Pages
+name: Deploy MkDocs to GitHub Pages
 
 on:
   push:
@@ -18,25 +18,29 @@ concurrency:
 
 jobs:
   build:
-    name: Build Docusaurus
+    name: Build MkDocs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: website/package-lock.json
+          sparse-checkout: |
+            docs
+            mkdocs.yml
+            requirements-docs.txt
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
       - name: Install dependencies
-        working-directory: website
-        run: npm ci
+        run: pip install -r requirements-docs.txt
       - name: Build website
-        working-directory: website
-        run: npm run build
+        run: mkdocs build --strict
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: website/build
+          path: site
 
   deploy:
     name: Deploy to GitHub Pages

@@ -1,6 +1,5 @@
 ---
 title: "The command line"
-sidebar_position: 2
 ---
 
 ## The command line

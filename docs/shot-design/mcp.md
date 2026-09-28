@@ -1,6 +1,5 @@
 ---
 title: "The MCP server"
-sidebar_position: 3
 ---
 
 ## The MCP server

@@ -1,6 +1,5 @@
 ---
 title: "LLM providers"
-sidebar_position: 4
 ---
 
 ## Local LLM and per-shot blurbs

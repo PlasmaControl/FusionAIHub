@@ -1,7 +1,5 @@
 ---
 title: FusionAIHub (FAITH)
-sidebar_position: 1
-slug: /
 ---
 
 FusionAIHub (FAITH — Fusion AI Toolkit & Hub) is a multi-modal foundation

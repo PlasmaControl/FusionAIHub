@@ -1,6 +1,5 @@
 ---
 title: "AE from cross-power"
-sidebar_position: 3
 ---
 
 # AE from cross-power (`ae_xpower`)

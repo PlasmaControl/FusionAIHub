@@ -1,6 +1,5 @@
 ---
 title: "shot_design"
-sidebar_position: 1
 ---
 
 # shot_design

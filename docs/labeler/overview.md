@@ -1,6 +1,5 @@
 ---
 title: "labeler"
-sidebar_position: 1
 ---
 
 # labeler

@@ -1,6 +1,5 @@
 ---
 title: Simulation
-sidebar_position: 6
 ---
 
 `shot_design simulate` rolls IGNITE out from a saved design's seed frames many times

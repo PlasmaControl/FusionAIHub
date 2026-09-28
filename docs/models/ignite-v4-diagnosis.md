@@ -1,6 +1,5 @@
 ---
 title: "IGNITE v4 Rollout Diagnosis"
-sidebar_position: 9
 ---
 
 # IGNITE v4 rollouts: what is wrong, and what to change

@@ -1,6 +1,5 @@
 ---
 title: Pixi environments
-sidebar_position: 4
 ---
 
 # Pixi environments

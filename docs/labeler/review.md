@@ -1,6 +1,5 @@
 ---
 title: "Label review"
-sidebar_position: 2
 ---
 
 # Label review
