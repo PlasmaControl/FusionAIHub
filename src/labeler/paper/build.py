@@ -39,7 +39,11 @@ build's output landed at `out` meanwhile, say) deletes nothing and raises
 `Stranded`, which names where each one is. The build claims only the names it
 writes (`OWNED`: the manifest and each product's own `.pdf` and `.png`, or
 `.tex`); anything else in `out` stays, moved into the new output (a symlink as
-itself), and a failed build deletes none of it.
+itself), and a failed build deletes none of it. Of the old output only those
+names are deleted: an entry written into it late, through a handle held on it,
+is moved into the new output too, or, if its name is taken there, kept with the
+old directory, which the build names on stderr and in its JSON line
+(`old_output_kept`) and still succeeds.
 
 `--version` (default `v1`) names the frame model's version the inputs come
 from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json`, the
@@ -93,6 +97,7 @@ import io
 import json
 import math
 import shutil
+import sys
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -115,6 +120,11 @@ SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names anothe
 LOGIN_THREADS = 2
 COPIED = (".pdf", ".tex")
 MANIFEST = "manifest.json"
+KEPT = "old_output_kept"  # in `build`'s answer and the JSON line
+KEPT_SAID = (
+    "{out}: the new output is in place, but the old one's directory still holds "
+    "entries that could neither be deleted nor moved into it, so it is kept: {kept}"
+)
 FIGURE = (".pdf", ".png")  # what `paper.save` writes for a figure
 TABLE = (".tex",)
 PRODUCTS = {
@@ -343,7 +353,10 @@ def build(
 ) -> dict:
     """Draw every product the inputs allow, and the manifest, into a directory
     beside `out`, then swap it in whole; on a failure `out` is left as it was,
-    and if the swap can neither finish nor undo itself, nothing is deleted."""
+    and if the swap can neither finish nor undo itself, nothing is deleted.
+    The manifest; if the swap had to keep the old output's directory, the
+    answer also names it (`KEPT`, which the manifest, written before the swap,
+    cannot), and so does stderr."""
     out = Path(out)
     staged = staging_dir(out)
     try:
@@ -358,13 +371,16 @@ def build(
                 version=version,
                 seg_version=seg_version,
             )
-        swap(staged, out, owned=OWNED)
+        kept = swap(staged, out, owned=OWNED)
     except Stranded:
         raise  # `staged` holds the new output, and the message says so
     except BaseException:
         discard(staged, owned=OWNED)  # the build's own files, never the owner's
         raise
-    return manifest
+    if kept is None:
+        return manifest
+    print(KEPT_SAID.format(out=out, kept=kept), file=sys.stderr, flush=True)
+    return manifest | {KEPT: str(kept)}
 
 
 def _draw(
@@ -648,6 +664,7 @@ def main(argv=None) -> int:
                 "products": sorted(manifest["products"]),
                 "skipped": manifest["skipped"],
                 "copied": copied,
+                KEPT: manifest.get(KEPT),
             }
         )
     )

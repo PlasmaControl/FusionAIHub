@@ -58,6 +58,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "table_seg_scores": missing,
     }
     assert printed["copied"] == sorted(p.name for p in dest.iterdir())
+    assert printed["old_output_kept"] is None, "the old output was deleted whole"
     assert len(printed["copied"]) == 8
     assert all(name.endswith((".pdf", ".tex")) for name in printed["copied"])
     manifest = json.loads((out / "manifest.json").read_text())
@@ -418,6 +419,45 @@ def test_only_the_builds_own_files_leave_out(runs, tmp_path):
     drawn = {f for files in manifest["products"].values() for f in files}
     assert set(after) == drawn | {"manifest.json"} | set(theirs)
     assert os.readlink(out / "linked") == str(elsewhere), "still a link"
+
+
+def test_a_kept_old_output_is_named_and_the_build_succeeds(
+    runs, tmp_path, monkeypatch, capsys
+):
+    """The owner saves `notes.txt` again through a handle held on the old
+    output, after the swap has moved the first one into the new output: the
+    late one cannot be moved over it, so the old output's directory is kept.
+    The build still succeeds, its output in place, and names the directory on
+    stderr and in its JSON line."""
+    out = tmp_path / "paper"
+    build.build(runs, out, examples=1)
+    (out / "notes.txt").write_text("the owner's")
+    held = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    rename = Path.rename
+
+    def saves_late(self, target):
+        if Path(self).name.startswith(f".{out.name}.staging-"):
+            fd = os.open("notes.txt", os.O_WRONLY | os.O_CREAT, 0o644, dir_fd=held)
+            with os.fdopen(fd, "w") as file:
+                file.write("saved again, late")
+        return rename(self, target)
+
+    capsys.readouterr()
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(Path, "rename", saves_late)
+            assert build.main(["--out", str(out)]) == 0
+    finally:
+        os.close(held)
+    said = capsys.readouterr()
+    kept = Path(json.loads(said.out)["old_output_kept"])
+    assert kept.parent == tmp_path and kept.name.startswith(".paper.old-")
+    assert _tree(kept) == {"paper": None, "paper/notes.txt": b"saved again, late"}
+    assert str(kept) in said.err
+    assert (out / "notes.txt").read_text() == "the owner's", "not moved over"
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert "fig_examples" in manifest["products"], "the new output is in place"
+    assert _beside(tmp_path) == sorted(["paper", kept.name])
 
 
 def _spy_reads(monkeypatch, opened: Counter) -> None:
