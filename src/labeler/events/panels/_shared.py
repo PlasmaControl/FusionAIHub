@@ -221,27 +221,31 @@ def bin_mean(x_ms, y, width_ms: float) -> tuple[np.ndarray, np.ndarray]:
     return times, means.astype(np.float32)
 
 
-def bin_median(x_ms, y, width_ms: float) -> tuple[np.ndarray, np.ndarray]:
-    """`(times, medians)` of `(C, T)` samples over bins `width_ms` wide, binned
-    as `bin_mean` bins them (`x_ms` ascending).
+def despike(x_ms, y, width_ms: float) -> np.ndarray:
+    """`(C, T)`: each sample as the median of its bin, the bins `width_ms` wide
+    from the first sample (`x_ms` ascending); a bin of only gaps stays nan.
 
     A spike narrower than half a bin is gone, where a mean would only spread it
-    over the bin; a step stays a step, blurred into one bin at most.
+    over the bin; a step stays a step, blurred into one bin at most. The samples
+    keep their times, so a review grid built from them is the raw record's.
     """
     x_ms = np.asarray(x_ms, dtype=np.float64)
     y = np.atleast_2d(np.asarray(y, dtype=np.float32))
     if not len(x_ms):
-        raise NoDataError("no samples to take the median of")
+        return y
     index = np.floor((x_ms - x_ms[0]) / width_ms).astype(np.int64)
     starts = np.flatnonzero(np.r_[True, np.diff(index) > 0])
     taken = np.diff(np.r_[starts, len(index)])
-    slot = np.arange(len(index)) - np.repeat(starts, taken)
-    table = np.full((len(y), len(starts), taken.max()), np.nan, dtype=np.float32)
-    table[:, np.repeat(np.arange(len(starts)), taken), slot] = y
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # a bin of gaps is nan
-        medians = np.nanmedian(table, axis=-1)
-    return np.add.reduceat(x_ms, starts) / taken, medians.astype(np.float32)
+    bins = np.repeat(np.arange(len(starts)), taken)
+    slot = np.arange(len(index)) - starts[bins]
+    out = np.empty_like(y)
+    for i, row in enumerate(y):  # one channel's (bins, samples) table at a time
+        table = np.full((len(starts), taken.max()), np.nan, dtype=np.float32)
+        table[bins, slot] = row
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "All-NaN slice", RuntimeWarning)
+            out[i] = np.nanmedian(table, axis=-1)[bins]
+    return out
 
 
 def betan_panel(shot, *, t_range=None, paths=None) -> list[Panel]:

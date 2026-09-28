@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -156,23 +157,43 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
         f"ECE ch {a}-{a + 3} (0.05 ms median)" for a in (20, 24, 28, 32)
     ]
     ece = built[0]
-    assert ece.y.shape == (4, 2000), "100 ms in 0.05 ms medians"
+    assert ece.y.shape == (4, 50_000), "every 500 kHz sample, at its own time"
     assert np.nanmax(ece.y) < 1.1, "the spike at 40 ms is gone"
     sxr = built[4]
     assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
     assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
 
 
-def test_a_median_bin_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
-    x = np.arange(500) * 0.25  # 25 samples a 6.25 ms bin, exact in binary
-    y = np.where(x < 62.5, 3.0, 2.0)[None, :]  # a drop at bin 10's edge
-    y[0, 100:104] = 40.0  # a 4-sample spike in bin 4
-    y[0, 300:325] = np.nan  # bin 12, only gaps
-    times, medians = _shared.bin_median(x, y, 6.25)
-    assert np.allclose(times, 6.25 * np.arange(20) + 3.0)
-    assert np.isnan(medians[0, 12])
-    want = np.where(np.arange(20) < 10, 3.0, 2.0)
-    assert np.array_equal(np.delete(medians[0], 12), np.delete(want, 12))
+def test_despike_drops_a_spike_keeps_a_step_and_leaves_gaps_nan():
+    # Bins of 10, 10, 2 and 2 samples, exact in binary.
+    x = np.r_[np.arange(0.0, 10.0, 0.5), np.arange(10.0, 20.0, 2.5)]
+    y = np.where(x < 10, 3.0, 2.0)[None, :]  # a drop at bin 2's edge
+    y[0, 4:6] = 40.0  # a 2-sample spike in bin 0
+    y[0, -2:] = np.nan  # bin 3, only gaps
+    out = _shared.despike(x, y, 5.0)
+    assert out.shape == y.shape
+    assert np.array_equal(out[0, :-2], np.where(x[:-2] < 10, 3.0, 2.0))
+    assert np.isnan(out[0, -2:]).all()
+    assert _shared.despike([], np.empty((2, 0)), 5.0).shape == (2, 0)
+
+
+def test_the_ece_rows_keep_the_review_grid(tmp_path, monkeypatch):
+    """On the corpus's float32 seconds the grid stays `FINEST_DT_MS` and every
+    ECE column inside the record holds a sample."""
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    t_s = (tree.times(0.0, 6000.0, 500_000) / 1000).astype(np.float32)
+    p.corpus_file(SHOT).parent.mkdir(parents=True)
+    with h5py.File(p.corpus_file(SHOT), "w") as f:
+        f["ece/xdata"] = t_s
+        f["ece/ydata"] = np.ones((48, len(t_s)), dtype=np.float32)
+    tree.cohort(p, [tree.queue_row(SHOT + 1, 0)])
+    grid, rows, _ = panel_rows.build("sawtooth_oscillation", SHOT, p)
+    assert grid.dt_ms == panel_rows.FINEST_DT_MS
+    centres = grid.t0_ms + (np.arange(grid.n) + 0.5) * grid.dt_ms
+    inside = (centres > 1000 * t_s[0]) & (centres < 1000 * t_s[-1])
+    for row in rows:
+        assert np.isfinite(row.values[..., inside]).all(), row.title
 
 
 def test_the_sxr_chords_are_chosen_over_the_ip_flat_top(tmp_path, monkeypatch):
