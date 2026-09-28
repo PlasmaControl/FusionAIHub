@@ -5,10 +5,12 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=2800M
+#SBATCH --mem=2100M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
+# Memory: sacct MaxRSS 1823 MiB for the pilot (2943489, LIMIT=3) and 1771 MiB for the full
+# run (2943497); 2100M is the larger plus about 15 %.
 
 # The post-hoc record of a cross-validated version (v2), after its one test: computed
 # from the same model, threshold and frames the test scored; no decision depends on
