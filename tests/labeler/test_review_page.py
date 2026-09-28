@@ -7,10 +7,12 @@ import random
 import shutil
 import subprocess
 
+import numpy as np
 import pytest
 
 from labeler.events.review.labels import normalise
 from labeler.events.ui.app import STATIC
+from labeler.events.verify import mode_palette
 
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(NODE is None, reason="node runs the page's script")
@@ -143,6 +145,23 @@ def test_the_colour_map_runs_from_inferno_black_to_its_yellow():
     """Packed as RGBA bytes; values under the contrast floor take its colour."""
     found = _node("[m.lut(0)[0], m.lut(0)[255], m.lut(128)[100] === m.lut(128)[0]]")
     assert found == [0xFF040000, 0xFFA4FFFC, True]
+
+
+@needs_node
+def test_a_modes_row_draws_each_code_in_its_mode_colour_scaled_by_its_level():
+    modes = {"n": [1, 2], "levels": 128, "colours": ["#ff0000", "#00ff00"]}
+    found = _node("[0, 128].map((lo) => Array.from(m.modeLut(input, lo)))", modes)
+    rgba = lambda r, g, b: (255 << 24) | (b << 16) | (g << 8) | r
+    plain, floored = [np.array(lut) for lut in found]
+    assert plain[:2].tolist() == [rgba(0, 0, 0)] * 2
+    assert plain[254:].tolist() == [rgba(255, 0, 0), rgba(0, 255, 0)]
+    # The page draws what `verify.mode_palette` gives the notebook.
+    palette = mode_palette({1: "#ff0000", 2: "#00ff00"})
+    assert plain.tolist() == [
+        rgba(*(int(c[i : i + 2], 16) for i in (1, 3, 5))) for c in palette
+    ]
+    # The contrast floor blacks out the lower half and stretches the rest.
+    assert (floored[:128] == rgba(0, 0, 0)).all() and floored[254] == rgba(255, 0, 0)
 
 
 @needs_node

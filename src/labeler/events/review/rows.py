@@ -42,6 +42,9 @@ class ImageRow:
     z_hi: float
     z_units: str
     band: tuple[float, float] | None = None
+    #: A modes row's `{"n", "colours", "levels"}`: its bytes are
+    #: `verify.mode_bytes`' codes, not a scale.
+    modes: dict | None = None
     kind = "image"
 
     def meta(self) -> dict:
@@ -58,6 +61,8 @@ class ImageRow:
         }
         if self.band is not None:
             meta["band"] = [float(v) for v in self.band]
+        if self.modes is not None:
+            meta["modes"] = self.modes
         return meta
 
 

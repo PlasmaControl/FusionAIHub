@@ -20,29 +20,29 @@ SHOT = 201235
 
 
 def _mirnov(p, n: int, *, khz: float = 10.0):
-    """A mode cos(wt - n phi) on the MPI66M probes from 50 to 150 ms, in noise."""
+    """A mode travelling counter-clockwise from above, cos(wt + n phi), on the
+    MPI66M probes from 50 to 150 ms, in noise."""
     t = tree.times(0.0, 200.0, 500_000)
     y = tree.noise(29, t)
     on = (t > 50) & (t < 150)
     for row, phi in ntm.PROBES.items():
-        y[row, on] += np.cos(2 * np.pi * khz * t[on] - n * np.deg2rad(phi))
+        y[row, on] += np.cos(2 * np.pi * khz * t[on] + n * np.deg2rad(phi))
     tree.write(p.corpus_file(SHOT), {"mirnov": (t, y)})
 
 
-@pytest.mark.parametrize("n", [2, -3])
-def test_the_n_strip_finds_the_mode_number_where_the_mode_is(tmp_path, n):
+@pytest.mark.parametrize("n", [1, -4, 5])
+def test_every_cell_of_the_line_takes_its_mode_number(tmp_path, n):
     p = tree.paths(tmp_path)
     _mirnov(p, n)
-    power, strip = panels.build("neoclassical_tearing_mode", SHOT, paths=p)
+    power, modes = panels.build("neoclassical_tearing_mode", SHOT, paths=p)
     assert power.title == "MPI66M322D power" and power.y[-1] <= 30
     line = np.argmin(np.abs(power.y - 10.0))
     inside = (power.x > 60) & (power.x < 140)
-    assert power.z[line, inside].mean() > power.z[line, ~inside].mean() + 20
-    assert list(strip.y) == list(range(-4, 5)) and (strip.zmin, strip.zmax) == (0, 1)
-    best = strip.y[np.argmax(strip.z[:, inside], axis=0)]
-    assert (best == n).all() and strip.z[:, inside].max(axis=0).min() > 0.9
-    outside = (power.x < 40) | (power.x > 160)
-    assert not strip.z[:, outside].any(), "noise columns are not scored"
+    for panel in (power, modes):
+        assert panel.z[line, inside].mean() > panel.z[line, ~inside].mean() + 20
+    assert (modes.ylabel, modes.zmin, modes.zmax) == ("kHz", *ntm.Z_DB)
+    assert (modes.modes[line, inside] == n).all()
+    assert set(np.unique(modes.modes)) <= set(ntm.N_COLOURS) == set(ntm.N_VALUES)
 
 
 def test_ntm_rows_and_beta_n(tmp_path):
@@ -52,7 +52,13 @@ def test_ntm_rows_and_beta_n(tmp_path):
     titles = [x.title for x in panels.build("neoclassical_tearing_mode", SHOT, paths=p)]
     assert titles[-1] == "beta_N" and len(titles) == 3
     _grid, rows, _info = panel_rows.build("neoclassical_tearing_mode", SHOT, p)
-    assert [row.y_units for row in rows] == ["kHz", "n", "β_N"]
+    assert [row.y_units for row in rows] == ["kHz", "kHz", "β_N"]
+    assert "modes" not in rows[0].meta()
+    assert rows[1].meta()["modes"] == {
+        "n": list(range(-4, 6)),
+        "levels": 25,
+        "colours": [ntm.N_COLOURS[n] for n in range(-4, 6)],
+    }
 
 
 def _plasma_mirnov(p, *, end_ms: float = 250.0, quiet_db: float = 40.0):

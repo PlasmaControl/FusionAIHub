@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from labeler.events.review import panel_rows
-from labeler.events.review.rows import Grid
+from labeler.events.review.rows import Grid, pool
 from labeler.events.verify import NoDataError, Panel
 
 
@@ -43,6 +43,35 @@ def test_a_heatmap_is_scaled_and_placed_and_empty_columns_are_zero(monkeypatch):
     assert rows[0].values.tolist() == [[0, 128, 255, 0]]
     assert (rows[0].z_lo, rows[0].z_hi, rows[0].band) == (0.0, 1.0, (80, 250))
     assert [row.name for row in rows] == ["p0", "p1"]
+
+
+def test_a_modes_heatmap_codes_each_cell_by_level_then_mode(monkeypatch):
+    colours = {-1: "#00ffff", 1: "#ff0000", 2: "#00ff00"}
+    heatmap = Panel(
+        "n",
+        x=np.array([0.0, 1, 2]),
+        y=np.array([5.0, 10.0]),
+        kind="heatmap",
+        z=np.array([[0.0, 0.5, 1.0], [1.0, np.nan, 0.5]]),
+        zmin=0,
+        zmax=1,
+        modes=np.array([[1, 2, -1], [2, 1, 1]]),
+        mode_colours=colours,
+    )
+    _panels(monkeypatch, heatmap)
+    _grid, rows, _ = panel_rows.build("neoclassical_tearing_mode", 1, None)
+    # 85 levels of 3 modes: level 42 is half-way, 84 the top; nan is level 0.
+    assert rows[0].values.tolist() == [
+        [1, 42 * 3 + 2, 84 * 3],
+        [84 * 3 + 2, 1, 42 * 3 + 1],
+    ]
+    assert rows[0].meta()["modes"] == {
+        "n": [-1, 1, 2],
+        "levels": 85,
+        "colours": ["#00ffff", "#ff0000", "#00ff00"],
+    }
+    # A block's max is its brightest cell, in that cell's own mode.
+    assert pool(rows[0].values, 8, "image").tolist() == [[84 * 3], [84 * 3 + 2]]
 
 
 def test_heatmap_edges_become_centres():

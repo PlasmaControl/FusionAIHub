@@ -23,6 +23,8 @@ from labeler.events.verify import (
     corrections_for,
     fdp_signal,
     label_panel,
+    mode_bytes,
+    mode_palette,
     read_corrections,
     read_latest_corrections,
     review,
@@ -895,6 +897,50 @@ def test_both_legitimate_heatmap_shapes_are_accepted():
         event="fishbone", shot=185601, panels=[centres, edges], root="data/events"
     )
     assert [trace.type for trace in session.figure.data] == ["heatmap", "heatmap"]
+
+
+def _modes(**changes):
+    kwargs = {
+        "title": "n",
+        "kind": "heatmap",
+        "x": np.arange(4.0),
+        "y": np.arange(2.0),
+        "z": np.zeros((2, 4)),
+        "zmin": 0.0,
+        "zmax": 1.0,
+        "modes": np.array([[1, 2, 1, 1], [2, 2, 1, 1]]),
+        "mode_colours": {1: "#ff0000", 2: "#00ff00"},
+    }
+    return Panel(**{**kwargs, **changes})
+
+
+def test_a_modes_panel_is_refused_unless_it_can_be_drawn_the_same_on_every_shot():
+    for changes, match in [
+        ({"zmax": None}, "pinned"),
+        ({"modes": np.ones((4, 2), dtype=int)}, "modes is"),
+        ({"mode_colours": {}}, "0 mode colours"),
+        ({"mode_colours": {n: "#ffffff" for n in range(17)}}, "17 mode colours"),
+        ({"mode_colours": {1: "#ff0000"}}, r"modes \[2\] have no colour"),
+    ]:
+        with pytest.raises(ValueError, match=match):
+            _modes(**changes)
+
+
+def test_a_modes_panel_draws_each_cell_in_its_mode_colour_at_its_brightness():
+    panel = _modes(z=np.array([[0.0, 1.0, 1.0, 0.5], [0.0, 0.0, 0.0, 0.0]]))
+    palette = mode_palette(panel.mode_colours)
+    assert len(palette) == 256 and palette[:2] == ["#000000", "#000000"]
+    assert palette[-2:] == ["#ff0000", "#00ff00"]
+    assert palette[64 * 2] == "#810000"  # 255 * 64 / 127 = 128.5
+    session = ReviewSession(
+        event="neoclassical_tearing_mode", shot=185601, panels=[panel], root="data/events"
+    )
+    trace = session.figure.data[0]
+    codes = mode_bytes(panel.z, panel.modes, panel.mode_colours, 0.0, 1.0)
+    assert np.asarray(trace.z).tolist() == codes.tolist()
+    assert codes[0].tolist() == [0, 127 * 2 + 1, 254, 64 * 2]
+    assert (trace.zmin, trace.zmax) == (0, 255)
+    assert [trace.colorscale[k][1] for k in (0, 255)] == [palette[0], palette[-1]]
 
 
 def test_a_one_dimensional_line_y_is_refused():

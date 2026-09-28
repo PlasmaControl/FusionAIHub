@@ -1,7 +1,8 @@
 """Any event's panels as review rows.
 
 Heatmaps become image rows, scaled over their 1st-99.5th percentile unless
-the panel pins `zmin`/`zmax`; lines become trace rows. Every row goes onto
+the panel pins `zmin`/`zmax`, or coded by `verify.mode_bytes` when the panel
+has `modes`; lines become trace rows. Every row goes onto
 one grid at the finest panel spacing, but no finer than 0.05 ms: finer data
 is min/max-binned, coarser data is interpolated (lines) or nearest-sampled
 (heatmaps).
@@ -15,7 +16,7 @@ import numpy as np
 
 from ...config import Paths
 from .. import panels
-from ..verify import NoDataError
+from ..verify import NoDataError, mode_bytes
 from .rows import Grid, ImageRow, TraceRow
 
 FINEST_DT_MS = 0.05
@@ -108,8 +109,18 @@ def _limits(z, zmin=None, zmax=None) -> tuple[float, float]:
 def _image(name: str, panel, x, grid: Grid) -> ImageRow:
     z = np.asarray(panel.z, dtype=float)
     lo, hi = _limits(z, panel.zmin, panel.zmax)
-    scaled = np.rint((np.nan_to_num(z, nan=lo) - lo) * 255 / (hi - lo))
-    q = np.clip(scaled, 0, 255).astype(np.uint8)
+    modes = None
+    if panel.modes is not None:
+        q = mode_bytes(z, panel.modes, panel.mode_colours, lo, hi)
+        n = sorted(panel.mode_colours)
+        modes = {
+            "n": [int(v) for v in n],
+            "levels": 256 // len(n),
+            "colours": [panel.mode_colours[v] for v in n],
+        }
+    else:
+        scaled = np.rint((np.nan_to_num(z, nan=lo) - lo) * 255 / (hi - lo))
+        q = np.clip(scaled, 0, 255).astype(np.uint8)
     if _fine(x, grid):
         values = _bin(q, _columns(x, grid), grid.n, np.maximum, 0)
     else:
@@ -122,4 +133,5 @@ def _image(name: str, panel, x, grid: Grid) -> ImageRow:
     dy = float(y[1] - y[0]) if len(y) > 1 else 1.0
     band = tuple(panel.bands[0]) if panel.bands else None
     return ImageRow(name, panel.title, values, y0=float(y[0]), dy=dy,
-                    y_units=panel.ylabel, z_lo=lo, z_hi=hi, z_units="", band=band)
+                    y_units=panel.ylabel, z_lo=lo, z_hi=hi, z_units="", band=band,
+                    modes=modes)
