@@ -25,6 +25,14 @@ fainter when the peak lies after the scored 2 s (`in_scored_window` false); only
 the `LABEL_CAP` largest by `pixels` carry their `region` number (`poi.csv`). A
 dashed line at 2 s marks the scored window whenever a shot runs past it.
 
+**No two numbers print over each other** (`place_numbers`, once the figure is
+laid out, so the numbers' drawn sizes are known). The largest box is numbered
+first. A number sits inside its own box, at the first of its corners (`CORNERS`:
+top left, top right, bottom left, bottom right) that lies in view and where its
+text touches no number already placed. So it moves, but only to a corner of its
+own outline, which keeps it matched to its box. A number with no such corner is
+left off, as a box past the cap is; the outline is still drawn.
+
 **The interpreter's shot** (`interpreter_pick`, `INTERPRETER_RULE`) shows AE
 turning off and back on. Its pool is the test shots with a point of interest
 (all test shots when none has one) where the owner calls at least
@@ -44,7 +52,9 @@ shots, and the branch says why: no test shot has that many absent frames
 (`POOL_UNMARKED`, which names them).
 
 Every legend lists only what some panel draws: it is built from the drawn
-artists' own labels, so its keys have their style.
+artists' own labels, so its keys have their style. A point of interest wholly
+outside its axes' view (one after 2 s on a shot drawn to 2 s, say) is drawn,
+clipped away, with no label, so it adds no key that nothing in view shows.
 """
 
 from __future__ import annotations
@@ -79,6 +89,7 @@ POI_LW = 0.4
 POI_ALPHA = 0.75
 POI_AFTER_ALPHA = 0.4
 LABEL_CAP = 10  # number at most the 10 largest points of interest (by pixels)
+CORNERS = (("left", "top"), ("right", "top"), ("left", "bottom"), ("right", "bottom"))
 SCORED_MS = 2000.0  # the scored window is 0-2 s
 SCORED_LABEL = "scored: 0-2 s"
 F1_DECIMALS = 3
@@ -366,8 +377,8 @@ def _scored(box: dict) -> bool:
 
 
 def numbered(boxes: Sequence[dict], xlim, ylim) -> list[dict]:
-    """The `LABEL_CAP` largest points (by `pixels`) whose number would sit inside
-    the axes, at the top left of the box."""
+    """The `LABEL_CAP` largest points (by `pixels`) whose top left corner, where
+    a number goes first (`place_numbers`), lies inside the axes."""
     (x0, x1), (y0, y1) = sorted(xlim), sorted(ylim)
     inside = [
         b
@@ -377,13 +388,27 @@ def numbered(boxes: Sequence[dict], xlim, ylim) -> list[dict]:
     return sorted(inside, key=lambda b: -float(b.get("pixels", 0)))[:LABEL_CAP]
 
 
+def in_view(box: dict, xlim, ylim) -> bool:
+    """Whether any of the box lies inside the axes' limits."""
+    (x0, x1), (y0, y1) = sorted(xlim), sorted(ylim)
+    return (
+        float(box["t_start_ms"]) <= x1
+        and float(box["t_end_ms"]) >= x0
+        and float(box["f_lo_khz"]) <= y1
+        and float(box["f_hi_khz"]) >= y0
+    )
+
+
 def _boxes(ax, s: AEShot) -> None:
-    """Thin clipped outlines; the `LABEL_CAP` largest numbered. Call it after the
-    axes' limits are set."""
+    """Thin clipped outlines, the first in view of each style labelled for the
+    legend. Call it after the axes' limits are set; `place_numbers` numbers
+    them once the figure is laid out."""
     labelled = {POI_LABEL: False, POI_AFTER_LABEL: False}
+    xlim, ylim = ax.get_xlim(), ax.get_ylim()
     for box in s.boxes:
         inside = _scored(box)
         name = POI_LABEL if inside else POI_AFTER_LABEL
+        keyed = in_view(box, xlim, ylim) and not labelled[name]
         ax.add_patch(
             Rectangle(
                 (box["t_start_ms"], box["f_lo_khz"]),
@@ -395,23 +420,44 @@ def _boxes(ax, s: AEShot) -> None:
                 ls="-" if inside else "--",
                 alpha=POI_ALPHA if inside else POI_AFTER_ALPHA,
                 clip_on=True,
-                label=name if not labelled[name] else "_" + name,
+                label=name if keyed else "_" + name,
             )
         )
-        labelled[name] = True
-    for box in numbered(s.boxes, ax.get_xlim(), ax.get_ylim()):
-        x, y = float(box["t_start_ms"]), float(box["f_hi_khz"])
-        ax.text(
-            x,
-            y,
-            f"{int(box['region'])}",
-            color=POI_COLOUR,
-            fontsize=FONT_PT - 1,
-            ha="left",
-            va="top",
-            alpha=POI_ALPHA if _scored(box) else POI_AFTER_ALPHA,
-            clip_on=True,
-        )
+        labelled[name] = labelled[name] or keyed
+
+
+def place_numbers(fig: Figure, panels: Sequence[tuple[object, AEShot]]) -> None:
+    """Number each `(axes, shot)` panel's `numbered` boxes, largest first, each
+    at the first corner of its own box (`CORNERS`) that is in view and where
+    its drawn text touches no number already placed; a number with none is
+    left off. Call it last, when the figure is laid out: the text sizes are
+    measured drawn."""
+    fig.draw_without_rendering()
+    for ax, s in panels:
+        (x0, x1), (y0, y1) = sorted(ax.get_xlim()), sorted(ax.get_ylim())
+        placed = []
+        for box in numbered(s.boxes, ax.get_xlim(), ax.get_ylim()):
+            for ha, va in CORNERS:
+                x = float(box["t_start_ms"] if ha == "left" else box["t_end_ms"])
+                y = float(box["f_hi_khz"] if va == "top" else box["f_lo_khz"])
+                if not (x0 <= x <= x1 and y0 <= y <= y1):
+                    continue
+                text = ax.text(
+                    x,
+                    y,
+                    f"{int(box['region'])}",
+                    color=POI_COLOUR,
+                    fontsize=FONT_PT - 1,
+                    ha=ha,
+                    va=va,
+                    alpha=POI_ALPHA if _scored(box) else POI_AFTER_ALPHA,
+                    clip_on=True,
+                )
+                extent = text.get_window_extent()
+                if not any(extent.overlaps(other) for other in placed):
+                    placed.append(extent)
+                    break
+                text.remove()
 
 
 def _scored_line(axes, s: AEShot, *, dark: Collection) -> None:
@@ -518,6 +564,7 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
             ax.tick_params(bottom=False)
         tracks[-1].set_xlabel("time (ms)")
         _legend(fig)
+        place_numbers(fig, [(spec, s)])
         save(fig, stem)
     return fig
 
@@ -562,5 +609,6 @@ def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
                 ax.tick_params(labelbottom=False)
         axes[-1].set_xlabel("time (ms)")
         _legend(fig)
+        place_numbers(fig, [(axes[3 * k], s) for k, s in enumerate(shots)])
         save(fig, stem)
     return fig
