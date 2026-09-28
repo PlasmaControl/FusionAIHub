@@ -7,13 +7,14 @@ import hashlib
 import io
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 import h5py
 import pytest
 
 from labeler.ae import xpower
-from labeler.paper import build, shots
+from labeler.paper import build, coverage, shots
 
 from . import ae_tree
 from . import paper_tree as tree
@@ -201,14 +202,14 @@ def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
     assert json.loads(after["manifest.json"]) == manifest
 
 
-def _spy_reads(monkeypatch, opened: set[str]) -> None:
-    """Record every file opened for reading through Python, pathlib, pandas,
+def _spy_reads(monkeypatch, opened: Counter) -> None:
+    """Count every file opened for reading through Python, pathlib, pandas,
     torch and h5py."""
 
     def wrap(real):
         def spy(file, mode="r", *args, **kwargs):
             if isinstance(file, str | os.PathLike) and not set(mode) & set("wax+"):
-                opened.add(str(Path(file).resolve()))
+                opened[str(Path(file).resolve())] += 1
             return real(file, mode, *args, **kwargs)
 
         return spy
@@ -225,7 +226,7 @@ def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatc
         "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
         "102,1,300,900,140,152,40,True\n"
     )
-    opened: set[str] = set()
+    opened: Counter = Counter()
     _spy_reads(monkeypatch, opened)
     out = tmp_path / "paper"
     manifest = build.build(runs, out)
@@ -233,10 +234,36 @@ def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatc
     read = {p for p in opened if p.startswith(tree_root) and not p.startswith(str(out))}
     pinned = {str(Path(v["path"]).resolve()) for v in manifest["inputs"].values()}
     assert read and read <= pinned, sorted(read - pinned)
+    twice = {p: n for p, n in opened.items() if p in pinned and n != 2}
+    assert not twice, f"each input read once to draw, once to check: {twice}"
+    assert manifest["consistent"] is True and manifest["changed_during_build"] == {}
     assert {"ae_model", "ae_split", "store_102", "store_103"} <= set(manifest["inputs"])
     for entry in manifest["inputs"].values():
         data = Path(entry["path"]).read_bytes()
         assert entry["sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_an_input_changed_mid_build_is_recorded(runs, tmp_path, monkeypatch):
+    live = build.inputs(runs)["ae_labels"]
+    drawn = hashlib.sha256(live.read_bytes()).hexdigest()
+    draw = coverage.draw_coverage
+
+    def then_the_owner_saves(*args):
+        figure = draw(*args)
+        live.write_text(live.read_text() + "104,0,0,2000,\n")
+        return figure
+
+    monkeypatch.setattr(coverage, "draw_coverage", then_the_owner_saves)
+    manifest = build.build(runs, tmp_path / "paper")
+    now = hashlib.sha256(live.read_bytes()).hexdigest()
+    assert manifest["inputs"]["ae_labels"]["sha256"] == drawn, "the bytes drawn"
+    assert manifest["labels_sha256"]["live"] == drawn
+    assert manifest["consistent"] is False
+    assert manifest["changed_during_build"] == {
+        "ae_labels": {"path": str(live), "drawn": drawn, "now": now}
+    }
+    table = (tmp_path / "paper" / "table_datasets.tex").read_text()
+    assert "AE & 3 & " in table, "drawn from the bytes read, before the save"
 
 
 def test_the_manifest_records_the_commit_and_the_labels_check(runs, tmp_path):

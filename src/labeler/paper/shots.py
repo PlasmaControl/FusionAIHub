@@ -40,6 +40,7 @@ artists' own labels, so its keys have their style.
 
 from __future__ import annotations
 
+import io
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -186,12 +187,16 @@ def test_shots(split: Mapping[int, str]) -> list[int]:
 def picture(
     shot: int, *, label: Label, model: Model, store, boxes: Sequence[dict] = ()
 ) -> AEShot:
-    """One labelled shot with `model` run over its review `store` (a path or file
-    object, each read opening it afresh)."""
+    """One labelled shot with `model` run over its review `store`: a path, or
+    the file's bytes as the build read them."""
+
+    def rows(level: int = 1):
+        source = io.BytesIO(store) if isinstance(store, bytes) else store
+        return store_rows(source, level=level)
+
     first, n = window_frames(label.window)
-    rows = store_rows(store)
-    prob, _ = probabilities(model.net, rows, first, n, band=model.blob["band_khz"])
-    grid, values, y0, dy = store_rows(store, level=PICTURE_LEVEL)
+    prob, _ = probabilities(model.net, rows(), first, n, band=model.blob["band_khz"])
+    grid, values, y0, dy = rows(PICTURE_LEVEL)
     owner = targets(label, first, n)
     return AEShot(
         shot=shot,

@@ -38,9 +38,16 @@ with each sha256 in `labels_sha256`, the live table's too), the time, the
 interpreter's shot, its pool and the branch of the rule that fired, the example
 shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
 the whole window. The shots are ranked by their F1 over 0-2 s
-(`shots.rank_keys`). `--copy-to` copies this run's PDFs and
-`.tex` tables into a directory (the manuscript's `dev/label_paper/figures/`); it
-never runs git there, so nothing is committed or pushed.
+(`shots.rank_keys`).
+
+**The sha256s are of the bytes drawn** (`Snapshot`): each input is read once,
+hashed, and parsed from those bytes. At the end every input is hashed again; one
+that changed while the build ran (the owner saving, say) is listed under
+`changed_during_build`, with both sha256s, and `consistent` is false.
+
+`--copy-to` copies this run's PDFs and `.tex` tables into a directory (the
+manuscript's `dev/label_paper/figures/`); it never runs git there, so nothing is
+committed or pushed.
 """
 
 from __future__ import annotations
@@ -48,10 +55,12 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import hashlib
+import io
 import json
 import math
 import os
 import shutil
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -61,9 +70,8 @@ import torch
 
 from ..ae import seg as ae_seg
 from ..ae import xpower
-from ..ae.xpower.evaluate import chosen_model
 from ..ae.xpower.train import read_split
-from ..config import Paths, atomic_path, git_dirty, git_sha
+from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
 
@@ -113,10 +121,6 @@ def inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
         "poi": ae_seg.poi_dir(paths).parent / f"{ae_seg.METHOD}-{version}" / "poi.csv",
     }
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _recorded(record: dict | None, *where: str) -> str | None:
@@ -211,14 +215,15 @@ def _swap(staged: Path, out: Path) -> None:
                 shutil.copytree(kept, staged / kept.name, symlinks=True)
             else:
                 shutil.copy2(kept, staged / kept.name, follow_symlinks=False)
-    old = out.with_name(f".{out.name}.old-{os.getpid()}")
-    out.rename(old)
+    holder = Path(tempfile.mkdtemp(prefix=f".{out.name}.old-", dir=out.parent))
+    out.rename(holder / out.name)
     try:
         staged.rename(out)
     except BaseException:
-        old.rename(out)
+        (holder / out.name).rename(out)
         raise
-    shutil.rmtree(old)
+    finally:
+        shutil.rmtree(holder, ignore_errors=True)
 
 
 def build(
@@ -234,7 +239,11 @@ def build(
     out = Path(out)
     staged = _staging(out)
     try:
-        manifest = _draw(paths, staged, shot=shot, examples=examples, version=version)
+        with tempfile.TemporaryDirectory(prefix="paper-inputs-") as scratch:
+            snap = Snapshot(Path(scratch))
+            manifest = _draw(
+                paths, staged, snap, shot=shot, examples=examples, version=version
+            )
         _swap(staged, out)
     except BaseException:
         shutil.rmtree(staged, ignore_errors=True)
@@ -242,8 +251,65 @@ def build(
     return manifest
 
 
+class Snapshot:
+    """Each input read once: its bytes hashed, then parsed from those bytes, so
+    the manifest pins what was drawn. `changed` hashes every input again."""
+
+    def __init__(self, scratch: Path):
+        self.scratch = scratch  # for a parser that needs a file: the bytes' copy
+        self.pinned: dict[str, tuple[Path, str]] = {}
+        self._kept: dict[str, bytes] = {}
+
+    def read(self, key: str, path: Path, *, keep: bool = True) -> bytes:
+        if key in self._kept:
+            return self._kept[key]
+        data = Path(path).read_bytes()
+        self.pinned[key] = (Path(path), hashlib.sha256(data).hexdigest())
+        if keep:
+            self._kept[key] = data
+        return data
+
+    def sha(self, key: str) -> str | None:
+        return self.pinned[key][1] if key in self.pinned else None
+
+    def json(self, key: str, path: Path) -> dict:
+        return json.loads(self.read(key, path))
+
+    def csv(self, key: str, path: Path) -> pd.DataFrame:
+        return pd.read_csv(io.BytesIO(self.read(key, path)))
+
+    def split(self, key: str, path: Path) -> dict[int, str]:
+        return read_split(path, data=self.read(key, path))
+
+    def labels(self, key: str, path: Path) -> dict:
+        """A `review/labels.csv`, parsed as the review parses it."""
+        event = self.scratch / key
+        copy = labels.labels_path(event)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(self.read(key, path))
+        return labels.read_saved(event)
+
+    def model(self, key: str, path: Path, split) -> shots.Model:
+        return shots.Model.load(io.BytesIO(self.read(key, path, keep=False)), split)
+
+    def changed(self) -> dict[str, dict]:
+        """The inputs whose bytes are no longer the ones drawn."""
+        found = {}
+        for key, (path, drawn) in self.pinned.items():
+            now = sha256_of(path) if path.is_file() else None
+            if now != drawn:
+                found[key] = {"path": str(path), "drawn": drawn, "now": now}
+        return found
+
+
 def _draw(
-    paths: Paths, out: Path, *, shot: int | None, examples: int, version: str
+    paths: Paths,
+    out: Path,
+    snap: Snapshot,
+    *,
+    shot: int | None,
+    examples: int,
+    version: str,
 ) -> dict:
     found = inputs(paths, version)
     made: dict[str, list[str]] = {}
@@ -270,8 +336,11 @@ def _draw(
         _write(out / f"{name}.tex", text)
         made[name] = [f"{name}.tex"]
 
-    ae = scores.read(found["ae_evaluation"])
-    seg = scores.read(found["seg_evaluation"])
+    def read(key: str, parse: Callable):
+        return parse(key, found[key]) if found[key].is_file() else None
+
+    ae = read("ae_evaluation", snap.json)
+    seg = read("seg_evaluation", snap.json)
     if ready(("fig_scores", "fig_mhd", "table_ae_scores"), "ae_evaluation"):
         figure("fig_scores", scores.draw_scores, ae)
         figure("fig_mhd", scores.draw_mhd, ae)
@@ -280,50 +349,57 @@ def _draw(
         figure("fig_segmentation", scores.draw_segmentation, seg)
         table("table_seg_scores", scores.table_segmentation(seg))
     evaluations = ("ae_evaluation", "seg_evaluation")
-    if any(found[k].is_file() for k in evaluations):
+    if ae is not None or seg is not None:
         table("table_differences", scores.table_differences(ae, seg))
         absent = [str(found[k]) for k in evaluations if not found[k].is_file()]
         if absent:
             lacking(("table_differences",), MISSING, missing=absent)
     else:
         ready(("table_differences",), *evaluations)
-    if found["ae_chosen"].is_file():
-        model_file = chosen_model(found["ae_chosen"].parent)
-        found["ae_model"] = model_file
-        found["ae_split"] = model_file.parent / "split.csv"
-        found["ae_scored_labels"] = labels.labels_path(model_file.parent)
+    chosen = read("ae_chosen", snap.json)
+    if chosen is not None:
+        candidate = found["ae_chosen"].parent / chosen["candidate"]
+        found["ae_model"] = candidate / "model.pt"
+        found["ae_split"] = candidate / "split.csv"
+        found["ae_scored_labels"] = labels.labels_path(candidate)
+    split = read("ae_split", snap.split) if "ae_split" in found else None
+    live = read("ae_labels", snap.labels)
     counted = ("fig_coverage", "table_datasets")
     if ready(counted, "ae_labels"):
-        split = found.get("ae_split")
-        counts = {
-            AE: coverage.ae_counts(
-                found["ae_labels"].parent.parent, split, found["summary"]
-            )
-        }
+        summary = read("summary", snap.csv)
+        counts = {AE: coverage.ae_counts(live, split, summary)}
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
-        if split is None:
+        if chosen is None:
             lacking(counted, NO_CHOSEN, missing=[str(found["ae_chosen"])])
-        elif not split.is_file():
-            lacking(counted, NO_SPLIT, missing=[str(split)])
-        if not found["summary"].is_file():
+        elif split is None:
+            lacking(counted, NO_SPLIT, missing=[str(found["ae_split"])])
+        if summary is None:
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
     picked: dict = {}
     figures = ("fig_interpreter", "fig_examples")
-    scored = live = None
-    if found.get("ae_scored_labels", Path()).is_file():
-        scored = _sha256(found["ae_scored_labels"])
-    if found["ae_labels"].is_file():
-        live = _sha256(found["ae_labels"])
+    scored = None
     if ready(figures, "ae_evaluation", "ae_chosen") and ready(
         figures, "ae_model", "ae_split", "ae_scored_labels"
     ):
-        why = scored_refusal(scored, ae) or _shot_figures(
-            paths, found, shot, examples, figure, lacking, skipped, picked
+        saved = read("ae_scored_labels", snap.labels)
+        scored = snap.sha("ae_scored_labels")
+        why = scored_refusal(scored, ae)
+        why, picked = (
+            (why, {})
+            if why
+            else _shot_figures(
+                paths, found, snap, saved, split, shot, examples, figure, lacking
+            )
         )
         for product in figures if why else ():
+            made.pop(product, None)
             skipped[product] = {"reason": why, "missing": []}
-    match, shas = labels_check(scored, live, ae, seg)
+    elif "ae_scored_labels" in found and found["ae_scored_labels"].is_file():
+        read("ae_scored_labels", snap.labels)
+        scored = snap.sha("ae_scored_labels")
+    match, shas = labels_check(scored, snap.sha("ae_labels"), ae, seg)
+    changed = snap.changed()
     manifest = {
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(full=True),
@@ -331,10 +407,11 @@ def _draw(
         "version": version,
         "labels_match": match,
         "labels_sha256": shas,
+        "consistent": not changed,
+        "changed_during_build": changed,
         "inputs": {
-            key: {"path": str(path), "sha256": _sha256(path)}
-            for key, path in found.items()
-            if path.is_file()
+            key: {"path": str(path), "sha256": sha}
+            for key, (path, sha) in snap.pinned.items()
         },
         "products": made,
         "skipped": skipped,
@@ -348,61 +425,57 @@ def _draw(
 def _shot_figures(
     paths: Paths,
     found: dict[str, Path],
+    snap: Snapshot,
+    saved: dict,
+    split: dict[int, str],
     shot: int | None,
     examples: int,
     figure: Callable,
     lacking: Callable,
-    skipped: dict,
-    picked: dict,
-) -> str | None:
+) -> tuple[str | None, dict]:
     """Score every test shot against the model's copy of the labels (D18) and
-    draw the two shot figures: None when drawn, else why they could not be."""
+    draw the two shot figures. Why they could not be drawn (None when they
+    were), and the picks for the manifest."""
     figures = ("fig_interpreter", "fig_examples")
-    model = shots.Model.load(found["ae_model"], read_split(found["ae_split"]))
-    saved = labels.read_saved(found["ae_model"].parent)
-    poi = pd.read_csv(found["poi"]) if found["poi"].is_file() else None
+    model = snap.model("ae_model", found["ae_model"], split)
+    poi = snap.csv("poi", found["poi"]) if found["poi"].is_file() else None
     tested = shots.test_shots(model.split)
     unlabelled = [s for s in tested if s not in saved]
     unstored = [_store(paths, s) for s in tested if not _store(paths, s).is_file()]
     usable = [s for s in tested if s in saved and _store(paths, s).is_file()]
     if not usable:
-        return NO_SCORED_SHOT
+        return NO_SCORED_SHOT, {}
 
-    def draw_one(s: int) -> shots.AEShot:
-        found[f"store_{s}"] = _store(paths, s)
-        return shots.picture(s, label=saved[s], model=model, store=_store(paths, s))
+    def one(s: int) -> shots.AEShot:
+        """The shot's picture, its store read once."""
+        data = snap.read(f"store_{s}", _store(paths, s), keep=False)
+        return shots.picture(s, label=saved[s], model=model, store=data)
 
-    pictures = {s: draw_one(s) for s in usable}
+    pictures = {s: one(s) for s in usable}
     ranked = [shots.rank_keys(p) for p in pictures.values()]
     f1 = {r.shot: r.f1 for r in ranked}
     pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
-    picked.update(
-        {
-            "interpreter_shot": pick["shot"] if shot is None else shot,
-            "interpreter_rule": shots.INTERPRETER_RULE
-            if shot is None
-            else "named by --shot",
-            "interpreter_branch": pick["branch"] if shot is None else None,
-            "interpreter_pool": pick["pool"],
-            "example_shots": shots.pick_examples(f1, examples),
-            "example_rule": shots.EXAMPLES_RULE,
-        }
-    )
+    picked = {
+        "interpreter_shot": pick["shot"] if shot is None else shot,
+        "interpreter_rule": shots.INTERPRETER_RULE
+        if shot is None
+        else "named by --shot",
+        "interpreter_branch": pick["branch"] if shot is None else None,
+        "interpreter_pool": pick["pool"],
+        "example_shots": shots.pick_examples(f1, examples),
+        "example_rule": shots.EXAMPLES_RULE,
+    }
     named = picked["interpreter_shot"]
     if named not in pictures and named in saved and _store(paths, named).is_file():
-        pictures[named] = draw_one(named)
+        pictures[named] = one(named)
     drawn = {
         s: dataclasses.replace(pictures[s], boxes=shots.boxes_of(poi, s))
         for s in (named, *picked["example_shots"])
         if s in pictures
     }
-    if named in drawn:
-        figure("fig_interpreter", shots.draw_interpreter, drawn[named])
-    else:
-        skipped["fig_interpreter"] = {
-            "reason": NO_NAMED,
-            "missing": [str(_store(paths, named))],
-        }
+    if named not in drawn:
+        return f"{NO_NAMED}: {named}", picked
+    figure("fig_interpreter", shots.draw_interpreter, drawn[named])
     figure(
         "fig_examples",
         shots.draw_examples,
@@ -418,7 +491,7 @@ def _shot_figures(
         str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
         for s, d in sorted(drawn.items())
     }
-    return None
+    return None, picked
 
 
 def copy_into(out: Path, manifest: dict, dest: Path) -> list[str]:
