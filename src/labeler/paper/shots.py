@@ -28,14 +28,18 @@ dashed line at 2 s marks the scored window whenever a shot runs past it.
 **The interpreter's shot** (`interpreter_pick`, `INTERPRETER_RULE`) shows AE
 turning off and back on. Its pool is the test shots with a point of interest
 (all test shots when none has one) where the owner calls at least
-`MIN_GAP_FRAMES` consecutive frames absent (50 ms at 10 ms frames) between the
-first and the last frame they call present, inside 0-2 s (`longest_off`):
-neither the lead-in before breakdown, absent on every shot, nor AE that turns
-off and does not come back before 2 s counts, nor a shorter off-period, such
-as one absent frame or several short ones. The pick is the best F1 at three
-decimals in the pool, ties to fewer points of interest, then to the lower shot
-number. When that pool is empty the same rule runs over all those test shots,
-and the branch says why: no test shot has AE turning off for 50 ms and back on
+`MIN_GAP_FRAMES` whole consecutive 10 ms frames absent between the first and
+the last frame they call present, inside 0-2 s (`longest_off`): neither the
+lead-in before breakdown, absent on every shot, nor AE that turns off and does
+not come back before 2 s counts, nor fewer frames, such as one absent frame or
+several short runs. A frame a present span touches is present, so 5 absent
+frames are an off-period of at least 50 ms, but one of 50-59 ms off the 10 ms
+grid can hold only 4 (one of 60 ms or more always holds 5). So the texts give
+the rule in frames (`OFF_FRAMES`), and 50 ms only as what the frames imply
+(`OFF_MS`), never of a shot the rule leaves out. The pick is the best F1 at
+three decimals in the pool, ties to fewer points of interest, then to the lower
+shot number. When that pool is empty the same rule runs over all those test
+shots, and the branch says why: no test shot has that many absent frames
 (`POOL_FALLBACK`), or the ones that do have no point of interest
 (`POOL_UNMARKED`, which names them).
 
@@ -87,27 +91,28 @@ POI_LABEL = "point of interest"
 POI_AFTER_LABEL = "point of interest, after 2 s"
 MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
-MIN_GAP_FRAMES = 5  # the shortest off-period the pool counts: 50 ms
+MIN_GAP_FRAMES = 5  # whole absent frames: 50 ms or more, but 50-59 ms can be 4
 GAP_MS = MIN_GAP_FRAMES * FRAME_MS
+OFF_FRAMES = (  # what `longest_off` and `interpreter_pick` check
+    f"at least {MIN_GAP_FRAMES} whole consecutive absent {FRAME_MS} ms frames "
+    "between the owner's first and last present frames in 0-2 s"
+)
+OFF_MS = f"so an off-period of at least {GAP_MS} ms"  # what those frames imply
 INTERPRETER_RULE = (
     "among the test shots with a point of interest (all test shots if none has "
-    "one), those whose owner's AE track has an off-period of at least "
-    f"{MIN_GAP_FRAMES} consecutive absent frames ({GAP_MS} ms) between two "
-    "present frames in 0-2 s (AE turning off and back on); the best F1 over "
-    f"0-2 s at {F1_DECIMALS} decimals, ties to fewer points of interest, then "
-    "to the lower shot number; if none has such an off-period, the same over "
+    f"one), those with {OFF_FRAMES} (AE turning off and back on, {OFF_MS}); the "
+    f"best F1 over 0-2 s at {F1_DECIMALS} decimals, ties to fewer points of "
+    "interest, then to the lower shot number; if there is none, the same over "
     "all those test shots"
 )
-POOL_GAP = f"AE turns off for at least {GAP_MS} ms and back on in 0-2 s"
+POOL_GAP = f"AE turns off and back on: {OFF_FRAMES} ({OFF_MS})"
 POOL_FALLBACK = (
-    f"no test shot has AE turning off for at least {GAP_MS} ms and back on in "
-    "0-2 s, so the pool is every test shot with a point of interest (every test "
-    "shot if none has one)"
+    f"no test shot has {OFF_FRAMES}, so the pool is every test shot with a point "
+    "of interest (every test shot if none has one)"
 )
 POOL_UNMARKED = (
-    f"AE turns off for at least {GAP_MS} ms and back on in 0-2 s only on test "
-    "shots with no point of interest ({shots}), so the pool is every test shot "
-    "with one"
+    "only test shots with no point of interest ({shots}) have "
+    f"{OFF_FRAMES}, so the pool is every test shot with one"
 )
 EXAMPLES_RULE = (
     "the reviewed test shots ranked by F1 over 0-2 s (ties by the lower shot "
@@ -298,7 +303,7 @@ def interpreter_pick(
     each pool shot's F1, points of interest and longest off-period in frames
     (`longest_off_frames`). `f1` maps each test shot to its F1 over 0-2 s (a
     shot without one is left out), `gaps` to its `longest_off`; a shot is back
-    on after an off-period of at least `MIN_GAP_FRAMES`."""
+    on after at least `MIN_GAP_FRAMES` whole absent frames (`OFF_FRAMES`)."""
     ranked = _ranked(f1)
     if not ranked:
         raise ValueError("no test shot has an F1")

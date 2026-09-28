@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 
 import numpy as np
 import pandas as pd
@@ -224,7 +225,7 @@ def test_the_off_period_is_the_longest_run_of_absent_frames_inside_the_ae_span()
     assert shots.longest_off(gap, first=100) == 0, "frames 100.. : 1-2 s only"
 
 
-def test_the_pool_needs_an_off_period_of_at_least_50_ms():
+def test_the_pool_needs_5_whole_absent_frames():
     assert shots.MIN_GAP_FRAMES == 5
     assert shots.MIN_GAP_FRAMES * FRAME_MS == 50
     four = _owner((30, 100, 1), (104, 200, 1))
@@ -242,9 +243,37 @@ def test_the_pool_needs_an_off_period_of_at_least_50_ms():
     assert pick["pool"] == {"2": {"f1": 0.99, "poi": 1, "longest_off_frames": 5}}
     short = shots.interpreter_pick(f1, poi, {1: 4, 3: 3})
     assert (short["shot"], short["branch"]) == (1, shots.POOL_FALLBACK)
-    rules = (shots.POOL_GAP, shots.POOL_FALLBACK, shots.POOL_UNMARKED)
-    assert all("off for at least 50 ms" in rule for rule in rules)
-    assert "at least 5 consecutive absent frames (50 ms)" in shots.INTERPRETER_RULE
+
+
+OFF_FRAMES = (
+    "at least 5 whole consecutive absent 10 ms frames between the owner's first "
+    "and last present frames in 0-2 s"
+)
+
+
+def test_the_pool_texts_say_only_what_the_code_checks():
+    """Whole frames: 5 absent frames are an off-period of 50 ms or more, but one
+    of 50-59 ms off the 10 ms grid can hold only 4. So each text gives the rule
+    in frames, and 50 ms only as what the frames imply for a shot in the pool."""
+    texts = {
+        "INTERPRETER_RULE": shots.INTERPRETER_RULE,
+        "POOL_GAP": shots.POOL_GAP,
+        "POOL_FALLBACK": shots.POOL_FALLBACK,
+        "POOL_UNMARKED": shots.POOL_UNMARKED,
+    }
+    for name, text in texts.items():
+        assert OFF_FRAMES in text, name
+    assert shots.POOL_GAP.endswith(f"{OFF_FRAMES} (so an off-period of at least 50 ms)")
+    assert "so an off-period of at least 50 ms" in shots.INTERPRETER_RULE
+    said = {name: re.findall(r"\d+ ms", text) for name, text in texts.items()}
+    assert said == {
+        "INTERPRETER_RULE": ["10 ms", "50 ms"],
+        "POOL_GAP": ["10 ms", "50 ms"],
+        "POOL_FALLBACK": ["10 ms"],
+        "POOL_UNMARKED": ["10 ms"],
+    }, "no text says what a 54 ms off-period of 4 whole frames would make false"
+    named = shots.POOL_UNMARKED.format(shots="2, 3")
+    assert "no point of interest (2, 3) have at least 5 whole" in named
 
 
 def test_the_interpreter_shows_a_shot_where_ae_turns_off_and_on():

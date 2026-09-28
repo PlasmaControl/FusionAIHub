@@ -8,6 +8,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -66,7 +67,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     assert manifest["example_shots"] == [102, 103]
     assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
     rule = manifest["interpreter_rule"]
-    assert "at least 5 consecutive absent frames (50 ms)" in rule, "MIN_GAP_FRAMES"
+    assert "at least 5 whole consecutive absent 10 ms frames" in rule, "MIN_GAP_FRAMES"
     assert manifest["interpreter_branch"] == shots.POOL_FALLBACK, (
         "AE ends at 900 ms and never comes back"
     )
@@ -263,35 +264,45 @@ def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_p
 
 
 @pytest.mark.parametrize(
-    ("back_on", "branch", "pool", "off"),
+    ("off_ms", "branch", "pool", "off"),
     [
-        (600, shots.POOL_GAP, ["103"], 10),
-        (550, shots.POOL_GAP, ["103"], 5),
-        (540, shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((500, 600), shots.POOL_GAP, ["103"], 10),
+        ((500, 550), shots.POOL_GAP, ["103"], 5),
+        ((500, 540), shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((502, 556), shots.POOL_FALLBACK, ["102", "103"], 4),
+        ((496, 550), shots.POOL_GAP, ["103"], 5),
     ],
+    ids=["100-ms", "50-ms", "40-ms", "54-ms-in-4-frames", "54-ms-in-5-frames"],
 )
 def test_the_pool_is_the_test_shots_where_ae_comes_back(
-    runs, tmp_path, back_on, branch, pool, off
+    runs, tmp_path, off_ms, branch, pool, off
 ):
+    """AE is off from `off_ms[0]` to `off_ms[1]`; a frame a present span touches
+    is present, so 54 ms off the 10 ms grid is 4 whole absent frames (the
+    review's 175240, out) or 5 (170672, in)."""
     copy = tree.scored_labels(runs)
     rows = [r for r in copy.read_text().splitlines() if not r.startswith("103,")]
+    start, stop = off_ms
     back = (
         (0, 300, 0),
-        (300, 500, 1),
-        (500, back_on, 0),
-        (back_on, 900, 1),
+        (300, start, 1),
+        (start, stop, 0),
+        (stop, 900, 1),
         (900, 2000, 0),
     )
     copy.write_text("\n".join([*rows, *(f"103,{c},{a},{b}," for a, b, c in back)]))
     tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
-    assert manifest["interpreter_branch"] == branch, "off from 500 ms: 50 ms is in"
+    assert manifest["interpreter_branch"] == branch, "5 whole absent frames are in"
     if branch == shots.POOL_GAP:
         assert manifest["interpreter_shot"] == 103, "the one shot where AE comes back"
+    else:
+        said = re.findall(r"\d+ ms", manifest["interpreter_branch"])
+        assert said == ["10 ms"], "nothing that AE off for 54 ms would make false"
     drawn = manifest["interpreter_pool"]
     assert sorted(drawn) == pool
     assert (drawn["103"]["longest_off_frames"], drawn["103"]["poi"]) == (off, 0), (
-        "from 500 ms; 900 ms to 2 s does not count"
+        "the off-period only; 900 ms to 2 s does not count"
     )
 
 
