@@ -15,8 +15,11 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 
 A product whose inputs are missing is listed in `manifest.json` under `skipped`,
 with the missing paths. The manifest also records each input's sha256, the
-commit, the time, the interpreter's shot and the example shots. `--copy-to`
-copies this run's PDFs and `.tex` tables into a directory (the manuscript's
+commit, the time, the interpreter's shot and the example shots, the rules that
+picked them, and the drawn shots' F1 over 0-2 s and over the whole window. The
+shots are ranked by their F1 over 0-2 s, the model run over every reviewed test
+shot in the gallery's index (`shots.score_shot`). `--copy-to` copies this run's
+PDFs and `.tex` tables into a directory (the manuscript's
 `dev/label_paper/figures/`); it never runs git there, so nothing is committed
 or pushed.
 """
@@ -26,6 +29,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import shutil
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -61,6 +65,10 @@ def inputs(paths: Paths) -> dict[str, Path]:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _number(x: float) -> float | None:
+    return None if math.isnan(x) else round(float(x), 4)
 
 
 def _write(path: Path, text: str) -> None:
@@ -115,11 +123,21 @@ def build(
     if ready(("fig_interpreter", "fig_examples"), "gallery_index", "ae_chosen"):
         index = pd.read_csv(found["gallery_index"])
         poi = pd.read_csv(found["poi"]) if found["poi"].is_file() else None
+        ranked = [
+            shots.score_shot(paths, s, model_file=model_file)
+            for s in shots.reviewed_test_shots(index)
+        ]
+        f1 = {r.shot: r.f1 for r in ranked}
+        mixed = {r.shot for r in ranked if r.mixed}
         picked = {
             "interpreter_shot": shot
             if shot is not None
-            else shots.interpreter_shot(index, poi),
-            "example_shots": shots.pick_examples(index, examples),
+            else shots.interpreter_shot(index, poi, f1=f1, mixed=mixed),
+            "interpreter_rule": "named by --shot"
+            if shot is not None
+            else shots.INTERPRETER_RULE,
+            "example_shots": shots.pick_examples(index, examples, f1=f1),
+            "example_rule": shots.EXAMPLES_RULE,
         }
         drawn: dict[int, shots.AEShot] = {}
 
@@ -136,6 +154,10 @@ def build(
             shots.draw_examples,
             [one(s) for s in picked["example_shots"]],
         )
+        picked["shot_f1"] = {
+            str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
+            for s, d in sorted(drawn.items())
+        }
     manifest = {
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(),

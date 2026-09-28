@@ -8,7 +8,7 @@ import pytest
 
 from labeler.ae import xpower
 from labeler.ae.xpower import gallery
-from labeler.paper import build
+from labeler.paper import build, shots
 
 from . import ae_tree
 from . import paper_tree as tree
@@ -55,6 +55,10 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["interpreter_shot"] == 102, "the best test shot; no POI yet"
     assert manifest["example_shots"] == [102, 103]
+    assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
+    assert manifest["example_rule"] == shots.EXAMPLES_RULE
+    assert sorted(manifest["shot_f1"]) == ["102", "103"], "the shots drawn"
+    assert set(manifest["shot_f1"]["102"]) == {"f1_0_2s", "f1_window"}
     assert sorted(manifest["inputs"]) == [
         "ae_chosen",
         "ae_evaluation",
@@ -78,3 +82,4 @@ def test_without_the_chosen_model_the_shot_figures_wait(runs, tmp_path):
 def test_the_interpreter_shot_can_be_named(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper", shot=103, examples=1)
     assert (manifest["interpreter_shot"], manifest["example_shots"]) == (103, [102])
+    assert manifest["interpreter_rule"] == "named by --shot"
