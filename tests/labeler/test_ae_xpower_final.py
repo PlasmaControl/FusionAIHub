@@ -231,6 +231,66 @@ def test_the_final_model_takes_no_epochs(tmp_path, monkeypatch, capsys):
     assert not (models / "chosen.json").exists()
 
 
+@pytest.mark.parametrize("epochs, count", [(1, "1 epoch"), (4, "4 epochs")])
+def test_the_final_models_records_count_its_epochs(
+    tmp_path, monkeypatch, epochs, count
+):
+    """The reviewer's Minor 7: "1 epoch", "N epochs", in `chosen.json`'s `why`
+    and in `frontier.md`, for a choice whose folds' best epochs are `epochs`."""
+    paths, _ = cv_tree(tmp_path, monkeypatch)
+    _designed(monkeypatch)
+
+    def fit(train_shots, val_shots, config, log=print):
+        history = [
+            {"epoch": e, "val_f1": 0.5, "kept": e <= epochs}
+            for e in range(1, epochs + 2)
+        ]
+        return train.FrameCNN(train.FrameCNNConfig(width=4)), history, 0.5
+
+    monkeypatch.setattr(train, "fit", fit)
+    assert cv.main(["--folds"]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k)]) == 0
+    assert cv.main(["--choose"]) == 0
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    models = model_dir(paths, "v2")
+    chosen = json.loads((models / "chosen.json").read_text())
+    assert chosen["final_epochs"] == epochs
+    assert f"trained on 10 shots for {count}, no early stopping" in chosen["why"]
+    frontier = (models / "cv" / "frontier.md").read_text()
+    assert f"on all 10 shots for {count}, the median" in frontier
+
+
+def test_a_pilot_final_model_trains_for_the_pilots_epochs(tmp_path, monkeypatch):
+    """`cv.PILOT_EPOCHS`, by name (the reviewer's Minor 7)."""
+    paths, _ = cv_tree(tmp_path, monkeypatch)
+    _designed(monkeypatch)
+    monkeypatch.setattr(train, "fit", _fake_fit([]))
+    pilot = ["--pilot", "5"]  # one shot a fold
+    assert cv.main(["--folds", *pilot]) == 0
+    for name in NAMES:
+        for k in range(5):
+            assert cv.main(["--candidate", name, "--fold", str(k), *pilot]) == 0
+    assert cv.main(["--choose", *pilot]) == 0
+    configs = []
+
+    def fit(train_shots, val_shots, config, log=print):
+        configs.append(config)
+        return _untrained(train_shots, val_shots, config, log)
+
+    monkeypatch.setattr(train, "fit", fit)
+    monkeypatch.setattr(cv, "PILOT_EPOCHS", 1)
+    assert train.main(["--version", "v2", "--from-cv", "--pilot", "6"]) == 0
+    runs = paths.runs / "ae_xpower" / "pilot" / "v2"
+    chosen = json.loads((runs / "chosen.json").read_text())
+    assert [c.epochs for c in configs] == [1] and chosen["final_epochs"] == 1
+    _, blob = train.load(runs / chosen["candidate"] / "model.pt")
+    assert blob["fixed_epochs"] == 1 and blob["train"]["epochs"] == 1
+    assert "trained on 6 shots for 1 epoch, no early stopping" in chosen["why"]
+
+
 def _final_and_v1(tmp_path, monkeypatch):
     """v2's final model from its choice, and a v1 that tests 111; the paths."""
     paths, _ = _chosen_by_cv(tmp_path, monkeypatch)

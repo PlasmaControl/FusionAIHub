@@ -149,6 +149,11 @@ def cv_config(spec: dict, epochs: int | None = None) -> TrainConfig:
     return config if epochs is None else replace(config, epochs=epochs)
 
 
+def epochs_text(n: int) -> str:
+    """An epoch count in words: "1 epoch", else "N epochs"."""
+    return f"{n} epoch" if n == 1 else f"{n} epochs"
+
+
 def frame_weights(states, mhd, mhd_weight: float, observed=None) -> np.ndarray:
     """1 on scored frames, `mhd_weight` on MHD-absent ones, 0 elsewhere.
 
@@ -464,7 +469,7 @@ def train_from_cv(
     pool = sorted(folds.folds)  # exactly the folds' shots; a pilot, the first N
     epochs = int(choice["final_epochs"])
     if pilot:
-        pool, epochs = pool[:pilot], 2
+        pool, epochs = pool[:pilot], cv.PILOT_EPOCHS
     elif len(pool) != choice["frames"]["shots"]:
         raise ValueError(
             f"{choice_file}: pooled {choice['frames']['shots']} shots; the folds "
@@ -523,7 +528,7 @@ def train_from_cv(
         "why": (
             f"cross-validation ({choice_file.name}), Deviation 11 branch "
             f"{choice['branch']}: {cv.BRANCHES[choice['branch']]}; trained on "
-            f"{len(pool)} shots for {epochs} epochs, no early stopping"
+            f"{len(pool)} shots for {epochs_text(epochs)}, no early stopping"
         ),
         "branch": choice["branch"],
         "final_epochs": epochs,

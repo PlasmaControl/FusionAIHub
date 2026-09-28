@@ -16,9 +16,9 @@ table and a `v1_subset` block; the bar is judged on the whole split only.
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
 repeated, and a pilot there scores 20 test shots at most, and for a
 cross-validated version only a pilot choice's model (never a copy of the
-version's final model); nor is a cross-validated version scored from any other
-directory than its own models directory (`check_own_dir`); `--version` must be
-the models directory's name and the version its checkpoints record.
+version's final model); outside `runs/`, a cross-validated version is scored
+only in its own models directory, never in a copy (`check_own_dir`); `--version`
+must be the models directory's name and the version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside

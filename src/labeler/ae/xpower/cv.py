@@ -559,8 +559,8 @@ def frontier_md(choice: dict) -> str:
         (
             f"**Chosen: {choice['candidate']} at {choice['threshold']:.2f}, by "
             f"branch {choice['branch']}**; the final model trains on all "
-            f"{n['shots']} shots for {choice['final_epochs']} epochs, the median "
-            f"of its folds' best epochs {epochs}."
+            f"{n['shots']} shots for {train.epochs_text(choice['final_epochs'])}, "
+            f"the median of its folds' best epochs {epochs}."
         ),
         "",
         "| candidate | fold best epochs |",
