@@ -9,10 +9,17 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_scores`, `fig_mhd`, `table_ae_scores.tex`: the AE evaluation;
 - `fig_segmentation`, `table_seg_scores.tex`: the segmentation's evaluation;
 - `table_differences.tex`: the paired differences both evaluations hold;
-- `fig_coverage`, `table_datasets.tex`: the owner's AE review, with the chosen
-  model's split and the extension's summary where they exist;
-- `fig_interpreter`, `fig_examples`: the gallery's index and the chosen model,
-  with the points of interest where they exist.
+- `fig_coverage`, `table_datasets.tex`: the owner's live AE review, with the
+  chosen model's split (the reviewed shots in no split apart) and the
+  extension's summary where they exist;
+- `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
+  (`split.csv`), scored against its own copy of the labels,
+  `<candidate>/review/labels.csv` (D18), with the points of interest where they
+  exist. The copy's sha256 must be the one the AE evaluation names
+  (`labels_sha256`); if it is not, or none is named, both are skipped.
+
+The owner's live labels are read for the coverage alone; every scored product
+uses the labels the model was scored against.
 
 A product whose inputs are missing is listed in `manifest.json` under `skipped`,
 with the reason and the missing paths, and one drawn without some of them under
@@ -24,13 +31,14 @@ it was. A file in `out` that is no product's stays.
 
 `--version` (default `v1`) names the models' version the inputs come from. The
 manifest pins every file the build reads (the chosen `model.pt`, its
-`split.csv` and each spectrogram store among them) with its sha256, and records
-the full commit and whether the tree was dirty, whether the live labels are the
-ones the evaluations name (`labels_match`, recorded, not enforced), the time,
-the interpreter's shot and the example shots, the rules that picked them, and
-the drawn shots' F1 over 0-2 s and over the whole window. The shots are ranked
-by their F1 over 0-2 s, the model run over every reviewed test shot in the
-gallery's index (`shots.score_shot`). `--copy-to` copies this run's PDFs and
+`split.csv`, its labels and each spectrogram store among them) with its
+sha256, and records the full commit and whether the tree was dirty, whether the
+model's copy of the labels is the one every evaluation names (`labels_match`,
+with each sha256 in `labels_sha256`, the live table's too), the time, the
+interpreter's shot, its pool and the branch of the rule that fired, the example
+shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
+the whole window. The shots are ranked by their F1 over 0-2 s
+(`shots.rank_keys`). `--copy-to` copies this run's PDFs and
 `.tex` tables into a directory (the manuscript's `dev/label_paper/figures/`); it
 never runs git there, so nothing is committed or pushed.
 """
@@ -38,6 +46,7 @@ never runs git there, so nothing is committed or pushed.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import hashlib
 import json
 import math
@@ -53,6 +62,7 @@ import torch
 from ..ae import seg as ae_seg
 from ..ae import xpower
 from ..ae.xpower.evaluate import chosen_model
+from ..ae.xpower.train import read_split
 from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
@@ -84,11 +94,16 @@ NO_POI = "no points of interest: the segmentation has not run over the test shot
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
 NO_SCORED_SHOT = "no test shot has both a saved label and a store"
+NO_NAMED = "the named shot has no saved label in the model's copy, or no store"
+AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
+LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
+LABELS_DIFFER = "the model's review/labels.csv is not what its evaluation scored (D18)"
 
 
 def inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
     """Where the round-two runs leave what the paper reads, for the models'
-    `version`; the build adds the chosen model, its split and the stores it reads."""
+    `version`; the build adds the chosen model, its split, its copy of the labels
+    (`ae_scored_labels`) and the stores it reads."""
     models = xpower.model_dir(paths, version)
     return {
         "ae_evaluation": models / "evaluation.json",
@@ -96,7 +111,6 @@ def inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
         "ae_labels": labels.labels_path(xpower.event_dir(paths)),
         "seg_evaluation": ae_seg.model_dir(paths).parent / version / "evaluation.json",
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
-        "gallery_index": xpower.gallery_dir(paths, version) / "index.csv",
         "poi": ae_seg.poi_dir(paths).parent / f"{ae_seg.METHOD}-{version}" / "poi.csv",
     }
 
@@ -105,24 +119,44 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def labels_check(found: dict[str, Path]) -> tuple[bool | None, dict[str, str]]:
-    """Whether the live labels are the ones each evaluation record names (None
-    when none names them), and the sha256s: the live one and each recorded."""
-    if not found["ae_labels"].is_file():
-        return None, {}
-    shas = {"live": _sha256(found["ae_labels"])}
-    ae, seg = scores.read(found["ae_evaluation"]), scores.read(found["seg_evaluation"])
+def _recorded(record: dict | None, *where: str) -> str | None:
+    value = record
+    for step in where:
+        value = value.get(step) if isinstance(value, dict) else None
+    return value or None
+
+
+def labels_check(
+    scored: str | None, live: str | None, ae: dict | None, seg: dict | None
+) -> tuple[bool | None, dict[str, str]]:
+    """Whether the chosen model's copy of the labels (`scored`) is the one every
+    evaluation record names (None when there is no copy or no record names one),
+    and the sha256s: the copy's, the live table's and each recorded."""
+    shas = {k: v for k, v in (("scored", scored), ("live", live)) if v}
     for key, record, where in (
         ("ae_evaluation", ae, ("meta", "labels_sha256")),
+        ("ae_evaluation_copy", ae, ("meta", "labels_copy_sha256")),
         ("seg_evaluation", seg, ("meta", "inputs", "labels_sha256")),
     ):
-        value = record
-        for step in where:
-            value = value.get(step) if isinstance(value, dict) else None
-        if value:
+        if value := _recorded(record, *where):
             shas[key] = value
-    recorded = [v for k, v in shas.items() if k != "live"]
-    return (all(v == shas["live"] for v in recorded) if recorded else None), shas
+    recorded = [v for k, v in shas.items() if k not in ("scored", "live")]
+    match = all(v == scored for v in recorded) if scored and recorded else None
+    return match, shas
+
+
+def scored_refusal(scored: str | None, ae: dict | None) -> str | None:
+    """Why the shot products cannot be scored on the model's copy of the labels
+    (D18): the AE evaluation names no labels, or others; None when it is that copy."""
+    named = {k: _recorded(ae, "meta", k) for k in AE_LABEL_KEYS}
+    named = {k: v for k, v in named.items() if v}
+    if not named:
+        return LABELS_UNNAMED
+    wrong = ", ".join(f"{k} {v[:12]}" for k, v in named.items() if v != scored)
+    if wrong:
+        copy = (scored or "")[:12]
+        return f"{LABELS_DIFFER}: the copy is {copy}, the record names {wrong}"
+    return None
 
 
 def _number(x: float) -> float | None:
@@ -253,19 +287,14 @@ def _draw(
             lacking(("table_differences",), MISSING, missing=absent)
     else:
         ready(("table_differences",), *evaluations)
-    model_file = None
     if found["ae_chosen"].is_file():
         model_file = chosen_model(found["ae_chosen"].parent)
         found["ae_model"] = model_file
         found["ae_split"] = model_file.parent / "split.csv"
-    saved = (
-        labels.read_saved(found["ae_labels"].parent.parent)
-        if found["ae_labels"].is_file()
-        else {}
-    )
+        found["ae_scored_labels"] = labels.labels_path(model_file.parent)
     counted = ("fig_coverage", "table_datasets")
     if ready(counted, "ae_labels"):
-        split = None if model_file is None else found["ae_split"]
+        split = found.get("ae_split")
         counts = {
             AE: coverage.ae_counts(
                 found["ae_labels"].parent.parent, split, found["summary"]
@@ -281,15 +310,20 @@ def _draw(
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
     picked: dict = {}
     figures = ("fig_interpreter", "fig_examples")
-    if ready(figures, "gallery_index", "ae_chosen", "ae_labels") and ready(
-        figures, "ae_model"
+    scored = live = None
+    if found.get("ae_scored_labels", Path()).is_file():
+        scored = _sha256(found["ae_scored_labels"])
+    if found["ae_labels"].is_file():
+        live = _sha256(found["ae_labels"])
+    if ready(figures, "ae_evaluation", "ae_chosen") and ready(
+        figures, "ae_model", "ae_split", "ae_scored_labels"
     ):
-        why = _shot_figures(
-            paths, found, saved, shot, examples, figure, lacking, picked
+        why = scored_refusal(scored, ae) or _shot_figures(
+            paths, found, shot, examples, figure, lacking, skipped, picked
         )
         for product in figures if why else ():
             skipped[product] = {"reason": why, "missing": []}
-    match, shas = labels_check(found)
+    match, shas = labels_check(scored, live, ae, seg)
     manifest = {
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(full=True),
@@ -314,26 +348,32 @@ def _draw(
 def _shot_figures(
     paths: Paths,
     found: dict[str, Path],
-    saved: dict,
     shot: int | None,
     examples: int,
     figure: Callable,
     lacking: Callable,
+    skipped: dict,
     picked: dict,
 ) -> str | None:
-    """Rank the test shots and draw the two shot figures: None when drawn, else
-    why they could not be."""
-    model_file = found["ae_model"]
+    """Score every test shot against the model's copy of the labels (D18) and
+    draw the two shot figures: None when drawn, else why they could not be."""
     figures = ("fig_interpreter", "fig_examples")
-    index = pd.read_csv(found["gallery_index"])
+    model = shots.Model.load(found["ae_model"], read_split(found["ae_split"]))
+    saved = labels.read_saved(found["ae_model"].parent)
     poi = pd.read_csv(found["poi"]) if found["poi"].is_file() else None
-    tested = shots.reviewed_test_shots(index)
+    tested = shots.test_shots(model.split)
     unlabelled = [s for s in tested if s not in saved]
     unstored = [_store(paths, s) for s in tested if not _store(paths, s).is_file()]
     usable = [s for s in tested if s in saved and _store(paths, s).is_file()]
     if not usable:
         return NO_SCORED_SHOT
-    ranked = [shots.score_shot(paths, s, model_file=model_file) for s in usable]
+
+    def draw_one(s: int) -> shots.AEShot:
+        found[f"store_{s}"] = _store(paths, s)
+        return shots.picture(s, label=saved[s], model=model, store=_store(paths, s))
+
+    pictures = {s: draw_one(s) for s in usable}
+    ranked = [shots.rank_keys(p) for p in pictures.values()]
     f1 = {r.shot: r.f1 for r in ranked}
     pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
     picked.update(
@@ -348,16 +388,25 @@ def _shot_figures(
             "example_rule": shots.EXAMPLES_RULE,
         }
     )
-    drawn: dict[int, shots.AEShot] = {}
-
-    def one(s: int) -> shots.AEShot:
-        if s not in drawn:
-            drawn[s] = shots.ae_shot(paths, s, model_file=model_file, poi=poi)
-        return drawn[s]
-
-    figure("fig_interpreter", shots.draw_interpreter, one(picked["interpreter_shot"]))
+    named = picked["interpreter_shot"]
+    if named not in pictures and named in saved and _store(paths, named).is_file():
+        pictures[named] = draw_one(named)
+    drawn = {
+        s: dataclasses.replace(pictures[s], boxes=shots.boxes_of(poi, s))
+        for s in (named, *picked["example_shots"])
+        if s in pictures
+    }
+    if named in drawn:
+        figure("fig_interpreter", shots.draw_interpreter, drawn[named])
+    else:
+        skipped["fig_interpreter"] = {
+            "reason": NO_NAMED,
+            "missing": [str(_store(paths, named))],
+        }
     figure(
-        "fig_examples", shots.draw_examples, [one(s) for s in picked["example_shots"]]
+        "fig_examples",
+        shots.draw_examples,
+        [drawn[s] for s in picked["example_shots"]],
     )
     if poi is None:
         lacking(figures, NO_POI, missing=[str(found["poi"])])
@@ -365,8 +414,6 @@ def _shot_figures(
         lacking(figures, NO_LABEL, shots=unlabelled)
     if unstored:
         lacking(figures, NO_STORE, missing=[str(p) for p in unstored])
-    for s in sorted({r.shot for r in ranked} | set(drawn)):
-        found[f"store_{s}"] = _store(paths, s)
     picked["shot_f1"] = {
         str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
         for s, d in sorted(drawn.items())
