@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=11G
+#SBATCH --mem=9G
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -41,12 +41,16 @@
 #   RSS, sawteeth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB.
 #   Sawteeth since the ECE medians (2026-09-28, pilot job 2943760, 20 shots): 12
 #   workers on 4 CPUs, 30 s, 69 % CPU with start-up, 4.92 GB MaxRSS (0.41 GB a
-#   worker), so --mem=6G; 8 workers on 4 CPUs reached 55 %.
+#   worker), so --mem=6G; 8 workers on 4 CPUs reached 55 %. With the Thomson Te row
+#   (pilot job 2943818): 26 s, 83 % CPU by sacct, 5.23 GB MaxRSS, still --mem=6G.
+#   Tearing modes since the n-coloured row (2026-09-28, pilot job 2943811, 20 shots):
+#   8 workers on 8 CPUs, 28 s, 40 % CPU (start-up and a half-empty last round are most
+#   of 20 shots; each shot is 5 s), 7.19 GB MaxRSS (0.90 GB a worker), so --mem=9G.
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
 #   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).
 #   cpus-per-task=8   450 x 5.1 s / 8 workers = 4.8 min; the others 1-2 min on 2-4 CPUs.
-#   mem=11G           8 x 1.12 GB x 1.2 for tearing modes; sawteeth 12 x 0.41 x 1.2,
+#   mem=9G            the tearing-mode pilot's 7.19 GB x 1.2; sawteeth 12 x 0.41 x 1.2,
 #                     H-mode 6 x 0.32 x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
 #   time=00:30:00     4.8 min x 6 for cold GPFS reads.
 set -euo pipefail
