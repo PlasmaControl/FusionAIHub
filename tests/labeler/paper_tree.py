@@ -120,19 +120,39 @@ def record_labels(paths: Paths, version: str = "v1") -> str:
     return sha
 
 
-def as_version(paths: Paths, version: str = "v2", *, seg: bool = True) -> Path:
-    """Move the v1 records to `version`, laid out as v2 will be:
+def as_version(paths: Paths, version: str = "v2", *, keep: bool = False) -> Path:
+    """The v1 frame-model records at `version`, laid out as v2 will be:
     `models/ae_xpower/<version>/<candidate>/{model.pt, split.csv,
-    review/labels.csv}`, `chosen.json`, `evaluation.json`, and with `seg` the
-    segmentation's record, naming the copy; v1 is left with nothing. Its models
-    directory."""
+    review/labels.csv}`, `chosen.json` and `evaluation.json`, naming the copy.
+    v1 is moved, leaving nothing, unless `keep`. Its models directory."""
     old, new = xpower.model_dir(paths), xpower.model_dir(paths, version)
-    shutil.move(old, new)
-    sha = record_labels(paths, version)
-    if seg:
-        record = seg_evaluation()
-        record["meta"]["inputs"] = {"labels_sha256": sha}
-        path = paths.root / "models" / "ae_seg" / version / "evaluation.json"
-        path.parent.mkdir(parents=True)
-        path.write_text(json.dumps(record))
+    (shutil.copytree if keep else shutil.move)(old, new)
+    record_labels(paths, version)
     return new
+
+
+POI_CSV = (
+    "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
+    "102,1,300,900,140,152,40,True\n"
+)
+
+
+def seg_record(paths: Paths, seg_version: str = "v1", *, frame: str = "v1") -> str:
+    """The segmentation at `seg_version`, as `labeler.ae.seg` leaves it: its
+    `evaluation.json` naming its own copy of the labels (taken from the frame
+    model `frame`'s) and that model, the copy, and points of interest for 102.
+    The copy's sha256."""
+    seg = paths.root / "models" / "ae_seg" / seg_version
+    copy = seg / "review" / "labels.csv"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes(scored_labels(paths, frame).read_bytes())
+    sha = hashlib.sha256(copy.read_bytes()).hexdigest()
+    record = seg_evaluation()
+    record["meta"]["inputs"] = {"labels_sha256": sha}
+    model = xpower.model_dir(paths, frame) / "band80-mhd3" / "model.pt"
+    record["meta"]["ae_model"] = str(model)
+    (seg / "evaluation.json").write_text(json.dumps(record))
+    poi = paths.root / "poi" / "alfven_eigenmode" / f"ae_seg-{seg_version}" / "poi.csv"
+    poi.parent.mkdir(parents=True)
+    poi.write_text(POI_CSV)
+    return sha

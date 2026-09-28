@@ -29,14 +29,23 @@ itself: the build draws into a directory beside it and swaps that in whole at
 the end, the products and the manifest together, so a failure leaves `out` as
 it was. A file in `out` that is no product's stays.
 
-`--version` (default `v1`) names the models' version the inputs come from:
-`models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the chosen
-`<candidate>/{model.pt, split.csv, review/labels.csv}`), the segmentation's
-`models/ae_seg/<version>/evaluation.json` and points of interest (it is scored
-on the chosen frame model's split and labels, so each version has its own), and
-the extension's summary. Until a version's records exist its AE products are
+`--version` (default `v1`) names the frame model's version the inputs come
+from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the
+chosen `<candidate>/{model.pt, split.csv, review/labels.csv}`) and the
+extension's summary. Until a version's records exist its AE products are
 `skipped`, with the paths missing, and the coverage is still drawn from the
 owner's live labels, which have no version.
+
+`--seg-version` (default `v1`) names the segmentation's, apart: a new frame
+model does not retrain SegNet, so v2's frame figures stand beside SegNet v1.
+fig_segmentation, table_seg_scores, the segmentation's rows of
+table_differences and the shot figures' points of interest read
+`models/ae_seg/<seg-version>/` and `poi/.../ae_seg-<seg-version>/`. The
+segmentation's own copy of the labels (`<seg-version>/review/labels.csv`) is
+pinned and checked against its record's `labels_sha256` (`seg_labels_match`),
+not against the frame model's; a copy missing or unlike the record makes its
+products `partial`. The manifest names the frame model SegNet was evaluated
+beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
 
 The manifest pins every file the build reads (the chosen `model.pt`, its
 `split.csv`, its labels and each spectrogram store among them) with its
@@ -83,7 +92,8 @@ from ..config import Paths, atomic_path, git_dirty, git_sha, sha256_of
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
 
-VERSION = xpower.VERSION  # the models' version; `--version` names another
+VERSION = xpower.VERSION  # the frame model's version; `--version` names another
+SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names another
 LOGIN_THREADS = 2
 COPIED = (".pdf", ".tex")
 MANIFEST = "manifest.json"
@@ -114,20 +124,32 @@ NO_NAMED = "the named shot has no saved label in the model's copy, or no store"
 AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
 LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
 LABELS_DIFFER = "the model's review/labels.csv is not what its evaluation scored (D18)"
+SEG_PRODUCTS = ("fig_segmentation", "table_seg_scores")
+NO_SEG_COPY = "the segmentation has no review/labels.csv to check its record against"
+SEG_LABELS_UNNAMED = "the segmentation's evaluation names no labels_sha256"
+SEG_LABELS_DIFFER = (
+    "the segmentation's review/labels.csv is not what its evaluation scored (D18)"
+)
 
 
-def inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
-    """Where the round-two runs leave what the paper reads, for the models'
-    `version`; the build adds the chosen model, its split, its copy of the labels
-    (`ae_scored_labels`) and the stores it reads."""
+def inputs(
+    paths: Paths, version: str = VERSION, seg_version: str = SEG_VERSION
+) -> dict[str, Path]:
+    """Where the round-two runs leave what the paper reads, for the frame
+    model's `version` and the segmentation's `seg_version`; the build adds the
+    chosen model, its split, its copy of the labels (`ae_scored_labels`) and the
+    stores it reads."""
     models = xpower.model_dir(paths, version)
+    seg = ae_seg.model_dir(paths).parent / seg_version
+    poi = ae_seg.poi_dir(paths).parent / f"{ae_seg.METHOD}-{seg_version}"
     return {
         "ae_evaluation": models / "evaluation.json",
         "ae_chosen": models / "chosen.json",
         "ae_labels": labels.labels_path(xpower.event_dir(paths)),
-        "seg_evaluation": ae_seg.model_dir(paths).parent / version / "evaluation.json",
+        "seg_evaluation": seg / "evaluation.json",
+        "seg_labels": labels.labels_path(seg),
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
-        "poi": ae_seg.poi_dir(paths).parent / f"{ae_seg.METHOD}-{version}" / "poi.csv",
+        "poi": poi / "poi.csv",
     }
 
 
@@ -139,22 +161,31 @@ def _recorded(record: dict | None, *where: str) -> str | None:
 
 
 def labels_check(
-    scored: str | None, live: str | None, ae: dict | None, seg: dict | None
+    scored: str | None, live: str | None, ae: dict | None
 ) -> tuple[bool | None, dict[str, str]]:
-    """Whether the chosen model's copy of the labels (`scored`) is the one every
-    evaluation record names (None when there is no copy or no record names one),
+    """Whether the chosen frame model's copy of the labels (`scored`) is the one
+    its evaluation names (None when there is no copy or the record names none),
     and the sha256s: the copy's, the live table's and each recorded."""
     shas = {k: v for k, v in (("scored", scored), ("live", live)) if v}
-    for key, record, where in (
-        ("ae_evaluation", ae, ("meta", "labels_sha256")),
-        ("ae_evaluation_copy", ae, ("meta", "labels_copy_sha256")),
-        ("seg_evaluation", seg, ("meta", "inputs", "labels_sha256")),
+    for key, where in (
+        ("ae_evaluation", ("meta", "labels_sha256")),
+        ("ae_evaluation_copy", ("meta", "labels_copy_sha256")),
     ):
-        if value := _recorded(record, *where):
+        if value := _recorded(ae, *where):
             shas[key] = value
     recorded = [v for k, v in shas.items() if k not in ("scored", "live")]
     match = all(v == scored for v in recorded) if scored and recorded else None
     return match, shas
+
+
+def seg_check(
+    scored: str | None, seg: dict | None
+) -> tuple[bool | None, dict[str, str]]:
+    """The same for the segmentation, against its own copy (`scored`): None
+    when there is no copy or its record names none."""
+    named = _recorded(seg, "meta", "inputs", "labels_sha256")
+    shas = {k: v for k, v in (("seg_scored", scored), ("seg_evaluation", named)) if v}
+    return (named == scored if scored and named else None), shas
 
 
 def scored_refusal(scored: str | None, ae: dict | None) -> str | None:
@@ -241,6 +272,7 @@ def build(
     shot: int | None = None,
     examples: int = 3,
     version: str = VERSION,
+    seg_version: str = SEG_VERSION,
 ) -> dict:
     """Draw every product the inputs allow, and the manifest, into a directory
     beside `out`, then swap it in whole; on a failure `out` is left as it was."""
@@ -250,7 +282,13 @@ def build(
         with tempfile.TemporaryDirectory(prefix="paper-inputs-") as scratch:
             snap = Snapshot(Path(scratch))
             manifest = _draw(
-                paths, staged, snap, shot=shot, examples=examples, version=version
+                paths,
+                staged,
+                snap,
+                shot=shot,
+                examples=examples,
+                version=version,
+                seg_version=seg_version,
             )
         _swap(staged, out)
     except BaseException:
@@ -318,8 +356,9 @@ def _draw(
     shot: int | None,
     examples: int,
     version: str,
+    seg_version: str,
 ) -> dict:
-    found = inputs(paths, version)
+    found = inputs(paths, version, seg_version)
     made: dict[str, list[str]] = {}
     skipped: dict[str, dict] = {}
     partial: dict[str, list[dict]] = {}
@@ -353,9 +392,22 @@ def _draw(
         figure("fig_scores", scores.draw_scores, ae)
         figure("fig_mhd", scores.draw_mhd, ae)
         table("table_ae_scores", scores.table_ae(ae))
-    if ready(("fig_segmentation", "table_seg_scores"), "seg_evaluation"):
+    seg_match, seg_shas = None, {}
+    if ready(SEG_PRODUCTS, "seg_evaluation"):
         figure("fig_segmentation", scores.draw_segmentation, seg)
         table("table_seg_scores", scores.table_segmentation(seg))
+        copy = found["seg_labels"]
+        if copy.is_file():
+            snap.read("seg_labels", copy, keep=False)
+        seg_match, seg_shas = seg_check(snap.sha("seg_labels"), seg)
+        if not copy.is_file():
+            lacking(SEG_PRODUCTS, NO_SEG_COPY, missing=[str(copy)])
+        elif "seg_evaluation" not in seg_shas:
+            lacking(SEG_PRODUCTS, SEG_LABELS_UNNAMED)
+        elif seg_match is False:
+            named = seg_shas["seg_evaluation"][:12]
+            why = f"{SEG_LABELS_DIFFER}: the copy is {seg_shas['seg_scored'][:12]}"
+            lacking(SEG_PRODUCTS, f"{why}, the record names {named}")
     evaluations = ("ae_evaluation", "seg_evaluation")
     if ae is not None or seg is not None:
         table("table_differences", scores.table_differences(ae, seg))
@@ -406,15 +458,18 @@ def _draw(
     elif "ae_scored_labels" in found and found["ae_scored_labels"].is_file():
         read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
-    match, shas = labels_check(scored, snap.sha("ae_labels"), ae, seg)
+    match, shas = labels_check(scored, snap.sha("ae_labels"), ae)
     changed = snap.changed()
     manifest = {
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(full=True),
         "git_dirty": git_dirty(),
         "version": version,
+        "seg_version": seg_version,
         "labels_match": match,
-        "labels_sha256": shas,
+        "seg_labels_match": seg_match,
+        "labels_sha256": shas | seg_shas,
+        "seg_ae_model": _recorded(seg, "meta", "ae_model"),
         "consistent": not changed,
         "changed_during_build": changed,
         "inputs": {
@@ -524,7 +579,14 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--examples", type=int, default=3)
     parser.add_argument(
-        "--version", default=VERSION, help=f"the models' version (default {VERSION})"
+        "--version",
+        default=VERSION,
+        help=f"the frame model's version (default {VERSION})",
+    )
+    parser.add_argument(
+        "--seg-version",
+        default=SEG_VERSION,
+        help=f"the segmentation's version (default {SEG_VERSION})",
     )
     parser.add_argument(
         "--copy-to", type=Path, help="also copy the PDFs and tables here"
@@ -534,7 +596,12 @@ def main(argv=None) -> int:
     paths = Paths.from_env()
     out = args.out or paper_dir(paths)
     manifest = build(
-        paths, out, shot=args.shot, examples=args.examples, version=args.version
+        paths,
+        out,
+        shot=args.shot,
+        examples=args.examples,
+        version=args.version,
+        seg_version=args.seg_version,
     )
     copied = [] if args.copy_to is None else copy_into(out, manifest, args.copy_to)
     print(
