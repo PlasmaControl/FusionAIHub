@@ -1,7 +1,7 @@
 """Choose the AE model on the validation shots, then score it on the test shots.
 
     python -m labeler.ae.xpower.evaluate --choose [--models DIR] [--limit N]
-    python -m labeler.ae.xpower.evaluate [--models DIR] [--limit N]
+    python -m labeler.ae.xpower.evaluate [--test] [--models DIR] [--limit N]
 
 The first scores every trained candidate of the version (`train.candidates`)
 on the validation shots and writes `chosen.json`; the second scores the chosen
@@ -10,6 +10,9 @@ all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`). A
 version chosen by cross-validation (v2, `labeler.ae.xpower.cv`) is not chosen
 here: `--choose` only checks that `chosen.json` is the one `train --from-cv`
 wrote from `cv/choice.json`, and the test checks the model against both.
+v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
+model's `split.csv`, checked before scoring to be v2 test shots) as a second
+table and a `v1_subset` block; the bar is judged on the whole split only.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -95,6 +98,7 @@ BAR = {
     "f1_vs_seldnet_low": -0.03,
     "mhd_fp_rate": 0.05,
 }
+SUBSET_OF = {"v2": "v1"}  # the earlier version whose test shots are reported
 METHODS = ("ae_xpower", "seldnet", "tokeye", "source", "uci", "always")
 
 
@@ -332,7 +336,7 @@ def _fmt(e: dict) -> str:
     return f"{e['value']:.3f}{band}"
 
 
-def report_md(scores: dict, bar: dict, meta: dict) -> str:
+def report_md(scores: dict, bar: dict, meta: dict, subset: dict | None = None) -> str:
     """`evaluation.md`: the table the paper's AE score figure and table read."""
     n = scores["frames"]
     summary = (
@@ -346,6 +350,21 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
         "",
         summary,
         "",
+        *_tables(scores),
+    ]
+    said = {k: "pass" if bar[k] else "FAIL" for k in ("A1", "A2", "A3")}
+    verdict_line = (
+        f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. "
+        "Tier: suggestions."
+    )
+    lines += ["", verdict_line, ""]
+    if subset is not None:
+        lines += _subset_md(subset)
+    return "\n".join(lines)
+
+
+def _tables(scores: dict) -> list[str]:
+    lines = [
         (
             "| method | precision | recall | F1 | FP rate, MHD frames | "
             "FP rate, other absent |"
@@ -364,13 +383,29 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
             "",
             f"Over the owner's whole windows: F1 {_fmt(scores['window']['f1'])}.",
         ]
-    said = {k: "pass" if bar[k] else "FAIL" for k in ("A1", "A2", "A3")}
-    verdict_line = (
-        f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. "
-        "Tier: suggestions."
-    )
-    lines += ["", verdict_line, ""]
-    return "\n".join(lines)
+    return lines
+
+
+def _subset_md(subset: dict) -> list[str]:
+    """The second table: the same model on the earlier version's test shots."""
+    name = subset["version"]
+    lines = [f"## {name}'s test shots", ""]
+    if "frames" not in subset:
+        return [*lines, f"None of {name}'s test shots were scored.", ""]
+    n = subset["frames"]
+    lines += [
+        (
+            f"The same model and threshold on the {n['shots']} of {name}'s test "
+            f"shots scored here ({len(subset['shots'])} in {name}'s split, its "
+            f"model {subset['candidate']}): {n['scored']} frames "
+            f"({n['present']} present), {n['mhd_absent']} MHD frames absent. "
+            "Reported beside the whole split; not judged against the bar."
+        ),
+        "",
+        *_tables(subset),
+        "",
+    ]
+    return lines
 
 
 def _reviewed(split: dict[int, str], which: str, limit: int) -> list[int]:
@@ -466,6 +501,35 @@ def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> 
     }
 
 
+def earlier_test(paths: Paths, version: str, test: set[int]) -> dict | None:
+    """The earlier version's test shots (`SUBSET_OF`), from its chosen model's
+    split, refused unless every one is in this version's test split `test`."""
+    earlier = SUBSET_OF.get(version)
+    if earlier is None:
+        return None
+    models = model_dir(paths, earlier)
+    chosen_bytes = (models / "chosen.json").read_bytes()
+    name = json.loads(chosen_bytes)["candidate"]
+    split_file = models / name / "split.csv"
+    data = split_file.read_bytes()
+    shots = sorted(
+        s for s, v in read_split(split_file, data=data).items() if v == "test"
+    )
+    outside = sorted(set(shots) - test)
+    if not shots or outside:
+        raise ValueError(
+            f"{split_file}: {earlier}'s test shots must be {version} test shots; "
+            f"not: {', '.join(map(str, outside)) or 'none listed'}"
+        )
+    return {
+        "version": earlier,
+        "candidate": name,
+        "shots": shots,
+        "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
+        "split_sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def chosen_model(models: Path) -> Path:
     """The chosen candidate's `model.pt`, from `chosen.json`."""
     name = json.loads((models / "chosen.json").read_text())["candidate"]
@@ -504,6 +568,7 @@ def run_test(
         cv_meta = check_cv_model(
             blob, cv_chosen(models, version), snapshots["review/labels.csv"], file
         )
+    subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
     source = labels.read_source(event_dir(paths))
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
@@ -529,7 +594,18 @@ def run_test(
         raise ValueError("a test shot has no source-table label")
     scores = score(shots, METHODS)
     scores["window"] = {"f1": _estimate(np.asarray(windows), stats.f1)}
-    bar = verdict(scores)
+    bar = verdict(scores)  # on the whole split only
+    if subset is not None:
+        within = [f for f in shots if f.shot in set(subset["shots"])]
+        if within:
+            wanted = {f.shot for f in within}
+            subset |= score(within, METHODS)
+            subset["window"] = {
+                "f1": _estimate(
+                    np.asarray([c for f, c in zip(shots, windows) if f.shot in wanted]),
+                    stats.f1,
+                )
+            }
     meta = {
         "candidate": blob["candidate"],
         "version": version,
@@ -550,17 +626,25 @@ def run_test(
         **cv_meta,
     }
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
+    if subset is not None:
+        record[f"{subset['version']}_subset"] = subset
     with atomic_path(models / "evaluation.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
     with atomic_path(models / "evaluation.md") as tmp:
-        tmp.write_text(report_md(scores, bar, meta))
+        tmp.write_text(report_md(scores, bar, meta, subset))
     return record
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument(
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
         "--choose", action="store_true", help="score candidates on validation"
+    )
+    mode.add_argument(
+        "--test",
+        action="store_true",
+        help="score the chosen model once on the test shots (the default)",
     )
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
@@ -582,7 +666,11 @@ def main(argv=None) -> int:
     if args.choose:
         print(f"chose {record['candidate']}: {record['why']}")
     else:
-        print(json.dumps({"bar": record["bar"], "frames": record["frames"]}))
+        said = {"bar": record["bar"], "frames": record["frames"]}
+        for key in (f"{v}_subset" for v in SUBSET_OF.values()):
+            if key in record:
+                said[key] = record[key].get("frames")
+        print(json.dumps(said))
     return 0
 
 
