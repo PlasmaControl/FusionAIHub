@@ -22,10 +22,12 @@ A score is written `$v^{+a}_{-b}$`, its 95 % interval's ends `v + a` and `v - b`
 (`INTERVAL_NOTE`, said once in each table's `%` comment), exact where
 `v ± half-width` would not be: the bootstrap intervals are not symmetric. Its
 numbers, and those of table_differences' conditions, are set in amsmath's
-`\text{}` (the manuscript loads amsmath), so their digits print in the text
-font, Times, and not in Computer Modern, the math font `times` leaves; the
-signs stay math symbols. A negative number elsewhere is written `$-$0.188`,
-and one that rounds to zero `0.000`.
+`\text{}`, so their digits print in the text font, Times, and not in Computer
+Modern, the math font `times` leaves; the signs stay math symbols. The
+manuscript loads amsmath, but `icml2025.sty` does not, so each table that uses
+`\text{}` says once in its `%` comment that it needs amsmath (`AMSMATH`). A
+negative number outside math is written `$-$0.188`, and one that rounds to zero
+is `0.000`, unsigned, in math too (`number`, `text_number`).
 
 The AE methods are the same six everywhere (`AE_METHODS`): the model, the two
 detectors it is compared with, the start table, the UCI windows and the
@@ -100,6 +102,7 @@ COLOURS = {
     "always": "#7f7f7f",
 }
 DECIMALS = 3
+AMSMATH = r"needs amsmath for its \text{}"  # in each table that uses it, once
 INTERVAL_NOTE = (
     "$v^{+a}_{-b}$ is the value with its 95% shot-bootstrap interval, "
     "[v - b, v + a] (a = high - value, b = value - low, each end rounded to "
@@ -405,8 +408,11 @@ def number(x: float, signed: bool = False) -> str:
 
 def text_number(x: float, spec: str) -> str:
     r"""`x` for math mode, formatted by `spec`: its digits in amsmath's
-    `\text{}`, so in the text font, and its minus a math symbol."""
-    return rf"{'-' if x < 0 else ''}\text{{{format(abs(x), spec)}}}"
+    `\text{}`, so in the text font, and its minus a math symbol; a value that
+    rounds to zero is unsigned, as `number` writes it."""
+    text = format(abs(x), spec)
+    minus = "-" if x < 0 and float(text) != 0 else ""
+    return rf"{minus}\text{{{text}}}"
 
 
 def _fmt(estimate: dict) -> str:
@@ -439,7 +445,12 @@ def _tex(text: str) -> str:
 
 
 def tabular(header: Sequence[str], rows: Sequence[Sequence[str]], comment: str) -> str:
-    """A booktabs `tabular`, a `%` comment line above it."""
+    r"""A booktabs `tabular`, a `%` comment line above it. A table that sets
+    anything in `\text{}` ends its comment with `AMSMATH`, so whoever pastes it
+    into a document without amsmath learns why it stops at its first cell."""
+    cells = [*header, *(cell for row in rows for cell in row)]
+    if any(r"\text{" in cell for cell in cells):
+        comment = f"{comment}; {AMSMATH}"
     lines = [
         f"% {comment}",
         rf"\begin{{tabular}}{{l{'c' * (len(header) - 1)}}}",
