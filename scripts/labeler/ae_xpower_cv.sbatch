@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=2800M
+#SBATCH --mem=2500M
 #SBATCH --time=01:00:00
 #SBATCH --array=0-14
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
@@ -36,14 +36,32 @@
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #   then:       sbatch --dependency=afterok:<array id> ae_xpower_final.sbatch
 #
-# ------------------------------------------ sizing (measured 2026-09-26, v1's train header)
-#   v1's full runs, 88 train + 16 val shots loaded, 4 threads: 22-32 min for up to 60
-#   epochs at ~21 s an epoch (band80); peak RSS 2311 MB (band80-mhd3), 2470 MB (band0).
-#   A fold loads 72 train + 24 early-stopping shots (96, fewer than v1's 104) and
-#   predicts its 24 one at a time: ~17 s an epoch, at most ~26 min.
-#   mem=2800M      v1's measured size; 96 loaded shots peak below v1's 2311 MB.
-#   time=01:00:00  26 min x 2.3. Size from the full runs, not from the pilot, whose
-#                  peak under-predicts (v1: 1182 MB at 20 shots).
+# The seed study (post hoc: no decision depends on it). SEED=<S> trains with
+# TrainConfig.seed S instead of the default 20260923, and only the chosen candidate
+# (chosen.json's): tasks 5-9, band80-mhd10's folds 0-4. It reads cv/folds.csv (its
+# sha256 checked against chosen.json's folds_sha256), changes nothing else (folds,
+# stop rule, epoch cap, data), and writes only to
+# $LABELER_ROOT/runs/ae_xpower/seeds/$VERSION/seed<S>/cv/ (a pilot's under
+# seed<S>/pilot/); a seed aimed at the version's cv/ or at runs/ae_xpower/pilot/ is
+# refused, and a record already there is never replaced. No --folds step: the folds
+# are cv/'s. Pilot first:
+#   pilot:      SEED=20260924 PILOT=10 sbatch --array=5-9 <this>   (2 shots a fold,
+#               2 epochs, into runs/ae_xpower/seeds/v2/seed20260924/pilot/cv; it is
+#               exempt from the gate but reported)
+#   study:      SEED=20260924 sbatch --array=5-9 <this>
+#               SEED=20260925 sbatch --array=5-9 <this>
+#               SEED=20260926 sbatch --array=5-9 <this>
+#   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
+#   then:       sbatch ae_xpower_posthoc.sbatch   (its summary is the record's (c))
+#
+# ------------------------------------------ sizing (measured 2026-09-28, A = job 2943054)
+#   A, v2's 15 fold tasks: 72 train + 24 early-stopping shots loaded, 4 threads (CPU
+#   75.4-89.2 %), 6 min 31 s to 16 min 13 s a task; sacct MaxRSS 1,780,848 to
+#   2,156,464 KiB, peak 2106 MiB. A seeded fold loads and trains the same shots.
+#   cpus=4         A's.
+#   mem=2500M      A's peak 2106 MiB plus 15 % is 2422 MiB; rounded up to 2500M.
+#   time=01:00:00  A's longest task, 16 min 13 s, x 3.7. Size from the full runs, not
+#                  from the pilot, whose peak under-predicts (v1: 1182 MB at 20 shots).
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub-round-two}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
@@ -57,7 +75,7 @@ VERSION="${VERSION:-v2}"
 K="${SLURM_ARRAY_TASK_ID:-0}"
 CANDIDATE="$("$ENV/bin/python" -c "from labeler.ae.xpower.train import candidates; print(list(candidates('$VERSION'))[$K // 5])")"
 FOLD=$((K % 5))
-echo "job ${SLURM_JOB_ID:-none} task $K ($VERSION $CANDIDATE fold $FOLD) on $(hostname) at $(date -Is), root $ROOT"
+echo "job ${SLURM_JOB_ID:-none} task $K ($VERSION $CANDIDATE fold $FOLD${SEED:+ seed $SEED}) on $(hostname) at $(date -Is), root $ROOT"
 srun "$ENV/bin/python" -m labeler.ae.xpower.cv --version "$VERSION" \
-    --candidate "$CANDIDATE" --fold "$FOLD" ${PILOT:+--pilot "$PILOT"}
+    --candidate "$CANDIDATE" --fold "$FOLD" ${PILOT:+--pilot "$PILOT"} ${SEED:+--seed "$SEED"}
 echo "finished at $(date -Is)"
