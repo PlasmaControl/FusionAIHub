@@ -1,17 +1,31 @@
 """Choose the AE model on the validation shots, then score it on the test shots.
 
     python -m labeler.ae.xpower.evaluate --choose [--models DIR] [--limit N]
-    python -m labeler.ae.xpower.evaluate [--models DIR] [--limit N]
+    python -m labeler.ae.xpower.evaluate [--test] [--models DIR] [--limit N]
 
-The first scores every trained candidate (`train.CANDIDATES`) on the validation
-shots and writes `chosen.json`; the second scores the chosen one, once, on the
-test shots and writes `evaluation.json` and `evaluation.md`, all in `--models`
-(default `$LABELER_ROOT/models/ae_xpower/v1`).
+The first scores every trained candidate of the version (`train.candidates`)
+on the validation shots and writes `chosen.json`; the second scores the chosen
+one, once, on the test shots and writes `evaluation.json` and `evaluation.md`,
+all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`). A
+version chosen by cross-validation (v2, `labeler.ae.xpower.cv`) is not chosen
+here: `--choose` only checks that `chosen.json` is the one `train --from-cv`
+wrote from `cv/choice.json`, and the test checks the model against both.
+v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
+model's `split.csv`, checked before scoring to be v2 test shots) as a second
+table and a `v1_subset` block; the bar is judged on the whole split only.
+The test is never scored in full (`--limit 0`) under `runs/`, where it could be
+repeated, and a pilot there scores 20 test shots at most, and for a
+cross-validated version only a pilot choice's model (never a copy of the
+version's final model); `--version` must be the models directory's name and the
+version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
-the source table's window. 0-2 s is all TokEye and the earlier detector ever
-saw, so every method is scored on the same frames.
+the source table's window (`source_table`; the record names it by sha256).
+0-2 s is all TokEye and the earlier detector ever saw, so every method is
+scored on the same frames. A cross-validated version's out-of-fold frames are
+these too (`cv`), and its test refuses a source table other than the one they
+were chosen with.
 
 **Methods.** `ae_xpower`, the chosen candidate at its validation threshold;
 `seldnet`, the earlier detector (`ae_seldnet_threeway_sce.pt`), a frame present
@@ -47,19 +61,25 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import NamedTuple
 
 import numpy as np
 import torch
 
-from ...config import Paths, atomic_path, git_sha
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...scoring import stats
 from .. import model as seldnet_model
 from . import (
+    CV_VERSIONS,
     EVENT,
+    LABEL_SNAPSHOTS,
     VERSION,
+    check_bound,
+    check_full,
     check_limit,
+    check_snapshot,
     event_dir,
     model_dir,
     pilot_area,
@@ -77,7 +97,7 @@ from .data import (
     tokeye_frames,
     window_frames,
 )
-from .train import CANDIDATES, load, probabilities, read_split
+from .train import candidates, load, probabilities, read_split
 
 EVAL_FRAMES = (0, 200)  # 0-2 s
 F1_MARGIN = 0.02
@@ -89,6 +109,7 @@ BAR = {
     "f1_vs_seldnet_low": -0.03,
     "mhd_fp_rate": 0.05,
 }
+SUBSET_OF = {"v2": "v1"}  # the earlier version whose test shots are reported
 METHODS = ("ae_xpower", "seldnet", "tokeye", "source", "uci", "always")
 
 
@@ -102,6 +123,7 @@ class ShotFrames:
     scored: np.ndarray  # (n,) bool
     said: dict[str, np.ndarray] = field(default_factory=dict)
     prob: np.ndarray | None = None  # model P(AE), retained for validation sweeps
+    source_dropped: int = 0  # frames otherwise scored, outside the source window
 
 
 def fp_rate(totals):
@@ -165,6 +187,29 @@ def seldnet_said(net, spec_path, t_ms, first: int, n: int) -> np.ndarray:
     return frame_share(t_ms, prob >= 0.5, first, n) >= 0.5
 
 
+class SourceTable(NamedTuple):
+    """The table the owner started from (`labels.source_path`): its file, the
+    sha256 of the bytes read, and their labels, one per shot."""
+
+    path: Path | None
+    sha256: str | None
+    labels: dict
+
+
+def source_table(paths: Paths) -> SourceTable:
+    """The source table, parsed from the very bytes its sha256 describes; with
+    no table, no labels. The test and `cv`'s fold tasks read it through here."""
+    file = labels.source_path(event_dir(paths))
+    if file is None:
+        return SourceTable(None, None, {})
+    data = file.read_bytes()
+    with TemporaryDirectory(prefix="ae-source-") as directory:
+        copy = Path(directory) / file.name
+        copy.write_bytes(data)
+        found = labels.read_labels(copy)
+    return SourceTable(file, hashlib.sha256(data).hexdigest(), found)
+
+
 def shot_frames(
     shot: int,
     *,
@@ -176,7 +221,9 @@ def shot_frames(
     seldnet=None,
     spec_path=None,
 ) -> ShotFrames:
-    """Frames 0-2 s of one shot, and every method the arguments allow."""
+    """Frames 0-2 s of one shot, and every method the arguments allow. With
+    `source` (the shot's source-table label), only the frames inside its window
+    are scored, and `source_dropped` counts the others."""
     first, n = EVAL_FRAMES
     rows = store_rows(paths.spectrogram_file(EVENT, shot))
     prob, observed = probabilities(model, rows, first, n, band=blob["band_khz"])
@@ -192,16 +239,18 @@ def shot_frames(
         "uci": tk["ann"] >= MIN_FRACTION,
         "always": np.ones(n, dtype=bool),
     }
+    dropped = 0
     if source is not None:
         src = targets(source, first, n)
         said["source"] = src == PRESENT
+        dropped = int((scored & (src < 0)).sum())
         scored &= src >= 0
     if seldnet is not None:
         with np.load(path) as z:
             t_ms = np.asarray(z["t_ms"], dtype=np.float64)
         said["seldnet"] = seldnet_said(seldnet, spec_path, t_ms, first, n)
     mhd = tk["covered"] & (tk["low"] >= MIN_FRACTION)
-    return ShotFrames(int(shot), owner, mhd, scored, said, prob)
+    return ShotFrames(int(shot), owner, mhd, scored, said, prob, dropped)
 
 
 def window_cells(shot: int, *, paths: Paths, label, model, blob: dict) -> np.ndarray:
@@ -292,10 +341,10 @@ def verdict(scores: dict) -> dict:
     }
 
 
-def choose(results: dict[str, dict]) -> tuple[str, str]:
+def choose(results: dict[str, dict], version: str = VERSION) -> tuple[str, str]:
     """The candidate with the lowest MHD false-positive rate among those within
     `F1_MARGIN` of the best validation F1; ties go to the earlier-listed one."""
-    order = [c for c in CANDIDATES if c in results]
+    order = [c for c in candidates(version) if c in results]
     if not order:
         raise ValueError("no trained candidate to choose from")
 
@@ -326,7 +375,7 @@ def _fmt(e: dict) -> str:
     return f"{e['value']:.3f}{band}"
 
 
-def report_md(scores: dict, bar: dict, meta: dict) -> str:
+def report_md(scores: dict, bar: dict, meta: dict, subset: dict | None = None) -> str:
     """`evaluation.md`: the table the paper's AE score figure and table read."""
     n = scores["frames"]
     summary = (
@@ -340,6 +389,21 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
         "",
         summary,
         "",
+        *_tables(scores),
+    ]
+    said = {k: "pass" if bar[k] else "FAIL" for k in ("A1", "A2", "A3")}
+    verdict_line = (
+        f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. "
+        "Tier: suggestions."
+    )
+    lines += ["", verdict_line, ""]
+    if subset is not None:
+        lines += _subset_md(subset)
+    return "\n".join(lines)
+
+
+def _tables(scores: dict) -> list[str]:
+    lines = [
         (
             "| method | precision | recall | F1 | FP rate, MHD frames | "
             "FP rate, other absent |"
@@ -358,13 +422,29 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
             "",
             f"Over the owner's whole windows: F1 {_fmt(scores['window']['f1'])}.",
         ]
-    said = {k: "pass" if bar[k] else "FAIL" for k in ("A1", "A2", "A3")}
-    verdict_line = (
-        f"The bar: A1 {said['A1']}, A2 {said['A2']}, A3 {said['A3']}. "
-        "Tier: suggestions."
-    )
-    lines += ["", verdict_line, ""]
-    return "\n".join(lines)
+    return lines
+
+
+def _subset_md(subset: dict) -> list[str]:
+    """The second table: the same model on the earlier version's test shots."""
+    name = subset["version"]
+    lines = [f"## {name}'s test shots", ""]
+    if "frames" not in subset:
+        return [*lines, f"None of {name}'s test shots were scored.", ""]
+    n = subset["frames"]
+    lines += [
+        (
+            f"The same model and threshold on the {n['shots']} of {name}'s test "
+            f"shots scored here ({len(subset['shots'])} in {name}'s split, its "
+            f"model {subset['candidate']}): {n['scored']} frames "
+            f"({n['present']} present), {n['mhd_absent']} MHD frames absent. "
+            "Reported beside the whole split; not judged against the bar."
+        ),
+        "",
+        *_tables(subset),
+        "",
+    ]
+    return lines
 
 
 def _reviewed(split: dict[int, str], which: str, limit: int) -> list[int]:
@@ -376,17 +456,23 @@ def run_choose(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:
     check_limit(paths, models, limit)
+    if version in CV_VERSIONS:
+        # Chosen by `cv`; here the choice is only checked, and nothing written.
+        check_bound(version, models)
+        return cv_chosen(paths, models, version)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the version is evaluated; a new choice is a new version"
         )
+    check_bound(version, models)
     results = {}
-    for name in CANDIDATES:
+    for name in candidates(version):
         file = models / name / "model.pt"
         if not file.exists():
             continue
         model, blob = load(file)
+        check_bound(version, models, blob, file)
         saved = labels.read_saved(file.parent)  # the labels it was trained on
         split = read_split(models / name / "split.csv")
         shots = [
@@ -400,7 +486,7 @@ def run_choose(
             "shots": len(shots),
             "threshold": blob["threshold"],
         }
-    picked, why = choose(results)
+    picked, why = choose(results, version)
     record = {
         "candidate": picked,
         "version": version,
@@ -414,6 +500,126 @@ def run_choose(
     return record
 
 
+def cv_chosen(
+    paths: Paths,
+    models: Path,
+    version: str,
+    *,
+    split: dict[int, str] | None = None,
+    model: bytes | None = None,
+    source: SourceTable | None = None,
+) -> dict:
+    """A cross-validated version's `chosen.json`, checked against `cv/choice.json`
+    and `cv/folds.csv` (as the snapshot and TokEye's masks give it now); the
+    chosen model's bytes (`model`, else its `model.pt`) against its
+    `model_sha256`; the model's split (`split`, else its `split.csv`) against
+    the folds: their test shots, and all of their pool shots to train (a
+    pilot's, the first N); and the source table (`source`, else the current
+    one) against the one the choice's frames were scored with."""
+    from . import cv  # cv imports this module
+
+    chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
+    choice_file, folds_file = cv_files / "choice.json", cv_files / "folds.csv"
+    chosen = json.loads(chosen_file.read_text())
+    choice = json.loads(choice_file.read_bytes())
+    folds = cv.checked_folds(paths, models, version)
+    if choice.get("folds_sha256") != folds.sha256:
+        raise ValueError(f"{choice_file}: made from other folds than {folds_file}")
+    wanted = {
+        "version": version,
+        "choice_sha256": sha256_of(choice_file),
+        "candidate": choice["candidate"],
+        "threshold": choice["threshold"],
+        "labels_sha256": LABEL_SNAPSHOTS[version],
+        "folds_sha256": folds.sha256,
+    }
+    for key, value in wanted.items():
+        if chosen.get(key) != value:
+            raise ValueError(f"{chosen_file}: {key} differs from {choice_file}")
+    model_file = models / choice["candidate"] / "model.pt"
+    model = model_file.read_bytes() if model is None else model
+    if hashlib.sha256(model).hexdigest() != chosen.get("model_sha256"):
+        raise ValueError(
+            f"{model_file}: its sha256 is not {chosen_file}'s model_sha256"
+        )
+    split_file = models / choice["candidate"] / "split.csv"
+    split = read_split(split_file) if split is None else split
+    pool = sorted(folds.folds)
+    n = sum(v == "train" for v in split.values()) if choice.get("pilot") else len(pool)
+    expected = {s: "test" for s, v in folds.split.items() if v == "test"}
+    expected |= dict.fromkeys(pool[:n], "train")
+    differ = sorted(s for s in {*split, *expected} if split.get(s) != expected.get(s))
+    if differ:
+        raise ValueError(
+            f"{split_file}: shots {', '.join(map(str, differ))} are not split as "
+            f"the folds ({folds_file}) have them"
+        )
+    source = source_table(paths) if source is None else source
+    if source.sha256 != choice.get("source_sha256"):
+        raise ValueError(
+            f"{source.path or event_dir(paths)}: not the source table "
+            f"{choice_file}'s frames were scored with (source_sha256); the test "
+            "scores the same frames"
+        )
+    return chosen
+
+
+def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> dict:
+    """The final model of a cross-validated version is the one `chosen.json`
+    names: its choice, threshold and label snapshot; the meta it adds."""
+    version = chosen["version"]
+    expected = LABEL_SNAPSHOTS[version]
+    check_snapshot(hashlib.sha256(labels_copy).hexdigest(), version, file.parent)
+    wanted = {
+        "candidate": chosen["candidate"],
+        "threshold": chosen["threshold"],
+        "choice_sha256": chosen["choice_sha256"],
+        "folds_sha256": chosen["folds_sha256"],
+        "labels_sha256": expected,
+        "snapshot_sha256": expected,
+        "from_cv": True,
+    }
+    for key, value in wanted.items():
+        if blob.get(key) != value:
+            raise ValueError(f"{file}: {key} differs from chosen.json or the snapshot")
+    return {
+        "choice_sha256": chosen["choice_sha256"],
+        "folds_sha256": chosen["folds_sha256"],
+        "snapshot_sha256": expected,
+        "fixed_epochs": blob.get("fixed_epochs"),
+        "cv_branch": blob.get("cv_branch"),
+    }
+
+
+def earlier_test(paths: Paths, version: str, test: set[int]) -> dict | None:
+    """The earlier version's test shots (`SUBSET_OF`), from its chosen model's
+    split, refused unless every one is in this version's test split `test`."""
+    earlier = SUBSET_OF.get(version)
+    if earlier is None:
+        return None
+    models = model_dir(paths, earlier)
+    chosen_bytes = (models / "chosen.json").read_bytes()
+    name = json.loads(chosen_bytes)["candidate"]
+    split_file = models / name / "split.csv"
+    data = split_file.read_bytes()
+    shots = sorted(
+        s for s, v in read_split(split_file, data=data).items() if v == "test"
+    )
+    outside = sorted(set(shots) - test)
+    if not shots or outside:
+        raise ValueError(
+            f"{split_file}: {earlier}'s test shots must be {version} test shots; "
+            f"not: {', '.join(map(str, outside)) or 'none listed'}"
+        )
+    return {
+        "version": earlier,
+        "candidate": name,
+        "shots": shots,
+        "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
+        "split_sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
 def chosen_model(models: Path) -> Path:
     """The chosen candidate's `model.pt`, from `chosen.json`."""
     name = json.loads((models / "chosen.json").read_text())["candidate"]
@@ -424,11 +630,13 @@ def run_test(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:
     check_limit(paths, models, limit)
+    check_full(paths, models, limit)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the test shots are scored once; a retry is a new version"
         )
+    check_bound(version, models)
     chosen_bytes = (models / "chosen.json").read_bytes()
     candidate = json.loads(chosen_bytes)["candidate"]
     file = models / candidate / "model.pt"
@@ -447,7 +655,30 @@ def run_test(
         saved = labels.read_saved(frozen)
         model, blob = load(frozen / "model.pt")
         split = read_split(frozen / "split.csv")
-    source = labels.read_source(event_dir(paths))
+    check_bound(version, models, blob, file)
+    source = source_table(paths)
+    cv_meta = {}
+    if version in CV_VERSIONS:
+        choice_file = models / "cv" / "choice.json"
+        if pilot_area(models, paths.runs) and not json.loads(
+            choice_file.read_bytes()
+        ).get("pilot"):
+            # A look there can be repeated: a pilot's model only, never a copy
+            # of the final model of a full choice.
+            raise ValueError(
+                f"{choice_file}: not a pilot's choice; its final model is scored "
+                f"once, outside {paths.runs}"
+            )
+        chosen = cv_chosen(
+            paths,
+            models,
+            version,
+            split=split,
+            model=snapshots["model.pt"],
+            source=source,
+        )
+        cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
+    subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
     shots, windows = [], []
@@ -460,7 +691,7 @@ def run_test(
                 label=saved[s],
                 model=model,
                 blob=blob,
-                source=source.get(s),
+                source=source.labels.get(s),
                 seldnet=seldnet,
                 spec_path=spec,
             )
@@ -472,7 +703,18 @@ def run_test(
         raise ValueError("a test shot has no source-table label")
     scores = score(shots, METHODS)
     scores["window"] = {"f1": _estimate(np.asarray(windows), stats.f1)}
-    bar = verdict(scores)
+    bar = verdict(scores)  # on the whole split only
+    if subset is not None:
+        within = [f for f in shots if f.shot in set(subset["shots"])]
+        if within:
+            wanted = {f.shot for f in within}
+            subset |= score(within, METHODS)
+            subset["window"] = {
+                "f1": _estimate(
+                    np.asarray([c for f, c in zip(shots, windows) if f.shot in wanted]),
+                    stats.f1,
+                )
+            }
     meta = {
         "candidate": blob["candidate"],
         "version": version,
@@ -486,26 +728,36 @@ def run_test(
         "band_khz": blob["band_khz"],
         "model_git_sha": blob["git_sha"],
         "labels_sha256": blob["labels_sha256"],
+        "source_sha256": source.sha256,
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tier": "suggestions",
         "limit": limit,
+        **cv_meta,
     }
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
+    if subset is not None:
+        record[f"{subset['version']}_subset"] = subset
     with atomic_path(models / "evaluation.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
     with atomic_path(models / "evaluation.md") as tmp:
-        tmp.write_text(report_md(scores, bar, meta))
+        tmp.write_text(report_md(scores, bar, meta, subset))
     return record
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument(
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument(
         "--choose", action="store_true", help="score candidates on validation"
     )
+    mode.add_argument(
+        "--test",
+        action="store_true",
+        help="score the chosen model once on the test shots (the default)",
+    )
     p.add_argument(
-        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1"
+        "--models", type=Path, help="default $LABELER_ROOT/models/ae_xpower/<version>"
     )
     p.add_argument("--version", default=VERSION)
     p.add_argument("--limit", type=int, default=0, help="the first N shots (pilots)")
@@ -524,7 +776,11 @@ def main(argv=None) -> int:
     if args.choose:
         print(f"chose {record['candidate']}: {record['why']}")
     else:
-        print(json.dumps({"bar": record["bar"], "frames": record["frames"]}))
+        said = {"bar": record["bar"], "frames": record["frames"]}
+        for key in (f"{v}_subset" for v in SUBSET_OF.values()):
+            if key in record:
+                said[key] = record[key].get("frames")
+        print(json.dumps(said))
     return 0
 
 

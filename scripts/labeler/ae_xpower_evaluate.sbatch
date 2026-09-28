@@ -12,12 +12,17 @@
 # Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
 
 # After the train array: choose a candidate on the validation shots, then score the test shots once.
-#   python -m labeler.ae.xpower.evaluate --choose   -> models/ae_xpower/v1/chosen.json
-#   python -m labeler.ae.xpower.evaluate            -> models/ae_xpower/v1/evaluation.{json,md}
+#   python -m labeler.ae.xpower.evaluate --choose   -> models/ae_xpower/$VERSION/chosen.json
+#   python -m labeler.ae.xpower.evaluate --test     -> models/ae_xpower/$VERSION/evaluation.{json,md}
+# VERSION defaults to v1. For v2 (after ae_xpower_final.sbatch), --choose only checks
+# chosen.json against cv/choice.json and writes nothing, and the test also reports
+# v1's 58 test shots beside the full 60 (the bar is judged on the 60 only).
+# A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT, 20 or fewer,
+# and for v2 only a pilot choice's model (a copy of the final model there is refused).
 # Each candidate is scored against the labels it was trained with (its review/labels.csv copy).
 #
 #   after the array:  sbatch --dependency=afterok:<array id> <this>
-#   pilot:            MODELS=$LABELER_ROOT/runs/ae_xpower/pilot LIMIT=3 sbatch <this>
+#   pilot:            MODELS=$LABELER_ROOT/runs/ae_xpower/pilot/$VERSION LIMIT=3 sbatch <this>
 #   gate:             python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node, 1 thread)
@@ -33,7 +38,10 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
-echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
-srun "$ENV/bin/python" -m labeler.ae.xpower.evaluate --choose ${MODELS:+--models "$MODELS"} ${LIMIT:+--limit "$LIMIT"}
-srun "$ENV/bin/python" -m labeler.ae.xpower.evaluate ${MODELS:+--models "$MODELS"} ${LIMIT:+--limit "$LIMIT"}
+VERSION="${VERSION:-v1}"  # v1 by default, so v1's commands still mean v1
+echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
+srun "$ENV/bin/python" -m labeler.ae.xpower.evaluate --choose --version "$VERSION" \
+    ${MODELS:+--models "$MODELS"} ${LIMIT:+--limit "$LIMIT"}
+srun "$ENV/bin/python" -m labeler.ae.xpower.evaluate --test --version "$VERSION" \
+    ${MODELS:+--models "$MODELS"} ${LIMIT:+--limit "$LIMIT"}
 echo "finished at $(date -Is)"

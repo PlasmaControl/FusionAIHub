@@ -13,8 +13,11 @@
 
 # One JPEG per AE180 shot, with the chosen model:
 #   python -m labeler.ae.xpower.gallery --workers 1
-# writes $LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-v1/{reviewed,unreviewed}/<shot>.jpg and
+# writes $LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-$VERSION/{reviewed,unreviewed}/<shot>.jpg
+# (VERSION defaults to v1; v2's owner labels are its snapshot) and
 # index.csv. A shot the owner saves later is redrawn by running it again (its row is replaced).
+# v2 is drawn only after its test: it refuses until models/ae_xpower/v2/evaluation.json has
+# scored the chosen model, since the pictures give F1 against the owner on the test shots.
 #
 #   pilot:      SHOTS="170659 170813" sbatch <this>
 #   full run:   sbatch <this>
@@ -35,9 +38,10 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
-echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
+VERSION="${VERSION:-v1}"  # v1 by default, so v1's commands still mean v1
+echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
 # SHOTS is left unquoted on purpose: it is a list of shot numbers.
 # shellcheck disable=SC2086
-srun "$ENV/bin/python" -m labeler.ae.xpower.gallery --workers 1 \
+srun "$ENV/bin/python" -m labeler.ae.xpower.gallery --workers 1 --version "$VERSION" \
     ${SHOTS:+--shots $SHOTS}
 echo "finished at $(date -Is)"

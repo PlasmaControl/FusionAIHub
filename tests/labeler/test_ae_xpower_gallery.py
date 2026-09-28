@@ -72,6 +72,7 @@ def test_the_gallery_draws_reviewed_and_unreviewed_shots(tmp_path, monkeypatch):
     assert index.split.tolist() == ["train", "test", "unreviewed"]
     assert index.reference_present_frames.tolist() == [60, 60, 60]
     assert index.f1_vs_owner.iloc[2] == ""
+    assert index.snapshot_sha256.tolist() == ["", "", ""]  # v1 has no snapshot
 
 
 @pytest.mark.parametrize("with_extension", [False, True])
