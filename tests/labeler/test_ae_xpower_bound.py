@@ -65,6 +65,24 @@ def test_a_full_test_scoring_under_runs_is_refused(tmp_path, monkeypatch, capsys
     assert evaluate.main(["--models", str(pilot), "--limit", "1"]) == 0
 
 
+def test_a_pilot_scoring_under_runs_is_20_test_shots_at_most(
+    tmp_path, monkeypatch, capsys
+):
+    """The pilot rule's 20 shots: a limit as large as the split would be the
+    repeatable full look that `--limit 0` is refused for."""
+    paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"})
+    ae_tree.env(monkeypatch, paths)
+    ae_tree.chosen(paths, {101: "train", 102: "test"})
+    pilot = paths.runs / "ae_xpower" / "pilot" / "v1"
+    shutil.copytree(model_dir(paths, "v1"), pilot)
+    with pytest.raises(ValueError, match="at most 20 test shots"):
+        evaluate.run_test(paths, pilot, limit=21)
+    args = ["--test", "--models", str(pilot), "--limit", "60"]
+    _refused(capsys, evaluate.main, args, str(pilot), "at most 20 test shots")
+    assert not (pilot / "evaluation.json").exists()
+    assert evaluate.main(["--test", "--models", str(pilot), "--limit", "20"]) == 0
+
+
 @pytest.mark.parametrize("merging", [False, True])
 def test_the_extension_gate_refuses_a_models_directory_under_runs(
     tmp_path, monkeypatch, capsys, merging

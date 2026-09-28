@@ -14,8 +14,8 @@ v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
 model's `split.csv`, checked before scoring to be v2 test shots) as a second
 table and a `v1_subset` block; the bar is judged on the whole split only.
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
-repeated; `--version` must be the models directory's name and the version its
-checkpoints record.
+repeated, and a pilot there scores 20 test shots at most; `--version` must be
+the models directory's name and the version its checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside

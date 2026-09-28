@@ -12,8 +12,9 @@ from its frozen snapshot, `models/ae_xpower/<version>/review/labels.csv`, and
 refuses to run when that file's sha256 is not the one recorded here.
 
 **Binding.** Every command's `--version` must be its models directory's name and
-the version its checkpoints record (`check_bound`), and a full scoring or the
-extension's gate is never read from `runs/` (`check_full`).
+the version its checkpoints record (`check_bound`). A full scoring is never made
+under `runs/`, and a pilot scoring there is 20 test shots at most (`check_full`);
+the extension's gate is never read from there.
 """
 
 from __future__ import annotations
@@ -35,6 +36,8 @@ LABEL_SNAPSHOTS = {
 }
 #: Versions whose candidate and threshold `cv` chooses, not `evaluate --choose`.
 CV_VERSIONS = frozenset({"v2"})
+#: The pilot rule: a pilot is 20 shots or fewer.
+PILOT_MAX = 20
 
 
 def pilot_area(directory: Path, runs: Path) -> bool:
@@ -52,11 +55,20 @@ def check_limit(paths: Paths, models: Path, limit: int) -> None:
 
 def check_full(paths: Paths, models: Path, limit: int) -> None:
     """A full scoring (`--limit 0`) is the version's one look at its test shots:
-    never under `runs/`, where records may be replaced and the look repeated."""
-    if limit == 0 and pilot_area(models, paths.runs):
+    never under `runs/`, where records may be replaced and the look repeated. A
+    pilot there scores the first `PILOT_MAX` test shots at most (the pilot rule),
+    so no repeatable scoring there covers a real test split."""
+    if not pilot_area(models, paths.runs):
+        return
+    if limit == 0:
         raise ValueError(
             f"{models}: a full scoring (--limit 0) is never made under "
-            f"{paths.runs}; a pilot there takes --limit N"
+            f"{paths.runs}; a pilot there takes --limit 1 to {PILOT_MAX}"
+        )
+    if limit > PILOT_MAX:
+        raise ValueError(
+            f"{models}: a pilot scoring under {paths.runs} is at most "
+            f"{PILOT_MAX} test shots, not --limit {limit}"
         )
 
 
