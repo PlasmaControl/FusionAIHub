@@ -42,7 +42,8 @@
 #   Sawteeth since the ECE medians (2026-09-28, pilot job 2943760, 20 shots): 12
 #   workers on 4 CPUs, 30 s, 69 % CPU with start-up, 4.92 GB MaxRSS (0.41 GB a
 #   worker), so --mem=6G; 8 workers on 4 CPUs reached 55 %. With the Thomson Te row
-#   (pilot job 2943818): 26 s, 83 % CPU by sacct, 5.23 GB MaxRSS, still --mem=6G.
+#   (pilot job 2943818): 26 s, 83 % CPU by sacct, 5.23 GB MaxRSS, still --mem=6G;
+#   the full rebuild (job 2943840, 450 shots) 7 min 51 s, 89.7 % CPU, 85 % of 6G.
 #   Tearing modes since the n-coloured row (2026-09-28, pilot job 2943811, 20 shots):
 #   8 workers on 8 CPUs, 28 s, 40 % CPU (start-up and a half-empty last round are most
 #   of 20 shots; each shot is 5 s), 7.19 GB MaxRSS (0.90 GB a worker). The full
