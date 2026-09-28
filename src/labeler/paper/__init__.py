@@ -13,8 +13,10 @@ layout and sizes are settled before their numbers exist.
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
   manuscript's `figures/`.
 
-Nothing here trains, fetches or scores. A figure reads the JSON, CSV and review
-stores the runs left, and `build` records which.
+Nothing here trains or fetches. The score figures and tables read the JSON the
+evaluations wrote; to rank and draw the example and interpreter shots, `build`
+runs the chosen model over its test shots' review stores, against the labels it
+was scored on. `build` records every input it read.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Frame scores: the AE methods, their MHD check, and the segmentation.
+r"""Frame scores: the AE methods, their MHD check, and the segmentation.
 
 `draw_scores` is the six-phenomenon grid: frame precision, recall and F1 with
 95 % shot-bootstrap intervals, one panel per catalog phenomenon. AE's panel is
@@ -10,10 +10,18 @@ frames (the owner says absent and TokEye sees a 0-60 kHz line) beside its rate
 on the other absent frames, against the bar, on an axis capped at `MHD_CAP`; a
 bar past the cap runs to the edge and carries its value. `draw_segmentation` is
 `models/ae_seg/v1/evaluation.json` (`labeler.ae.seg.evaluate`), with every bar
-G1-G3 set (G1's on the Dice and on its interval's lower end); recipe and TokEye
-are hatched, as the sources of the pseudo-masks the segmentation is scored
-against. `table_ae`, `table_segmentation` and `table_differences` give the same
-numbers as LaTeX `tabular`s, at three decimals, for the owner to caption.
+G1-G3 set (G1's on the Dice and on its interval's lower end); its MHD
+false-positive rate, where lower is better, has its own axis from 0 to
+`SEG_FP_TOP` so G3 reads. Recipe and TokEye are hatched, as the sources of the
+pseudo-masks the segmentation is scored against. `table_ae`,
+`table_segmentation` and `table_differences` give the same numbers as LaTeX
+`tabular`s, at three decimals, for the owner to caption.
+
+**The tables fit ICML's 487.8 pt text width** at `\small` or larger, in Times.
+A score is written `$v^{+a}_{-b}$`, its 95 % interval's ends `v + a` and `v - b`
+(`INTERVAL_NOTE`, said once in each table's `%` comment), exact where
+`v ± half-width` would not be: the bootstrap intervals are not symmetric. A
+negative number is written `$-$0.188`, and one that rounds to zero `0.000`.
 
 The AE methods are the same six everywhere (`AE_METHODS`): the model, the two
 detectors it is compared with, the start table, the UCI windows and the
@@ -69,6 +77,11 @@ SEG_BARS = {
     "frame_precision": ("frame_precision",),
     "fp_rate_mhd": ("mhd_fp_rate",),
 }
+SEG_FP = "fp_rate_mhd"  # lower is better: its own axis
+SEG_SCORES = tuple(m for m in SEG_METRICS if m != SEG_FP)
+SEG_FP_TOP = 0.2  # the axis reaches further only for an interval past it
+SEG_FP_STEP = 0.05
+LOWER_BETTER = "lower is better"
 AE_BARS = {"precision": "precision", "recall": "recall", "f1": "f1"}  # A1
 BAR_LABEL = "bar"
 LOW_BAR_LABEL = "bar on the lower bound"
@@ -83,14 +96,19 @@ COLOURS = {
     "always": "#7f7f7f",
 }
 DECIMALS = 3
-# (record, key, comparison, bar, condition, test on the interval)
+INTERVAL_NOTE = (
+    "$v^{+a}_{-b}$ is the value with its 95% shot-bootstrap interval, "
+    "[v - b, v + a] (a = high - value, b = value - low, each end rounded to "
+    f"{DECIMALS} decimals)"
+)
+# (record, key, comparison, bar, condition from the thresholds, its test)
 DIFFERENCES = (
     (
         "ae",
         "f1_minus_seldnet",
         "AE F1: ae_xpower $-$ SELDnet",
         "A1",
-        r"low $\geq -0.03$",
+        lambda t: rf"low $\geq {t['f1_vs_seldnet_low']:g}$",
         lambda lo, hi, t: lo >= t["f1_vs_seldnet_low"],
     ),
     (
@@ -98,7 +116,7 @@ DIFFERENCES = (
         "mhd_fp_minus_seldnet",
         "AE MHD FP: ae_xpower $-$ SELDnet",
         "A2",
-        "high $< 0$",
+        lambda t: "high $< 0$",
         lambda lo, hi, t: hi < 0,
     ),
     (
@@ -106,7 +124,7 @@ DIFFERENCES = (
         "f1_minus_always",
         "AE F1: ae_xpower $-$ always",
         "A3",
-        "low $> 0$",
+        lambda t: "low $> 0$",
         lambda lo, hi, t: lo > 0,
     ),
     ("seg", "dice_minus_recipe", "Seg Dice: ae_seg $-$ recipe", None, None, None),
@@ -290,7 +308,7 @@ def draw_mhd(ae: dict, stem: Path) -> Figure:
         ax.axvline(bar, color="black", ls="--", lw=0.6)
         ax.set_yticks(y, [AE_NAMES[m] for m in methods])
         ax.set_xlim(0, MHD_CAP)
-        ax.set_xlabel(f"false-positive rate (bar: MHD <= {bar:g}; axis to {MHD_CAP:g})")
+        ax.set_xlabel(f"false-positive rate (bar: MHD ≤ {bar:g}; axis to {MHD_CAP:g})")
         n = ae["frames"]
         ax.set_title(
             f"{n['mhd_absent']} MHD frames in {n['shots_with_mhd_absent']} test shots"
@@ -300,44 +318,69 @@ def draw_mhd(ae: dict, stem: Path) -> Figure:
     return fig
 
 
+def _seg_bars(ax, seg: dict, metrics: Sequence[str], drawn: dict) -> None:
+    """The G bars on `metrics`' groups, each key once in the legend."""
+    for i, metric in enumerate(metrics):
+        for k, key in enumerate(SEG_BARS.get(metric, ())):
+            if key not in seg["bar_thresholds"]:
+                continue
+            name = BAR_LABEL if k == 0 else LOW_BAR_LABEL
+            ax.hlines(
+                seg["bar_thresholds"][key],
+                i - 0.45,
+                i + 0.45,
+                colors="black",
+                linestyles="--" if k == 0 else ":",
+                lw=0.6,
+                label=name if not drawn[name] else "_" + name,
+            )
+            drawn[name] = True
+
+
+def fp_top(seg: dict, methods: Sequence[str]) -> float:
+    """`SEG_FP_TOP`, or the next `SEG_FP_STEP` past the highest interval end."""
+    highest = max(
+        (v for m in methods for v in interval(seg["methods"][m][SEG_FP])[::2]),
+        default=0.0,
+    )
+    steps = math.ceil(round(np.nan_to_num(highest) / SEG_FP_STEP, 6))
+    return max(SEG_FP_TOP, steps * SEG_FP_STEP)
+
+
 def draw_segmentation(seg: dict, stem: Path) -> Figure:
-    """The segmentation's pixel and frame scores, each bar G1-G3 marked."""
+    """The segmentation's pixel and frame scores, and beside them its MHD
+    false-positive rate on its own zoomed axis, each bar G1-G3 marked."""
     methods = [m for m in SEG_NAMES if m in seg["methods"]]
+
+    def get(m: str, g: str) -> tuple[float, float, float]:
+        return interval(seg["methods"][m][g])
+
     with style():
         fig = Figure(figsize=(COLUMN_IN, 2.3), layout="constrained")
-        ax = fig.subplots()
-        _bars(
-            ax,
-            list(SEG_METRICS),
-            methods,
-            lambda m, g: interval(seg["methods"][m][g]),
-            SEG_NAMES,
-        )
+        ax, fp = fig.subplots(1, 2, width_ratios=[len(SEG_SCORES), 1.25])
         drawn = {BAR_LABEL: False, LOW_BAR_LABEL: False}
-        for i, metric in enumerate(SEG_METRICS):
-            for k, key in enumerate(SEG_BARS.get(metric, ())):
-                if key not in seg["bar_thresholds"]:
-                    continue
-                name = BAR_LABEL if k == 0 else LOW_BAR_LABEL
-                ax.hlines(
-                    seg["bar_thresholds"][key],
-                    i - 0.45,
-                    i + 0.45,
-                    colors="black",
-                    linestyles="--" if k == 0 else ":",
-                    lw=0.6,
-                    label=name if not drawn[name] else "_" + name,
-                )
-                drawn[name] = True
-        ax.set_xticks(range(len(SEG_METRICS)), list(SEG_METRICS.values()))
+        _bars(ax, list(SEG_SCORES), methods, get, SEG_NAMES)
+        _seg_bars(ax, seg, SEG_SCORES, drawn)
+        ax.set_xticks(range(len(SEG_SCORES)), [SEG_METRICS[m] for m in SEG_SCORES])
         ax.set_ylim(0, 1)
         ax.set_ylabel("score")
+        _bars(fp, [SEG_FP], methods, get, SEG_NAMES)
+        _seg_bars(fp, seg, (SEG_FP,), drawn)
+        fp.set_xticks([0], [SEG_METRICS[SEG_FP]])
+        fp.set_xlim(-0.5, 0.5)
+        fp.set_ylim(0, fp_top(seg, methods))
+        fp.set_title(LOWER_BETTER, fontsize=FONT_PT - 1, style="italic")
         c = seg["counts"]
-        ax.set_title(
+        fig.suptitle(
             f"{c['shots']} test shots: {c['ae_pixels']:,} AE pixels of "
-            f"{c['scored_pixels']:,}"
+            f"{c['scored_pixels']:,}",
+            fontsize=FONT_PT,
         )
-        handles, names = _bars_last(*ax.get_legend_handles_labels())
+        found: dict[str, object] = {}
+        for axes in (ax, fp):
+            for handle, name in zip(*axes.get_legend_handles_labels(), strict=True):
+                found.setdefault(name, handle)
+        handles, names = _bars_last(list(found.values()), list(found))
         if any(m in PSEUDO_SOURCES for m in methods):
             handles.append(Patch(facecolor="white", edgecolor="black", hatch=HATCH))
             names.append(PSEUDO_LABEL)
@@ -346,14 +389,38 @@ def draw_segmentation(seg: dict, stem: Path) -> Figure:
     return fig
 
 
-def _fmt(estimate: dict, signed: bool = False) -> str:
+def number(x: float, signed: bool = False) -> str:
+    """`x` at `DECIMALS` for LaTeX text: `$-$` for a minus, `+` when `signed`,
+    and a value that rounds to zero as `0.000`, unsigned."""
+    text = f"{abs(x):.{DECIMALS}f}"
+    if float(text) == 0:
+        return text
+    if x < 0:
+        return f"$-${text}"
+    return f"+{text}" if signed else text
+
+
+def _fmt(estimate: dict) -> str:
+    """A score and its interval, `$v^{+a}_{-b}$` (`INTERVAL_NOTE`)."""
     v, lo, hi = interval(estimate)
-    f = f"{{:{'+' if signed else ''}.{DECIMALS}f}}".format
     if math.isnan(v):
         return "--"
     if math.isnan(lo) or math.isnan(hi):
-        return f(v)
-    return f"{f(v)} [{f(lo)}, {f(hi)}]"
+        return number(v)
+    value, low, high = (round(x, DECIMALS) for x in (v, lo, hi))
+    up, down = max(high - value, 0.0), max(value - low, 0.0)
+    return f"${value:.{DECIMALS}f}^{{+{up:.{DECIMALS}f}}}_{{-{down:.{DECIMALS}f}}}$"
+
+
+def _fmt_difference(estimate: dict) -> str:
+    """A paired difference, signed, with its interval in brackets."""
+    v, lo, hi = interval(estimate)
+    if math.isnan(v):
+        return "--"
+    if math.isnan(lo) or math.isnan(hi):
+        return number(v, signed=True)
+    ends = ", ".join(number(x, signed=True) for x in (lo, hi))
+    return f"{number(v, signed=True)} [{ends}]"
 
 
 def _tex(text: str) -> str:
@@ -389,8 +456,8 @@ def table_ae(ae: dict) -> str:
     n, meta = ae["frames"], ae.get("meta", {})
     comment = (
         f"AE frame scores: {n['shots']} test shots, {n['scored']} frames "
-        f"({n['present']} present, {n['mhd_absent']} MHD); 95% shot-bootstrap "
-        f"intervals; {meta.get('candidate', '?')} at {meta.get('threshold', '?')}; "
+        f"({n['present']} present, {n['mhd_absent']} MHD); {INTERVAL_NOTE}; "
+        f"{meta.get('candidate', '?')} at {meta.get('threshold', '?')}; "
         f"bar {_verdict(ae.get('bar', {}))}"
     )
     header = ("Method", "Precision", "Recall", "F1", "FP (MHD)", "FP (other)")
@@ -406,8 +473,8 @@ def table_segmentation(seg: dict) -> str:
     c = seg["counts"]
     comment = (
         f"AE segmentation: {c['shots']} test shots, {c['scored_pixels']} scored "
-        f"pixels ({c['ae_pixels']} AE), {c['frames']} frames; 95% shot-bootstrap "
-        f"intervals; bar {_verdict(seg.get('bar', {}))}"
+        f"pixels ({c['ae_pixels']} AE), {c['frames']} frames; {INTERVAL_NOTE}; "
+        f"bar {_verdict(seg.get('bar', {}))}"
     )
     header = ("Method", "Dice", "Frame P", "Frame R", "Frame F1", "FP (MHD)")
     return tabular(header, rows, comment)
@@ -424,7 +491,7 @@ def table_differences(ae: dict | None, seg: dict | None) -> str:
         if record is None or key not in record.get("differences", {}):
             continue
         estimate = record["differences"][key]
-        cells = [_tex(name), _fmt(estimate, signed=True)]
+        cells = [_tex(name), _fmt_difference(estimate)]
         if bar is None:
             cells += ["--", "--", "--"]
         else:
@@ -432,14 +499,15 @@ def table_differences(ae: dict | None, seg: dict | None) -> str:
             met = holds(lo, hi, record["bar_thresholds"])
             verdict = record.get("bar", {}).get(bar)
             cells += [
-                condition,
+                condition(record["bar_thresholds"]),
                 "yes" if met else "no",
                 "--" if verdict is None else f"{bar} {'pass' if verdict else 'fail'}",
             ]
         rows.append(cells)
     comment = (
-        "Paired differences with 95% shot-bootstrap intervals; Condition is the "
-        "part of the bar the difference decides, Bar the record's verdict on it"
+        "Paired differences with 95% shot-bootstrap intervals [low, high]; "
+        "Condition is the part of the bar the difference decides, Bar the "
+        "record's verdict on it"
     )
     header = ("Comparison", "Difference", "Condition", "Holds", "Bar")
     return tabular(header, rows, comment)

@@ -88,6 +88,7 @@ def test_the_mhd_figure_has_every_method_against_the_bar(tmp_path):
     assert list(line.get_xdata()) == [0.05, 0.05]
     assert ax.get_title() == "600 MHD frames in 12 test shots"
     assert ax.get_xlim() == (0, scores.MHD_CAP)
+    assert "MHD ≤ 0.05" in ax.get_xlabel()
     assert tree.small_text(fig) == []
 
 
@@ -104,27 +105,41 @@ def test_the_mhd_figure_draws_a_bar_past_its_cap_to_the_edge(tmp_path):
         assert t.get_position()[0] <= scores.MHD_CAP
 
 
+def _levels(ax) -> list[float]:
+    marks = [c for c in ax.collections if "bar" in c.get_label()]
+    return sorted(round(float(c.get_segments()[0][0][1]), 2) for c in marks)
+
+
 def test_the_segmentation_figure(tmp_path):
     seg = tree.seg_evaluation()
     fig = scores.draw_segmentation(seg, tmp_path / "fig_segmentation")
-    [ax] = fig.axes
-    bars = [p for p in ax.patches if p.get_height() > 0]
-    heights = [bar.get_height() for bar in bars]
-    expected = [
-        seg["methods"][m][metric]["value"]
-        for m in scores.SEG_NAMES
-        for metric in scores.SEG_METRICS
-    ]
-    assert heights == pytest.approx(expected)
-    n = len(scores.SEG_METRICS)
-    hatched = [bool(bar.get_hatch()) for bar in bars]
-    assert hatched == [False] * n + [True] * (2 * n), "recipe and TokEye: sources"
-    assert ax.get_title() == "40 test shots: 123,456 AE pixels of 7,654,321"
-    marks = [c for c in ax.collections if "bar" in c.get_label()]
-    levels = sorted(round(float(c.get_segments()[0][0][1]), 2) for c in marks)
-    assert levels == [0.05, 0.65, 0.75, 0.9], "G1 (both), G2, G3"
+    ax, fp = fig.axes
+    for axes, metrics in ((ax, scores.SEG_SCORES), (fp, (scores.SEG_FP,))):
+        bars = [p for p in axes.patches if p.get_height() > 0]
+        expected = [
+            seg["methods"][m][metric]["value"]
+            for m in scores.SEG_NAMES
+            for metric in metrics
+        ]
+        assert [bar.get_height() for bar in bars] == pytest.approx(expected)
+        n = len(metrics)
+        hatched = [bool(bar.get_hatch()) for bar in bars]
+        assert hatched == [False] * n + [True] * (2 * n), "recipe, TokEye: sources"
+    assert fig.get_suptitle() == "40 test shots: 123,456 AE pixels of 7,654,321"
+    assert _levels(ax) == [0.65, 0.75, 0.9], "G1 (both), G2"
+    assert ax.get_ylim() == (0, 1)
+    assert _levels(fp) == [0.05], "G3, on its own axis"
+    assert fp.get_ylim() == (0, scores.SEG_FP_TOP)
+    assert scores.LOWER_BETTER in _texts(fp) + [fp.get_title()]
     assert "pseudo-mask source" in _legend(fig)
     assert tree.small_text(fig) == []
+
+
+def test_the_segmentation_fp_axis_reaches_a_wider_interval(tmp_path):
+    seg = tree.seg_evaluation()
+    seg["methods"]["tokeye"]["fp_rate_mhd"] = tree.est(0.2, 0.15, 0.27)
+    fig = scores.draw_segmentation(seg, tmp_path / "fig_segmentation")
+    assert fig.axes[1].get_ylim()[1] == pytest.approx(0.3)
 
 
 def test_the_tables():
@@ -134,25 +149,34 @@ def test_the_tables():
     ae["methods"]["always"]["fp_rate_mhd"] = tree.est(0.0488, 0.0401, 0.0508)
     assert scores.table_ae(ae) == (
         "% AE frame scores: 40 test shots, 9000 frames (2500 present, 600 MHD); "
-        "95% shot-bootstrap intervals; band80-mhd3 at 0.42; "
+        f"{scores.INTERVAL_NOTE}; band80-mhd3 at 0.42; "
         "bar A1 pass, A2 fail, A3 pass, all fail\n"
         "\\begin{tabular}{lccccc}\n"
         "\\toprule\n"
         "Method & Precision & Recall & F1 & FP (MHD) & FP (other) \\\\\n"
         "\\midrule\n"
-        "ae\\_xpower & 0.900 [0.850, 0.930] & 0.880 [0.830, 0.910] "
-        "& 0.890 [0.840, 0.920] & 0.020 [0.010, 0.030] & 0.010 \\\\\n"
-        "always & 0.400 [0.350, 0.430] & 0.380 [0.330, 0.410] "
-        "& 0.390 [0.340, 0.420] & 0.049 [0.040, 0.051] & -- \\\\\n"
+        "ae\\_xpower & $0.900^{+0.030}_{-0.050}$ & $0.880^{+0.030}_{-0.050}$ "
+        "& $0.890^{+0.030}_{-0.050}$ & $0.020^{+0.010}_{-0.010}$ & 0.010 \\\\\n"
+        "always & $0.400^{+0.030}_{-0.050}$ & $0.380^{+0.030}_{-0.050}$ "
+        "& $0.390^{+0.030}_{-0.050}$ & $0.049^{+0.002}_{-0.009}$ & -- \\\\\n"
         "\\bottomrule\n"
         "\\end{tabular}\n"
     )
+    assert "high - value" in scores.INTERVAL_NOTE, "the format, said once"
     table = scores.table_segmentation(tree.seg_evaluation())
     assert table.splitlines()[3] == (
         "Method & Dice & Frame P & Frame R & Frame F1 & FP (MHD) \\\\"
     )
-    assert table.splitlines()[5].startswith("ae\\_seg & 0.800 [0.760, 0.840] & ")
+    assert table.splitlines()[5].startswith("ae\\_seg & $0.800^{+0.040}_{-0.040}$ & ")
     assert len(table.splitlines()) == 10
+
+
+def test_numbers_are_signed_with_a_minus_and_zero_is_unsigned():
+    assert scores.number(-0.188) == "$-$0.188"
+    assert scores.number(-0.0003) == "0.000"
+    assert scores.number(-0.0003, signed=True) == "0.000"
+    assert scores.number(0.0101, signed=True) == "+0.010"
+    assert scores.number(0.5) == "0.500"
 
 
 def test_the_differences_table_gives_the_verdicts_they_decide():
@@ -164,14 +188,14 @@ def test_the_differences_table_gives_the_verdicts_they_decide():
     rows = [
         (
             "AE F1: ae\\_xpower $-$ SELDnet",
-            "+0.100 [-0.020, +0.200]",
+            "+0.100 [$-$0.020, +0.200]",
             "low $\\geq -0.03$",
             "yes",
             "A1 pass",
         ),
         (
             "AE MHD FP: ae\\_xpower $-$ SELDnet",
-            "-0.020 [-0.050, +0.010]",
+            "$-$0.020 [$-$0.050, +0.010]",
             "high $< 0$",
             "no",
             "A2 fail",
@@ -186,7 +210,7 @@ def test_the_differences_table_gives_the_verdicts_they_decide():
         ("Seg Dice: ae\\_seg $-$ recipe", "+0.100 [+0.050, +0.150]", "--", "--", "--"),
         (
             "Seg frame F1: ae\\_seg $-$ recipe",
-            "-0.000 [-0.008, +0.007]",
+            "0.000 [$-$0.008, +0.007]",
             "--",
             "--",
             "--",
@@ -195,3 +219,7 @@ def test_the_differences_table_gives_the_verdicts_they_decide():
     assert lines[5:10] == [" & ".join(row) + " \\\\" for row in rows]
     only_ae = scores.table_differences(tree.ae_evaluation(), None).splitlines()
     assert len(only_ae) == len(lines) - 2
+    ae = tree.ae_evaluation()
+    ae["bar_thresholds"]["f1_vs_seldnet_low"] = -0.05
+    moved = scores.table_differences(ae, None).splitlines()[5].split(" & ")
+    assert moved[2] == "low $\\geq -0.05$", "A1's condition is the record's"
