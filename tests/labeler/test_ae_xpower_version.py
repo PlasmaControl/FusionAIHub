@@ -28,7 +28,8 @@ def test_version_routes_training_scoring_frontier_and_gallery(
 ):
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid"})
     ae_tree.env(monkeypatch, paths)
-    models = tmp_path / "custom-models" if override else model_dir(paths, OTHER)
+    # Any directory, so long as it is named for the version.
+    models = tmp_path / "custom" / OTHER if override else model_dir(paths, OTHER)
     monkeypatch.setattr(
         train,
         "fit",
@@ -69,10 +70,9 @@ def test_version_routes_training_scoring_frontier_and_gallery(
 
 
 def test_version_routes_extension_tables_and_pictures(tmp_path, monkeypatch):
-    paths, original = _three_shots(tmp_path, monkeypatch)
+    paths, models = _three_shots(tmp_path, monkeypatch, OTHER)
     ae_tree.env(monkeypatch, paths)
-    models = model_dir(paths, OTHER)
-    original.rename(models)
+    assert models == model_dir(paths, OTHER)
     args = ["--version", OTHER, "--of", "1"]
     assert extend.main(args) == 0
     assert extend.main([*args, "--merge"]) == 0
@@ -94,7 +94,9 @@ def test_version_routes_extension_tables_and_pictures(tmp_path, monkeypatch):
         mp.setattr(extend, "run_all", gallery.run_all)
         assert extend.main([*args, "--limit", "1"]) == 0
     assert f"ae_xpower {OTHER}" in titles[0]
-    assert (gallery.gallery_dir(paths, OTHER) / "extension/201.jpg").is_file()
-    assert not original.exists()
+    # A pilot (--limit) draws under its own shards/pilot/, not the gallery.
+    assert (out / "shards/pilot/extension/201.jpg").is_file()
+    assert not (gallery.gallery_dir(paths, OTHER) / "extension/201.jpg").exists()
+    assert not model_dir(paths).exists()
     assert not extend.suggestions_dir(paths).exists()
     assert not gallery.gallery_dir(paths).exists()

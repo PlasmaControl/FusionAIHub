@@ -6,7 +6,9 @@ draws every AE180 shot from its review store into
 `$LABELER_ROOT/gallery/alfven_eigenmode/ae_xpower-v1/reviewed/<shot>.jpg` (the
 owner has saved it) or `unreviewed/<shot>.jpg` (not yet: the strip is then the
 source table's), and writes `index.csv` beside the folders. `extend` draws its
-shots into `extension/` with the same `draw`.
+shots into `extension/` with the same `draw`. A version with a label snapshot (v2)
+takes the owner's labels from its snapshot, not the live file; `--version` must
+be the models directory's name and the checkpoint's version.
 
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
 scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
@@ -34,7 +36,17 @@ from ...config import Paths, atomic_path
 from ...events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ...events.review import labels
 from ...scoring.frames import FRAME_MS
-from . import EVENT, VERSION, event_dir, gallery_dir, model_dir, tokeye_masks
+from . import (
+    EVENT,
+    LABEL_SNAPSHOTS,
+    VERSION,
+    check_bound,
+    event_dir,
+    gallery_dir,
+    model_dir,
+    read_snapshot,
+    tokeye_masks,
+)
 from .data import (
     CROSS_ROWS,
     clean_path,
@@ -197,7 +209,12 @@ def _init(
         blob=blob,
         paths=paths,
         split=split,
-        live=labels.read_saved(event_dir(paths)),
+        # A snapshot version's owner labels are its snapshot, never the live file.
+        live=(
+            read_snapshot(paths, version)[1]
+            if version in LABEL_SNAPSHOTS
+            else labels.read_saved(event_dir(paths))
+        ),
         source=labels.read_source(event_dir(paths)),
     )
 
@@ -321,7 +338,13 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     version = args.version
     paths = Paths.from_env()
-    model_file = chosen_model(args.models or model_dir(paths, version))
+    models = args.models or model_dir(paths, version)
+    try:
+        check_bound(version, models)
+        model_file = chosen_model(models)
+        check_bound(version, models, load(model_file)[1], model_file)
+    except (OSError, ValueError, KeyError) as error:
+        p.error(str(error))
     shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
     init = (
         str(model_file),

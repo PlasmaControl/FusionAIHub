@@ -10,6 +10,10 @@ candidates of a version chosen that way (v2).
 into each model directory. A version in `LABEL_SNAPSHOTS` reads its labels only
 from its frozen snapshot, `models/ae_xpower/<version>/review/labels.csv`, and
 refuses to run when that file's sha256 is not the one recorded here.
+
+**Binding.** Every command's `--version` must be its models directory's name and
+the version its checkpoints record (`check_bound`), and a full scoring or the
+extension's gate is never read from `runs/` (`check_full`).
 """
 
 from __future__ import annotations
@@ -43,6 +47,39 @@ def check_limit(paths: Paths, models: Path, limit: int) -> None:
         raise ValueError(
             f"{models}: --limit must be nonnegative and requires a directory "
             f"under {paths.runs} when positive"
+        )
+
+
+def check_full(paths: Paths, models: Path, limit: int) -> None:
+    """A full scoring (`--limit 0`) is the version's one look at its test shots:
+    never under `runs/`, where records may be replaced and the look repeated."""
+    if limit == 0 and pilot_area(models, paths.runs):
+        raise ValueError(
+            f"{models}: a full scoring (--limit 0) is never made under "
+            f"{paths.runs}; a pilot there takes --limit N"
+        )
+
+
+def blob_version(blob: dict) -> str:
+    """A checkpoint's recorded version; v1's released checkpoints predate the
+    key, so a checkpoint without one is v1's."""
+    return blob.get("version", "v1")
+
+
+def check_bound(
+    version: str, models: Path, blob: dict | None = None, file=None
+) -> None:
+    """`--version` is the models directory's name and, given a checkpoint, the
+    version it records; otherwise refuse, naming both."""
+    if models.name != version:
+        raise ValueError(
+            f"{models}: --version {version} differs from the models directory's "
+            f"name {models.name}"
+        )
+    if blob is not None and blob_version(blob) != version:
+        raise ValueError(
+            f"{file}: --version {version} differs from the checkpoint's version "
+            f"{blob_version(blob)}"
         )
 
 

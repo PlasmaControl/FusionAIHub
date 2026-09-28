@@ -36,6 +36,8 @@ def test_script_pilot_sequence_runs_twice(tmp_path, monkeypatch, kind):
             evaluate, "load_seldnet", lambda paths: _Fires(np.ones(783, bool))
         )
     models = paths.runs / f"ae_{kind}" / "pilot"
+    if kind == "xpower":
+        models /= "v1"  # the xpower pilots are per version
     records = []
     for attempt, threshold in enumerate((0.4, 0.6)):
         torch.manual_seed(attempt)
