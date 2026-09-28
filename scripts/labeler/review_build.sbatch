@@ -23,29 +23,30 @@
 #               SHOTS="$(sed -n 2,21p $R/shots.csv | cut -d, -f1 | xargs)" \
 #                 EVENT=neoclassical_tearing_mode sbatch <this>
 #   full run:   EVENT=neoclassical_tearing_mode sbatch <this>
-#               WORKERS=8 EVENT=sawtooth_oscillation SHOTS="<the cohort's 450>" \
-#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#               WORKERS=12 EVENT=sawtooth_oscillation SHOTS="<the cohort's 450>" \
+#                 sbatch --cpus-per-task=4 --mem=6G <this>
 #               WORKERS=6 EVENT=high_confinement_mode sbatch --cpus-per-task=2 --mem=3G <this>
 #               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=2G <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
 #   rebuild:    EVENT=neoclassical_tearing_mode FORCE=1 sbatch <this>  (--force: rebuilds built shots)
 #               after a panel change, e.g. the ELM D-alpha rows and the sawtooth SXR chords:
 #               EVENT=edge_localized_mode FORCE=1 sbatch --cpus-per-task=4 --mem=2G <this>
-#               WORKERS=8 EVENT=sawtooth_oscillation FORCE=1 SHOTS="<the cohort's 450>" \
-#                 sbatch --cpus-per-task=4 --mem=8G <this>
+#               WORKERS=12 EVENT=sawtooth_oscillation FORCE=1 SHOTS="<the cohort's 450>" \
+#                 sbatch --cpus-per-task=4 --mem=6G <this>
 #               a store is only the page's rows: labels, drafts and history are untouched
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
 #   one shot (202713), one worker, fetching off: tearing modes 5.1 s and 1.12 GB max
 #   RSS, sawteeth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB.
-#   Sawteeth since the ECE medians (2026-09-28, 185838 and 189370 in one process):
-#   3.2 s a shot and 0.81 GB, so 8 workers take 8 x 0.81 x 1.2 = 7.8 GB.
+#   Sawteeth since the ECE medians (2026-09-28, pilot job 2943760, 20 shots): 12
+#   workers on 4 CPUs, 30 s, 69 % CPU with start-up, 4.92 GB MaxRSS (0.41 GB a
+#   worker), so --mem=6G; 8 workers on 4 CPUs reached 55 %.
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
 #   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).
 #   cpus-per-task=8   450 x 5.1 s / 8 workers = 4.8 min; the others 1-2 min on 2-4 CPUs.
-#   mem=11G           8 x 1.12 GB x 1.2 for tearing modes; sawteeth 8 x 0.51 x 1.2,
+#   mem=11G           8 x 1.12 GB x 1.2 for tearing modes; sawteeth 12 x 0.41 x 1.2,
 #                     H-mode 6 x 0.32 x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
 #   time=00:30:00     4.8 min x 6 for cold GPFS reads.
 set -euo pipefail

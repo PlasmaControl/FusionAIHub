@@ -37,10 +37,10 @@ CHANNEL_ROWS = (
 #: could show. The radiometer's spikes are 1-4 samples wide and reach 22 keV
 #: over a 3 keV core (185838 at 1.4 s; 44 keV at most): they set a trace row's
 #: range and flattened the crashes under them. A median drops them where a mean
-#: would spread them, and keeps a crash's drop within one column. The samples
-#: keep their times: one median a bin at its samples' mean time put the grid at
-#: 0.050000655 ms on the corpus's float32 seconds, and left 698 of its columns
-#: empty.
+#: would spread them, and keeps a crash's drop within one bin (two columns on
+#: the page, whose columns start half a column earlier). The samples keep their
+#: times: one median a bin at its samples' mean time put the grid at 0.050000655
+#: ms on the corpus's float32 seconds, and left 698 of its columns empty.
 ECE_BIN_MS = 0.05
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
