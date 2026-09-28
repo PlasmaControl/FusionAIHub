@@ -19,6 +19,7 @@
 # v1's 58 test shots beside the full 60 (the bar is judged on the 60 only).
 # A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT, 20 or fewer,
 # and for v2 only a pilot choice's model (a copy of the final model there is refused).
+# v2 is scored only in models/ae_xpower/v2 or under runs/; a copy elsewhere is refused.
 # Each candidate is scored against the labels it was trained with (its review/labels.csv copy).
 #
 #   after the array:  sbatch --dependency=afterok:<array id> <this>
