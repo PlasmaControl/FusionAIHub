@@ -57,13 +57,15 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     assert manifest["interpreter_shot"] == 102, "the best test shot; no POI yet"
     assert manifest["example_shots"] == [102, 103]
     assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
+    rule = manifest["interpreter_rule"]
+    assert "at least 5 consecutive absent frames (50 ms)" in rule, "MIN_GAP_FRAMES"
     assert manifest["interpreter_branch"] == shots.POOL_FALLBACK, (
         "AE ends at 900 ms and never comes back"
     )
     pool = manifest["interpreter_pool"]
     assert sorted(pool) == ["102", "103"]
-    assert set(pool["102"]) == {"f1", "poi", "absent_inside_ae"}
-    assert pool["102"]["absent_inside_ae"] == 0
+    assert set(pool["102"]) == {"f1", "poi", "longest_off_frames"}
+    assert pool["102"]["longest_off_frames"] == 0
     assert manifest["example_rule"] == shots.EXAMPLES_RULE
     assert sorted(manifest["shot_f1"]) == ["102", "103"], "the shots drawn"
     assert set(manifest["shot_f1"]["102"]) == {"f1_0_2s", "f1_window"}
@@ -252,19 +254,36 @@ def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_p
     assert sorted(manifest["interpreter_pool"]) == ["102"]
 
 
-def test_the_pool_is_the_test_shots_where_ae_comes_back(runs, tmp_path):
+@pytest.mark.parametrize(
+    ("back_on", "branch", "pool", "off"),
+    [
+        (600, shots.POOL_GAP, ["103"], 10),
+        (550, shots.POOL_GAP, ["103"], 5),
+        (540, shots.POOL_FALLBACK, ["102", "103"], 4),
+    ],
+)
+def test_the_pool_is_the_test_shots_where_ae_comes_back(
+    runs, tmp_path, back_on, branch, pool, off
+):
     copy = tree.scored_labels(runs)
     rows = [r for r in copy.read_text().splitlines() if not r.startswith("103,")]
-    back = ((0, 300, 0), (300, 500, 1), (500, 600, 0), (600, 900, 1), (900, 2000, 0))
+    back = (
+        (0, 300, 0),
+        (300, 500, 1),
+        (500, back_on, 0),
+        (back_on, 900, 1),
+        (900, 2000, 0),
+    )
     copy.write_text("\n".join([*rows, *(f"103,{c},{a},{b}," for a, b, c in back)]))
     tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
-    assert manifest["interpreter_branch"] == shots.POOL_GAP
-    assert manifest["interpreter_shot"] == 103, "the one shot where AE comes back"
-    pool = manifest["interpreter_pool"]
-    assert sorted(pool) == ["103"]
-    assert (pool["103"]["absent_inside_ae"], pool["103"]["poi"]) == (10, 0), (
-        "500-600 ms; 900 ms to 2 s does not count"
+    assert manifest["interpreter_branch"] == branch, "off from 500 ms: 50 ms is in"
+    if branch == shots.POOL_GAP:
+        assert manifest["interpreter_shot"] == 103, "the one shot where AE comes back"
+    drawn = manifest["interpreter_pool"]
+    assert sorted(drawn) == pool
+    assert (drawn["103"]["longest_off_frames"], drawn["103"]["poi"]) == (off, 0), (
+        "from 500 ms; 900 ms to 2 s does not count"
     )
 
 

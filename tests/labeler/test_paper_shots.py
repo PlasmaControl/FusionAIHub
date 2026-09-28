@@ -10,7 +10,9 @@ import pytest
 from matplotlib.patches import Rectangle
 
 from labeler.ae.xpower.evaluate import chosen_model
+from labeler.events.catalog.states import UNCERTAIN
 from labeler.paper import COMING, shots
+from labeler.scoring.frames import FRAME_MS
 
 from . import ae_tree, paper_tree
 
@@ -198,30 +200,57 @@ def _owner(*spans: tuple[int, int, int], n: int = 200) -> np.ndarray:
     return owner
 
 
-def test_owner_mixed_counts_absent_frames_inside_the_ae_span():
+def test_the_off_period_is_the_longest_run_of_absent_frames_inside_the_ae_span():
     lead_in = _owner((30, 200, 1), n=250)  # absent before breakdown, then after 2 s
     gap = _owner((30, 100, 1), (120, 200, 1))  # AE turns off for 200 ms, then on
+    two = _owner((30, 100, 1), (103, 110, 1), (113, 200, 1))  # off twice, 30 ms
+    unsure = _owner((30, 100, 1), (105, 106, UNCERTAIN), (120, 200, 1))
     trailing = _owner((30, 150, 1))  # AE turns off at 1.5 s and never comes back
     late = _owner((30, 190, 1), (210, 250, 1), n=250)  # back on only after 2 s
-    assert shots.owner_mixed(lead_in, first=0) == 0
-    assert shots.owner_mixed(gap, first=0) == 20
-    assert shots.owner_mixed(trailing, first=0) == 0, "off for good is not a gap"
-    assert shots.owner_mixed(late, first=0) == 0, "the scored window is 0-2 s"
-    assert shots.owner_mixed(_owner(), first=0) == 0, "no AE at all"
-    assert shots.owner_mixed(gap, first=100) == 0, "frames 100.. : 1-2 s only"
+    assert shots.longest_off(lead_in, first=0) == 0
+    assert shots.longest_off(gap, first=0) == 20
+    assert shots.longest_off(two, first=0) == 3, "the longest run, not the sum"
+    assert shots.longest_off(unsure, first=0) == 14, "an uncertain frame is not off"
+    assert shots.longest_off(trailing, first=0) == 0, "off for good is not a gap"
+    assert shots.longest_off(late, first=0) == 0, "the scored window is 0-2 s"
+    assert shots.longest_off(_owner(), first=0) == 0, "no AE at all"
+    assert shots.longest_off(gap, first=100) == 0, "frames 100.. : 1-2 s only"
+
+
+def test_the_pool_needs_an_off_period_of_at_least_50_ms():
+    assert shots.MIN_GAP_FRAMES == 5
+    assert shots.MIN_GAP_FRAMES * FRAME_MS == 50
+    four = _owner((30, 100, 1), (104, 200, 1))
+    five = _owner((30, 100, 1), (105, 200, 1))
+    threes = _owner((30, 100, 1), (103, 110, 1), (113, 200, 1))
+    owners = {1: four, 2: five, 3: threes}
+    gaps = {s: shots.longest_off(owner, first=0) for s, owner in owners.items()}
+    assert gaps == {1: 4, 2: 5, 3: 3}
+    f1 = {1: 1.0, 2: 0.99, 3: 0.995}
+    poi = pd.DataFrame({"shot": [1, 2, 3]})
+    pick = shots.interpreter_pick(f1, poi, gaps)
+    assert (pick["shot"], pick["branch"]) == (2, shots.POOL_GAP), (
+        "a 4-frame gap and two separate 3-frame gaps are out; 5 frames are in"
+    )
+    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 1, "longest_off_frames": 5}}
+    short = shots.interpreter_pick(f1, poi, {1: 4, 3: 3})
+    assert (short["shot"], short["branch"]) == (1, shots.POOL_FALLBACK)
+    rules = (shots.POOL_GAP, shots.POOL_FALLBACK, shots.POOL_UNMARKED)
+    assert all("off for at least 50 ms" in rule for rule in rules)
+    assert "at least 5 consecutive absent frames (50 ms)" in shots.INTERPRETER_RULE
 
 
 def test_the_interpreter_shows_a_shot_where_ae_turns_off_and_on():
     lead_in, gap = _owner((30, 200, 1)), _owner((30, 100, 1), (120, 200, 1))
     trailing = _owner((30, 150, 1))  # AE ends before 2 s and never returns
     owners = {1: lead_in, 2: gap, 3: trailing}
-    gaps = {s: shots.owner_mixed(owner, first=0) for s, owner in owners.items()}
+    gaps = {s: shots.longest_off(owner, first=0) for s, owner in owners.items()}
     f1 = {1: 1.0, 2: 0.99, 3: 0.995}
     poi = pd.DataFrame({"shot": [1] * 3 + [2] * 9 + [3] * 4})
     pick = shots.interpreter_pick(f1, poi, gaps)
     assert pick["shot"] == 2, "the best F1 among the shots where AE comes back"
     assert pick["branch"] == shots.POOL_GAP
-    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "absent_inside_ae": 20}}
+    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "longest_off_frames": 20}}
 
 
 def test_the_fallback_says_which_case_fired():
