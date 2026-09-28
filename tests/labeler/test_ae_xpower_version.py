@@ -74,7 +74,9 @@ def test_version_routes_extension_tables_and_pictures(tmp_path, monkeypatch):
     ae_tree.env(monkeypatch, paths)
     assert models == model_dir(paths, OTHER)
     args = ["--version", OTHER, "--of", "1"]
-    assert extend.main(args) == 0
+    # The stand-in worker draws nothing, and a merge refuses a shard asked for
+    # pictures that lacks any; the real worker's pictures are drawn below.
+    assert extend.main([*args, "--no-pictures"]) == 0
     assert extend.main([*args, "--merge"]) == 0
     out = extend.suggestions_dir(paths, OTHER)
     table = out / f"alfven_eigenmode_suggest_ae_xpower_{OTHER}.csv"
