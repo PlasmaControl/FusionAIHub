@@ -12,12 +12,13 @@ labels.csv`), the review page's AE stores and TokEye's masks, and writes
 `candidates(version)` names the input band and MHD weight of each candidate.
 
 The second is the final model of a version chosen by cross-validation (`cv`,
-the ledger's Deviation 11): `cv/choice.json`'s candidate, trained on every
-train and validation shot of the version's label snapshot for the choice's
-fixed epoch count (the median of its folds' best epochs) with no early
-stopping, saved at the choice's threshold with the choice's and the snapshot's
-sha256, into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json`
-beside it.
+the ledger's Deviation 11): `cv/choice.json`'s candidate, trained on exactly
+the pool shots of `cv/folds.csv` (every train and validation shot of the
+version's label snapshot; the file is checked against the snapshot and TokEye's
+masks, and its sha256 against the choice's) for the choice's fixed epoch count
+(the median of its folds' best epochs) with no early stopping, saved at the
+choice's threshold with the choice's, the folds' and the snapshot's sha256,
+into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json` beside it.
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -392,8 +393,9 @@ def train_from_cv(
     paths: Paths, models: Path, *, version: str, pilot: int = 0, log=print
 ) -> dict:
     """The final model of a cross-validated version: `cv/choice.json`'s candidate
-    on every pool shot, for its fixed epoch count, with no early stopping, at its
-    threshold; then `chosen.json`, in the shape `evaluate --test` reads."""
+    on exactly the shots of `cv/folds.csv`'s folds, for its fixed epoch count, with
+    no early stopping, at its threshold; then `chosen.json`, in the shape
+    `evaluate --test` reads."""
     from . import cv  # cv imports this module
 
     cv.check_version(models, version)
@@ -405,35 +407,39 @@ def train_from_cv(
         raise FileNotFoundError(f"{choice_file}: no choice; run cv --choose first")
     choice_bytes = choice_file.read_bytes()
     choice = json.loads(choice_bytes)
-    data, saved = read_snapshot(paths, version)
+    data, _ = read_snapshot(paths, version)
     digest = hashlib.sha256(data).hexdigest()
     if choice.get("version") != version or choice.get("labels_sha256") != digest:
         raise ValueError(f"{choice_file}: made for another version or label snapshot")
+    # The folds as the snapshot and TokEye's masks give them now, and the choice's.
+    folds = cv.checked_folds(paths, models, version)
+    if choice.get("folds_sha256") != folds.sha256:
+        raise ValueError(
+            f"{choice_file}: made from other folds than "
+            f"{cv.cv_dir(models) / 'folds.csv'} holds"
+        )
     name, threshold = choice["candidate"], float(choice["threshold"])
     spec = candidates(version)[name]
     out, chosen_file = models / name, models / "chosen.json"
     refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
     if chosen_file.exists() and not in_runs:
         raise FileExistsError(f"{chosen_file}: the version's model is chosen once")
-    split = {
-        s: "test" if v == "test" else "train"
-        for s, v in make_split(saved, seldnet_split(tokeye_masks(paths))).items()
-    }
-    pool = sorted(s for s, v in split.items() if v == "train")
+    pool = sorted(folds.folds)  # exactly the folds' shots; a pilot, the first N
     epochs = int(choice["final_epochs"])
     if pilot:
         pool, epochs = pool[:pilot], 2
-        split = {s: v for s, v in split.items() if v == "test" or s in pool}
     elif len(pool) != choice["frames"]["shots"]:
         raise ValueError(
-            f"{choice_file}: pooled {choice['frames']['shots']} shots; the split "
-            f"has {len(pool)}"
+            f"{choice_file}: pooled {choice['frames']['shots']} shots; the folds "
+            f"have {len(pool)}"
         )
+    split = {s: "test" for s, v in folds.split.items() if v == "test"}
+    split |= dict.fromkeys(pool, "train")
     config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
     shots = [
         load_shot(
             s,
-            saved[s],
+            folds.saved[s],
             store_rows(paths.spectrogram_file(EVENT, s)),
             tokeye_masks(paths),
             band=spec["band"],
@@ -459,6 +465,7 @@ def train_from_cv(
         extra={
             "from_cv": True,
             "choice_sha256": choice_sha,
+            "folds_sha256": folds.sha256,
             "snapshot_sha256": digest,
             "fixed_epochs": epochs,
             "cv_branch": choice["branch"],
@@ -476,6 +483,7 @@ def train_from_cv(
         "branch": choice["branch"],
         "final_epochs": epochs,
         "choice_sha256": choice_sha,
+        "folds_sha256": folds.sha256,
         "labels_sha256": digest,
         "model_sha256": sha256_of(out / "model.pt"),
         "git_sha": git_sha(),
