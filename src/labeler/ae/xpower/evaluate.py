@@ -313,7 +313,13 @@ def score(shots: Sequence[ShotFrames], methods: Sequence[str]) -> dict:
             cells(shots, "seldnet", mhd_absent),
             fp_rate,
         )
-    out["frames"] = {
+    out["frames"] = frame_counts(shots)
+    return out
+
+
+def frame_counts(shots: Sequence[ShotFrames]) -> dict:
+    """The shots, and their scored, present and MHD frames the owner calls absent."""
+    return {
         "shots": len(shots),
         "scored": int(sum(f.scored.sum() for f in shots)),
         "present": int(sum((f.scored & (f.owner == PRESENT)).sum() for f in shots)),
@@ -322,7 +328,6 @@ def score(shots: Sequence[ShotFrames], methods: Sequence[str]) -> dict:
             sum(bool((f.scored & mhd_absent(f)).any()) for f in shots)
         ),
     }
-    return out
 
 
 def _at_least(x, bound) -> bool:
@@ -694,17 +699,29 @@ def chosen_model(models: Path) -> Path:
     return models / name / "model.pt"
 
 
-def run_test(
-    paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
-) -> dict:
-    check_limit(paths, models, limit)
-    check_full(paths, models, limit)
-    check_own_dir(paths, models, version)  # before any file is read
-    evaluation = models / "evaluation.json"
-    if evaluation.exists() and not pilot_area(models, paths.runs):
-        raise FileExistsError(
-            f"{evaluation}: the test shots are scored once; a retry is a new version"
-        )
+class Inputs(NamedTuple):
+    """What the test scores, each file read once (`load_test`): the chosen model
+    and its checkpoint, the labels and split saved beside it, the source table,
+    the bytes each sha256 names, `chosen.json`'s bytes, and a cross-validated
+    version's checks (`check_cv_model`'s meta)."""
+
+    model: object
+    blob: dict
+    saved: dict
+    split: dict[int, str]
+    source: SourceTable
+    snapshots: dict[str, bytes]
+    chosen_bytes: bytes
+    cv_meta: dict
+    file: Path
+
+
+def load_test(paths: Paths, models: Path, version: str) -> Inputs:
+    """The test's inputs, with every check the test makes of them: the version
+    bound to the directory and checkpoint, and for a cross-validated version
+    `chosen.json` against `cv/choice.json`, the folds, the model's bytes, its
+    split and the source table (`cv_chosen`), and the checkpoint against the
+    choice (`check_cv_model`). `run_test` and `posthoc` read them only here."""
     check_bound(version, models)
     chosen_bytes = (models / "chosen.json").read_bytes()
     candidate = json.loads(chosen_bytes)["candidate"]
@@ -749,29 +766,83 @@ def run_test(
         )
         labels_copy = snapshots["review/labels.csv"]
         cv_meta = check_cv_model(blob, chosen, choice, labels_copy, file)
-    subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
+    return Inputs(
+        model, blob, saved, split, source, snapshots, chosen_bytes, cv_meta, file
+    )
+
+
+def identity(inputs: Inputs, version: str) -> dict:
+    """How the test record names what it scored: the candidate and version, the
+    model, `chosen.json`, split and labels copy by sha256, the threshold and
+    band, and the labels the model learned from and the source table by sha256."""
+    blob, snapshots = inputs.blob, inputs.snapshots
+    return {
+        "candidate": blob["candidate"],
+        "version": version,
+        "model_sha256": hashlib.sha256(snapshots["model.pt"]).hexdigest(),
+        "chosen_sha256": hashlib.sha256(inputs.chosen_bytes).hexdigest(),
+        "split_sha256": hashlib.sha256(snapshots["split.csv"]).hexdigest(),
+        "labels_copy_sha256": hashlib.sha256(
+            snapshots["review/labels.csv"]
+        ).hexdigest(),
+        "threshold": blob["threshold"],
+        "band_khz": blob["band_khz"],
+        "model_git_sha": blob["git_sha"],
+        "labels_sha256": blob["labels_sha256"],
+        "source_sha256": inputs.source.sha256,
+    }
+
+
+def frames_of_test(
+    paths: Paths, inputs: Inputs, shots: Sequence[int], whole_window: bool = True
+) -> tuple[list[ShotFrames], list[np.ndarray]]:
+    """Each test shot's 0-2 s frames, with every method's say, and (unless not
+    `whole_window`) the model's cells over the owner's whole window; refused if
+    a shot has no source-table label."""
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
-    shots, windows = [], []
-    for s in _reviewed(split, "test", limit):
+    frames, windows = [], []
+    model, blob, saved = inputs.model, inputs.blob, inputs.saved
+    for s in shots:
         spec = paths.root / "ae" / "dataset" / f"{s}_{splits[s]}.npz"
-        shots.append(
+        frames.append(
             shot_frames(
                 s,
                 paths=paths,
                 label=saved[s],
                 model=model,
                 blob=blob,
-                source=source.labels.get(s),
+                source=inputs.source.labels.get(s),
                 seldnet=seldnet,
                 spec_path=spec,
             )
         )
-        windows.append(
-            window_cells(s, paths=paths, label=saved[s], model=model, blob=blob)
-        )
-    if any("source" not in f.said for f in shots):
+        if whole_window:
+            windows.append(
+                window_cells(s, paths=paths, label=saved[s], model=model, blob=blob)
+            )
+    if any("source" not in f.said for f in frames):
         raise ValueError("a test shot has no source-table label")
+    return frames, windows
+
+
+
+
+def run_test(
+    paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
+) -> dict:
+    check_limit(paths, models, limit)
+    check_full(paths, models, limit)
+    check_own_dir(paths, models, version)  # before any file is read
+    evaluation = models / "evaluation.json"
+    if evaluation.exists() and not pilot_area(models, paths.runs):
+        raise FileExistsError(
+            f"{evaluation}: the test shots are scored once; a retry is a new version"
+        )
+    inputs = load_test(paths, models, version)
+    split = inputs.split
+    subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
+    shots, windows = frames_of_test(paths, inputs, _reviewed(split, "test", limit))
     scores = score(shots, METHODS)
     scores["window"] = {"f1": _estimate(np.asarray(windows), stats.f1)}
     bar = verdict(scores)  # on the whole split only
@@ -787,24 +858,12 @@ def run_test(
                 )
             }
     meta = {
-        "candidate": blob["candidate"],
-        "version": version,
-        "model_sha256": hashlib.sha256(snapshots["model.pt"]).hexdigest(),
-        "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
-        "split_sha256": hashlib.sha256(snapshots["split.csv"]).hexdigest(),
-        "labels_copy_sha256": hashlib.sha256(
-            snapshots["review/labels.csv"]
-        ).hexdigest(),
-        "threshold": blob["threshold"],
-        "band_khz": blob["band_khz"],
-        "model_git_sha": blob["git_sha"],
-        "labels_sha256": blob["labels_sha256"],
-        "source_sha256": source.sha256,
+        **identity(inputs, version),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tier": "suggestions",
         "limit": limit,
-        **cv_meta,
+        **inputs.cv_meta,
     }
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
     if subset is not None:
