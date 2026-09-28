@@ -170,19 +170,22 @@ where you see them.
 
 **Sawteeth** (`ece_sawtooth`).
 
-- Rows: the ECE channels 20-35, as four rows of four adjacent channels in keV,
-  so the inversion (inner channels drop as outer ones rise) reads from row to
-  row. Each sample is the median of its 0.05 ms, the page's finest column:
-  the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core) otherwise
-  set the row's range and flatten the crashes. Then one SXR row: the first
-  fan of SX90RM1F, SX90RP1F, SX90RM1S and SX90RP1S with 8 chords finite over
-  half the record.
+- Rows: the ECE Te of channels 20-35, as four rows of four adjacent channels
+  in keV, so the inversion (inner channels drop as outer ones rise) reads from
+  row to row. Each sample is the median of its 0.05 ms, the page's finest
+  column: the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core)
+  otherwise set the row's range and flatten the crashes. Then one Te row from
+  Thomson scattering (`ts_core_temp`, every 10 ms): its 4 hottest core chords
+  by their median over the plasma window, in keV, a failed fit (0 or below)
+  left as a gap. Then one SXR row: the first fan of SX90RM1F, SX90RP1F,
+  SX90RM1S and SX90RP1S with 8 chords finite over half the record.
 - The SXR row draws the fan's 4 chords with the most crash-like drops over the
   Ip flat-top, not its brightest: on about 25 shots the brightest sit near
   4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
   falls by more than 6 standard deviations of its own change, taken second by
-  second. The chords are chosen over the whole record, whatever the view.
-- A shot without ECE, or without SXR, gets the other's rows alone.
+  second. The Thomson and SXR chords are chosen over the whole record,
+  whatever the view.
+- A shot without ECE, Thomson or SXR gets the others' rows alone.
 - Draft: the runs of crashes, starting in the plasma as above.
 
 **Tearing modes** (`window`).

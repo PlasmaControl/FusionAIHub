@@ -288,7 +288,8 @@ everything in the directory.
 
 Four categories have panels chosen for the phenomenon -
 `minimum_safety_factor` (qmin against the rule's class thresholds),
-`sawtooth_oscillation` (ECE channels 20-35 as 0.05 ms medians, four to a row),
+`sawtooth_oscillation` (ECE channels 20-35 as 0.05 ms medians, four to a row,
+Thomson's core Te and the SXR chords that crash),
 `alfven_eigenmode` (CO2 crosspower R0xV1/V2/V3) and `fishbone` (the magnetic
 spectrogram). The rest carry generic `ip`/`betan`/`pinj_total` panels, which show
 that a shot exists and not that a phenomenon happened; each says so and asks
