@@ -2,13 +2,25 @@ r"""Frame scores: the AE methods, their MHD check, and the segmentation.
 
 `draw_scores` is the six-phenomenon grid: frame precision, recall and F1 with
 95 % shot-bootstrap intervals, one panel per catalog phenomenon. AE's panel is
-`models/ae_xpower/v1/evaluation.json` (`labeler.ae.xpower.evaluate`); the other
-five are coming. Its dots and whiskers sit on an axis from `SCORE_FLOOR`, so the
-differences A1 tests show; a value below the floor is drawn on it, with its
-number. `draw_mhd` is AE's alone: each method's false-positive rate on MHD
-frames (the owner says absent and TokEye sees a 0-60 kHz line) beside its rate
-on the other absent frames, against the bar, on an axis capped at `MHD_CAP`; a
-bar past the cap runs to the edge and carries its value. `draw_segmentation` is
+`models/ae_xpower/<version>/evaluation.json` (`labeler.ae.xpower.evaluate`);
+the other five are coming. Its dots and whiskers sit on an axis from
+`SCORE_FLOOR`, so the differences A1 tests show; a value below the floor is
+drawn on it, with its number. `draw_mhd` is AE's alone: each method's
+false-positive rate on MHD frames (the owner says absent and TokEye sees a
+0-60 kHz line) beside its rate on the other absent frames, against the bar, on
+an axis capped at `MHD_CAP`; a bar past the cap runs to the edge and carries
+its value.
+
+**Each AE figure states its bar's verdict as the record gives it** (`bar`),
+under its axis, with the numbers it turns on (`a1_said`, `a2_said`): A1's
+dashed marks are only its absolute floors (`FLOORS_LABEL`), so fig_scores says
+A1's paired clause, F1 − SELDnet's lower bound against its bar, and any floor
+the model misses; fig_mhd says both of A2's clauses, the MHD rate against its
+bar and MHD FP − SELDnet's upper bound against 0. They are stated, not drawn: a
+difference sits on its own scale around 0, not on a score axis from
+`SCORE_FLOOR` or a rate axis to `MHD_CAP`, and a bound 0.002 from its bar is a
+gap no whisker shows at this size, where the text gives both numbers. A record
+that passes says pass. `draw_segmentation` is
 `models/ae_seg/v1/evaluation.json` (`labeler.ae.seg.evaluate`), with every bar
 G1-G3 set (G1's on the Dice and on its interval's lower end); its MHD
 false-positive rate, where lower is better, has its own axis from 0 to
@@ -91,6 +103,8 @@ LOWER_BETTER = "lower is better"
 AE_BARS = {"precision": "precision", "recall": "recall", "f1": "f1"}  # A1
 BAR_LABEL = "bar"
 LOW_BAR_LABEL = "bar on the lower bound"
+FLOORS_LABEL = "A1 floors"  # fig_scores' dashes: A1's absolute floors alone
+MARKS = (BAR_LABEL, LOW_BAR_LABEL, FLOORS_LABEL)  # after the methods in a legend
 COLOURS = {
     "ae_xpower": "#d62728",
     "ae_seg": "#d62728",
@@ -241,15 +255,84 @@ def _dots(ax, ae: dict, methods: Sequence[str]) -> None:
                 colors="black",
                 linestyles="--",
                 lw=0.6,
-                label=f"{BAR_LABEL} (A1)" if first else "_bar",
+                label=FLOORS_LABEL if first else "_" + FLOORS_LABEL,
             )
             first = False
 
 
 def _bars_last(handles: list, names: list) -> tuple[list, list]:
     """The methods first, then the bars' marks."""
-    order = sorted(range(len(names)), key=lambda i: names[i].startswith(BAR_LABEL))
+    order = sorted(range(len(names)), key=lambda i: names[i] in MARKS)
     return [handles[i] for i in order], [names[i] for i in order]
+
+
+def _said(x: float, spec: str = f".{DECIMALS}f") -> str:
+    """`x` for a figure's text, its minus U+2212 as the ticks write it; a value
+    that rounds to zero is unsigned."""
+    text = format(abs(x), spec)
+    return f"\u2212{text}" if x < 0 and float(text) != 0 else text
+
+
+def _holds(key: str, lo: float, hi: float, thresholds: dict) -> bool:
+    """Whether the paired difference `key` meets its part of the bar, by the
+    test `table_differences` applies (`DIFFERENCES`)."""
+    [test] = [d[5] for d in DIFFERENCES if d[1] == key]
+    return test(lo, hi, thresholds)
+
+
+def _decided(ae: dict, bar: str) -> bool | None:
+    """The record's verdict on `bar`, None when it gives none."""
+    return ae.get("bar", {}).get(bar)
+
+
+def _head(ae: dict, bar: str) -> str:
+    """`bar`'s verdict from the record, as in "A1 fail:"."""
+    return f"{bar} {'pass' if _decided(ae, bar) else 'fail'}:"
+
+
+def a1_said(ae: dict) -> str | None:
+    """A1's verdict and what its floors cannot show: F1 − SELDnet's lower bound
+    against its bar, and each floor the model's score misses; None when the
+    record gives no verdict on A1."""
+    if _decided(ae, "A1") is None:
+        return None
+    t = ae["bar_thresholds"]
+    _, lo, hi = interval(ae["differences"]["f1_minus_seldnet"])
+    sign = "\u2265" if _holds("f1_minus_seldnet", lo, hi, t) else "<"
+    clauses = [
+        (
+            f"F1 \u2212 {AE_NAMES['seldnet']} lower bound {_said(lo)} {sign} "
+            f"{_said(t['f1_vs_seldnet_low'], 'g')}"
+        )
+    ]
+    model = ae["methods"]["ae_xpower"]
+    for metric, key in AE_BARS.items():
+        value = interval(model[metric])[0]
+        if key in t and not value >= t[key]:
+            clauses.append(f"{METRICS[metric]} {_said(value)} < {_said(t[key], 'g')}")
+    return "\n".join([_head(ae, "A1"), *clauses])  # a panel a third of the page
+
+
+def a2_said(ae: dict) -> str | None:
+    """A2's verdict and both its clauses: the model's MHD rate against its bar,
+    and MHD FP − SELDnet's upper bound against 0; None when the record gives
+    no verdict on A2."""
+    if _decided(ae, "A2") is None:
+        return None
+    t = ae["bar_thresholds"]
+    rate = interval(ae["methods"]["ae_xpower"]["fp_rate_mhd"])[0]
+    _, lo, hi = interval(ae["differences"]["mhd_fp_minus_seldnet"])
+    under = "\u2264" if rate <= t["mhd_fp_rate"] else ">"
+    below = "<" if _holds("mhd_fp_minus_seldnet", lo, hi, t) else "\u2265"
+    return "\n".join(
+        [
+            (
+                f"{_head(ae, 'A2')} MHD FP {_said(rate)} {under} "
+                f"{_said(t['mhd_fp_rate'], 'g')}"
+            ),
+            f"MHD FP \u2212 {AE_NAMES['seldnet']} upper bound {_said(hi)} {below} 0",
+        ]
+    )
 
 
 def draw_scores(ae: dict, stem: Path) -> Figure:
@@ -269,6 +352,8 @@ def draw_scores(ae: dict, stem: Path) -> Figure:
             ax.set_xlim(-0.5, len(METRICS) - 0.5)
             ax.set_ylim(SCORE_FLOOR, 1)
             ax.set_ylabel(f"frame score (axis from {SCORE_FLOOR:g})")
+            if said := a1_said(ae):
+                ax.set_xlabel(said)
             n = ae["frames"]
             ax.set_title(f"{title(AE)}: {n['shots']} test shots, {n['scored']} frames")
             handles, names = _bars_last(*ax.get_legend_handles_labels())
@@ -282,7 +367,7 @@ def draw_mhd(ae: dict, stem: Path) -> Figure:
     methods = [m for m in AE_METHODS if m in ae["methods"]]
     y = np.arange(len(methods))[::-1].astype(float)
     with style():
-        fig = Figure(figsize=(COLUMN_IN, 2.1), layout="constrained")
+        fig = Figure(figsize=(COLUMN_IN, 2.4), layout="constrained")  # A2's lines
         ax = fig.subplots()
         for offset, key, colour, ink, name in (
             (0.18, "fp_rate_mhd", "#1f77b4", "white", "MHD frames"),
@@ -315,7 +400,8 @@ def draw_mhd(ae: dict, stem: Path) -> Figure:
         ax.axvline(bar, color="black", ls="--", lw=0.6)
         ax.set_yticks(y, [AE_NAMES[m] for m in methods])
         ax.set_xlim(0, MHD_CAP)
-        ax.set_xlabel(f"false-positive rate (bar: MHD ≤ {bar:g}; axis to {MHD_CAP:g})")
+        label = f"false-positive rate (bar: MHD ≤ {bar:g}; axis to {MHD_CAP:g})"
+        ax.set_xlabel("\n".join(x for x in (label, a2_said(ae)) if x))
         n = ae["frames"]
         ax.set_title(
             f"{n['mhd_absent']} MHD frames in {n['shots_with_mhd_absent']} test shots"
@@ -468,7 +554,9 @@ def _verdict(bar: dict) -> str:
     return ", ".join(f"{k} {'pass' if v else 'fail'}" for k, v in bar.items())
 
 
-def table_ae(ae: dict) -> str:
+def table_ae(ae: dict, second_look: str | None = None) -> str:
+    """The AE frame scores; the comment ends with the second look, when there
+    is one (`labeler.paper.build.second_look`)."""
     keys = ("precision", "recall", "f1", "fp_rate_mhd", "fp_rate_other")
     rows = [
         [_tex(AE_NAMES[m]), *(_fmt(ae["methods"][m][k]) for k in keys)]
@@ -482,6 +570,8 @@ def table_ae(ae: dict) -> str:
         f"{meta.get('candidate', '?')} at {meta.get('threshold', '?')}; "
         f"bar {_verdict(ae.get('bar', {}))}"
     )
+    if second_look:
+        comment += f"; {second_look}"
     header = ("Method", "Precision", "Recall", "F1", "FP (MHD)", "FP (other)")
     return tabular(header, rows, comment)
 
@@ -504,10 +594,13 @@ def table_segmentation(seg: dict) -> str:
     return tabular(header, rows, comment)
 
 
-def table_differences(ae: dict | None, seg: dict | None) -> str:
+def table_differences(
+    ae: dict | None, seg: dict | None, second_look: str | None = None
+) -> str:
     """The paired differences the records hold, with the part of the bar each
     decides: its condition, whether it holds, and the record's verdict on that
-    bar. Only a record that exists gives rows."""
+    bar. Only a record that exists gives rows; the AE rows' second look, when
+    there is one, ends the comment."""
     records = {"ae": ae, "seg": seg}
     rows = []
     for which, key, name, bar, condition, holds in DIFFERENCES:
@@ -533,5 +626,7 @@ def table_differences(ae: dict | None, seg: dict | None) -> str:
         "Condition is the part of the bar the difference decides, Bar the "
         "record's verdict on it"
     )
+    if ae is not None and second_look:
+        comment += f"; AE: {second_look}"
     header = ("Comparison", "Difference", "Condition", "Holds", "Bar")
     return tabular(header, rows, comment)

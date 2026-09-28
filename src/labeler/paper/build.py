@@ -67,6 +67,15 @@ not against the frame model's; a copy missing or unlike the record makes its
 products `partial`. The manifest names the frame model SegNet was evaluated
 beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
 
+**The second look.** A version whose test shots include an earlier version's
+(`labeler.ae.xpower.evaluate.SUBSET_OF`: v2's include v1's) says so in the AE
+tables' `%` comments and the manifest's `second_look`: how many of its test
+shots were the earlier version's, and the model and time that version's test
+was scored with (`evaluate.second_look`). They are counted from the earlier
+version's records, its `evaluation.json` and its model's `split.csv`, pinned
+as `ae_earlier_evaluation` and `ae_earlier_split`; without them the tables are
+`partial`. Whether the owner accepts the second look is the ledger's record.
+
 The manifest pins every file the build reads (the chosen `model.pt`, its
 `split.csv`, its labels and each spectrogram store among them) with its
 sha256, and records the full commit and whether the tree was dirty, whether the
@@ -112,6 +121,7 @@ import torch
 
 from ..ae import seg as ae_seg
 from ..ae import xpower
+from ..ae.xpower import evaluate as ae_evaluate
 from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.review import labels
 from . import AE, coverage, paper_dir, scores, shots
@@ -197,6 +207,12 @@ SEG_LABELS_UNNAMED = "the segmentation's evaluation names no labels_sha256"
 SEG_LABELS_DIFFER = (
     "the segmentation's review/labels.csv is not what its evaluation scored (D18)"
 )
+LOOK_PRODUCTS = ("table_ae_scores", "table_differences")  # say the second look
+NO_EARLIER = (
+    "the earlier version's records are missing, so the test shots it scored "
+    "first are not counted"
+)
+NO_LOOK_SPLIT = "no split.csv, so the earlier version's test shots are not counted"
 
 
 def inputs(
@@ -345,6 +361,37 @@ def extension_reason(ae: dict | None) -> str:
     return NO_SUMMARY
 
 
+def second_look(
+    paths: Paths,
+    found: dict[str, Path],
+    snap: Snapshot,
+    version: str,
+    chosen: dict | None,
+    split: dict[int, str] | None,
+) -> tuple[dict | None, dict | None]:
+    """The earlier version's look at this version's test shots
+    (`evaluate.second_look`), from its `evaluation.json` and its model's
+    `split.csv`, each pinned; or, when it cannot be counted, the `partial`
+    entry that says why. Both None for a version with no earlier one."""
+    earlier = ae_evaluate.SUBSET_OF.get(version)
+    if earlier is None:
+        return None, None
+    models = xpower.model_dir(paths, earlier)
+    evaluation = found["ae_earlier_evaluation"] = models / "evaluation.json"
+    if not evaluation.is_file():
+        return None, {"reason": NO_EARLIER, "missing": [str(evaluation)]}
+    record = snap.json("ae_earlier_evaluation", evaluation)
+    candidate = str(record.get("meta", {}).get("candidate"))
+    split_file = found["ae_earlier_split"] = models / candidate / "split.csv"
+    if not split_file.is_file():
+        return None, {"reason": NO_EARLIER, "missing": [str(split_file)]}
+    theirs = snap.split("ae_earlier_split", split_file)
+    if split is None:
+        return None, {"reason": NO_LOOK_SPLIT}
+    test = {s for s, v in split.items() if v == "test"}
+    return ae_evaluate.second_look(version, test, record, theirs, chosen), None
+
+
 def build(
     paths: Paths,
     out: Path,
@@ -427,10 +474,21 @@ def _draw(
 
     ae = read("ae_evaluation", snap.json)
     seg = read("seg_evaluation", snap.json)
+    chosen = read("ae_chosen", snap.json)
+    if chosen is not None:
+        candidate = found["ae_chosen"].parent / chosen["candidate"]
+        found["ae_model"] = candidate / "model.pt"
+        found["ae_split"] = candidate / "split.csv"
+        found["ae_scored_labels"] = labels.labels_path(candidate)
+    split = read("ae_split", snap.split) if "ae_split" in found else None
+    look, unlooked = (None, None)
+    if ae is not None:
+        look, unlooked = second_look(paths, found, snap, version, chosen, split)
+    said = look["said"] if look else None
     if ready(("fig_scores", "fig_mhd", "table_ae_scores"), "ae_evaluation"):
         figure("fig_scores", scores.draw_scores, ae)
         figure("fig_mhd", scores.draw_mhd, ae)
-        table("table_ae_scores", scores.table_ae(ae))
+        table("table_ae_scores", scores.table_ae(ae, said))
     seg_match, seg_shas = None, {}
     if ready(SEG_PRODUCTS, "seg_evaluation"):
         figure("fig_segmentation", scores.draw_segmentation, seg)
@@ -449,19 +507,14 @@ def _draw(
             lacking(SEG_PRODUCTS, f"{why}, the record names {named}")
     evaluations = ("ae_evaluation", "seg_evaluation")
     if ae is not None or seg is not None:
-        table("table_differences", scores.table_differences(ae, seg))
+        table("table_differences", scores.table_differences(ae, seg, said))
         absent = [str(found[k]) for k in evaluations if not found[k].is_file()]
         if absent:
             lacking(("table_differences",), MISSING, missing=absent)
     else:
         ready(("table_differences",), *evaluations)
-    chosen = read("ae_chosen", snap.json)
-    if chosen is not None:
-        candidate = found["ae_chosen"].parent / chosen["candidate"]
-        found["ae_model"] = candidate / "model.pt"
-        found["ae_split"] = candidate / "split.csv"
-        found["ae_scored_labels"] = labels.labels_path(candidate)
-    split = read("ae_split", snap.split) if "ae_split" in found else None
+    if unlooked:
+        lacking(LOOK_PRODUCTS, **unlooked)
     folds = folds_check(chosen, found["ae_folds"], snap)
     live = read("ae_labels", snap.labels)
     counted = ("fig_coverage", "table_datasets")
@@ -524,6 +577,7 @@ def _draw(
         "folds_match": folds.match,
         "labels_sha256": shas | seg_shas,
         "seg_ae_model": _recorded(seg, "meta", "ae_model"),
+        "second_look": look,
         "consistent": not changed,
         "changed_during_build": changed,
         "inputs": {

@@ -57,7 +57,7 @@ import argparse
 import hashlib
 import json
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -643,6 +643,49 @@ def earlier_test(paths: Paths, version: str, test: set[int]) -> dict | None:
         "chosen_sha256": hashlib.sha256(chosen_bytes).hexdigest(),
         "split_sha256": hashlib.sha256(data).hexdigest(),
     }
+
+
+def second_look(
+    version: str,
+    test: Collection[int],
+    earlier: dict,
+    earlier_split: dict[int, str],
+    chosen: dict | None,
+) -> dict:
+    """How many of `version`'s test shots (`test`) were the earlier version's
+    (`SUBSET_OF`) test shots, and so were looked at twice: counted from the
+    earlier model's split (`earlier_split`), with the model and the time its
+    test was scored from its `evaluation.json` (`earlier`), and whether that
+    came before `version`'s `chosen.json` (`chosen`) was made. `said` gives it
+    in words, for the paper's tables and the post-hoc record. That the owner
+    accepts the second look is the ledger's to record, not this."""
+    name = SUBSET_OF[version]
+    theirs = {s for s, v in earlier_split.items() if v == "test"}
+    meta = earlier.get("meta", {})
+    scored_at, chosen_at = meta.get("made_at"), (chosen or {}).get("made_at")
+    before = None
+    if scored_at and chosen_at:
+        before = datetime.fromisoformat(scored_at) < datetime.fromisoformat(chosen_at)
+    look = {
+        "version": name,
+        "shots": len(theirs & set(test)),
+        "of": len(test),
+        "earlier_test_shots": len(theirs),
+        "candidate": meta.get("candidate"),
+        "scored_at": scored_at,
+        "chosen_at": chosen_at,
+        "before_chosen": before,
+    }
+    said = (
+        f"{look['shots']} of the {look['of']} test shots were {name}'s test "
+        f"shots, scored with {name}'s model {look['candidate']}"
+    )
+    if scored_at:
+        said += f" at {scored_at}"
+    if before is not None:
+        when = "before" if before else "after"
+        said += f", {when} {version} was chosen ({chosen_at})"
+    return look | {"said": said}
 
 
 def chosen_model(models: Path) -> Path:

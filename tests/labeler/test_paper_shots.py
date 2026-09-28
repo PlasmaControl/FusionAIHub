@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import itertools
 import re
 
 import numpy as np
@@ -144,11 +145,14 @@ def _numbers(ax) -> list:
 
 
 def _legend_matches_drawn(fig) -> None:
+    """Every key is the label of an artist drawn inside some panel's view."""
+    fig.draw_without_rendering()
     drawn = {
         a.get_label()
         for ax in fig.axes
         for a in ax.get_children()
         if isinstance(a.get_label(), str)  # an Axis's label is its Text
+        and a.get_window_extent().overlaps(ax.bbox)
     }
     [legend] = fig.legends
     shown = [t.get_text() for t in legend.get_texts()]
@@ -346,3 +350,47 @@ def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     fig = shots.draw_interpreter(two[0], tmp_path / "fig_interpreter")
     _legend_matches_drawn(fig)
     assert paper_tree.small_text(fig) == []
+
+
+
+def test_a_point_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
+    paths, model_file = tree
+    off = _poi(102)
+    off.loc[1] = [102, 3, 3734.0, 3838.0, 140.0, 152.0]  # drawn to 2050 ms
+    off["in_scored_window"] = [True, False]
+    s = shots.ae_shot(paths, 102, model_file=model_file, poi=off)
+    fig = shots.draw_interpreter(s, tmp_path / "fig_interpreter")
+    assert fig.axes[0].get_xlim()[1] < 3734.0
+    assert len(fig.axes[0].patches) == 2, "both drawn, the second clipped away"
+    shown = [t.get_text() for t in fig.legends[0].get_texts()]
+    assert shots.POI_LABEL in shown and shots.POI_AFTER_LABEL not in shown
+    _legend_matches_drawn(fig)
+
+
+def test_region_numbers_never_print_over_each_other(tree, tmp_path):
+    paths, model_file = tree
+    same = pd.DataFrame(
+        [
+            {
+                "shot": 102,
+                "region": k + 1,
+                "t_start_ms": 300.0,
+                "t_end_ms": 900.0,
+                "f_lo_khz": 120.0,
+                "f_hi_khz": 200.0,
+                "pixels": 50 - k,
+            }
+            for k in range(5)
+        ]
+    )
+    s = shots.ae_shot(paths, 102, model_file=model_file, poi=same)
+    fig = shots.draw_examples([s], tmp_path / "fig_examples")
+    fig.draw_without_rendering()
+    numbers = _numbers(fig.axes[0])
+    boxes = [t.get_window_extent() for t in numbers]
+    assert not any(a.overlaps(b) for a, b in itertools.combinations(boxes, 2))
+    corners = {(x, y) for x in (300.0, 900.0) for y in (120.0, 200.0)}
+    assert {t.get_position() for t in numbers} == corners, "each at its own box"
+    assert [t.get_text() for t in numbers] == ["1", "2", "3", "4"], (
+        "largest first; the fifth finds every corner taken and is left off"
+    )
