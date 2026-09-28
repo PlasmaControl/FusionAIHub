@@ -23,13 +23,17 @@ SPLITS = {**{s: "train" for s in POOL}, **{s: "valid" for s in TEST}}
 NAMES = list(train.candidates("v2"))
 
 
-@pytest.fixture
-def tree(tmp_path, monkeypatch):
+def cv_tree(tmp_path, monkeypatch):
     """Ten pool shots, two test shots, v2's snapshot frozen from the saved labels."""
     paths = ae_tree.build(tmp_path, SPLITS)
     ae_tree.env(monkeypatch, paths)
     digest = ae_tree.snapshot(paths, monkeypatch)
     return paths, digest
+
+
+@pytest.fixture
+def tree(tmp_path, monkeypatch):
+    return cv_tree(tmp_path, monkeypatch)
 
 
 def _fake_fit(calls):

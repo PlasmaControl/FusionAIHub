@@ -6,7 +6,10 @@
 The first scores every trained candidate of the version (`train.candidates`)
 on the validation shots and writes `chosen.json`; the second scores the chosen
 one, once, on the test shots and writes `evaluation.json` and `evaluation.md`,
-all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`).
+all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`). A
+version chosen by cross-validation (v2, `labeler.ae.xpower.cv`) is not chosen
+here: `--choose` only checks that `chosen.json` is the one `train --from-cv`
+wrote from `cv/choice.json`, and the test checks the model against both.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -51,15 +54,18 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import torch
 
-from ...config import Paths, atomic_path, git_sha
+from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...scoring import stats
 from .. import model as seldnet_model
 from . import (
+    CV_VERSIONS,
     EVENT,
+    LABEL_SNAPSHOTS,
     VERSION,
     check_limit,
+    check_snapshot,
     event_dir,
     model_dir,
     pilot_area,
@@ -376,6 +382,9 @@ def run_choose(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:
     check_limit(paths, models, limit)
+    if version in CV_VERSIONS:
+        # Chosen by `cv`; here the choice is only checked, and nothing written.
+        return cv_chosen(models, version)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
@@ -414,6 +423,49 @@ def run_choose(
     return record
 
 
+def cv_chosen(models: Path, version: str) -> dict:
+    """A cross-validated version's `chosen.json`, checked against `cv/choice.json`."""
+    chosen_file, choice_file = models / "chosen.json", models / "cv" / "choice.json"
+    chosen = json.loads(chosen_file.read_text())
+    choice = json.loads(choice_file.read_bytes())
+    wanted = {
+        "version": version,
+        "choice_sha256": sha256_of(choice_file),
+        "candidate": choice["candidate"],
+        "threshold": choice["threshold"],
+        "labels_sha256": LABEL_SNAPSHOTS[version],
+    }
+    for key, value in wanted.items():
+        if chosen.get(key) != value:
+            raise ValueError(f"{chosen_file}: {key} differs from {choice_file}")
+    return chosen
+
+
+def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> dict:
+    """The final model of a cross-validated version is the one `chosen.json`
+    names: its choice, threshold and label snapshot; the meta it adds."""
+    version = chosen["version"]
+    expected = LABEL_SNAPSHOTS[version]
+    check_snapshot(hashlib.sha256(labels_copy).hexdigest(), version, file.parent)
+    wanted = {
+        "candidate": chosen["candidate"],
+        "threshold": chosen["threshold"],
+        "choice_sha256": chosen["choice_sha256"],
+        "labels_sha256": expected,
+        "snapshot_sha256": expected,
+        "from_cv": True,
+    }
+    for key, value in wanted.items():
+        if blob.get(key) != value:
+            raise ValueError(f"{file}: {key} differs from chosen.json or the snapshot")
+    return {
+        "choice_sha256": chosen["choice_sha256"],
+        "snapshot_sha256": expected,
+        "fixed_epochs": blob.get("fixed_epochs"),
+        "cv_branch": blob.get("cv_branch"),
+    }
+
+
 def chosen_model(models: Path) -> Path:
     """The chosen candidate's `model.pt`, from `chosen.json`."""
     name = json.loads((models / "chosen.json").read_text())["candidate"]
@@ -447,6 +499,11 @@ def run_test(
         saved = labels.read_saved(frozen)
         model, blob = load(frozen / "model.pt")
         split = read_split(frozen / "split.csv")
+    cv_meta = {}
+    if version in CV_VERSIONS:
+        cv_meta = check_cv_model(
+            blob, cv_chosen(models, version), snapshots["review/labels.csv"], file
+        )
     source = labels.read_source(event_dir(paths))
     seldnet = load_seldnet(paths)
     splits = seldnet_split(tokeye_masks(paths))
@@ -490,6 +547,7 @@ def run_test(
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tier": "suggestions",
         "limit": limit,
+        **cv_meta,
     }
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
     with atomic_path(models / "evaluation.json") as tmp:
