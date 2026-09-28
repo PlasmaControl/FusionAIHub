@@ -162,3 +162,21 @@ def env(monkeypatch, paths: Paths) -> None:
     monkeypatch.setenv("LABELER_ROOT", str(paths.root))
     monkeypatch.setenv("LABELER_LABEL_TABLES", str(paths.label_tables))
     monkeypatch.setenv("LABELER_CORPUS", str(paths.corpus))
+
+
+def snapshot(paths: Paths, monkeypatch, version: str = "v2") -> str:
+    """Freeze the tree's saved labels as `version`'s snapshot, as the controller
+    froze the owner's (`models/ae_xpower/<version>/review/labels.csv`), and make
+    its sha256 the one the version expects; the sha256."""
+    import hashlib
+
+    from labeler.ae import xpower
+    from labeler.events.review import labels
+
+    data = labels.labels_path(xpower.event_dir(paths)).read_bytes()
+    file = xpower.snapshot_file(paths, version)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_bytes(data)
+    digest = hashlib.sha256(data).hexdigest()
+    monkeypatch.setitem(xpower.LABEL_SNAPSHOTS, version, digest)
+    return digest
