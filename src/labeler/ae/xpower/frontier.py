@@ -2,7 +2,8 @@
 
     python -m labeler.ae.xpower.frontier [--models DIR]
 
-For each saved candidate under DIR (default `$LABELER_ROOT/models/ae_xpower/v1`),
+For each saved candidate of the version (`train.candidates`) under DIR (default
+`$LABELER_ROOT/models/ae_xpower/<version>`),
 score only its split.csv validation shots, using its archived review labels.
 Reuse `evaluate.shot_frames` for the same 0-2 s frame selection and MHD definition
 as validation in `evaluate.run_choose`, and its cells/rates and `scoring.stats`
@@ -257,7 +258,10 @@ def report_md(rows: list[dict]) -> str:
 
 
 def run(paths: Paths, models: Path, version: str = VERSION) -> list[dict]:
-    files = sorted(models.glob("*/model.pt"))
+    # Only the version's own candidates; another version's directory is not read.
+    names = train.candidates(version)
+    files = [models / name / "model.pt" for name in names]
+    files = [file for file in files if file.is_file()]
     if not files:
         raise ValueError(f"{models}: no saved candidate")
     choice = models / "chosen.json"

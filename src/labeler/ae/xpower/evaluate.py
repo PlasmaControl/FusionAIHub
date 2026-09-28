@@ -3,10 +3,10 @@
     python -m labeler.ae.xpower.evaluate --choose [--models DIR] [--limit N]
     python -m labeler.ae.xpower.evaluate [--models DIR] [--limit N]
 
-The first scores every trained candidate (`train.CANDIDATES`) on the validation
-shots and writes `chosen.json`; the second scores the chosen one, once, on the
-test shots and writes `evaluation.json` and `evaluation.md`, all in `--models`
-(default `$LABELER_ROOT/models/ae_xpower/v1`).
+The first scores every trained candidate of the version (`train.candidates`)
+on the validation shots and writes `chosen.json`; the second scores the chosen
+one, once, on the test shots and writes `evaluation.json` and `evaluation.md`,
+all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`).
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -77,7 +77,7 @@ from .data import (
     tokeye_frames,
     window_frames,
 )
-from .train import CANDIDATES, load, probabilities, read_split
+from .train import candidates, load, probabilities, read_split
 
 EVAL_FRAMES = (0, 200)  # 0-2 s
 F1_MARGIN = 0.02
@@ -292,10 +292,10 @@ def verdict(scores: dict) -> dict:
     }
 
 
-def choose(results: dict[str, dict]) -> tuple[str, str]:
+def choose(results: dict[str, dict], version: str = VERSION) -> tuple[str, str]:
     """The candidate with the lowest MHD false-positive rate among those within
     `F1_MARGIN` of the best validation F1; ties go to the earlier-listed one."""
-    order = [c for c in CANDIDATES if c in results]
+    order = [c for c in candidates(version) if c in results]
     if not order:
         raise ValueError("no trained candidate to choose from")
 
@@ -382,7 +382,7 @@ def run_choose(
             f"{evaluation}: the version is evaluated; a new choice is a new version"
         )
     results = {}
-    for name in CANDIDATES:
+    for name in candidates(version):
         file = models / name / "model.pt"
         if not file.exists():
             continue
@@ -400,7 +400,7 @@ def run_choose(
             "shots": len(shots),
             "threshold": blob["threshold"],
         }
-    picked, why = choose(results)
+    picked, why = choose(results, version)
     record = {
         "candidate": picked,
         "version": version,

@@ -5,7 +5,7 @@ V2 and V3 cross-power, 0.256 ms columns, 257 bins to 250 kHz, each 0-255 over
 -3..27 dB above its bin's quiet-time median, cut to a band: 80-250 kHz (the AE
 band, and the earlier detector's input) or 0-250 kHz (which lets a model see an
 MHD mode's 0-60 kHz fundamental beside its harmonics, and learn that the pair is
-not AE). `train.CANDIDATES` holds both; the validation shots choose. Columns are
+not AE). v1's candidates (`train.candidates`) hold both. Columns are
 averaged onto 2 ms sub-frames, five to each frame of `labeler.scoring.frames`.
 
 **Targets** are the owner's saved labels, `review/labels.csv`, as frame states

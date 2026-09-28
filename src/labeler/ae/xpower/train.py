@@ -5,7 +5,7 @@
 reads the owner's labels (`data/events/alfven_eigenmode/review/labels.csv`), the
 review page's AE stores and TokEye's masks, and writes `model.pt`, `split.csv`
 and `training.json` to `--out` (default `$LABELER_ROOT/models/ae_xpower/v1/NAME`).
-`CANDIDATES` names the input band and MHD weight of each version.
+`candidates(version)` names the input band and MHD weight of each candidate.
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -55,13 +55,36 @@ from .data import (
 from .model import FrameCNN, FrameCNNConfig
 
 THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
-#: The versions `evaluate --choose` picks between on the validation shots: the
-#: earlier detector's band, and the full band at two weights on MHD frames.
-CANDIDATES = {
-    "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
-    "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
-    "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
+#: Each version's candidates, in the order ties and array tasks use. v1's are
+#: the earlier detector's band and the full band at two weights on MHD frames,
+#: chosen on the validation shots (`evaluate --choose`); v2's keep v1's band
+#: and vary only the MHD weight, chosen by cross-validation (`cv`, the ledger's
+#: Deviation 11).
+CANDIDATES_BY_VERSION = {
+    "v1": {
+        "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
+        "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
+        "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
+    },
+    "v2": {
+        "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
+        "band80-mhd10": {"band": BAND_KHZ, "mhd_weight": 10.0},
+        "band80-mhd30": {"band": BAND_KHZ, "mhd_weight": 30.0},
+    },
 }
+#: The default version's candidates (v1's), for readers that name no version.
+CANDIDATES = CANDIDATES_BY_VERSION[VERSION]
+
+
+def candidates(version: str = VERSION) -> dict[str, dict]:
+    """The version's candidates, name -> {band, mhd_weight}, in their order."""
+    try:
+        return CANDIDATES_BY_VERSION[version]
+    except KeyError:
+        known = ", ".join(CANDIDATES_BY_VERSION)
+        raise ValueError(
+            f"version {version!r} has no candidates (known: {known})"
+        ) from None
 
 
 @dataclass(frozen=True)
@@ -331,9 +354,14 @@ def candidate_dir(paths: Paths, name: str, version: str = VERSION) -> Path:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--version", default=VERSION)
-    p.add_argument("--candidate", choices=sorted(CANDIDATES), required=True)
+    names = sorted({n for c in CANDIDATES_BY_VERSION.values() for n in c})
     p.add_argument(
-        "--out", type=Path, help="default $LABELER_ROOT/models/ae_xpower/v1/<candidate>"
+        "--candidate", choices=names, required=True, help="one of the version's"
+    )
+    p.add_argument(
+        "--out",
+        type=Path,
+        help="default $LABELER_ROOT/models/ae_xpower/<version>/<candidate>",
     )
     p.add_argument(
         "--pilot",
@@ -347,7 +375,13 @@ def main(argv=None) -> int:
         p.error("a pilot is 6 to 20 shots")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
-    spec = CANDIDATES[args.candidate]
+    try:
+        spec = candidates(args.version)[args.candidate]
+    except (KeyError, ValueError):
+        p.error(
+            f"--candidate {args.candidate} is not one of version {args.version}'s: "
+            + ", ".join(CANDIDATES_BY_VERSION.get(args.version, ()))
+        )
     pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.candidate
     out = args.out or (
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate, args.version)
