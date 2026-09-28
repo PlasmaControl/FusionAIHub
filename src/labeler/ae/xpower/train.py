@@ -19,6 +19,10 @@ masks, and its sha256 against the choice's) for the choice's fixed epoch count
 (the median of its folds' best epochs) with no early stopping, saved at the
 choice's threshold with the choice's, the folds' and the snapshot's sha256,
 into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json` beside it.
+`model.pt` is written after the files beside it, so a job that ends between it
+and `chosen.json` leaves a whole model: run again, it writes `chosen.json` if
+the current choice, folds and snapshot made that model, and otherwise refuses;
+it never trains a second one.
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -310,8 +314,9 @@ def save(
     runs: Path | None = None,
     extra: dict | None = None,
 ) -> None:
-    """`model.pt`, `review/labels.csv`, `split.csv` and `training.json` in `out`;
-    `extra` goes into the checkpoint and the record as it is."""
+    """`review/labels.csv`, `split.csv`, `training.json`, then `model.pt` in
+    `out`, so a model is never there without the files beside it; `extra` goes
+    into the checkpoint and the record as it is."""
     refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
     if labels_bytes is None:
         labels_bytes = labels_file.read_bytes()
@@ -330,8 +335,6 @@ def save(
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         **(extra or {}),
     }
-    with atomic_path(out / "model.pt") as tmp:
-        torch.save(blob, tmp)
     # The labels as trained on, where `labels.read_saved(out)` finds them.
     with atomic_path(labels.labels_path(out)) as tmp:
         tmp.write_bytes(labels_bytes)
@@ -355,6 +358,8 @@ def save(
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
+    with atomic_path(out / "model.pt") as tmp:
+        torch.save(blob, tmp)
 
 
 def load(path) -> tuple[FrameCNN, dict]:
@@ -385,6 +390,17 @@ def refuse_checkpoint(
         )
 
 
+def check_made_by(file: Path, wanted: dict) -> None:
+    """Refuse a saved model whose checkpoint does not hold `wanted`."""
+    _, blob = load(file)
+    differ = [key for key, value in wanted.items() if blob.get(key) != value]
+    if differ:
+        raise FileExistsError(
+            f"{file}: a trained candidate is not replaced; train a new version "
+            f"(it differs from the current choice in {', '.join(differ)})"
+        )
+
+
 def candidate_dir(paths: Paths, name: str, version: str = VERSION) -> Path:
     return model_dir(paths, version) / name
 
@@ -395,7 +411,8 @@ def train_from_cv(
     """The final model of a cross-validated version: `cv/choice.json`'s candidate
     on exactly the shots of `cv/folds.csv`'s folds, for its fixed epoch count, with
     no early stopping, at its threshold; then `chosen.json`, in the shape
-    `evaluate --test` reads."""
+    `evaluate --test` reads. A model saved without `chosen.json` gets it, if
+    the current choice made that model; it is never trained again."""
     from . import cv  # cv imports this module
 
     cv.check_version(models, version)
@@ -421,7 +438,6 @@ def train_from_cv(
     name, threshold = choice["candidate"], float(choice["threshold"])
     spec = candidates(version)[name]
     out, chosen_file = models / name, models / "chosen.json"
-    refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
     if chosen_file.exists() and not in_runs:
         raise FileExistsError(f"{chosen_file}: the version's model is chosen once")
     pool = sorted(folds.folds)  # exactly the folds' shots; a pilot, the first N
@@ -433,44 +449,52 @@ def train_from_cv(
             f"{choice_file}: pooled {choice['frames']['shots']} shots; the folds "
             f"have {len(pool)}"
         )
-    split = {s: "test" for s, v in folds.split.items() if v == "test"}
-    split |= dict.fromkeys(pool, "train")
-    config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
-    shots = [
-        load_shot(
-            s,
-            folds.saved[s],
-            store_rows(paths.spectrogram_file(EVENT, s)),
-            tokeye_masks(paths),
-            band=spec["band"],
-        )
-        for s in pool
-    ]
-    model, history, _ = fit(shots, [], config, log=log)
     choice_sha = hashlib.sha256(choice_bytes).hexdigest()
-    save(
-        out,
-        model,
-        threshold=threshold,
-        split=split,
-        history=history,
-        config=config,
-        band_khz=spec["band"],
-        labels_file=snapshot_file(paths, version),
-        labels_bytes=data,
-        candidate=name,
-        version=version,
-        allow_replace=bool(pilot),
-        runs=paths.runs,
-        extra={
-            "from_cv": True,
-            "choice_sha256": choice_sha,
-            "folds_sha256": folds.sha256,
-            "snapshot_sha256": digest,
-            "fixed_epochs": epochs,
-            "cv_branch": choice["branch"],
-        },
-    )
+    extra = {
+        "from_cv": True,
+        "choice_sha256": choice_sha,
+        "folds_sha256": folds.sha256,
+        "snapshot_sha256": digest,
+        "fixed_epochs": epochs,
+        "cv_branch": choice["branch"],
+    }
+    if (out / "model.pt").exists() and not pilot:
+        # Saved, and the job gone before chosen.json: that model's record, if
+        # the current choice, folds and snapshot made it; never a second model.
+        made = {"candidate": name, "version": version, "threshold": threshold}
+        check_made_by(out / "model.pt", made | extra | {"labels_sha256": digest})
+    else:
+        refuse_checkpoint(out, allow_replace=bool(pilot), runs=paths.runs)
+        split = {s: "test" for s, v in folds.split.items() if v == "test"}
+        split |= dict.fromkeys(pool, "train")
+        config = TrainConfig(epochs=epochs, mhd_weight=spec["mhd_weight"])
+        shots = [
+            load_shot(
+                s,
+                folds.saved[s],
+                store_rows(paths.spectrogram_file(EVENT, s)),
+                tokeye_masks(paths),
+                band=spec["band"],
+            )
+            for s in pool
+        ]
+        model, history, _ = fit(shots, [], config, log=log)
+        save(
+            out,
+            model,
+            threshold=threshold,
+            split=split,
+            history=history,
+            config=config,
+            band_khz=spec["band"],
+            labels_file=snapshot_file(paths, version),
+            labels_bytes=data,
+            candidate=name,
+            version=version,
+            allow_replace=bool(pilot),
+            runs=paths.runs,
+            extra=extra,
+        )
     chosen = {
         "candidate": name,
         "version": version,
