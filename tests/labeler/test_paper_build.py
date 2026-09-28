@@ -380,31 +380,37 @@ def test_a_second_build_between_the_renames_deletes_nothing(
     assert homes, "every file of the old output still exists, together"
     error = caught.value
     assert isinstance(error, build.Stranded), repr(error)
+    assert error.errno in (errno.ENOTEMPTY, errno.EEXIST), "the undo's rename"
+    assert error.strerror == os.strerror(error.errno)
     assert homes == [error.old] and str(error.old) in str(error), "named"
     assert str(error.new) in str(error), "the new output is named too"
+    assert error.entries == {"notes.txt": error.old / "notes.txt"}, "moved back"
     new = _tree(error.new)
-    assert "manifest.json" in new and new["notes.txt"] == before["notes.txt"]
+    assert "manifest.json" in new and "notes.txt" not in new
     assert _tree(out) == {"fig_scores.pdf": b"the other build's"}, "not touched"
 
 
 def test_only_the_builds_own_files_leave_out(runs, tmp_path):
     """The build claims the manifest and its products' own files, by exact
-    name: an owner's `fig_scores.svg`, or a `fig_scores/` directory, stays."""
+    name: an owner's `fig_scores.svg`, a `fig_scores/` directory, or a link to
+    a directory elsewhere, stays as it is."""
     out = tmp_path / "paper"
     build.build(runs, out, examples=1)
     (out / "fig_scores.svg").write_text("the owner's own drawing")
     (out / "fig_scores").mkdir()
     (out / "fig_scores" / "notes.txt").write_text("the owner's notes")
-    theirs = {
-        k: v
-        for k, v in _tree(out).items()
-        if k in ("fig_scores.svg", "fig_scores", "fig_scores/notes.txt")
-    }
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / "big.dat").write_text("not to be copied")
+    (out / "linked").symlink_to(elsewhere, target_is_directory=True)
+    mine = ("fig_scores.svg", "fig_scores", "fig_scores/notes.txt", "linked")
+    theirs = {k: v for k, v in _tree(out).items() if k in mine}
     manifest = build.build(runs, out)
     after = _tree(out)
     assert {k: after.get(k, "gone") for k in theirs} == theirs
     drawn = {f for files in manifest["products"].values() for f in files}
     assert set(after) == drawn | {"manifest.json"} | set(theirs)
+    assert os.readlink(out / "linked") == str(elsewhere), "still a link"
 
 
 def _spy_reads(monkeypatch, opened: Counter) -> None:
