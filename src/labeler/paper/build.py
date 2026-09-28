@@ -29,8 +29,16 @@ itself: the build draws into a directory beside it and swaps that in whole at
 the end, the products and the manifest together, so a failure leaves `out` as
 it was. A file in `out` that is no product's stays.
 
-`--version` (default `v1`) names the models' version the inputs come from. The
-manifest pins every file the build reads (the chosen `model.pt`, its
+`--version` (default `v1`) names the models' version the inputs come from:
+`models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json` and the chosen
+`<candidate>/{model.pt, split.csv, review/labels.csv}`), the segmentation's
+`models/ae_seg/<version>/evaluation.json` and points of interest (it is scored
+on the chosen frame model's split and labels, so each version has its own), and
+the extension's summary. Until a version's records exist its AE products are
+`skipped`, with the paths missing, and the coverage is still drawn from the
+owner's live labels, which have no version.
+
+The manifest pins every file the build reads (the chosen `model.pt`, its
 `split.csv`, its labels and each spectrogram store among them) with its
 sha256, and records the full commit and whether the tree was dirty, whether the
 model's copy of the labels is the one every evaluation names (`labels_match`,

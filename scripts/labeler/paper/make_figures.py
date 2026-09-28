@@ -4,7 +4,8 @@
         python scripts/labeler/paper/make_figures.py \\
         [--version v1] --copy-to dev/label_paper/figures
 
-See `labeler.paper.build` for what it reads, draws and skips.
+`--version v2` reads v2's models once they exist, and skips the AE products
+until then. See `labeler.paper.build` for what it reads, draws and skips.
 """
 
 from labeler.paper.build import main

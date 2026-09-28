@@ -321,10 +321,88 @@ def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_pa
     assert table[5].startswith("AE & 4 & 4 & 2.6 & 1 / 0 / 2 & 1 & "), table[5]
 
 
-def test_the_version_names_the_models_drawn(runs, tmp_path, capsys):
+AE_PRODUCTS = (
+    "fig_scores",
+    "fig_mhd",
+    "table_ae_scores",
+    "fig_segmentation",
+    "table_seg_scores",
+    "table_differences",
+    "fig_interpreter",
+    "fig_examples",
+)
+
+
+def test_version_v2_skips_until_its_records_exist(runs, tmp_path, capsys):
+    """v2 as it stands before its models are chosen: a copy of the labels alone."""
+    models = xpower.model_dir(runs, "v2")
+    (models / "review").mkdir(parents=True)
+    (models / "review" / "labels.csv").write_bytes(
+        tree.scored_labels(runs).read_bytes()
+    )
+    out = tmp_path / "paper"
+    assert build.main(["--out", str(out), "--version", "v2"]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["products"] == ["fig_coverage", "table_datasets"]
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["version"] == "v2"
+    assert sorted(manifest["skipped"]) == sorted(AE_PRODUCTS)
+    for product, entry in manifest["skipped"].items():
+        assert entry["reason"] == build.MISSING, product
+        assert entry["missing"], product
+        assert all("/v2/" in m for m in entry["missing"]), (product, entry)
+    evaluation, chosen = models / "evaluation.json", models / "chosen.json"
+    assert manifest["skipped"]["fig_interpreter"]["missing"] == [
+        str(evaluation),
+        str(chosen),
+    ]
+    assert manifest["skipped"]["fig_scores"]["missing"] == [str(evaluation)]
+    seg = build.inputs(runs, "v2")["seg_evaluation"]
+    assert manifest["skipped"]["table_differences"]["missing"] == [
+        str(evaluation),
+        str(seg),
+    ]
+    assert {"reason": build.NO_CHOSEN, "missing": [str(chosen)]} in manifest["partial"][
+        "fig_coverage"
+    ], "the owner's labels have no version"
+    assert all("/v1/" not in e["path"] for e in manifest["inputs"].values())
+
+
+def test_version_v2_draws_from_v2_records(runs, tmp_path):
+    models = tree.as_version(runs, "v2")
+    assert not xpower.model_dir(runs).exists(), "nothing left in v1 to read"
     out = tmp_path / "paper"
     assert build.main(["--out", str(out), "--version", "v2"]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["version"] == "v2"
-    assert "/ae_xpower/v2/" in manifest["skipped"]["fig_scores"]["missing"][0]
-    assert "fig_coverage" in manifest["products"], "the owner's labels have no version"
+    assert manifest["skipped"] == {}
+    assert set(AE_PRODUCTS) <= set(manifest["products"])
+    assert manifest["labels_match"] is True
+    pinned = manifest["inputs"]
+    for key in ("ae_evaluation", "ae_chosen", "ae_model", "ae_split"):
+        assert pinned[key]["path"].startswith(str(models)), key
+    assert pinned["ae_scored_labels"]["path"] == str(
+        models / "band80-mhd3" / "review" / "labels.csv"
+    )
+    assert pinned["seg_evaluation"]["path"] == str(
+        build.inputs(runs, "v2")["seg_evaluation"]
+    )
+    assert manifest["interpreter_shot"] == 102
+
+
+def test_version_v2_before_its_segmentation_draws_the_frame_products(runs, tmp_path):
+    """The segmentation is scored on the chosen frame model's split and labels,
+    so v2's is its own record; until it exists, only its products wait."""
+    tree.as_version(runs, "v2", seg=False)
+    out = tmp_path / "paper"
+    assert build.main(["--out", str(out), "--version", "v2"]) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    seg = str(build.inputs(runs, "v2")["seg_evaluation"])
+    assert manifest["skipped"] == {
+        "fig_segmentation": _missing(seg),
+        "table_seg_scores": _missing(seg),
+    }
+    assert manifest["partial"]["table_differences"] == [_missing(seg)]
+    assert {"fig_scores", "fig_interpreter", "fig_examples"} <= set(
+        manifest["products"]
+    )
