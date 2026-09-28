@@ -11,9 +11,13 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `table_differences.tex`: the paired differences both evaluations hold;
 - `fig_coverage`, `table_datasets.tex`: the owner's live AE review, with the
   chosen model's split (the reviewed shots in no split apart) and the
-  extension's summary where they exist; a cross-validated version's train
-  shots (its `cv/folds.csv`, read and pinned with the split) are one group
-  marked with the number of folds, with no validation split;
+  extension's summary where they exist. A cross-validated version (its
+  `chosen.json` names `folds_sha256`, or its `cv/folds.csv` exists) shows its
+  train and test shots alone, with no validation split, whatever its folds.
+  The train shots are marked with the number of folds only when `cv/folds.csv`
+  is there, has a `fold` column and is the one `chosen.json` names
+  (`folds_check`, D18's check applied to the folds); otherwise both products
+  are `partial`, saying why;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
   `<candidate>/review/labels.csv` (D18), with the points of interest where they
@@ -60,8 +64,11 @@ The manifest pins every file the build reads (the chosen `model.pt`, its
 `split.csv`, its labels and each spectrogram store among them) with its
 sha256, and records the full commit and whether the tree was dirty, whether the
 frame model's copy of the labels is the one its evaluation names
-(`labels_match`; the segmentation's own check is `seg_labels_match`), each
-sha256 in `labels_sha256` (the live table's too), the time, the
+(`labels_match`; the segmentation's own check is `seg_labels_match`), whether
+a cross-validated version's `cv/folds.csv` is the one its `chosen.json` names
+(`folds_match`: None for a version that is not cross-validated, as v1, or when
+either is missing), each sha256 in `labels_sha256` (the live table's too), the
+time, the
 interpreter's shot, its pool and the branch of the rule that fired, the example
 shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
 the whole window. The shots are ranked by their F1 over 0-2 s
@@ -82,6 +89,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import io
 import json
 import math
 import shutil
@@ -89,7 +97,9 @@ import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
+import pandas as pd
 import torch
 
 from ..ae import seg as ae_seg
@@ -138,6 +148,24 @@ UNDECIDED = "extension not run: the AE evaluation's bar leaves {bars} undecided 
 EXTENSION_BARS = ("A1", "A2")  # D47: the extension runs only if both pass
 NO_CHOSEN = "no model chosen, so no split"
 NO_SPLIT = "the chosen model has no split.csv"
+NO_FOLDS = (
+    "the chosen model is cross-validated but its cv/folds.csv is missing, so its "
+    "folds are not counted"
+)
+FOLDS_UNNAMED = (
+    "chosen.json names no folds_sha256, so cv/folds.csv cannot be checked and its "
+    "folds are not counted"
+)
+FOLDS_DIFFER = (
+    "cv/folds.csv is not the one chosen.json names (folds_sha256), so its folds "
+    "are not counted"
+)
+FOLDS_NO_COLUMN = "cv/folds.csv has no fold column, so its folds are not counted"
+CV_VAL = (
+    "the chosen model is cross-validated, which holds no shot out for "
+    "validation, but its split.csv calls these reviewed shots val: they are in "
+    "no bar or cell"
+)
 NO_POI = "no points of interest: the segmentation has not run over the test shots"
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
@@ -213,6 +241,49 @@ def seg_check(
     named = _recorded(seg, "meta", "inputs", "labels_sha256")
     shas = {k: v for k, v in (("seg_scored", scored), ("seg_evaluation", named)) if v}
     return (named == scored if scored and named else None), shas
+
+
+class FoldsCheck(NamedTuple):
+    """`folds_check`'s answer."""
+
+    cross_validated: bool
+    match: bool | None = None
+    count: int | None = None
+    why: dict | None = None  # the `partial` entry: why the folds are not counted
+
+
+def _table(data: bytes) -> pd.DataFrame:
+    """A CSV's rows; none for bytes that are not a table."""
+    try:
+        return pd.read_csv(io.BytesIO(data))
+    except (pd.errors.EmptyDataError, pd.errors.ParserError, UnicodeDecodeError):
+        return pd.DataFrame()
+
+
+def folds_check(chosen: dict | None, path: Path, snap: Snapshot) -> FoldsCheck:
+    """Whether the chosen model is cross-validated, and its folds checked
+    against its record as D18 checks the labels. A version is cross-validated
+    when its `chosen.json` names `folds_sha256` or its `cv/folds.csv` (`path`)
+    exists; without a chosen model there is no split to fold, and nothing to
+    check against, so the file is not read. `match` is the file's pinned
+    sha256 against the record's, None unless both exist. `count`, the number
+    of folds, is given only when the file is there, is the one the record
+    names and has a `fold` column; otherwise `why` says why not."""
+    if chosen is None or ("folds_sha256" not in chosen and not path.is_file()):
+        return FoldsCheck(False)
+    if not path.is_file():
+        return FoldsCheck(True, why={"reason": NO_FOLDS, "missing": [str(path)]})
+    data = snap.read("ae_folds", path)
+    sha, named = snap.sha("ae_folds"), _recorded(chosen, "folds_sha256")
+    if named is None:
+        return FoldsCheck(True, why={"reason": FOLDS_UNNAMED})
+    if named != sha:
+        why = f"{FOLDS_DIFFER}: the file is {sha[:12]}, chosen.json names "
+        return FoldsCheck(True, False, why={"reason": why + str(named)[:12]})
+    count = coverage.fold_count(_table(data))
+    if count is None:
+        return FoldsCheck(True, True, why={"reason": FOLDS_NO_COLUMN})
+    return FoldsCheck(True, True, count)
 
 
 def scored_refusal(scored: str | None, ae: dict | None) -> str | None:
@@ -372,19 +443,31 @@ def _draw(
         found["ae_split"] = candidate / "split.csv"
         found["ae_scored_labels"] = labels.labels_path(candidate)
     split = read("ae_split", snap.split) if "ae_split" in found else None
+    folds = folds_check(chosen, found["ae_folds"], snap)
     live = read("ae_labels", snap.labels)
     counted = ("fig_coverage", "table_datasets")
     if ready(counted, "ae_labels"):
         summary = read("summary", snap.csv)
-        folds = None if split is None else read("ae_folds", snap.csv)
-        n = None if folds is None else coverage.fold_count(folds)
-        counts = {AE: coverage.ae_counts(live, split, summary, folds=n)}
+        counts = {
+            AE: coverage.ae_counts(
+                live,
+                split,
+                summary,
+                folds=folds.count,
+                cross_validated=folds.cross_validated,
+            )
+        }
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
         if chosen is None:
             lacking(counted, NO_CHOSEN, missing=[str(found["ae_chosen"])])
         elif split is None:
             lacking(counted, NO_SPLIT, missing=[str(found["ae_split"])])
+        elif folds.why:
+            lacking(counted, **folds.why)
+        held = sorted(s for s, v in (split or {}).items() if v == "val" and s in live)
+        if folds.cross_validated and held:
+            lacking(counted, CV_VAL, shots=held)
         if summary is None:
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
     picked: dict = {}
@@ -419,6 +502,7 @@ def _draw(
         "seg_version": seg_version,
         "labels_match": match,
         "seg_labels_match": seg_match,
+        "folds_match": folds.match,
         "labels_sha256": shas | seg_shas,
         "seg_ae_model": _recorded(seg, "meta", "ae_model"),
         "consistent": not changed,

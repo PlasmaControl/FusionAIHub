@@ -693,32 +693,146 @@ V1_DATASETS = (
 )  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn
 
 
-def test_a_cross_validated_version_shows_its_folds(runs, tmp_path):
-    """v2 is cross-validated: its `cv/folds.csv` is pinned, and the coverage
-    shows the train shots as folds, with no validation split. v1, with no
-    folds, draws its three-way split as before, byte for byte."""
+def _split_panels(monkeypatch) -> list:
+    """The coverage figures the build draws, each as its split panel."""
+    panels = []
+    draw = coverage.draw_coverage
+
+    def spy(counts, stem):
+        fig = draw(counts, stem)
+        panels.append(fig.axes[2])
+        return fig
+
+    monkeypatch.setattr(coverage, "draw_coverage", spy)
+    return panels
+
+
+def _ticks(ax) -> list[str]:
+    return [t.get_text() for t in ax.get_xticklabels()]
+
+
+def test_v1_is_not_cross_validated(runs, tmp_path, monkeypatch):
+    """v1, with no folds, draws its three-way split as before, byte for byte,
+    and records no folds check."""
+    panels = _split_panels(monkeypatch)
     v1 = build.build(runs, tmp_path / "v1")
     assert (tmp_path / "v1" / "table_datasets.tex").read_text() == V1_DATASETS
+    assert _ticks(panels[0]) == ["train", "val", "test", "no\nsplit"]
     assert "ae_folds" not in v1["inputs"]
-    models = tree.as_version(runs, "v2")
-    (models / "band80-mhd3" / "split.csv").write_text(
-        "shot,split\n101,train\n102,train\n103,test\n"
-    )  # the final model's: the folds' shots are its train shots
-    folds = models / "cv" / "folds.csv"
-    folds.parent.mkdir()
-    folds.write_text("shot,split,fold\n101,train,0\n102,val,1\n103,test,\n")
+    assert v1["folds_match"] is None
+
+
+FOLDS = "shot,split,fold\n101,train,0\n102,val,1\n103,test,\n"
+NO_FOLD_COLUMN = "shot,split\n101,train\n102,val\n103,test\n"
+FINAL_SPLIT = "shot,split\n101,train\n102,train\n103,test\n"  # train_from_cv's
+
+
+def _sha(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _cross_validated(paths, folds: str | None, named: str | None) -> Path:
+    """v2 as `train_from_cv` leaves it: the final model's split (the folds'
+    shots are its train shots), `cv/folds.csv` holding `folds` (None: no file)
+    and `chosen.json` naming `named` as its `folds_sha256` (None: no key). The
+    folds file's path."""
+    models = tree.as_version(paths, "v2")
+    (models / "band80-mhd3" / "split.csv").write_text(FINAL_SPLIT)
+    path = models / "cv" / "folds.csv"
+    path.parent.mkdir()
+    if folds is not None:
+        path.write_text(folds)
+    if named is not None:
+        chosen = models / "chosen.json"
+        record = json.loads(chosen.read_text())
+        chosen.write_text(json.dumps(record | {"folds_sha256": named}))
+    return path
+
+
+@pytest.mark.parametrize(
+    ("folds", "named", "match", "why", "tick"),
+    [
+        (FOLDS, _sha(FOLDS), True, None, "train\n(2 folds)"),
+        (FOLDS, "0" * 64, False, "FOLDS_DIFFER", "train"),
+        (None, _sha(FOLDS), None, "NO_FOLDS", "train"),
+        (NO_FOLD_COLUMN, _sha(NO_FOLD_COLUMN), True, "FOLDS_NO_COLUMN", "train"),
+        ("", _sha(""), True, "FOLDS_NO_COLUMN", "train"),
+        (FOLDS, None, None, "FOLDS_UNNAMED", "train"),
+    ],
+    ids=["matching", "unlike", "missing", "no-fold-column", "empty", "unnamed"],
+)
+def test_a_cross_validated_version_is_checked_against_its_record(
+    runs, tmp_path, monkeypatch, folds, named, match, why, tick
+):
+    """v2 is cross-validated: its train and test shots are drawn, with no
+    validation bar or cell, whatever its folds. The train shots carry their
+    fold count only when `cv/folds.csv` is there, is the one `chosen.json`
+    names and has a `fold` column; otherwise the coverage is partial, saying
+    why, and the build never crashes."""
+    panels = _split_panels(monkeypatch)
+    path = _cross_validated(runs, folds, named)
     manifest = build.build(runs, tmp_path / "v2", version="v2")
-    assert manifest["inputs"]["ae_folds"] == {
-        "path": str(folds),
-        "sha256": hashlib.sha256(folds.read_bytes()).hexdigest(),
-    }
-    assert "fig_coverage" in manifest["products"]
+    [split] = panels
+    assert _ticks(split) == [tick, "test", "no\nsplit"], "no validation bar"
+    assert [bar.get_height() for bar in split.patches] == [2, 1, 0]
     lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
     assert lines[5] == "AE & 3 & 3 & 1.8 & 2 / -- / 1 & 0 & -- & -- \\\\"
-    assert "AE's train shots are cross-validated over 2 folds" in lines[0]
-    (models / "chosen.json").unlink()  # the folds made, no model chosen yet
+    over = " over 2 folds" if why is None else ""
+    assert (
+        f"AE's train shots are cross-validated{over}, so no shot is held out for "
+        "validation (--)"
+    ) in lines[0]
+    assert manifest["folds_match"] is match
+    pinned = {"path": str(path), "sha256": _sha(folds)} if folds is not None else None
+    assert manifest["inputs"].get("ae_folds") == pinned
+    extension = {
+        "reason": "extension not run: A2 failed (D47)",
+        "missing": [str(build.inputs(runs, "v2")["summary"])],
+    }
+    entries = manifest["partial"]["fig_coverage"]
+    assert manifest["partial"]["table_datasets"] == entries
+    assert entries[-1] == extension
+    if why is None:
+        assert entries == [extension]
+        return
+    [entry] = entries[:-1]
+    assert entry["reason"].startswith(getattr(build, why)), entry
+    if why == "FOLDS_DIFFER":
+        assert entry["reason"].endswith(
+            f": the file is {_sha(FOLDS)[:12]}, chosen.json names {'0' * 12}"
+        )
+    assert entry.get("missing") == ([str(path)] if folds is None else None)
+
+
+def test_folds_without_a_chosen_model_are_not_read(runs, tmp_path):
+    path = _cross_validated(runs, FOLDS, _sha(FOLDS))
+    (path.parent.parent / "chosen.json").unlink()  # the folds made, no model yet
     manifest = build.build(runs, tmp_path / "v2", version="v2")
     assert "ae_folds" not in manifest["inputs"], "no split to show the folds in"
+    assert manifest["folds_match"] is None, "no record to check them against"
+    assert manifest["partial"]["fig_coverage"][0]["reason"] == build.NO_CHOSEN
+
+
+def test_validation_shots_in_a_cross_validated_split_are_named(
+    runs, tmp_path, monkeypatch
+):
+    """A cross-validated version holds no shot out for validation; one its
+    split calls `val` anyway is in no bar or cell, and named as such."""
+    panels = _split_panels(monkeypatch)
+    path = _cross_validated(runs, FOLDS, _sha(FOLDS))
+    (path.parent.parent / "band80-mhd3" / "split.csv").write_text(
+        "shot,split\n101,train\n102,val\n103,test\n"
+    )
+    manifest = build.build(runs, tmp_path / "v2", version="v2")
+    [split] = panels
+    assert _ticks(split) == ["train\n(2 folds)", "test", "no\nsplit"]
+    assert [bar.get_height() for bar in split.patches] == [1, 1, 0]
+    lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
+    assert lines[5] == "AE & 3 & 3 & 1.8 & 1 / -- / 1 & 0 & -- & -- \\\\"
+    assert manifest["folds_match"] is True
+    held = {"reason": build.CV_VAL, "shots": [102]}
+    for product in ("fig_coverage", "table_datasets"):
+        assert held in manifest["partial"][product]
 
 
 def _seg_products_of(manifest: dict) -> dict:
