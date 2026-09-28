@@ -130,9 +130,9 @@ def corpus(tmp_path: Path, shots, *, seconds=(-0.1, 0.7), tone_s=(0.2, 0.4)) -> 
     return out
 
 
-def chosen(paths: Paths, split: dict[int, str]) -> Path:
-    """An untrained `band80-mhd3` model saved as the chosen one, threshold 0.5;
-    its models directory."""
+def chosen(paths: Paths, split: dict[int, str], version: str = "v1") -> Path:
+    """An untrained `band80-mhd3` model of `version` saved as the chosen one,
+    threshold 0.5; its models directory."""
     import json
 
     import torch
@@ -141,7 +141,7 @@ def chosen(paths: Paths, split: dict[int, str]) -> Path:
     from labeler.ae.xpower.model import FrameCNN
 
     torch.manual_seed(0)
-    models = paths.root / "models" / "ae_xpower" / "v1"
+    models = paths.root / "models" / "ae_xpower" / version
     train.save(
         models / "band80-mhd3",
         FrameCNN(),
@@ -152,6 +152,7 @@ def chosen(paths: Paths, split: dict[int, str]) -> Path:
         band_khz=(80.0, 250.0),
         labels_file=paths.label_tables / "alfven_eigenmode/review/labels.csv",
         candidate="band80-mhd3",
+        version=version,
     )
     (models / "chosen.json").write_text(json.dumps({"candidate": "band80-mhd3"}))
     return models

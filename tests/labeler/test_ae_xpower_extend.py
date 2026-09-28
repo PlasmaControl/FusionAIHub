@@ -25,8 +25,8 @@ def _cohort(paths):
     return frame
 
 
-def _approved_model(paths, split):
-    models = ae_tree.chosen(paths, split)
+def _approved_model(paths, split, version="v1"):
+    models = ae_tree.chosen(paths, split, version)
     (models / "evaluation.json").write_text(
         json.dumps(
             {
@@ -280,9 +280,9 @@ def test_extension_requires_a_passing_evaluation(
     assert not gallery.gallery_dir(paths).exists()
 
 
-def _three_shots(tmp_path, monkeypatch):
+def _three_shots(tmp_path, monkeypatch, version="v1"):
     paths = ae_tree.build(tmp_path, {101: "train"})
-    models = _approved_model(paths, {101: "train"})
+    models = _approved_model(paths, {101: "train"}, version)
     _cohort(paths)
     pd.DataFrame(
         {

@@ -13,6 +13,9 @@ wrote from `cv/choice.json`, and the test checks the model against both.
 v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
 model's `split.csv`, checked before scoring to be v2 test shots) as a second
 table and a `v1_subset` block; the bar is judged on the whole split only.
+The test is never scored in full (`--limit 0`) under `runs/`, where it could be
+repeated; `--version` must be the models directory's name and the version its
+checkpoints record.
 
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
@@ -67,6 +70,8 @@ from . import (
     EVENT,
     LABEL_SNAPSHOTS,
     VERSION,
+    check_bound,
+    check_full,
     check_limit,
     check_snapshot,
     event_dir,
@@ -419,18 +424,21 @@ def run_choose(
     check_limit(paths, models, limit)
     if version in CV_VERSIONS:
         # Chosen by `cv`; here the choice is only checked, and nothing written.
+        check_bound(version, models)
         return cv_chosen(models, version)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the version is evaluated; a new choice is a new version"
         )
+    check_bound(version, models)
     results = {}
     for name in candidates(version):
         file = models / name / "model.pt"
         if not file.exists():
             continue
         model, blob = load(file)
+        check_bound(version, models, blob, file)
         saved = labels.read_saved(file.parent)  # the labels it was trained on
         split = read_split(models / name / "split.csv")
         shots = [
@@ -540,11 +548,13 @@ def run_test(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:
     check_limit(paths, models, limit)
+    check_full(paths, models, limit)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
             f"{evaluation}: the test shots are scored once; a retry is a new version"
         )
+    check_bound(version, models)
     chosen_bytes = (models / "chosen.json").read_bytes()
     candidate = json.loads(chosen_bytes)["candidate"]
     file = models / candidate / "model.pt"
@@ -563,6 +573,7 @@ def run_test(
         saved = labels.read_saved(frozen)
         model, blob = load(frozen / "model.pt")
         split = read_split(frozen / "split.csv")
+    check_bound(version, models, blob, file)
     cv_meta = {}
     if version in CV_VERSIONS:
         cv_meta = check_cv_model(

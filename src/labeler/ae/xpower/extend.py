@@ -16,9 +16,16 @@ window). A frame the CO2 rows do not cover is not observable.
 **Output.** Shard K writes `shards/K.csv` (suggestion rows, `events.suggestions`),
 `shards/K.summary.csv` (one line per shot), `shards/K.npz` (P(AE) per frame)
 and `shards/K.failed.jsonl` under `$LABELER_ROOT/suggestions/ae_xpower/v1/`, and
-one JPEG per shot into the gallery's `extension/`. `--merge` checks every shard
-is there and writes `alfven_eigenmode_suggest_ae_xpower_v1.csv`, its meta,
-`summary.csv`, and the gallery index rows.
+one JPEG per shot into the gallery's `extension/`; the shard's manifest lists
+the shots it drew. A pilot (`--limit M`) writes all of these under `shards/pilot/`,
+its pictures in `shards/pilot/extension/`, never into the gallery. `--merge`
+checks every shard is there and writes `alfven_eigenmode_suggest_ae_xpower_v1.csv`,
+its meta, `summary.csv`, and gallery index rows for the pictures the merged
+shards' manifests list, and no others.
+
+**Gate.** The chosen model's full test evaluation must pass A1 and A2 (D47) and
+name the model and choice by sha256; a models directory under `runs/` is never
+the gate's, and `--version` must be the directory's name and the checkpoint's.
 Failures are JSON lines, each with an integer `shot` and string `error`.
 Merge refuses when failures exceed 2 % of the eligible non-blind population
 (`MAX_FAILED_FRACTION = 0.02`).
@@ -44,7 +51,16 @@ from ...events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
 from ...scoring.frames import FRAME_MS
-from . import EVENT, METHOD, VERSION, gallery_dir, model_dir, suggestions_dir
+from . import (
+    EVENT,
+    METHOD,
+    VERSION,
+    check_bound,
+    gallery_dir,
+    model_dir,
+    pilot_area,
+    suggestions_dir,
+)
 from .data import raw_rows, window_frames
 from .evaluate import chosen_model
 from .gallery import draw, run_all, write_index
@@ -135,6 +151,7 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
     w = _WORKER
     blob, paths = w["blob"], w["paths"]
     version = w["version"]
+    pictures_dir = w.get("pictures_dir") or gallery_dir(paths, version) / "extension"
     co2 = corpus_signal(shot, "co2", corpus=paths.corpus)
     rows = raw_rows(co2.x, co2.y)
     first, n = window_frames((lo, hi))
@@ -153,7 +170,7 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
             f"({blob['candidate']}), not reviewed"
         )
         draw(
-            gallery_dir(paths, version) / "extension" / f"{shot}.jpg",
+            Path(pictures_dir) / f"{shot}.jpg",
             title=title,
             grid=coarse,
             values=pool(values, PICTURE_LEVEL, "image"),
@@ -180,6 +197,7 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
         "prob": prob.astype(np.float16),
         "first": first,
         "summary": summary,
+        "drawn": pictures,
     }
 
 
@@ -193,14 +211,21 @@ def _init_shard(
     corpus: str,
     pictures: bool,
     version: str = VERSION,
+    pictures_dir: str | None = None,
 ) -> None:
     _init(model_file, root, corpus)
-    _WORKER.update(pictures=pictures, version=version)
+    _WORKER.update(pictures=pictures, version=version, pictures_dir=pictures_dir)
 
 
-def _passing_bar(models: Path) -> dict:
-    """D47: extension requires an evaluation with both A1 and A2 passed."""
+def _passing_bar(models: Path, runs: Path | None = None) -> dict:
+    """D47: extension requires an evaluation with both A1 and A2 passed, of a
+    models directory outside `runs` (where a scoring can be repeated)."""
     path = models / "evaluation.json"
+    if runs is not None and pilot_area(models, runs):
+        raise ValueError(
+            f"{models}: the extension's gate is never read under {runs}; "
+            "a pilot's evaluation is not a test"
+        )
     message = f"{path}: extension requires bar A1 and A2 both true"
     try:
         evaluation = json.loads(path.read_text())
@@ -228,6 +253,14 @@ def _passing_bar(models: Path) -> dict:
     return bar
 
 
+def _bound_model(models: Path, version: str) -> Path:
+    """The chosen model, its directory and checkpoint bound to `version`."""
+    check_bound(version, models)
+    file = chosen_model(models)
+    check_bound(version, models, load(file)[1], file)
+    return file
+
+
 def run_shard(
     paths: Paths,
     *,
@@ -239,27 +272,29 @@ def run_shard(
     pictures: bool = True,
     version: str = VERSION,
 ) -> dict:
-    _passing_bar(models)
+    _passing_bar(models, paths.runs)
+    _bound_model(models, version)
     jobs = shard_shots(paths, k, of)
     inputs = _shard_inputs(paths, models)
     if limit:
         jobs = jobs.iloc[:limit]
     jobs = [tuple(int(v) for v in row) for row in jobs.itertuples(index=False)]
+    out = suggestions_dir(paths, version) / "shards"
+    if limit > 0:
+        out /= "pilot"
     init = (
         str(chosen_model(models)),
         str(paths.root),
         str(paths.corpus),
         pictures,
         version,
+        str(out / "extension") if limit > 0 else None,
     )
-    out = suggestions_dir(paths, version) / "shards"
-    if limit > 0:
-        out /= "pilot"
     out.mkdir(parents=True, exist_ok=True)
     manifest = out / f"{k}.json"
     # A partial replacement must never inherit the previous completion marker.
     manifest.unlink(missing_ok=True)
-    rows, summaries, probs, failed = [], [], {}, []
+    rows, summaries, probs, failed, drawn = [], [], {}, [], []
     for job, outcome in run_all(_work, jobs, workers, _init_shard, init):
         if isinstance(outcome, Exception):
             failed.append(
@@ -268,6 +303,8 @@ def run_shard(
             continue
         rows += outcome["rows"]
         summaries.append(outcome["summary"])
+        if outcome.get("drawn"):
+            drawn.append(job[0])
         probs[f"p{job[0]}"] = outcome["prob"]
         probs[f"f{job[0]}"] = np.int64(outcome["first"])
     with atomic_path(out / f"{k}.csv") as tmp:
@@ -284,6 +321,7 @@ def run_shard(
         "k": k,
         "of": of,
         "shots": [job[0] for job in jobs],
+        "pictures": sorted(drawn),
         **inputs,
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -368,7 +406,8 @@ def _read_failures(path: Path) -> list[dict]:
 
 
 def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dict:
-    bar = _passing_bar(models)
+    bar = _passing_bar(models, paths.runs)
+    _bound_model(models, version)
     shards = suggestions_dir(paths, version) / "shards"
     if of <= 0:
         raise ValueError(f"{shards}: of must be positive")
@@ -386,6 +425,7 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
         )
     inputs = _shard_inputs(paths, models)
     manifests, summaries, tables, failed, given = [], [], [], [], []
+    drawn = set()
     for k in range(of):
         path = shards / f"{k}.json"
         try:
@@ -403,6 +443,9 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
             failed_shots = [row["shot"] for row in failures]
             if Counter(done + failed_shots) != Counter(dict.fromkeys(assigned, 1)):
                 raise ValueError("done plus failed must equal given shots exactly once")
+            pictures = manifest.get("pictures", [])
+            if not isinstance(pictures, list) or not set(pictures) <= set(done):
+                raise ValueError("pictures must be shots the shard labelled")
             tables.append(_check_payload(shards, k, summary))
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
             raise ValueError(f"{path}: {error}") from error
@@ -410,6 +453,7 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
         summaries.append(summary)
         failed.extend(failures)
         given.extend(assigned)
+        drawn |= set(pictures)
     eligible = shard_shots(paths, 0, 1).shot.tolist()
     if Counter(given) != Counter(dict.fromkeys(eligible, 1)):
         raise ValueError(f"{shards}: given shots do not cover the eligible population")
@@ -466,7 +510,9 @@ def merge(paths: Paths, *, models: Path, of: int, version: str = VERSION) -> dic
             "version": version,
         }
         for r in summary.itertuples(index=False)
-        if (gallery_dir(paths, version) / "extension" / f"{int(r.shot)}.jpg").is_file()
+        # Only the pictures these shards drew: never a pilot's or an earlier run's.
+        if int(r.shot) in drawn
+        and (gallery_dir(paths, version) / "extension" / f"{int(r.shot)}.jpg").is_file()
     ]
     write_index(gallery_dir(paths, version) / "index.csv", index)
     return {

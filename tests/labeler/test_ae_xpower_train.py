@@ -21,7 +21,7 @@ def test_owner_save_during_fit_does_not_change_the_training_snapshot(
     ae_tree.env(monkeypatch, paths)
     live = labels.labels_path(event_dir(paths))
     original = live.read_bytes()
-    out = tmp_path / "model"
+    out = tmp_path / "v1" / "model"  # its parent is named for the version
 
     def fit(train_shots, val_shots, config, log):
         for shot in [*train_shots, *val_shots]:

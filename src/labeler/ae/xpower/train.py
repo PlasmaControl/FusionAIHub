@@ -7,8 +7,9 @@ The first (v1) reads the owner's labels (`data/events/alfven_eigenmode/review/
 labels.csv`), the review page's AE stores and TokEye's masks, and writes
 `model.pt`, `split.csv`, `training.json` and the labels it read
 (`review/labels.csv`) to `--out` (default
-`$LABELER_ROOT/models/ae_xpower/<version>/NAME`). `candidates(version)` names the
-input band and MHD weight of each candidate.
+`$LABELER_ROOT/models/ae_xpower/<version>/NAME`; its parent must be named for
+`--version`; a pilot writes to `runs/ae_xpower/pilot/<version>/NAME`).
+`candidates(version)` names the input band and MHD weight of each candidate.
 
 The second is the final model of a version chosen by cross-validation (`cv`,
 the ledger's Deviation 11): `cv/choice.json`'s candidate, trained on every
@@ -52,6 +53,7 @@ from . import (
     CV_VERSIONS,
     EVENT,
     VERSION,
+    check_bound,
     event_dir,
     model_dir,
     pilot_area,
@@ -505,7 +507,7 @@ def main(argv=None) -> int:
         default=0,
         help=(
             "6-20 shots (4 of them validation; with --from-cv, pool shots), "
-            "2 epochs, to runs/ae_xpower/pilot"
+            "2 epochs, to runs/ae_xpower/pilot/<version>"
         ),
     )
     p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
@@ -545,12 +547,13 @@ def main(argv=None) -> int:
             f"version {args.version} is chosen by cross-validation "
             "(python -m labeler.ae.xpower.cv); its model is trained with --from-cv"
         )
-    pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.candidate
+    pilot_dir = paths.runs / "ae_xpower" / "pilot" / args.version / args.candidate
     out = args.out or (
         pilot_dir if args.pilot else candidate_dir(paths, args.candidate, args.version)
     )
     try:
         refuse_checkpoint(out, allow_replace=bool(args.pilot), runs=paths.runs)
+        check_bound(args.version, out.parent)
     except (FileExistsError, ValueError) as error:
         p.error(str(error))
     directory = event_dir(paths)
