@@ -120,6 +120,20 @@ async function currentServer() {
   const source = await js("S.meta.source");
   check("the link opens its shot on its source label", same(await js("S.label"), source), source);
 
+  const title = await js(`(() => {
+    const g = document.createElement("canvas").getContext("2d");
+    g.font = \`600 \${FONT}\`;
+    const width = GUTTER - 12;
+    const lines = wrapped(g, "toroidal mode number n (MPI66M probes)", width);
+    return { lines, widest: Math.max(...lines.map((l) => g.measureText(l).width)), width };
+  })()`);
+  check(
+    "a long row title wraps between words to the gutter, never squeezed",
+    title.lines.join(" ") === "toroidal mode number n (MPI66M probes)" && title.lines.length > 1 &&
+      title.widest <= title.width,
+    title
+  );
+
   await js(`$("reviewer-name").focus()`);
   await send("Input.insertText", { text: "Ada Lovelace" });
   await press("Enter");

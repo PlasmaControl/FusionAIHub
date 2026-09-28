@@ -152,6 +152,7 @@ const TRACE_H = 110;
 const CATEGORY_COLOURS = { 2: "#e69f00", 3: "#cc79a7", 4: "#56b4e9" }; // 1 is --label
 const TRACE_COLOURS = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#e69f00", "#56b4e9"];
 const FONT = "11px system-ui, sans-serif";
+const GUTTER_LINE = 14; // px between the lines of a row's title and units
 
 const S = {
   events: [],
@@ -896,20 +897,44 @@ function ticks(lo, hi, n) {
   return out;
 }
 
+/** `text` in lines no wider than `width` in `g`'s font, broken between words; a
+ * word wider than a line has a line of its own. */
+function wrapped(g, text, width) {
+  const lines = [];
+  for (const word of String(text ?? "").split(/\s+/).filter(Boolean)) {
+    const longer = lines.length ? `${lines[lines.length - 1]} ${word}` : word;
+    if (lines.length && g.measureText(longer).width <= width) lines[lines.length - 1] = longer;
+    else lines.push(word);
+  }
+  return lines;
+}
+
+/** A row's title, wrapped to the gutter, then its units, from the top left; then
+ * the y ticks, each one that would touch that text left off. */
 function drawGutter(g, row, range, h) {
+  const width = GUTTER - 12;
+  const text = [];  // [right, top, bottom] of each line drawn
+  let y = 16;
+  const line = (words) => {
+    g.fillText(words, 8, y, width);  // only a word wider than the gutter is squeezed
+    text.push([8 + Math.min(width, g.measureText(words).width), y - 10, y + 3]);
+    y += GUTTER_LINE;
+  };
   g.textAlign = "left";
   g.fillStyle = T.ink;
   g.font = `600 ${FONT}`;
-  g.fillText(row.title, 8, 16, GUTTER - 44);
+  wrapped(g, row.title, width).forEach(line);
   g.font = FONT;
   g.fillStyle = T.muted;
-  g.fillText(row.y_units, 8, 30, GUTTER - 44);
+  wrapped(g, row.y_units, width).forEach(line);
   if (!range) return;
   const [lo, hi] = range;
   g.textAlign = "right";
-  for (const [t, text] of ticks(lo, hi, h / 40)) {
+  for (const [t, label] of ticks(lo, hi, h / 40)) {
     const y = ((hi - t) / (hi - lo)) * (h - 1);
-    if (y > 6 && y < h - 4) g.fillText(text, GUTTER - 6, y + 4);
+    const left = GUTTER - 6 - g.measureText(label).width;
+    const touches = text.some(([right, top, bottom]) => right + 2 > left && top < y + 7 && bottom > y - 7);
+    if (y > 6 && y < h - 4 && !touches) g.fillText(label, GUTTER - 6, y + 4);
   }
 }
 
