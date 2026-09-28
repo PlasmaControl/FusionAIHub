@@ -63,13 +63,13 @@ def style() -> Iterator[None]:
         yield
 
 
-def placeholder(ax, heading: str) -> None:
-    """An empty panel for a phenomenon whose results are still to come."""
+def placeholder(ax, heading: str, mark: str = COMING) -> None:
+    """An empty panel marked `mark`: results still to come, or a run not run."""
     ax.set_title(heading)
     ax.text(
         0.5,
         0.5,
-        COMING,
+        mark,
         transform=ax.transAxes,
         ha="center",
         va="center",

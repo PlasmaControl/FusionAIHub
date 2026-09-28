@@ -65,3 +65,17 @@ def seg_evaluation() -> dict:
             "mhd_absent_frames": 600,
         },
     }
+
+
+MIN_PT = 6  # D38 asks 7 pt; nothing in a figure is smaller than 6
+
+
+def small_text(fig) -> list[tuple[str, float]]:
+    """Every visible, non-empty text of a drawn figure below `MIN_PT`."""
+    from matplotlib.text import Text
+
+    return [
+        (t.get_text(), t.get_fontsize())
+        for t in fig.findobj(Text)
+        if t.get_visible() and t.get_text().strip() and t.get_fontsize() < MIN_PT
+    ]

@@ -51,6 +51,7 @@ def test_the_scores_grid_fills_ae_and_marks_the_rest_coming(tmp_path):
         "TokEye",
         "always",
     ]
+    assert tree.small_text(fig) == []
 
 
 def test_the_mhd_figure_has_every_method_against_the_bar(tmp_path):
@@ -64,6 +65,7 @@ def test_the_mhd_figure_has_every_method_against_the_bar(tmp_path):
     [line] = ax.lines
     assert list(line.get_xdata()) == [0.05, 0.05]
     assert ax.get_title() == "600 MHD frames in 12 test shots"
+    assert tree.small_text(fig) == []
 
 
 def test_the_segmentation_figure(tmp_path):
@@ -78,6 +80,7 @@ def test_the_segmentation_figure(tmp_path):
     ]
     assert heights == pytest.approx(expected)
     assert ax.get_title() == "40 test shots: 123,456 AE pixels of 7,654,321"
+    assert tree.small_text(fig) == []
 
 
 def test_the_tables():

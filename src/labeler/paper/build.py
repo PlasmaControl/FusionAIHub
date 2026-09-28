@@ -83,12 +83,18 @@ def build(
     found = inputs(paths)
     made: dict[str, list[str]] = {}
     skipped: dict[str, str] = {}
+    partial: dict[str, list[str]] = {}
 
     def ready(products: tuple[str, ...], *needs: str) -> bool:
         missing = [str(found[k]) for k in needs if not found[k].is_file()]
         for product in products if missing else ():
             skipped[product] = "missing " + ", ".join(missing)
         return not missing
+
+    def lacking(products: tuple[str, ...], missing: list[Path]) -> None:
+        """Drawn, but without `missing`: those parts say so."""
+        for product in products if missing else ():
+            partial[product] = [str(p) for p in missing]
 
     def figure(name: str, draw: Callable, *args) -> None:
         draw(*args, out / name)
@@ -119,6 +125,14 @@ def build(
         }
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
+        lacking(
+            ("fig_coverage", "table_datasets"),
+            [
+                *([found["ae_chosen"]] if split is None else []),
+                *([split] if split is not None and not split.is_file() else []),
+                *([] if found["summary"].is_file() else [found["summary"]]),
+            ],
+        )
     picked: dict = {}
     if ready(("fig_interpreter", "fig_examples"), "gallery_index", "ae_chosen"):
         index = pd.read_csv(found["gallery_index"])
@@ -154,6 +168,10 @@ def build(
             shots.draw_examples,
             [one(s) for s in picked["example_shots"]],
         )
+        lacking(
+            ("fig_interpreter", "fig_examples"),
+            [] if poi is not None else [found["poi"]],
+        )
         picked["shot_f1"] = {
             str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
             for s, d in sorted(drawn.items())
@@ -168,6 +186,7 @@ def build(
         },
         "products": made,
         "skipped": skipped,
+        "partial": partial,
         **picked,
     }
     _write(out / "manifest.json", json.dumps(manifest, indent=1) + "\n")
