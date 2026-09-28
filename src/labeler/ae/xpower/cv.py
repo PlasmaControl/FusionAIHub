@@ -15,8 +15,10 @@ train and validation alike, is the pool (120 shots on the real data). The pool,
 sorted, is permuted with seed 20260923 and dealt in turn into five folds, so
 they differ in size by at most one shot (24 each on the real data). `--folds`
 writes `cv/folds.csv` (shot, split, fold; the test shots have no fold) and
-`cv/folds.json` before any training; a fold task refuses unless the file holds
-exactly the folds the snapshot gives.
+`cv/folds.json` before any training. Every later step (the fold tasks, the
+choice, `train --from-cv` and `evaluate --test`) refuses unless the file holds
+exactly the folds the snapshot and TokEye's masks give then (`checked_folds`),
+and the choice, the final model and `chosen.json` name the file's sha256.
 
 **A fold task.** Fold K is predicted; fold (K + 1) mod 5 stops the training
 (`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs, v1's
@@ -59,6 +61,7 @@ import resource
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import torch
@@ -182,19 +185,37 @@ def write_folds(paths: Paths, models: Path, version: str) -> dict:
     return counts
 
 
-def _checked_folds(paths: Paths, models: Path, version: str):
-    """The snapshot and folds, after checking `cv/folds.csv` against them."""
-    digest, saved, _, folds, text = _expected(paths, version)
+class Folds(NamedTuple):
+    """`cv/folds.csv`, checked against the snapshot and TokEye's masks as they are
+    now: the snapshot's sha256 and labels, the split (test = SELDNet's `valid`),
+    each pool shot's fold, and the file's sha256, which every later product names.
+    """
+
+    labels_sha256: str
+    saved: dict
+    split: dict[int, str]
+    folds: dict[int, int]
+    sha256: str
+
+
+def checked_folds(paths: Paths, models: Path, version: str) -> Folds:
+    """The folds, after checking `cv/folds.csv` byte for byte against the ones the
+    snapshot and TokEye's masks give now; every step after `--folds` reads them
+    through here (the fold tasks, the choice, the final model and its test)."""
+    digest, saved, split, folds, text = _expected(paths, version)
     file = cv_dir(models) / "folds.csv"
     if not file.is_file():
         raise FileNotFoundError(f"{file}: no folds; run --folds first")
     data = file.read_bytes()
     if data != text.encode():
-        raise ValueError(f"{file}: differs from the folds the snapshot gives")
+        raise ValueError(
+            f"{file}: differs from the folds the snapshot and TokEye's masks give "
+            "now; folds are fixed before training"
+        )
     record = json.loads((cv_dir(models) / "folds.json").read_text())
     if record.get("labels_sha256") != digest:
         raise ValueError(f"{cv_dir(models) / 'folds.json'}: another label snapshot")
-    return digest, saved, folds, _sha(data)
+    return Folds(digest, saved, split, folds, _sha(data))
 
 
 def _by_fold(folds: dict[int, int], pilot: int) -> dict[int, list[int]]:
@@ -241,7 +262,7 @@ def run_fold(
     record_file, npz_file = _record_paths(models, candidate, fold)
     if record_file.exists() and not in_runs:
         raise FileExistsError(f"{record_file}: a fold is trained once")
-    digest, saved, folds, folds_sha = _checked_folds(paths, models, version)
+    digest, saved, _, folds, folds_sha = checked_folds(paths, models, version)
     by = _by_fold(folds, pilot)
     stop = stop_fold(fold)
     train_folds = [f for f in range(N_FOLDS) if f not in (fold, stop)]
@@ -380,7 +401,7 @@ def _rows(candidate: str, weight: float, frames) -> list[dict]:
 def run_choose(paths: Paths, models: Path, version: str) -> dict:
     """Pool the 15 fold records, apply the rule, write choice.json and frontier.md."""
     check_version(models, version)
-    digest, _, folds, folds_sha = _checked_folds(paths, models, version)
+    digest, _, _, folds, folds_sha = checked_folds(paths, models, version)
     names = train.candidates(version)
     missing = [
         f"{name} fold {k}"

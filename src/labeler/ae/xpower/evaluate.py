@@ -425,7 +425,7 @@ def run_choose(
     if version in CV_VERSIONS:
         # Chosen by `cv`; here the choice is only checked, and nothing written.
         check_bound(version, models)
-        return cv_chosen(models, version)
+        return cv_chosen(paths, models, version)
     evaluation = models / "evaluation.json"
     if evaluation.exists() and not pilot_area(models, paths.runs):
         raise FileExistsError(
@@ -466,21 +466,45 @@ def run_choose(
     return record
 
 
-def cv_chosen(models: Path, version: str) -> dict:
-    """A cross-validated version's `chosen.json`, checked against `cv/choice.json`."""
-    chosen_file, choice_file = models / "chosen.json", models / "cv" / "choice.json"
+def cv_chosen(
+    paths: Paths, models: Path, version: str, *, split: dict[int, str] | None = None
+) -> dict:
+    """A cross-validated version's `chosen.json`, checked against `cv/choice.json`
+    and `cv/folds.csv` (as the snapshot and TokEye's masks give it now), and the
+    chosen model's split (`split`, else its `split.csv`) against the folds: their
+    test shots, and all of their pool shots to train (a pilot's, the first N)."""
+    from . import cv  # cv imports this module
+
+    chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
+    choice_file, folds_file = cv_files / "choice.json", cv_files / "folds.csv"
     chosen = json.loads(chosen_file.read_text())
     choice = json.loads(choice_file.read_bytes())
+    folds = cv.checked_folds(paths, models, version)
+    if choice.get("folds_sha256") != folds.sha256:
+        raise ValueError(f"{choice_file}: made from other folds than {folds_file}")
     wanted = {
         "version": version,
         "choice_sha256": sha256_of(choice_file),
         "candidate": choice["candidate"],
         "threshold": choice["threshold"],
         "labels_sha256": LABEL_SNAPSHOTS[version],
+        "folds_sha256": folds.sha256,
     }
     for key, value in wanted.items():
         if chosen.get(key) != value:
             raise ValueError(f"{chosen_file}: {key} differs from {choice_file}")
+    split_file = models / choice["candidate"] / "split.csv"
+    split = read_split(split_file) if split is None else split
+    pool = sorted(folds.folds)
+    n = sum(v == "train" for v in split.values()) if choice.get("pilot") else len(pool)
+    expected = {s: "test" for s, v in folds.split.items() if v == "test"}
+    expected |= dict.fromkeys(pool[:n], "train")
+    differ = sorted(s for s in {*split, *expected} if split.get(s) != expected.get(s))
+    if differ:
+        raise ValueError(
+            f"{split_file}: shots {', '.join(map(str, differ))} are not split as "
+            f"the folds ({folds_file}) have them"
+        )
     return chosen
 
 
@@ -494,6 +518,7 @@ def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> 
         "candidate": chosen["candidate"],
         "threshold": chosen["threshold"],
         "choice_sha256": chosen["choice_sha256"],
+        "folds_sha256": chosen["folds_sha256"],
         "labels_sha256": expected,
         "snapshot_sha256": expected,
         "from_cv": True,
@@ -503,6 +528,7 @@ def check_cv_model(blob: dict, chosen: dict, labels_copy: bytes, file: Path) -> 
             raise ValueError(f"{file}: {key} differs from chosen.json or the snapshot")
     return {
         "choice_sha256": chosen["choice_sha256"],
+        "folds_sha256": chosen["folds_sha256"],
         "snapshot_sha256": expected,
         "fixed_epochs": blob.get("fixed_epochs"),
         "cv_branch": blob.get("cv_branch"),
@@ -576,9 +602,8 @@ def run_test(
     check_bound(version, models, blob, file)
     cv_meta = {}
     if version in CV_VERSIONS:
-        cv_meta = check_cv_model(
-            blob, cv_chosen(models, version), snapshots["review/labels.csv"], file
-        )
+        chosen = cv_chosen(paths, models, version, split=split)
+        cv_meta = check_cv_model(blob, chosen, snapshots["review/labels.csv"], file)
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
     source = labels.read_source(event_dir(paths))
     seldnet = load_seldnet(paths)

@@ -15,7 +15,16 @@ from labeler.events.review import labels
 
 from . import ae_tree
 from .test_ae_xpower_cv import POOL, TEST, _all_folds, _designed, cv_tree
+from .test_ae_xpower_evaluate import _Fires
 from .test_ae_xpower_model import _toy
+
+
+def _untrained(train_shots, val_shots, config, log=print):
+    """`train.fit` for the final model: every epoch kept, no threshold."""
+    history = [
+        {"epoch": e, "val_f1": None, "kept": True} for e in range(1, config.epochs + 1)
+    ]
+    return train.FrameCNN(train.FrameCNNConfig(width=4)), history, None
 
 
 def test_fit_without_validation_keeps_every_epoch_and_never_stops():
@@ -76,6 +85,8 @@ def test_the_final_model_is_the_choice_on_every_pool_shot(tmp_path, monkeypatch)
     assert chosen["threshold"] == 0.85 and chosen["choice_sha256"] == choice_sha
     assert chosen["labels_sha256"] == digest
     assert chosen["model_sha256"] == sha256_of(out / "model.pt")
+    folds_sha = sha256_of(models / "cv" / "folds.csv")
+    assert blob["folds_sha256"] == chosen["folds_sha256"] == folds_sha
     assert evaluate.chosen_model(models) == out / "model.pt"
     # `evaluate --choose` on a cross-validated version checks, and writes nothing.
     before = (models / "chosen.json").read_bytes()
@@ -104,6 +115,96 @@ def test_a_changed_choice_is_refused_by_the_check(tmp_path, monkeypatch, capsys)
     assert error.value.code != 0
     stderr = capsys.readouterr().err
     assert "chosen.json" in stderr and "Traceback" not in stderr
+
+
+def _swap(paths):
+    """TokEye's split names of pool shot 101 and test shot 111 trade places, and
+    back when called again (the reviewer's probe 3): the count is kept."""
+    root = paths.root / "ae"
+    for sub, suffix in (("masks", "_clean.npz"), ("dataset", ".npz")):
+        now = {s: next((root / sub).glob(f"{s}_*{suffix}")) for s in (101, 111)}
+        split = {s: p.name.removesuffix(suffix).split("_")[1] for s, p in now.items()}
+        for s, other in ((101, 111), (111, 101)):
+            now[s].rename(root / sub / f"{s}_{split[other]}{suffix}")
+
+
+def _refused(capsys, main, args, *needles):
+    with pytest.raises(SystemExit) as error:
+        main(args)
+    assert error.value.code != 0
+    stderr = capsys.readouterr().err
+    assert "Traceback" not in stderr
+    for needle in needles:
+        assert needle in stderr, stderr
+
+
+def test_a_split_changed_after_the_choice_stops_the_final_and_the_test(
+    tmp_path, monkeypatch, capsys
+):
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    folds = str(models / "cv" / "folds.csv")
+    monkeypatch.setattr(train, "fit", _untrained)
+    _swap(paths)  # 101 would be a test shot, 111 a pool shot
+    _refused(capsys, train.main, ["--version", "v2", "--from-cv"], folds)
+    assert not (models / "band80-mhd3").exists()
+    assert not (models / "chosen.json").exists()
+    _swap(paths)  # back: the final trains on exactly the folds' shots
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    split = train.read_split(models / "band80-mhd3" / "split.csv")
+    assert split == {**dict.fromkeys(POOL, "train"), **dict.fromkeys(TEST, "test")}
+    ae_tree.chosen(paths, {**dict.fromkeys(POOL, "train"), 111: "test"})  # v1
+    monkeypatch.setattr(
+        evaluate, "load_seldnet", lambda paths: _Fires(np.ones(783, bool))
+    )
+    _swap(paths)  # and between the final and the test
+    _refused(capsys, evaluate.main, ["--test", "--version", "v2"], folds)
+    assert not (models / "evaluation.json").exists()
+    _swap(paths)
+    assert evaluate.main(["--test", "--version", "v2"]) == 0
+
+
+def test_a_choice_made_from_other_folds_is_refused(tmp_path, monkeypatch, capsys):
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    file = models / "cv" / "choice.json"
+    choice = json.loads(file.read_text())
+    choice["folds_sha256"] = hashlib.sha256(b"other folds").hexdigest()
+    file.write_text(json.dumps(choice))
+    monkeypatch.setattr(train, "fit", _untrained)
+    args = ["--version", "v2", "--from-cv"]
+    _refused(capsys, train.main, args, str(file), "folds.csv")
+    assert not (models / "band80-mhd3").exists()
+    assert not (models / "chosen.json").exists()
+
+
+@pytest.mark.parametrize("change", ["chosen", "split"])
+def test_the_test_checks_the_final_model_against_the_folds(
+    tmp_path, monkeypatch, capsys, change
+):
+    paths, _ = _chosen_by_cv(tmp_path, monkeypatch)
+    models = model_dir(paths, "v2")
+    monkeypatch.setattr(train, "fit", _untrained)
+    assert train.main(["--version", "v2", "--from-cv"]) == 0
+    ae_tree.chosen(paths, {**dict.fromkeys(POOL, "train"), 111: "test"})  # v1
+    monkeypatch.setattr(
+        evaluate, "load_seldnet", lambda paths: _Fires(np.ones(783, bool))
+    )
+    if change == "chosen":
+        file = models / "chosen.json"
+        chosen = json.loads(file.read_text())
+        chosen["folds_sha256"] = hashlib.sha256(b"other folds").hexdigest()
+        file.write_text(json.dumps(chosen))
+        needles = (str(file), "folds_sha256")
+        _refused(capsys, evaluate.main, ["--choose", "--version", "v2"], *needles)
+    else:
+        file = models / "band80-mhd3" / "split.csv"
+        split = train.read_split(file) | {101: "test"}  # a pool shot to test
+        lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
+        file.write_text("\n".join(lines) + "\n")
+        needles = (str(file), "folds")
+    _refused(capsys, evaluate.main, ["--test", "--version", "v2"], *needles)
+    assert not (models / "evaluation.json").exists()
 
 
 def _env(tmp_path, monkeypatch) -> Paths:
