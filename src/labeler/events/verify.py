@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -262,6 +262,38 @@ def fdp_signal(
 
 REVIEW_DIRECTORY = "review"
 
+#: A `modes` panel's values fit a byte with 16 brightnesses each at the least.
+MAX_MODES = 16
+
+
+def mode_bytes(z, modes, colours: Mapping[int, str], lo: float, hi: float):
+    """`uint8` like `z`: `level * K + i`, i the index of the cell's mode among
+    `colours`' sorted keys (K of them) and level its `z` from `lo` to `hi` in
+    `256 // K` steps, nan as `lo`. Level first, so a block's max is its
+    brightest cell, in its own colour.
+    """
+    values = np.sort(np.fromiter(colours, dtype=np.int64))
+    levels = 256 // len(values)
+    z = np.nan_to_num(np.asarray(z, dtype=float), nan=lo)
+    level = np.rint(np.clip((z - lo) / (hi - lo), 0.0, 1.0) * (levels - 1))
+    index = np.searchsorted(values, np.asarray(modes, dtype=np.int64))
+    return (level.astype(np.int64) * len(values) + index).astype(np.uint8)
+
+
+def mode_palette(colours: Mapping[int, str]) -> list[str]:
+    """Each of `mode_bytes`' codes as `#rrggbb`: black at level 0, the mode's
+    own colour at the top level, linear between (the page's `modeLut`)."""
+    rgb = [
+        np.array([int(colours[v][i : i + 2], 16) for i in (1, 3, 5)])
+        for v in sorted(colours)
+    ]
+    top = 256 // len(rgb) - 1
+    return [
+        "#{:02x}{:02x}{:02x}".format(*np.floor(c * level / top + 0.5).astype(int))
+        for level in range(top + 1)
+        for c in rgb
+    ]
+
 
 @dataclass
 class Panel:
@@ -281,6 +313,11 @@ class Panel:
     band. `hlines` draws single dashed lines, such as a class threshold -
     a band 0.01 wide is not a line. `zmin`/`zmax` pin a heatmap's colour
     scale so one value means one colour across every shot.
+
+    `modes` (an integer per cell of `z`, with `mode_colours` giving each value
+    its colour) draws a heatmap the way pyspecview draws a probe array: each
+    cell in its value's colour, such as a toroidal mode number's, and as bright
+    as its `z` between the pinned `zmin` and `zmax` (`mode_bytes`).
     """
 
     title: str
@@ -294,6 +331,8 @@ class Panel:
     hlines: Sequence[float] = ()
     zmin: float | None = None
     zmax: float | None = None
+    modes: np.ndarray | None = None
+    mode_colours: Mapping[int, str] | None = None
 
     def __post_init__(self) -> None:
         # `FeatureArray` two modules over validates its own arrays in
@@ -334,8 +373,33 @@ class Panel:
                     f"len(x)={len(self.x)}; plotly would truncate to the "
                     f"shorter and put the trace at the wrong times"
                 )
+        if self.modes is not None:
+            self._check_modes()
         # An unknown `kind` is left to `_build_figure`, which names the panel
         # and the kind - validating it twice would make that branch dead.
+
+    def _check_modes(self) -> None:
+        self.modes = np.asarray(self.modes)
+        colours = self.mode_colours or {}
+        if self.kind != "heatmap" or self.zmin is None or self.zmax is None:
+            raise ValueError(
+                f"panel {self.title!r}: modes colour a heatmap whose zmin and "
+                f"zmax are pinned, or one brightness would differ between shots"
+            )
+        if self.modes.shape != self.z.shape:
+            raise ValueError(
+                f"panel {self.title!r}: modes is {self.modes.shape}, z {self.z.shape}"
+            )
+        if not 0 < len(colours) <= MAX_MODES:
+            raise ValueError(
+                f"panel {self.title!r}: {len(colours)} mode colours; 1 to "
+                f"{MAX_MODES} leave a byte at least {256 // MAX_MODES} brightnesses"
+            )
+        unknown = np.setdiff1d(self.modes, np.fromiter(colours, dtype=np.int64))
+        if unknown.size:
+            raise ValueError(
+                f"panel {self.title!r}: modes {unknown.tolist()} have no colour"
+            )
 
 
 #: The stamp in a corrections filename: UTC, zero-padded and fixed-width, so
@@ -539,7 +603,31 @@ class ReviewSession:
             # one merged box - or none at all, which is what a single
             # figure-wide `showlegend=False` used to do.
             legend_name = f"legend{index}"
-            if panel.kind == "heatmap":
+            if panel.kind == "heatmap" and panel.modes is not None:
+                palette = mode_palette(panel.mode_colours)
+                top = len(palette) - 1
+                figure.add_trace(
+                    go.Heatmap(
+                        x=panel.x,
+                        y=panel.y,
+                        z=mode_bytes(
+                            panel.z,
+                            panel.modes,
+                            panel.mode_colours,
+                            panel.zmin,
+                            panel.zmax,
+                        ),
+                        colorscale=[[code / top, c] for code, c in enumerate(palette)],
+                        zmin=0,
+                        zmax=top,
+                        showscale=False,
+                        legend=legend_name,
+                        showlegend=False,
+                    ),
+                    row=index,
+                    col=1,
+                )
+            elif panel.kind == "heatmap":
                 figure.add_trace(
                     go.Heatmap(
                         x=panel.x,

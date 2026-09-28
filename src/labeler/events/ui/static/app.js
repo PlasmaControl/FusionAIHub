@@ -143,6 +143,21 @@ function lut(lo, hi = 255) {
   return out;
 }
 
+/** A modes row's colours for its bytes, `level * K + i` (`verify.mode_bytes`): mode
+ * i's colour scaled by its level, black at or below the contrast floor as in `lut`. */
+function modeLut(modes, lo) {
+  const [k, top] = [modes.colours.length, modes.levels - 1];
+  const floor = (lo / 255) * top;
+  const rgb = modes.colours.map((hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)));
+  const out = new Uint32Array(256);
+  for (let v = 0; v < 256; v++) {
+    const above = Math.max(0, Math.min(top, Math.floor(v / k)) - floor);
+    const [r, g, b] = rgb[v % k].map((c) => Math.round((c * above) / (top - floor)));
+    out[v] = ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  }
+  return out;
+}
+
 // ---- The page ----
 
 const GUTTER = 96; // px left of every plot: a row's title and units, then its y ticks
@@ -800,9 +815,10 @@ function bitmap(row, data, i) {
   const g = canvas.getContext("2d");
   const image = g.createImageData(n, row.n_y);
   const pixels = new Uint32Array(image.data.buffer);
+  const colours = row.modes ? modeLut(row.modes, S.lo) : S.lut;
   for (let y = 0; y < row.n_y; y++) {
     const from = (row.n_y - 1 - y) * n; // the store's row 0 is the lowest bin
-    for (let x = 0; x < n; x++) pixels[y * n + x] = S.lut[values[from + x]];
+    for (let x = 0; x < n; x++) pixels[y * n + x] = colours[values[from + x]];
   }
   g.putImageData(image, 0, 0);
   data.bitmaps.set(i, canvas);
@@ -942,6 +958,7 @@ function drawGutter(g, row, range, h) {
   g.font = FONT;
   g.fillStyle = T.muted;
   capped(g, wrapped(g, row.y_units, width), width, most - title.length).forEach(line);
+  if (row.modes) modeKey(g, row.modes, width, y, text);
   if (!range) return;
   const [lo, hi] = range;
   g.textAlign = "right";
@@ -951,6 +968,25 @@ function drawGutter(g, row, range, h) {
     const touches = text.some(([right, top, bottom]) => right + 2 > left && top < y + 7 && bottom > y - 7);
     if (y > 6 && y < h - 4 && !touches) g.fillText(label, GUTTER - 6, y + 4);
   }
+}
+
+/** A modes row's key under its units: each n on a swatch of its colour, wrapped to
+ * the gutter; the swatches join `text`, so the y ticks keep clear of them. */
+function modeKey(g, modes, width, top, text) {
+  let [x, y] = [8, top - 10];
+  g.save();
+  modes.n.forEach((n, i) => {
+    const label = String(n).replace("-", "\u2212");
+    const w = g.measureText(label).width + 4;
+    if (x > 8 && x + w > 8 + width) [x, y] = [8, y + GUTTER_LINE];
+    g.fillStyle = modes.colours[i];
+    g.fillRect(x, y, w, 12);
+    g.fillStyle = "#000";
+    g.fillText(label, x + 2, y + 10);
+    text.push([x + w, y, y + 12]);
+    x += w + 2;
+  });
+  g.restore();
 }
 
 function drawAxis() {
@@ -1492,7 +1528,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, regionAt, lut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, regionAt, lut, modeLut };
 } else {
   boot();
 }

@@ -191,15 +191,20 @@ where you see them.
   - The spectrogram of MPI66M322D, in dB above each frequency's 20th
     percentile over the plasma window (without one, over the columns louder
     than the record's median), from -3 to 42 dB.
-  - The n strip. In each column it takes the strongest line between 1 and
-    30 kHz on the six MPI66M midplane probes and scores each n from -4 to 4
-    (1 is a perfect fit). A column whose peak stands less than 15 dB above
-    the band's median is not scored.
+  - The toroidal mode number n, drawn the way pyspecview draws a probe
+    array. Every time-frequency cell of the six MPI66M midplane probes' STFTs
+    takes the n from −4 to 5 whose phases fit the probes' best, and is drawn
+    in that n's colour, as bright as the probes' mean power over the same
+    floor and scale as the row above. A line is one colour, and each line gets
+    its own n, so a 2/1 and its harmonics or a 3/2 beside it read apart. The
+    key under the row's units gives each n's colour. The probes' angles are
+    pyspecview's DIII-D table's (MPI66M322D sits at 317.4°).
   - beta_N, as for H-mode.
-- Sign convention: a mode cos(ωt − nφ) has n > 0, with φ each probe's
-  toroidal angle as its name gives it (MPI66M<φ>D). On some shots the strip's
-  sign is the opposite of the catalog's n ≥ 1 convention: 186636's mode shows
-  n = −1. Read the strip's |n|. Its sign is not flipped.
+- Sign convention: n > 0 is a mode travelling counter-clockwise seen from
+  above, the co-current direction of DIII-D's normal plasma current, so a
+  rotating 2/1 shows n = 1, as the catalog counts it. DIII-D's toroidal angle
+  runs clockwise, and pyspecview, which fits that angle as it stands, shows the
+  same mode as n = −1. On a reversed-current shot a co-current mode shows n < 0.
 - Draft: there is no method yet, so the whole window is absent. It gives the
   page each shot's window.
 
