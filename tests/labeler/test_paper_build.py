@@ -421,6 +421,45 @@ def test_only_the_builds_own_files_leave_out(runs, tmp_path):
     assert os.readlink(out / "linked") == str(elsewhere), "still a link"
 
 
+def test_a_symlinked_out_keeps_its_link(runs, tmp_path):
+    """The reviewer's probe A through the build: `--out` is a link to the
+    owner's real directory. The build draws beside the link's target and swaps
+    the new output in there: the link still points at it, the owner's files
+    stay in it, and no stale product is left anywhere."""
+    target = tmp_path / "real" / "paper"
+    build.build(runs, target, examples=1)  # an old output, with the shot figures
+    (target / "notes.txt").write_text("the owner's")
+    out = tmp_path / "paper"
+    out.symlink_to(target, target_is_directory=True)
+    (xpower.model_dir(runs) / "chosen.json").unlink()  # now the shot figures skip
+    manifest = build.build(runs, out)
+    assert out.is_symlink() and os.readlink(out) == str(target), "still that link"
+    drawn = {f for files in manifest["products"].values() for f in files}
+    assert "fig_examples.pdf" not in drawn
+    files = _files(target)
+    assert set(files) == drawn | {"manifest.json", "notes.txt"}
+    assert files["notes.txt"] == b"the owner's"
+    assert json.loads(files["manifest.json"]) == manifest, "the new output"
+    assert list(tmp_path.rglob("fig_examples*")) == [], "no stale product anywhere"
+    assert sorted(p.name for p in target.parent.iterdir()) == ["paper"]
+    assert _beside(tmp_path) == ["paper"], "nothing left beside the link"
+
+
+def test_a_broken_link_as_out_is_built_into_its_target(runs, tmp_path):
+    """A link whose target is not there yet is built into its target, as a
+    new `--out` is: the build makes it (its parents too), the link then
+    points at the new output, and nothing is left beside either."""
+    target = tmp_path / "later" / "paper"
+    out = tmp_path / "paper"
+    out.symlink_to(target, target_is_directory=True)
+    manifest = build.build(runs, out)
+    assert out.is_symlink() and os.readlink(out) == str(target)
+    drawn = {f for files in manifest["products"].values() for f in files}
+    assert set(_files(target)) == drawn | {"manifest.json"}
+    assert sorted(p.name for p in target.parent.iterdir()) == ["paper"]
+    assert _beside(tmp_path) == ["paper"]
+
+
 def test_a_kept_old_output_is_named_and_the_build_succeeds(
     runs, tmp_path, monkeypatch, capsys
 ):

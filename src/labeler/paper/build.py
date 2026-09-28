@@ -43,7 +43,10 @@ itself), and a failed build deletes none of it. Of the old output only those
 names are deleted: an entry written into it late, through a handle held on it,
 is moved into the new output too, or, if its name is taken there, kept with the
 old directory, which the build names on stderr and in its JSON line
-(`old_output_kept`) and still succeeds.
+(`old_output_kept`) and still succeeds. `out` is resolved once, first: a
+symlinked `--out` keeps its link, the new output swapped in at its target, with
+the staging directory and the old output's holder beside that. A broken link is
+built into its target, which the build makes, as it makes a new `--out`.
 
 `--version` (default `v1`) names the frame model's version the inputs come
 from: `models/ae_xpower/<version>/` (`chosen.json`, `evaluation.json`, the
@@ -357,7 +360,7 @@ def build(
     The manifest; if the swap had to keep the old output's directory, the
     answer also names it (`KEPT`, which the manifest, written before the swap,
     cannot), and so does stderr."""
-    out = Path(out)
+    out = Path(out).resolve()  # a link's target: the link keeps pointing at it
     staged = staging_dir(out)
     try:
         with tempfile.TemporaryDirectory(prefix="paper-inputs-") as scratch:
