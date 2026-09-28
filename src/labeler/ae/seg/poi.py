@@ -75,14 +75,19 @@ def gallery_dir(paths: Paths) -> Path:
     return paths.root / "gallery" / EVENT / f"{METHOD}-{VERSION}"
 
 
+def ae_pixels(prob: np.ndarray, threshold: float, y0: float, dy: float) -> np.ndarray:
+    """The pixels the model calls AE: P(AE) at its threshold, 80-250 kHz."""
+    on = np.zeros_like(prob, dtype=bool)
+    band = band_slice(y0, dy, prob.shape[0], BAND_KHZ)
+    on[band] = prob[band] >= threshold
+    return on
+
+
 def points(
     shot: int, prob: np.ndarray, threshold: float, grid: Grid, y0: float, dy: float
 ) -> tuple[list[dict], np.ndarray]:
     """The shot's points of interest, and the labelled regions they come from."""
-    n_y = prob.shape[0]
-    on = np.zeros_like(prob, dtype=bool)
-    band = band_slice(y0, dy, n_y, BAND_KHZ)
-    on[band] = prob[band] >= threshold
+    on = ae_pixels(prob, threshold, y0, dy)
     labelled, count = ndimage.label(on, structure=EIGHT)
     sizes = np.bincount(labelled.ravel(), minlength=count + 1)
     keep = np.flatnonzero(sizes >= MIN_POI_PIXELS)

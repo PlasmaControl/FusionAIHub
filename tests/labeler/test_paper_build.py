@@ -147,11 +147,12 @@ def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path)
         "missing": [str(found["summary"])],
     }
     no_poi = {"reason": build.NO_POI, "missing": [str(found["poi"])]}
+    no_mask = {"reason": build.NO_MASK, "missing": [str(found["seg_model"])]}
     assert manifest["partial"] == {
         "fig_coverage": [no_summary],
         "table_datasets": [no_summary],
-        "fig_interpreter": [no_poi],
-        "fig_examples": [no_poi],
+        "fig_interpreter": [no_mask, no_poi],
+        "fig_examples": [no_mask, no_poi],
         "table_differences": [_missing(found["seg_evaluation"])],
     }
     assert set(manifest["partial"]) <= set(manifest["products"])
@@ -534,6 +535,7 @@ def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatc
         "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
         "102,1,300,900,140,152,40,True\n"
     )
+    tree.seg_model(runs)
     opened: Counter = Counter()
     _spy_reads(monkeypatch, opened)
     out = tmp_path / "paper"
@@ -545,7 +547,9 @@ def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatc
     twice = {p: n for p, n in opened.items() if p in pinned and n != 2}
     assert not twice, f"each input read once to draw, once to check: {twice}"
     assert manifest["consistent"] is True and manifest["changed_during_build"] == {}
-    assert {"ae_model", "ae_split", "store_102", "store_103"} <= set(manifest["inputs"])
+    assert {"ae_model", "ae_split", "store_102", "store_103", "seg_model"} <= set(
+        manifest["inputs"]
+    )
     for entry in manifest["inputs"].values():
         data = Path(entry["path"]).read_bytes()
         assert entry["sha256"] == hashlib.sha256(data).hexdigest()
@@ -958,6 +962,7 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     assert pinned["seg_evaluation"]["path"] == str(seg / "evaluation.json")
     assert pinned["seg_labels"]["path"] == str(seg / "review" / "labels.csv")
     assert pinned["poi"]["path"].endswith("/ae_seg-v1/poi.csv")
+    assert pinned["seg_model"]["path"] == str(seg / "model.pt"), "the mask's SegNet"
     assert pinned["ae_model"]["path"].startswith(str(models))
     assert manifest["labels_match"] is True, "the frame model on its own copy"
     assert manifest["seg_labels_match"] is True, "SegNet on its own copy"

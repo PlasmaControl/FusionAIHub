@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 
 from labeler.ae import xpower
+from labeler.ae.seg import train as seg_train
+from labeler.ae.seg.model import SegNet, SegNetConfig
 from labeler.config import Paths
 from labeler.paper import scores
 
@@ -152,11 +154,27 @@ POI_CSV = (
 )
 
 
+def seg_model(paths: Paths, seg_version: str = "v1", threshold: float = 0.0) -> Path:
+    """A small SegNet saved as training saves it, at `threshold` (0: every pixel
+    of 80-250 kHz is AE). Its `model.pt`."""
+    seg = paths.root / "models" / "ae_seg" / seg_version
+    seg_train.save(
+        seg,
+        SegNet(SegNetConfig(width=4)),
+        threshold=threshold,
+        split={},
+        history=[],
+        config=seg_train.TrainConfig(width=4),
+        inputs={},
+    )
+    return seg / "model.pt"
+
+
 def seg_record(paths: Paths, seg_version: str = "v1", *, frame: str = "v1") -> str:
     """The segmentation at `seg_version`, as `labeler.ae.seg` leaves it: its
     `evaluation.json` naming its own copy of the labels (taken from the frame
-    model `frame`'s) and that model, the copy, and points of interest for 102.
-    The copy's sha256."""
+    model `frame`'s) and that model, its `model.pt` (`seg_model`), the copy, and
+    points of interest for 102. The copy's sha256."""
     seg = paths.root / "models" / "ae_seg" / seg_version
     copy = seg / "review" / "labels.csv"
     copy.parent.mkdir(parents=True)
@@ -167,6 +185,7 @@ def seg_record(paths: Paths, seg_version: str = "v1", *, frame: str = "v1") -> s
     model = xpower.model_dir(paths, frame) / "band80-mhd3" / "model.pt"
     record["meta"]["ae_model"] = str(model)
     (seg / "evaluation.json").write_text(json.dumps(record))
+    seg_model(paths, seg_version)
     poi = paths.root / "poi" / "alfven_eigenmode" / f"ae_seg-{seg_version}" / "poi.csv"
     poi.parent.mkdir(parents=True)
     poi.write_text(POI_CSV)

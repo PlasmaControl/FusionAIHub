@@ -20,8 +20,8 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   are `partial`, saying why;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
-  `<candidate>/review/labels.csv` (D18), with the points of interest where they
-  exist. The copy's sha256 must be the one the AE evaluation names
+  `<candidate>/review/labels.csv` (D18), with the segmentation's mask, SegNet
+  run over the same stores, where its `model.pt` exists. The copy's sha256 must be the one the AE evaluation names
   (`labels_sha256`); if it is not, or none is named, both are skipped.
 
 The owner's live labels are read for the coverage alone; every scored product
@@ -59,8 +59,8 @@ labels, which have no version.
 `--seg-version` (default `v1`) names the segmentation's, apart: a new frame
 model does not retrain SegNet, so v2's frame figures stand beside SegNet v1.
 fig_segmentation, table_seg_scores, the segmentation's rows of
-table_differences and the shot figures' points of interest read
-`models/ae_seg/<seg-version>/` and `poi/.../ae_seg-<seg-version>/`. The
+table_differences, the shot figures' mask and the interpreter pick's points of
+interest read `models/ae_seg/<seg-version>/` and `poi/.../ae_seg-<seg-version>/`. The
 segmentation's own copy of the labels (`<seg-version>/review/labels.csv`) is
 pinned and checked against its record's `labels_sha256` (`seg_labels_match`),
 not against the frame model's; a copy missing or unlike the record makes its
@@ -104,7 +104,6 @@ committed or pushed.
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import io
 import json
 import math
@@ -190,6 +189,7 @@ CV_VAL = (
     "no bar or cell"
 )
 NO_POI = "no points of interest: the segmentation has not run over the test shots"
+NO_MASK = "no mask: the segmentation has no model.pt to run over the test shots"
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
 NO_SCORED_SHOT = "no test shot has both a saved label and a store"
@@ -232,6 +232,7 @@ def inputs(
         "ae_labels": labels.labels_path(xpower.event_dir(paths)),
         "seg_evaluation": seg / "evaluation.json",
         "seg_labels": labels.labels_path(seg),
+        "seg_model": seg / "model.pt",
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
         "poi": poi / "poi.csv",
     }
@@ -609,6 +610,11 @@ def _shot_figures(
     were), and the picks for the manifest."""
     figures = ("fig_interpreter", "fig_examples")
     model = snap.model("ae_model", found["ae_model"], split)
+    segmentation = (
+        snap.segmentation("seg_model", found["seg_model"])
+        if found["seg_model"].is_file()
+        else None
+    )
     poi = snap.csv("poi", found["poi"]) if found["poi"].is_file() else None
     tested = shots.test_shots(model.split)
     unlabelled = [s for s in tested if s not in saved]
@@ -620,7 +626,9 @@ def _shot_figures(
     def one(s: int) -> shots.AEShot:
         """The shot's picture, its store read once."""
         data = snap.read(f"store_{s}", _store(paths, s))
-        return shots.picture(s, label=saved[s], model=model, store=data)
+        return shots.picture(
+            s, label=saved[s], model=model, store=data, segmentation=segmentation
+        )
 
     pictures = {s: one(s) for s in usable}
     ranked = [shots.rank_keys(p) for p in pictures.values()]
@@ -642,9 +650,7 @@ def _shot_figures(
     if named not in pictures and named in saved and _store(paths, named).is_file():
         pictures[named] = one(named)
     drawn = {
-        s: dataclasses.replace(pictures[s], boxes=shots.boxes_of(poi, s))
-        for s in (named, *picked["example_shots"])
-        if s in pictures
+        s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures
     }
     if named not in drawn:
         return f"{NO_NAMED}: {named}", picked
@@ -654,6 +660,8 @@ def _shot_figures(
         shots.draw_examples,
         [drawn[s] for s in picked["example_shots"]],
     )
+    if segmentation is None:
+        lacking(figures, NO_MASK, missing=[str(found["seg_model"])])
     if poi is None:
         lacking(figures, NO_POI, missing=[str(found["poi"])])
     if unlabelled:

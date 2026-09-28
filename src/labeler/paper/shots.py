@@ -3,11 +3,11 @@
 `picture` is what a shot viewer shows for AE: the review store's first
 cross-power row (R0 x V1), 0-250 kHz; the owner's frames; the chosen
 `ae_xpower` model's P(AE) per 10 ms frame, run here on the CPU as the gallery
-runs it; and the segmentation's points of interest (`poi.csv`). The owner's
+runs it; and the segmentation's mask, SegNet run here too. The owner's
 frames are the model's own copy of the labels, `<candidate>/review/labels.csv`,
 the ones it was trained and scored on (D18), never the live table the owner
 keeps saving; `ae_shot` reads them from disk. `draw_interpreter` is the paper's
-one-discharge figure: that spectrogram and its points of interest over one
+one-discharge figure: that spectrogram and its mask over one
 track per catalog phenomenon, AE's holding the owner's frames above the
 model's, the other five coming. `draw_examples` stacks a few test shots (the
 model's `split.csv`), which `pick_examples` takes: the best, the median and the
@@ -20,18 +20,14 @@ ranks by the 0-2 s F1 (`rank_keys`), so its picks can differ from a ranking by
 the gallery's. The evaluation's own frames also need TokEye's record and the
 source table's window (`labeler.ae.xpower.evaluate`); a shot's F1 here does not.
 
-**The points of interest** are thin outlines, clipped to the axes, dashed and
-fainter when the peak lies after the scored 2 s (`in_scored_window` false); only
-the `LABEL_CAP` largest by `pixels` carry their `region` number (`poi.csv`). A
-dashed line at 2 s marks the scored window whenever a shot runs past it.
-
-**No two numbers print over each other** (`place_numbers`, once the figure is
-laid out, so the numbers' drawn sizes are known). The largest box is numbered
-first. A number sits inside its own box, at the first of its corners (`CORNERS`:
-top left, top right, bottom left, bottom right) that lies in view and where its
-text touches no number already placed. So it moves, but only to a corner of its
-own outline, which keeps it matched to its box. A number with no such corner is
-left off, as a box past the cap is; the outline is still drawn.
+**The mask** is what the segmentation says, semantically: every pixel SegNet
+calls AE, P(AE) at its threshold inside 80-250 kHz (`labeler.ae.seg.poi.ae_pixels`,
+the pixels its evaluation scores), a translucent fill with a thin outline. It is
+run on the picture's own rows, at the store level it reads (`PICTURE_LEVEL`), so
+it lies on the picture's pixels. Its regions, the points of interest of
+`poi.csv`, are not drawn: they are a table for tools, which the interpreter's
+pick still counts. A dashed line at 2 s marks the scored window whenever a shot
+runs past it.
 
 **The interpreter's shot** (`interpreter_pick`, `INTERPRETER_RULE`) shows AE
 turning off and back on. Its pool is the test shots with a point of interest
@@ -52,9 +48,10 @@ shots, and the branch says why: no test shot has that many absent frames
 (`POOL_UNMARKED`, which names them).
 
 Every legend lists only what some panel draws: it is built from the drawn
-artists' own labels, so its keys have their style. A point of interest wholly
-outside its axes' view (one after 2 s on a shot drawn to 2 s, say) is drawn,
-clipped away, with no label, so it adds no key that nothing in view shows.
+artists' own labels, so its keys have their style (the mask's, an image's, as a
+patch of its fill and outline). A mask with no pixel in its axes' view (one
+only after 2 s on a shot drawn to 2 s, say) is drawn, clipped away, with no
+label, so it adds no key that nothing in view shows.
 """
 
 from __future__ import annotations
@@ -66,9 +63,13 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from matplotlib.colors import ListedColormap, to_rgba
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch
 
+from ..ae.seg import train as seg_train
+from ..ae.seg.poi import ae_pixels
+from ..ae.seg.pseudo import LEVEL as SEG_LEVEL
 from ..ae.xpower import EVENT
 from ..ae.xpower.data import BAND_KHZ, CROSS_ROWS, store_rows, targets, window_frames
 from ..ae.xpower.gallery import STATE_COLOURS
@@ -82,14 +83,11 @@ from ..scoring.frames import FRAME_MS
 from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, save, style, title
 
 MARGIN_MS = 50.0
-PICTURE_LEVEL = 8
+PICTURE_LEVEL = SEG_LEVEL  # SegNet reads level 8, so its mask is on these pixels
 MODEL_COLOUR = "#222222"
-POI_COLOUR = "#00e5ff"
-POI_LW = 0.4
-POI_ALPHA = 0.75
-POI_AFTER_ALPHA = 0.4
-LABEL_CAP = 10  # number at most the 10 largest points of interest (by pixels)
-CORNERS = (("left", "top"), ("right", "top"), ("left", "bottom"), ("right", "bottom"))
+MASK_COLOUR = "#00e5ff"
+MASK_ALPHA = 0.3  # the fill's; the chirps under it stay visible
+MASK_LW = 0.4  # the outline's
 SCORED_MS = 2000.0  # the scored window is 0-2 s
 SCORED_LABEL = "scored: 0-2 s"
 F1_DECIMALS = 3
@@ -98,8 +96,7 @@ STATE_NAMES = {
     UNCERTAIN: "uncertain",
     NOT_OBSERVABLE: "not observable",
 }
-POI_LABEL = "point of interest"
-POI_AFTER_LABEL = "point of interest, after 2 s"
+MASK_LABEL = "segmentation: AE"
 MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
 MIN_GAP_FRAMES = 5  # whole absent frames: 50 ms or more, but 50-59 ms can be 4
@@ -174,7 +171,7 @@ class AEShot:
     threshold: float
     f1: float
     f1_window: float = float("nan")
-    boxes: tuple[dict, ...] = ()
+    mask: np.ndarray | None = None  # (n_y, n) bool: SegNet's AE pixels, or none run
 
     @property
     def edges(self) -> np.ndarray:
@@ -219,16 +216,38 @@ class Model:
         return cls(net, blob, split)
 
 
+@dataclass(frozen=True)
+class Segmentation:
+    """SegNet, loaded once, and its saved record."""
+
+    net: object
+    blob: Mapping
+
+    @property
+    def threshold(self) -> float:
+        return float(self.blob["threshold"])
+
+    @classmethod
+    def load(cls, model_file) -> Segmentation:
+        """`model_file` a path or file object."""
+        return cls(*seg_train.load(model_file))
+
+
 def test_shots(split: Mapping[int, str]) -> list[int]:
     """The model's test shots, as its evaluation scores them."""
     return sorted(int(s) for s, which in split.items() if which == "test")
 
 
 def picture(
-    shot: int, *, label: Label, model: Model, store, boxes: Sequence[dict] = ()
+    shot: int,
+    *,
+    label: Label,
+    model: Model,
+    store,
+    segmentation: Segmentation | None = None,
 ) -> AEShot:
-    """One labelled shot with `model` run over its review `store`: a path, or
-    the file's bytes as the build read them."""
+    """One labelled shot with `model`, and `segmentation` if given, run over its
+    review `store`: a path, or the file's bytes as the build read them."""
 
     def rows(level: int = 1):
         source = io.BytesIO(store) if isinstance(store, bytes) else store
@@ -238,6 +257,10 @@ def picture(
     prob, _ = probabilities(model.net, rows(), first, n, band=model.blob["band_khz"])
     grid, values, y0, dy = rows(PICTURE_LEVEL)
     owner = targets(label, first, n)
+    mask = None
+    if segmentation is not None:
+        seg_prob = seg_train.predict(segmentation.net, values)
+        mask = ae_pixels(seg_prob, segmentation.threshold, y0, dy)
     return AEShot(
         shot=shot,
         split=model.split.get(shot, ""),
@@ -251,13 +274,8 @@ def picture(
         threshold=model.threshold,
         f1=scored_f1(prob, owner, model.threshold, first=first),
         f1_window=f1_of(frame_cells(prob, owner, model.threshold)),
-        boxes=tuple(boxes),
+        mask=mask,
     )
-
-
-def boxes_of(poi: pd.DataFrame | None, shot: int) -> tuple[dict, ...]:
-    """The shot's points of interest as records."""
-    return () if poi is None else tuple(poi[poi.shot == shot].to_dict("records"))
 
 
 def rank_keys(s: AEShot) -> ShotScore:
@@ -271,10 +289,10 @@ def rank_keys(s: AEShot) -> ShotScore:
 
 
 def ae_shot(
-    paths: Paths, shot: int, *, model_file: Path, poi: pd.DataFrame | None = None
+    paths: Paths, shot: int, *, model_file: Path, seg_file: Path | None = None
 ) -> AEShot:
     """A shot in the copy of the labels saved beside `model_file` (D18), with that
-    model run over its store."""
+    model, and the segmentation in `seg_file` if given, run over its store."""
     label = labels.read_saved(Path(model_file).parent).get(shot)
     if label is None:
         raise KeyError(f"{shot}: the owner has not saved an AE label")
@@ -283,7 +301,7 @@ def ae_shot(
         label=label,
         model=Model.load(model_file),
         store=paths.spectrogram_file(EVENT, shot),
-        boxes=boxes_of(poi, shot),
+        segmentation=None if seg_file is None else Segmentation.load(seg_file),
     )
 
 
@@ -350,18 +368,22 @@ def interpreter_pick(
     }
 
 
-def _spectrogram(ax, s: AEShot) -> None:
-    extent = (
+def _extent(s: AEShot) -> tuple[float, float, float, float]:
+    """The picture's pixel edges: ms left and right, kHz below and above."""
+    return (
         s.grid.t0_ms,
         s.grid.t0_ms + s.grid.n * s.grid.dt_ms,
         s.y0 - s.dy / 2,
         s.y0 + (s.image.shape[0] - 0.5) * s.dy,
     )
+
+
+def _spectrogram(ax, s: AEShot) -> None:
     ax.imshow(
         s.image,
         origin="lower",
         aspect="auto",
-        extent=extent,
+        extent=_extent(s),
         cmap="inferno",
         vmin=0,
         vmax=255,
@@ -372,92 +394,31 @@ def _spectrogram(ax, s: AEShot) -> None:
     ax.set_ylabel(f"{CROSS_ROWS[0].replace('x', ' × ')}\nkHz")
 
 
-def _scored(box: dict) -> bool:
-    return bool(box.get("in_scored_window", True))
-
-
-def numbered(boxes: Sequence[dict], xlim, ylim) -> list[dict]:
-    """The `LABEL_CAP` largest points (by `pixels`) whose top left corner, where
-    a number goes first (`place_numbers`), lies inside the axes."""
-    (x0, x1), (y0, y1) = sorted(xlim), sorted(ylim)
-    inside = [
-        b
-        for b in boxes
-        if x0 <= float(b["t_start_ms"]) <= x1 and y0 <= float(b["f_hi_khz"]) <= y1
-    ]
-    return sorted(inside, key=lambda b: -float(b.get("pixels", 0)))[:LABEL_CAP]
-
-
-def in_view(box: dict, xlim, ylim) -> bool:
-    """Whether any of the box lies inside the axes' limits."""
-    (x0, x1), (y0, y1) = sorted(xlim), sorted(ylim)
-    return (
-        float(box["t_start_ms"]) <= x1
-        and float(box["t_end_ms"]) >= x0
-        and float(box["f_lo_khz"]) <= y1
-        and float(box["f_hi_khz"]) >= y0
+def _mask(ax, s: AEShot) -> None:
+    """SegNet's AE pixels, a translucent fill with a thin outline, labelled for
+    the legend when some pixel lies in view. Call it after the axes' limits are
+    set."""
+    if s.mask is None or not s.mask.any():
+        return
+    (x0, x1), (y0, y1) = sorted(ax.get_xlim()), sorted(ax.get_ylim())
+    times = s.grid.t0_ms + (np.arange(s.grid.n) + 0.5) * s.grid.dt_ms
+    freqs = s.y0 + np.arange(s.mask.shape[0]) * s.dy
+    seen = s.mask[np.ix_((freqs >= y0) & (freqs <= y1), (times >= x0) & (times <= x1))]
+    ax.imshow(
+        np.ma.masked_where(~s.mask, np.ones(s.mask.shape)),
+        origin="lower",
+        aspect="auto",
+        extent=_extent(s),
+        cmap=ListedColormap([MASK_COLOUR]),
+        vmin=0,
+        vmax=1,
+        alpha=MASK_ALPHA,
+        interpolation="nearest",
+        label=MASK_LABEL if seen.any() else "_" + MASK_LABEL,
     )
-
-
-def _boxes(ax, s: AEShot) -> None:
-    """Thin clipped outlines, the first in view of each style labelled for the
-    legend. Call it after the axes' limits are set; `place_numbers` numbers
-    them once the figure is laid out."""
-    labelled = {POI_LABEL: False, POI_AFTER_LABEL: False}
-    xlim, ylim = ax.get_xlim(), ax.get_ylim()
-    for box in s.boxes:
-        inside = _scored(box)
-        name = POI_LABEL if inside else POI_AFTER_LABEL
-        keyed = in_view(box, xlim, ylim) and not labelled[name]
-        ax.add_patch(
-            Rectangle(
-                (box["t_start_ms"], box["f_lo_khz"]),
-                box["t_end_ms"] - box["t_start_ms"],
-                box["f_hi_khz"] - box["f_lo_khz"],
-                fill=False,
-                ec=POI_COLOUR,
-                lw=POI_LW,
-                ls="-" if inside else "--",
-                alpha=POI_ALPHA if inside else POI_AFTER_ALPHA,
-                clip_on=True,
-                label=name if keyed else "_" + name,
-            )
-        )
-        labelled[name] = labelled[name] or keyed
-
-
-def place_numbers(fig: Figure, panels: Sequence[tuple[object, AEShot]]) -> None:
-    """Number each `(axes, shot)` panel's `numbered` boxes, largest first, each
-    at the first corner of its own box (`CORNERS`) that is in view and where
-    its drawn text touches no number already placed; a number with none is
-    left off. Call it last, when the figure is laid out: the text sizes are
-    measured drawn."""
-    fig.draw_without_rendering()
-    for ax, s in panels:
-        (x0, x1), (y0, y1) = sorted(ax.get_xlim()), sorted(ax.get_ylim())
-        placed = []
-        for box in numbered(s.boxes, ax.get_xlim(), ax.get_ylim()):
-            for ha, va in CORNERS:
-                x = float(box["t_start_ms"] if ha == "left" else box["t_end_ms"])
-                y = float(box["f_hi_khz"] if va == "top" else box["f_lo_khz"])
-                if not (x0 <= x <= x1 and y0 <= y <= y1):
-                    continue
-                text = ax.text(
-                    x,
-                    y,
-                    f"{int(box['region'])}",
-                    color=POI_COLOUR,
-                    fontsize=FONT_PT - 1,
-                    ha=ha,
-                    va=va,
-                    alpha=POI_ALPHA if _scored(box) else POI_AFTER_ALPHA,
-                    clip_on=True,
-                )
-                extent = text.get_window_extent()
-                if not any(extent.overlaps(other) for other in placed):
-                    placed.append(extent)
-                    break
-                text.remove()
+    ax.contour(
+        times, freqs, s.mask, levels=[0.5], colors=MASK_COLOUR, linewidths=MASK_LW
+    )
 
 
 def _scored_line(axes, s: AEShot, *, dark: Collection) -> None:
@@ -503,17 +464,27 @@ LEGEND_ORDER = (
     *(f"owner: {name}" for name in STATE_NAMES.values()),
     MODEL_LABEL,
     THRESHOLD_LABEL,
-    POI_LABEL,
-    POI_AFTER_LABEL,
+    MASK_LABEL,
 )
 
 
 def _legend(fig: Figure) -> None:
-    """One key per label some panel draws, with that artist's own style."""
+    """One key per label some panel draws, with that artist's own style; the
+    mask, an image, which a legend cannot key, as a patch of its fill and
+    outline."""
     found: dict[str, object] = {}
     for ax in fig.axes:
         for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
             found.setdefault(name, handle)
+        if any(image.get_label() == MASK_LABEL for image in ax.images):
+            found.setdefault(
+                MASK_LABEL,
+                Patch(
+                    facecolor=to_rgba(MASK_COLOUR, MASK_ALPHA),
+                    edgecolor=MASK_COLOUR,
+                    linewidth=MASK_LW,
+                ),
+            )
     names = sorted(
         found, key=lambda n: LEGEND_ORDER.index(n) if n in LEGEND_ORDER else 99
     )
@@ -527,7 +498,7 @@ def _legend(fig: Figure) -> None:
 
 
 def draw_interpreter(s: AEShot, stem: Path) -> Figure:
-    """The spectrogram with AE's points of interest over a track per phenomenon."""
+    """The spectrogram with AE's mask over a track per phenomenon."""
     t0, t1 = s.edges[0] - MARGIN_MS, s.edges[-1] + MARGIN_MS
     with style():
         fig = Figure(figsize=(PAGE_IN, 3.4), layout="constrained")
@@ -539,7 +510,7 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
         )
         _spectrogram(spec, s)
         spec.set_xlim(t0, t1)
-        _boxes(spec, s)
+        _mask(spec, s)
         spec.set_title(f"shot {s.shot}: what the interpreter marks")
         for ax, category in zip(tracks, ORDER, strict=True):
             ax.set_ylim(0, 2)
@@ -564,14 +535,14 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
             ax.tick_params(bottom=False)
         tracks[-1].set_xlabel("time (ms)")
         _legend(fig)
-        place_numbers(fig, [(spec, s)])
         save(fig, stem)
     return fig
 
 
 def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
-    """Each shot: the spectrogram, the owner's strip, and P(AE) with the model's
-    present frames shaded; each title gives the shot's F1 over 0-2 s."""
+    """Each shot: the spectrogram with the mask, the owner's strip, and P(AE)
+    with the model's present frames shaded; each title gives the shot's F1 over
+    0-2 s."""
     with style():
         fig = Figure(figsize=(PAGE_IN, 2.0 * len(shots) + 0.3), layout="constrained")
         axes = fig.subplots(
@@ -583,7 +554,7 @@ def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
             for ax in (spec, strip, model):
                 ax.set_xlim(t0, t1)
             _spectrogram(spec, s)
-            _boxes(spec, s)
+            _mask(spec, s)
             spec.set_title(f"shot {s.shot} ({s.split}): F1 (0-2 s) {s.f1:.2f}")
             _owner_bars(strip, s, (0, 1))
             strip.set_yticks([])
@@ -609,6 +580,5 @@ def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:
                 ax.tick_params(labelbottom=False)
         axes[-1].set_xlabel("time (ms)")
         _legend(fig)
-        place_numbers(fig, [(axes[3 * k], s) for k, s in enumerate(shots)])
         save(fig, stem)
     return fig
