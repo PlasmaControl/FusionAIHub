@@ -14,16 +14,19 @@
 # QOS pppl-short-stellar, partition serial (sacct). Only evaluate (2942492) and
 # gallery (2942516-2942518) went to partition all / QOS stellar-debug.
 
-# The AE frame model, one array task per candidate, in `train.CANDIDATES` order:
+# The AE frame model, one array task per candidate, in `train.candidates(VERSION)`
+# order (VERSION defaults to v1):
 #   0 band80-mhd3    1 band0-mhd3    2 band0-mhd10
+# v2 is chosen by cross-validation instead (ae_xpower_cv.sbatch, then
+# ae_xpower_final.sbatch); `train --version v2 --candidate` is refused.
 # `python -m labeler.ae.xpower.train --candidate <name>` reads the owner's saved AE labels
 # ($LABELER_LABEL_TABLES/alfven_eigenmode/review/labels.csv, copied into the model directory),
 # the review store's AE rows ($LABELER_ROOT/spectrograms/alfven_eigenmode) and TokEye's masks
-# ($LABELER_ROOT/ae/masks), and writes $LABELER_ROOT/models/ae_xpower/v1/<name>/
+# ($LABELER_ROOT/ae/masks), and writes $LABELER_ROOT/models/ae_xpower/$VERSION/<name>/
 # {model.pt, split.csv, training.json, review/labels.csv}. Nothing is fetched.
 # CPU only: the model has under 100k parameters, and a GPU would idle far below the 70 % gate.
 #
-#   pilot:      PILOT=20 sbatch --array=0 <this>   (20 shots, 2 epochs, into runs/ae_xpower/pilot)
+#   pilot:      PILOT=20 sbatch --array=0 <this>   (20 shots, 2 epochs, into runs/ae_xpower/pilot/$VERSION)
 #   full run:   sbatch <this>   (2800M, sized from the full runs below)
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #
@@ -47,8 +50,10 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
 cd "$REPO"
+VERSION="${VERSION:-v1}"  # v1 by default, so v1's commands still mean v1
 K="${SLURM_ARRAY_TASK_ID:-0}"
-CANDIDATE="$("$ENV/bin/python" -c "from labeler.ae.xpower.train import CANDIDATES; print(list(CANDIDATES)[$K])")"
-echo "job ${SLURM_JOB_ID:-none} task $K ($CANDIDATE) on $(hostname) at $(date -Is), root $ROOT"
-srun "$ENV/bin/python" -m labeler.ae.xpower.train --candidate "$CANDIDATE" ${PILOT:+--pilot "$PILOT"}
+CANDIDATE="$("$ENV/bin/python" -c "from labeler.ae.xpower.train import candidates; print(list(candidates('$VERSION'))[$K])")"
+echo "job ${SLURM_JOB_ID:-none} task $K ($VERSION $CANDIDATE) on $(hostname) at $(date -Is), root $ROOT"
+srun "$ENV/bin/python" -m labeler.ae.xpower.train --version "$VERSION" \
+    --candidate "$CANDIDATE" ${PILOT:+--pilot "$PILOT"}
 echo "finished at $(date -Is)"
