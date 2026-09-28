@@ -47,7 +47,7 @@ ECE_BIN_MS = 0.05
 #: every 10 ms. Of the chords with a Te on at least half as many of the plasma
 #: window's samples as the best-lit chord, the `TE_CHORDS` hottest by their
 #: median over it are drawn in keV. A share of the best's, not of the window:
-#: without a window it is the record's 14 s, which a plasma fills under half of
+#: without a window it is the record's 10-14 s, which a plasma fills under half of
 #: (192238: 45 %). A fit that failed reads 0 or below (1-9 % of samples) and is
 #: left out. A bad one reads high (17 keV over 195786's 2 keV core, just after
 #: its window) and would set the row's range, so the row is clipped above its
