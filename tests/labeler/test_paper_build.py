@@ -140,6 +140,53 @@ def test_the_extension_reason_comes_from_the_bar(runs, tmp_path):
     assert entry["reason"] == build.NO_EVALUATION
 
 
+NO_BAR_KEY = "the record has no bar"
+UNDECIDED = "extension not run: the AE evaluation's bar leaves {} undecided (D47)"
+
+
+@pytest.mark.parametrize(
+    ("bar", "reason"),
+    [
+        (
+            {"A1": True, "A2": True, "all": False},
+            "the extension passed its gate (D47) but has not written summary.csv",
+        ),
+        ({"A1": False, "A2": True}, "extension not run: A1 failed (D47)"),
+        ({"A1": True, "A2": False}, "extension not run: A2 failed (D47)"),
+        ({"A1": False, "A2": False}, "extension not run: A1 and A2 failed (D47)"),
+        ({"A1": False}, "extension not run: A1 failed (D47)"),
+        ({"A1": True}, UNDECIDED.format("A2")),
+        ({"A1": None, "A2": True}, UNDECIDED.format("A1")),
+        ({"A1": "true", "A2": 1}, UNDECIDED.format("A1 and A2")),
+        ({}, UNDECIDED.format("A1 and A2")),
+        (None, "extension not run: the AE evaluation records no bar (D47)"),
+        (NO_BAR_KEY, "extension not run: the AE evaluation records no bar (D47)"),
+    ],
+    ids=[
+        "both-pass",
+        "A1-fails",
+        "A2-fails",
+        "both-fail",
+        "A1-fails-A2-unrecorded",
+        "A2-unrecorded",
+        "A1-null",
+        "not-booleans",
+        "empty-bar",
+        "bar-null",
+        "no-bar",
+    ],
+)
+def test_the_extension_reason_says_what_the_bar_records(bar, reason):
+    record = tree.ae_evaluation()
+    del record["bar"]
+    if bar != NO_BAR_KEY:
+        record["bar"] = bar
+    said = build.extension_reason(record)
+    assert said == reason
+    passed = isinstance(bar, dict) and bar.get("A1") is True and bar.get("A2") is True
+    assert ("passed its gate" in said) == passed, "only when both are recorded True"
+
+
 def _files(out: Path) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(out.iterdir())}
 
