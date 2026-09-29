@@ -155,7 +155,9 @@ where you see them.
 **H-mode** (`dalpha_lh`).
 
 - Rows:
-  - the D-alpha filterscopes FS01-FS08, what the method reads;
+  - the D-alpha filterscopes FS01-FS08, what the method reads, each clipped
+    to its robust range over the plasma window as the ELM traces are (the
+    title says so when anything was cut);
   - the density, the CO2 R0 chord averaged over 1 ms;
   - the NBI power summed over the beams, in MW;
   - beta_N, only on the shots the features store holds (62 of the 450).
@@ -189,7 +191,10 @@ where you see them.
   4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
   falls by more than 6 standard deviations of its own change, taken second by
   second. The Thomson and SXR chords are chosen over the whole record,
-  whatever the view.
+  whatever the view. The SXR chords are clipped to their robust range over
+  the plasma window, as the ELM traces are, and the title says so when
+  anything was cut. The ECE rows are not: each sample is already its
+  0.05 ms median.
 - A shot without ECE, Thomson or SXR gets the others' rows alone.
 - Draft: the runs of crashes, starting in the plasma as above.
 
