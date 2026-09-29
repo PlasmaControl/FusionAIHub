@@ -18,18 +18,24 @@ directory or a pilot's under `runs/` (`check_own_dir`), never from a copy
 elsewhere. Each index row names the version's label snapshot by sha256
 (`snapshot_sha256`, blank for v1, which has none).
 
-**The F1 in a reviewed picture's title** is over the frames the test scores,
-0-2 s (`f1_0_2s` in `index.csv`): `evaluate.shot_frames` selects them, with
-the source table's window, and `evaluate.cells` counts them, as the test does.
-`f1_vs_owner` stays the F1 over the owner's whole window. Both are blank for an
-unreviewed shot.
+**The F1 in a reviewed picture's title** is over the frames the test scores.
+A version scored on 0-2 s (v1, v2) gives the F1 of `evaluate.shot_frames`'s
+frames, with the source table's window, counted by `evaluate.cells` as the test
+does. A whole-window version (`WHOLE_WINDOW_VERSIONS`, v3) is scored, titled
+("whole window") and indexed over the owner's whole window instead: the frames
+of `evaluate.whole_frames`. `index.csv` gives the title's F1 as `f1_scored` and
+its window as `scored_window` ("0-2 s" or "whole"); `f1_0_2s` stays in every
+row, v3's too, and `f1_vs_owner` stays the F1 over every frame of the owner's
+window that the owner called present or absent, TokEye's record covering it or
+not. All three F1 and `scored_window` are blank for an unreviewed shot.
 
 A picture is three cross-power rows, 0-250 kHz, on the review page's colour
-scale (inferno over -3..27 dB above each bin's quiet median) with a dashed line
-at 80 kHz, where the model's band starts; a strip of the owner's frames
-(present red, uncertain amber, not observable grey); and the model's P(AE) per
-10 ms frame with its threshold, its present frames shaded, and the frames
-TokEye marks as MHD ticked along the bottom.
+scale (inferno over -3..27 dB above each bin's quiet median); a strip of the
+owner's frames (present red, uncertain amber, not observable grey); and the
+model's P(AE) per 10 ms frame with its threshold, its present frames shaded, and
+the frames TokEye marks as MHD ticked along the bottom. A version scored on 0-2 s
+has a dashed "scored: 0-2 s" line at 2 s on every panel of a picture that runs
+past it; a whole-window version's picture has none.
 """
 
 from __future__ import annotations
@@ -56,7 +62,9 @@ from . import (
     CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
+    SCORED_UNTIL_MS,
     VERSION,
+    WHOLE_WINDOW_VERSIONS,
     check_bound,
     check_own_dir,
     event_dir,
@@ -64,6 +72,7 @@ from . import (
     model_dir,
     pilot_area,
     read_snapshot,
+    scored_until,
     tokeye_masks,
 )
 from .data import (
@@ -75,7 +84,7 @@ from .data import (
     targets,
     window_frames,
 )
-from .evaluate import cells, chosen_model, shot_frames
+from .evaluate import cells, chosen_model, shot_frames, whole_frames
 from .train import f1_of, frame_cells, load, probabilities, read_split
 
 STATE_COLOURS = {
@@ -98,9 +107,10 @@ INDEX_COLUMNS = (
     "version",
     "snapshot_sha256",
     "f1_0_2s",
+    "scored_window",
+    "f1_scored",
 )
 MARGIN_MS = 50.0
-BAND_LINE_KHZ = 80.0
 
 
 def _runs(flags: np.ndarray) -> list[tuple[int, int]]:
@@ -123,9 +133,13 @@ def draw(
     reference: np.ndarray | None = None,
     reference_name: str = "owner",
     mhd: np.ndarray | None = None,
+    scored_until_ms: float | None = SCORED_UNTIL_MS,
 ) -> None:
     """One shot's picture, JPEG. `values` is `(3, n_y, n)` bytes on `grid`;
-    `prob`, `reference` and `mhd` are per frame from frame `first`."""
+    `prob`, `reference` and `mhd` are per frame from frame `first`. A dashed line,
+    "scored: 0-2 s" for the default 2000 ms, marks `scored_until_ms` on every
+    panel when the picture runs past it; None, a whole-window version's, draws
+    none."""
     n = len(prob)
     t0, t1 = first * FRAME_MS - MARGIN_MS, (first + n) * FRAME_MS + MARGIN_MS
     fig = Figure(figsize=(16, 10), dpi=100, layout="constrained")
@@ -149,7 +163,6 @@ def draw(
             vmax=255,
             interpolation="nearest",
         )
-        ax.axhline(BAND_LINE_KHZ, color="white", lw=0.8, ls="--")
         ax.set_ylim(0, 250)
         ax.set_ylabel(f"{name.replace('x', ' × ')}\nkHz")
     edges = (first + np.arange(n + 1)) * FRAME_MS
@@ -185,14 +198,15 @@ def draw(
     model.set_ylabel("P(AE)")
     model.set_xlabel("time (ms)")
     model.set_xlim(t0, t1)
-    if t1 > 2000:
+    if scored_until_ms is not None and t1 > scored_until_ms:
+        caption = f"scored: 0-{scored_until_ms / 1000:g} s"
         for ax in axes:
             colour = "white" if ax in axes[:3] else "black"
-            ax.axvline(2000, color=colour, lw=0.8, ls="--", label="scored: 0-2 s")
+            ax.axvline(scored_until_ms, color=colour, lw=0.8, ls="--", label=caption)
             ax.text(
-                2000,
+                scored_until_ms,
                 0.98,
-                "scored: 0-2 s",
+                caption,
                 transform=ax.get_xaxis_transform(),
                 ha="right",
                 va="top",
@@ -288,10 +302,11 @@ def picture(shot: int) -> dict:
     )
     grid, values, y0, dy = store_rows(store, level=8)
     reference = targets(label, first, n)
-    mhd = mhd_frames(clean_path(tokeye_masks(paths), shot), first, n)
+    mhd = mhd_frames(clean_path(tokeye_masks(paths, version), shot), first, n)
     split = w["split"].get(shot, "unreviewed" if not reviewed else "after training")
     f1 = f1_of(frame_cells(prob, reference, blob["threshold"])) if reviewed else None
-    scored = None
+    whole = version in WHOLE_WINDOW_VERSIONS
+    scored = f1_scored = None  # the F1 over 0-2 s, and over the version's window
     if reviewed:  # the test's frames and rule, 0-2 s
         frames = shot_frames(
             shot,
@@ -301,11 +316,22 @@ def picture(shot: int) -> dict:
             blob=blob,
             source=w["source"].get(shot),
         )
-        scored = float(stats.f1(cells([frames], "ae_xpower")[0]))
+        scored = f1_scored = float(stats.f1(cells([frames], "ae_xpower")[0]))
+        if whole:  # v3 is scored on the owner's whole window
+            frames = whole_frames(
+                shot,
+                paths=paths,
+                label=label,
+                model=w["model"],
+                blob=blob,
+                version=version,
+            )
+            f1_scored = float(stats.f1(cells([frames], "ae_xpower")[0]))
+    window, named = ("whole", "whole window") if whole else ("0-2 s", "0-2 s")
     group = "reviewed" if reviewed else "unreviewed"
     file = out / group / f"{shot}.jpg"
     title = f"{shot}   AE, ae_xpower {version} ({blob['candidate']}), split {split}" + (
-        f", F1 vs owner, 0-2 s {scored:.2f}"
+        f", F1 vs owner, {named} {f1_scored:.2f}"
         if reviewed
         else ", not reviewed: strip is the source table"
     )
@@ -322,6 +348,7 @@ def picture(shot: int) -> dict:
         reference=reference,
         reference_name="owner" if reviewed else "source",
         mhd=mhd,
+        scored_until_ms=scored_until(version),
     )
     other_group = "unreviewed" if reviewed else "reviewed"
     (out / other_group / f"{shot}.jpg").unlink(missing_ok=True)
@@ -340,6 +367,8 @@ def picture(shot: int) -> dict:
         "version": version,
         "snapshot_sha256": w["snapshot"],
         "f1_0_2s": "" if not reviewed else round(scored, 4),
+        "scored_window": "" if not reviewed else window,
+        "f1_scored": "" if not reviewed else round(f1_scored, 4),
     }
 
 
@@ -413,7 +442,7 @@ def main(argv=None) -> int:
         check_tested(models, version, model_file)
     except (OSError, ValueError, KeyError) as error:
         p.error(str(error))
-    shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
+    shots = args.shots or sorted(seldnet_split(tokeye_masks(paths, version)))
     init = (
         str(model_file),
         str(paths.root),

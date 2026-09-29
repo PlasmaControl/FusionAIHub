@@ -45,7 +45,7 @@ from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
 from ..xpower import tokeye_masks
 from ..xpower.data import BAND_KHZ, band_slice, raw_rows, seldnet_split, store_rows
-from ..xpower.gallery import BAND_LINE_KHZ, run_all
+from ..xpower.gallery import run_all
 from . import EVENT, METHOD, VERSION, model_dir, poi_dir, regions
 from .pseudo import EIGHT, IGNORE, LEVEL, PseudoMask
 from .train import load, predict
@@ -156,7 +156,6 @@ def draw(
             vmax=255,
             interpolation="nearest",
         )
-        ax.axhline(BAND_LINE_KHZ, color="white", lw=0.8, ls="--")
         ax.set_ylim(0, 250)
         ax.set_ylabel("R0 × V1\nkHz")
         if extent[1] > 2000:
