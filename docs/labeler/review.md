@@ -110,15 +110,33 @@ are these:
 
 - *present*: the method saw the phenomenon.
 - *absent*: the inputs were measured and showed nothing.
-- *uncertain*: see H-mode below.
-- *not observable*: the method's inputs did not measure that time. A shot the
-  method could not run on is not observable throughout, and the table's
-  `.meta.json` records why under `skipped`.
+- *uncertain*: see H-mode, and in v2 the ramp-up, below.
+- *not observable*: the method's inputs did not measure that time; in v2 that
+  includes an ELM filterscope that stopped reading (below). A shot the method
+  could not run on is not observable throughout, and the table's `.meta.json`
+  records why under `skipped`.
 
-The meta's `rule` holds only the constants that method uses. Its `per_shot`
-records, for each shot, what the page does not show: where the draft started,
-and for ELMs the filterscope read and whether the H-mode gate ran. `gold`
-holds the score from the last `--gold` run.
+**Versions.** `spans --version` names the table a run writes,
+`$LABELER_ROOT/suggestions/<method>/<version>/`. The pages open on v1's: the
+four editors' `review/source.json` name v1 tables, and `cohort_rosters --point`
+writes v1's. v2's tables, beside them, add two rules to the ELM and sawtooth
+drafts: the ramp-up's uncertain time and, for ELMs, dead filterscopes. The
+H-mode and tearing-mode v2 tables hold v1's rows. A table keeps the rules it
+was drafted under: a run into a table whose meta records other rules than the
+method's now is refused and changes nothing (`check_rule`), so v1's tables keep
+the old rules and a changed rule goes into a new version. A page opens on v2
+only once its pointer is moved to the v2 table (`labels.write_pointer`).
+
+The meta's `rule` holds only the constants that method uses; v2's adds
+`min_dead_ms` to the ELM rule, `ramp` to both `start` rules, and the ramp-up to
+the ELM `l_mode`. Its `per_shot` records, for each shot, what the page does not
+show: where the draft started (`start_ms`, and `start_from`: "ip", or the
+fallback and why) and, in v2, how many events made the ramp-up uncertain
+(`ramp_events`); for ELMs also the filterscope read (`channel`), whether the
+H-mode gate ran (`hmode_gate`: "ran", or why not) and, in v2, how many ms of the
+window that filterscope's dead stretches take (`dead_ms`). `ramp_events` and
+`dead_ms` appear only when not zero. `gold` holds the score from the last
+`--gold` run.
 
 **ELM and sawtooth drafts start in the plasma.** A span is a run of at least 3
 events (ELMs at most 200 ms apart, sawtooth crashes at most 300 ms), padded by
@@ -128,9 +146,28 @@ and spikes of the ramp-up neither make a run nor join one. The start is the
 first time the 25 ms centred mean of |Ip| inside the window reaches 0.8 of its
 plateau (its 95th percentile), the catalog's flat-top fraction. Ip comes from
 the corpus or the raw cache. A shot without Ip starts 700 ms into its window,
-the median on the 450 shots. Time before the start is absent. Sawteeth in the
-ramp-up are left out with it: 189061's 227-530 ms, for one. Add them by hand
-where you see them.
+the median on the 450 shots.
+
+**The ramp-up**, from the window's start to the plasma's, is where v1 and v2
+differ. In v1 it is absent, and the events in it are left out with it: 189061's
+sawteeth at 227-530 ms, for one. In v2 it is uncertain where the detector saw
+any event there, one is enough, and absent where it saw none (`ramp_up`):
+
+- Sawteeth: the whole ramp-up, once the ECE array saw a crash in it. 189061's
+  is uncertain from 6 to 557 ms, on 7 crashes. 443 of the queue's 450 v2
+  drafts open this way, 43 of them on one or two crashes.
+- ELMs: the ramp-up less the time the H-mode draft calls absent (L-mode),
+  piece by piece. Each piece that holds an ELM is uncertain, and the L-mode
+  time stays absent, so a ramp-up all in L-mode stays absent. The H-mode
+  draft's uncertain time, and time it did not measure, are not L-mode, so ELMs
+  there count: 189324's ramp-up is uncertain at 8-302 ms, where the H-mode
+  draft is uncertain too (56 ELMs), and absent at 302-830 ms. Without the
+  H-mode gate the ramp-up is one piece. 80 of the 450 v2 drafts have an
+  uncertain ramp-up, 13 of them without the gate.
+
+Like any span, the uncertain time is clipped to what the inputs measured. The
+ramp-up's events still neither make a run nor join one, so in either version
+mark the sawteeth or ELMs you see there by hand.
 
 **ELMs** (`elm_clock`).
 
@@ -150,7 +187,16 @@ where you see them.
 - Draft: the runs of ELMs, less any time the H-mode method saw the shot in
   L-mode, because the clock also counts L-mode D-alpha spikes. A shot whose
   H-mode inputs are missing keeps its runs whole, and `per_shot` records why
-  under `hmode_gate`.
+  under `hmode_gate`. In v2 the ramp-up is uncertain where it holds ELMs
+  outside L-mode (above).
+- Dead filterscopes (v2): a stretch of at least 200 ms (`min_dead_ms`) over
+  which the filterscope read repeats one value is a channel that stopped
+  reading (`dead_stretches`). It is not observable, not absent, and no span
+  covers it; `dead_ms` gives its length inside the window. 186636's FS02 is
+  dead from 3877 ms to the window's end at 7285 ms. Only the filterscope the
+  draft reads is checked, and the draft never switches to another, even when
+  another filterscope is live over the dead stretch. The H-mode editor draws
+  all eight. v1 has no such rule: its drafts call that time absent.
 
 **H-mode** (`dalpha_lh`).
 
@@ -196,7 +242,8 @@ where you see them.
   anything was cut. The ECE rows are not: each sample is already its
   0.05 ms median.
 - A shot without ECE, Thomson or SXR gets the others' rows alone.
-- Draft: the runs of crashes, starting in the plasma as above.
+- Draft: the runs of crashes, starting in the plasma as above. In v2 the
+  ramp-up is uncertain once the array saw a crash in it (above).
 
 **Tearing modes** (`window`).
 
@@ -234,7 +281,7 @@ pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confine
 # the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
 # --version v2 writes beside v1's tables, which refuse a rerun under today's rules.
 pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --version v2 --gold
-# The roster in queue order, and --point opens the page on the draft.
+# The roster in queue order, and --point opens the page on the v1 draft.
 pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
     --event sawtooth_oscillation --point
 # The row store ahead of the review; --force rebuilds built shots
