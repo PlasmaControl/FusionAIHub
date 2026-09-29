@@ -23,7 +23,10 @@ into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json` beside it.
 `model.pt` is written after the files beside it, so a job that ends between it
 and `chosen.json` leaves a whole model: run again, it writes `chosen.json` if
 the current choice, folds and snapshot made that model, and otherwise refuses;
-it never trains a second one.
+it never trains a second one. A whole-window version's final model, its
+`training.json` and `chosen.json` name `ae/masks-full` and `ae/dataset-full` by
+their manifests' sha256 (`inputs`, `labeler.ae.full.inputs_identity`), refused
+unless the choice names the same.
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -55,6 +58,7 @@ from torch.nn import functional as F
 from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
+from ..full import check_inputs
 from . import (
     CV_VERSIONS,
     EVENT,
@@ -468,6 +472,8 @@ def train_from_cv(
             f"{choice_file}: made from other folds than "
             f"{cv.cv_dir(models) / 'folds.csv'} holds"
         )
+    # A whole-window version's masks-full and dataset-full, as the choice's.
+    inputs = check_inputs(paths, version, choice.get("inputs"), choice_file)
     name, threshold = choice["candidate"], float(choice["threshold"])
     spec = candidate_spec(version, name)
     out, chosen_file = models / name, models / "chosen.json"
@@ -490,6 +496,7 @@ def train_from_cv(
         "snapshot_sha256": digest,
         "fixed_epochs": epochs,
         "cv_branch": choice["branch"],
+        **({"inputs": inputs} if inputs else {}),
     }
     if (out / "model.pt").exists() and not pilot:
         # Saved, and the job gone before chosen.json: that model's record, if
@@ -543,6 +550,7 @@ def train_from_cv(
         "folds_sha256": folds.sha256,
         "labels_sha256": digest,
         "model_sha256": sha256_of(out / "model.pt"),
+        **({"inputs": inputs} if inputs else {}),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }

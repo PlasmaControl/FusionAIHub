@@ -36,7 +36,11 @@ rows cover, by `WHOLE_METHODS`: `source` and `uci` cover 0-2 s only. No source
 table filters them (the table covers 0-2 s), so its fold records and choice
 name none (`source_sha`) and its test compares none. Its out-of-fold frames are
 these too. Beside the bar, not judged against it, its test also scores v2's
-exact 0-2 s table: the frames above, by every method (`window_0_2s`).
+exact 0-2 s table: the frames above, by every method (`window_0_2s`). Its test
+refuses a choice, `chosen.json` or checkpoint naming other `ae/masks-full` or
+`ae/dataset-full` files than their manifests list now (`inputs`,
+`labeler.ae.full.check_inputs`; v3's, made before the manifests, stand on its
+`inputs.json`), and records the manifests' sha256 in its meta (`inputs`).
 
 **Methods.** `ae_xpower`, the chosen candidate at its validation threshold;
 `seldnet`, the earlier detector (`ae_seldnet_threeway_sce.pt`), a frame present
@@ -82,6 +86,7 @@ from ...events.catalog.states import ABSENT, PRESENT
 from ...events.review import labels
 from ...scoring import stats
 from .. import model as seldnet_model
+from ..full import check_inputs, inputs_identity
 from . import (
     CV_VERSIONS,
     EVENT,
@@ -661,6 +666,11 @@ def cv_chosen(
                 f"{choice_file}: names a source table (source_sha256); a "
                 "whole-window version's frames are filtered by none"
             )
+        # masks-full and dataset-full as the manifests list them now.
+        identity = check_inputs(paths, version, choice.get("inputs"), choice_file)
+        check_inputs(
+            paths, version, chosen.get("inputs"), chosen_file, identity=identity
+        )
         return chosen
     source = source_table(paths) if source is None else source
     if source.sha256 != choice.get("source_sha256"):
@@ -678,7 +688,8 @@ def check_cv_model(
     """The final model of a cross-validated version is the one `chosen.json`
     names: its choice, threshold and label snapshot and, outside a pilot, trained
     as `choice` (the `cv/choice.json` it names) says: for its `final_epochs`, on
-    the candidate's band, with `train.cv_config`'s TrainConfig; the meta it adds."""
+    the candidate's band, with `train.cv_config`'s TrainConfig, and from the
+    `inputs` it names, if any; the meta it adds."""
     version = chosen["version"]
     expected = LABEL_SNAPSHOTS[version]
     check_snapshot(hashlib.sha256(labels_copy).hexdigest(), version, file.parent)
@@ -691,6 +702,8 @@ def check_cv_model(
         "snapshot_sha256": expected,
         "from_cv": True,
     }
+    if "inputs" in chosen:  # a whole-window version's, made after the manifests
+        wanted["inputs"] = chosen["inputs"]
     if not choice.get("pilot"):  # a pilot's trains for cv.PILOT_EPOCHS instead
         spec = candidate_spec(version, choice["candidate"])
         epochs = choice["final_epochs"]
@@ -990,6 +1003,8 @@ def run_test(
         "frames_window": "whole" if whole else "0-2 s",
         **inputs.cv_meta,
     }
+    if whole:  # masks-full's and dataset-full's manifests, as load_test checked
+        meta["inputs"] = inputs_identity(paths, version)
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
     if subset is not None:
         record[f"{subset['version']}_subset"] = subset

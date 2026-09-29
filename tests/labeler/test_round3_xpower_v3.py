@@ -23,6 +23,7 @@ from .test_ae_xpower_cv import POOL, SPLITS, TEST, _fake_fit
 
 def v3_tree(tmp_path, monkeypatch, splits=SPLITS):
     paths = round3_tree.build(tmp_path, splits)
+    round3_tree.manifests(paths)  # v3's records name masks-full's and dataset-full's
     ae_tree.env(monkeypatch, paths)
     digest = ae_tree.snapshot(paths, monkeypatch, "v3")
     return paths, digest
