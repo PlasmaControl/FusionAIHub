@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=2500M
-#SBATCH --time=00:30:00
+#SBATCH --mem=6G
+#SBATCH --time=01:00:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 # Scheduler: pppl/pppl-short-stellar -> all/stellar-debug; sacct 2942492,2942516-18.
@@ -26,7 +26,14 @@
 #   pilot:            MODELS=$LABELER_ROOT/runs/ae_xpower/pilot/$VERSION LIMIT=3 sbatch <this>
 #   gate:             python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26, login node, 1 thread)
+# ------------------------------------------ sizing (measured 2026-09-29, v3)
+#   v3 scores whole windows from masks-full, about 3 times v2's 0-2 s frames. At 2500M its
+#   first pilot (2944500) ran out of memory; the second (2944515, 3 test shots at 8G) took
+#   1 min 7 s, --test's MaxRSS 4,707,100 KiB (4.49 GiB). The full test (2944534, 60 shots):
+#   15 min 50 s, MaxRSS 4,984,784 KiB (4.75 GiB), CPU 96.5 %, memory 73.3 %.
+#   mem=6G          the pilot's 4.49 GiB x 1.3; the test holds one whole shot at a time.
+#   time=01:00:00   the full test's 16 min x 3.75.
+# before v3 (measured 2026-09-26, login node, 1 thread):
 #   pilot, 3 test shots, every method (SELDNet included): 14 s wall, max RSS 1.85 GB.
 #   mem=2500M       1.85 GB x 1.35; the scores held per shot are a few kB.
 #   time=00:30:00   3 x 16 validation shots x ~1.5 s + 58 test shots x ~4 s = ~5 min, x 6.
