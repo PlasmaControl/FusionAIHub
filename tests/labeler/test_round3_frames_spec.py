@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import itertools
 import json
 
 import h5py
@@ -14,14 +13,21 @@ import pytest
 from labeler import frames
 from labeler.events import rosters
 from labeler.events.interval_tables import write_label_grid
+from labeler.events.panels._shared import CLIPPED, robust_limits
 from labeler.events.review import labels
 from labeler.frames import targets
 from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
 
 from . import editor_tree, frames_tree
 from .frames_tree import (
+    DT_MS,
+    ECE_PHASE_MS,
+    ECE_RISE_KEV,
     ELM,
+    EVENT_MS,
     HMODE,
+    HMODE_DROP_MS,
+    HMODE_FS,
     IP_SHOT,
     IP_SHOT_HULL,
     IP_WINDOW,
@@ -132,6 +138,25 @@ def _roster(shots) -> pd.DataFrame:
 
 def _by_start(starts, states) -> dict[float, int]:
     return dict(zip(np.asarray(starts).tolist(), np.asarray(states).tolist()))
+
+
+def _fine(tree, method) -> tuple[np.ndarray, dict]:
+    """A tree store's column centres and its trace rows' level-1 maxima by title."""
+    spec = frames.SPECS[method]
+    with h5py.File(frames.store_path(tree, spec, SHOTS[spec.store_event]), "r") as f:
+        t0, dt, n = (f.attrs[key] for key in ("t0_ms", "dt_ms", "n"))
+        metas = {name: json.loads(f["rows"][name].attrs["meta"]) for name in f["rows"]}
+        maxima = {
+            meta["title"]: f["rows"][name]["1"][1]
+            for name, meta in metas.items()
+            if meta["kind"] == "trace"
+        }
+    return t0 + (np.arange(n) + 0.5) * dt, maxima
+
+
+def _titled(values: dict, prefix: str) -> np.ndarray:
+    (found,) = [v for title, v in values.items() if title.startswith(prefix)]
+    return found
 
 
 def test_the_specs_are_the_four_events_with_their_bars():
@@ -330,22 +355,35 @@ def test_the_tree_stores_hold_each_spec_s_rows(tree):
         assert saved[shot].window == WINDOW
     # The ELM role takes the filterscope, not PCPHD03, clipped suffix and all.
     assert matched["elm_frames", "D-alpha FS"]["title"] == (
-        "D-alpha FS01, the ELM spans' channel, clipped to its plasma range"
+        "D-alpha FS01, the ELM spans' channel" + CLIPPED
     )
     # The pooled H-mode filterscopes: 7 lit channels, as on 186561.
     fs = matched["hmode_frames", "D-alpha filterscopes"]
     assert (fs["n_channels"], fs["legend"]) == (7, [f"FS{c:02d}" for c in range(2, 9)])
-    # The rows a method could read by mistake hold data of their own.
-    alike = (("elm_frames", "D-alpha", 2), ("sawtooth_frames", "ECE", 4))
-    for method, prefix, count in alike:
-        spec = frames.SPECS[method]
-        with h5py.File(frames.store_path(tree, spec, SHOTS[spec.event]), "r") as f:
-            groups = [f["rows"][name] for name in json.loads(f.attrs["rows"])]
-            values = [
-                g["1"][...]
-                for g in groups
-                if json.loads(g.attrs["meta"])["title"].startswith(prefix)
-            ]
-        assert len(values) == count, method
-        for a, b in itertools.combinations(values, 2):
-            assert not np.allclose(a, b, atol=0.1), method
+    # The rows a method could read by mistake differ in their shape, not only in
+    # offset and scale, which a robust per-row scaling (D64) takes away (M1a).
+    _, elm = _fine(tree, "elm_frames")
+    pcphd03, fs01 = _titled(elm, "D-alpha PCPHD03"), _titled(elm, "D-alpha FS")
+    assert abs(np.corrcoef(pcphd03[0], fs01[0])[0, 1]) < 0.2
+    # Each ECE row's channels rise with its own crash phase and no other row's.
+    t, ece = _fine(tree, "sawtooth_frames")
+    during = (t >= EVENT_MS[0]) & (t < EVENT_MS[1])
+    shapes = [
+        size * frames_tree.sawtooth_rise(t, phase)[during]
+        for size, phase in zip(ECE_RISE_KEV, ECE_PHASE_MS, strict=True)
+    ]
+    roles = [r for r in frames.SPECS["sawtooth_frames"].roles if r.name == "ece"]
+    for i, role in enumerate(roles):
+        for channel in _titled(ece, role.title):
+            r = [np.corrcoef(channel[during], shape)[0, 1] for shape in shapes]
+            assert np.argmax(r) == i and r[i] > 0.9, (role.title, np.round(r, 2))
+    # Each H-mode filterscope drops at its own L-H time: robust-scaled, it falls
+    # through the middle of its range within a column of its drop.
+    assert len(set(HMODE_DROP_MS)) == len(HMODE_FS)
+    t, hmode = _fine(tree, "hmode_frames")
+    dalpha = _titled(hmode, "D-alpha filterscopes")
+    lo, hi = (v[:, None] for v in robust_limits(t, dalpha, None))
+    scaled = (dalpha - lo) / (hi - lo)
+    for channel, drop in enumerate(HMODE_DROP_MS):
+        first = t[np.argmax(scaled[channel] < 0.5)]
+        assert abs(first - drop) < DT_MS[HMODE], (HMODE_FS[channel], first)
