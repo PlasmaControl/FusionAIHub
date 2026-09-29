@@ -3,11 +3,13 @@
 Three places are tried in order: the corpus, the fetch cache (`$LABELER_ROOT/raw`),
 and a live fetch that writes the cache. A caller cannot tell which one answered
 except by `attrs["tier"]`, which exists for diagnostics, not for branching.
-Nothing here writes the corpus.
+Nothing here writes the corpus. With `LABELER_NO_FETCH` set the third tier is
+off, and a group neither of the first two holds is an error instead.
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 import uuid
@@ -36,6 +38,12 @@ SENTINEL_WIDTH = 1
 #: so a fetched shot and a corpus shot index the same.
 ECE_CHANNELS = tuple(range(1, 49))
 
+#: Set (to anything but "" or "0") where a live fetch must not happen, as in a
+#: SLURM job: `_fetch` then never calls fdp, so a group neither tier holds is
+#: an error for the job to report, not a fetch. (It gates this module's route
+#: only; `labeler.run`'s toksearch route is not covered.)
+NO_FETCH_ENV = "LABELER_NO_FETCH"
+
 
 class WindowEmptyError(NoDataError):
     """The record is on disk; the window asked for falls outside it.
@@ -53,6 +61,15 @@ class UpstreamError(NoDataError):
     is not here", which is why it is the only one a caller should report as
     a bad gateway.
     """
+
+
+class FetchDisabledError(NoDataError):
+    """A group missing from the corpus and the cache while fetching is off."""
+
+
+def fetching_disabled() -> bool:
+    """True when os.environ[NO_FETCH_ENV] is set and not "" or "0"."""
+    return os.environ.get(NO_FETCH_ENV, "") not in ("", "0")
 
 
 @dataclass(frozen=True)
@@ -254,6 +271,20 @@ def _holds_record(shot: int, group: str, root: Path) -> bool:
         return False
 
 
+def record_tier(shot: int, group: str, *, paths: Paths | None = None) -> str | None:
+    """The first tier whose file holds a real record of `group`, "corpus" or
+    "cache" (`_holds_record`, metadata only), else None. Never fetches.
+
+    The same tiers in the same order as `raw_signal`, so a "corpus" here is
+    the tier `raw_signal` would read; None is where it would fetch.
+    """
+    paths = Paths.from_env() if paths is None else paths
+    for tier, root in (("corpus", paths.corpus), ("cache", paths.raw_cache)):
+        if _holds_record(shot, group, root):
+            return tier
+    return None
+
+
 #: What a live fetch has got to, by shot. `progress_for` is the read side;
 #: the browser page polls it while a whole-shot render is in flight, because
 #: the fetch itself is one HTTP request that cannot say anything until it
@@ -333,6 +364,13 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
     otherwise refetch a shot that is already on disk - minutes, and hundreds
     of megabytes over the wire, for a drag of the mouse.
     """
+    # Before the route lookup, so with fetching off every miss raises this one
+    # error, whether or not the group has a route.
+    if fetching_disabled():
+        raise FetchDisabledError(
+            f"shot {int(shot)} has no {group!r} in the corpus or the cache, and "
+            f"fetching is off ({NO_FETCH_ENV}={os.environ[NO_FETCH_ENV]!r})"
+        )
     spec = FETCH_SPECS.get(group)
     if spec is None:
         raise NoDataError(
@@ -402,6 +440,8 @@ def main(argv=None) -> int:
         "--pace", type=float, default=1.0, help="seconds to wait after a fetch"
     )
     args = parser.parse_args(argv)
+    if fetching_disabled():
+        parser.error(f"{NO_FETCH_ENV} is set, so a cache fill would fetch nothing")
     paths = Paths.from_env()
     roster = roster_path(args.event, root=paths.label_tables)
     shots = args.shots or [int(shot) for shot in read_roster(roster).shot]
