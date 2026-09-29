@@ -197,10 +197,12 @@ const S = {
   timer: 0,
   saving: false, // or the event and shot whose save is in flight
   api: 1, // what /api/version said: 2 takes a name with each save and lists versions
-  name: "", // the reviewer's typed name, sent with each save
+  name: "", // the reviewer's name, sent with each save: picked from the list (api 5) or typed
+  picked: false, // a name was picked in this tab: the picker can then be closed without one
   versions: [], // the open shot's saved versions, as /api/history listed them
   masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
-  showMasks: true, // M shows and hides them; the browser remembers which
+  tokeye: null, // TokEye's lines over the whole shot, as /api/tokeye gave them (api 4)
+  showMasks: true, // M shows and hides both; the browser remembers which
 };
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
@@ -252,7 +254,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -397,7 +399,8 @@ async function boot() {
   });
   S.lo = clamp(Number(stored("labeler:contrast")) || 0, 0, 192);
   S.lut = lut(S.lo);
-  S.name = stored("labeler:name") || "";
+  S.picked = Boolean(picked());
+  S.name = picked() || stored("labeler:name") || "";
   $("reviewer-name").value = S.name;
   S.showMasks = stored("labeler:masks") !== "hidden";
   wire();
@@ -406,8 +409,17 @@ async function boot() {
   } catch {
     S.api = 1; // a server older than this page: save without a name, no history
   }
-  for (const id of ["reviewer-name", "show-versions"]) $(id).hidden = S.api < 2;
-  $("stale").hidden = S.api >= 2;
+  $("show-versions").hidden = S.api < 2;
+  $("reviewer-name").hidden = S.api < 2 || S.api >= 5;
+  $("reviewer").hidden = S.api < 5;
+  $("stale").hidden = S.api >= 5;
+  $("stale").textContent = S.api < 2
+    ? "Restart the server for names and history"
+    : "Restart the server for the list of names";
+  if (S.api >= 5) {
+    showName();
+    if (!S.picked) chooseName(); // not awaited: the shot loads behind the list
+  }
   try {
     S.events = (await (await api("/api/events")).json()).events;
     $("event").replaceChildren(
@@ -504,7 +516,7 @@ async function openEvent(event, shot) {
 function showNothing(shot, text) {
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
-    undo: [], selected: -1, asked: "", frame: 0, masks: null });
+    undo: [], selected: -1, asked: "", frame: 0, masks: null, tokeye: null });
   showMasks();
   const note = document.createElement("p");
   note.className = "failure";
@@ -533,7 +545,8 @@ async function openShot(shot) {
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
-    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null });
+    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
+      tokeye: null });
     S.label = draft(shot) || baseline();
     buildRows();
     arrive();
@@ -752,9 +765,11 @@ function drawRows() {
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
+    if (row.kind === "image") drawTokeye(g, row, w, h, true);
     if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
+    if (row.kind === "image") drawTokeye(g, row, w, h, false);
     g.restore();
     drawGutter(g, row, range, h);
     g.fillStyle = T.rule;
@@ -783,6 +798,53 @@ function drawImage(g, row, i, h) {
     const [x0, x1] = [px(data.t0), px(data.t1)];
     g.drawImage(bitmap(row, data, i), 0, row.n_y - stop, data.n, stop - first, x0, 0, x1 - x0, h - 1);
   }
+}
+
+/** TokEye's lines over the whole shot: `--tokeye` wherever TokEye lights two of the four
+ * chords, AE or not. A picture: a click never lands on it. Drawn in two parts, `inside` the
+ * label's window under the pseudo-mask and the label's lines, and outside it over the veil,
+ * which would otherwise wash it out where the pseudo-mask never reaches. */
+function drawTokeye(g, row, w, h, inside) {
+  const t = S.tokeye;
+  if (!t || !S.showMasks) return;
+  const [lo, hi] = imageRange(row);
+  const y = (f) => t.n_y - ((f - t.y0_khz) / t.dy_khz + 0.5); // the layer's own pixel rows
+  const [x0, x1] = [px(t.grid.t0_ms), px(t.grid.t0_ms + t.grid.n * t.grid.dt_ms)];
+  const [a, b] = S.label.window.map(px);
+  g.save();
+  g.beginPath();
+  if (inside) g.rect(a, 0, b - a, h);
+  else {
+    g.rect(0, 0, a, h);
+    g.rect(b, 0, w - b, h);
+  }
+  g.clip();
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tokeyeBitmap(t), 0, y(hi), t.grid.n, y(lo) - y(hi), x0, 0, x1 - x0, h - 1);
+  g.restore();
+}
+
+/** The layer as a canvas, a pixel per column and bin, top bin first; built once per colour. */
+function tokeyeBitmap(t) {
+  if (t.bitmap?.colour === T.tokeye) return t.bitmap.canvas;
+  const bytes = Uint8Array.from(atob(t.bits), (c) => c.charCodeAt(0));
+  const [n, stride] = [t.grid.n, Math.ceil(t.grid.n / 8)];
+  const lit = (j, k) => (bytes[j * stride + (k >> 3)] >> (7 - (k & 7))) & 1;
+  const canvas = document.createElement("canvas");
+  [canvas.width, canvas.height] = [n, t.n_y];
+  const g = canvas.getContext("2d");
+  g.fillStyle = T.tokeye;
+  for (let j = 0; j < t.n_y; j++) {
+    for (let k = 0; k < n; k++) {
+      if (!lit(j, k)) continue;
+      let end = k + 1;
+      while (end < n && lit(j, end)) end++;
+      g.fillRect(k, t.n_y - 1 - j, end - k, 1);
+      k = end;
+    }
+  }
+  t.bitmap = { colour: T.tokeye, canvas };
+  return canvas;
 }
 
 /** The pseudo-mask over an image row: `--mask` where TokEye's line lies inside the
@@ -1174,10 +1236,12 @@ function endDrag(event) {
 const maskSaves = new Map(); // shot -> pending save, survives navigation
 const maskErrors = new Map(); // shot -> last failed save, until a successful retry
 
-/** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
+/** The open shot's pseudo-mask (api 3) and TokEye layer (api 4), if the server has them (AE only). */
 async function loadMasks(ticket) {
   if (S.api >= 3 && S.event === MASK_EVENT) {
     const event = S.event, shot = S.shot;
+    // Once per shot: a reload after a save conflict keeps the layer it has.
+    const layer = S.api >= 4 && S.tokeye?.shot !== shot ? loadTokeye(event, shot) : null;
     try {
       await maskSaves.get(shot);
       if (ticket !== S.ticket) return;
@@ -1189,16 +1253,35 @@ async function loadMasks(ticket) {
     } catch {
       // no pseudo-mask for this shot: nothing to draw
     }
+    if (ticket !== S.ticket) return;
+    showMasks();
+    render();
+    if (!layer) return;
+    const tokeye = await layer;
+    if (ticket !== S.ticket) return;
+    S.tokeye = tokeye;
   }
   if (ticket !== S.ticket) return;
   showMasks();
   render();
 }
 
+/** The shot's whole-shot TokEye layer, or null. */
+async function loadTokeye(event, shot) {
+  try {
+    return await (await api(`/api/tokeye?event=${enc(event)}&shot=${shot}`)).json();
+  } catch {
+    return null; // no layer for this shot: nothing to draw
+  }
+}
+
 function showMasks() {
   const m = S.masks;
-  $("masks").hidden = !m;
-  if (!m) return;
+  $("masks").hidden = !m && !S.tokeye;
+  if (!m) {
+    if (S.tokeye) $("masks").textContent = `TokEye only${S.showMasks ? "" : " · hidden"}`;
+    return;
+  }
   const n = m.regions.length;
   const kept = n - m.rejected.length;
   const last = !m.stale && m.last_save;
@@ -1208,7 +1291,7 @@ function showMasks() {
 }
 
 function toggleMasks() {
-  if (!S.masks) return say("this shot has no pseudo-mask");
+  if (!S.masks && !S.tokeye) return say("this shot has no pseudo-mask");
   S.showMasks = !S.showMasks;
   store("labeler:masks", S.showMasks ? null : "hidden");
   showMasks();
@@ -1237,7 +1320,7 @@ function clickMask(d) {
   saveMasks(m, [...rejected].sort((a, b) => a - b));
 }
 
-/** Save the rejected regions at once, with the typed name; drawn before the answer. */
+/** Save the rejected regions at once, with the reviewer's name; drawn before the answer. */
 function saveMasks(m, rejected) {
   if (maskSaves.has(m.shot)) return say("mask is saving; wait for it to finish");
   const pending = persistMasks(m, rejected, S.event);
@@ -1329,6 +1412,105 @@ function toggleKeys() {
   const dialog = $("keys");
   if (dialog.open) closeDialog(dialog);
   else dialog.showModal();
+}
+
+// -- who is reviewing (api 5)
+
+/** This tab's picked name: asked again in a new tab or window, not on a reload. */
+function picked() {
+  try {
+    return sessionStorage.getItem("labeler:who");
+  } catch {
+    return null;
+  }
+}
+
+function showName() {
+  $("reviewer").textContent = S.name || "Your name";
+}
+
+/** The list of names, centred over the page; the first time, a name must be picked. */
+async function chooseName() {
+  const dialog = $("who");
+  $("who-error").textContent = "";
+  if (!dialog.open) dialog.showModal();
+  try {
+    listNames((await (await api("/api/names")).json()).names, S.name);
+  } catch (error) {
+    listNames(S.name ? [S.name] : [], S.name);
+    $("who-error").textContent = error.message;
+  }
+  ($("who-names").value ? $("who-continue") : $("who-new")).focus();
+}
+
+function listNames(names, pick) {
+  const list = $("who-names");
+  list.replaceChildren(...names.map((name) => new Option(name, name, false, name === pick)));
+  list.size = clamp(names.length, 3, 8);
+  list.hidden = names.length === 0;
+  $("who-empty").hidden = names.length > 0;
+  $("who-continue").disabled = !list.value;
+}
+
+async function addName() {
+  const name = $("who-new").value.trim();
+  if (!name) return $("who-new").focus();
+  $("who-error").textContent = "";
+  try {
+    const response = await api("/api/names", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const body = await response.json();
+    listNames(body.names, body.name);
+    $("who-new").value = "";
+    $("who-continue").focus();
+  } catch (error) {
+    $("who-error").textContent = error.message;
+  }
+}
+
+function pickName() {
+  const name = $("who-names").value;
+  if (!name) return;
+  S.name = name;
+  S.picked = true;
+  store("labeler:name", name);
+  try {
+    sessionStorage.setItem("labeler:who", name);
+  } catch {
+    // storage refused (a private window): the list then asks again on a reload
+  }
+  showName();
+  closeDialog($("who"));
+}
+
+function wireNames() {
+  const dialog = $("who");
+  // No way past the first list without a name: Escape is refused, and a close
+  // forced through anyway (Chrome allows a second Escape) opens it again.
+  dialog.addEventListener("cancel", (event) => S.picked || event.preventDefault());
+  dialog.addEventListener("close", () => S.picked || chooseName());
+  $("reviewer").addEventListener("click", chooseName);
+  $("who-names").addEventListener("change", () => {
+    $("who-continue").disabled = !$("who-names").value;
+  });
+  $("who-names").addEventListener("dblclick", pickName);
+  $("who-names").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      pickName();
+    }
+  });
+  $("who-new").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addName();
+    }
+  });
+  $("who-add").addEventListener("click", addName);
+  $("who-continue").addEventListener("click", pickName);
 }
 
 /** Close a dialog and give the keys back to the page, not to a button left inside it. */
@@ -1433,7 +1615,7 @@ function onKey(event) {
   const target = event.target;
   const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   const key = event.shiftKey && typed.startsWith("Arrow") ? `Shift+${typed}` : typed;
-  if (target.closest("input, select, textarea")) return;
+  if (target.closest("input, select, textarea") || $("who").open) return;
   if ($("versions").open) {
     if (key === "Enter" || key === "h") {
       event.preventDefault();
@@ -1497,10 +1679,13 @@ function wire() {
   $("revert").addEventListener("click", () => S.meta && revert());
   $("show-versions").addEventListener("click", toggleVersions);
   $("help").addEventListener("click", toggleKeys);
+  wireNames();
   for (const dialog of document.querySelectorAll("dialog")) {
     // Chrome can leave focus on a button in a closed dialog, and Enter would then click it
-    // instead of saving: let go of it as Escape cancels the dialog, and again once closed.
-    const release = () => dialog.contains(document.activeElement) && document.activeElement.blur();
+    // instead of saving: let go of it as Escape cancels the dialog (unless the dialog refuses to
+    // close), and again once closed.
+    const release = (event) =>
+      !event.defaultPrevented && dialog.contains(document.activeElement) && document.activeElement.blur();
     dialog.addEventListener("cancel", release);
     dialog.addEventListener("close", release);
   }

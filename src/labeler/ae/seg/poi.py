@@ -297,6 +297,13 @@ def shot_points(shot: int) -> list[dict]:
             if decision and decision.get("pseudo_sha256") == sha:
                 _, count = regions.label_regions(pm.mask)
                 review = (len(decision["rejected"]), count)
+            own = SEG_VERSIONS[version].pseudo
+            clicked, _ = regions.clicked_mask(paths, shot, decision, own)
+            if clicked is not None:  # made on the review page's masks, as training
+                on = PseudoMask.load(clicked)
+                mask = regions.transfer(mask, pm, on, decision)
+                _, count = regions.label_regions(on.mask)
+                review = (len(decision["rejected"]), count)
             mask = np.where(mask == IGNORE, 0, mask)
         whole = SEG_VERSIONS[version].whole_window
         draw(

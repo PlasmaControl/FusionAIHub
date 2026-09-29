@@ -1,7 +1,9 @@
-"""A pseudo-mask's regions on the review page, and the reviewer's word on each."""
+"""A pseudo-mask's regions on the review page, the reviewer's word on each, and
+TokEye's whole-shot layer under them."""
 
 from __future__ import annotations
 
+import base64
 import getpass
 import json
 
@@ -9,10 +11,13 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from labeler.ae.seg import pseudo_dir, regions
+from labeler.ae.seg import regions, whole
 from labeler.ae.seg.pseudo import IGNORE, PseudoMask
 from labeler.config import Paths
+from labeler.events.review.rows import Grid
 from labeler.events.ui.app import COOKIE, create_app
+
+from . import ae_tree, round3_tree
 
 ROSTER = (
     "shot,tier,holdout,reviewers,verified_on,notes\n"
@@ -46,8 +51,7 @@ def paths(tmp_path):
         label_tables=directory.parent,
         raw_cache=tmp_path / "raw",
     )
-    pseudo_dir(found).mkdir(parents=True)
-    _mask().save(regions.pseudo_file(found, SHOT))
+    _mask().save(whole.review_file(found, SHOT))
     return found
 
 
@@ -97,6 +101,99 @@ def test_a_rejected_region_becomes_background_unless_the_decision_is_stale():
     assert (regions.reviewed_mask(pm, None, "a" * 64) == pm.mask).all()
 
 
+def test_a_region_rejected_on_the_page_s_mask_is_background_in_another_mask():
+    page = _mask()
+    target = np.zeros_like(page.mask)
+    target[100:102, 10:15] = 1
+    target[200, 50] = 1
+    target[201, 51] = IGNORE  # unscored: a rejection never scores it
+    other = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    moved = regions.transfer(target, other, page, {"rejected": [2]})
+    assert (moved[100:102, 10:15] == 1).all(), "region 1 is kept"
+    assert (moved[[200, 202], [50, 52]] == 0).all() and moved[201, 51] == IGNORE
+    assert target[200, 50] == 1, "the target is not changed in place"
+    for moved_grid in (
+        PseudoMask(SHOT, -8.0, 2.048, 0.0, 500 / 512, target),
+        PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target[:, :200]),
+    ):
+        with pytest.raises(ValueError, match="grid"):
+            regions.transfer(moved_grid.mask, moved_grid, page, {"rejected": [2]})
+
+
+def test_a_rejection_never_scores_a_pixel_the_target_does_not():
+    page = np.zeros((257, 300), dtype=np.uint8)
+    page[150, 90:110] = 1  # region 1, crossing 2 s at column 100
+    target = np.zeros_like(page)
+    target[150, 90:100] = 1
+    target[:, 100:] = IGNORE  # pseudo-v1: TokEye's first masks end at 2 s
+    on = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    clicked = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, page)
+    moved = regions.transfer(target, on, clicked, {"rejected": [1]})
+    assert (moved[:, 100:] == IGNORE).all(), "still unscored after 2 s"
+    assert (moved[150, 90:100] == 0).all() and (moved[:, :100] != IGNORE).all()
+
+
+def test_the_part_of_a_rejected_line_the_page_never_drew_is_unscored():
+    page = np.zeros((257, 300), dtype=np.uint8)
+    page[80:83, 20:30] = 1  # region 1, kept
+    page[100:103, 20:30] = 1  # region 2, rejected
+    page[200:202, 60:70] = 1  # region 3, kept
+    target = np.zeros_like(page)
+    target[70:103, 20:30] = 1  # one line over regions 1 and 2, and below both
+    target[150:152, 120:130] = 1  # under no page region
+    target[196:202, 60:70] = 1  # under region 3, and below it
+    on = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    clicked = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, page)
+    moved = regions.transfer(target, on, clicked, {"rejected": [2]})
+    assert (moved[100:103, 20:30] == 0).all(), "the overlap is background"
+    assert (moved[70:80, 20:30] == IGNORE).all(), "never drawn: unscored"
+    assert (moved[83:100, 20:30] == IGNORE).all()
+    assert (moved[80:83, 20:30] == 1).all(), "a kept page region stays"
+    assert (moved[150:152, 120:130] == 1).all(), "no rejection touches it"
+    assert (moved[196:202, 60:70] == 1).all(), "under a kept region"
+    assert int((moved != target).sum()) == 3 * 10 + 10 * 10 + 17 * 10, "no other"
+
+
+def test_the_file_a_decision_was_made_on_holds_while_its_sha256_does(paths):
+    file = whole.review_file(paths, SHOT)
+    sha = regions.file_sha256(file)
+    page = {"pseudo": whole.REVIEW, "pseudo_sha256": sha, "rejected": [2]}
+    assert regions.decided_file(paths, SHOT, page) == file
+    assert regions.decided_file(paths, SHOT, {}) == regions.pseudo_file(paths, SHOT)
+    assert regions.decided_file(
+        paths, SHOT, {"pseudo": "pseudo-v3"}
+    ) == regions.pseudo_file(paths, SHOT, "v3")
+    assert regions.clicked_name(SHOT, page) == f"pseudo-v1-full/{SHOT}.npz"
+    assert regions.clicked_mask(paths, SHOT, page, "pseudo-v3") == (file, None)
+    assert regions.clicked_mask(paths, SHOT, page, whole.REVIEW) == (None, None)
+    assert regions.clicked_mask(paths, SHOT, None, "pseudo-v3") == (None, None)
+    stale = {**page, "pseudo_sha256": "0" * 64}
+    path, why = regions.clicked_mask(paths, SHOT, stale, "pseudo-v3")
+    assert path is None and "earlier" in why and str(file) in why
+    path, why = regions.clicked_mask(paths, SHOT, {**page, "pseudo": "x"}, "v3")
+    assert path is None and "unknown mask set" in why
+    file.unlink()
+    path, why = regions.clicked_mask(paths, SHOT, page, "pseudo-v3")
+    assert path is None and "gone" in why
+
+
+def test_a_rerun_keeps_an_unchanged_review_mask_and_its_sha256(tmp_path, monkeypatch):
+    paths = round3_tree.build(tmp_path, {101: "train"}, tokeye_dt=0.256)
+    ae_tree.env(monkeypatch, paths)
+    assert whole.main([]) == 0
+    file = whole.review_file(paths, 101)
+    before = file.stat()
+    assert whole.main([]) == 0
+    assert file.stat().st_ino == before.st_ino, "not rewritten"
+    pm = PseudoMask.load(file)
+    assert whole.unchanged(file, pm)
+    changed = pm.mask.copy()
+    changed[0, 0] = 1 - changed[0, 0] if changed[0, 0] in (0, 1) else 0
+    assert not whole.unchanged(file, PseudoMask(**{**vars(pm), "mask": changed}))
+    assert not whole.unchanged(file, PseudoMask(**{**vars(pm), "t0_ms": 1.0}))
+    assert not whole.unchanged(tmp_path / "none.npz", pm)
+
+
 def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, paths):
     view = client.get(_url()).json()
     assert [r["id"] for r in view["regions"]] == [1, 2]
@@ -115,7 +212,7 @@ def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, 
     [line] = log.read_text().splitlines()
     entry = json.loads(line)
     assert entry["pseudo_sha256"] == view["pseudo_sha256"]
-    assert entry["pseudo"] == "pseudo-v1" and entry["shot"] == SHOT
+    assert entry["pseudo"] == "pseudo-v1-full" and entry["shot"] == SHOT
 
 
 def test_the_last_save_is_the_decision_and_the_earlier_ones_stay(client, paths):
@@ -131,7 +228,7 @@ def test_a_decision_on_an_older_pseudo_mask_is_stale(client, paths):
     client.post("/api/masks", json=_body(client))
     changed = _mask()
     changed.mask[120, 20:30] = 1
-    changed.save(regions.pseudo_file(paths, SHOT))
+    changed.save(whole.review_file(paths, SHOT))
     view = client.get(_url()).json()
     assert view["rejected"] == [] and view["stale"] is True
     assert view["last_save"]["rejected"] == [2]
@@ -180,3 +277,47 @@ def test_a_shot_without_a_pseudo_mask_is_404_and_the_route_is_gated(client):
     assert client.get(_url(shot=178642)).status_code == 404
     assert client.get(_url(event="nothing")).status_code == 404
     assert TestClient(client.app).get(_url()).status_code == 401
+
+
+def _layer() -> np.ndarray:
+    """TokEye lit on two chords in page bin 100 over 5121-6139 ms, on one chord in 151."""
+    t = np.arange(2500, 3000) * 2.048 + 1.0
+    clean = np.zeros((4, 512, len(t)), dtype=bool)
+    clean[:2, 198] = True  # page bin k takes TokEye bins 2k - 2 and 2k - 1
+    clean[3, 300] = True
+    return whole.build(Grid(0.0, 2.048, 4000), 257, (t, clean, None))
+
+
+def test_the_layer_lights_where_two_chords_agree_past_the_label_window():
+    lit = _layer()
+    assert lit.shape == (257, 4000)
+    assert lit[100, 2500:3000].all() and lit.sum() == 500
+
+
+def test_the_page_reads_the_layer_bit_packed_along_time(client, paths):
+    lit = _layer()
+    whole.save(whole.layer_file(paths, SHOT), Grid(0.0, 2.048, 4000), 0.0, 0.977, lit)
+    view = client.get(f"/api/tokeye?event=alfven_eigenmode&shot={SHOT}").json()
+    assert view["grid"] == {"t0_ms": 0.0, "dt_ms": 2.048, "n": 4000}
+    assert (view["n_y"], view["y0_khz"], view["dy_khz"]) == (257, 0.0, 0.977)
+    bits = np.frombuffer(base64.b64decode(view["bits"]), dtype=np.uint8)
+    drawn = np.unpackbits(bits.reshape(257, -1), axis=1, count=4000).astype(bool)
+    assert np.array_equal(drawn, lit)
+
+
+def test_the_page_reads_the_whole_window_mask_not_pseudo_v1(client, paths):
+    other = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, np.zeros((257, 300), "u1"))
+    other.save(regions.pseudo_file(paths, SHOT))  # pseudo-v1's: SegNet v1's input
+    view = client.get(_url()).json()
+    assert view["pseudo"] == whole.REVIEW and len(view["regions"]) == 2
+    assert view["pseudo_sha256"] == regions.file_sha256(whole.review_file(paths, SHOT))
+
+
+def test_a_shot_without_a_layer_is_404_and_the_route_is_gated(client):
+    url = "/api/tokeye?event={}&shot={}"
+    assert client.get(url.format("alfven_eigenmode", 178642)).status_code == 404
+    assert client.get(url.format("nothing", SHOT)).status_code == 404
+    assert (
+        TestClient(client.app).get(url.format("alfven_eigenmode", SHOT)).status_code
+        == 401
+    )

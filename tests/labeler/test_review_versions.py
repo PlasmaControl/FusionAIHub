@@ -1,4 +1,5 @@
-"""A shot's saved versions and the reviewer's typed name, in the history and the API."""
+"""A shot's saved versions and the reviewer's name, in the history and the API,
+and the list of names the page asks from."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from labeler.config import Paths
-from labeler.events.review import labels, versions
+from labeler.events.review import labels, reviewers, versions
 from labeler.events.review.labels import normalise
 from labeler.events.ui.app import API_VERSION, COOKIE, create_app
 
@@ -138,7 +139,7 @@ def test_a_history_line_written_before_names_existed_reads_as_unnamed(event_dir)
 
 
 def test_the_server_reports_its_api_version(client):
-    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 3}
+    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 5}
 
 
 def test_the_history_route_is_behind_the_gate(client):
@@ -205,3 +206,56 @@ def test_the_login_still_cannot_be_set_by_the_page(client, event_dir):
     response = client.post("/api/label", json=_label(reviewer="mallory"))
     assert response.status_code == 422
     assert not (event_dir / labels.REVIEW).exists()
+
+
+def test_the_list_is_the_saved_names_until_the_first_name_is_added(client, event_dir):
+    label = normalise((0, 2000), [(100, 300, 1)])
+    for name in ("Grace", "ada", None):
+        labels.save(event_dir, 170815, label, source=TABLE, name=name)
+    masks = event_dir / labels.REVIEW / "masks.jsonl"
+    masks.write_text('{"shot": 170815, "name": "Linus"}\nnot json\n')
+    assert client.get("/api/names").json() == {"names": ["ada", "Grace", "Linus"]}
+
+    listed = client.post("/api/names", json={"name": " ADA "})
+    assert listed.json() == {"names": ["ada", "Grace", "Linus"], "name": "ada"}
+    names_file = reviewers.names_path(event_dir.parent)
+    assert not names_file.exists(), "a name already listed wrote the file"
+
+    added = client.post("/api/names", json={"name": "Barbara"}).json()
+    assert added == {"names": ["ada", "Barbara", "Grace", "Linus"], "name": "Barbara"}
+    assert names_file.read_text() == "ada\nGrace\nLinus\nBarbara\n"
+    labels.save(event_dir, 170815, label, source=TABLE, name="Zed")
+    assert client.get("/api/names").json() == {"names": added["names"]}
+
+
+def test_the_owner_s_edits_to_the_file_are_read_once_each_and_kept(client, event_dir):
+    names_file = reviewers.names_path(event_dir.parent)
+    owner = "\ufeffGrace\n\n  Ada \nada\nbad\u0007name"
+    names_file.write_text(owner, encoding="utf-8")
+    assert client.get("/api/names").json() == {"names": ["Ada", "Grace"]}
+    added = client.post("/api/names", json={"name": "Barbara"}).json()
+    assert added["names"] == ["Ada", "Barbara", "Grace"]
+    assert names_file.read_text() == owner.removeprefix("\ufeff") + "\nBarbara\n"
+
+
+@pytest.mark.parametrize(
+    ("name", "status", "reason"),
+    [
+        ("", 400, "required"),
+        ("   ", 400, "required"),
+        ("Ada\nLovelace", 400, "control"),
+        ("x" * (versions.NAME_MAX + 1), 422, "name"),
+        (7, 422, "name"),
+    ],
+)
+def test_a_bad_name_is_not_added(client, event_dir, name, status, reason):
+    response = client.post("/api/names", json={"name": name})
+    assert response.status_code == status
+    assert reason in response.json()["error"]
+    assert not reviewers.names_path(event_dir.parent).exists()
+
+
+def test_the_names_are_behind_the_gate(client):
+    ungated = TestClient(client.app)
+    assert ungated.get("/api/names").status_code == 401
+    assert ungated.post("/api/names", json={"name": "Ada"}).status_code == 401

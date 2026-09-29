@@ -5,7 +5,17 @@
 **Data.** Every shot of the AE split with a pseudo-mask (`pseudo`): as input its
 three cross-power rows at store level 8 (2.048 ms columns, 257 bins to
 250 kHz), as target its pseudo-mask with the regions the reviewer rejected set
-to background (`regions.reviewed_mask`). The split is the chosen AE model's
+to background (`regions.reviewed_mask`). A decision made on other masks than
+the version's own, the review page's pseudo-v1-full, reaches the target too
+(`regions.transfer`), while the file clicked is still the one there (its
+sha256): the pixels of the regions it rejects there are background where the
+target scores them (never scored where it does not), and the rest of each
+target region they touch, outside the page's regions, is IGNORE. Training
+names each decision it leaves out on stderr, and `training.json` records the
+shots clicked and the ones left out (`clicked_shots`, `left_out_decisions`).
+`pseudo_masks.json` names each file clicked, by sha256, so `evaluate` scores
+the same targets. The split
+is the chosen AE model's
 (`models/ae_xpower/v1/<chosen>/split.csv`): a shot is a test shot of both
 models or of neither. Each shot is cut to the columns its mask scores, and
 `MARGIN_COLS` either side for context.
@@ -26,8 +36,8 @@ Writes `model.pt`, `split.csv` and `training.json` to `--out` (default
 training rule on pseudo-v2 (0-250 kHz, the owner's whole windows). Its labels are
 ae_xpower v3's snapshot (`models/ae_xpower/v3/review/labels.csv`, refused unless
 its sha256 is v3's), never the live file; the region decisions are the live
-`review/masks.jsonl`, as v1's, and were made on pseudo-v1's bytes, so on
-pseudo-v2's they are stale and ignored. Its split is `pseudo.v2_split` of the
+`review/masks.jsonl`, as v1's, and reach pseudo-v2's targets through the file
+clicked, as above. Its split is `pseudo.v2_split` of the
 snapshot's shots, the one pseudo-v2's rules were picked on: v3's chosen model's
 `split.csv` has no validation shots, but its test shots must be SegNet v2's, or
 the command refuses. The blob records the band and version
@@ -135,16 +145,24 @@ def load_example(
     *,
     pseudo_bytes: bytes | None = None,
     version: str = VERSION,
+    clicked: bytes | None = None,
 ) -> Example:
     """One shot, cut to its scored columns and `margin` either side; the whole
-    shot when `margin` is None. Its target is `version`'s pseudo-mask."""
+    shot when `margin` is None. Its target is `version`'s pseudo-mask; `clicked`
+    is the mask the shot's decision was made on when that is another
+    (`regions.clicked_mask`), whose rejected regions are background too."""
     grid, values, y0, dy = store_rows(paths.spectrogram_file(EVENT, shot), LEVEL)
     file = regions.pseudo_file(paths, shot, version)
     data = file.read_bytes() if pseudo_bytes is None else pseudo_bytes
     pm = PseudoMask.load(BytesIO(data))
     if values.shape[1:] != pm.mask.shape or abs(pm.t0_ms - grid.t0_ms) > 1e-6:
         raise ValueError(f"{shot}: the pseudo-mask is not on the store's level {LEVEL}")
-    y = regions.reviewed_mask(pm, decisions.get(shot), hashlib.sha256(data).hexdigest())
+    decision = decisions.get(shot)
+    y = regions.reviewed_mask(pm, decision, hashlib.sha256(data).hexdigest())
+    if clicked is not None:
+        if hashlib.sha256(clicked).hexdigest() != decision["pseudo_sha256"]:
+            raise ValueError(f"{shot}: not the mask the decision was made on")
+        y = regions.transfer(y, pm, PseudoMask.load(BytesIO(clicked)), decision)
     scored = np.flatnonzero((y != IGNORE).any(axis=0))
     if not scored.size:
         raise ValueError(f"{shot}: the pseudo-mask scores no pixel")
@@ -328,10 +346,14 @@ def save(
     runs: Path | None = None,
     band_khz=None,
     version: str | None = None,
+    clicks: dict | None = None,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index).
     Given `band_khz` and `version`, which go together, the blob records both and
-    `training.json` both and the version's pseudo-masks; v1's record neither."""
+    `training.json` both and the version's pseudo-masks; v1's record neither.
+    `clicks` goes into `training.json` as it is: `main`'s `clicked_shots` (the
+    shots whose decisions on other masks reach the targets) and
+    `left_out_decisions` (why each other one does not)."""
     if (band_khz is None) != (version is None):
         raise ValueError(f"{out}: a model records its band and version together")
     named, described = {}, {}
@@ -379,6 +401,7 @@ def save(
         "counts": {
             v: sum(x == v for x in split.values()) for v in sorted(set(split.values()))
         },
+        **(clicks or {}),
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
@@ -395,6 +418,20 @@ def load(path) -> tuple[SegNet, dict]:
 
 def _sha(path: Path) -> str | None:
     return sha256_of(path) if path.is_file() else None
+
+
+def frozen_clicked(paths: Paths, shot: int, decision, manifest: dict) -> bytes | None:
+    """The mask the shot's decision was made on, when `manifest` names it (a
+    model's `pseudo_masks.json`, or the pseudo-masks `evaluation.json` records);
+    refused when the file is no longer the one named."""
+    name = regions.clicked_name(shot, decision) if decision else None
+    if name not in manifest:
+        return None
+    path = regions.decided_file(paths, shot, decision)
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != manifest[name]:
+        raise ValueError(f"{path}: not the mask clicked when the model was trained")
+    return data
 
 
 def read_review_bytes(labels_bytes: bytes, masks_bytes: bytes) -> tuple[dict, dict]:
@@ -446,8 +483,7 @@ def main(argv=None) -> int:
     except (FileExistsError, ValueError) as error:
         p.error(str(error))
     directory = event_dir(paths)
-    # v2's region decisions are the live ones too; made on pseudo-v1's bytes,
-    # they are stale on pseudo-v2's and ignored (`regions.reviewed_mask`).
+    # Every version reads the live region decisions (`regions.transfer`).
     masks_file = regions.log_path(directory)
     if v1:
         labels_file = labels.labels_path(directory)
@@ -522,6 +558,23 @@ def main(argv=None) -> int:
         f"{s}.npz": regions.pseudo_file(paths, s, version) for s in sorted(split)
     }
     mask_files["index.csv"] = pseudo_dir(paths, version) / "index.csv"
+    clicked, left_out = {}, []
+    for s in sorted(split):
+        path, why = regions.clicked_mask(paths, s, decisions.get(s), spec.pseudo)
+        if why is not None:
+            left_out.append(why)
+        if path is not None:
+            clicked[s] = path
+            mask_files[regions.clicked_name(s, decisions[s])] = path
+    if left_out:
+        print(
+            f"warning: {len(left_out)} shots' mask decisions are left out:",
+            *(f"  {why}" for why in left_out),
+            sep="\n",
+            file=sys.stderr,
+        )
+    print(f"{len(clicked)} shots' mask decisions made on other masks reach the targets")
+    clicks = {"clicked_shots": sorted(clicked), "left_out_decisions": left_out}
     manifest = {name: sha256_of(path) for name, path in mask_files.items()}
     manifest_bytes = (json.dumps(manifest, indent=1) + "\n").encode()
     inputs = {
@@ -536,11 +589,11 @@ def main(argv=None) -> int:
     }
     started = time.monotonic()
     at = {} if v1 else {"version": version}
-    examples = {
-        s: load_example(paths, s, decisions, **at)
-        for s, v in sorted(split.items())
-        if v in ("train", "val")
-    }
+    examples = {}
+    for s, v in sorted(split.items()):
+        if v in ("train", "val"):
+            more = {"clicked": clicked[s].read_bytes()} if s in clicked else {}
+            examples[s] = load_example(paths, s, decisions, **at, **more)
     print(f"loaded {len(examples)} shots in {time.monotonic() - started:.0f} s")
     train = [examples[s] for s, v in sorted(split.items()) if v == "train"]
     val = [examples[s] for s, v in sorted(split.items()) if v == "val"]
@@ -570,6 +623,7 @@ def main(argv=None) -> int:
             runs=paths.runs,
             band_khz=None if v1 else spec.band_khz,
             version=None if v1 else version,
+            clicks=clicks,
         )
     except (FileExistsError, ValueError) as error:
         p.error(str(error))

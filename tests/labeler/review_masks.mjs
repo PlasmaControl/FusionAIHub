@@ -97,7 +97,20 @@ const region = (n) =>
     const rgb = [...canvas.getContext("2d").getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data];
     done({ x: r.left + x, y: r.top + y, rgb: rgb.slice(0, 3) });
   })))`);
+/** The colour on the first row at `t` ms and `f` kHz. */
+const pixel = (t, f) =>
+  js(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => {
+    const canvas = $("rows").children[0];
+    const r = canvas.getBoundingClientRect();
+    const [lo, hi] = imageRange(S.meta.rows[0]);
+    const [x, y] = [px(${t}), (r.height - 1) * (1 - (${f} - lo) / (hi - lo))];
+    const scale = canvas.width / canvas.clientWidth;
+    const rgb = [...canvas.getContext("2d").getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data];
+    done(rgb.slice(0, 3));
+  })))`);
 const cyan = ([r, g, b]) => g > r + 60 && b > r + 60;
+/** `shown` is `hidden` with cyan laid over it: green and blue gain on red. */
+const tinted = ([r, g, b], [r0, g0, b0]) => g - r - (g0 - r0) > 30 && b - r - (b0 - r0) > 30;
 const grey = ([r, g, b]) => Math.max(r, g, b) - Math.min(r, g, b) < 40 && r > 60;
 
 const checks = [];
@@ -107,17 +120,23 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 try {
   await send("Runtime.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+  await send("Page.enable");
+  // The reviewer picked a name when the page first asked (review_browser.mjs drives the list).
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: 'sessionStorage.setItem("labeler:who", "Ada")' });
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   await until(`typeof S !== "undefined" && S.shot === 170815 && S.data !== null && S.masks !== null`);
   if (CASE === "happy") {
-  await js(`$("reviewer-name").focus()`);
-  await send("Input.insertText", { text: "Ada" });
-  await js("document.activeElement.blur()");
   check("an AE shot with a pseudo-mask says so", (await js(`$("masks").textContent`)) === "mask 2/2 kept",
     await js(`$("masks").textContent`));
   const one = await region(1);
   const two = await region(2);
   check("its regions are drawn over the rows", cyan(one.rgb) && cyan(two.rgb), [one, two]);
+  const bits = await js(`(() => {
+    const g = tokeyeBitmap(S.tokeye).getContext("2d");
+    return [2, 3, 4, 11].map((k) => g.getImageData(k, S.tokeye.n_y - 1 - 30, 1, 1).data[3]);
+  })()`);
+  check("the layer's columns are read in numpy's bit order", bits[1] > 0 && bits[3] > 0 && bits[0] === 0 &&
+    bits[2] === 0, bits);
 
   await click(two.x, two.y);
   await until("!S.masks.saving && S.masks.last_save !== null");
@@ -134,8 +153,18 @@ try {
   await until(`S.view[0] !== ${view}`);
   check("a drag still pans and rejects nothing", same(await js("S.masks.rejected"), [2]), await js("S.masks.rejected"));
 
+  // Past the label's window, under its veil: where the pseudo-mask never reaches.
+  const [end, right] = await js("[S.label.window[1], S.view[1]]");
+  const late = end + 0.5 * (right - end);
+  const line = await pixel(late, 60);
   await press("m");
   const hidden = await region(1);
+  const unlined = await pixel(late, 60);
+  check(
+    "TokEye's whole-shot layer is drawn past the label's window, and m hides it too",
+    right > end && (await js("S.tokeye.layer")) === "tokeye-full" && tinted(line, unlined),
+    [end, late, line, unlined]
+  );
   check(
     "m hides the mask, and the browser remembers",
     !cyan(hidden.rgb) && (await js(`localStorage.getItem("labeler:masks") === "hidden"`)) &&
@@ -159,8 +188,8 @@ try {
   await press("k");
   await until(`S.shot === 170816 && S.data !== null`);
   await sleep(300);
-  check("a shot without a pseudo-mask shows none", await js(`S.masks === null && $("masks").hidden`),
-    await js(`[S.masks, $("masks").hidden]`));
+  check("a shot without a pseudo-mask shows none", await js(`S.masks === null && S.tokeye === null && $("masks").hidden`),
+    await js(`[S.masks, S.tokeye, $("masks").hidden]`));
   } else if (CASE === "race") {
     await js(`window.realFetch = window.fetch.bind(window);
       window.fetch = async (url, options) => {
