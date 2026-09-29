@@ -32,6 +32,8 @@ Z_DB = (-3.0, 27.0)
 #: 3.6 V against 0.02 V ELMs) would flatten everything else in the row.
 ROBUST_PERCENTILES = (0.5, 99.5)
 ROBUST_MARGIN = 1.0
+#: What a row's title says when `robust_clip` moved a sample of it.
+CLIPPED = ", clipped to its plasma range"
 
 
 def optional(what: str, shot: int, build: Callable[[], Iterable[Panel]]) -> list:
