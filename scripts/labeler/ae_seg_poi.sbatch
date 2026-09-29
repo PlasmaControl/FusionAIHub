@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=6200M
+#SBATCH --mem=7500M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -24,7 +24,11 @@
 #               -> poi/alfven_eigenmode/ae_seg-v2 and gallery/alfven_eigenmode/ae_seg-v2
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26, login node)
+# ------------------------------------------ sizing (measured 2026-09-29, v2's full run 2945169)
+#   SegNet v2 over 0-250 kHz and whole records, 180 shots, 4 workers: 2 min 50 s, CPU 80.6 %;
+#   sacct MaxRSS 6,342,728K, 99.9 % of 6200M (jobstats, sampling every 30 s, read 80.3 %).
+#   mem=7500M     6194 MiB x 1.2 is 7433 MiB; rounded up.
+# before v2 (measured 2026-09-26, login node):
 #   probe, 2 store shots, 2 workers: 8.7 s wall with ~4 s of start-up, largest process 1.08 GB;
 #   1 corpus shot: 7.9 s, 1.37 GB.
 #   mem=6200M     full run 2942540: sacct MaxRSS 5,240,864K at 5G, at the limit;
