@@ -121,7 +121,8 @@ def test_a_drawn_label_is_saved_found_again_and_left_behind(served, tmp_path):
     assert result.returncode == 0, result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert [c for c in checks if not c["ok"]] == []
-    assert len(checks) == 21
+    assert len(checks) == 24
+    assert (event.parent / "reviewers.txt").read_text() == "Ada Lovelace\n"
     saved = labels.read_saved(event)
     assert sorted(saved) == [170815, 170816]
     kept, (a, b, c) = saved[170815].intervals
