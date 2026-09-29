@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from labeler.ae.seg import pseudo_dir, regions, whole
+from labeler.ae.seg import regions, whole
 from labeler.ae.seg.pseudo import IGNORE, PseudoMask
 from labeler.config import Paths
 from labeler.events.review.rows import Grid
@@ -49,8 +49,7 @@ def paths(tmp_path):
         label_tables=directory.parent,
         raw_cache=tmp_path / "raw",
     )
-    pseudo_dir(found).mkdir(parents=True)
-    _mask().save(regions.pseudo_file(found, SHOT))
+    _mask().save(whole.review_file(found, SHOT))
     return found
 
 
@@ -118,7 +117,7 @@ def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, 
     [line] = log.read_text().splitlines()
     entry = json.loads(line)
     assert entry["pseudo_sha256"] == view["pseudo_sha256"]
-    assert entry["pseudo"] == "pseudo-v1" and entry["shot"] == SHOT
+    assert entry["pseudo"] == "pseudo-v1-full" and entry["shot"] == SHOT
 
 
 def test_the_last_save_is_the_decision_and_the_earlier_ones_stay(client, paths):
@@ -134,7 +133,7 @@ def test_a_decision_on_an_older_pseudo_mask_is_stale(client, paths):
     client.post("/api/masks", json=_body(client))
     changed = _mask()
     changed.mask[120, 20:30] = 1
-    changed.save(regions.pseudo_file(paths, SHOT))
+    changed.save(whole.review_file(paths, SHOT))
     view = client.get(_url()).json()
     assert view["rejected"] == [] and view["stale"] is True
     assert view["last_save"]["rejected"] == [2]
@@ -209,6 +208,14 @@ def test_the_page_reads_the_layer_bit_packed_along_time(client, paths):
     bits = np.frombuffer(base64.b64decode(view["bits"]), dtype=np.uint8)
     drawn = np.unpackbits(bits.reshape(257, -1), axis=1, count=4000).astype(bool)
     assert np.array_equal(drawn, lit)
+
+
+def test_the_page_reads_the_whole_window_mask_not_pseudo_v1(client, paths):
+    other = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, np.zeros((257, 300), "u1"))
+    other.save(regions.pseudo_file(paths, SHOT))  # pseudo-v1's: SegNet v1's input
+    view = client.get(_url()).json()
+    assert view["pseudo"] == whole.REVIEW and len(view["regions"]) == 2
+    assert view["pseudo_sha256"] == regions.file_sha256(whole.review_file(paths, SHOT))
 
 
 def test_a_shot_without_a_layer_is_404_and_the_route_is_gated(client):

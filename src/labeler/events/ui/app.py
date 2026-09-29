@@ -4,10 +4,10 @@ Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
 its writes are `POST /api/label` and `POST /api/masks`, both into the event's
 `review/` directory. `GET /api/history` lists a shot's saved versions (see
-`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions and
-the reviewer's last word on them (see `labeler.ae.seg.regions`); `GET
-/api/tokeye` gives TokEye's lines over the whole shot, drawn under them (see
-`labeler.ae.seg.whole`).
+`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions
+(pseudo-v1-full: pseudo-v1's rules over the whole window) and the reviewer's last
+word on them (see `labeler.ae.seg.regions`); `GET /api/tokeye` gives TokEye's
+lines over the whole shot, drawn under them (see `labeler.ae.seg.whole`).
 """
 
 from __future__ import annotations
@@ -314,16 +314,18 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def mask_file(event: str, shot: int) -> tuple[Path, Path]:
         directory = require_event(event, paths)
         roster_tier(_roster(directory), shot)
-        path = regions.pseudo_file(paths, shot)
+        path = whole.review_file(paths, shot)
         if event != seg.EVENT or not path.is_file():
             raise HTTPException(404, f"shot {int(shot)} has no {event} pseudo-mask")
         return directory, path
 
     @app.get("/api/masks")
     def masks_view(event: str, shot: int):
-        directory, _ = mask_file(event, shot)
+        directory, path = mask_file(event, shot)
         with mask_lock:
-            return regions.shot_view(paths, directory, shot)
+            return regions.shot_view(
+                paths, directory, shot, path=path, pseudo=whole.REVIEW
+            )
 
     @app.get("/api/tokeye")
     def tokeye_view(event: str, shot: int):
@@ -368,6 +370,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 body.rejected,
                 pseudo_sha256=body.pseudo_sha256,
                 name=name,
+                pseudo=whole.REVIEW,
             )
         return {
             "rejected": entry["rejected"],

@@ -58,18 +58,24 @@ after the newest save.
   version and never rewrites one, but a crash between writing the label and
   its history line can leave the current label without its version line.
 - **Mask** (Alfvén eigenmode shots with a pseudo-mask): TokEye's coherent lines
-  inside the label's AE frames, 80-250 kHz, drawn in cyan over the rows
-  (`labeler.ae.seg.pseudo` builds them). The segmentation model learns from
-  them. A click on a region that is not the mode (an MHD harmonic, pickup)
+  inside the label's AE frames, 80-250 kHz, over the label's whole window, drawn
+  in cyan over the rows: `pseudo-v1-full`, pseudo-v1's rules
+  (`labeler.ae.seg.pseudo`) over TokEye's whole-shot masks, built by
+  `python -m labeler.ae.seg.whole` from the labels saved when it ran. SegNet v1
+  learnt from pseudo-v1 (TokEye's 0-2 s masks), so a decision saved here is
+  stale to it, as to v2 and v3. A click on a region that is not the mode (an MHD harmonic, pickup)
   rejects it, grey; a second click takes that back. Each click is saved at
   once, with your name. `M` hides and shows the mask, and the browser
   remembers which. The header counts the regions kept.
 - **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot
-  masks light on two of the four chords, 0-250 kHz, AE or not, drawn in faint
-  cyan under the mask over the whole record, past the label windows' 2 s
+  masks light on two of the four chords, AE or not, in the band each row
+  shows, drawn in faint cyan over TokEye's 0-6 s, past the label windows' 2 s:
+  under the mask inside the label's window, over the veil outside it
   (`python -m labeler.ae.seg.whole` builds it into
-  `segmentation/alfven_eigenmode/tokeye-full/`). A picture only: nothing
-  trains on it and a click never lands on it. `M` hides it with the mask.
+  `segmentation/alfven_eigenmode/tokeye-full/`) from the same TokEye masks as
+  the mask. A picture only: nothing trains on it and a click never lands on it.
+  `M` hides it with the mask; a shot with the layer and no mask says
+  "TokEye only" in the header.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.

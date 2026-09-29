@@ -754,10 +754,11 @@ function drawRows() {
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
-    if (row.kind === "image") drawTokeye(g, row, h);
+    if (row.kind === "image") drawTokeye(g, row, w, h, true);
     if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
+    if (row.kind === "image") drawTokeye(g, row, w, h, false);
     g.restore();
     drawGutter(g, row, range, h);
     g.fillStyle = T.rule;
@@ -788,16 +789,28 @@ function drawImage(g, row, i, h) {
   }
 }
 
-/** TokEye's lines over the whole shot, under the pseudo-mask: `--tokeye` wherever
- * TokEye lights two of the four chords, AE or not. A picture: a click never lands on it. */
-function drawTokeye(g, row, h) {
+/** TokEye's lines over the whole shot: `--tokeye` wherever TokEye lights two of the four
+ * chords, AE or not. A picture: a click never lands on it. Drawn in two parts, `inside` the
+ * label's window under the pseudo-mask and the label's lines, and outside it over the veil,
+ * which would otherwise wash it out where the pseudo-mask never reaches. */
+function drawTokeye(g, row, w, h, inside) {
   const t = S.tokeye;
   if (!t || !S.showMasks) return;
   const [lo, hi] = imageRange(row);
   const y = (f) => t.n_y - ((f - t.y0_khz) / t.dy_khz + 0.5); // the layer's own pixel rows
   const [x0, x1] = [px(t.grid.t0_ms), px(t.grid.t0_ms + t.grid.n * t.grid.dt_ms)];
+  const [a, b] = S.label.window.map(px);
+  g.save();
+  g.beginPath();
+  if (inside) g.rect(a, 0, b - a, h);
+  else {
+    g.rect(0, 0, a, h);
+    g.rect(b, 0, w - b, h);
+  }
+  g.clip();
   g.imageSmoothingEnabled = false;
   g.drawImage(tokeyeBitmap(t), 0, y(hi), t.grid.n, y(lo) - y(hi), x0, 0, x1 - x0, h - 1);
+  g.restore();
 }
 
 /** The layer as a canvas, a pixel per column and bin, top bin first; built once per colour. */
@@ -1216,7 +1229,8 @@ const maskErrors = new Map(); // shot -> last failed save, until a successful re
 async function loadMasks(ticket) {
   if (S.api >= 3 && S.event === MASK_EVENT) {
     const event = S.event, shot = S.shot;
-    const layer = S.api >= 4 ? loadTokeye(event, shot) : null;
+    // Once per shot: a reload after a save conflict keeps the layer it has.
+    const layer = S.api >= 4 && S.tokeye?.shot !== shot ? loadTokeye(event, shot) : null;
     try {
       await maskSaves.get(shot);
       if (ticket !== S.ticket) return;
@@ -1228,6 +1242,10 @@ async function loadMasks(ticket) {
     } catch {
       // no pseudo-mask for this shot: nothing to draw
     }
+    if (ticket !== S.ticket) return;
+    showMasks();
+    render();
+    if (!layer) return;
     const tokeye = await layer;
     if (ticket !== S.ticket) return;
     S.tokeye = tokeye;
@@ -1248,8 +1266,11 @@ async function loadTokeye(event, shot) {
 
 function showMasks() {
   const m = S.masks;
-  $("masks").hidden = !m;
-  if (!m) return;
+  $("masks").hidden = !m && !S.tokeye;
+  if (!m) {
+    if (S.tokeye) $("masks").textContent = `TokEye only${S.showMasks ? "" : " · hidden"}`;
+    return;
+  }
   const n = m.regions.length;
   const kept = n - m.rejected.length;
   const last = !m.stale && m.last_save;
