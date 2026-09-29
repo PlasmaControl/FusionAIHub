@@ -1,5 +1,6 @@
 """below80: the owner-absent frames where v3 says AE off an MHD frame, or where
-TokEye lights only below 80 kHz once pseudo-v2's steady lines are removed."""
+TokEye lights only below 80 kHz once pseudo-v2's steady lines are removed, or
+below 80 kHz past pseudo-v3's per-line MHD markers."""
 
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import pandas as pd
 import pytest
 
 from labeler.ae import seg, xpower
-from labeler.ae.seg import mhdlines
+from labeler.ae.seg import markers, mhdlines
 from labeler.ae.seg.mhdlines import Rules
 from labeler.ae.xpower import below80, evaluate
 from labeler.ae.xpower.data import clean_path
@@ -81,6 +82,10 @@ def _tree(tmp_path, monkeypatch):
     rules = seg.pseudo_dir(paths, "v2") / "rules.json"
     rules.parent.mkdir(parents=True)
     rules.write_text(json.dumps({"rules": asdict(RULES)}))
+    # The catalog's NTM table, which the per-line reason reads: no interval.
+    ntm = paths.label_tables / markers.NTM_TABLE
+    ntm.parent.mkdir(parents=True, exist_ok=True)
+    ntm.write_text("shot,category,t_start,t_end,confidence\n")
     _below_80(paths, 101)
     monkeypatch.setattr(evaluate, "probabilities", _fires)
     return paths, digest
@@ -98,7 +103,7 @@ def test_the_table_its_reasons_and_its_place(tmp_path):
         "p_max",
         "frames",
     )
-    assert below80.WHY == ("model", "tokeye_below80", "both")
+    assert below80.REASONS == ("model", "tokeye_below80", "tokeye_lines")
     assert below80.FLOOR_KHZ == 80.0 and below80.VERSION == "v3"
     # The steady lines stop at pseudo-v2's own cut, which must be the floor.
     assert below80.FLOOR_KHZ == mhdlines.RULE_BELOW_KHZ
@@ -150,11 +155,14 @@ def test_the_command_lists_owner_absent_frames_by_reason(tmp_path, monkeypatch):
         shot: [(r.t_start, r.t_end, r.why, r.frames) for r in rows.itertuples()]
         for shot, rows in table.groupby("shot")
     }
+    # The chirp is no MHD line to pseudo-v3's markers either; the steady 25 kHz
+    # line and the MHD mode are, and the mode's 98 kHz harmonic is above 80 kHz.
+    lines = "tokeye_below80+tokeye_lines"
     assert got[101] == [
         (1000, 1050, "model", 5),
-        (1700, 1750, "tokeye_below80", 5),
-        (1750, 1780, "both", 3),
-        (1780, 1800, "tokeye_below80", 2),
+        (1700, 1750, lines, 5),
+        (1750, 1780, f"model+{lines}", 3),
+        (1780, 1800, lines, 2),
     ]
     for shot in (102, 103, 104, 111):
         assert got[shot] == [(1000, 1050, "model", 5), (1750, 1780, "model", 3)]
@@ -168,7 +176,8 @@ def test_the_command_lists_owner_absent_frames_by_reason(tmp_path, monkeypatch):
     assert one.f_lo_khz.min() == pytest.approx(round(63 * ae_tree.DY, 2))
     assert one.f_hi_khz.max() == pytest.approx(round(80 * ae_tree.DY, 2))
     record = json.loads(file.with_suffix(".json").read_text())
-    assert record["frames"] == {"model": 37, "tokeye_below80": 7, "both": 3}
+    assert record["frames"] == {"model": 37, lines: 7, f"model+{lines}": 3}
+    assert record["reasons"] == {"model": 40, "tokeye_below80": 10, "tokeye_lines": 10}
     assert record["tier"] == "suggestions" and record["labels_sha256"] == digest
     assert record["rules"] == asdict(RULES) and record["failed"] == []
     test = record["test"]

@@ -11,7 +11,8 @@ one-discharge figure: that spectrogram and its mask over one
 track per catalog phenomenon, AE's holding the owner's frames above the
 model's, the other four coming. `draw_examples` stacks a few test shots (the
 model's `split.csv`), which `pick_examples` takes: the best, the median and the
-worst F1 against the owner.
+worst F1 against the owner; a whole-window version's picks hold at least one
+shot whose owner window runs past 2 s (`LONG_MS`) when a test shot's does.
 
 **The scored window** is the version's (`scored_ms`, from
 `labeler.ae.xpower.scored_until`): 0-2 s for v1 and v2, whose TokEye masks end
@@ -105,6 +106,8 @@ MASK_COLOUR = "#00e5ff"
 MASK_ALPHA = 0.3  # the fill's; the chirps under it stay visible
 MASK_LW = 0.4  # the outline's
 SCORED_MS = 2000.0  # v1's and v2's scored window is 0-2 s (`scored_ms`)
+#: A whole-window version's examples show a shot whose owner window runs past it.
+LONG_MS = SCORED_MS
 
 
 def window_name(until_ms: float | None) -> str:
@@ -169,6 +172,13 @@ def pick_texts(until_ms: float | None = SCORED_MS) -> PickTexts:
         examples=(
             f"the reviewed test shots ranked by F1 over {where} (ties by the lower "
             "shot number), taken evenly from the best to the worst"
+            + (
+                ""
+                if until_ms is not None
+                else "; if none of those taken has an owner window running past "
+                f"{LONG_MS:g} ms, the middle one is replaced by the shot nearest "
+                "it in rank that has one"
+            )
         ),
     )
 
@@ -402,17 +412,32 @@ def _ranked(f1: Mapping[int, float]) -> list[int]:
     return [s for _, s in sorted(scored, key=lambda x: (-x[0], x[1]))]
 
 
-def pick_examples(f1: Mapping[int, float], n: int = 3) -> list[int]:
+def pick_examples(
+    f1: Mapping[int, float], n: int = 3, long: Collection[int] | None = None
+) -> list[int]:
     """`n` test shots spread from the best F1 to the worst (`EXAMPLES_RULE` over
     0-2 s, `pick_texts(until_ms).examples` for another window); `f1` maps each
-    test shot to its F1 over the scored window."""
+    test shot to its F1 over the scored window. `long`, for a whole-window
+    version, holds the shots whose owner window runs past LONG_MS: when no pick
+    is one of them, the middle pick (index len // 2) is replaced by the `long`
+    shot nearest it in rank (ties to the better rank), if a ranked shot is."""
     ranked = _ranked(f1)
     if len(ranked) <= n:
-        return ranked
-    if n <= 1:
-        return ranked[: max(n, 0)]
-    step = (len(ranked) - 1) / (n - 1)
-    return list(dict.fromkeys(ranked[round(i * step)] for i in range(n)))
+        picks = ranked
+    elif n <= 1:
+        picks = ranked[: max(n, 0)]
+    else:
+        step = (len(ranked) - 1) / (n - 1)
+        picks = list(dict.fromkeys(ranked[round(i * step)] for i in range(n)))
+    if long is None or not picks or any(s in long for s in picks):
+        return picks
+    others = [i for i, s in enumerate(ranked) if s in long and s not in picks]
+    if not others:
+        return picks
+    middle = len(picks) // 2
+    at = ranked.index(picks[middle])
+    picks[middle] = ranked[min(others, key=lambda i: (abs(i - at), i))]
+    return picks
 
 
 def interpreter_pick(

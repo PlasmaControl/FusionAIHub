@@ -13,7 +13,9 @@
 # The owner-absent frames where AE may lie only below 80 kHz (round three, spec §2.6, D28):
 #   python -m labeler.ae.xpower.below80   every shot of v3's snapshot: v3's AE off an MHD
 #       frame, or TokEye (masks-full) lit only below 80 kHz once pseudo-v2's steady lines are
-#       removed -> $LABELER_ROOT/suggestions/ae_xpower/v3/below80.{csv,json,md}
+#       removed, or TokEye lit below 80 kHz past pseudo-v3's per-line MHD markers
+#       (tokeye_lines, with the catalog's NTM table; S2 fix)
+#       -> $LABELER_ROOT/suggestions/ae_xpower/v3/below80.{csv,json,md}
 # Suggestions, never labels: the owner's labels and the page's band are not touched. Needs v3's
 # chosen model and its one test (models/ae_xpower/v3, whose evaluation.json evaluate --test
 # writes; the command refuses before it) and pseudo-v2's rules.json. Nothing is fetched.
@@ -29,6 +31,9 @@
 #   sacct MaxRSS 714,592 KiB (698 MiB), 99.7 % of 700M: the pilot under-predicted by 46 %.
 #   mem=1000M      the full run's 698 MiB x 1.3 is 907 MiB; rounded up to 100M.
 #   time=00:30:00  the full run's 4 min 44 s x 6.
+#   tokeye_lines (an estimate, not measured): the markers add ~0.2 s and one more (n_y, n)
+#   array a shot, with the lines read once for both TokEye reasons; 1000M and 30 min should
+#   hold. Check it on the pilot's MaxRSS before the full run.
 # before the pilot (measured 2026-09-26 on ae_xpower_gallery):
 #   ae_xpower_gallery's 180-shot run reads the same stores with the same kind of model: 1 CPU,
 #   1500M, 82.1 % CPU, 80 % memory, 3 min 39 s. below80 also reads each shot's masks-full

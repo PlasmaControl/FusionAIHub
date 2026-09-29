@@ -17,6 +17,13 @@ v2 (`SEG_VERSIONS["v2"]`) is pseudo-v2 and SegNet v2: over 0-250 kHz and the
 owner's whole window, from TokEye's whole-shot masks (`ae/masks-full`) and
 ae_xpower v3's label snapshot, with the MHD-line rules of `mhdlines`. v1 is
 unchanged.
+
+v3 (`SEG_VERSIONS["v3"]`) is pseudo-v3 and SegNet v3: v2's inputs and split,
+with the per-line MHD markers of `markers` in place of `mhdlines`' rules, and
+below 80 kHz an owner-absent frame IGNORED but for the pixels they take. Its
+masks are written only when the markers' gate passes (`gated`), and its test
+reuses SegNet v2's test shots after v2's breakdown was seen (`test_of`,
+`reuse_note`). v2 is unchanged.
 """
 
 from __future__ import annotations
@@ -41,12 +48,33 @@ class SegVersion:
     labels: str | None  # the ae_xpower snapshot the masks read; None: the live file
     ae_version: str  # the ae_xpower version: TokEye's masks and the chosen model
     whole_window: bool  # scored over the owner's whole window (else 0-2 s)
+    gated: bool = False  # training needs the pseudo-masks' rules.json gate passed
+    test_of: str | None = None  # the earlier version whose test shots it reuses
 
 
 SEG_VERSIONS = {
     "v1": SegVersion("pseudo-v1", (80.0, 250.0), None, "v1", False),
     "v2": SegVersion("pseudo-v2", (0.0, 250.0), "v3", "v3", True),
+    "v3": SegVersion(
+        "pseudo-v3", (0.0, 250.0), "v3", "v3", True, gated=True, test_of="v2"
+    ),
 }
+
+
+def reuse_note(version: str, n_test: int | None = None) -> str | None:
+    """The sentence a version's records carry when its test is a second use of
+    an earlier version's test shots (`test_of`); None when it is not."""
+    earlier = SEG_VERSIONS[version].test_of
+    if earlier is None:
+        return None
+    shots = "test shots" if n_test is None else f"{n_test} test shots"
+    return (
+        f"SegNet {version}'s test is a second use of SegNet {earlier}'s {shots}, "
+        f"and its design (pseudo-{version}'s markers) was made after SegNet "
+        f"{earlier}'s test breakdown had been seen (models/ae_seg/{earlier}/"
+        "diagnosis.md): its test scores are not an unbiased estimate. Tier: "
+        "suggestions."
+    )
 
 
 def pseudo_dir(paths: Paths, version: str = VERSION) -> Path:
