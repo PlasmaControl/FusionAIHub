@@ -25,7 +25,8 @@
 #   full run:   EVENT=neoclassical_tearing_mode sbatch <this>
 #               WORKERS=12 EVENT=sawtooth_oscillation SHOTS="<the cohort's 450>" \
 #                 sbatch --cpus-per-task=4 --mem=6G <this>
-#               WORKERS=6 EVENT=high_confinement_mode sbatch --cpus-per-task=2 --mem=3G <this>
+#               WORKERS=6 EVENT=high_confinement_mode \
+#                 sbatch --cpus-per-task=2 --mem=4600M <this>
 #               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=2G <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
 #   rebuild:    EVENT=neoclassical_tearing_mode FORCE=1 sbatch <this>  (--force: rebuilds built shots)
@@ -33,6 +34,8 @@
 #               EVENT=edge_localized_mode FORCE=1 sbatch --cpus-per-task=4 --mem=2G <this>
 #               WORKERS=12 EVENT=sawtooth_oscillation FORCE=1 SHOTS="<the cohort's 450>" \
 #                 sbatch --cpus-per-task=4 --mem=6G <this>
+#               WORKERS=6 EVENT=high_confinement_mode FORCE=1 \
+#                 sbatch --cpus-per-task=2 --mem=4600M <this>
 #               a store is only the page's rows: labels, drafts and history are untouched
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
@@ -50,12 +53,16 @@
 #   rebuild (job 2943826, 450 shots): 4 min 51 s, 72.9 % CPU, and 5.7 GiB by jobstats
 #   (63 % of 9G) against sacct's 6.96 GiB, which sums the forked workers' shared
 #   pages, so --mem=8G.
+#   Since the robust clip (2026-09-29): H-mode pilot job 2944567 (20 shots, 6 workers
+#   on 2 CPUs) 39 s and 3.0 GiB MaxRSS, 99.9 % of 3G; the full rebuild (job 2944580)
+#   5 min 25 s, 64.2 % CPU on cold reads, 3.70 GiB of 3800M, so --mem=4600M. The
+#   sawteeth's full rebuild (job 2944568) 9 min 15 s, 93.7 % CPU, 5.74 GiB of 6G.
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
 #   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).
 #   cpus-per-task=8   450 x 5.1 s / 8 workers = 4.8 min; the others 1-2 min on 2-4 CPUs.
 #   mem=8G            tearing modes' 5.7 GiB by jobstats x 1.4; sawteeth 12 x 0.41 x 1.2,
-#                     H-mode 6 x 0.32 x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
+#                     H-mode 3.70 GiB x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
 #   time=00:30:00     4.8 min x 6 for cold GPFS reads.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
