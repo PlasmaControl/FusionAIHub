@@ -84,11 +84,13 @@ def test_the_coverage_figure(tmp_path):
     shots, present, split, years = fig.axes
     assert _coming(shots) == 4 and _coming(present) == 4
     assert [bar.get_width() for bar in shots.patches] == [4, 2], "reviewed, positive"
-    [legend] = fig.legends
+    legend, key = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
         "reviewed",
         "with a present span",
     ]
+    assert [t.get_text() for t in key.get_texts()] == list(coverage.SUGGESTED)
+    assert years.get_legend() is None, "the years' entries are in the shared key"
     assert [bar.get_width() for bar in present.patches] == [0.9]
     assert "0.9" in _texts(present)
     assert [bar.get_height() for bar in split.patches] == [1, 1, 1, 1]
@@ -98,8 +100,8 @@ def test_the_coverage_figure(tmp_path):
         "test",
         "no\nsplit",
     ]
-    assert [bar.get_height() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
-    assert [t.get_text() for t in years.get_xticklabels()] == ["2024", "2025", "?"]
+    assert [bar.get_width() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
+    assert [t.get_text() for t in years.get_yticklabels()] == ["2024", "2025", "?"]
     assert "suggest" in years.get_title()
     assert tree.small_text(fig) == []
 
