@@ -4,6 +4,7 @@ legacy tables' labelled shots, the frame models' splits and their suggestions.""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from itertools import pairwise
 
 import pandas as pd
@@ -161,7 +162,8 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
         "reviewed",
         "with a present span",
     ]
-    assert [t.get_text() for t in key.get_texts()] == list(coverage.FRAME_SUGGESTED)
+    names = [t.get_text() for t in key.get_texts()]
+    assert names == list(coverage.FRAME_SUGGESTED), "one key, one name a colour"
     assert tree.small_text(fig) == []
     for ax in (elm_split, saw_split, elm_years):
         assert _apart(fig, ax), ax.get_title()
@@ -224,6 +226,33 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
         inside = fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1
         assert inside or not text.get_text(), text.get_text()
     assert tree.small_text(fig) == []
+
+
+def test_ae_s_years_are_in_the_shared_key_and_six_years_stay_apart(tmp_path):
+    """AE's years panel has no legend of its own, alone or above the frame rows:
+    its entries are in the one key the years panels share, which covers none of
+    its bars or ticks, and its six years' ticks do not touch."""
+    ae = replace(AE_COUNTS, by_year=BY_YEAR)
+    framed = {category: _population(None) for category in coverage.FRAME_SOURCES}
+    for counts in ({AE: ae}, {AE: ae} | framed):
+        fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
+        years = fig.axes[3]
+        assert years.get_title() == "AE suggestions by year"
+        assert years.get_legend() is None, "AE's entries are in the shared key"
+        names = [[t.get_text() for t in key.get_texts()] for key in fig.legends]
+        [shared] = [n for n in names if "suggested" in n]
+        ae_entries = ["suggested", "suggested with AE"]
+        assert list(coverage.SUGGESTED) == ae_entries
+        alone = ae_entries if counts == {AE: ae} else list(coverage.FRAME_SUGGESTED)
+        assert shared[:2] == alone, "one name a colour once frame rows are drawn"
+        assert _ticks(years) == ["2021", "2022", "2023", "2024", "2025", "?"]
+        assert _apart(fig, years), "the year ticks stay apart"
+        drawn = [bar.get_window_extent() for bar in years.patches] + [
+            t.get_window_extent() for t in _tick_labels(years)
+        ]
+        for key in fig.legends:
+            box = key.get_window_extent()
+            assert not any(box.overlaps(b) for b in drawn), "the key covers nothing"
 
 
 def test_ae_alone_keeps_its_one_row(tmp_path):

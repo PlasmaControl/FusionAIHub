@@ -72,7 +72,8 @@ LEGACY_TICK = "legacy"
 LEGACY_COLOUR = "#8c564b"
 NONE_REVIEWED = "none reviewed"
 FRAME_ROW_IN = 1.5  # the height of each of the two frame rows, inches
-#: The frame years panels' one key, in `SUGGESTED`'s colours.
+#: The frame years panels' entries in the years panels' one key (`_years_key`),
+#: in `SUGGESTED`'s colours.
 FRAME_SUGGESTED = ("suggested", "suggested with the phenomenon")
 
 
@@ -345,21 +346,28 @@ def _in_year_order(by_year: Mapping[int, tuple[int, int]]) -> tuple[list, list]:
     return years, ["?" if y == UNKNOWN_YEAR else str(y) for y in years]
 
 
+def _year_bars(ax, by_year: Mapping[int, tuple[int, int]], names) -> None:
+    """The suggested shots and those called positive per campaign year, as bars
+    across, the first year on top: six years' ticks stay apart, where under
+    upright bars they touch. `names` label the two for the shared key
+    (`_years_key`); no panel keeps a legend of its own."""
+    years, ticks = _in_year_order(by_year)
+    at = np.arange(len(years))
+    colours = SUGGESTED.values()
+    for k, (name, colour) in enumerate(zip(names, colours, strict=True)):
+        ax.barh(at, [by_year[y][k] for y in years], color=colour, label=name)
+    ax.set_yticks(at, ticks)
+    ax.invert_yaxis()
+    ax.set_xlabel("shots")
+
+
 def _years_panel(ax, ae: Counts | None) -> None:
     heading = f"{title(AE)} suggestions by year"
     if ae is None or ae.by_year is None:
         placeholder(ax, heading, NOT_RUN)
         return
-    years, ticks = _in_year_order(ae.by_year)
-    at = np.arange(len(years))
-    for k, (name, colour) in enumerate(SUGGESTED.items()):
-        ax.bar(at, [ae.by_year[y][k] for y in years], color=colour, label=name)
-    ax.set_xticks(at, ticks)
-    ax.set_xlabel("campaign year")
-    ax.set_ylabel("shots")
+    _year_bars(ax, ae.by_year, SUGGESTED)
     ax.set_title(heading)
-    if years:
-        ax.legend(frameon=False)
 
 
 def _frame_split_panel(ax, category: str, c: Counts | None) -> None:
@@ -402,26 +410,32 @@ def _frame_years_panel(ax, category: str, c: Counts | None) -> None:
     if c.by_year is None:
         placeholder(ax, heading, NOT_RUN)
         return
-    years, ticks = _in_year_order(c.by_year)
-    at = np.arange(len(years))
-    colours = SUGGESTED.values()
-    for k, (name, colour) in enumerate(zip(FRAME_SUGGESTED, colours, strict=True)):
-        ax.barh(at, [c.by_year[y][k] for y in years], color=colour, label=name)
-    ax.set_yticks(at, ticks)
-    ax.invert_yaxis()
-    ax.set_xlabel("shots")
+    _year_bars(ax, c.by_year, FRAME_SUGGESTED)
     ax.set_title(heading)
 
 
-def _frame_key(fig: Figure, years) -> None:
-    """One key for the frame years panels, beneath the figure: a legend in each
-    would cover its bars and ticks (six years in a 1.5 in row). None while no
-    panel has bars."""
+def _years_key(fig: Figure, years) -> None:
+    """One key for every years panel, AE's and the frame rows', beneath the
+    figure: a legend in each would cover its bars and ticks (six years in a
+    1.5 in row; AE's, at "best", sat on its 2022 bar). One entry per colour
+    some panel draws, AE's first; none while no panel has bars. Once a frame
+    row's bars are drawn, AE's dark bars go by the frame rows' name, "with the
+    phenomenon", which AE's panel title names."""
+    found: dict[str, object] = {}
     for ax in years:
-        if ax.patches:
-            handles, names = ax.get_legend_handles_labels()
-            fig.legend(handles, names, loc="outside lower right", ncols=len(names))
-            return
+        if not ax.patches:  # a placeholder, or no year to draw
+            continue
+        for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
+            found.setdefault(name, handle)
+    if FRAME_SUGGESTED[1] in found:  # the same colour as "suggested with AE"
+        found.pop(list(SUGGESTED)[1], None)
+    if found:
+        fig.legend(
+            list(found.values()),
+            list(found),
+            loc="outside lower right",
+            ncols=len(found),
+        )
 
 
 def draw_coverage(counts: Mapping[str, Counts], stem: Path) -> Figure:
@@ -459,8 +473,7 @@ def draw_coverage(counts: Mapping[str, Counts], stem: Path) -> Figure:
         handles, names = axes[0].get_legend_handles_labels()
         if handles:  # a key only for a series with data
             fig.legend(handles, names, loc="outside lower left", ncols=len(names))
-        if framed:
-            _frame_key(fig, years)
+        _years_key(fig, [axes[3], *(years if framed else ())])
         save(fig, stem)
     return fig
 
