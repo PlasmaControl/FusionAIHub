@@ -244,14 +244,20 @@ pixi run -e labelmaker python -m labeler.events.review.agreement --event sawtoot
 ```
 
 `agreement` counts a saved shot only when its last save in
-`review/history.jsonl` was opened on the table the pointer names now. Saves
-opened on another table, before the pointer moved, are counted under
-`excluded_saves`. It reports frame precision and recall over 10 ms frames. It
-is `ready` at 50 shots with both at least 0.75. `spans --gold` uses the same
-scorer on the roster's gold-tier shots. Its reference is the saved labels
-(`review/labels.csv`), or the label table whose path follows `--gold`. The ten
-gold sawtooth shots have no gold label yet, so their score counts 0 shots, and
-`missing` names the ten.
+`review/history.jsonl` was made against the table the pointer names now: the
+save's `source_sha256` is that table's sha256, so a table rebuilt under its own
+name leaves out the saves made against the old one. A save with no
+`source_sha256` (a line written before the page recorded it) is matched by the
+table's name. Saves made against another table, before the pointer moved, or
+against this one before it was rewritten, are counted under `excluded_saves` by
+that table's name. The table is hashed when the save is made, not when the page
+opened the shot: a draft begun before a pointer moved is recorded against the
+new table, so save or discard pending drafts before moving a pointer. It
+reports frame precision and recall over 10 ms frames. It is `ready` at 50 shots
+with both at least 0.75. `spans --gold` uses the same scorer on the roster's
+gold-tier shots. Its reference is the saved labels (`review/labels.csv`), or the
+label table whose path follows `--gold`. The ten gold sawtooth shots have no
+gold label yet, so their score counts 0 shots, and `missing` names the ten.
 
 ## What a save writes
 
@@ -265,10 +271,13 @@ Saves go under the event's directory in the label tables
   any other format table.
 - `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
   running the server), `name` (what the name box held, or null), time, the
-  window and spans saved, and the source file they were compared with. It is
-  only ever appended to: a shot's versions are its lines in order, numbered
-  from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
-  names existed have no `name` and read as unnamed.
+  window and spans saved, the source file they were compared with and that
+  file's sha256 (`source_sha256`; absent when the event has no source table).
+  It is only ever appended to: a shot's versions are its lines in order,
+  numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
+  written before names existed have no `name` and read as unnamed; lines
+  written before the sha256 was recorded have no `source_sha256` and match the
+  source table by name.
 - `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
   shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
   (the server's login), `name` (the name box, or null), and time. A shot's last
