@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=700M
-#SBATCH --time=01:00:00
+#SBATCH --mem=1000M
+#SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
@@ -22,11 +22,13 @@
 #   full run:   sbatch <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured on pilot job 2944607)
+# ------------------------------------------ sizing (measured on pilot job 2944607 and full run 2945198)
 #   pilot, 3 shots (170720, 176053, 176041), 1 CPU at 2500M: 12 s wall, 4 s a shot with
 #   start-up; sacct MaxRSS 488,392 KiB (477 MiB); too short for a CPU sample.
-#   mem=700M       477 MiB x 1.3 is 620 MiB; rounded up to 100M.
-#   time=01:00:00  4 s a shot x 180 x 5.
+#   full run 2945198, 180 shots at 700M (the pilot's 477 MiB x 1.3): 4 min 44 s, CPU 85.3 %;
+#   sacct MaxRSS 714,592 KiB (698 MiB), 99.7 % of 700M: the pilot under-predicted by 46 %.
+#   mem=1000M      the full run's 698 MiB x 1.3 is 907 MiB; rounded up to 100M.
+#   time=00:30:00  the full run's 4 min 44 s x 6.
 # before the pilot (measured 2026-09-26 on ae_xpower_gallery):
 #   ae_xpower_gallery's 180-shot run reads the same stores with the same kind of model: 1 CPU,
 #   1500M, 82.1 % CPU, 80 % memory, 3 min 39 s. below80 also reads each shot's masks-full
