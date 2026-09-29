@@ -77,7 +77,7 @@ def features(store, spec: EventSpec, window) -> tuple[np.ndarray, np.ndarray]:
     if isinstance(store, tuple):
         grid, built = store[0], store[1]
         described = [{"name": row.name, **row.meta()} for row in built]
-        found = _match(described, spec, "the rows in memory")
+        found = match_roles(described, spec, "the rows in memory")
         level, cols, sub = _columns(grid, spec, first, n)
         values = [
             None if row is None else _pooled(built, row, grid, level)[..., cols]
@@ -91,7 +91,7 @@ def features(store, spec: EventSpec, window) -> tuple[np.ndarray, np.ndarray]:
                 {"name": name, **json.loads(f["rows"][name].attrs["meta"])}
                 for name in json.loads(f.attrs["rows"])
             ]
-            found = _match(described, spec, str(store))
+            found = match_roles(described, spec, str(store))
             level, cols, sub = _columns(grid, spec, first, n)
             values = [
                 None if row is None else f["rows"][row["name"]][str(level)][..., cols]
@@ -100,9 +100,10 @@ def features(store, spec: EventSpec, window) -> tuple[np.ndarray, np.ndarray]:
     return _assemble(spec, found, values, sub, n)
 
 
-def _match(described: list[dict], spec: EventSpec, where: str) -> list:
+def match_roles(described: list[dict], spec: EventSpec, where: str) -> list:
     """Each role's row description in the spec's order, None for a missing
-    optional one; raises for a missing required one or a stale n row."""
+    optional one; raises for a missing required one or a stale n row
+    (`StaleStore`). `described` is a store's rows, as `features` reads them."""
     found = []
     for role in spec.roles:
         row = find_role(described, role)

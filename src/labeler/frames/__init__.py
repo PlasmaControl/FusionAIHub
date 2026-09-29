@@ -185,6 +185,16 @@ def shots_meta_file(paths: Paths, method: str) -> Path:
     return _frames(paths) / "shots" / f"{method}.json"
 
 
+def owner_file(paths: Paths, method: str) -> Path:
+    """The owner's saves as the split froze them, its `owner` split's labels (D40)."""
+    return _frames(paths) / "shots" / f"{method}.owner.csv"
+
+
+def grid_path(paths: Paths, event: str, shot: int) -> Path:
+    """A format grid: `<label tables>/<event>/format/shots/<shot>.npz`."""
+    return paths.label_tables / event / "format" / "shots" / f"{int(shot)}.npz"
+
+
 def roster_shots(paths: Paths, event: str) -> frozenset[int]:
     """The shots of `event`'s review roster, the label tables' `<event>/shots.csv`;
     none without one."""
