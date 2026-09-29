@@ -6,8 +6,8 @@
 #SBATCH --ntasks=1
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=16G
-#SBATCH --time=02:30:00
+#SBATCH --mem=5G
+#SBATCH --time=00:50:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
@@ -27,15 +27,27 @@
 # read from nvidia-smi, so the GPU-memory peak stays near 82 % on either.
 #
 #   pilot:      PILOT=1 sbatch --time=00:30:00 <this>   (16 shots, the owner's three first)
-#   full run:   sbatch --mem=<the pilot's MaxRSS x 1.3> <this>
+#   full run:   sbatch <this>                           (sized below, from the pilot)
 #   some shots: SHOTS=170720,176053 sbatch <this>
 #   tiled:      TILE_MS=2000 FORCE=1 sbatch <this>      (only if the IoU bar fails; D12)
 #   gate:       python -m labeler.jobstats --job-id <id> --gpu
 #
-# ------------------------------------------ sizing (measured on v1's 0-2 s run, then scaled)
-#   v1 (ae_dataset.sbatch over 0-2 s, 7,813 frames): 8.4 s a shot on one A100, GPU peak
+# ------------------------------------------ sizing (measured on pilot job 2944164)
+#   pilot 2944164 (a3503b8, PILOT=1 FORCE=1): 16 shots on an A100-PCIE-40GB in 2:22,
+#   8.4 s a shot, of which the model and the writes take 5.7 s and the rest waits on the
+#   worker; peak GPU memory 28.56 GiB at batch 2; MaxRSS 2.50 GiB (3.32 GiB in the first
+#   pilot, 2944120, before the writes went to zlib level 1).
+#   jobstats: CPU 68.8 %  CPU-mem 11.9 %  GPU 0 %  GPU-mem 92.3 %  FAIL (exempt)
+#   time=00:50:00  8.4 s x 164 shots x 2 = 46 min.
+#   mem=5G         the larger MaxRSS, 3.32 GiB, x 1.3.
+#   cpus=2         at 3 (pilot 2944171, two workers) a shot took 6.9 s but CPU fell to
+#                  47 %; at 1 (--workers 0) a shot would take ~14 s, holding the GPU longer.
+#   GPU and CPU-mem stay under jobstats' 70 %: TokEye's forward pass is a small part of a
+#   shot (v1's job 2923913 ran at 0.6 %), and jobstats reads the memory peak below sacct's.
+#   before the pilot:
+#   v1 (ae_dataset.sbatch over 0-2 s, 7,820 frames): 8.4 s a shot on one A100, GPU peak
 #   21.93 GiB at 4 chords a batch, about 5.5 GiB a chord.
-#   A whole shot of up to 6 s is up to 23,440 frames: about 16.4 GiB a chord, so batch 2 peaks
+#   A whole shot of up to 6 s is up to 23,445 frames: about 16.4 GiB a chord, so batch 2 peaks
 #   near 33 GiB of 40 (82 %) and batch 4 near 66 GiB of 80; about 25 s a shot at 6 s.
 #   time=02:30:00  180 shots x 25 s = 75 min, x 2 for start-up and cold reads.
 #   mem=16G        the parent holds the model and one shot's raw, norm and prob (~0.5 GB), the

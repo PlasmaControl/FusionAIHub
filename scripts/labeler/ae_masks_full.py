@@ -44,6 +44,7 @@ import multiprocessing
 import os
 import sys
 import time
+import zipfile
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
@@ -89,6 +90,11 @@ from labeler.events.raw import NO_FETCH_ENV
 OWNER_SHOTS = (170720, 176053, 176041)
 #: Shots in the pilot, the owner's three included.
 PILOT_SIZE = 16
+#: zlib's level in the compressed files. A shot's probabilities (96 MB) take
+#: 3 s at 1 against 13 s at `np.savez_compressed`'s 6, and the GPU waits on
+#: these writes. The files are larger: 170720's probabilities 37.1 MB, not 31.7,
+#: and its clean file 1.4 MB, not 1.0.
+ZLIB_LEVEL = 1
 
 
 def _shot(stem: str) -> int:
@@ -150,10 +156,19 @@ def _outputs(paths: Paths, stem: str) -> tuple[Path, Path, Path]:
 
 
 def _savez_compressed(path: Path, **arrays) -> None:
-    """`np.savez_compressed` through a temporary sibling `<name>.npz.tmp`, renamed
-    into place as `ae_dataset.save_npz` does."""
-    with atomic_path(path) as tmp, open(tmp, "wb") as handle:
-        np.savez_compressed(handle, **arrays)
+    """`np.savez_compressed`'s archive at ZLIB_LEVEL, through a temporary sibling
+    `<name>.npz.tmp`, renamed into place as `ae_dataset.save_npz` does."""
+    with (
+        atomic_path(path) as tmp,
+        zipfile.ZipFile(
+            tmp, "w", zipfile.ZIP_DEFLATED, allowZip64=True, compresslevel=ZLIB_LEVEL
+        ) as archive,
+    ):
+        for name, array in arrays.items():
+            with archive.open(f"{name}.npy", "w", force_zip64=True) as member:
+                np.lib.format.write_array(
+                    member, np.asanyarray(array), allow_pickle=False
+                )
 
 
 def write_shot(
