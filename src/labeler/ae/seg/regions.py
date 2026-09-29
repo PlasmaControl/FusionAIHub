@@ -14,7 +14,10 @@ made on another version of the pseudo-mask (another sha256) is stale: the page
 says so and training ignores it.
 
 Training takes the pseudo-mask with every rejected region set to background
-(`reviewed_mask`).
+(`reviewed_mask`). SegNet trains on pseudo-v1, and the review page draws
+pseudo-v1-full (`whole.REVIEW`): a decision made there names that set in
+`pseudo`, so training on pseudo-v1 cannot use it and says so
+(`other_decisions`).
 """
 
 from __future__ import annotations
@@ -140,6 +143,11 @@ def reviewed_mask(pm: PseudoMask, decision: dict | None, sha256: str) -> np.ndar
     labelled, _ = label_regions(pm.mask)
     mask[np.isin(labelled, decision["rejected"]) & (labelled > 0)] = 0
     return mask
+
+
+def other_decisions(decisions: dict, pseudo: str = PSEUDO) -> list[int]:
+    """The shots whose last decision was made on another mask set than `pseudo`."""
+    return sorted(s for s, d in decisions.items() if d.get("pseudo", PSEUDO) != pseudo)
 
 
 def shot_view(
