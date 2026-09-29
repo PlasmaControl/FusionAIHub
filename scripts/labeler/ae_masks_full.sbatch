@@ -31,6 +31,12 @@
 #   some shots: SHOTS=170720,176053 sbatch <this>
 #   tiled:      TILE_MS=2000 FORCE=1 sbatch <this>      (only if the IoU bar fails; D12)
 #   gate:       python -m labeler.jobstats --job-id <id> --gpu
+#   then:       python -m labeler.ae.full --manifest --job <id>=<commit> ... \
+#                   [--check-job <id>=<commit>]   (login node; each job that wrote a file
+#               now there, from its log; masks-full's and dataset-full's manifest.json,
+#               which v3's records name. Written once: a file rewritten after it makes
+#               every read of v3's records refuse.) Made 2026-09-29 from 2944164=a3503b8,
+#               2944171=a3503b8, 2944172=2dbd01c, check 2944173=2dbd01c.
 #
 # ------------------------------------------ sizing (measured on pilot job 2944164)
 #   pilot 2944164 (a3503b8, PILOT=1 FORCE=1): 16 shots on an A100-PCIE-40GB in 2:22,
