@@ -14,27 +14,35 @@
 - the format grids (`<event>/format/shots/<shot>.npz`, 50 ms cells, `grid_path`):
   Hiro's ELM onsets and the tearing archive's, present over `EVENT_MS`, and
   Jalal Butt's H and L grids, H over `EVENT_MS` and L before and after it, both
-  on the 600 ms cell. `IP_SHOT` and `LEGACY` are legacy ELM shots beyond the
-  cohort and every roster;
+  on the 600 ms cell. `IP_SHOT`, `LEGACY` and `LABELS_SHOT` are legacy ELM shots
+  beyond the cohort and every roster, `LABELS_SHOT` absent in every cell of
+  `LABELS_SHOT_HULL`; `SPARE`'s ELM grid is unknown in every cell;
 - the `ece_sawtooth` v2 table (`SAWTOOTH_SPANS`): present over `EVENT_MS` but
   for an uncertain 1000-1050 ms, and not observable over 1850-1900 ms;
 - a cohort of 6 (`COHORT`: `BLIND` the blind one, which has every target, and
-  `SPARE` with none) over `WINDOW`, and a population with one shot more
-  (`POPULATION_ONLY`, over `POPULATION_WINDOW`);
+  `SPARE` with no labelled bin) over `WINDOW`, and a population with one shot
+  more (`POPULATION_ONLY`, over `POPULATION_WINDOW`);
 - one owner save per event on its `SHOTS` shot, present over `EVENT_MS`;
+- the groups the specs require (`required_groups`, as `raw.record_tier` finds
+  them; `GROUP_CHANNELS`): each `SHOTS` shot's own and all three of `BLIND`'s
+  in the corpus, and `IP_SHOT`'s and `LABELS_SHOT`'s filterscopes in the raw
+  cache; `LEGACY` has none;
 - Ip: `IP_SHOT`'s in the raw cache and the ELM shot's in the corpus, each a
-  1 MA plateau; `LEGACY` has none, so its window is its grid's hull.
+  1 MA plateau; `LEGACY` and `LABELS_SHOT` have none, so their windows are their
+  grids' hulls. The catalog's Ip log (`catalog/ip.jsonl`) has one line, for
+  `LABELS_SHOT` (`IP_LOG_WINDOW`).
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from labeler.config import Paths
-from labeler.events import rosters, suggestions
+from labeler.events import raw, rosters, suggestions
 from labeler.events.catalog.cohort import POPULATION_COLUMNS
 from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.interval_tables import SAMPLE_MS, write_label_grid
@@ -43,6 +51,7 @@ from labeler.events.panels.neoclassical_tearing_mode import N_COLOURS, Z_DB
 from labeler.events.panels.sawtooth_oscillation import CHANNEL_ROWS, ECE_BIN_MS
 from labeler.events.review import labels, rows
 from labeler.events.verify import mode_bytes
+from labeler.frames import grid_path
 
 from . import editor_tree
 
@@ -59,6 +68,7 @@ COHORT = (*SHOTS.values(), SPARE, BLIND)
 POPULATION_ONLY = 190007
 IP_SHOT = 160001
 LEGACY = 160002
+LABELS_SHOT = 160003
 
 WINDOW = (100, 1900)
 POPULATION_WINDOW = (150, 1850)
@@ -69,6 +79,22 @@ CORPUS_IP_WINDOW = (50, 1950)  # the ELM shot's, which its catalog window beats
 #: The legacy ELM grids' known cells, so their hulls.
 IP_SHOT_HULL = (300, 2000)
 LEGACY_HULL = (300, 2500)
+LABELS_SHOT_HULL = (0, 3000)
+#: `LABELS_SHOT`'s window in the catalog's Ip log, inside its hull: 20 of the
+#: hull's 60 bins lie outside it.
+IP_LOG_WINDOW = (400, 2400)
+#: Each required group's channels in the tree (`GROUPS`).
+GROUP_CHANNELS = {"filterscopes": 8, "mirnov": 1, "ece": len(raw.ECE_CHANNELS)}
+#: Where each shot's required groups are: "corpus" or "cache".
+GROUPS = {
+    SHOTS[ELM]: ("corpus", ("filterscopes",)),
+    SHOTS[HMODE]: ("corpus", ("filterscopes",)),
+    SHOTS[NTM]: ("corpus", ("mirnov",)),
+    SHOTS[SAWTOOTH]: ("corpus", ("ece",)),
+    BLIND: ("corpus", tuple(GROUP_CHANNELS)),
+    IP_SHOT: ("cache", ("filterscopes",)),
+    LABELS_SHOT: ("cache", ("filterscopes",)),
+}
 #: The H and L grids' cells: unknown on the first and last (50 and 1900 ms).
 HL_CELLS = (50, 1950)
 L_MS = ((100, 650), (1400, 1900))
@@ -103,11 +129,6 @@ ECE_RISE_KEV = (0.3, 0.2, 0.1, -0.1)
 #: the 2 ms sub-frames' edges, so each crash is inside one of them.
 SAWTOOTH_MS = 20.0
 ECE_PHASE_MS = (2.5, 7.5, 12.5, 17.5)
-
-
-def grid_path(paths: Paths, event: str, shot: int) -> Path:
-    """A format grid: `<label tables>/<event>/format/shots/<shot>.npz`."""
-    return paths.label_tables / event / "format" / "shots" / f"{int(shot)}.npz"
 
 
 def _during(t, span=EVENT_MS) -> np.ndarray:
@@ -260,6 +281,9 @@ def _grids(paths: Paths) -> None:
     legacy = ((IP_SHOT, (0, 2500), IP_SHOT_HULL), (LEGACY, (0, 3000), LEGACY_HULL))
     for shot, cells, hull in legacy:
         _grid(grid_path(paths, ELM, shot), cells, hull, [EVENT_MS], counts=True)
+    hull = LABELS_SHOT_HULL
+    _grid(grid_path(paths, ELM, LABELS_SHOT), hull, hull, [], counts=True)
+    _grid(grid_path(paths, ELM, SPARE), (0, 2000), (0, 0), [], counts=True)
     for shot in (SHOTS[HMODE], BLIND):
         _grid(grid_path(paths, HMODE, shot), HL_CELLS, WINDOW, [EVENT_MS])
         _grid(grid_path(paths, LMODE, shot), HL_CELLS, WINDOW, L_MS)
@@ -313,6 +337,35 @@ def _ip(path: Path, plasma) -> None:
     editor_tree.write(path, {"ip": (t, ip)})
 
 
+def _groups(paths: Paths) -> None:
+    """`GROUPS`: each a flat record, 0-2500 ms at 1 ms."""
+    t = np.arange(0.0, 2500.0, 1.0)
+    roots = {"corpus": paths.corpus, "cache": paths.raw_cache}
+    for shot, (tier, names) in GROUPS.items():
+        records = {n: (t, np.ones((GROUP_CHANNELS[n], len(t)))) for n in names}
+        editor_tree.write(roots[tier] / f"{shot}_processed.h5", records)
+
+
+def _ip_log(paths: Paths) -> None:
+    """`catalog/ip.jsonl` and its runs file, as `window.read_log` reads them."""
+    run = "0" * 32
+    line = {
+        "shot": LABELS_SHOT,
+        "status": "ok",
+        "window_start_ms": IP_LOG_WINDOW[0],
+        "window_end_ms": IP_LOG_WINDOW[1],
+        "flattop_s": 1.0,
+        "ip_peak_ma": 1.0,
+        "dt_ms": 0.05,
+        "version": 3,
+        "ip_sha256": "0" * 64,
+        "run": run,
+    }
+    paths.catalog.mkdir(parents=True, exist_ok=True)
+    (paths.catalog / "ip.jsonl").write_text(json.dumps(line) + "\n")
+    (paths.catalog / "ip_runs.jsonl").write_text(json.dumps({"run": run}) + "\n")
+
+
 def build(tmp_path: Path, seed: int = 0) -> Paths:
     """The tree above under `tmp_path`; its `Paths`."""
     paths = editor_tree.paths(tmp_path)
@@ -334,4 +387,6 @@ def build(tmp_path: Path, seed: int = 0) -> Paths:
     _population(paths)
     _ip(paths.raw_cache / f"{IP_SHOT}_processed.h5", IP_WINDOW)
     _ip(paths.corpus_file(SHOTS[ELM]), CORPUS_IP_WINDOW)
+    _groups(paths)
+    _ip_log(paths)
     return paths
