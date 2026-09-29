@@ -20,6 +20,8 @@
 #               At least 8 shots: two shots per worker, all four workers active.
 #   full run:   sbatch --dependency=afterok:<the ae_seg_train job> <this>
 #   new shots:  FROM_CORPUS=1 SHOTS="<shots>" sbatch <this>
+#   v2:         VERSION=v2 sbatch --dependency=afterok:<the v2 ae_seg_train job> <this>
+#               -> poi/alfven_eigenmode/ae_seg-v2 and gallery/alfven_eigenmode/ae_seg-v2
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
@@ -38,9 +40,10 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
-echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
+VERSION="${VERSION:-v1}"
+echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
 # SHOTS is left unquoted on purpose: it is a list of shot numbers.
 # shellcheck disable=SC2086
-srun "$ENV/bin/python" -m labeler.ae.seg.poi --workers "${SLURM_CPUS_PER_TASK:-4}" \
-    ${FROM_CORPUS:+--from-corpus} ${SHOTS:+--shots $SHOTS}
+srun "$ENV/bin/python" -m labeler.ae.seg.poi --version "$VERSION" \
+    --workers "${SLURM_CPUS_PER_TASK:-4}" ${FROM_CORPUS:+--from-corpus} ${SHOTS:+--shots $SHOTS}
 echo "finished at $(date -Is)"

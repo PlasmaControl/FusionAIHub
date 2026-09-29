@@ -20,6 +20,7 @@ TOKEYE_PY = "/scratch/gpfs/nc1514/tokeye/.venv/bin/python"
 #: The CPU jobs round three adds, and the commands each runs, in order.
 NEW_CPU = {
     "ae_masks_full_check.sbatch": ("labeler.ae.full",),
+    "ae_below80.sbatch": ("labeler.ae.xpower.below80",),
 }
 #: Every existing script round three submits.
 EXISTING = (
@@ -113,3 +114,18 @@ def test_tokeye_over_whole_shots_is_the_one_gpu_job():
 @pytest.mark.parametrize("name", EXISTING)
 def test_every_job_the_round_submits_fetches_nothing(name):
     assert _exported_before_the_run(_script(name), "LABELER_NO_FETCH"), name
+
+
+def test_segnet_trains_scores_and_draws_the_version_it_is_given():
+    text = _script("ae_seg_train.sbatch")
+    assert 'VERSION="${VERSION:-v1}"' in text, "v1 by default, so v1's commands mean v1"
+    assert 'MODELS="$ROOT/models/ae_seg/$VERSION"' in text
+    for module, flags in _runs(text):
+        assert "--version" in flags, module
+    assert text.count('--version "$VERSION"') == 2, "both runs take the variable"
+    assert 'PILOT_DIR="$PILOT_DIR-$VERSION"' in text, "a v2 pilot is not v1's"
+    poi = _script("ae_seg_poi.sbatch")
+    assert 'VERSION="${VERSION:-v1}"' in poi
+    [(module, flags)] = _runs(poi)
+    assert module == "labeler.ae.seg.poi" and "--version" in flags
+    assert poi.count('--version "$VERSION"') == 1
