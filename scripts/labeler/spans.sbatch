@@ -35,13 +35,13 @@
 #               EVENT=high_confinement_mode VERSION=v2 \
 #                 sbatch --cpus-per-task=4 --mem=3300M <this>
 #               EVENT=edge_localized_mode VERSION=v2 GOLD=1 \
-#                 sbatch --cpus-per-task=4 --mem=3300M <this>
+#                 sbatch --cpus-per-task=4 --mem=3400M <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
 #   redo:       every shot of a version again, its rules unchanged, with the gold
 #               score, e.g.
 #               EVENT=sawtooth_oscillation VERSION=v2 FORCE=1 GOLD=1 sbatch <this>
 #               EVENT=edge_localized_mode VERSION=v2 FORCE=1 GOLD=1 \
-#                 sbatch --cpus-per-task=4 --mem=3300M <this>
+#                 sbatch --cpus-per-task=4 --mem=3400M <this>
 #               then rebuild the stores of a page open on them (review_build.sbatch,
 #               FORCE=1)
 #   extension:  EVENT=... VERSION=v2 WINDOWS=population sbatch --time=02:00:00 <this>
@@ -65,8 +65,11 @@
 #   2944528 47 s, 2.42 GB MaxRSS; H-mode 2944529 47 s, 2.39 GB; sawteeth 2944530 19 s,
 #   7.91 GB at 11G (4 x 2.24 GB does not fit 5G). Full runs, 450 shots: ELM 2944539
 #   8 min 43 s, 85 % CPU, 2.70 GiB of 3G; H-mode 2944541 8 min 43 s, 85 %, 2.67 GiB of
-#   3G; sawteeth 2944540 6 min 9 s, 80 %, 7.45 GiB of 10G. Hence 3300M and 9G above
-#   (x 1.2). jobstats, which samples every 30 s, read 46-57 % of these peaks.
+#   3G; sawteeth 2944540 6 min 9 s, 80 %, 7.45 GiB of 10G. sacct's MaxRSS x 1.2,
+#   rounded up, gives the sizes above: ELMs 3400M (2944539, 2,831,572K x 1.2 =
+#   3318 MiB), H-mode 3300M (2944541, 2,800,852K x 1.2 = 3282 MiB), sawteeth 9G
+#   (2944540, 7,807,552K x 1.2 = 8.93 GiB). jobstats, which samples every 30 s,
+#   read 46-57 % of these peaks.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
