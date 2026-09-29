@@ -30,7 +30,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ...ae import seg
 from ...ae.seg import regions
 from ...ae.seg.pseudo import PseudoMask
-from ...config import Paths
+from ...config import Paths, sha256_of
 from .. import raw, rosters
 from ..review import build as review_build
 from ..review import labels, rows, versions
@@ -290,6 +290,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 label,
                 source=table.name if table else None,
                 name=name,
+                source_sha256=sha256_of(table) if table else None,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None
