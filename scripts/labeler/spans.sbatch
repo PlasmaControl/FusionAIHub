@@ -30,16 +30,18 @@
 #                 sbatch --cpus-per-task=4 --mem=3G <this>
 #   full run:   the current rules in their own tables, v1's untouched (a v1 table
 #               refuses a rerun under them), e.g.
-#               EVENT=sawtooth_oscillation VERSION=v2 GOLD=1 sbatch <this>
-#               EVENT=high_confinement_mode VERSION=v2 sbatch --cpus-per-task=4 --mem=3G <this>
+#               EVENT=sawtooth_oscillation VERSION=v2 GOLD=1 \
+#                 sbatch --cpus-per-task=4 --mem=9G --time=01:00:00 <this>
+#               EVENT=high_confinement_mode VERSION=v2 \
+#                 sbatch --cpus-per-task=4 --mem=3300M <this>
 #               EVENT=edge_localized_mode VERSION=v2 GOLD=1 \
-#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#                 sbatch --cpus-per-task=4 --mem=3300M <this>
 #               each with --mem reset to its pilot's MaxRSS x 1.2
 #   redo:       every shot of a version again, its rules unchanged, with the gold
 #               score, e.g.
 #               EVENT=sawtooth_oscillation VERSION=v2 FORCE=1 GOLD=1 sbatch <this>
 #               EVENT=edge_localized_mode VERSION=v2 FORCE=1 GOLD=1 \
-#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#                 sbatch --cpus-per-task=4 --mem=3300M <this>
 #               then rebuild the stores of a page open on them (review_build.sbatch,
 #               FORCE=1)
 #   extension:  EVENT=... VERSION=v2 WINDOWS=population sbatch --time=02:00:00 <this>
@@ -59,6 +61,12 @@
 #   mem=22G           8 x 2.24 GB x 1.2 for the sawteeth; 3G for H-mode (4 x 0.5 x 1.2),
 #                     5G for ELMs (4 x 0.96 x 1.2 on 189061).
 #   time=00:30:00     5.6 min x 5 for cold GPFS reads of 600 MB of ECE a shot.
+#   2026-09-29, v2 (round three), 4 workers on 4 CPUs. Pilots (LIMIT=20): ELM job
+#   2944528 47 s, 2.42 GB MaxRSS; H-mode 2944529 47 s, 2.39 GB; sawteeth 2944530 19 s,
+#   7.91 GB at 11G (4 x 2.24 GB does not fit 5G). Full runs, 450 shots: ELM 2944539
+#   8 min 43 s, 85 % CPU, 2.70 GiB of 3G; H-mode 2944541 8 min 43 s, 85 %, 2.67 GiB of
+#   3G; sawteeth 2944540 6 min 9 s, 80 %, 7.45 GiB of 10G. Hence 3300M and 9G above
+#   (x 1.2). jobstats, which samples every 30 s, read 46-57 % of these peaks.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
