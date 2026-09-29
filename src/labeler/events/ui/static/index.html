@@ -20,6 +20,7 @@
   <span id="stale" hidden>Restart the server for names and history</span>
   <input id="reviewer-name" placeholder="Your name" maxlength="64" autocomplete="name" spellcheck="false"
          aria-label="Your name, recorded with each save" title="Recorded with each save" hidden>
+  <button id="reviewer" type="button" title="Recorded with each save: click to change" hidden></button>
   <button id="help" type="button" aria-label="Keys">?</button>
 </header>
 <main id="top">
@@ -66,6 +67,19 @@
   <h2 id="versions-title">Saved versions</h2>
   <ul id="version-list"></ul>
   <form method="dialog"><button autofocus>Close</button></form>
+</dialog>
+<dialog id="who" aria-labelledby="who-title">
+  <h2 id="who-title">Who is reviewing?</h2>
+  <p class="hint">Your name is saved with each label and mask.</p>
+  <select id="who-names" size="6" aria-label="Names"></select>
+  <p id="who-empty" class="hint" hidden>No names yet: add yours.</p>
+  <div class="who-add">
+    <input id="who-new" placeholder="Name not listed?" maxlength="64" autocomplete="name" spellcheck="false"
+           aria-label="A name not on the list">
+    <button id="who-add" type="button">Add Name</button>
+  </div>
+  <p id="who-error" role="alert"></p>
+  <div class="who-go"><button id="who-continue" class="primary" type="button" disabled>Continue</button></div>
 </dialog>
 <script src="/app.js"></script>
 </body>

@@ -120,12 +120,12 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 try {
   await send("Runtime.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+  await send("Page.enable");
+  // The reviewer picked a name when the page first asked (review_browser.mjs drives the list).
+  await send("Page.addScriptToEvaluateOnNewDocument", { source: 'sessionStorage.setItem("labeler:who", "Ada")' });
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   await until(`typeof S !== "undefined" && S.shot === 170815 && S.data !== null && S.masks !== null`);
   if (CASE === "happy") {
-  await js(`$("reviewer-name").focus()`);
-  await send("Input.insertText", { text: "Ada" });
-  await js("document.activeElement.blur()");
   check("an AE shot with a pseudo-mask says so", (await js(`$("masks").textContent`)) === "mask 2/2 kept",
     await js(`$("masks").textContent`));
   const one = await region(1);

@@ -3,7 +3,9 @@
 Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
 its writes are `POST /api/label` and `POST /api/masks`, both into the event's
-`review/` directory. `GET /api/history` lists a shot's saved versions (see
+`review/` directory, and `POST /api/names`, which adds a reviewer's name to
+`reviewers.txt` beside the events (`GET /api/names` lists them; see
+`review.reviewers`). `GET /api/history` lists a shot's saved versions (see
 `review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions
 (pseudo-v1-full: pseudo-v1's rules over the whole window) and the reviewer's last
 word on them (see `labeler.ae.seg.regions`); `GET /api/tokeye` gives TokEye's
@@ -35,7 +37,7 @@ from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths
 from .. import raw, rosters
 from ..review import build as review_build
-from ..review import labels, rows, versions
+from ..review import labels, reviewers, rows, versions
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -48,8 +50,8 @@ BAD_TOKEN = "bad token"
 #: Bumped when the server gains a route or a field the page depends on. The
 #: page asks `/api/version` first and, from an older server, saves without a
 #: name and hides the history instead of failing every save. 3 added the masks,
-#: 4 the whole-shot TokEye layer.
-API_VERSION = 4
+#: 4 the whole-shot TokEye layer, 5 the list of names the page asks from.
+API_VERSION = 5
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +76,12 @@ class MaskIn(BaseModel):
     revision: int = Field(ge=0)
     rejected: list[int] = Field(max_length=regions.MAX_REGIONS)
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
+
+
+class NameIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=versions.NAME_MAX)
 
 
 class Builds:
@@ -197,6 +205,19 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     @app.get("/api/version")
     def version():
         return {"api": API_VERSION}
+
+    @app.get("/api/names")
+    def names_view():
+        return {"names": reviewers.read(paths.label_tables)}
+
+    @app.post("/api/names")
+    def add_name(body: NameIn):
+        with names_lock:
+            try:
+                names, name = reviewers.add(paths.label_tables, body.name)
+            except ValueError as error:
+                raise HTTPException(400, str(error)) from None
+        return {"names": names, "name": name}
 
     @app.get("/api/events")
     def events():
@@ -379,5 +400,6 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         }
 
     mask_lock = threading.Lock()
+    names_lock = threading.Lock()
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
