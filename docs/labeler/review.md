@@ -48,14 +48,14 @@ after the newest save.
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
   a reload keeps them.
 - **Your name.** The page first asks who is reviewing: pick your name from the
-  list and press Continue, or type it and press Add Name if it is not there.
+  list, or type it and press Add Name if it is not there, then press Continue.
   A new tab or window asks again, with your last name already picked; a reload
   does not. The name, at the top right (click it to change), goes with every
   save and is shown beside it (`saved Sep 26, 14:02 by Ada Lovelace`). It is an
   attribution, not a login: the history also records the login that runs the
   server. The list is `data/events/reviewers.txt`, one name per line, which you
-  may edit; until a name is added it is the names already saved in the review
-  logs.
+  may edit (Add Name only appends a line); until a name is added it is the
+  names already saved in the review logs.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
   each one, when, how many spans, and how many ms changed. The first version
   is compared with the event's current source table; later ones with the version
@@ -276,14 +276,14 @@ Saves go under the event's directory in the label tables
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
 - `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
-  running the server), `name` (what the name box held, or null), time, the
+  running the server), `name` (the reviewer's name, or null), time, the
   window and spans saved, and the source file they were compared with. It is
   only ever appended to: a shot's versions are its lines in order, numbered
   from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
   names existed have no `name` and read as unnamed.
 - `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
   shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
-  (the server's login), `name` (the name box, or null), and time. A shot's last
+  (the server's login), `name` (the reviewer's name, or null), and time. A shot's last
   line is its decision. Its `revision` is the number of that shot's log lines,
   including decisions on older masks; it is derived from the log rather than
   stored as a separate field. GET returns the revision and each POST must name

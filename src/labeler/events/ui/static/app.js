@@ -1320,7 +1320,7 @@ function clickMask(d) {
   saveMasks(m, [...rejected].sort((a, b) => a - b));
 }
 
-/** Save the rejected regions at once, with the typed name; drawn before the answer. */
+/** Save the rejected regions at once, with the reviewer's name; drawn before the answer. */
 function saveMasks(m, rejected) {
   if (maskSaves.has(m.shot)) return say("mask is saving; wait for it to finish");
   const pending = persistMasks(m, rejected, S.event);
@@ -1433,7 +1433,6 @@ function showName() {
 async function chooseName() {
   const dialog = $("who");
   $("who-error").textContent = "";
-  $("who-new").value = "";
   if (!dialog.open) dialog.showModal();
   try {
     listNames((await (await api("/api/names")).json()).names, S.name);

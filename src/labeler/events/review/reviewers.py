@@ -5,9 +5,11 @@ page records it with each save (`versions.clean_name`). A name is an
 attribution, not a login: `reviewer` stays the login of the server's process.
 
 The list is `<label tables>/reviewers.txt`, one name per line, which the owner
-may edit. Until that file exists the list is every name already saved in an
-event's `review/` logs, and the first name added writes the file with them.
-Names are unique regardless of case, and sorted the same way.
+may edit: Add Name appends a line and never rewrites the others, and a line
+that is not a name is left in the file and off the list. Until that file exists
+the list is every name already saved in an event's `review/` logs, and the
+first name added writes the file with them. The page shows the names unique
+regardless of case, and sorted the same way.
 """
 
 from __future__ import annotations
@@ -68,7 +70,7 @@ def read(label_tables) -> list[str]:
     path = names_path(label_tables)
     if not path.is_file():
         return saved_names(label_tables)
-    return _unique(_clean(path.read_text(encoding="utf-8").splitlines()))
+    return _unique(_clean(path.read_text(encoding="utf-8-sig").splitlines()))
 
 
 def add(label_tables, name: str | None) -> tuple[list[str], str]:
@@ -80,7 +82,12 @@ def add(label_tables, name: str | None) -> tuple[list[str], str]:
     listed = next((n for n in names if n.casefold() == name.casefold()), None)
     if listed is not None:
         return names, listed
-    names = _unique([*names, name])
-    with atomic_path(names_path(label_tables)) as tmp:
-        tmp.write_text("".join(f"{n}\n" for n in names), encoding="utf-8")
-    return names, name
+    path = names_path(label_tables)
+    if path.is_file():
+        text = path.read_text(encoding="utf-8-sig")
+        text += "" if not text or text.endswith("\n") else "\n"
+    else:
+        text = "".join(f"{n}\n" for n in names)
+    with atomic_path(path) as tmp:
+        tmp.write_text(f"{text}{name}\n", encoding="utf-8")
+    return read(label_tables), name
