@@ -232,7 +232,7 @@ def save(
     interval schema; catalog tiling, observability, points and allowed windows
     are checked separately by the catalog checker.
 
-    `reviewer` is the server's login; `name` is what the reviewer typed, or None
+    `reviewer` is the server's login; `name` is the reviewer's name, or None
     (see `versions`). `source` names the table the save was made against and
     `source_sha256` is that table's sha256 when it was made, kept in the history
     line when given (see `agreement`: a save without one is matched to the table

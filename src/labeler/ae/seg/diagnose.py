@@ -5,7 +5,8 @@
 Not a new test and nothing re-selected: it reads the model, split, threshold and
 frozen bundle that `evaluate` scored, refuses unless their sha256s are those
 `evaluation.json` records (the model, the split, the labels, the mask decisions,
-the pseudo-mask manifest and each test shot's pseudo-mask), makes the same calls
+the pseudo-mask manifest, each test shot's pseudo-mask and the mask its
+decision was made on when that is another), makes the same calls
 and breaks them down. It writes `diagnosis.json` and `diagnosis.md` beside the
 model (default `$LABELER_ROOT/models/ae_seg/v2`):
 - **pixels:** `ae_seg`'s pixel Dice, precision and recall per band
@@ -114,13 +115,21 @@ def shot_breakdown(
     version: str,
     rules: Rules | None,
     ntm_spans=(),
+    clicked: bytes | None = None,
 ) -> dict:
     """One test shot: `pixels` {band: {time: [tp, fp, fn, tn]}}, `frames`
     {time: ShotFrames with CALLS}, and `mhd_lines` (`mhd_line_counts`). `rules`
-    are pseudo-v2's (the MHD-like pixels of a mask without `mhd`)."""
+    are pseudo-v2's (the MHD-like pixels of a mask without `mhd`); `clicked` is
+    `evaluate`'s (`train.frozen_clicked`)."""
     spec = SEG_VERSIONS[version]
     ex = train.load_example(
-        paths, shot, decisions, margin=None, pseudo_bytes=pseudo_bytes, version=version
+        paths,
+        shot,
+        decisions,
+        margin=None,
+        pseudo_bytes=pseudo_bytes,
+        version=version,
+        clicked=clicked,
     )
     model, blob = seg
     n_y, n = ex.y.shape
@@ -259,13 +268,18 @@ def run(paths: Paths, models: Path, version: str = VERSION, limit: int = 0) -> d
     split = read_split(models / "split.csv")
     shots = sorted(s for s, v in split.items() if v == "test")
     shots = shots[:limit] if limit else shots
-    pseudo_bytes = {}
+    pseudo_bytes, clicked = {}, {}
     for shot in shots:
         path = regions.pseudo_file(paths, shot, version)
         data = path.read_bytes()
         if inputs["pseudo_masks"].get(path.name) != hashlib.sha256(data).hexdigest():
             raise ValueError(f"{path}: not the pseudo-mask evaluation.json scored")
         pseudo_bytes[shot] = data
+        found = train.frozen_clicked(
+            paths, shot, decisions.get(shot), inputs["pseudo_masks"]
+        )
+        if found is not None:
+            clicked[shot] = found
     rules, rules_sha256 = None, None
     rules_file = pseudo_dir(paths, version) / "rules.json"
     if not spec.gated:  # pseudo-v2's rules give the MHD-like pixels
@@ -284,6 +298,7 @@ def run(paths: Paths, models: Path, version: str = VERSION, limit: int = 0) -> d
             version=version,
             rules=rules,
             ntm_spans=spans.get(s, ()),
+            clicked=clicked.get(s),
         )
         for s in shots
     ]

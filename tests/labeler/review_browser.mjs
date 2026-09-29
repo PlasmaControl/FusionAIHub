@@ -142,13 +142,37 @@ async function currentServer() {
     title
   );
 
-  await js(`$("reviewer-name").focus()`);
+  await until(`$("who").open && $("who-empty").hidden === false`);
+  const who = await js(`(() => {
+    const r = $("who").getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: innerWidth, h: innerHeight,
+      go: $("who-continue").disabled, focus: document.activeElement.id };
+  })()`);
+  check(
+    "a first open asks who is reviewing, centred, with Continue off until a name is picked",
+    Math.abs(who.x - who.w / 2) < 2 && Math.abs(who.y - who.h / 2) < 2 && who.go && who.focus === "who-new",
+    who
+  );
+  await press("Escape");
+  await sleep(100);
+  check("Escape does not get past the list", await js(`$("who").open && !S.picked`));
+  await js(`$("who-new").focus()`);
   await send("Input.insertText", { text: "Ada Lovelace" });
   await press("Enter");
+  await until(`$("who-names").value === "Ada Lovelace"`);
+  const go = await js(`(() => {
+    const r = $("who-continue").getBoundingClientRect();
+    return [r.left + r.width / 2, r.top + r.height / 2, $("who-continue").disabled];
+  })()`);
+  await mouse("mousePressed", go[0], go[1], { buttons: 1 });
+  await mouse("mouseReleased", go[0], go[1], { buttons: 0 });
+  await until(`!$("who").open`);
   check(
-    "the name box keeps the reviewer's name and gives the keys back",
-    await js(`localStorage.getItem("labeler:name") === "Ada Lovelace" && document.activeElement === document.body`),
-    await js(`[localStorage.getItem("labeler:name"), document.activeElement.id]`)
+    "Add Name lists the name and Continue closes the list, keeping the name and giving the keys back",
+    !go[2] && await js(`localStorage.getItem("labeler:name") === "Ada Lovelace" &&
+      sessionStorage.getItem("labeler:who") === "Ada Lovelace" && $("reviewer").textContent === "Ada Lovelace" &&
+      !$("reviewer").hidden && $("reviewer-name").hidden && document.activeElement === document.body`),
+    await js(`[localStorage.getItem("labeler:name"), $("reviewer").textContent, document.activeElement.id]`)
   );
 
   await draw(500, 800);
@@ -173,11 +197,25 @@ async function currentServer() {
   await send("Page.reload");
   await opened(170815);
   check(
-    "a reload opens the saved label and the name",
+    "a reload opens the saved label and the name, without asking again",
     same(await js("S.label"), saved) &&
-      (await js(`$("count").textContent === "2/3" && $("reviewer-name").value === "Ada Lovelace"`)),
-    await js(`[S.label, $("count").textContent, $("reviewer-name").value]`)
+      (await js(`$("count").textContent === "2/3" && $("reviewer").textContent === "Ada Lovelace" &&
+        !$("who").open`)),
+    await js(`[S.label, $("count").textContent, $("reviewer").textContent, $("who").open]`)
   );
+
+  await js(`sessionStorage.removeItem("labeler:who")`);
+  await send("Page.reload");
+  await opened(170815);
+  await until(`$("who").open && $("who-names").options.length === 1`);
+  check(
+    "a new tab asks again, with the last name picked",
+    await js(`$("who-names").value === "Ada Lovelace" && !$("who-continue").disabled &&
+      document.activeElement === $("who-continue")`),
+    await js(`[$("who-names").value, document.activeElement.id]`)
+  );
+  await press("Enter");
+  await until(`!$("who").open`);
 
   const [x, y, before] = await js(`(() => {
     const r = $("top").getBoundingClientRect();
@@ -303,7 +341,10 @@ async function navigationRace() {
   check("History is hidden while API version is pending", await js(`$("show-versions").hidden`));
   await release("version");
   await opened(170815);
-  check("API 2 reveals name and History", await js(`!$("reviewer-name").hidden && !$("show-versions").hidden`));
+  check(
+    "the API version reveals the name and History",
+    await js(`!$("reviewer").hidden && $("reviewer-name").hidden && !$("show-versions").hidden && !$("who").open`)
+  );
 
   await draw(1200, 1400);
   await press("h");
@@ -1043,6 +1084,13 @@ try {
     ` });
   }
   if (["race", "moves", "empty", "inflight", "pending"].includes(SCENARIO)) await recordFetches(SCENARIO === "race");
+  if (SCENARIO && SCENARIO !== "api1") {
+    // Every scenario but the first open has picked its name already (API 1 has no list).
+    await send("Page.enable");
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: `
+      sessionStorage.setItem("labeler:who", "Grace Hopper");
+    ` });
+  }
   await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
   if (SCENARIO !== "race") await opened(170815);
   if (SCENARIO === "race") await navigationRace();

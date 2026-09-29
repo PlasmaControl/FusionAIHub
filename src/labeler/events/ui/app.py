@@ -3,9 +3,13 @@
 Loopback only, behind a token: `?token=` sets two cookies and redirects to
 the same URL without it. The server reads `shots.csv` and never writes it;
 its writes are `POST /api/label` and `POST /api/masks`, both into the event's
-`review/` directory. `GET /api/history` lists a shot's saved versions (see
-`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions and
-the reviewer's last word on them (see `labeler.ae.seg.regions`).
+`review/` directory, and `POST /api/names`, which adds a reviewer's name to
+`reviewers.txt` beside the events (`GET /api/names` lists them; see
+`review.reviewers`). `GET /api/history` lists a shot's saved versions (see
+`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions
+(pseudo-v1-full: pseudo-v1's rules over the whole window) and the reviewer's last
+word on them (see `labeler.ae.seg.regions`); `GET /api/tokeye` gives TokEye's
+lines over the whole shot, drawn under them (see `labeler.ae.seg.whole`).
 """
 
 from __future__ import annotations
@@ -28,12 +32,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ...ae import seg
-from ...ae.seg import regions
+from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of
 from .. import raw, rosters
 from ..review import build as review_build
-from ..review import labels, rows, versions
+from ..review import labels, reviewers, rows, versions
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "labeler_verify_token"
@@ -45,8 +49,9 @@ NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
 #: Bumped when the server gains a route or a field the page depends on. The
 #: page asks `/api/version` first and, from an older server, saves without a
-#: name and hides the history instead of failing every save. 3 added the masks.
-API_VERSION = 3
+#: name and hides the history instead of failing every save. 3 added the masks,
+#: 4 the whole-shot TokEye layer, 5 the list of names the page asks from.
+API_VERSION = 5
 
 log = logging.getLogger(__name__)
 
@@ -71,6 +76,12 @@ class MaskIn(BaseModel):
     revision: int = Field(ge=0)
     rejected: list[int] = Field(max_length=regions.MAX_REGIONS)
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
+
+
+class NameIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(max_length=versions.NAME_MAX)
 
 
 class Builds:
@@ -195,6 +206,19 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def version():
         return {"api": API_VERSION}
 
+    @app.get("/api/names")
+    def names_view():
+        return {"names": reviewers.read(paths.label_tables)}
+
+    @app.post("/api/names")
+    def add_name(body: NameIn):
+        with names_lock:
+            try:
+                names, name = reviewers.add(paths.label_tables, body.name)
+            except ValueError as error:
+                raise HTTPException(400, str(error)) from None
+        return {"names": names, "name": name}
+
     @app.get("/api/events")
     def events():
         try:
@@ -312,16 +336,27 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
     def mask_file(event: str, shot: int) -> tuple[Path, Path]:
         directory = require_event(event, paths)
         roster_tier(_roster(directory), shot)
-        path = regions.pseudo_file(paths, shot)
+        path = whole.review_file(paths, shot)
         if event != seg.EVENT or not path.is_file():
             raise HTTPException(404, f"shot {int(shot)} has no {event} pseudo-mask")
         return directory, path
 
     @app.get("/api/masks")
     def masks_view(event: str, shot: int):
-        directory, _ = mask_file(event, shot)
+        directory, path = mask_file(event, shot)
         with mask_lock:
-            return regions.shot_view(paths, directory, shot)
+            return regions.shot_view(
+                paths, directory, shot, path=path, pseudo=whole.REVIEW
+            )
+
+    @app.get("/api/tokeye")
+    def tokeye_view(event: str, shot: int):
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        found = whole.view(paths, shot) if event == seg.EVENT else None
+        if found is None:
+            raise HTTPException(404, f"shot {int(shot)} has no {event} TokEye layer")
+        return found
 
     @app.post("/api/masks")
     def save_masks(body: MaskIn):
@@ -357,6 +392,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 body.rejected,
                 pseudo_sha256=body.pseudo_sha256,
                 name=name,
+                pseudo=whole.REVIEW,
             )
         return {
             "rejected": entry["rejected"],
@@ -365,5 +401,6 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         }
 
     mask_lock = threading.Lock()
+    names_lock = threading.Lock()
     app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")
     return app
