@@ -1,7 +1,7 @@
 """Points of interest: one per AE region the segmentation model draws.
 
-    python -m labeler.ae.seg.poi [--shots S ...] [--from-corpus] [--workers N]
-                                 [--no-pictures] [--models DIR]
+    python -m labeler.ae.seg.poi [--version V] [--shots S ...] [--from-corpus]
+                                 [--workers N] [--no-pictures] [--models DIR]
 
 For each shot (default: every AE180 shot, from its review store; with
 `--from-corpus`, the shots given, from the corpus's CO2 chords, as the
@@ -24,6 +24,17 @@ into `$LABELER_ROOT/ae/ip/ip.jsonl` (`python -m labeler.events.catalog.window
 --log`). A missing window leaves `in_plasma` blank; no point is dropped.
 `meta.json` counts those flags, names each window file with its hash and shots,
 and records the model's G3 verdict.
+
+**SegNet v2** (`--version v2`) draws over the band its blob records, 0-250 kHz
+(`train.blob_band`), so a region below 80 kHz is a point too. Its shots default
+to those of TokEye's whole-shot masks (`ae/masks-full`), and it writes to
+`poi/alfven_eigenmode/ae_seg-v2/` and `gallery/alfven_eigenmode/ae_seg-v2/`.
+Its `in_scored_window` flags a peak inside the shot's window in ae_xpower v3's
+label snapshot (start inclusive, end exclusive), blank for a shot the snapshot
+does not label; `meta.json` counts the points inside, outside and without that
+window (`points_in_scored_window` and the like) beside the split at 2 s, and its
+pictures draw no 0-2 s line. A model is drawn only as the version its blob
+records (`train.blob_version`).
 """
 
 from __future__ import annotations
@@ -43,12 +54,12 @@ from ...config import Paths, atomic_path, git_sha, sha256_of
 from ...events.catalog.window import read_log
 from ...events.review.rows import Grid, pool
 from ...events.verify import corpus_signal
-from ..xpower import tokeye_masks
+from ..xpower import SCORED_UNTIL_MS, read_snapshot, tokeye_masks
 from ..xpower.data import BAND_KHZ, band_slice, raw_rows, seldnet_split, store_rows
 from ..xpower.gallery import run_all
-from . import EVENT, METHOD, VERSION, model_dir, poi_dir, regions
+from . import EVENT, METHOD, SEG_VERSIONS, VERSION, model_dir, poi_dir, regions
 from .pseudo import EIGHT, IGNORE, LEVEL, PseudoMask
-from .train import load, predict
+from .train import blob_band, blob_version, load, predict
 
 MIN_POI_PIXELS = 20
 POI_COLUMNS = (
@@ -71,23 +82,35 @@ POI_COLUMNS = (
 )
 
 
-def gallery_dir(paths: Paths) -> Path:
-    return paths.root / "gallery" / EVENT / f"{METHOD}-{VERSION}"
+def gallery_dir(paths: Paths, version: str = VERSION) -> Path:
+    return paths.root / "gallery" / EVENT / f"{METHOD}-{version}"
 
 
-def ae_pixels(prob: np.ndarray, threshold: float, y0: float, dy: float) -> np.ndarray:
-    """The pixels the model calls AE: P(AE) at its threshold, 80-250 kHz."""
+def ae_pixels(
+    prob: np.ndarray, threshold: float, y0: float, dy: float, band=BAND_KHZ
+) -> np.ndarray:
+    """The pixels the model calls AE: P(AE) at its threshold, in `band` (kHz;
+    80-250 kHz, v1's, by default)."""
     on = np.zeros_like(prob, dtype=bool)
-    band = band_slice(y0, dy, prob.shape[0], BAND_KHZ)
-    on[band] = prob[band] >= threshold
+    rows = band_slice(y0, dy, prob.shape[0], band)
+    on[rows] = prob[rows] >= threshold
     return on
 
 
 def points(
-    shot: int, prob: np.ndarray, threshold: float, grid: Grid, y0: float, dy: float
+    shot: int,
+    prob: np.ndarray,
+    threshold: float,
+    grid: Grid,
+    y0: float,
+    dy: float,
+    *,
+    band=BAND_KHZ,
+    method: str = f"{METHOD}-{VERSION}",
 ) -> tuple[list[dict], np.ndarray]:
-    """The shot's points of interest, and the labelled regions they come from."""
-    on = ae_pixels(prob, threshold, y0, dy)
+    """The shot's points of interest in `band`, each named by `method`, and the
+    labelled regions they come from."""
+    on = ae_pixels(prob, threshold, y0, dy, band)
     labelled, count = ndimage.label(on, structure=EIGHT)
     sizes = np.bincount(labelled.ravel(), minlength=count + 1)
     keep = np.flatnonzero(sizes >= MIN_POI_PIXELS)
@@ -104,7 +127,7 @@ def points(
             {
                 "shot": int(shot),
                 "event": EVENT,
-                "method": f"{METHOD}-{VERSION}",
+                "method": method,
                 "region": number,
                 "t_start_ms": round(grid.t0_ms + cols.min() * grid.dt_ms, 1),
                 "t_end_ms": round(grid.t0_ms + (cols.max() + 1) * grid.dt_ms, 1),
@@ -132,8 +155,11 @@ def draw(
     found,
     pseudo=None,
     pseudo_review=None,
+    scored_until_ms: float | None = SCORED_UNTIL_MS,
 ):
-    """R0 x V1 with the regions outlined and numbered; the pseudo-mask below."""
+    """R0 x V1 with the regions outlined and numbered; the pseudo-mask below. The
+    scored window's end is marked at `scored_until_ms` when the picture runs past
+    it; None, a whole-window version's, marks none."""
     panels = 2 if pseudo is not None else 1
     fig = Figure(figsize=(16, 4 + 3 * panels), dpi=100, layout="constrained")
     axes = np.atleast_1d(fig.subplots(panels, 1, sharex=True))
@@ -158,12 +184,13 @@ def draw(
         )
         ax.set_ylim(0, 250)
         ax.set_ylabel("R0 × V1\nkHz")
-        if extent[1] > 2000:
-            ax.axvline(2000, color="white", lw=0.8, ls="--", label="scored: 0-2 s")
+        if scored_until_ms is not None and extent[1] > scored_until_ms:
+            caption = f"scored: 0-{scored_until_ms / 1000:g} s"
+            ax.axvline(scored_until_ms, color="white", lw=0.8, ls="--", label=caption)
             ax.text(
-                2000,
+                scored_until_ms,
                 0.98,
-                "scored: 0-2 s",
+                caption,
                 transform=ax.get_xaxis_transform(),
                 ha="right",
                 va="top",
@@ -238,15 +265,24 @@ def shot_rows(paths: Paths, shot: int, from_corpus: bool):
 
 def shot_points(shot: int) -> list[dict]:
     w = _WORKER
-    paths, blob = w["paths"], w["blob"]
+    paths, blob, version = w["paths"], w["blob"], w["version"]
     grid, values, y0, dy = shot_rows(paths, shot, w["from_corpus"])
     prob = predict(w["model"], values)
-    found, labelled = points(shot, prob, blob["threshold"], grid, y0, dy)
+    found, labelled = points(
+        shot,
+        prob,
+        blob["threshold"],
+        grid,
+        y0,
+        dy,
+        band=blob_band(blob),
+        method=f"{METHOD}-{version}",
+    )
     source = "corpus" if w["from_corpus"] else "store"
     for p in found:
         p["source"] = source
     if w["pictures"]:
-        file = regions.pseudo_file(paths, shot)
+        file = regions.pseudo_file(paths, shot, version)
         mask = None
         review = None
         if file.is_file() and not w["from_corpus"]:
@@ -258,9 +294,10 @@ def shot_points(shot: int) -> list[dict]:
                 _, count = regions.label_regions(pm.mask)
                 review = (len(decision["rejected"]), count)
             mask = np.where(mask == IGNORE, 0, mask)
+        whole = SEG_VERSIONS[version].whole_window
         draw(
-            gallery_dir(paths) / f"{shot}.jpg",
-            title=f"{shot}   AE regions, {METHOD} {VERSION}, threshold "
+            gallery_dir(paths, version) / f"{shot}.jpg",
+            title=f"{shot}   AE regions, {METHOD} {version}, threshold "
             f"{blob['threshold']}, not reviewed",
             grid=grid,
             row=values[0],
@@ -270,6 +307,7 @@ def shot_points(shot: int) -> list[dict]:
             found=found,
             pseudo=mask,
             pseudo_review=review,
+            scored_until_ms=None if whole else SCORED_UNTIL_MS,
         )
     return found
 
@@ -324,15 +362,26 @@ def write_points(
     rows: list[dict],
     *,
     windows: dict[int, tuple[float, float]] | None = None,
+    scored: dict[int, tuple[float, float]] | None = None,
 ) -> pd.DataFrame:
-    """`poi.csv`, merged: the shots in `shots` replace their old rows."""
+    """`poi.csv`, merged: the shots in `shots` replace their old rows. A peak is
+    in the scored window at 0 <= t < 2000 ms (v1's) or, given `scored`, inside
+    its shot's `(start, end)`, blank for a shot `scored` lacks."""
     new = pd.DataFrame(rows, columns=list(POI_COLUMNS))
     if path.is_file():
         old = pd.read_csv(path)
         new = pd.concat([old[~old.shot.isin(list(shots))], new], ignore_index=True)
     new = new.sort_values(["shot", "region"], kind="stable").reset_index(drop=True)
     # Also annotate retained legacy rows without changing their point values.
-    new["in_scored_window"] = (new.t_peak_ms >= 0) & (new.t_peak_ms < 2000)
+    if scored is None:
+        new["in_scored_window"] = (new.t_peak_ms >= 0) & (new.t_peak_ms < 2000)
+    else:
+        new["in_scored_window"] = [
+            bool(scored[r.shot][0] <= r.t_peak_ms < scored[r.shot][1])
+            if r.shot in scored
+            else ""
+            for r in new.itertuples(index=False)
+        ]
     if windows is not None:
         new["in_plasma"] = [
             bool(windows[r.shot][0] <= r.t_peak_ms < windows[r.shot][1])
@@ -348,10 +397,18 @@ def write_points(
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    p.add_argument(
+        "--version",
+        choices=sorted(SEG_VERSIONS),
+        default=VERSION,
+        help="the SegNet version the model is (default v1); v2 draws over 0-250 kHz",
+    )
     p.add_argument("--shots", type=int, nargs="*", help="default: every AE180 shot")
     p.add_argument("--from-corpus", action="store_true", help="rows from the corpus")
     p.add_argument("--no-pictures", action="store_true")
-    p.add_argument("--models", type=Path, help="default $LABELER_ROOT/models/ae_seg/v1")
+    p.add_argument(
+        "--models", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
+    )
     p.add_argument(
         "--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
     )
@@ -359,11 +416,27 @@ def main(argv=None) -> int:
     if args.from_corpus and not args.shots:
         p.error("--from-corpus needs --shots")
     paths = Paths.from_env()
-    model_file = (args.models or model_dir(paths)) / "model.pt"
+    spec = SEG_VERSIONS[args.version]
+    model_file = (args.models or model_dir(paths, args.version)) / "model.pt"
     model_hash = sha256_of(model_file)
     _, blob = load(model_file)
-    shots = args.shots or sorted(seldnet_split(tokeye_masks(paths)))
-    flags = {"from_corpus": args.from_corpus, "pictures": not args.no_pictures}
+    found = blob_version(blob)
+    if found != args.version:
+        p.error(f"{model_file}: a SegNet {found} model; draw it with --version {found}")
+    scored = None
+    if spec.whole_window:
+        # A whole-window version's scored window is the shot's labelled one.
+        try:
+            _, saved = read_snapshot(paths, spec.labels)
+        except (OSError, ValueError) as error:
+            p.error(f"label snapshot {spec.labels}: {type(error).__name__}: {error}")
+        scored = {shot: tuple(label.window) for shot, label in saved.items()}
+    shots = args.shots or sorted(seldnet_split(tokeye_masks(paths, spec.ae_version)))
+    flags = {
+        "from_corpus": args.from_corpus,
+        "pictures": not args.no_pictures,
+        "version": args.version,
+    }
     init = (
         str(model_file),
         str(paths.root),
@@ -383,16 +456,28 @@ def main(argv=None) -> int:
         p.error(f"{model_file}: model changed while drawing points")
     sources = window_sources(paths)
     table = write_points(
-        poi_dir(paths) / "poi.csv",
+        poi_dir(paths, args.version) / "poi.csv",
         done,
         rows,
         windows={shot: (a, b) for shot, (a, b, _) in sources.items()},
+        scored=scored,
     )
     used: dict[Path, list[int]] = {}
     for shot in sorted(done):
         if shot in sources:
             used.setdefault(sources[shot][2], []).append(shot)
     completed = table[table.shot.isin(done)]
+    # A whole-window version's scored window is the shot's own, not 0-2 s.
+    inside = completed.in_scored_window
+    scored_counts = (
+        {
+            "points_in_scored_window": int(inside.eq(True).sum()),
+            "points_outside_scored_window": int(inside.eq(False).sum()),
+            "points_unknown_scored_window": int((inside == "").sum()),
+        }
+        if spec.whole_window
+        else {}
+    )
     evaluation_file = model_file.parent / "evaluation.json"
     evaluation = (
         json.loads(evaluation_file.read_text()) if evaluation_file.is_file() else {}
@@ -400,12 +485,20 @@ def main(argv=None) -> int:
     record = {
         "model": str(model_file),
         "model_sha256": model_hash,
+        "version": args.version,
+        "band_khz": [float(b) for b in blob_band(blob)],
+        "scored_window": (
+            f"the shot's {spec.labels}-snapshot window"
+            if spec.whole_window
+            else "0-2 s"
+        ),
         "threshold": blob["threshold"],
         "MIN_POI_PIXELS": MIN_POI_PIXELS,
         "shots": sorted(done),
         "pictures": not args.no_pictures,
         "points_before_2s": int(sum(row["t_peak_ms"] < 2000 for row in rows)),
         "points_after_2s": int(sum(row["t_peak_ms"] >= 2000 for row in rows)),
+        **scored_counts,
         "points_in_plasma": int(completed.in_plasma.eq(True).sum()),
         "points_outside_plasma": int(completed.in_plasma.eq(False).sum()),
         "points_unknown_plasma": int((completed.in_plasma == "").sum()),
@@ -419,7 +512,7 @@ def main(argv=None) -> int:
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
-    meta_file = poi_dir(paths) / "meta.json"
+    meta_file = poi_dir(paths, args.version) / "meta.json"
     previous = (
         json.loads(meta_file.read_text()).get("runs", []) if meta_file.exists() else []
     )
