@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=12G
-#SBATCH --time=00:30:00
+#SBATCH --time=00:45:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
 
@@ -37,7 +37,9 @@
 #   cpus-per-task=8   NTM stores over 8 tasks: about 605 shots x 5.5 s / 8 = 7 min a task.
 #   mem=12G           the NTM stores (8.1 GiB, 67 %); the rest take --mem=3G on the
 #                     command line: ELM and H-mode stores, and every method's features.
-#   time=00:30:00     estimated: NTM's 7 min x 4 for cold GPFS reads; the rest well under.
+#   time=00:45:00     estimated: NTM's 7 min x 4 for cold GPFS reads; above 30 min, as
+#                     30 min or less goes to all/stellar-debug (2 running jobs a user,
+#                     10 submitted), where the pilots 2947615-2947625 went.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
