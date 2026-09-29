@@ -187,15 +187,23 @@ def test_a_decision_on_the_review_page_s_mask_reaches_training(
     )
     page = page_mask(paths, 102, range(1, count + 1))
     page_mask(paths, 103, [1], sha256="0" * 64)
-    monkeypatch.setattr(
-        train,
-        "fit",
-        lambda *a, **kw: (train.SegNet(train.SegNetConfig(width=4)), [], 0.5),
-    )
+    seen = {}
+
+    def fit(train_examples, val_examples, *a, **kw):
+        seen.update({ex.shot: ex for ex in (*train_examples, *val_examples)})
+        return train.SegNet(train.SegNetConfig(width=4)), [], 0.5
+
+    monkeypatch.setattr(train, "fit", fit)
     assert train.main([]) == 0
     output = capsys.readouterr()
     assert "1 shots' mask decisions made on other masks reach the targets" in output.out
-    assert "103: made on an earlier" in output.err
+    warned = "warning: 1 shots' mask decisions are left out:\n  103: made on an earlier"
+    assert warned in output.err, "each reason on its own line under the count"
+    assert not (seen[102].y == 1).any(), "every region rejected on the page"
+    assert (seen[103].y == 1).any(), "a decision on an earlier file is left out"
+    record = json.loads((model_dir(paths) / "training.json").read_text())
+    assert record["clicked_shots"] == [102]
+    assert [why.split(":")[0] for why in record["left_out_decisions"]] == ["103"]
     manifest = json.loads((model_dir(paths) / "pseudo_masks.json").read_text())
     assert manifest["pseudo-v1-full/102.npz"] == sha256_of(page)
     assert "pseudo-v1-full/103.npz" not in manifest

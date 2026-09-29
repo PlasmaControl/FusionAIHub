@@ -6,11 +6,15 @@
 three cross-power rows at store level 8 (2.048 ms columns, 257 bins to
 250 kHz), as target its pseudo-mask with the regions the reviewer rejected set
 to background (`regions.reviewed_mask`). A decision made on other masks than
-the version's own, the review page's pseudo-v1-full, reaches the target too:
-the pixels of the regions it rejects there are background
+the version's own, the review page's pseudo-v1-full, reaches the target too
 (`regions.transfer`), while the file clicked is still the one there (its
-sha256); training names each decision it leaves out. `pseudo_masks.json` names
-each file clicked, by sha256, so `evaluate` scores the same targets. The split
+sha256): the pixels of the regions it rejects there are background where the
+target scores them (never scored where it does not), and the rest of each
+target region they touch, outside the page's regions, is IGNORE. Training
+names each decision it leaves out on stderr, and `training.json` records the
+shots clicked and the ones left out (`clicked_shots`, `left_out_decisions`).
+`pseudo_masks.json` names each file clicked, by sha256, so `evaluate` scores
+the same targets. The split
 is the chosen AE model's
 (`models/ae_xpower/v1/<chosen>/split.csv`): a shot is a test shot of both
 models or of neither. Each shot is cut to the columns its mask scores, and
@@ -342,10 +346,14 @@ def save(
     runs: Path | None = None,
     band_khz=None,
     version: str | None = None,
+    clicks: dict | None = None,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index).
     Given `band_khz` and `version`, which go together, the blob records both and
-    `training.json` both and the version's pseudo-masks; v1's record neither."""
+    `training.json` both and the version's pseudo-masks; v1's record neither.
+    `clicks` goes into `training.json` as it is: `main`'s `clicked_shots` (the
+    shots whose decisions on other masks reach the targets) and
+    `left_out_decisions` (why each other one does not)."""
     if (band_khz is None) != (version is None):
         raise ValueError(f"{out}: a model records its band and version together")
     named, described = {}, {}
@@ -393,6 +401,7 @@ def save(
         "counts": {
             v: sum(x == v for x in split.values()) for v in sorted(set(split.values()))
         },
+        **(clicks or {}),
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
@@ -559,12 +568,13 @@ def main(argv=None) -> int:
             mask_files[regions.clicked_name(s, decisions[s])] = path
     if left_out:
         print(
-            f"warning: {len(left_out)} shots' mask decisions are left out: "
-            + "; ".join(left_out[:10])
-            + (" ..." if len(left_out) > 10 else ""),
+            f"warning: {len(left_out)} shots' mask decisions are left out:",
+            *(f"  {why}" for why in left_out),
+            sep="\n",
             file=sys.stderr,
         )
     print(f"{len(clicked)} shots' mask decisions made on other masks reach the targets")
+    clicks = {"clicked_shots": sorted(clicked), "left_out_decisions": left_out}
     manifest = {name: sha256_of(path) for name, path in mask_files.items()}
     manifest_bytes = (json.dumps(manifest, indent=1) + "\n").encode()
     inputs = {
@@ -613,6 +623,7 @@ def main(argv=None) -> int:
             runs=paths.runs,
             band_khz=None if v1 else spec.band_khz,
             version=None if v1 else version,
+            clicks=clicks,
         )
     except (FileExistsError, ValueError) as error:
         p.error(str(error))
