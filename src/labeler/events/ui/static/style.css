@@ -13,6 +13,7 @@
   --veil: rgba(236, 238, 236, 0.62);
   --mask: rgba(0, 229, 255, 0.6);
   --rejected: rgba(200, 200, 200, 0.85);
+  --tokeye: rgba(0, 229, 255, 0.3);
   --gutter: 96px;
   color-scheme: light;
   font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -33,6 +34,7 @@
     --veil: rgba(21, 26, 24, 0.62);
     --mask: rgba(0, 229, 255, 0.6);
     --rejected: rgba(200, 200, 200, 0.85);
+    --tokeye: rgba(0, 229, 255, 0.3);
     color-scheme: dark;
   }
 }

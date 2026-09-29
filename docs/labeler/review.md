@@ -64,6 +64,12 @@ after the newest save.
   rejects it, grey; a second click takes that back. Each click is saved at
   once, with your name. `M` hides and shows the mask, and the browser
   remembers which. The header counts the regions kept.
+- **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot
+  masks light on two of the four chords, 0-250 kHz, AE or not, drawn in faint
+  cyan under the mask over the whole record, past the label windows' 2 s
+  (`python -m labeler.ae.seg.whole` builds it into
+  `segmentation/alfven_eigenmode/tokeye-full/`). A picture only: nothing
+  trains on it and a click never lands on it. `M` hides it with the mask.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.
@@ -91,7 +97,7 @@ that edit back. Restoring the current label leaves it alone.
 | `S` / `R` | save / revert to the source |
 | `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
 | `H` | saved versions, and restore one |
-| `M` / click a mask region | AE: hide or show the pseudo-mask / reject the region, or take that back |
+| `M` / click a mask region | AE: hide or show the pseudo-mask and TokEye layer / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
 
