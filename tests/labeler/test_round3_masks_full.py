@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import zipfile
 from pathlib import Path
 
 import h5py
@@ -200,3 +201,42 @@ def test_an_unknown_shot_is_refused(runner, tmp_path, monkeypatch):
     _tree(tmp_path, monkeypatch)
     with pytest.raises(SystemExit, match="999"):
         runner.main(["--shots", "999", "--device", "cpu", "--workers", "0"])
+
+
+def test_compressed_files_read_back_whole_at_the_fast_level(
+    runner, tmp_path, monkeypatch
+):
+    levels = []
+    compressobj = zipfile.zlib.compressobj
+
+    def spy(level, *args, **kwargs):
+        levels.append(level)
+        return compressobj(level, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.zlib, "compressobj", spy)
+    arrays = {
+        "prob": np.random.default_rng(0).integers(0, 256, (2, 2, 8, 50), np.uint8),
+        "ann": np.arange(50) % 3 == 0,
+        "ann_until_ms": np.float64(1234.5),
+    }
+    path = tmp_path / "201_train_probs.npz"
+    runner._savez_compressed(path, **arrays)
+    with np.load(path) as z:
+        assert sorted(z.files) == sorted(arrays)
+        for name, array in arrays.items():
+            assert z[name].dtype == array.dtype
+            assert np.array_equal(z[name], array)
+    with zipfile.ZipFile(path) as archive:
+        assert {i.compress_type for i in archive.infolist()} == {zipfile.ZIP_DEFLATED}
+    assert levels == [runner.ZLIB_LEVEL] * len(arrays)
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_a_refused_write_leaves_the_old_file_and_no_temporary(runner, tmp_path):
+    path = tmp_path / "201_train_probs.npz"
+    runner._savez_compressed(path, prob=np.zeros(3, np.uint8))
+    before = path.read_bytes()
+    with pytest.raises(ValueError):
+        runner._savez_compressed(path, prob=np.array([{}, None], dtype=object))
+    assert path.read_bytes() == before
+    assert list(tmp_path.iterdir()) == [path]
