@@ -44,8 +44,15 @@ PARAMS = {
 }
 
 
-def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
-    """Three cross-power image rows, R0 against V1, V2 and V3, on one grid."""
+def resample(time_ms, chords) -> tuple[np.ndarray, float]:
+    """`chords` (C, n) at the rate their `time_ms` span implies, resampled to
+    RATE_HZ by `signal.resample_poly` with the ratio limited to denominator 100;
+    the float32 samples (C, m) and their exact rate in Hz. Exactly the lines
+    `spectrogram_rows` held, which now calls this.
+
+    Its own function because `labeler.ae.full` resamples TokEye's whole-shot
+    input with it: the model then sees CO2 at the rate the review rows drew.
+    """
     time_ms = np.asarray(time_ms, dtype=np.float64)
     # The rate from the span, not a median step: float32 time vectors quantise.
     rate = (len(time_ms) - 1) / ((time_ms[-1] - time_ms[0]) / 1000)
@@ -56,7 +63,13 @@ def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
         ratio.denominator,
         axis=-1,
     )
-    fs = rate * ratio.numerator / ratio.denominator
+    return x, rate * ratio.numerator / ratio.denominator
+
+
+def spectrogram_rows(time_ms, chords) -> tuple[Grid, list[ImageRow]]:
+    """Three cross-power image rows, R0 against V1, V2 and V3, on one grid."""
+    time_ms = np.asarray(time_ms, dtype=np.float64)
+    x, fs = resample(time_ms, chords)
     freq, t_s, spec = signal.stft(
         x, fs=fs, window="hann", nperseg=NPERSEG, noverlap=NPERSEG - HOP,
         boundary=None, padded=False, axis=-1,
