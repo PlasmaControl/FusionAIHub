@@ -47,10 +47,15 @@ after the newest save.
   *confirmed* (saved as the source had it) or *changed*. A dot marks a shot with
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
   a reload keeps them.
-- **Your name**, in the box at the top right, goes with every save and is shown
-  beside it (`saved Sep 26, 14:02 by Ada Lovelace`). The browser remembers it.
-  It is an attribution, not a login: the history also records the login that
-  runs the server.
+- **Your name.** The page first asks who is reviewing: pick your name from the
+  list and press Continue, or type it and press Add Name if it is not there.
+  A new tab or window asks again, with your last name already picked; a reload
+  does not. The name, at the top right (click it to change), goes with every
+  save and is shown beside it (`saved Sep 26, 14:02 by Ada Lovelace`). It is an
+  attribution, not a login: the history also records the login that runs the
+  server. The list is `data/events/reviewers.txt`, one name per line, which you
+  may edit; until a name is added it is the names already saved in the review
+  logs.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
   each one, when, how many spans, and how many ms changed. The first version
   is compared with the event's current source table; later ones with the version
@@ -293,7 +298,8 @@ Saves go under the event's directory in the label tables
 
 A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the
-server, so a page reload before a restart never breaks a save.
+server, so a page reload before a restart never breaks a save. From a server
+older than the list of names the page keeps the typed name box.
 
 ## The row store
 

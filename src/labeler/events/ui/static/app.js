@@ -197,7 +197,8 @@ const S = {
   timer: 0,
   saving: false, // or the event and shot whose save is in flight
   api: 1, // what /api/version said: 2 takes a name with each save and lists versions
-  name: "", // the reviewer's typed name, sent with each save
+  name: "", // the reviewer's name, sent with each save: picked from the list (api 5) or typed
+  picked: false, // a name was picked in this tab: the picker can then be closed without one
   versions: [], // the open shot's saved versions, as /api/history listed them
   masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
   tokeye: null, // TokEye's lines over the whole shot, as /api/tokeye gave them (api 4)
@@ -398,7 +399,8 @@ async function boot() {
   });
   S.lo = clamp(Number(stored("labeler:contrast")) || 0, 0, 192);
   S.lut = lut(S.lo);
-  S.name = stored("labeler:name") || "";
+  S.picked = Boolean(picked());
+  S.name = picked() || stored("labeler:name") || "";
   $("reviewer-name").value = S.name;
   S.showMasks = stored("labeler:masks") !== "hidden";
   wire();
@@ -407,8 +409,17 @@ async function boot() {
   } catch {
     S.api = 1; // a server older than this page: save without a name, no history
   }
-  for (const id of ["reviewer-name", "show-versions"]) $(id).hidden = S.api < 2;
-  $("stale").hidden = S.api >= 2;
+  $("show-versions").hidden = S.api < 2;
+  $("reviewer-name").hidden = S.api < 2 || S.api >= 5;
+  $("reviewer").hidden = S.api < 5;
+  $("stale").hidden = S.api >= 5;
+  $("stale").textContent = S.api < 2
+    ? "Restart the server for names and history"
+    : "Restart the server for the list of names";
+  if (S.api >= 5) {
+    showName();
+    if (!S.picked) chooseName(); // not awaited: the shot loads behind the list
+  }
   try {
     S.events = (await (await api("/api/events")).json()).events;
     $("event").replaceChildren(
@@ -1403,6 +1414,106 @@ function toggleKeys() {
   else dialog.showModal();
 }
 
+// -- who is reviewing (api 5)
+
+/** This tab's picked name: asked again in a new tab or window, not on a reload. */
+function picked() {
+  try {
+    return sessionStorage.getItem("labeler:who");
+  } catch {
+    return null;
+  }
+}
+
+function showName() {
+  $("reviewer").textContent = S.name || "Your name";
+}
+
+/** The list of names, centred over the page; the first time, a name must be picked. */
+async function chooseName() {
+  const dialog = $("who");
+  $("who-error").textContent = "";
+  $("who-new").value = "";
+  if (!dialog.open) dialog.showModal();
+  try {
+    listNames((await (await api("/api/names")).json()).names, S.name);
+  } catch (error) {
+    listNames(S.name ? [S.name] : [], S.name);
+    $("who-error").textContent = error.message;
+  }
+  ($("who-names").value ? $("who-continue") : $("who-new")).focus();
+}
+
+function listNames(names, pick) {
+  const list = $("who-names");
+  list.replaceChildren(...names.map((name) => new Option(name, name, false, name === pick)));
+  list.size = clamp(names.length, 3, 8);
+  list.hidden = names.length === 0;
+  $("who-empty").hidden = names.length > 0;
+  $("who-continue").disabled = !list.value;
+}
+
+async function addName() {
+  const name = $("who-new").value.trim();
+  if (!name) return $("who-new").focus();
+  $("who-error").textContent = "";
+  try {
+    const response = await api("/api/names", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const body = await response.json();
+    listNames(body.names, body.name);
+    $("who-new").value = "";
+    $("who-continue").focus();
+  } catch (error) {
+    $("who-error").textContent = error.message;
+  }
+}
+
+function pickName() {
+  const name = $("who-names").value;
+  if (!name) return;
+  S.name = name;
+  S.picked = true;
+  store("labeler:name", name);
+  try {
+    sessionStorage.setItem("labeler:who", name);
+  } catch {
+    // storage refused (a private window): the list then asks again on a reload
+  }
+  showName();
+  closeDialog($("who"));
+}
+
+function wireNames() {
+  const dialog = $("who");
+  // No way past the first list without a name: Escape is refused, and a close
+  // forced through anyway (Chrome allows a second Escape) opens it again.
+  dialog.addEventListener("cancel", (event) => S.picked || event.preventDefault());
+  dialog.addEventListener("close", () => S.picked || chooseName());
+  $("reviewer").addEventListener("click", chooseName);
+  $("who-names").addEventListener("change", () => {
+    $("who-continue").disabled = !$("who-names").value;
+  });
+  $("who-names").addEventListener("dblclick", pickName);
+  $("who-names").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      pickName();
+    }
+  });
+  $("who-new").addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      addName();
+    }
+  });
+  $("who-add").addEventListener("click", addName);
+  $("who-continue").addEventListener("click", pickName);
+}
+
 /** Close a dialog and give the keys back to the page, not to a button left inside it. */
 function closeDialog(dialog) {
   if (dialog.contains(document.activeElement)) document.activeElement.blur();
@@ -1505,7 +1616,7 @@ function onKey(event) {
   const target = event.target;
   const typed = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   const key = event.shiftKey && typed.startsWith("Arrow") ? `Shift+${typed}` : typed;
-  if (target.closest("input, select, textarea")) return;
+  if (target.closest("input, select, textarea") || $("who").open) return;
   if ($("versions").open) {
     if (key === "Enter" || key === "h") {
       event.preventDefault();
@@ -1569,10 +1680,13 @@ function wire() {
   $("revert").addEventListener("click", () => S.meta && revert());
   $("show-versions").addEventListener("click", toggleVersions);
   $("help").addEventListener("click", toggleKeys);
+  wireNames();
   for (const dialog of document.querySelectorAll("dialog")) {
     // Chrome can leave focus on a button in a closed dialog, and Enter would then click it
-    // instead of saving: let go of it as Escape cancels the dialog, and again once closed.
-    const release = () => dialog.contains(document.activeElement) && document.activeElement.blur();
+    // instead of saving: let go of it as Escape cancels the dialog (unless the dialog refuses to
+    // close), and again once closed.
+    const release = (event) =>
+      !event.defaultPrevented && dialog.contains(document.activeElement) && document.activeElement.blur();
     dialog.addEventListener("cancel", release);
     dialog.addEventListener("close", release);
   }
