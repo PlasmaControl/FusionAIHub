@@ -174,10 +174,12 @@ def test_the_sawtooth_draft_records_where_it_started(tmp_path, synth_shot):
     assert spans.detect_sawtooth(SHOT, p, (-500, 800)).info == {
         "start_ms": 200.0,
         "start_from": spans.plasma_start(SHOT, p, (-500, 800))[1],
+        "ramp_events": 2,  # the crashes at 75.9 and 151.9 ms
     }
     _ip_ramp(p)
     info = spans.detect_sawtooth(SHOT, p, (0, 800)).info
     assert info["start_from"] == "ip" and info["start_ms"] == pytest.approx(240, abs=2)
+    assert info["ramp_events"] == 3
     assert spans.detect_sawtooth(SHOT, p).info == {}, "no window: no start"
 
 
@@ -310,14 +312,21 @@ def test_sawteeth_before_the_ramp_are_dropped_before_runs_form(tmp_path, synth_s
     _ip_ramp(p)  # 0.8 MA at 240 ms
     crashes = np.asarray(synth_shot["crash_times_s"]) * 1000
     assert spans.plasma_start(SHOT, p, (0, 800)) == (pytest.approx(240, abs=2), "ip")
-    [(start, stop, _)] = spans.detect_sawtooth(SHOT, p, (0, 800)).spans
+    plasma, _ = spans.plasma_start(SHOT, p, (0, 800))
+    found = spans.detect_sawtooth(SHOT, p, (0, 800))
+    ramp, (start, stop, state) = found.spans
+    assert ramp == (0.0, plasma, UNCERTAIN), "crashes in the ramp-up: uncertain"
+    assert found.info["ramp_events"] == np.sum(crashes < plasma) == 3
     first = crashes[crashes >= 240][0]
+    assert state == PRESENT
     assert start == pytest.approx(first - spans.PAD_MS, abs=1.5), "not the Ip start"
     assert stop == pytest.approx(crashes[-1] + spans.PAD_MS, abs=1.5)
     [(start, _, _)] = spans.detect_sawtooth(SHOT, p).spans  # no window: as before
     assert start == pytest.approx(crashes[0] - spans.PAD_MS, abs=1.5)
     rows = spans.suggest(spans.METHODS["sawtooth_oscillation"], SHOT, (0, 800), p)[0]
-    assert rows[0][1:4] == [ABSENT, 0, round(first - spans.PAD_MS)]
+    ceil = int(np.ceil(plasma))
+    assert rows[0][1:4] == [UNCERTAIN, 0, ceil]
+    assert rows[1][1:4] == [ABSENT, ceil, round(first - spans.PAD_MS)]
 
 
 def test_events_outside_the_window_do_not_form_runs(tmp_path, synth_shot):
@@ -338,7 +347,10 @@ def test_without_ip_the_plasma_starts_a_fixed_delay_into_the_window(
     assert start == -500 + spans.RAMP_FALLBACK_MS == 200
     assert source.startswith("window start + 700 ms: NoDataError")
     crashes = np.asarray(synth_shot["crash_times_s"]) * 1000
-    [(first, _, _)] = spans.detect_sawtooth(SHOT, p, (-500, 800)).spans
+    found = spans.detect_sawtooth(SHOT, p, (-500, 800))
+    ramp, (first, _, _) = found.spans
+    assert ramp == (-500.0, 200.0, UNCERTAIN)
+    assert found.info["ramp_events"] == 2, "the crashes at 75.9 and 151.9 ms"
     assert first == pytest.approx(crashes[crashes >= 200][0] - spans.PAD_MS, abs=1.5)
 
 
@@ -346,7 +358,12 @@ def test_elms_before_the_ramp_are_dropped(tmp_path):
     p = tree.paths(tmp_path)
     _elm_train(p)
     _ip_ramp(p, full_at_ms=362.5, t1_ms=1000.0)  # 0.8 MA at 290 ms
-    [(start, stop, _)] = spans.detect_elm(SHOT, p, (0, 1000)).spans
+    plasma, _ = spans.plasma_start(SHOT, p, (0, 1000))
+    found = spans.detect_elm(SHOT, p, (0, 1000))
+    ramp, (start, stop, state) = found.spans
+    assert ramp == (0.0, plasma, UNCERTAIN), "the ELMs at 200-280 ms: uncertain"
+    assert found.info["ramp_events"] == 5
+    assert state == PRESENT
     assert start == pytest.approx(295, abs=1) and stop == pytest.approx(405, abs=1)
 
 
