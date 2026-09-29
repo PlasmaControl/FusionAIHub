@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 import uvicorn
 
-from labeler.ae.seg import pseudo_dir, regions, whole
+from labeler.ae.seg import regions, whole
 from labeler.ae.seg.pseudo import IGNORE, PseudoMask
 from labeler.config import Paths
 from labeler.events.review.rows import Grid
@@ -34,16 +34,17 @@ def _pseudo(paths: Paths, shot: int) -> None:
     mask[:82] = IGNORE
     mask[100:111, 200:260] = 1
     mask[180:191, 300:360] = 1
-    pseudo_dir(paths).mkdir(parents=True, exist_ok=True)
     PseudoMask(shot, 0.0, 2.048, 0.0, 500 / 512, mask).save(
-        regions.pseudo_file(paths, shot)
+        whole.review_file(paths, shot)
     )
 
 
 def _layer(paths: Paths, shot: int) -> None:
-    """TokEye lit at 60 kHz over the whole 0-4000 ms record, past the pseudo-mask."""
+    """TokEye lit at 60 kHz over the whole 0-4000 ms record, past the pseudo-mask, and
+    at 29 kHz in every eighth column from the fourth, for the bit order."""
     lit = np.zeros((257, 1954), dtype=bool)
     lit[61] = True
+    lit[30, 3::8] = True
     whole.save(
         whole.layer_file(paths, shot), Grid(0.0, 2.048, 1954), 0.0, 500 / 512, lit
     )
@@ -97,7 +98,7 @@ def test_a_region_is_rejected_by_a_click_and_the_choice_is_kept(served, tmp_path
     assert result.returncode == 0, result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert [c for c in checks if not c["ok"]] == []
-    assert len(checks) == 10
+    assert len(checks) == 11
     lines = regions.log_path(event).read_text().splitlines()
     saves = [json.loads(line) for line in lines]
     assert [(s["rejected"], s["name"]) for s in saves] == [([2], "Ada"), ([], "Ada")]

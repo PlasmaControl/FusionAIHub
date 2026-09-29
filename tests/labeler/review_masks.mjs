@@ -109,8 +109,8 @@ const pixel = (t, f) =>
     done(rgb.slice(0, 3));
   })))`);
 const cyan = ([r, g, b]) => g > r + 60 && b > r + 60;
-/** `shown` is `hidden` with cyan laid over it. */
-const tinted = (shown, hidden) => shown[1] - hidden[1] > 30 && shown[2] - hidden[2] > 30;
+/** `shown` is `hidden` with cyan laid over it: green and blue gain on red. */
+const tinted = ([r, g, b], [r0, g0, b0]) => g - r - (g0 - r0) > 30 && b - r - (b0 - r0) > 30;
 const grey = ([r, g, b]) => Math.max(r, g, b) - Math.min(r, g, b) < 40 && r > 60;
 
 const checks = [];
@@ -131,6 +131,12 @@ try {
   const one = await region(1);
   const two = await region(2);
   check("its regions are drawn over the rows", cyan(one.rgb) && cyan(two.rgb), [one, two]);
+  const bits = await js(`(() => {
+    const g = tokeyeBitmap(S.tokeye).getContext("2d");
+    return [2, 3, 4, 11].map((k) => g.getImageData(k, S.tokeye.n_y - 1 - 30, 1, 1).data[3]);
+  })()`);
+  check("the layer's columns are read in numpy's bit order", bits[1] > 0 && bits[3] > 0 && bits[0] === 0 &&
+    bits[2] === 0, bits);
 
   await click(two.x, two.y);
   await until("!S.masks.saving && S.masks.last_save !== null");
@@ -142,20 +148,22 @@ try {
     [await js("S.masks.rejected"), after.rgb, await js(`$("masks").textContent`)]
   );
 
-  const late = await js("S.view[0] + 0.9 * (S.view[1] - S.view[0])"); // past the mask's 1843 ms
   const view = await js("S.view[0]");
   await drag(one.x, one.x - 120, one.y);
   await until(`S.view[0] !== ${view}`);
   check("a drag still pans and rejects nothing", same(await js("S.masks.rejected"), [2]), await js("S.masks.rejected"));
 
+  // Past the label's window, under its veil: where the pseudo-mask never reaches.
+  const [end, right] = await js("[S.label.window[1], S.view[1]]");
+  const late = end + 0.5 * (right - end);
   const line = await pixel(late, 60);
   await press("m");
   const hidden = await region(1);
   const unlined = await pixel(late, 60);
   check(
-    "TokEye's whole-shot layer is drawn past the pseudo-mask, and m hides it too",
-    late > 1900 && (await js("S.tokeye.layer")) === "tokeye-full" && tinted(line, unlined),
-    [late, line, unlined]
+    "TokEye's whole-shot layer is drawn past the label's window, and m hides it too",
+    right > end && (await js("S.tokeye.layer")) === "tokeye-full" && tinted(line, unlined),
+    [end, late, line, unlined]
   );
   check(
     "m hides the mask, and the browser remembers",
