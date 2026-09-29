@@ -196,7 +196,7 @@ mark the sawteeth or ELMs you see there by hand.
   dead from 3877 ms to the window's end at 7285 ms. Only the filterscope the
   draft reads is checked, and the draft never switches to another, even when
   another filterscope is live over the dead stretch. The H-mode editor draws
-  all eight. v1 has no such rule: its drafts call that time absent.
+  each lit filterscope. v1 has no such rule: its drafts call that time absent.
 
 **H-mode** (`dalpha_lh`).
 
