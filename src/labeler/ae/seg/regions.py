@@ -29,7 +29,7 @@ import numpy as np
 from scipy import ndimage
 
 from ...events.review.labels import REVIEW
-from . import PSEUDO, pseudo_dir
+from . import PSEUDO, VERSION, pseudo_dir
 from .pseudo import EIGHT, PseudoMask
 
 LOG = "masks.jsonl"
@@ -40,8 +40,9 @@ def log_path(event_dir) -> Path:
     return Path(event_dir) / REVIEW / LOG
 
 
-def pseudo_file(paths, shot: int) -> Path:
-    return pseudo_dir(paths) / f"{int(shot)}.npz"
+def pseudo_file(paths, shot: int, version: str = VERSION) -> Path:
+    """The shot's mask among `version`'s pseudo-masks; the review page reads v1's."""
+    return pseudo_dir(paths, version) / f"{int(shot)}.npz"
 
 
 def file_sha256(path) -> str:
