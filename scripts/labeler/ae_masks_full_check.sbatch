@@ -5,8 +5,8 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=3G
-#SBATCH --time=01:00:00
+#SBATCH --mem=7G
+#SBATCH --time=04:40:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 
@@ -22,10 +22,17 @@
 #   full run:   sbatch --dependency=afterok:<the ae_masks_full job> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26 on ae_xpower_evaluate)
+# ------------------------------------------ sizing (measured on pilot job 2944155)
+#   pilot 2944155 (9f5c1a5, the first pilot's 16 shots, --mem=8G): 4:49, 18.1 s a shot,
+#   MaxRSS 4.50 GiB (the first try, 2944136, ran out of memory at 3G).
+#   jobstats: CPU 86.9 %  CPU-mem 47.5 %  GPU n/a  GPU-mem n/a  FAIL (exempt)
+#   mem=7G         4.50 GiB x 1.4. jobstats reads the peak below sacct's (3.8 GiB of 8G),
+#                  so CPU-mem may read under 70 %: the margin is over the per-shot peak.
+#   time=04:40:00  18.1 s x 180 shots x 5.
+#   before the pilot:
 #   ae_xpower_evaluate's pilot ran SELDNet with every other method at ~4 s a test shot, max
 #   RSS 1.85 GB, on one thread. The check runs SELDNet twice over 0-2 s (~3 s) and compares
-#   two unpacked masks (4 x 512 x 23,440 bits, ~50 MB each): ~4 s a shot.
+#   two unpacked masks (4 x 512 x 23,445 bytes, ~48 MB each): ~4 s a shot.
 #   mem=3G         1.85 GB + two masks, x 1.4; Task 1.11 sets it from the pilot's MaxRSS.
 #   time=01:00:00  180 shots x 4 s = 12 min, x 5 for cold reads of masks-full.
 set -euo pipefail
