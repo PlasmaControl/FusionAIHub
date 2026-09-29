@@ -200,7 +200,8 @@ const S = {
   name: "", // the reviewer's typed name, sent with each save
   versions: [], // the open shot's saved versions, as /api/history listed them
   masks: null, // the open AE shot's pseudo-mask regions, as /api/masks gave them (api 3)
-  showMasks: true, // M shows and hides them; the browser remembers which
+  tokeye: null, // TokEye's lines over the whole shot, as /api/tokeye gave them (api 4)
+  showMasks: true, // M shows and hides both; the browser remembers which
 };
 let T = {}; // colour tokens, read from the stylesheet
 const $ = (id) => document.getElementById(id);
@@ -252,7 +253,7 @@ function say(message, error = false) {
 
 function readTokens() {
   const style = getComputedStyle(document.documentElement);
-  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected"];
+  const names = ["panel", "ink", "muted", "rule", "label", "changed", "veil", "mask", "rejected", "tokeye"];
   T = Object.fromEntries(names.map((name) => [name, style.getPropertyValue(`--${name}`).trim()]));
 }
 
@@ -504,7 +505,7 @@ async function openEvent(event, shot) {
 function showNothing(shot, text) {
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
-    undo: [], selected: -1, asked: "", frame: 0, masks: null });
+    undo: [], selected: -1, asked: "", frame: 0, masks: null, tokeye: null });
   showMasks();
   const note = document.createElement("p");
   note.className = "failure";
@@ -533,7 +534,8 @@ async function openShot(shot) {
       await sleep(800);
       if (ticket !== S.ticket) return;
     }
-    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null });
+    Object.assign(S, { shot, meta, data: null, overview: null, asked: "", undo: [], selected: -1, masks: null,
+      tokeye: null });
     S.label = draft(shot) || baseline();
     buildRows();
     arrive();
@@ -752,6 +754,7 @@ function drawRows() {
     g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
     g.clip();
     if (row.kind === "image") drawImage(g, row, i, h);
+    if (row.kind === "image") drawTokeye(g, row, h);
     if (row.kind === "image") drawMasks(g, row, h);
     if (values && row.kind === "trace") drawTrace(g, row, values, range, w, h);
     drawOverlay(g, w, h);
@@ -783,6 +786,41 @@ function drawImage(g, row, i, h) {
     const [x0, x1] = [px(data.t0), px(data.t1)];
     g.drawImage(bitmap(row, data, i), 0, row.n_y - stop, data.n, stop - first, x0, 0, x1 - x0, h - 1);
   }
+}
+
+/** TokEye's lines over the whole shot, under the pseudo-mask: `--tokeye` wherever
+ * TokEye lights two of the four chords, AE or not. A picture: a click never lands on it. */
+function drawTokeye(g, row, h) {
+  const t = S.tokeye;
+  if (!t || !S.showMasks) return;
+  const [lo, hi] = imageRange(row);
+  const y = (f) => t.n_y - ((f - t.y0_khz) / t.dy_khz + 0.5); // the layer's own pixel rows
+  const [x0, x1] = [px(t.grid.t0_ms), px(t.grid.t0_ms + t.grid.n * t.grid.dt_ms)];
+  g.imageSmoothingEnabled = false;
+  g.drawImage(tokeyeBitmap(t), 0, y(hi), t.grid.n, y(lo) - y(hi), x0, 0, x1 - x0, h - 1);
+}
+
+/** The layer as a canvas, a pixel per column and bin, top bin first; built once per colour. */
+function tokeyeBitmap(t) {
+  if (t.bitmap?.colour === T.tokeye) return t.bitmap.canvas;
+  const bytes = Uint8Array.from(atob(t.bits), (c) => c.charCodeAt(0));
+  const [n, stride] = [t.grid.n, Math.ceil(t.grid.n / 8)];
+  const lit = (j, k) => (bytes[j * stride + (k >> 3)] >> (7 - (k & 7))) & 1;
+  const canvas = document.createElement("canvas");
+  [canvas.width, canvas.height] = [n, t.n_y];
+  const g = canvas.getContext("2d");
+  g.fillStyle = T.tokeye;
+  for (let j = 0; j < t.n_y; j++) {
+    for (let k = 0; k < n; k++) {
+      if (!lit(j, k)) continue;
+      let end = k + 1;
+      while (end < n && lit(j, end)) end++;
+      g.fillRect(k, t.n_y - 1 - j, end - k, 1);
+      k = end;
+    }
+  }
+  t.bitmap = { colour: T.tokeye, canvas };
+  return canvas;
 }
 
 /** The pseudo-mask over an image row: `--mask` where TokEye's line lies inside the
@@ -1174,10 +1212,11 @@ function endDrag(event) {
 const maskSaves = new Map(); // shot -> pending save, survives navigation
 const maskErrors = new Map(); // shot -> last failed save, until a successful retry
 
-/** The open shot's pseudo-mask, if the server has one (api 3, AE only). */
+/** The open shot's pseudo-mask (api 3) and TokEye layer (api 4), if the server has them (AE only). */
 async function loadMasks(ticket) {
   if (S.api >= 3 && S.event === MASK_EVENT) {
     const event = S.event, shot = S.shot;
+    const layer = S.api >= 4 ? loadTokeye(event, shot) : null;
     try {
       await maskSaves.get(shot);
       if (ticket !== S.ticket) return;
@@ -1189,10 +1228,22 @@ async function loadMasks(ticket) {
     } catch {
       // no pseudo-mask for this shot: nothing to draw
     }
+    const tokeye = await layer;
+    if (ticket !== S.ticket) return;
+    S.tokeye = tokeye;
   }
   if (ticket !== S.ticket) return;
   showMasks();
   render();
+}
+
+/** The shot's whole-shot TokEye layer, or null. */
+async function loadTokeye(event, shot) {
+  try {
+    return await (await api(`/api/tokeye?event=${enc(event)}&shot=${shot}`)).json();
+  } catch {
+    return null; // no layer for this shot: nothing to draw
+  }
 }
 
 function showMasks() {
@@ -1208,7 +1259,7 @@ function showMasks() {
 }
 
 function toggleMasks() {
-  if (!S.masks) return say("this shot has no pseudo-mask");
+  if (!S.masks && !S.tokeye) return say("this shot has no pseudo-mask");
   S.showMasks = !S.showMasks;
   store("labeler:masks", S.showMasks ? null : "hidden");
   showMasks();

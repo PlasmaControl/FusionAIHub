@@ -1,4 +1,5 @@
-"""The AE pseudo-mask in a real browser: drawn, clicked, hidden, remembered."""
+"""The AE pseudo-mask in a real browser: drawn, clicked, hidden, remembered; and
+TokEye's whole-shot layer under it."""
 
 from __future__ import annotations
 
@@ -12,9 +13,10 @@ import numpy as np
 import pytest
 import uvicorn
 
-from labeler.ae.seg import pseudo_dir, regions
+from labeler.ae.seg import pseudo_dir, regions, whole
 from labeler.ae.seg.pseudo import IGNORE, PseudoMask
 from labeler.config import Paths
+from labeler.events.review.rows import Grid
 from labeler.events.ui.app import create_app
 
 from .test_review_browser import NODE, ROSTER, SHELLS, SOURCE, TOKEN, _store
@@ -38,6 +40,15 @@ def _pseudo(paths: Paths, shot: int) -> None:
     )
 
 
+def _layer(paths: Paths, shot: int) -> None:
+    """TokEye lit at 60 kHz over the whole 0-4000 ms record, past the pseudo-mask."""
+    lit = np.zeros((257, 1954), dtype=bool)
+    lit[61] = True
+    whole.save(
+        whole.layer_file(paths, shot), Grid(0.0, 2.048, 1954), 0.0, 500 / 512, lit
+    )
+
+
 @pytest.fixture
 def served(tmp_path):
     paths = Paths(
@@ -55,6 +66,7 @@ def served(tmp_path):
     for shot in (170815, 170816):
         _store(paths, shot)
     _pseudo(paths, 170815)
+    _layer(paths, 170815)
     server = uvicorn.Server(
         uvicorn.Config(
             create_app(paths=paths, token=TOKEN),
@@ -85,7 +97,7 @@ def test_a_region_is_rejected_by_a_click_and_the_choice_is_kept(served, tmp_path
     assert result.returncode == 0, result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert [c for c in checks if not c["ok"]] == []
-    assert len(checks) == 9
+    assert len(checks) == 10
     lines = regions.log_path(event).read_text().splitlines()
     saves = [json.loads(line) for line in lines]
     assert [(s["rejected"], s["name"]) for s in saves] == [([2], "Ada"), ([], "Ada")]

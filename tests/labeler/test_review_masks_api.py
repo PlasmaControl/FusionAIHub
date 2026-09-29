@@ -1,7 +1,9 @@
-"""A pseudo-mask's regions on the review page, and the reviewer's word on each."""
+"""A pseudo-mask's regions on the review page, the reviewer's word on each, and
+TokEye's whole-shot layer under them."""
 
 from __future__ import annotations
 
+import base64
 import getpass
 import json
 
@@ -9,9 +11,10 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from labeler.ae.seg import pseudo_dir, regions
+from labeler.ae.seg import pseudo_dir, regions, whole
 from labeler.ae.seg.pseudo import IGNORE, PseudoMask
 from labeler.config import Paths
+from labeler.events.review.rows import Grid
 from labeler.events.ui.app import COOKIE, create_app
 
 ROSTER = (
@@ -180,3 +183,39 @@ def test_a_shot_without_a_pseudo_mask_is_404_and_the_route_is_gated(client):
     assert client.get(_url(shot=178642)).status_code == 404
     assert client.get(_url(event="nothing")).status_code == 404
     assert TestClient(client.app).get(_url()).status_code == 401
+
+
+def _layer() -> np.ndarray:
+    """TokEye lit on two chords in page bin 100 over 5121-6139 ms, on one chord in 151."""
+    t = np.arange(2500, 3000) * 2.048 + 1.0
+    clean = np.zeros((4, 512, len(t)), dtype=bool)
+    clean[:2, 198] = True  # page bin k takes TokEye bins 2k - 2 and 2k - 1
+    clean[3, 300] = True
+    return whole.build(Grid(0.0, 2.048, 4000), 257, (t, clean, None))
+
+
+def test_the_layer_lights_where_two_chords_agree_past_the_label_window():
+    lit = _layer()
+    assert lit.shape == (257, 4000)
+    assert lit[100, 2500:3000].all() and lit.sum() == 500
+
+
+def test_the_page_reads_the_layer_bit_packed_along_time(client, paths):
+    lit = _layer()
+    whole.save(whole.layer_file(paths, SHOT), Grid(0.0, 2.048, 4000), 0.0, 0.977, lit)
+    view = client.get(f"/api/tokeye?event=alfven_eigenmode&shot={SHOT}").json()
+    assert view["grid"] == {"t0_ms": 0.0, "dt_ms": 2.048, "n": 4000}
+    assert (view["n_y"], view["y0_khz"], view["dy_khz"]) == (257, 0.0, 0.977)
+    bits = np.frombuffer(base64.b64decode(view["bits"]), dtype=np.uint8)
+    drawn = np.unpackbits(bits.reshape(257, -1), axis=1, count=4000).astype(bool)
+    assert np.array_equal(drawn, lit)
+
+
+def test_a_shot_without_a_layer_is_404_and_the_route_is_gated(client):
+    url = "/api/tokeye?event={}&shot={}"
+    assert client.get(url.format("alfven_eigenmode", 178642)).status_code == 404
+    assert client.get(url.format("nothing", SHOT)).status_code == 404
+    assert (
+        TestClient(client.app).get(url.format("alfven_eigenmode", SHOT)).status_code
+        == 401
+    )

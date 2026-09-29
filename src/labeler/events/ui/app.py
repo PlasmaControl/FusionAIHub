@@ -5,7 +5,9 @@ the same URL without it. The server reads `shots.csv` and never writes it;
 its writes are `POST /api/label` and `POST /api/masks`, both into the event's
 `review/` directory. `GET /api/history` lists a shot's saved versions (see
 `review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions and
-the reviewer's last word on them (see `labeler.ae.seg.regions`).
+the reviewer's last word on them (see `labeler.ae.seg.regions`); `GET
+/api/tokeye` gives TokEye's lines over the whole shot, drawn under them (see
+`labeler.ae.seg.whole`).
 """
 
 from __future__ import annotations
@@ -28,7 +30,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ...ae import seg
-from ...ae.seg import regions
+from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths
 from .. import raw, rosters
@@ -45,8 +47,9 @@ NO_TOKEN = "no token: reopen the link printed by the verify server"
 BAD_TOKEN = "bad token"
 #: Bumped when the server gains a route or a field the page depends on. The
 #: page asks `/api/version` first and, from an older server, saves without a
-#: name and hides the history instead of failing every save. 3 added the masks.
-API_VERSION = 3
+#: name and hides the history instead of failing every save. 3 added the masks,
+#: 4 the whole-shot TokEye layer.
+API_VERSION = 4
 
 log = logging.getLogger(__name__)
 
@@ -321,6 +324,15 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         directory, _ = mask_file(event, shot)
         with mask_lock:
             return regions.shot_view(paths, directory, shot)
+
+    @app.get("/api/tokeye")
+    def tokeye_view(event: str, shot: int):
+        directory = require_event(event, paths)
+        roster_tier(_roster(directory), shot)
+        found = whole.view(paths, shot) if event == seg.EVENT else None
+        if found is None:
+            raise HTTPException(404, f"shot {int(shot)} has no {event} TokEye layer")
+        return found
 
     @app.post("/api/masks")
     def save_masks(body: MaskIn):
