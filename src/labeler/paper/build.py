@@ -20,9 +20,13 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   are `partial`, saying why;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
-  `<candidate>/review/labels.csv` (D18), with the segmentation's mask, SegNet
-  run over the same stores, where its `model.pt` exists. The copy's sha256 must be the one the AE evaluation names
-  (`labels_sha256`); if it is not, or none is named, both are skipped.
+  `<candidate>/review/labels.csv` (D18), over the version's scored window
+  (`shots.scored_ms`: 0-2 s for v1 and v2, the owner's whole window for v3),
+  with the segmentation's mask over the band its blob records (80-250 kHz for
+  v1's, which records none; 0-250 kHz for SegNet v2's), SegNet run over the
+  same stores, where its `model.pt` exists. The copy's sha256 must be the one
+  the AE evaluation names (`labels_sha256`); if it is not, or none is named,
+  both are skipped.
 
 The owner's live labels are read for the coverage alone; every scored product
 uses the labels the model was scored against.
@@ -86,9 +90,12 @@ a cross-validated version's `cv/folds.csv` is the one its `chosen.json` names
 either is missing), each sha256 in `labels_sha256` (the live table's too), the
 time, the
 interpreter's shot, its pool and the branch of the rule that fired, the example
-shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
-the whole window. The shots are ranked by their F1 over 0-2 s
-(`shots.rank_keys`).
+shots, the rules that picked them, and the drawn shots' F1 over 0-2 s
+(`f1_0_2s`) and over the owner's whole window (`f1_window`), both for every
+version. The shots are ranked, the interpreter's pool's off-periods counted and
+the rules said over the version's scored window (`shots.rank_keys`,
+`shots.pick_texts`): 0-2 s for v1 and v2, whose figures mark it with a dashed
+line at 2 s, and the owner's whole window for v3, whose figures have none.
 
 **The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
 read once, hashed, and parsed from those bytes; a second read of one is refused,
@@ -558,7 +565,16 @@ def _draw(
             (why, {})
             if why
             else _shot_figures(
-                paths, found, snap, saved, split, shot, examples, figure, lacking
+                paths,
+                found,
+                snap,
+                saved,
+                split,
+                shot,
+                examples,
+                figure,
+                lacking,
+                version=version,
             )
         )
         for product in figures if why else ():
@@ -596,6 +612,18 @@ def _draw(
     return manifest
 
 
+def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
+    """Why the shot figures are skipped when no test shot has an F1 over the
+    scored window ending at `until_ms`: `NO_F1` for 0-2 s; None is the owner's
+    whole window."""
+    if until_ms == shots.SCORED_MS:
+        return NO_F1
+    return (
+        f"no test shot has an F1 over the {shots.window_name(until_ms)}: neither "
+        "the owner nor the model calls a scored frame there present"
+    )
+
+
 def _shot_figures(
     paths: Paths,
     found: dict[str, Path],
@@ -606,11 +634,17 @@ def _shot_figures(
     examples: int,
     figure: Callable,
     lacking: Callable,
+    version: str = VERSION,
 ) -> tuple[str | None, dict]:
     """Score every test shot against the model's copy of the labels (D18) and
     draw the two shot figures. Why they could not be drawn (None when they
-    were), and the picks for the manifest."""
+    were), and the picks for the manifest. The F1, the picks and their rules
+    are over `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2,
+    the owner's whole window for v3); `shot_f1` gives every drawn shot's F1
+    over 0-2 s and over the owner's whole window, whatever the version."""
     figures = ("fig_interpreter", "fig_examples")
+    until = shots.scored_ms(version)
+    texts = shots.pick_texts(until)
     model = snap.model("ae_model", found["ae_model"], split)
     segmentation = (
         snap.segmentation("seg_model", found["seg_model"])
@@ -629,24 +663,28 @@ def _shot_figures(
         """The shot's picture, its store read once."""
         data = snap.read(f"store_{s}", _store(paths, s))
         return shots.picture(
-            s, label=saved[s], model=model, store=data, segmentation=segmentation
+            s,
+            label=saved[s],
+            model=model,
+            store=data,
+            segmentation=segmentation,
+            scored_until_ms=until,
         )
 
     pictures = {s: one(s) for s in usable}
     ranked = [shots.rank_keys(p) for p in pictures.values()]
     f1 = {r.shot: r.f1 for r in ranked}
     if all(math.isnan(v) for v in f1.values()):
-        return NO_F1, {}
-    pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
+        return no_f1(until), {}
+    gaps = {r.shot: r.gap for r in ranked}
+    pick = shots.interpreter_pick(f1, poi, gaps, until_ms=until)
     picked = {
         "interpreter_shot": pick["shot"] if shot is None else shot,
-        "interpreter_rule": shots.INTERPRETER_RULE
-        if shot is None
-        else "named by --shot",
+        "interpreter_rule": texts.interpreter if shot is None else "named by --shot",
         "interpreter_branch": pick["branch"] if shot is None else None,
         "interpreter_pool": pick["pool"],
         "example_shots": shots.pick_examples(f1, examples),
-        "example_rule": shots.EXAMPLES_RULE,
+        "example_rule": texts.examples,
     }
     named = picked["interpreter_shot"]
     if named not in pictures and named in saved and _store(paths, named).is_file():
@@ -669,7 +707,7 @@ def _shot_figures(
     if unstored:
         lacking(figures, NO_STORE, missing=[str(p) for p in unstored])
     picked["shot_f1"] = {
-        str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
+        str(s): {"f1_0_2s": _number(d.f1_0_2s), "f1_window": _number(d.f1_window)}
         for s, d in sorted(drawn.items())
     }
     return None, picked
