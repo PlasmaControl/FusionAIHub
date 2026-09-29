@@ -236,6 +236,17 @@ STORE_ROWS = {
 }
 
 
+def builder(event: str, shot: int, paths: Paths | None = None) -> tuple:
+    """A store's rows as `panel_rows.build` returns them, `(grid, rows, info)`:
+    `event`'s `STORE_ROWS` on the tree's grid, seeded by the shot. A stand-in
+    for the real builders (`review.build.BUILDERS`) in Tasks 2.8-2.11's tests."""
+    dt = DT_MS[event]
+    grid = rows.Grid(t0_ms=STORE_T0_MS, dt_ms=dt, n=round(STORE_MS / dt))
+    t = grid.t0_ms + (np.arange(grid.n) + 0.5) * dt
+    built = STORE_ROWS[event](t, np.random.default_rng(int(shot)))
+    return grid, built, {"params": {"tree": True}}
+
+
 def _store(paths: Paths, event: str, shot: int, rng) -> None:
     dt = DT_MS[event]
     grid = rows.Grid(t0_ms=STORE_T0_MS, dt_ms=dt, n=round(STORE_MS / dt))

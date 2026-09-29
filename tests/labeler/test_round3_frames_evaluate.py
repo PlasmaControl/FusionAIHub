@@ -1,0 +1,347 @@
+"""Round three, Task 2.10: the one test, the baselines and the bars."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from labeler import frames
+from labeler.events import spans
+from labeler.events.catalog.population import POOL_COLUMNS
+from labeler.events.catalog.states import PRESENT
+from labeler.events.review import build as review_build
+from labeler.frames import evaluate, prepare, train
+from labeler.frames import shots as frames_shots
+from labeler.frames.model import RowsCNN
+from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
+from labeler.scoring import stats
+
+from . import frames_tree
+from .frames_tree import ELM, IP_SHOT, LABELS_SHOT, POPULATION_ONLY, SHOTS
+
+WIDTHS = {"elm_frames": 2, "hmode_frames": 5, "ntm_frames": 42, "sawtooth_frames": 41}
+#: The ELM method's test shots here; its owner shot is SHOTS[ELM].
+TEST = sorted([IP_SHOT, LABELS_SHOT])
+
+
+def _npz(paths, method, shot):
+    with np.load(frames.features_dir(paths, method) / f"{shot}.npz") as z:
+        return {k: z[k] for k in z.files}
+
+
+def _save_model(paths, method, out=None, threshold=0.5, train_shots=()):
+    """A random model on the method's split, as `train.fit` saves one, trained
+    (so its record says) on `train_shots`."""
+    spec = frames.SPECS[method]
+    out = frames.model_dir(paths, method) if out is None else out
+    subs = round(10 / spec.sub_ms)
+    split = frames.shots_file(paths, method).read_bytes()
+    record = {
+        "method": method,
+        "threshold": threshold,
+        "channels": WIDTHS[method],
+        "subs": subs,
+        "width": 32,
+        "split_sha256": hashlib.sha256(split).hexdigest(),
+        "shots": {"train": [int(s) for s in train_shots], "val": []},
+    }
+    train.save(out, RowsCNN(WIDTHS[method], subs).eval(), record)
+    return out
+
+
+def _resplit(paths, method, splits: dict) -> None:
+    path = frames.shots_file(paths, method)
+    frame = pd.read_csv(path)
+    frame["split"] = [splits.get(s, v) for s, v in zip(frame.shot, frame.split)]
+    frame.to_csv(path, index=False)
+
+
+def _truth_onsets(paths):
+    """A stub `spans.elm_onsets`: an onset in each present bin of the shot's
+    features, the clock's channel measured over the whole store."""
+
+    def elm_onsets(shot, paths_, window=None):
+        z = _npz(paths, "elm_frames", shot)
+        present = z["bins"][z["states"] == PRESENT_T]
+        spans_ = tuple((b, b + 50.0, PRESENT) for b in present)
+        found = spans.Found(spans_, ((-100.0, 2100.0),))
+        return SimpleNamespace(times_ms=tuple(present + 25.0), found=found)
+
+    return elm_onsets
+
+
+@pytest.fixture
+def tree(tmp_path, monkeypatch):
+    paths = frames_tree.build(tmp_path / "tree")
+    for event in frames_tree.STORE_ROWS:
+        monkeypatch.setitem(review_build.BUILDERS, event, frames_tree.builder)
+    return paths
+
+
+@pytest.fixture
+def elm(tree, monkeypatch):
+    """The ELM method with two test shots and its owner shot, a random model,
+    and `elm_onsets` stubbed to the truth."""
+    frames_shots.make(tree, "elm_frames")
+    shots = [SHOTS[ELM], *TEST]
+    prepare.build_stores(tree, "elm_frames", shots)
+    assert prepare.prepare(tree, "elm_frames", shots)["written"] == sorted(shots)
+    _resplit(tree, "elm_frames", dict.fromkeys(TEST, "test"))
+    _save_model(tree, "elm_frames")
+    monkeypatch.setattr(spans, "elm_onsets", _truth_onsets(tree), raising=False)
+    return tree
+
+
+def _perfect(model, spec, shot):
+    prob = np.where(shot.states == PRESENT_T, 0.9, 0.1)
+    return np.where(shot.observed, prob, np.nan)
+
+
+def _always(model, spec, shot):
+    return np.where(shot.observed, 0.9, np.nan)
+
+
+def test_score_on_a_hand_made_case():
+    prob = np.array([0.9, 0.2, 0.7, 0.4, 0.8, 0.9, 0.9, np.nan])
+    states = np.array(
+        [PRESENT_T, PRESENT_T, ABSENT, ABSENT, UNKNOWN, UNCERTAIN_T, PRESENT_T, ABSENT],
+        np.int8,
+    )
+    observed = np.array([1, 1, 1, 1, 1, 1, 0, 1], bool)
+    said = evaluate.score(prob, states, 0.5, observed)
+    assert said["cells"] == [1, 1, 1, 1]
+    assert said["precision"] == said["recall"] == said["f1"] == 0.5
+    low = evaluate.score(prob, states, 0.1, observed)
+    assert low["cells"] == [2, 2, 0, 0]
+    assert low["precision"] == 0.5 and low["recall"] == 1.0
+    assert low["f1"] == pytest.approx(2 / 3)
+    none = evaluate.score(prob[4:6], states[4:6], 0.5)
+    assert none["cells"] == [0, 0, 0, 0] and none["f1"] is None
+    # L's cells are H's with present and absent swapped.
+    assert evaluate.swapped([1, 2, 3, 4]).tolist() == [4, 3, 2, 1]
+
+
+def test_the_bootstrap_is_reproducible_at_the_seed():
+    cells = np.random.default_rng(0).integers(0, 20, size=(12, 4))
+    first = evaluate.interval(cells, stats.f1)
+    assert first == evaluate.interval(cells, stats.f1)
+    assert first["seed"] == 20260923 and first["replicates"] == 2000
+    assert first["level"] == 0.95 and first["low"] <= first["value"] <= first["high"]
+    other = evaluate.interval(cells, stats.f1, seed=1)
+    assert (other["low"], other["high"]) != (first["low"], first["high"])
+    shifted = np.roll(cells, 1, axis=1)
+    diff = evaluate.paired(cells, shifted, stats.f1)
+    assert diff == evaluate.paired(cells, shifted, stats.f1)
+    assert evaluate.interval(np.zeros((0, 4)), stats.f1) is None
+
+
+def test_always_scores_as_expected(elm):
+    spec = frames.SPECS["elm_frames"]
+    found, left = evaluate.baselines(elm, spec, TEST)
+    assert set(found) == {"always", "elm_onsets", "elm_clock"}
+    assert left == {"always": {}, "elm_onsets": {}, "elm_clock": {}}
+    for shot in TEST:
+        z = _npz(elm, "elm_frames", shot)
+        always = found["always"][shot]
+        assert always.shape == z["bins"].shape and np.all(always == 1)
+        observed = z["observed"].reshape(-1, 5).all(axis=1)
+        said = evaluate.score(always, z["states"], 0.5, observed)
+        scored = observed & np.isin(z["states"], (ABSENT, PRESENT_T))
+        present = int((scored & (z["states"] == PRESENT_T)).sum())
+        absent = int((scored & (z["states"] == ABSENT)).sum())
+        assert said["cells"] == [present, absent, 0, 0]
+        # The truth's onsets are a perfect baseline.
+        onsets = evaluate.score(found["elm_onsets"][shot], z["states"], 0.5, observed)
+        assert onsets["cells"][1:3] == [0, 0]
+    record = evaluate.evaluate(elm, "elm_frames")
+    always = record["scores"]["always"]
+    assert always["recall"] == 1.0
+    tp, fp, fn, tn = always["cells"]
+    assert (fn, tn) == (0, 0) and always["precision"] == pytest.approx(tp / (tp + fp))
+    assert record["intervals"]["always"]["recall"]["value"] == 1.0
+
+
+def test_the_elm_bar_with_stubbed_onsets(elm, monkeypatch):
+    monkeypatch.setattr(evaluate, "model_probs", _perfect)
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["scores"]["elm_frames"]["f1"] == 1.0
+    assert record["scores"]["elm_onsets"]["f1"] == 1.0
+    assert record["paired"]["f1 - elm_onsets"]["low"] == 0.0
+    assert record["paired"]["f1 - always"]["low"] > 0
+    assert record["bar"] == {"E1": True, "E2": True, "E3": True, "all": True}
+    # A model that says present everywhere is `always`: no better than it, and
+    # worse than the onsets.
+    monkeypatch.setattr(evaluate, "model_probs", _always)
+    written = frames.model_dir(elm, "elm_frames") / "evaluation.json"
+    written.unlink()
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["paired"]["f1 - always"]["value"] == 0.0
+    assert record["paired"]["f1 - elm_onsets"]["low"] < -0.03
+    assert not record["bar"]["E2"] and not record["bar"]["E3"]
+    assert not record["bar"]["all"]
+    # Without round-three-b's elm_onsets the ELM test is refused, not guessed.
+    written.unlink()
+    monkeypatch.delattr(spans, "elm_onsets")
+    with pytest.raises(RuntimeError, match="round-three-b"):
+        evaluate.evaluate(elm, "elm_frames")
+
+
+def test_the_owner_table_is_separate_and_labelled(elm):
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["test"]["shots"]["elm_frames"] == TEST
+    owner = record["owner"]
+    assert owner["shots"]["elm_frames"] == [SHOTS[ELM]]
+    assert "spans of ELMy time, not onsets" in owner["note"]
+    assert set(owner["scores"]) == {"elm_frames", "elm_onsets", "elm_clock", "always"}
+    assert owner["intervals"]["elm_frames"]["f1"]["replicates"] == 2000
+    assert "paired" not in owner  # no bar reads the owner's table
+    assert owner["snapshot"]["sha256"]
+    # The test's cells are the test shots' alone.
+    cells = np.zeros(4)
+    for shot in TEST:
+        z = _npz(elm, "elm_frames", shot)
+        observed = z["observed"].reshape(-1, 5).all(axis=1)
+        cells += evaluate.score(z["states"] >= 0, z["states"], 0.5, observed)["cells"]
+    assert sum(record["scores"]["always"]["cells"]) == cells.sum()
+    md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
+    head, tail = md.split("## The owner's saves")
+    assert evaluate.ELM_OWNER_NOTE in tail and "spans of ELMy time" not in head
+
+
+@pytest.mark.parametrize("method", sorted(frames.SPECS))
+def test_the_json_bar_keys_per_method(tree, monkeypatch, method):
+    spec = frames.SPECS[method]
+    shot = SHOTS[spec.store_event]
+    frames_shots.make(tree, method)
+    assert prepare.prepare(tree, method, [shot])["written"] == [shot]
+    _resplit(tree, method, {shot: "test"})
+    _save_model(tree, method)
+    monkeypatch.setattr(spans, "elm_onsets", _truth_onsets(tree), raising=False)
+    record = evaluate.evaluate(tree, method)
+    assert set(record["bar"]) == set(spec.bar) | {"all"}
+    assert all(isinstance(v, bool) for v in record["bar"].values())
+    assert set(record["scores"]) >= {method, *spec.baselines}
+    assert record["tier"] == "suggestions"
+    md = (frames.model_dir(tree, method) / "evaluation.md").read_text()
+    assert "Campaign years" in md and "| legacy (outside the roster) |" in md
+    assert "2013-2019" not in md and "2024-2025" not in md
+    assert set(record["split_years"]) == {
+        "train",
+        "val",
+        "test",
+        "owner",
+        "legacy",
+        "roster",
+    }
+    if method == "hmode_frames":
+        assert {"f1(H)", "f1(L)"} <= set(record["scores"][method])
+        assert (
+            record["scores"]["lmode_frames"]["cells"]
+            == evaluate.swapped(record["scores"][method]["cells"]).tolist()
+        )
+        assert "f1(H) - always" in record["paired"]
+        assert "D44" in md and "Jalal Butt" in md and "cannot rank" in md
+        # dalpha_lh needs CO2, which the tree's H-mode shot lacks: left out.
+        assert str(shot) in record["test"]["baseline_left_out"]["dalpha_lh"]
+        assert "dalpha_lh (reported, never gated)" in md
+    if method == "sawtooth_frames":
+        assert "distillation" in md
+
+
+def test_reading_evaluation_json_twice_gives_the_same_bytes(elm):
+    evaluate.evaluate(elm, "elm_frames")
+    path = frames.model_dir(elm, "elm_frames") / "evaluation.json"
+    first = path.read_bytes()
+    assert path.read_bytes() == first
+    # The test is scored once.
+    with pytest.raises(FileExistsError):
+        evaluate.evaluate(elm, "elm_frames")
+    path.unlink()
+    evaluate.evaluate(elm, "elm_frames")
+    assert path.read_bytes() == first
+    record = json.loads(first)
+    assert "made_at" not in record
+    assert set(record) >= {"bar", "scores", "intervals", "paired", "owner"}
+    # A pilot's may be scored again, to the same bytes.
+    pilot = _save_model(elm, "elm_frames", out=train.pilot_dir(elm, "elm_frames"))
+    evaluate.evaluate(elm, "elm_frames", out=pilot)
+    again = (pilot / "evaluation.json").read_bytes()
+    evaluate.evaluate(elm, "elm_frames", out=pilot)
+    assert (pilot / "evaluation.json").read_bytes() == again
+
+
+def test_a_changed_split_or_a_trained_test_shot_is_refused(elm):
+    blob_dir = frames.model_dir(elm, "elm_frames")
+    _resplit(elm, "elm_frames", {IP_SHOT: "val"})
+    with pytest.raises(ValueError, match="split changed"):
+        evaluate.evaluate(elm, "elm_frames")
+    _resplit(elm, "elm_frames", {IP_SHOT: "test"})
+    _save_model(elm, "elm_frames", out=blob_dir, train_shots=[IP_SHOT])
+    with pytest.raises(ValueError, match="trained on"):
+        evaluate.evaluate(elm, "elm_frames")
+    assert not (blob_dir / "evaluation.json").exists()
+
+
+def test_the_labels_window_is_not_available_rather_than_zero(elm):
+    record = evaluate.evaluate(elm, "elm_frames")
+    # The tree's catalog Ip log has LABELS_SHOT, whose window is its grid's hull.
+    assert record["labels_window"]["with_ip_window"] == 1
+    none = evaluate.labels_window({"labels_window": {"shots": 4, "with_ip_window": 0}})
+    assert none["outside_ip_window"] == "not available" and none["shots"] == 4
+    assert "ip.jsonl" in none["reason"]
+
+
+def _pool(paths, years: dict) -> None:
+    """A `pool.csv` of `years` (shot -> year or None), every other field blank."""
+    blank = dict.fromkeys(POOL_COLUMNS, "")
+    rows = [
+        blank | {"shot": s, "year": "" if y is None else y} for s, y in years.items()
+    ]
+    pd.DataFrame(rows, columns=list(POOL_COLUMNS)).to_csv(
+        paths.catalog / "pool.csv", index=False
+    )
+
+
+def test_the_years_are_the_campaigns_not_fixed_text(elm):
+    population = elm.catalog / "population.csv"
+    frame = pd.read_csv(population)
+    frame["year"] = [2024 if s == POPULATION_ONLY else 2023 for s in frame.shot]
+    frame.to_csv(population, index=False)
+    # The pool dates IP_SHOT itself and LABELS_SHOT by the calendar only.
+    _pool(elm, {IP_SHOT: 2021, LABELS_SHOT: None, SHOTS[ELM]: 2023})
+    years = evaluate.shot_years(elm)
+    assert years.starts == {2021: IP_SHOT, 2023: SHOTS[ELM]}
+    assert (years.of(IP_SHOT), years.of(LABELS_SHOT)) == (2021, 2021)
+    assert years.of(POPULATION_ONLY) == 2024  # the population's own year
+    assert years.of(IP_SHOT - 1) is None  # before the calendar
+    assert evaluate.year_counts([IP_SHOT - 1, SHOTS[ELM], LABELS_SHOT], years) == {
+        "2021": 1,
+        "2023": 1,
+        "unknown": 1,
+    }
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["test"]["years"] == {"2021": 2}
+    assert record["population_years"] == {"2023": 5, "2024": 1}  # BLIND left out
+    assert set(record["split_years"]["test"]) == {"2021"}
+    assert record["split_years"]["roster"] == {"2023": 1}
+    assert set(record["split_years"]["legacy"]) <= {"2021", "2023"}
+    md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
+    assert "The scored test shots: 2021 (2021: 2)." in md
+    row = "| the non-blind population it is applied to | 2023-2024 | 2023: 5, 2024: 1 |"
+    assert row in md
+    assert "No scored test shot is from 2023, 2024, which hold 6 of the" in md
+
+
+def test_the_md_counts_the_test_shots_without_features(elm):
+    folder = frames.features_dir(elm, "elm_frames")
+    (folder / f"{LABELS_SHOT}.npz").unlink()
+    prepare._drop(folder, LABELS_SHOT, "no observed frame")
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["test"]["left_out"] == {str(LABELS_SHOT): "no observed frame"}
+    md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
+    assert "- 1 test shots left out for missing features: no observed frame (1)" in md
