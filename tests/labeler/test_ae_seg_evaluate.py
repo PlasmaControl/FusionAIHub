@@ -11,7 +11,7 @@ from labeler.ae.seg import evaluate, model_dir, pseudo, train
 from labeler.events.review.rows import Grid
 
 from . import ae_tree
-from .test_ae_seg_train import Small
+from .test_ae_seg_train import Small, page_mask
 
 
 def test_a_frame_is_present_when_half_its_columns_hold_a_pixel():
@@ -140,6 +140,37 @@ def test_live_owner_edits_do_not_change_frozen_evaluation(frozen_model, tmp_path
     assert meta["evaluation_inputs"]["masks_sha256"] == sha256_of(
         regions.log_path(copy)
     )
+
+
+def test_a_test_shot_s_decision_on_the_page_s_mask_is_scored_and_frozen(
+    frozen_model, tmp_path, monkeypatch
+):
+    import shutil
+
+    from labeler.config import sha256_of
+
+    paths, _ = frozen_model
+    page = page_mask(paths, 103, [1])
+    models = tmp_path / "clicked-model"
+    assert train.main(["--out", str(models)]) == 0
+    copy = tmp_path / "same-bundle"
+    shutil.copytree(models, copy)
+    seen = {}
+    load_example = train.load_example
+
+    def spy(paths, shot, decisions, **kw):
+        seen[shot] = kw.get("clicked")
+        return load_example(paths, shot, decisions, **kw)
+
+    monkeypatch.setattr(train, "load_example", spy)
+    record = evaluate.run_test(paths, models)
+    assert seen[103] == page.read_bytes()
+    pseudo_masks = record["meta"]["evaluation_inputs"]["pseudo_masks"]
+    assert pseudo_masks["pseudo-v1-full/103.npz"] == sha256_of(page)
+    page.write_bytes(page.read_bytes() + b"changed")
+    with pytest.raises(ValueError) as error:
+        evaluate.run_test(paths, copy)
+    assert str(page) in str(error.value)
 
 
 @pytest.mark.parametrize(

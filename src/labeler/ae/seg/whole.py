@@ -11,8 +11,10 @@ level-8 grid:
 - **the review mask**, `pseudo-v1-full`: pseudo-v1's rules (`pseudo.build`:
   TokEye's lines inside the owner's AE frames, 80-250 kHz) over the owner's whole
   window. The page draws its regions and saves the reviewer's decisions on it.
-  pseudo-v1 is unchanged and SegNet v1 still trains on it, so to v1 a decision
-  made here is stale (another sha256) and ignored, as it is to v2 and v3;
+  pseudo-v1 is unchanged and SegNet v1 still trains on it; a decision made here
+  reaches every version's targets as the pixels it rejects
+  (`regions.transfer`). A decision is keyed on the file's sha256, so a rerun
+  leaves a mask whose content is unchanged as it is (`unchanged`);
 - **the layer**, `tokeye-full`: a picture, not a label. A pixel is lit where
   TokEye lights at least two of the four chords, 0-250 kHz, AE or not
   (`pseudo.tokeye_rows`, `pseudo.pool_columns`). Nothing trains on it, scores it
@@ -72,6 +74,22 @@ def review_dir(paths: Paths) -> Path:
 def review_file(paths: Paths, shot: int) -> Path:
     """The mask the review page draws and saves decisions on."""
     return review_dir(paths) / f"{int(shot)}.npz"
+
+
+def unchanged(path: Path, mask: PseudoMask) -> bool:
+    """Whether `path` already holds `mask`: np.savez_compressed's bytes differ
+    from run to run, and a new sha256 would make the decisions on it stale."""
+    if not path.is_file():
+        return False
+    old = PseudoMask.load(path)
+    fields = ("shot", "t0_ms", "dt_ms", "y0_khz", "dy_khz", "present_unlit")
+    return (
+        all(getattr(old, k) == getattr(mask, k) for k in fields)
+        and old.mask.dtype == mask.mask.dtype
+        and np.array_equal(old.mask, mask.mask)
+        and old.mhd is None
+        and mask.mhd is None
+    )
 
 
 def build(grid: Grid, n_y: int, tokeye) -> np.ndarray:
@@ -176,7 +194,8 @@ def main(argv=None) -> int:
         save(layer_file(paths, shot), grid, y0, dy, lit)
         layers[str(shot)] = named
         if mask is not None:
-            mask.save(review_file(paths, shot))
+            if not unchanged(review_file(paths, shot), mask):
+                mask.save(review_file(paths, shot))
             masks[str(shot)] = named
             rows.append(summary(mask, f"{shot}.npz"))
     origin = {"source": str(source)}

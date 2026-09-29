@@ -14,10 +14,12 @@ made on another version of the pseudo-mask (another sha256) is stale: the page
 says so and training ignores it.
 
 Training takes the pseudo-mask with every rejected region set to background
-(`reviewed_mask`). SegNet trains on pseudo-v1, and the review page draws
-pseudo-v1-full (`whole.REVIEW`): a decision made there names that set in
-`pseudo`, so training on pseudo-v1 cannot use it and says so
-(`other_decisions`).
+(`reviewed_mask`). A decision names in `pseudo` the masks it was made on, and
+the review page draws pseudo-v1-full (`whole.REVIEW`), not the masks a SegNet
+version trains on. Such a decision still reaches training: the pixels of the
+regions it rejects on the mask clicked are set to background in the version's
+own mask (`transfer`), which is on the same store grid, as long as the file
+clicked is still the one there (`clicked_mask`, by its sha256).
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ import numpy as np
 from scipy import ndimage
 
 from ...events.review.labels import REVIEW
-from . import PSEUDO, VERSION, pseudo_dir
+from . import PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir, whole
 from .pseudo import EIGHT, PseudoMask
 
 LOG = "masks.jsonl"
@@ -135,20 +137,74 @@ def save_decision(
     return entry
 
 
+def rejected_pixels(pm: PseudoMask, decision: dict) -> np.ndarray:
+    """`(n_y, n)` bool: the pixels of the regions `decision` rejects on `pm`."""
+    labelled, _ = label_regions(pm.mask)
+    return np.isin(labelled, decision["rejected"]) & (labelled > 0)
+
+
 def reviewed_mask(pm: PseudoMask, decision: dict | None, sha256: str) -> np.ndarray:
     """The mask training uses: rejected regions set to background. A decision
-    made on another version of the file is ignored."""
+    made on another version of the file is ignored here (see `transfer`)."""
     mask = pm.mask.copy()
     if not decision or decision.get("pseudo_sha256") != sha256:
         return mask
-    labelled, _ = label_regions(pm.mask)
-    mask[np.isin(labelled, decision["rejected"]) & (labelled > 0)] = 0
+    mask[rejected_pixels(pm, decision)] = 0
     return mask
 
 
-def other_decisions(decisions: dict, pseudo: str = PSEUDO) -> list[int]:
-    """The shots whose last decision was made on another mask set than `pseudo`."""
-    return sorted(s for s, d in decisions.items() if d.get("pseudo", PSEUDO) != pseudo)
+def decided_file(paths, shot: int, decision: dict) -> Path:
+    """The file a decision was made on, by the mask set it names: the page's
+    (`whole.REVIEW`) or a pseudo-mask version's."""
+    name = decision.get("pseudo", PSEUDO)
+    if name == whole.REVIEW:
+        return whole.review_file(paths, shot)
+    for version, spec in SEG_VERSIONS.items():
+        if spec.pseudo == name:
+            return pseudo_file(paths, shot, version)
+    raise ValueError(f"{shot}: a decision on an unknown mask set {name!r}")
+
+
+def clicked_name(shot: int, decision: dict) -> str:
+    """How a model's `pseudo_masks.json` names the file a decision was made on."""
+    return f"{decision.get('pseudo', PSEUDO)}/{int(shot)}.npz"
+
+
+def clicked_mask(
+    paths, shot: int, decision: dict | None, own: str
+) -> tuple[Path | None, str | None]:
+    """The file a decision made on another mask set than `own` was clicked on:
+    `(path, None)` while it is that file (its sha256), `(None, why)` when it is
+    not, and `(None, None)` without such a decision."""
+    if not decision or decision.get("pseudo", PSEUDO) == own:
+        return None, None
+    try:
+        path = decided_file(paths, shot, decision)
+    except ValueError as error:
+        return None, str(error)
+    if not path.is_file():
+        return None, f"{shot}: {path} is gone"
+    if file_sha256(path) != decision.get("pseudo_sha256"):
+        return None, f"{shot}: made on an earlier {path}"
+    return path, None
+
+
+def transfer(
+    target: np.ndarray, pm: PseudoMask, clicked: PseudoMask, decision: dict
+) -> np.ndarray:
+    """`target`, on `pm`'s grid, with every pixel of the regions `decision`
+    rejects on `clicked` (the mask the reviewer clicked) set to background,
+    whatever `pm` says there: the reviewer said it is not the mode."""
+    grid = ("t0_ms", "dt_ms", "y0_khz", "dy_khz")
+    if clicked.mask.shape != pm.mask.shape or any(
+        abs(getattr(clicked, k) - getattr(pm, k)) > 1e-6 for k in grid
+    ):
+        raise ValueError(
+            f"{pm.shot}: the mask clicked is not on the grid of the one trained on"
+        )
+    out = np.array(target, copy=True)
+    out[rejected_pixels(clicked, decision)] = 0
+    return out
 
 
 def shot_view(
