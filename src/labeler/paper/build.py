@@ -678,12 +678,16 @@ def _shot_figures(
         return no_f1(until), {}
     gaps = {r.shot: r.gap for r in ranked}
     pick = shots.interpreter_pick(f1, poi, gaps, until_ms=until)
+    # A whole-window version's examples hold a shot whose window runs past 2 s.
+    long = None
+    if until is None:
+        long = {s for s in f1 if saved[s].window[1] > shots.LONG_MS}
     picked = {
         "interpreter_shot": pick["shot"] if shot is None else shot,
         "interpreter_rule": texts.interpreter if shot is None else "named by --shot",
         "interpreter_branch": pick["branch"] if shot is None else None,
         "interpreter_pool": pick["pool"],
-        "example_shots": shots.pick_examples(f1, examples),
+        "example_shots": shots.pick_examples(f1, examples, long=long),
         "example_rule": texts.examples,
     }
     named = picked["interpreter_shot"]

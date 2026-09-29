@@ -35,6 +35,10 @@ does not label; `meta.json` counts the points inside, outside and without that
 window (`points_in_scored_window` and the like) beside the split at 2 s, and its
 pictures draw no 0-2 s line. A model is drawn only as the version its blob
 records (`train.blob_version`).
+
+**SegNet v3** (`--version v3`) is drawn as SegNet v2 is, from its own model
+(`models/ae_seg/v3`), into `poi/alfven_eigenmode/ae_seg-v3/` and
+`gallery/alfven_eigenmode/ae_seg-v3/`.
 """
 
 from __future__ import annotations
@@ -401,7 +405,8 @@ def main(argv=None) -> int:
         "--version",
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
-        help="the SegNet version the model is (default v1); v2 draws over 0-250 kHz",
+        help="the SegNet version the model is (default v1); v2 and v3 draw over "
+        "0-250 kHz",
     )
     p.add_argument("--shots", type=int, nargs="*", help="default: every AE180 shot")
     p.add_argument("--from-corpus", action="store_true", help="rows from the corpus")

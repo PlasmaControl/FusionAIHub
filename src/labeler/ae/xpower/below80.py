@@ -17,7 +17,14 @@ record and the model's rows cover it), and at least one reason holds:
   none at or above it, once pseudo-v2's steady lines are removed (`low_frames`:
   the steady rule of `labeler.ae.seg.mhdlines` on the pixels below 80 kHz, as
   pseudo-v2 applies it, with pseudo-v2's `rules.json`);
-- **both:** both hold.
+- **tokeye_lines:** in at least half its TokEye columns, TokEye lights
+  two-chord pixels below 80 kHz that pseudo-v3's per-line MHD markers do not
+  take (`line_frames`: `labeler.ae.seg.markers`, its fixed values, with the
+  catalog's NTM intervals), whatever it lights at or above 80 kHz. The owner
+  saw only 80-250 kHz, so an AE line running on above 80 kHz in an absent
+  frame is no reason to drop the frame.
+A run's `why` names every reason that holds in it, joined by "+", in
+`REASONS` order (e.g. "model+tokeye_below80", once "both").
 
 Every shot of v3's snapshot by default, or those `--shots` names, over
 `--workers` processes (default `$SLURM_CPUS_PER_TASK`, else 1). Before any shot
@@ -39,8 +46,10 @@ highest P(AE) in it, the lowest and highest frequency TokEye lights below
 80 kHz in it (blank for a `model` run) and the shot's split in v3's model.
 Beside it, `below80.md` and then `below80.json`: the frames by reason, the
 failed shots (left out of the table and of the F1s), what was read by sha256
-(the model, the rules, the snapshot) and v3's F1 on its test shots with and
-without the listed frames. The exit status is 1 if any shot failed.
+(the model, the rules, the NTM table, the snapshot), v3's F1 on its test shots
+with and without the listed frames, and each reason's recall on the stretch the
+owner cited (`OWNER_CITED`: 176041, absent at 424-1504 ms, AE at 40-80 kHz the
+page did not show). The exit status is 1 if any shot failed.
 
 **Tier:** suggestions, never labels. Nothing here changes the owner's labels or
 the page's band: a listed frame is one for the owner to look at again. Test-shot
@@ -69,7 +78,7 @@ from ...events.catalog.states import ABSENT
 from ...events.review import labels
 from ...scoring import stats
 from ...scoring.frames import FRAME_MS
-from ..seg import mhdlines, pseudo, pseudo_dir
+from ..seg import markers, mhdlines, pseudo, pseudo_dir
 from ..seg.mhdlines import Rules
 from . import (
     blob_version,
@@ -96,7 +105,11 @@ from .train import load, read_split
 VERSION = "v3"
 #: The page's crop. Steady lines stop at mhdlines.RULE_BELOW_KHZ, so the two must agree.
 FLOOR_KHZ = 80.0  # BAND_KHZ[0]
-WHY = ("model", "tokeye_below80", "both")
+#: The reasons, in the order a run's `why` joins them ("+").
+REASONS = ("model", "tokeye_below80", "tokeye_lines")
+#: The stretch the owner cited: (shot, start ms, end ms), absent at 80-250 kHz
+#: with AE at 40-80 kHz. Each reason's recall there is in below80.json and .md.
+OWNER_CITED = ((176041, 424.0, 1504.0),)
 COLUMNS = (
     "shot",
     "split",
@@ -140,6 +153,42 @@ def _tokeye_file(paths: Paths, shot: int) -> Path:
     return file
 
 
+def why_name(code: int) -> str:
+    """The reasons of a code (bit i: REASONS[i]) joined by "+"."""
+    return "+".join(r for i, r in enumerate(REASONS) if code >> i & 1)
+
+
+def _frame_flags(
+    lines, gone, tokeye_bytes: bytes, first: int, n: int, *, clear_above: bool
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(flag, f_lo, f_hi)` of `low_frames`, with the pixels of `gone` (the
+    level-8 grid) removed from TokEye's own columns; a column flags when a pixel
+    is left below FLOOR_KHZ and, with `clear_above`, none at or above it. f_lo
+    and f_hi are over the pixels left below FLOOR_KHZ."""
+    t_ms, clean, _ = tokeye_clean(BytesIO(tokeye_bytes))
+    n_y = lines.lit.shape[0]
+    native = pseudo.tokeye_rows(clean)[:n_y]
+    cols = np.floor((t_ms - lines.t0_ms) / lines.dt_ms).astype(np.int64)
+    on_grid = np.flatnonzero((cols >= 0) & (cols < gone.shape[1]))
+    native[:, on_grid] &= ~gone[:, cols[on_grid]]
+    khz = lines.y0_khz + np.arange(n_y) * lines.dy_khz
+    below = khz < FLOOR_KHZ
+    column = native[below].any(axis=0)
+    if clear_above:
+        column &= ~native[~below].any(axis=0)
+    flag = frame_share(t_ms, column, first, n) >= MIN_FRACTION
+    flag &= frame_covered(t_ms, first, n)
+    f_lo, f_hi = np.full(n, np.inf), np.full(n, -np.inf)
+    k = np.floor(t_ms / FRAME_MS).astype(np.int64) - first  # as frame_share
+    use = np.flatnonzero(column & (k >= 0) & (k < n))
+    if use.size:  # each flagging column's lowest and highest lit bin below
+        lit = native[:, use] & below[:, None]
+        top = int(np.flatnonzero(below).max())
+        np.minimum.at(f_lo, k[use], khz[lit.argmax(axis=0)])
+        np.maximum.at(f_hi, k[use], khz[top - lit[top::-1].argmax(axis=0)])
+    return flag, np.where(flag, f_lo, np.nan), np.where(flag, f_hi, np.nan)
+
+
 def low_frames(
     paths: Paths,
     shot: int,
@@ -149,6 +198,7 @@ def low_frames(
     n: int,
     *,
     tokeye_bytes: bytes | None = None,
+    lines=None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """`(flag, f_lo, f_hi)`, each `(n,)`, for frames `first .. first + n - 1`:
     whether TokEye lights only below FLOOR_KHZ there, and the lowest and highest
@@ -167,10 +217,12 @@ def low_frames(
     a frame flags when at least MIN_FRACTION of its columns flag (`frame_share`)
     and TokEye's record covers it (`frame_covered`). f_lo and f_hi are the
     lowest and highest bin frequency of the flagging columns' pixels in each
-    flagged frame."""
+    flagged frame (a flagging column has none at or above FLOOR_KHZ). `lines`,
+    the shot's `pseudo.shot_lines` of the same bytes, when already read."""
     if tokeye_bytes is None:
         tokeye_bytes = _tokeye_file(paths, shot).read_bytes()
-    lines = pseudo.shot_lines(paths, shot, label, tokeye_bytes=tokeye_bytes)
+    if lines is None:
+        lines = pseudo.shot_lines(paths, shot, label, tokeye_bytes=tokeye_bytes)
     gone = mhdlines.steady(
         mhdlines.below(lines.lit, lines.y0_khz, lines.dy_khz),
         lines.y0_khz,
@@ -180,25 +232,34 @@ def low_frames(
         rules.steady_ms,
         rules.guard_khz,
     )
-    t_ms, clean, _ = tokeye_clean(BytesIO(tokeye_bytes))
-    n_y = lines.lit.shape[0]
-    native = pseudo.tokeye_rows(clean)[:n_y]
-    cols = np.floor((t_ms - lines.t0_ms) / lines.dt_ms).astype(np.int64)
-    on_grid = np.flatnonzero((cols >= 0) & (cols < gone.shape[1]))
-    native[:, on_grid] &= ~gone[:, cols[on_grid]]
-    khz = lines.y0_khz + np.arange(n_y) * lines.dy_khz
-    below = khz < FLOOR_KHZ
-    column = native[below].any(axis=0) & ~native[~below].any(axis=0)
-    flag = frame_share(t_ms, column, first, n) >= MIN_FRACTION
-    flag &= frame_covered(t_ms, first, n)
-    f_lo, f_hi = np.full(n, np.inf), np.full(n, -np.inf)
-    k = np.floor(t_ms / FRAME_MS).astype(np.int64) - first  # as frame_share
-    use = np.flatnonzero(column & (k >= 0) & (k < n))
-    if use.size:  # each flagging column's lowest and highest lit bin
-        lit = native[:, use]
-        np.minimum.at(f_lo, k[use], khz[lit.argmax(axis=0)])
-        np.maximum.at(f_hi, k[use], khz[n_y - 1 - lit[::-1].argmax(axis=0)])
-    return flag, np.where(flag, f_lo, np.nan), np.where(flag, f_hi, np.nan)
+    return _frame_flags(lines, gone, tokeye_bytes, first, n, clear_above=True)
+
+
+def line_frames(
+    paths: Paths,
+    shot: int,
+    label: labels.Label,
+    first: int,
+    n: int,
+    *,
+    spans=(),
+    tokeye_bytes: bytes | None = None,
+    lines=None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The **tokeye_lines** reason, `(flag, f_lo, f_hi)` as `low_frames` gives
+    them: the pixels pseudo-v3's markers take (`markers.mhd_lines` with the
+    fixed `markers.Markers()`, below FLOOR_KHZ; `spans`, the shot's catalog NTM
+    intervals in ms) are removed in place of the steady lines, and a column
+    flags when a pixel is left below FLOOR_KHZ, whatever lies at or above it.
+    f_lo and f_hi are the flagging columns' lowest and highest pixel below
+    FLOOR_KHZ."""
+    if tokeye_bytes is None:
+        tokeye_bytes = _tokeye_file(paths, shot).read_bytes()
+    if lines is None:
+        lines = pseudo.shot_lines(paths, shot, label, tokeye_bytes=tokeye_bytes)
+    ntm = markers.ntm_columns(spans, lines.t0_ms, lines.dt_ms, lines.lit.shape[1])
+    gone = markers.mhd_lines(lines, markers.Markers(), ntm)["mhd"]
+    return _frame_flags(lines, gone, tokeye_bytes, first, n, clear_above=False)
 
 
 def _runs(codes: np.ndarray) -> list[tuple[int, int, int]]:
@@ -221,8 +282,8 @@ _WORKER: dict = {}
 def _init(
     model_file: str, root: str, label_tables: str, corpus: str, rules: dict
 ) -> None:
-    """A worker's state: the chosen model and its split, v3's snapshot's labels
-    and pseudo-v2's rules (`asdict` of them)."""
+    """A worker's state: the chosen model and its split, v3's snapshot's labels,
+    pseudo-v2's rules (`asdict` of them) and the catalog's NTM intervals."""
     import torch
 
     torch.set_num_threads(1)
@@ -235,19 +296,22 @@ def _init(
         split=read_split(Path(model_file).parent / "split.csv"),
         saved=read_snapshot(paths, VERSION)[1],
         rules=Rules(**rules),
+        spans=markers.ntm_intervals(paths)[0],
     )
 
 
 def shot_rows(shot: int) -> tuple[list[dict], ShotFrames, np.ndarray]:
     """A worker's shot, from `_init`'s state: its rows (`COLUMNS`), its frames
-    (`evaluate.whole_frames`) and which of them are listed.
+    (`evaluate.whole_frames`) and each frame's reasons code (0: not listed; bit
+    i: REASONS[i] holds).
 
     A frame is listed when it is scored and the owner calls it absent, and v3
     says present off an MHD frame (`model`), or `low_frames` flags it
-    (`tokeye_below80`), or both (`both`). Each run of consecutive frames with
-    the same reason is a row: its frames' edges (ms) and count, round(max P(AE),
-    4), the nanmin of f_lo and the nanmax of f_hi to 0.01 kHz (blank when all
-    NaN), and the shot's split in the model's split.csv."""
+    (`tokeye_below80`), or `line_frames` does (`tokeye_lines`). Each run of
+    consecutive frames with the same reasons is a row, `why` naming them
+    (`why_name`): its frames' edges (ms) and count, round(max P(AE), 4), the
+    nanmin of f_lo and the nanmax of f_hi of the two TokEye reasons to 0.01 kHz
+    (blank when all NaN), and the shot's split in the model's split.csv."""
     w = _WORKER
     paths, label = w["paths"], w["saved"][shot]
     frames = evaluate.whole_frames(
@@ -261,16 +325,33 @@ def shot_rows(shot: int) -> tuple[list[dict], ShotFrames, np.ndarray]:
     first, n = window_frames(label.window)
     absent = frames.scored & (frames.owner == ABSENT)
     model = absent & frames.said["ae_xpower"] & ~frames.mhd
-    flag, f_lo, f_hi = low_frames(paths, shot, label, w["rules"], first, n)
-    low = absent & flag
-    why = model.astype(np.int64) + 2 * low  # WHY[why - 1]; 0 is not listed
+    tokeye = _tokeye_file(paths, shot).read_bytes()
+    lines = pseudo.shot_lines(paths, shot, label, tokeye_bytes=tokeye)
+    flag, lo2, hi2 = low_frames(
+        paths, shot, label, w["rules"], first, n, tokeye_bytes=tokeye, lines=lines
+    )
+    per_line, lo3, hi3 = line_frames(
+        paths,
+        shot,
+        label,
+        first,
+        n,
+        spans=w["spans"].get(shot, ()),
+        tokeye_bytes=tokeye,
+        lines=lines,
+    )
+    low, held = absent & flag, absent & per_line
+    # np.fmin and np.fmax skip a NaN: a frame keeps the reason that flags it.
+    f_lo = np.where(low | held, np.fmin(lo2, lo3), np.nan)
+    f_hi = np.where(low | held, np.fmax(hi2, hi3), np.nan)
+    why = model.astype(np.int64) + 2 * low + 4 * held  # 0 is not listed
     rows = [
         {
             "shot": int(shot),
             "split": w["split"].get(shot, ""),
             "t_start": (first + a) * FRAME_MS,
             "t_end": (first + b) * FRAME_MS,
-            "why": WHY[code - 1],
+            "why": why_name(code),
             "f_lo_khz": _khz(f_lo[a:b], np.nanmin),
             "f_hi_khz": _khz(f_hi[a:b], np.nanmax),
             "p_max": round(float(frames.prob[a:b].max()), 4),
@@ -278,7 +359,7 @@ def shot_rows(shot: int) -> tuple[list[dict], ShotFrames, np.ndarray]:
         }
         for a, b, code in _runs(why)
     ]
-    return rows, frames, why > 0
+    return rows, frames, why
 
 
 def _f1(frames: list[ShotFrames]) -> dict:
@@ -287,16 +368,24 @@ def _f1(frames: list[ShotFrames]) -> dict:
     return evaluate._estimate(cells(frames, "ae_xpower"), stats.f1)
 
 
+def _pct(x) -> str:
+    return "n/a" if x is None else f"{x:.0%}"
+
+
 def report_md(record: dict) -> str:
-    """below80.md: the frames by reason, the failed shots, and v3's test F1 with
-    and without the listed frames."""
+    """below80.md: the frames by reason and by `why`, the failed shots, v3's
+    test F1 with and without the listed frames, and the recall on the stretch
+    the owner cited."""
     frames, test, failed = record["frames"], record["test"], record["failed"]
     floor = f"{record['floor_khz']:g} kHz"
     page = "{:g}-{:g} kHz".format(*BAND_KHZ)
     holds = {
         "model": "v3 says AE, off an MHD frame",
         "tokeye_below80": f"TokEye lights only below {floor}, steady lines removed",
-        "both": "both",
+        "tokeye_lines": (
+            f"TokEye lights below {floor} past pseudo-v3's per-line MHD markers, "
+            f"whatever it lights at or above {floor}"
+        ),
     }
     intro = (
         f"The owner labelled AE on the review page cropped to {page}, so a frame "
@@ -320,10 +409,34 @@ def report_md(record: dict) -> str:
     if failed:
         shots = ", ".join(map(str, failed))
         lines += [f"Failed shots, left out of the table and of both F1s: {shots}.", ""]
+    reasons = record["reasons"]
+    cited = []
+    for c in record["owner_cited"]:
+        where = f"{c['shot']}'s owner-absent stretch at {c['t_ms'][0]:g}-" + (
+            f"{c['t_ms'][1]:g} ms (the owner's example: AE at 40-80 kHz the page "
+            "did not show)"
+        )
+        if c["frames"] is None:
+            cited.append(f"{where}: the shot was not read.")
+            continue
+        each = ", ".join(
+            f"{r} {c['listed'][r]} ({_pct(c['recall'][r])})" for r in REASONS
+        )
+        cited.append(
+            f"Recall on {where}: {c['listed']['any']} of its {c['frames']} scored "
+            f"absent frames are listed ({_pct(c['recall']['any'])}); by reason, "
+            f"{each}."
+        )
     lines += [
-        "| reason | frames | what holds |",
+        "| reason | frames where it holds | what holds |",
         "|---|---|---|",
-        *(f"| {why} | {frames[why]} | {holds[why]} |" for why in WHY),
+        *(f"| {r} | {reasons[r]} | {holds[r]} |" for r in REASONS),
+        "",
+        "| why (the reasons of a run) | frames |",
+        "|---|---|",
+        *(f"| {why} | {count} |" for why, count in frames.items()),
+        "",
+        *cited,
         "",
         f1,
         "",
@@ -335,6 +448,33 @@ def report_md(record: dict) -> str:
         "Tier: suggestions. The owner's labels and the page's band are unchanged.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def owner_cited(shot: int, a: float, b: float, done, label) -> dict:
+    """The recall on an owner-cited stretch: of the shot's scored frames the
+    owner calls absent whose centre lies in [a, b) ms, how many are listed, by
+    reason and at all ("any"). `done` is the shot's (frames, reasons codes), or
+    None when it was not read; then `frames`, `listed` and `recall` are None."""
+    entry = {"shot": shot, "t_ms": [a, b], "frames": None, "listed": None}
+    entry["recall"] = None
+    if done is None or label is None:
+        return entry
+    frames, why = done
+    first, _ = window_frames(label.window)
+    centre = (first + np.arange(len(why)) + 0.5) * FRAME_MS
+    inside = frames.scored & (frames.owner == ABSENT) & (centre >= a) & (centre < b)
+    listed = {
+        r: int((inside & ((why >> i) & 1).astype(bool)).sum())
+        for i, r in enumerate(REASONS)
+    }
+    listed["any"] = int((inside & (why > 0)).sum())
+    k = int(inside.sum())
+    entry.update(
+        frames=k,
+        listed=listed,
+        recall={r: v / k if k else None for r, v in listed.items()},
+    )
+    return entry
 
 
 def _read(p: argparse.ArgumentParser, file, read):
@@ -391,6 +531,8 @@ def main(argv=None) -> int:
         )
     rules_bytes = _read(p, rules_file, rules_file.read_bytes)
     rules = _read(p, rules_file, lambda: Rules(**json.loads(rules_bytes)["rules"]))
+    ntm_file = paths.label_tables / markers.NTM_TABLE
+    _, ntm_sha256 = _read(p, ntm_file, lambda: markers.ntm_intervals(paths))
     snapshot = snapshot_file(paths, VERSION)
     data, saved = _read(p, snapshot, lambda: read_snapshot(paths, VERSION))
     shots = sorted(saved)
@@ -422,11 +564,18 @@ def main(argv=None) -> int:
         done[shot] = (frames, listed)
     table = pd.DataFrame(rows, columns=list(COLUMNS))
     table = table.sort_values(["shot", "t_start"], kind="stable", ignore_index=True)
-    counts = dict.fromkeys(WHY, 0)
-    for row in rows:
-        counts[row["why"]] += row["frames"]
+    # The frames of each `why`, in code order, and of each reason.
+    counts = {}
+    for code in range(1, 2 ** len(REASONS)):
+        n = sum(row["frames"] for row in rows if row["why"] == why_name(code))
+        if n:
+            counts[why_name(code)] = n
+    reasons = {
+        r: int(sum(((why >> i) & 1).sum() for _, why in done.values()))
+        for i, r in enumerate(REASONS)
+    }
     test = sorted(s for s in done if split.get(s) == "test")
-    tested = [done[s] for s in test]
+    tested = [(f, why > 0) for f, why in (done[s] for s in test)]
     record = {
         "version": VERSION,
         "tier": "suggestions",
@@ -435,10 +584,18 @@ def main(argv=None) -> int:
         "failed": failed,
         "rows": len(table),
         "frames": counts,
+        "reasons": reasons,
+        "owner_cited": [
+            owner_cited(shot, a, b, done.get(shot), saved.get(shot))
+            for shot, a, b in OWNER_CITED
+        ],
         "model": str(model_file),
         "model_sha256": model_sha256,
         "rules": asdict(rules),
         "rules_sha256": hashlib.sha256(rules_bytes).hexdigest(),
+        "markers": asdict(markers.Markers()),
+        "ntm_table": str(ntm_file),
+        "ntm_sha256": ntm_sha256,
         "labels_sha256": hashlib.sha256(data).hexdigest(),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),

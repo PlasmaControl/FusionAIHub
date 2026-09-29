@@ -68,6 +68,22 @@ candidate's cost and take, `bright_background_share` and, per 20 kHz band, what
 the chosen rules take; and `meta.json`, written last. The command prints a JSON
 summary: the rules, `run_ms_within`, `steady_within`, `bright_u8` and
 `bright_background_share`.
+
+**pseudo-v3** (SegNet v3's masks, `SEG_VERSIONS["v3"]`):
+
+    python -m labeler.ae.seg.pseudo --version v3 [--shots S ...]
+
+pseudo-v2's inputs, grid, split and rule shots, with the per-line MHD markers of
+`markers` (steady per line, the catalog's NTM intervals, the harmonic comb) in
+place of `mhdlines`' rules (`build_v3`). Below 80 kHz an absent column is
+IGNORED, since the owner labelled on the 80-250 kHz view, except the pixels the
+markers take, which stay 0. A present column is as in pseudo-v2, the markers'
+pixels IGNORED; a mask keeps them as `mhd`, which SegNet v3's evaluation reads.
+The marker values are fixed; `bright_u8` is set as pseudo-v2 sets it. Before any
+mask is written the gate (`markers.GATE`, on SegNet v2 training shots only) is
+judged on the rule shots' masks, with the 5 % budget at 80-250 kHz; rules.json
+and rules.md are written either way, and on a failed gate nothing else is and
+the exit status is 2. `meta.json` records the NTM table's sha256 too.
 """
 
 from __future__ import annotations
@@ -106,6 +122,7 @@ from ..xpower.data import (
     window_frames,
 )
 from . import EVENT, PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir
+from . import markers as v3markers
 from .mhdlines import (
     TOKEYE_VERSION,
     Rules,
@@ -152,8 +169,12 @@ class PseudoMask:
     mask: np.ndarray  # (n_y, n) uint8: 0, 1 or IGNORE
     #: Columns the owner calls present where TokEye lit nothing in the band.
     present_unlit: int = 0
+    #: pseudo-v3's present-frame pixels its MHD markers IGNORE ((n_y, n) bool);
+    #: None, and not saved, for v1 and v2, whose files keep their bytes.
+    mhd: np.ndarray | None = None
 
     def save(self, path) -> None:
+        extra = {} if self.mhd is None else {"mhd": np.asarray(self.mhd, bool)}
         with atomic_path(Path(path)) as tmp, open(tmp, "wb") as f:
             np.savez_compressed(
                 f,
@@ -164,6 +185,7 @@ class PseudoMask:
                 dy_khz=self.dy_khz,
                 mask=self.mask,
                 present_unlit=np.int64(self.present_unlit),
+                **extra,
             )
 
     @classmethod
@@ -177,6 +199,7 @@ class PseudoMask:
                 float(z["dy_khz"]),
                 z["mask"],
                 int(z["present_unlit"]),
+                z["mhd"] if "mhd" in z.files else None,
             )
 
 
@@ -479,6 +502,187 @@ def _main_v2(p: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def build_v3(lines: ShotLines, markers: v3markers.Markers, ntm) -> PseudoMask:
+    """pseudo-v3's mask of one shot (`markers`); `ntm` is `(n,)` bool, the columns
+    inside the catalog's NTM intervals. As build_v2, with the per-line markers
+    (`markers.mhd_lines`) in place of `mhd_like`, and one change in absent
+    columns: below `below_khz` (80 kHz) they are IGNORED, as the owner labelled
+    on the 80-250 kHz view, except the pixels the markers take, which stay 0
+    (hard negatives). Above it an absent column is 0, as in pseudo-v2. The
+    present-frame pixels the markers IGNORE are kept as the mask's `mhd`."""
+    lit = lines.lit
+    present = lines.state == PRESENT
+    absent = lines.state == ABSENT
+    mhd = v3markers.mhd_lines(lines, markers, ntm)["mhd"]
+    khz = lines.y0_khz + np.arange(lit.shape[0]) * lines.dy_khz
+    low = khz < markers.below_khz
+    mask = np.full(lit.shape, IGNORE, dtype=np.uint8)
+    mask[:, present | absent] = 0
+    mask[np.ix_(low, absent)] = IGNORE
+    mask[mhd & absent[None, :]] = 0
+    taken = mhd & present[None, :]
+    positive = lit & ~taken & present[None, :]
+    regions, count = ndimage.label(positive, structure=EIGHT)
+    sizes = np.bincount(regions.ravel(), minlength=count + 1)
+    small = (sizes < MIN_AREA)[regions] & positive
+    positive &= ~small
+    mask[small] = IGNORE
+    ring = ndimage.binary_dilation(
+        positive, structure=np.ones((2 * RING_BINS + 1, 2 * RING_COLS + 1), bool)
+    )
+    mask[ring & ~positive & present] = IGNORE
+    mask[taken] = IGNORE
+    if markers.bright_u8 is not None:
+        mask[present & ~lit & (lines.bright >= markers.bright_u8)] = IGNORE
+    unlit = present & ~positive.any(axis=0)
+    mask[:, unlit] = IGNORE
+    mask[positive] = 1
+    return PseudoMask(
+        int(lines.shot),
+        float(lines.t0_ms),
+        float(lines.dt_ms),
+        float(lines.y0_khz),
+        float(lines.dy_khz),
+        mask,
+        int(unlit.sum()),
+        taken,
+    )
+
+
+def gate_passed(paths: Paths, version: str) -> bool:
+    """Whether `version`'s rules.json records a passed gate (pseudo-v3's
+    markers); False without the file or the key."""
+    try:
+        record = json.loads((pseudo_dir(paths, version) / "rules.json").read_text())
+    except (OSError, ValueError):
+        return False
+    return record.get("gate_passed") is True
+
+
+def _main_v3(p: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    """`main --version v3` (**pseudo-v3**, `markers`): pseudo-v2's inputs, split
+    and rule shots, with the per-line markers. The gate is judged on the rule
+    shots' masks before any mask is written: rules.json and rules.md are always
+    written, and when the gate fails nothing else is, and the exit status is 2."""
+    paths = Paths.from_env()
+    spec = SEG_VERSIONS["v3"]
+    masks = tokeye_masks(paths, TOKEYE_VERSION)
+    try:
+        data, saved = read_snapshot(paths, spec.labels)
+    except (KeyError, OSError, ValueError) as error:
+        p.error(f"label snapshot {spec.labels}: {type(error).__name__}: {error}")
+    try:
+        split = v2_split(sorted(saved), masks)
+    except (KeyError, OSError, ValueError) as error:
+        p.error(f"{masks}: {type(error).__name__}: {error}")
+    try:
+        spans, ntm_sha256 = v3markers.ntm_intervals(paths)
+    except (KeyError, OSError, ValueError) as error:
+        p.error(f"NTM table: {type(error).__name__}: {error}")
+
+    def ntm_of(line: ShotLines) -> np.ndarray:
+        return v3markers.ntm_columns(
+            spans.get(line.shot, ()), line.t0_ms, line.dt_ms, line.lit.shape[1]
+        )
+
+    ruled = {}
+    for shot in sorted(s for s, part in split.items() if part == "train"):
+        try:
+            tokeye = _masks_full_file(paths, shot).read_bytes()
+            ruled[shot] = (
+                shot_lines(paths, shot, saved[shot], tokeye_bytes=tokeye),
+                hashlib.sha256(tokeye).hexdigest(),
+            )
+        except UNREADABLE as error:
+            p.error(f"rule shot {shot}: {type(error).__name__}: {error}")
+    lines = [line for line, _ in ruled.values()]
+    ntm = {line.shot: ntm_of(line) for line in lines}
+    rules = v3markers.Markers()
+    report = v3markers.costs(lines, rules, ntm)
+    if not report["lit_present_px"]:
+        p.error("the rule shots have no present pixel lit at 80-250 kHz")
+    first = [build_v3(line, rules, ntm[line.shot]).mask for line in lines]
+    rules = replace(rules, bright_u8=bright_level(first, lines))
+    share = bright_background_share(first, lines, rules.bright_u8)
+    del first
+    # The gate reads rule shots only: a gate shot outside them fails its rows.
+    gated = sorted({box.shot for box in v3markers.GATE} & set(ruled))
+    gate_lines = {s: ruled[s][0] for s in gated}
+    gate_masks = {s: build_v3(ruled[s][0], rules, ntm[s]).mask for s in gated}
+    rows = v3markers.gate_rows(gate_masks, gate_lines, set(ruled))
+    passed = all(r["passed"] for r in rows) and bool(report["within"])
+    report = {
+        **report,
+        "bright_background_share": share,
+        "ntm_table": str(paths.label_tables / v3markers.NTM_TABLE),
+        "ntm_sha256": ntm_sha256,
+        "gate": rows,
+        "gate_passed": passed,
+    }
+    out = pseudo_dir(paths, "v3")
+    out.mkdir(parents=True, exist_ok=True)
+    said = {
+        "out": str(out),
+        "rule_shots": len(lines),
+        "rules": asdict(rules),
+        "gate": [(r["shot"], r["share"], r["passed"]) for r in rows],
+        "cost_px": report["cost_px"],
+        "lit_present_px": report["lit_present_px"],
+        "gate_passed": passed,
+    }
+    if not passed:
+        v3markers.write_rules(out, rules, report)
+        print(json.dumps(said))
+        print("pseudo-v3's gate FAILED: no mask written", file=sys.stderr)
+        return 2
+    rows_out, failed, tokeye_hashes = [], [], {}
+    for shot in args.shots or sorted(saved):
+        try:
+            if shot in ruled:
+                line, digest = ruled[shot]
+            else:
+                tokeye = _masks_full_file(paths, shot).read_bytes()
+                line = shot_lines(paths, shot, saved[shot], tokeye_bytes=tokeye)
+                digest = hashlib.sha256(tokeye).hexdigest()
+            pm = build_v3(line, rules, ntm_of(line))
+        except UNREADABLE as error:
+            failed.append(shot)
+            print(f"{shot}: {type(error).__name__}: {error}", flush=True)
+            continue
+        tokeye_hashes[str(shot)] = digest
+        pm.save(out / f"{shot}.npz")
+        rows_out.append(summary(pm, f"{shot}.npz"))
+    with atomic_path(out / "index.csv") as tmp, open(tmp, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=INDEX_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows_out)
+    v3markers.write_rules(out, rules, report)
+    meta = {
+        "pseudo": spec.pseudo,
+        "shots": len(rows_out),
+        "failed": failed,
+        "tokeye": str(masks),
+        "tokeye_sha256": tokeye_hashes,
+        "labels": str(snapshot_file(paths, spec.labels)),
+        "labels_sha256": hashlib.sha256(data).hexdigest(),
+        "ntm_table": report["ntm_table"],
+        "ntm_sha256": ntm_sha256,
+        "rules": asdict(rules),
+        "rule_shots": report["rule_shots"],
+        "gate_passed": passed,
+        "split": {
+            part: sum(v == part for v in split.values())
+            for part in ("train", "val", "test")
+        },
+        "git_sha": git_sha(),
+        "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
+    with atomic_path(out / "meta.json") as tmp:
+        tmp.write_text(json.dumps(meta, indent=1) + "\n")
+    print(json.dumps({**said, "shots": len(rows_out), "failed": failed}))
+    return 1 if failed else 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--shots", type=int, nargs="*", help="default: every saved shot")
@@ -486,11 +690,14 @@ def main(argv=None) -> int:
         "--version",
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
-        help="v1 (the default): pseudo-v1; v2: pseudo-v2 (from v3's snapshot)",
+        help="v1 (the default): pseudo-v1; v2: pseudo-v2 (from v3's snapshot); "
+        "v3: pseudo-v3 (pseudo-v2 with the per-line MHD markers and their gate)",
     )
     args = p.parse_args(argv)
     if args.version == "v2":
         return _main_v2(p, args)
+    if args.version == "v3":
+        return _main_v3(p, args)
     paths = Paths.from_env()
     directory = event_dir(paths)
     saved = labels.read_saved(directory)

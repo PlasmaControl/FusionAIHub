@@ -27,6 +27,12 @@
 #               pilot> <this>: pseudo-v2 over 0-250 kHz, v3's snapshot and test shots, into
 #               models/ae_seg/v2 (a pilot into runs/ae_seg/pilot-v2), scored over the owner's
 #               whole windows (round three, §2.5)
+#   v3:         VERSION=v3 PILOT=12 sbatch --mem=4G <this>, then VERSION=v3 sbatch
+#               --mem=2100M --time=01:30:00 <this>: pseudo-v3 (built on the login node by
+#               `python -m labeler.ae.seg.pseudo --version v3`, refused unless its rules.json
+#               gate passed), v2's split and test shots, into models/ae_seg/v3 (a pilot
+#               into runs/ae_seg/pilot-v3); its test is a second use of v2's 60 test shots
+#               (S2 fix)
 #   full run:   sbatch --mem=<from the pilot> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
@@ -41,6 +47,10 @@
 #                  training.json `peak_rss_mb` x 1.25, so jobstats, which samples every 30 s,
 #                  still sees 70 % or more.
 #   time=01:30:00  32 min x 2.8.
+# v3 (estimates from SegNet v2's full run, not measured on v3): v2 trained and scored 104 + 16
+#   shots and 60 test shots in ~32 min at --mem=2100M, max RSS 1.88 GiB; pseudo-v3 has v2's
+#   grid, shots and split, so v3 should need the same: --mem=2100M, --time=01:30:00. The pilot
+#   runs at 4G so it cannot run out; reset the full run from its training.json `peak_rss_mb`.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker

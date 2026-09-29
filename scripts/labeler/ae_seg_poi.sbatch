@@ -22,12 +22,17 @@
 #   new shots:  FROM_CORPUS=1 SHOTS="<shots>" sbatch <this>
 #   v2:         VERSION=v2 sbatch --dependency=afterok:<the v2 ae_seg_train job> <this>
 #               -> poi/alfven_eigenmode/ae_seg-v2 and gallery/alfven_eigenmode/ae_seg-v2
+#   v3:         VERSION=v3 SHOTS="170659 172011 170795 170719 172008 172012 172018 171999"
+#               sbatch <this> (pilot), then VERSION=v3 sbatch <this>
+#               -> poi/alfven_eigenmode/ae_seg-v3 and gallery/alfven_eigenmode/ae_seg-v3
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
 # ------------------------------------------ sizing (measured 2026-09-29, v2's full run 2945169)
 #   SegNet v2 over 0-250 kHz and whole records, 180 shots, 4 workers: 2 min 50 s, CPU 80.6 %;
 #   sacct MaxRSS 6,342,728K, 99.9 % of 6200M (jobstats, sampling every 30 s, read 80.3 %).
 #   mem=7500M     6194 MiB x 1.2 is 7433 MiB; rounded up.
+#   v3 (an estimate from v2's run, not measured): the same network, band and shots, so the
+#   same 6,342,728K at 7500M and ~2 min 50 s; check it on the v3 pilot's MaxRSS.
 # before v2 (measured 2026-09-26, login node):
 #   probe, 2 store shots, 2 workers: 8.7 s wall with ~4 s of start-up, largest process 1.08 GB;
 #   1 corpus shot: 7.9 s, 1.37 GB.

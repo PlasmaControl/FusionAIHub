@@ -45,6 +45,17 @@ included. The bar is judged on that table. Beside it, not judged against it,
 `window_0_2s` scores the same calls on the pixels and frames of 0-2 s, the
 window SegNet v1 was scored on (the pixels stay pseudo-v2's, over the blob's
 band).
+
+**SegNet v3** (`--version v3`) is scored as v2, on pseudo-v3's pixels. Its test
+shots are v2's, so evaluation.md states that its test is a second use of them,
+made after v2's breakdown was seen (`reuse_note`). Dice and G3 cannot see an MHD
+line drawn as AE in a present frame, since pseudo-v3 IGNORES it there, so
+`mhd_lines` counts, per shot and pooled, SegNet's AE pixels on the pixels the
+markers IGNORE in present frames (the mask's `mhd`), and its AE pixels below
+80 kHz in the owner's window's columns inside a catalog NTM interval
+(`markers.ntm_intervals`), beside TokEye's lit pixels there. Every report says
+that `recipe`'s and `tokeye`'s pixel Dice are high by construction
+(`BY_CONSTRUCTION`).
 """
 
 from __future__ import annotations
@@ -88,13 +99,30 @@ from ..xpower.evaluate import (
 )
 from ..xpower.train import load as load_ae
 from ..xpower.train import probabilities, read_split
-from . import EVENT, SEG_VERSIONS, VERSION, model_dir, pseudo, regions, train
+from . import (
+    EVENT,
+    SEG_VERSIONS,
+    VERSION,
+    markers,
+    model_dir,
+    pseudo,
+    regions,
+    reuse_note,
+    train,
+)
 
 METHODS = ("ae_seg", "recipe", "tokeye")
 BAR = {"dice": 0.75, "dice_low": 0.65, "frame_precision": 0.90, "mhd_fp_rate": 0.05}
 HEADER = (
     "| method | pixel Dice | frame precision | frame recall | frame F1 | FP rate, MHD |"
 )
+#: Said in every report beside the pixel Dice (module docstring, **Methods**).
+BY_CONSTRUCTION = (
+    "`recipe`'s and `tokeye`'s pixel Dice are high by construction: the "
+    "pseudo-masks are TokEye's lit pixels, so these two are the baselines the "
+    "model is read against, not rivals it must beat."
+)
+MHD_LINE_KEYS = ("mhd_px", "mhd_ae_px", "ntm_cols", "ntm_lit_px", "ntm_ae_px")
 
 
 def frame_calls(on: np.ndarray, grid: Grid, first: int, n: int) -> np.ndarray:
@@ -128,6 +156,82 @@ def column_frames(flags: np.ndarray, first: int, grid: Grid) -> np.ndarray:
     return out
 
 
+def mhd_line_counts(on, mhd, lit, low, ntm, window) -> dict:
+    """What Dice and G3 cannot see, for one shot (`MHD_LINE_KEYS`): `mhd_px`,
+    the IGNORED MHD-like pixels of present frames (`mhd`, `(n_y, n)`), and
+    `mhd_ae_px`, those `on` calls AE; `ntm_cols`, the columns of the owner's
+    window (`window`, `(n,)`) inside a catalog NTM interval (`ntm`, `(n,)`), and
+    in them below 80 kHz (`low`, `(n_y,)`) TokEye's `lit` pixels (`ntm_lit_px`)
+    and `on`'s (`ntm_ae_px`)."""
+    cols = np.asarray(ntm, dtype=bool) & np.asarray(window, dtype=bool)
+    box = np.asarray(low, dtype=bool)[:, None] & cols[None, :]
+    mhd = np.asarray(mhd, dtype=bool)
+    return {
+        "mhd_px": int(mhd.sum()),
+        "mhd_ae_px": int((on & mhd).sum()),
+        "ntm_cols": int(cols.sum()),
+        "ntm_lit_px": int((lit & box).sum()),
+        "ntm_ae_px": int((on & box).sum()),
+    }
+
+
+def mhd_lines_summary(rows: dict) -> dict:
+    """`rows` maps a shot to its `mhd_line_counts`: the pooled counts, the pooled
+    shares (`mhd_ae_share` = mhd_ae_px / mhd_px, `ntm_ae_share` = ntm_ae_px /
+    ntm_lit_px; None over nothing) and the rows by shot."""
+    total = {k: int(sum(r[k] for r in rows.values())) for k in MHD_LINE_KEYS}
+
+    def share(a: str, b: str) -> float | None:
+        return total[a] / total[b] if total[b] else None
+
+    return {
+        **total,
+        "mhd_ae_share": share("mhd_ae_px", "mhd_px"),
+        "ntm_ae_share": share("ntm_ae_px", "ntm_lit_px"),
+        "shots": {str(s): rows[s] for s in sorted(rows)},
+    }
+
+
+def mhd_lines_md(summary: dict, where: str) -> list[str]:
+    """The MHD-lines section: the pooled counts and the shots that draw most."""
+
+    def pct(x) -> str:
+        return "n/a" if x is None else f"{x:.1%}"
+
+    shots = summary["shots"]
+    worst = sorted(shots, key=lambda s: (-shots[s]["mhd_ae_px"], int(s)))[:10]
+    lines = [
+        "## MHD lines in present frames (not scored by Dice or G3)",
+        "",
+        (
+            f"SegNet's AE pixels on the {summary['mhd_px']} MHD-like pixels "
+            f"{where} IGNORES in present frames: {summary['mhd_ae_px']} "
+            f"({pct(summary['mhd_ae_share'])}). Below 80 kHz in the "
+            f"{summary['ntm_cols']} columns of the owners' windows inside a "
+            f"catalog NTM interval: {summary['ntm_ae_px']} AE pixels, of "
+            f"{summary['ntm_lit_px']} TokEye lights there "
+            f"({pct(summary['ntm_ae_share'])})."
+        ),
+        "",
+        (
+            "| shot | MHD-like px | AE on them | NTM columns | lit below 80 kHz "
+            "there | AE there |"
+        ),
+        "|---|---|---|---|---|---|",
+        *(
+            "| {} | {mhd_px} | {mhd_ae_px} | {ntm_cols} | {ntm_lit_px} | "
+            "{ntm_ae_px} |".format(s, **shots[s])
+            for s in worst
+        ),
+        "",
+        (
+            "The ten shots with the most AE pixels on MHD-like pixels; every shot "
+            "is in the JSON record."
+        ),
+    ]
+    return lines
+
+
 def shot_scores(
     paths: Paths,
     shot: int,
@@ -138,12 +242,16 @@ def shot_scores(
     ae,
     pseudo_bytes=None,
     version: str = VERSION,
+    ntm_spans=None,
 ) -> dict:
     """One test shot: `{"pixels": {method: cells}, "frames": ShotFrames}`.
     `seg` and `ae` are `(model, blob)` pairs. Every method is cut to the band the
     seg blob records. A whole-window version's frames are the owner's whole
     window, and it adds `"pixels_0_2s"` and `"frames_0_2s"`: the same calls on
-    the pixels and frames of 0-2 s, as v1's are scored."""
+    the pixels and frames of 0-2 s, as v1's are scored. When the pseudo-mask
+    keeps its markers' pixels (`mhd`, pseudo-v3) it adds `"mhd_lines"`
+    (`mhd_line_counts`), with the shot's NTM intervals `ntm_spans` (ms; none
+    when None)."""
     spec = SEG_VERSIONS[version]
     masks = tokeye_masks(paths, spec.ae_version)
     ex = train.load_example(
@@ -184,6 +292,18 @@ def shot_scores(
     pixels = {
         m: train.pixel_cells(v.astype(np.float32), ex.y, 0.5) for m, v in on.items()
     }
+    extra = {}
+    if pseudo_bytes is None:
+        pseudo_bytes = regions.pseudo_file(paths, shot, version).read_bytes()
+    pm = pseudo.PseudoMask.load(BytesIO(pseudo_bytes))
+    if pm.mhd is not None:
+        centres = grid.t0_ms + (np.arange(grid.n) + 0.5) * grid.dt_ms
+        window = (centres >= label.window[0]) & (centres < label.window[1])
+        khz = ex.y0_khz + np.arange(n_y) * ex.dy_khz
+        ntm = markers.ntm_columns(ntm_spans or (), grid.t0_ms, grid.dt_ms, grid.n)
+        extra["mhd_lines"] = mhd_line_counts(
+            on["ae_seg"], pm.mhd, lit, khz < markers.RULE_BELOW_KHZ, ntm, window
+        )
 
     def frames(lo: int, hi: int) -> ShotFrames:
         """Frames `lo .. hi - 1`, scored where the owner says present or absent
@@ -202,7 +322,7 @@ def shot_scores(
     lo = max(first, EVAL_FRAMES[0])
     hi = max(lo, min(first + n, EVAL_FRAMES[1]))
     if not spec.whole_window:
-        return {"pixels": pixels, "frames": frames(lo, hi)}
+        return {"pixels": pixels, "frames": frames(lo, hi), **extra}
     # 0-2 s: the columns whose centre lies in EVAL_FRAMES' frames, as v1 scores.
     centres = grid.t0_ms + (np.arange(grid.n) + 0.5) * grid.dt_ms
     early = ex.y.copy()
@@ -218,6 +338,7 @@ def shot_scores(
             for m, v in on.items()
         },
         "frames_0_2s": frames(lo, hi),
+        **extra,
     }
 
 
@@ -329,7 +450,10 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
     lines = ["# AE segmentation on the test shots", "", summary, "", *_tables(scores)]
     said = {k: "pass" if bar[k] else "FAIL" for k in ("G1", "G2", "G3")}
     gates = ", ".join(f"{k} {v}" for k, v in said.items())
-    lines += ["", f"The bar: {gates}. Tier: suggestions.", ""]
+    lines += ["", f"The bar: {gates}. Tier: suggestions.", "", BY_CONSTRUCTION, ""]
+    note = reuse_note(meta["version"], c["shots"])
+    if note is not None:
+        lines += [note, ""]
     if whole:
         early = scores["window_0_2s"]
         e = early["counts"]
@@ -343,6 +467,9 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
             "not judged against the bar."
         )
         lines += ["## 0-2 s", "", sentence, "", *_tables(early), ""]
+    if "mhd_lines" in scores:
+        where = SEG_VERSIONS[meta["version"]].pseudo
+        lines += [*mhd_lines_md(scores["mhd_lines"], where), ""]
     return "\n".join(lines)
 
 
@@ -420,6 +547,11 @@ def run_test(
     shots = shots[:limit] if limit else shots
     if not shots:
         raise ValueError(f"{models / 'split.csv'} has no test shot")
+    # A version made with pseudo-v3's markers is also read inside the catalog's
+    # NTM intervals (`mhd_lines`).
+    spans = {}
+    if spec.gated:
+        spans, evaluation_inputs["ntm_sha256"] = markers.ntm_intervals(paths)
     # Stores and TokEye remain external; detect drift across scoring. Targets
     # and models above are loaded from the exact bytes whose hashes we record.
     masks = tokeye_masks(paths, spec.ae_version)
@@ -439,6 +571,7 @@ def run_test(
             ae=ae,
             pseudo_bytes=pseudo_bytes[s],
             version=version,
+            ntm_spans=spans.get(s, ()),
         )
         for s in shots
     ]
@@ -451,6 +584,9 @@ def run_test(
         scores["window_0_2s"] = score(
             [{"pixels": s["pixels_0_2s"], "frames": s["frames_0_2s"]} for s in per_shot]
         )
+    mhd_rows = {s: r["mhd_lines"] for s, r in zip(shots, per_shot) if "mhd_lines" in r}
+    if mhd_rows:
+        scores["mhd_lines"] = mhd_lines_summary(mhd_rows)
     bar = verdict(scores)
     meta = {
         "threshold": seg[1]["threshold"],
@@ -483,8 +619,8 @@ def main(argv=None) -> int:
         "--version",
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
-        help="the SegNet version the model is (default v1); v2 is scored over the "
-        "owner's whole windows",
+        help="the SegNet version the model is (default v1); v2 and v3 are scored "
+        "over the owner's whole windows",
     )
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"

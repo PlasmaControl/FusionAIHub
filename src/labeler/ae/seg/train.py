@@ -34,6 +34,14 @@ the command refuses. The blob records the band and version
 (`blob_band`, `blob_version`) and `training.json` the pseudo-masks too; a blob
 without them is v1's. It writes to `models/ae_seg/v2` (a pilot to
 `runs/ae_seg/pilot-v2`).
+
+**SegNet v3** (`--version v3`) is SegNet v2's recipe on pseudo-v3. It refuses
+unless pseudo-v3's `rules.json` records its gate passed (`pseudo.gate_passed`),
+and unless its split, `pseudo.v2_split` as v2's, is SegNet v2's own
+(`models/ae_seg/v2/split.csv`), shot for shot: its test shots are v2's 60, so
+its test is a second use of them, made after v2's breakdown was seen, which
+`training.json` states (`test_reuse`, `reuse_note`). It writes to
+`models/ae_seg/v3` (a pilot to `runs/ae_seg/pilot-v3`).
 """
 
 from __future__ import annotations
@@ -64,7 +72,16 @@ from ..xpower import model_dir as ae_model_dir
 from ..xpower.data import BAND_KHZ, SEED, store_rows
 from ..xpower.evaluate import chosen_model
 from ..xpower.train import read_split, refuse_checkpoint
-from . import EVENT, SEG_VERSIONS, VERSION, model_dir, pseudo, pseudo_dir, regions
+from . import (
+    EVENT,
+    SEG_VERSIONS,
+    VERSION,
+    model_dir,
+    pseudo,
+    pseudo_dir,
+    regions,
+    reuse_note,
+)
 from .model import SegNet, SegNetConfig
 from .pseudo import IGNORE, LEVEL, PseudoMask
 
@@ -323,6 +340,10 @@ def save(
         named = {"band_khz": tuple(band), "version": version}
         pseudo_name = SEG_VERSIONS[version].pseudo
         described = {"version": version, "pseudo": pseudo_name, "band_khz": band}
+        n_test = sum(v == "test" for v in split.values())
+        note = reuse_note(version, n_test)
+        if note is not None:
+            described["test_reuse"] = note
     refuse_checkpoint(out, allow_replace=allow_replace, runs=runs)
     lines = ["shot,split"] + [f"{s},{v}" for s, v in sorted(split.items())]
     split_bytes = ("\n".join(lines) + "\n").encode()
@@ -393,7 +414,7 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="v1 (the default): pseudo-v1 and the live labels; v2: pseudo-v2 and "
-        "ae_xpower v3's snapshot",
+        "ae_xpower v3's snapshot; v3: pseudo-v3, the same snapshot and v2's split",
     )
     p.add_argument(
         "--out", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
@@ -403,7 +424,7 @@ def main(argv=None) -> int:
         type=int,
         default=0,
         help="6-20 shots (4 of them validation), 2 epochs, to runs/ae_seg/pilot "
-        "(v2: pilot-v2)",
+        "(v2: pilot-v2; v3: pilot-v3)",
     )
     p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     args = p.parse_args(argv)
@@ -413,6 +434,11 @@ def main(argv=None) -> int:
     paths = Paths.from_env()
     version, spec = args.version, SEG_VERSIONS[args.version]
     v1 = version == "v1"  # v1 makes every call as it did before v2
+    if spec.gated and not pseudo.gate_passed(paths, version):
+        p.error(
+            f"{pseudo_dir(paths, version) / 'rules.json'}: {spec.pseudo}'s gate "
+            f"has not passed; run python -m labeler.ae.seg.pseudo --version {version}"
+        )
     pilot = paths.runs / "ae_seg" / ("pilot" if v1 else f"pilot-{version}")
     out = args.out or (pilot if args.pilot else model_dir(paths, version))
     try:
@@ -471,11 +497,20 @@ def main(argv=None) -> int:
         if theirs != test:
             p.error(
                 f"{ae_file.parent / 'split.csv'}: test shots {theirs} differ from "
-                f"SegNet v2's {test}"
+                f"SegNet {version}'s {test}"
             )
         split = ours
     have = {s for s in split if regions.pseudo_file(paths, s, version).is_file()}
     split = {s: v for s, v in split.items() if s in have}
+    if spec.test_of is not None:
+        # The earlier version's split, shot for shot: the same test shots.
+        earlier = model_dir(paths, spec.test_of) / "split.csv"
+        try:
+            before = read_split(earlier)
+        except (OSError, ValueError) as error:
+            p.error(f"{earlier}: {type(error).__name__}: {error}")
+        if before != split:
+            p.error(f"{earlier}: SegNet {spec.test_of}'s split differs from ours")
     if args.pilot:
         chosen = sorted(s for s, v in split.items() if v == "train")[: args.pilot - 4]
         chosen += sorted(s for s, v in split.items() if v == "val")[:4]
