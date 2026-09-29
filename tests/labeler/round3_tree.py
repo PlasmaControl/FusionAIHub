@@ -9,6 +9,8 @@
 - SELDNet's whole-shot input (`ae/dataset-full/<shot>_<split>.npz`, zeros);
 - the owner's saved labels over 0-3000 ms (`SPANS`), present on both AE spans.
 
+`manifests` then lists both directories as one finished job wrote them.
+
 The source table (`format/`) and v1's masks and dataset stay `ae_tree`'s, 0-2 s.
 `tokeye_dt=0.256` gives both TokEye records the real column spacing, as the
 segmentation tests need (a coarser record leaves store columns unlit).
@@ -16,6 +18,8 @@ segmentation tests need (a coarser record leaves store columns unlit).
 
 from __future__ import annotations
 
+import math
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -139,6 +143,43 @@ def build(
     saved = sorted(splits) if reviewed is None else sorted(reviewed)
     _labels(paths.label_tables / EVENT / "review" / "labels.csv", saved)
     return paths
+
+
+def job_log(
+    paths: Paths, job: str, stems, start: float, end: float, root=None
+) -> Path:
+    """`runs/slurm/<job>.out` as `ae_masks_full.sbatch` writes it: the start
+    line, one line per stem written, the finish line (times in s, UTC)."""
+    stems = list(stems)
+    lines = [
+        (
+            f"job {job} on node01 at "
+            f"{datetime.fromtimestamp(math.floor(start), UTC).isoformat()}, "
+            f"root {root or paths.root}"
+        ),
+        f"device=cpu shots={len(stems)} batch=2 tile_ms=0 workers=1",
+        *(
+            f"[{i}/{len(stems)}] {s} frames=300 clean pixels=0 model and write 1.0s"
+            for i, s in enumerate(stems, 1)
+        ),
+        f"finished at {datetime.fromtimestamp(math.ceil(end), UTC).isoformat()}",
+    ]
+    log = paths.runs / "slurm" / f"{job}.out"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("\n".join(lines) + "\n")
+    return log
+
+
+def manifests(paths: Paths, job: str = "7001", commit: str = "abc1234") -> None:
+    """Both directories' manifests, as one finished job (`job_log`, from a
+    minute before the first file to a minute after the last) wrote them."""
+    dirs = (full.masks_full_dir(paths), full.dataset_full_dir(paths))
+    stems = sorted(p.name.removesuffix(".npz") for p in dirs[1].glob("*.npz"))
+    times = [p.stat().st_mtime for d in dirs for p in d.iterdir()]
+    job_log(paths, job, stems, min(times) - 60, max(times) + 60)
+    written = [full.read_job(paths, job, commit)]
+    for directory in dirs:
+        full.write_manifest(paths, directory, written)
 
 
 class AllFire(torch.nn.Module):

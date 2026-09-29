@@ -14,13 +14,16 @@
 #   python -m labeler.ae.full --check   every shot with a masks-full record: the IoU of the
 #       >= 2-chord lit pixels in 0-250 and in 80-250 kHz, each record's notched bins, and
 #       SELDNet's 0-2 s frame agreement between ae/dataset and ae/dataset-full
-#       -> $LABELER_ROOT/ae/masks-full/check.{json,md}
+#       -> $LABELER_ROOT/ae/masks-full/check.{json,md}, with each record's lit pixels per
+#       compared column beside each IoU
 # The bar (median IoU >= 0.75 and at most 10 % of shots below 0.50, in both bands) is
 # reported, not raised: the job succeeds either way. Nothing is fetched.
 #
 #   pilot:      SHOTS=<the pilot's 16, comma-separated> sbatch <this>
 #   full run:   sbatch --dependency=afterok:<the ae_masks_full job> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
+# check.{json,md} are no input and are left out of masks-full's manifest.json, so a rerun
+# of the check leaves v3's inputs as they are; the manifest's `report` names job 2944173's.
 #
 # ------------------------------------------ sizing (measured on pilot job 2944155)
 #   pilot 2944155 (9f5c1a5, the first pilot's 16 shots, --mem=8G): 4:49, 18.1 s a shot,
