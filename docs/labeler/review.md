@@ -232,7 +232,8 @@ pixi run -e labelmaker fdp run python -m labeler.events.raw --event edge_localiz
 pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confinement_mode
 # The drafts, over the queue; --force redoes shots already drafted, --gold scores
 # the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
-pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --gold
+# --version v2 writes beside v1's tables, which refuse a rerun under today's rules.
+pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --version v2 --gold
 # The roster in queue order, and --point opens the page on the draft.
 pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
     --event sawtooth_oscillation --point
