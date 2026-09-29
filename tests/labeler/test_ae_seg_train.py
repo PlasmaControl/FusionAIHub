@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pytest
 import torch
 
-from labeler.ae.seg import model_dir, pseudo, regions, train
+from labeler.ae.seg import model_dir, pseudo, regions, train, whole
 from labeler.ae.seg.pseudo import IGNORE
 from labeler.config import Paths, sha256_of
 from labeler.events.review import labels
@@ -158,6 +158,55 @@ def test_the_command_trains_on_the_ae_split_and_saves_the_model(tmp_path, monkey
     assert ex.y.shape[1] < 1123, "cut to the scored columns and a margin"
 
 
+def page_mask(paths, shot: int, rejected, *, sha256: str | None = None):
+    """The review page's mask for `shot` (pseudo-v1's regions, as `whole` would
+    make them on 0-2 s, in another file), and a decision saved on it; the file."""
+    file = whole.review_file(paths, shot)
+    pm = pseudo.PseudoMask.load(regions.pseudo_file(paths, shot))
+    replace(pm, present_unlit=pm.present_unlit + 1).save(file)  # other bytes
+    regions.save_decision(
+        paths.label_tables / "alfven_eigenmode",
+        shot,
+        rejected,
+        pseudo_sha256=sha256 or regions.file_sha256(file),
+        pseudo=whole.REVIEW,
+    )
+    return file
+
+
+def test_a_decision_on_the_review_page_s_mask_reaches_training(
+    tmp_path, monkeypatch, capsys
+):
+    splits = {s: "train" for s in (101, 102, 103, 104)}
+    paths = ae_tree.build(tmp_path, splits, tokeye_dt=0.256)
+    ae_tree.chosen(paths, {101: "train", 102: "train", 103: "val", 104: "test"})
+    ae_tree.env(monkeypatch, paths)
+    assert pseudo.main([]) == 0
+    _, count = regions.label_regions(
+        pseudo.PseudoMask.load(regions.pseudo_file(paths, 102)).mask
+    )
+    page = page_mask(paths, 102, range(1, count + 1))
+    page_mask(paths, 103, [1], sha256="0" * 64)
+    monkeypatch.setattr(
+        train,
+        "fit",
+        lambda *a, **kw: (train.SegNet(train.SegNetConfig(width=4)), [], 0.5),
+    )
+    assert train.main([]) == 0
+    output = capsys.readouterr()
+    assert "1 shots' mask decisions made on other masks reach the targets" in output.out
+    assert "103: made on an earlier" in output.err
+    manifest = json.loads((model_dir(paths) / "pseudo_masks.json").read_text())
+    assert manifest["pseudo-v1-full/102.npz"] == sha256_of(page)
+    assert "pseudo-v1-full/103.npz" not in manifest
+    decisions = regions.read_decisions(paths.label_tables / "alfven_eigenmode")
+    before = train.load_example(paths, 102, decisions)
+    after = train.load_example(paths, 102, decisions, clicked=page.read_bytes())
+    assert (before.y == 1).any() and not (after.y == 1).any()
+    with pytest.raises(ValueError, match="not the mask the decision was made on"):
+        train.load_example(paths, 102, decisions, clicked=b"other bytes")
+
+
 def test_a_mask_off_the_store_grid_is_refused(tmp_path):
     paths = ae_tree.build(tmp_path, {101: "train"}, tokeye_dt=0.256)
     file = regions.pseudo_file(paths, 101)
@@ -169,7 +218,9 @@ def test_a_mask_off_the_store_grid_is_refused(tmp_path):
         train.load_example(paths, 101, {})
 
 
-@pytest.mark.parametrize("changed", ["labels", "masks", "index", "npz", "ae"])
+@pytest.mark.parametrize(
+    "changed", ["labels", "masks", "index", "npz", "ae", "clicked"]
+)
 @pytest.mark.parametrize("when", ["load", "fit"])
 def test_changed_training_inputs_refuse_to_save(
     tmp_path, monkeypatch, capsys, changed, when
@@ -179,12 +230,14 @@ def test_changed_training_inputs_refuse_to_save(
     ae_tree.env(monkeypatch, paths)
     assert pseudo.main([]) == 0
     directory = paths.label_tables / "alfven_eigenmode"
+    clicked = page_mask(paths, 101, [1]) if changed == "clicked" else None
     files = {
         "labels": directory / "review" / "labels.csv",
         "masks": regions.log_path(directory),
         "index": train.pseudo_dir(paths) / "index.csv",
         "npz": regions.pseudo_file(paths, 101),
         "ae": train.chosen_model(train.ae_model_dir(paths)),
+        "clicked": clicked,
     }
     changed_file = files[changed]
     out = tmp_path / "seg-model"
@@ -194,8 +247,8 @@ def test_changed_training_inputs_refuse_to_save(
         original = changed_file.read_bytes() if changed_file.exists() else b""
         changed_file.write_bytes(original + b"\n")
 
-    def load(paths, shot, decisions):
-        example = load_example(paths, shot, decisions)
+    def load(paths, shot, decisions, **kw):
+        example = load_example(paths, shot, decisions, **kw)
         if when == "load":
             change_file()
         return example

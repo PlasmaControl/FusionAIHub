@@ -17,6 +17,8 @@ from labeler.config import Paths
 from labeler.events.review.rows import Grid
 from labeler.events.ui.app import COOKIE, create_app
 
+from . import ae_tree, round3_tree
+
 ROSTER = (
     "shot,tier,holdout,reviewers,verified_on,notes\n"
     "170815,gold,false,alice,2026-01-01,\n"
@@ -99,15 +101,63 @@ def test_a_rejected_region_becomes_background_unless_the_decision_is_stale():
     assert (regions.reviewed_mask(pm, None, "a" * 64) == pm.mask).all()
 
 
-def test_training_names_the_decisions_made_on_the_page_s_whole_window_masks():
-    decisions = {
-        3: {"pseudo": whole.REVIEW},
-        1: {"pseudo": "pseudo-v1"},
-        2: {},
-        4: {"pseudo": whole.REVIEW},
-    }
-    assert regions.other_decisions(decisions) == [3, 4]
-    assert regions.other_decisions(decisions, whole.REVIEW) == [1, 2]
+def test_a_region_rejected_on_the_page_s_mask_is_background_in_another_mask():
+    page = _mask()
+    target = np.zeros_like(page.mask)
+    target[100:102, 10:15] = 1
+    target[200, 50] = 1
+    target[201, 51] = IGNORE  # the reviewer's word wins where the mask is unsure
+    other = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    moved = regions.transfer(target, other, page, {"rejected": [2]})
+    assert (moved[100:102, 10:15] == 1).all(), "region 1 is kept"
+    assert (moved[[200, 201, 202], [50, 51, 52]] == 0).all()
+    assert target[201, 51] == IGNORE, "the target is not changed in place"
+    for moved_grid in (
+        PseudoMask(SHOT, -8.0, 2.048, 0.0, 500 / 512, target),
+        PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target[:, :200]),
+    ):
+        with pytest.raises(ValueError, match="grid"):
+            regions.transfer(moved_grid.mask, moved_grid, page, {"rejected": [2]})
+
+
+def test_the_file_a_decision_was_made_on_holds_while_its_sha256_does(paths):
+    file = whole.review_file(paths, SHOT)
+    sha = regions.file_sha256(file)
+    page = {"pseudo": whole.REVIEW, "pseudo_sha256": sha, "rejected": [2]}
+    assert regions.decided_file(paths, SHOT, page) == file
+    assert regions.decided_file(paths, SHOT, {}) == regions.pseudo_file(paths, SHOT)
+    assert regions.decided_file(
+        paths, SHOT, {"pseudo": "pseudo-v3"}
+    ) == regions.pseudo_file(paths, SHOT, "v3")
+    assert regions.clicked_name(SHOT, page) == f"pseudo-v1-full/{SHOT}.npz"
+    assert regions.clicked_mask(paths, SHOT, page, "pseudo-v3") == (file, None)
+    assert regions.clicked_mask(paths, SHOT, page, whole.REVIEW) == (None, None)
+    assert regions.clicked_mask(paths, SHOT, None, "pseudo-v3") == (None, None)
+    stale = {**page, "pseudo_sha256": "0" * 64}
+    path, why = regions.clicked_mask(paths, SHOT, stale, "pseudo-v3")
+    assert path is None and "earlier" in why and str(file) in why
+    path, why = regions.clicked_mask(paths, SHOT, {**page, "pseudo": "x"}, "v3")
+    assert path is None and "unknown mask set" in why
+    file.unlink()
+    path, why = regions.clicked_mask(paths, SHOT, page, "pseudo-v3")
+    assert path is None and "gone" in why
+
+
+def test_a_rerun_keeps_an_unchanged_review_mask_and_its_sha256(tmp_path, monkeypatch):
+    paths = round3_tree.build(tmp_path, {101: "train"}, tokeye_dt=0.256)
+    ae_tree.env(monkeypatch, paths)
+    assert whole.main([]) == 0
+    file = whole.review_file(paths, 101)
+    before = file.stat()
+    assert whole.main([]) == 0
+    assert file.stat().st_ino == before.st_ino, "not rewritten"
+    pm = PseudoMask.load(file)
+    assert whole.unchanged(file, pm)
+    changed = pm.mask.copy()
+    changed[0, 0] = 1 - changed[0, 0] if changed[0, 0] in (0, 1) else 0
+    assert not whole.unchanged(file, PseudoMask(**{**vars(pm), "mask": changed}))
+    assert not whole.unchanged(file, PseudoMask(**{**vars(pm), "t0_ms": 1.0}))
+    assert not whole.unchanged(tmp_path / "none.npz", pm)
 
 
 def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, paths):

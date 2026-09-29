@@ -66,10 +66,12 @@ after the newest save.
   inside the label's AE frames, 80-250 kHz, over the label's whole window, drawn
   in cyan over the rows: `pseudo-v1-full`, pseudo-v1's rules
   (`labeler.ae.seg.pseudo`) over TokEye's whole-shot masks, built by
-  `python -m labeler.ae.seg.whole` from the labels saved when it ran. SegNet v1
-  learnt from pseudo-v1 (TokEye's 0-2 s masks), so a decision saved here is
-  stale to it, as to v2 and v3. A click on a region that is not the mode (an MHD harmonic, pickup)
-  rejects it, grey; a second click takes that back. Each click is saved at
+  `python -m labeler.ae.seg.whole` from the labels saved when it ran; a rerun
+  keeps a mask whose content is unchanged, and so the decisions on it. A click
+  on a region that is not the mode (an MHD harmonic, pickup) rejects it, grey; a
+  second click takes that back. SegNet trains on its own version's masks, not
+  these, and each rejection reaches it: the region's pixels are background in
+  that version's mask (`labeler.ae.seg.regions.transfer`). Each click is saved at
   once, with your name. `M` hides and shows the mask, and the browser
   remembers which. The header counts the regions kept.
 - **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot

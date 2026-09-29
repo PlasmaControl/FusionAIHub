@@ -243,12 +243,15 @@ def shot_scores(
     pseudo_bytes=None,
     version: str = VERSION,
     ntm_spans=None,
+    clicked: bytes | None = None,
 ) -> dict:
     """One test shot: `{"pixels": {method: cells}, "frames": ShotFrames}`.
     `seg` and `ae` are `(model, blob)` pairs. Every method is cut to the band the
     seg blob records. A whole-window version's frames are the owner's whole
     window, and it adds `"pixels_0_2s"` and `"frames_0_2s"`: the same calls on
-    the pixels and frames of 0-2 s, as v1's are scored. When the pseudo-mask
+    the pixels and frames of 0-2 s, as v1's are scored. `clicked` is the mask
+    the shot's decision was made on, when training's manifest names it
+    (`train.frozen_clicked`). When the pseudo-mask
     keeps its markers' pixels (`mhd`, pseudo-v3) it adds `"mhd_lines"`
     (`mhd_line_counts`), with the shot's NTM intervals `ntm_spans` (ms; none
     when None)."""
@@ -261,6 +264,7 @@ def shot_scores(
         margin=None,
         pseudo_bytes=pseudo_bytes,
         version=version,
+        clicked=clicked,
     )
     seg_model, seg_blob = seg
     n_y = ex.y.shape[0]
@@ -534,7 +538,7 @@ def run_test(
     )
     manifest = json.loads(frozen["pseudo_masks_sha256"])
     shots = sorted(s for s, v in split.items() if v == "test")
-    pseudo_bytes = {}
+    pseudo_bytes, clicked = {}, {}
     evaluation_inputs["pseudo_masks"] = {}
     for shot in shots:
         path = regions.pseudo_file(paths, shot, version)
@@ -544,6 +548,13 @@ def run_test(
             raise ValueError(f"{path}: pseudo-mask differs from the frozen bundle")
         pseudo_bytes[shot] = data
         evaluation_inputs["pseudo_masks"][path.name] = digest
+        # The mask the reviewer clicked, when not this version's (`regions.transfer`).
+        decision = decisions.get(shot)
+        data = train.frozen_clicked(paths, shot, decision, manifest)
+        if data is not None:
+            clicked[shot] = data
+            name = regions.clicked_name(shot, decision)
+            evaluation_inputs["pseudo_masks"][name] = hashlib.sha256(data).hexdigest()
     shots = shots[:limit] if limit else shots
     if not shots:
         raise ValueError(f"{models / 'split.csv'} has no test shot")
@@ -572,6 +583,7 @@ def run_test(
             pseudo_bytes=pseudo_bytes[s],
             version=version,
             ntm_spans=spans.get(s, ()),
+            clicked=clicked.get(s),
         )
         for s in shots
     ]
