@@ -1,6 +1,6 @@
-"""Round three's jobs, read from the scripts and never submitted: the three new
-ones' scheduler contract and the flags they pass, SegNet's version, and no fetch
-in any job the round submits."""
+"""Round three's jobs, read from the scripts and never submitted: the new ones'
+scheduler contract and the flags they pass, SegNet's version, the frame models'
+variables and shards (Task 2.11), and no fetch in any job the round submits."""
 
 from __future__ import annotations
 
@@ -21,7 +21,18 @@ TOKEYE_PY = "/scratch/gpfs/nc1514/tokeye/.venv/bin/python"
 NEW_CPU = {
     "ae_masks_full_check.sbatch": ("labeler.ae.full",),
     "ae_below80.sbatch": ("labeler.ae.xpower.below80",),
+    "frames_shots.sbatch": ("labeler.frames.shots",),
+    "frames_prepare.sbatch": ("labeler.frames.prepare",),
+    "frames_train.sbatch": ("labeler.frames.train",),
+    "frames_apply.sbatch": ("labeler.frames.apply",),
+    "frames_gallery.sbatch": ("labeler.frames.gallery",),
 }
+#: Part B's jobs (Task 2.11), the variables they read (D67), and the arrays among them.
+FRAMES = tuple(sorted(name for name in NEW_CPU if name.startswith("frames_")))
+FRAMES_VARIABLES = {"METHOD", "PILOT", "LIMIT", "SHOTS", "FORCE", "SEED"}
+#: What every job reads besides: the checkout and the environment's own.
+SHARED_VARIABLES = {"REPO", "LABELER_LABEL_TABLES", "LD_LIBRARY_PATH"}
+ARRAYS = ("frames_apply.sbatch", "frames_prepare.sbatch")
 #: Every existing script round three submits.
 EXISTING = (
     "ae_seg_poi.sbatch",
@@ -129,3 +140,36 @@ def test_segnet_trains_scores_and_draws_the_version_it_is_given():
     [(module, flags)] = _runs(poi)
     assert module == "labeler.ae.seg.poi" and "--version" in flags
     assert poi.count('--version "$VERSION"') == 1
+
+
+def _variables(text: str) -> set[str]:
+    """The variables a script reads from its caller: those it uses and never sets,
+    and those it sets only to a default of their own (`X="${X:-...}"`)."""
+    body = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    used = set(re.findall(r"\$\{?([A-Za-z_]\w*)", body))
+    assigned = set(re.findall(r"(?:^|\s)([A-Za-z_]\w*)=", body, re.MULTILINE))
+    defaulted = set(
+        re.findall(r"(?:^|\s)([A-Za-z_]\w*)=\"\$\{\1:-", body, re.MULTILINE)
+    )
+    return {v for v in used - (assigned - defaulted) if not v.startswith("SLURM_")}
+
+
+@pytest.mark.parametrize("name", FRAMES)
+def test_a_frames_job_reads_only_its_variables(name):
+    text = _script(name)
+    assert _variables(text) <= FRAMES_VARIABLES | SHARED_VARIABLES, name
+    assert "METHOD" in _variables(text)
+    assert 'REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"' in text
+    assert "--gres" not in text and "gpu" not in _sbatch(text, "partition")
+    assert "estimate" in text.split("sizing (measured", 1)[1]
+
+
+@pytest.mark.parametrize("name", ARRAYS)
+def test_a_frames_array_takes_its_shard_from_slurm(name):
+    lines = _script(name).replace("\\\n", " ").splitlines()
+    [run] = [line for line in lines if line.startswith("srun ")]
+    assert '--index "${SLURM_ARRAY_TASK_ID:-0}"' in run
+    assert '--count "${SLURM_ARRAY_TASK_COUNT:-1}"' in run
+    assert run.rstrip().endswith('"$@"')  # --stores, --roster, --population, --merge
