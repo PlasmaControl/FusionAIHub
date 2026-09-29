@@ -6,9 +6,20 @@ present span and their present time; how the model split the reviewed shots
 model was trained); and the shots the extension suggested labels for, with
 those it calls positive, by campaign year. AE's come from the owner's live
 review (`data/events/alfven_eigenmode/review/labels.csv`), the chosen
-`ae_xpower` model's `split.csv` and the extension's `summary.csv`; the other
-four are coming. So the reviewed count is the split's three plus "no split". A
-suggested shot is a suggestion, not a label (v1 spec §3).
+`ae_xpower` model's `split.csv` and the extension's `summary.csv`. So AE's
+reviewed count is the split's three plus "no split". A suggested shot is a
+suggestion, not a label (v1 spec §3).
+
+Each frame-model phenomenon (`FRAME_SOURCES`: NTM, H-mode with L-mode, ELMing
+and sawteeth) is counted from whichever of its inputs exist (D59): the owner's
+review (`data/events/<category>/review/labels.csv`); the shots its legacy human
+table labels (`labelled_shots`), a bar and a column of their own, never counted
+as reviewed; its frame model's split of its own shots, reviewed or not (train,
+val, test, and owner: the owner's saved shots, held out of it), with "no split"
+the reviewed shots in none of them; and the application's suggestions by
+campaign year. They take two rows of their own below AE's. A phenomenon with
+none of these inputs is still "coming". Disruption is not a paper phenomenon
+(`paper.LEFT_OUT`): it is neither counted nor drawn.
 
 A cross-validated version (v2: its `chosen.json` names `folds_sha256`, or its
 models directory holds `cv/folds.csv`) holds no shot out for validation: its
@@ -20,16 +31,18 @@ when the build has checked `cv/folds.csv` against `chosen.json`
 (`build.folds_check`). A validation split's three bars are drawn as they always
 were.
 
-A part whose input is missing is not a zero: without `split.csv` (no model
-chosen) or `summary.csv` (the extension did not run) its panel says "not run"
-and the table prints `--`. Why it did not run goes in the build's manifest
-(`partial`), not in the figure.
+A part whose input is missing is not a zero: without its split (no model
+chosen, or a frame model's shots not split yet) or `summary.csv` (the extension
+did not run) its panel says "not run" and the table prints `--`. Why it did not
+run goes in the build's manifest (`partial`), not in the figure. A counted
+phenomenon with no reviewed shot, a frame-model phenomenon's missing review
+among them, is a true zero: its row of the shots panel says "none reviewed".
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +65,35 @@ SPLIT_COLOUR = "#7f7f7f"
 SUGGESTED = {"suggested": "#9ecae1", "suggested with AE": "#1f77b4"}
 UNKNOWN_YEAR = 0
 VALUE_PT = FONT_PT - 1
+ROW_IN = 2.3  # AE's row's height, inches: the whole figure's when it is alone
+ROW_WIDTHS = (1.5, 1.1, 1, 1.3)  # its panels: shots, present time, split, years
+FRAME_SPLITS = ("train", "val", "test", "owner")  # a frame model's, of its shots
+LEGACY_TICK = "legacy"
+LEGACY_COLOUR = "#8c564b"
+NONE_REVIEWED = "none reviewed"
+FRAME_ROW_IN = 1.5  # the height of each of the two frame rows, inches
+#: The frame years panels' one key, in `SUGGESTED`'s colours.
+FRAME_SUGGESTED = ("suggested", "suggested with the phenomenon")
+
+
+@dataclass(frozen=True)
+class FrameSource:
+    """Where a frame-model phenomenon's coverage comes from (D59)."""
+
+    method: str  # the frame model (a `labeler.frames.SPECS` key)
+    legacy: str | None  # the legacy human table's name, as drawn; None: none
+    also: str | None = None  # a state counted with it (H-mode's "L-mode", D38)
+
+
+#: The frame-model phenomena, in `ORDER`'s order; never disruption (D61).
+FRAME_SOURCES = {
+    "neoclassical_tearing_mode": FrameSource("ntm_frames", "the tearing archive"),
+    "high_confinement_mode": FrameSource(
+        "hmode_frames", "Jalal Butt's table", "L-mode"
+    ),
+    "edge_localized_mode": FrameSource("elm_frames", "Hiro's table"),
+    "sawtooth_oscillation": FrameSource("sawtooth_frames", None),
+}
 
 
 @dataclass(frozen=True)
@@ -62,7 +104,11 @@ class Counts:
     shots without one; None where the input is missing (not run).
     `cross_validated` says the train shots are dealt into folds, with no shot
     held out for validation, and `folds` is their number: None for a
-    validation split, or for folds that could not be counted."""
+    validation split, or for folds that could not be counted. `legacy` is the
+    shots a legacy human table labels, never counted as reviewed (None: it has
+    none, or it was not read), and `frame` says these are a frame model's
+    counts, whose `split` maps each of `FRAME_SPLITS` to its own shots,
+    reviewed or not."""
 
     reviewed: int
     positive: int
@@ -72,6 +118,8 @@ class Counts:
     unsplit: int | None = None
     folds: int | None = None
     cross_validated: bool = False
+    legacy: int | None = None  # the legacy table's labelled shots; None: none, unread
+    frame: bool = False  # a frame model's counts (split of its own shots)
 
     @property
     def suggested(self) -> int | None:
@@ -131,6 +179,52 @@ def ae_counts(
     )
 
 
+def frame_split(table: pd.DataFrame, where: str = "a frame split") -> dict[int, str]:
+    """A frame model's `frames/shots/<method>.csv` (shot, split, positive,
+    roster) as {shot: split}; a ValueError naming `where` (the method and its
+    file) and each split that is not one of `FRAME_SPLITS`."""
+    odd = sorted({str(which) for which in table["split"]} - set(FRAME_SPLITS))
+    if odd:
+        raise ValueError(
+            f"{where}: a split is one of {', '.join(FRAME_SPLITS)},"
+            f" not {', '.join(odd)}"
+        )
+    return {
+        int(shot): str(which)
+        for shot, which in zip(table["shot"], table["split"], strict=True)
+    }
+
+
+def frame_counts(
+    saved: Mapping[int, Label],
+    model_split: Mapping[int, str] | None,
+    summary: pd.DataFrame | None,
+    *,
+    legacy: int | None = None,
+) -> Counts:
+    """A frame-model phenomenon's counts: the reviewed and positive shots and
+    the present time from the owner's saved labels, and the suggestions from
+    the application's `summary.csv`, as `ae_counts` counts them. `split` is the
+    count of each of `FRAME_SPLITS` over ALL the model's shots (`frame_split`),
+    reviewed or not, every split a key, 0 included; `unsplit` the saved shots
+    in no split; both None without the split. `legacy`, the legacy table's
+    labelled shots, is as given. The counts are a frame model's (`frame`),
+    never cross-validated."""
+    split = unsplit = None
+    if model_split is not None:
+        split = dict.fromkeys(FRAME_SPLITS, 0)
+        for which in model_split.values():
+            split[which] += 1
+        unsplit = sum(shot not in model_split for shot in saved)
+    return replace(
+        ae_counts(saved, None, summary),
+        split=split,
+        unsplit=unsplit,
+        legacy=legacy,
+        frame=True,
+    )
+
+
 def fold_count(folds: pd.DataFrame) -> int | None:
     """The number of folds in a `cv/folds.csv` (shot, split, fold): its
     distinct `fold` values, the test shots having none; None for a table with
@@ -159,19 +253,24 @@ def _split_tick(which: str, c: Counts) -> str:
     return which
 
 
+def _row_text(ax, y: float, text: str) -> None:
+    """`text` across the row at `y`, grey italic: COMING or NONE_REVIEWED."""
+    ax.text(
+        0.5,
+        y,
+        text,
+        transform=ax.get_yaxis_transform(),
+        ha="center",
+        va="center",
+        color="#888888",
+        style="italic",
+    )
+
+
 def _coming_rows(ax, rows: np.ndarray, counts: Mapping[str, Counts]) -> None:
     for y, category in zip(rows, ORDER, strict=True):
         if category not in counts:
-            ax.text(
-                0.5,
-                y,
-                COMING,
-                transform=ax.get_yaxis_transform(),
-                ha="center",
-                va="center",
-                color="#888888",
-                style="italic",
-            )
+            _row_text(ax, y, COMING)
 
 
 def _room(ax, top: float) -> None:
@@ -195,6 +294,9 @@ def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
             ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
             top = max(top, *values)
     _coming_rows(ax, rows, counts)
+    for y, category in zip(rows, ORDER, strict=True):
+        if category in counts and counts[category].reviewed == 0:
+            _row_text(ax, y, NONE_REVIEWED)  # counted: a true zero
     _room(ax, top)
     ax.set_yticks(rows, [title(c) for c in ORDER])
     ax.set_ylim(rows.min() - 0.6, rows.max() + 0.6)
@@ -236,16 +338,23 @@ def _split_panel(ax, ae: Counts | None) -> None:
     ax.set_title(heading)
 
 
+def _in_year_order(by_year: Mapping[int, tuple[int, int]]) -> tuple[list, list]:
+    """The campaign years in order, `UNKNOWN_YEAR` last, and their ticks: "?"
+    for it."""
+    years = sorted(by_year, key=lambda y: (y == UNKNOWN_YEAR, y))
+    return years, ["?" if y == UNKNOWN_YEAR else str(y) for y in years]
+
+
 def _years_panel(ax, ae: Counts | None) -> None:
     heading = f"{title(AE)} suggestions by year"
     if ae is None or ae.by_year is None:
         placeholder(ax, heading, NOT_RUN)
         return
-    years = sorted(ae.by_year, key=lambda y: (y == UNKNOWN_YEAR, y))
+    years, ticks = _in_year_order(ae.by_year)
     at = np.arange(len(years))
     for k, (name, colour) in enumerate(SUGGESTED.items()):
         ax.bar(at, [ae.by_year[y][k] for y in years], color=colour, label=name)
-    ax.set_xticks(at, ["?" if y == UNKNOWN_YEAR else str(y) for y in years])
+    ax.set_xticks(at, ticks)
     ax.set_xlabel("campaign year")
     ax.set_ylabel("shots")
     ax.set_title(heading)
@@ -253,27 +362,137 @@ def _years_panel(ax, ae: Counts | None) -> None:
         ax.legend(frameon=False)
 
 
+def _frame_split_panel(ax, category: str, c: Counts | None) -> None:
+    """A frame model's split of its own shots, the first bar on top: under the
+    shots its legacy table labels, when those were counted."""
+    heading = f"{title(category)}: model split"
+    if c is not None and c.legacy is not None:
+        heading += f"\nand {FRAME_SOURCES[category].legacy}"
+    if c is None:
+        placeholder(ax, heading)
+        return
+    if c.split is None:
+        placeholder(ax, heading, NOT_RUN)
+        return
+    values = [c.split.get(s, 0) for s in FRAME_SPLITS]
+    colours = [UNSPLIT_COLOUR if s == "owner" else SPLIT_COLOUR for s in FRAME_SPLITS]
+    ticks = list(FRAME_SPLITS)
+    if c.legacy is not None:
+        values.insert(0, c.legacy)
+        colours.insert(0, LEGACY_COLOUR)
+        ticks.insert(0, LEGACY_TICK)
+    at = np.arange(len(values))
+    bars = ax.barh(at, values, color=colours)
+    ax.bar_label(bars, labels=[f"{v:,}" for v in values], padding=1, fontsize=VALUE_PT)
+    ax.set_yticks(at, ticks)
+    ax.invert_yaxis()
+    _room(ax, max(values))
+    ax.set_xlabel("shots")
+    ax.set_title(heading)
+
+
+def _frame_years_panel(ax, category: str, c: Counts | None) -> None:
+    """A frame model's suggestions by campaign year, the first year on top. The
+    heading takes two lines: on one, sawteeth's is wider than its panel, and a
+    constrained layout keeps no room for a title's width."""
+    heading = f"{title(category)} suggestions\nby year"
+    if c is None:
+        placeholder(ax, heading)
+        return
+    if c.by_year is None:
+        placeholder(ax, heading, NOT_RUN)
+        return
+    years, ticks = _in_year_order(c.by_year)
+    at = np.arange(len(years))
+    colours = SUGGESTED.values()
+    for k, (name, colour) in enumerate(zip(FRAME_SUGGESTED, colours, strict=True)):
+        ax.barh(at, [c.by_year[y][k] for y in years], color=colour, label=name)
+    ax.set_yticks(at, ticks)
+    ax.invert_yaxis()
+    ax.set_xlabel("shots")
+    ax.set_title(heading)
+
+
+def _frame_key(fig: Figure, years) -> None:
+    """One key for the frame years panels, beneath the figure: a legend in each
+    would cover its bars and ticks (six years in a 1.5 in row). None while no
+    panel has bars."""
+    for ax in years:
+        if ax.patches:
+            handles, names = ax.get_legend_handles_labels()
+            fig.legend(handles, names, loc="outside lower right", ncols=len(names))
+            return
+
+
 def draw_coverage(counts: Mapping[str, Counts], stem: Path) -> Figure:
     """Per phenomenon the shots reviewed and positive, and their present time;
-    AE's model split; and AE's suggestions by campaign year."""
+    AE's model split; and AE's suggestions by campaign year. While a frame-model
+    phenomenon is counted, two rows below: each one's model split (with its
+    legacy table's labelled shots), then its suggestions by year."""
+    framed = any(category in counts for category in FRAME_SOURCES)
     with style():
-        fig = Figure(figsize=(PAGE_IN, 2.3), layout="constrained")
-        axes = fig.subplots(1, 4, width_ratios=[1.5, 1.1, 1, 1.3])
+        if framed:
+            fig = Figure(
+                figsize=(PAGE_IN, ROW_IN + 2 * FRAME_ROW_IN), layout="constrained"
+            )
+            outer = fig.add_gridspec(
+                3, 1, height_ratios=[ROW_IN, FRAME_ROW_IN, FRAME_ROW_IN]
+            )
+            axes = outer[0].subgridspec(1, 4, width_ratios=ROW_WIDTHS).subplots()
+        else:
+            fig = Figure(figsize=(PAGE_IN, ROW_IN), layout="constrained")
+            axes = fig.subplots(1, 4, width_ratios=ROW_WIDTHS)
         rows = np.arange(len(ORDER))[::-1].astype(float)
         _shots_panel(axes[0], counts, rows)
         _present_panel(axes[1], counts, rows)
         axes[1].set_ylim(axes[0].get_ylim())
         _split_panel(axes[2], counts.get(AE))
         _years_panel(axes[3], counts.get(AE))
+        if framed:
+            n = len(FRAME_SOURCES)
+            splits = outer[1].subgridspec(1, n).subplots()
+            years = outer[2].subgridspec(1, n).subplots()
+            for ax, category in zip(splits, FRAME_SOURCES, strict=True):
+                _frame_split_panel(ax, category, counts.get(category))
+            for ax, category in zip(years, FRAME_SOURCES, strict=True):
+                _frame_years_panel(ax, category, counts.get(category))
         handles, names = axes[0].get_legend_handles_labels()
         if handles:  # a key only for a series with data
             fig.legend(handles, names, loc="outside lower left", ncols=len(names))
+        if framed:
+            _frame_key(fig, years)
         save(fig, stem)
     return fig
 
 
 def _cell(value) -> str:
     return MISSING if value is None else str(value)
+
+
+def _listed(names: list[str]) -> str:
+    """The names as a sentence lists them: "A", "A and B", "A, B and C"."""
+    if len(names) < 2:
+        return "".join(names)
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _frame_clause(counts: Mapping[str, Counts]) -> str:
+    """The comment's clause for the counted frame-model phenomena, in `ORDER`:
+    whose split theirs is, and their legacy tables; empty while none is."""
+    counted = [c for c in ORDER if c in FRAME_SOURCES and c in counts]
+    if not counted:
+        return ""
+    tables = []
+    for category in counted:
+        source = FRAME_SOURCES[category]
+        also = f" (and {source.also})" if source.also else ""
+        tables.append(f"{title(category)}{also}: {source.legacy or 'none'}")
+    return (
+        f"; for {_listed([title(c) for c in counted])}, the split is the frame "
+        "model's, of its own shots (the owner's saved shots held out of it as its "
+        "owner split), not of the reviewed ones, and No split counts their "
+        f"reviewed shots in none of its splits; legacy tables: {', '.join(tables)}"
+    )
 
 
 def table_datasets(counts: Mapping[str, Counts]) -> str:
@@ -286,6 +505,7 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
         "No split",
         "Suggested",
         "Suggested positive",
+        "Legacy labelled",
     )
     rows = []
     for category in ORDER:
@@ -315,14 +535,16 @@ def table_datasets(counts: Mapping[str, Counts]) -> str:
                 _cell(c.unsplit),
                 _cell(c.suggested),
                 _cell(c.suggested_positive),
+                _cell(c.legacy),
             ]
         )
     comment = (
         "Shots per phenomenon: reviewed by a person, with any present span, the "
         "model's split of the reviewed shots and those in no split (reviewed = "
-        "train + val + test + no split), and the extension's suggestions (not "
-        f"labels); {MISSING} where that run has not happened"
-    )
+        "train + val + test + no split), the extension's suggestions (not labels), "
+        "and the shots a legacy human table labels (Legacy labelled, never counted "
+        f"as reviewed); {MISSING} where that run has not happened"
+    ) + _frame_clause(counts)
     for category in ORDER:
         c = counts.get(category)
         if c is not None and c.split is not None and c.cross_validated:
