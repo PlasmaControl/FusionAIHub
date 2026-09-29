@@ -106,18 +106,52 @@ def test_a_region_rejected_on_the_page_s_mask_is_background_in_another_mask():
     target = np.zeros_like(page.mask)
     target[100:102, 10:15] = 1
     target[200, 50] = 1
-    target[201, 51] = IGNORE  # the reviewer's word wins where the mask is unsure
+    target[201, 51] = IGNORE  # unscored: a rejection never scores it
     other = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
     moved = regions.transfer(target, other, page, {"rejected": [2]})
     assert (moved[100:102, 10:15] == 1).all(), "region 1 is kept"
-    assert (moved[[200, 201, 202], [50, 51, 52]] == 0).all()
-    assert target[201, 51] == IGNORE, "the target is not changed in place"
+    assert (moved[[200, 202], [50, 52]] == 0).all() and moved[201, 51] == IGNORE
+    assert target[200, 50] == 1, "the target is not changed in place"
     for moved_grid in (
         PseudoMask(SHOT, -8.0, 2.048, 0.0, 500 / 512, target),
         PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target[:, :200]),
     ):
         with pytest.raises(ValueError, match="grid"):
             regions.transfer(moved_grid.mask, moved_grid, page, {"rejected": [2]})
+
+
+def test_a_rejection_never_scores_a_pixel_the_target_does_not():
+    page = np.zeros((257, 300), dtype=np.uint8)
+    page[150, 90:110] = 1  # region 1, crossing 2 s at column 100
+    target = np.zeros_like(page)
+    target[150, 90:100] = 1
+    target[:, 100:] = IGNORE  # pseudo-v1: TokEye's first masks end at 2 s
+    on = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    clicked = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, page)
+    moved = regions.transfer(target, on, clicked, {"rejected": [1]})
+    assert (moved[:, 100:] == IGNORE).all(), "still unscored after 2 s"
+    assert (moved[150, 90:100] == 0).all() and (moved[:, :100] != IGNORE).all()
+
+
+def test_the_part_of_a_rejected_line_the_page_never_drew_is_unscored():
+    page = np.zeros((257, 300), dtype=np.uint8)
+    page[80:83, 20:30] = 1  # region 1, kept
+    page[100:103, 20:30] = 1  # region 2, rejected
+    page[200:202, 60:70] = 1  # region 3, kept
+    target = np.zeros_like(page)
+    target[70:103, 20:30] = 1  # one line over regions 1 and 2, and below both
+    target[150:152, 120:130] = 1  # under no page region
+    target[196:202, 60:70] = 1  # under region 3, and below it
+    on = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, target)
+    clicked = PseudoMask(SHOT, -10.0, 2.048, 0.0, 500 / 512, page)
+    moved = regions.transfer(target, on, clicked, {"rejected": [2]})
+    assert (moved[100:103, 20:30] == 0).all(), "the overlap is background"
+    assert (moved[70:80, 20:30] == IGNORE).all(), "never drawn: unscored"
+    assert (moved[83:100, 20:30] == IGNORE).all()
+    assert (moved[80:83, 20:30] == 1).all(), "a kept page region stays"
+    assert (moved[150:152, 120:130] == 1).all(), "no rejection touches it"
+    assert (moved[196:202, 60:70] == 1).all(), "under a kept region"
+    assert int((moved != target).sum()) == 3 * 10 + 10 * 10 + 17 * 10, "no other"
 
 
 def test_the_file_a_decision_was_made_on_holds_while_its_sha256_does(paths):

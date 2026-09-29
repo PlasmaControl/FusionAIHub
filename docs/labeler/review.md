@@ -70,10 +70,13 @@ after the newest save.
   keeps a mask whose content is unchanged, and so the decisions on it. A click
   on a region that is not the mode (an MHD harmonic, pickup) rejects it, grey; a
   second click takes that back. SegNet trains on its own version's masks, not
-  these, and each rejection reaches it: the region's pixels are background in
-  that version's mask (`labeler.ae.seg.regions.transfer`). Each click is saved at
-  once, with your name. `M` hides and shows the mask, and the browser
-  remembers which. The header counts the regions kept.
+  these, and each rejection reaches it (`labeler.ae.seg.regions.transfer`): the
+  region's pixels are background in that version's mask where it scores them
+  (never scored where it does not, as pseudo-v1 after 2 s), and the rest of that
+  mask's line the region touches, outside the regions drawn here (below 80 kHz
+  in pseudo-v2 and v3), is left unscored. Each click is saved at once, with your
+  name. `M` hides and shows the mask, and the browser remembers which. The
+  header counts the regions kept.
 - **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot
   masks light on two of the four chords, AE or not, in the band each row
   shows, drawn in faint cyan over TokEye's 0-6 s, past the label windows' 2 s:

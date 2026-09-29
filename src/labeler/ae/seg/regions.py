@@ -16,10 +16,13 @@ says so and training ignores it.
 Training takes the pseudo-mask with every rejected region set to background
 (`reviewed_mask`). A decision names in `pseudo` the masks it was made on, and
 the review page draws pseudo-v1-full (`whole.REVIEW`), not the masks a SegNet
-version trains on. Such a decision still reaches training: the pixels of the
-regions it rejects on the mask clicked are set to background in the version's
-own mask (`transfer`), which is on the same store grid, as long as the file
-clicked is still the one there (`clicked_mask`, by its sha256).
+version trains on. Such a decision still reaches training through the
+version's own mask, on the same store grid (`transfer`), as long as the file
+clicked is still the one there (`clicked_mask`, by its sha256): the pixels of
+the regions it rejects on the mask clicked are background where the version's
+mask scores them, and stay unscored where it does not; the rest of each of the
+version's regions they touch, outside the regions the page drew (below 80 kHz
+in pseudo-v2 and v3), is unscored too.
 """
 
 from __future__ import annotations
@@ -35,7 +38,7 @@ from scipy import ndimage
 
 from ...events.review.labels import REVIEW
 from . import PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir, whole
-from .pseudo import EIGHT, PseudoMask
+from .pseudo import EIGHT, IGNORE, PseudoMask
 
 LOG = "masks.jsonl"
 MAX_REGIONS = 5000
@@ -192,9 +195,17 @@ def clicked_mask(
 def transfer(
     target: np.ndarray, pm: PseudoMask, clicked: PseudoMask, decision: dict
 ) -> np.ndarray:
-    """`target`, on `pm`'s grid, with every pixel of the regions `decision`
-    rejects on `clicked` (the mask the reviewer clicked) set to background,
-    whatever `pm` says there: the reviewer said it is not the mode."""
+    """`target`, on `pm`'s grid, with the regions `decision` rejects on
+    `clicked` (the mask the reviewer clicked, the page's regions) taken out.
+
+    A rejection clears AE; it never scores a pixel `target` does not score. A
+    rejected pixel is background where `target` scores it (0 or 1) and stays
+    IGNORE where it does not (pseudo-v1 after 2 s). Each of `target`'s own
+    regions (`label_regions`) holding a rejected pixel is a line the reviewer
+    said is not the mode: its pixels outside every region of `clicked` (the
+    page never drew them, say below 80 kHz) are IGNORE, and those under a page
+    region the reviewer kept stay as they are. Regions no rejection touches
+    stay as they are."""
     grid = ("t0_ms", "dt_ms", "y0_khz", "dy_khz")
     if clicked.mask.shape != pm.mask.shape or any(
         abs(getattr(clicked, k) - getattr(pm, k)) > 1e-6 for k in grid
@@ -202,8 +213,13 @@ def transfer(
         raise ValueError(
             f"{pm.shot}: the mask clicked is not on the grid of the one trained on"
         )
-    out = np.array(target, copy=True)
-    out[rejected_pixels(clicked, decision)] = 0
+    target = np.asarray(target)
+    rejected = rejected_pixels(clicked, decision)
+    own, _ = label_regions(target)
+    touched = np.isin(own, np.unique(own[rejected])) & (own > 0)
+    out = target.copy()
+    out[touched & (np.asarray(clicked.mask) != 1)] = IGNORE
+    out[rejected & (target != IGNORE)] = 0
     return out
 
 
