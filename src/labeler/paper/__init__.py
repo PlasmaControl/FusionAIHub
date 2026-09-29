@@ -3,9 +3,13 @@
 The manuscript (`dev/label_paper`: "Tokamak-SI: Automatic Shot Interpreter with
 a Catalog of Fusion Reactor Data") shows the interpreter on one phenomenon, AE,
 first. A figure that will show every paper phenomenon (`ORDER`: the catalog's,
-less disruption for now) draws all five now: AE from the round-two runs, the
-other four as empty panels marked "coming", so the layout and sizes are settled
-before their numbers exist.
+less disruption for now) draws all five now. The score figures draw AE from the
+round-two runs and the other four as empty panels marked "coming", so the layout
+and sizes are settled before their numbers exist. The coverage figure and table
+count all five: AE from the round-two runs, the other four from the owner's
+review, their frame models' splits and applications, and the legacy tables'
+labelled shots; only a phenomenon with none of its inputs yet is marked
+"coming".
 
 - `scores`: the AE methods' frame scores (one panel per phenomenon), their
   false-positive rates on MHD frames, the segmentation's scores, and tables;
