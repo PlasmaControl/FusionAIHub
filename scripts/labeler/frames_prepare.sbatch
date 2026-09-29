@@ -23,20 +23,21 @@
 #
 #   pilot:      METHOD=ntm_frames PILOT=1 sbatch <this> --stores
 #   full run:   METHOD=ntm_frames sbatch --array=0-7 <this> --stores
-#               METHOD=elm_frames sbatch <this> --stores   (and hmode_frames: one task)
-#               then the features: METHOD=M sbatch --array=0-3 <this>
+#               METHOD=elm_frames sbatch --mem=3G <this> --stores   (and hmode_frames)
+#               then the features: METHOD=M sbatch --mem=3G --array=0-3 <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only --pilot   (a pilot)
 #               python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26 for the stores' builds; the rest estimates)
-#   a store's build, one worker (review_build.sbatch): tearing modes 5.1 s and 1.12 GB,
-#   ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB. Stores to build (D68): NTM about
-#   4,839 x 1.9 MB, ELM about 200 x 10 MB, H-mode 98 x 2.6 MB, 11.4 GB in all.
-#   cpus-per-task=8   NTM over 8 tasks: 605 shots x 5.1 s / 8 workers = 6.4 min a task;
-#                     ELM 200 x 1.2 s / 8 = 30 s in one task.
-#   mem=12G           8 x 1.12 GB x 1.2 for the NTM builds; the features are estimated
-#                     below 1 GB a worker (not measured); reset from the pilot's MaxRSS.
-#   time=00:30:00     6.4 min x 4 for cold GPFS reads; features estimated faster.
+# ------------------------------------------ sizing (measured 2026-09-29: 20-shot pilots, 8 workers)
+#   stores (--stores): NTM 2947617 20 built in 22 s, MaxRSS 8.1 GiB (1.06 a worker),
+#   5.5 s CPU a shot; ELM 2947621 20 built in 9 s, 2.1 GiB; H-mode 2947616 18 built
+#   in 38 s, 2.3 GiB. Features: 2947622-2947625, 20 shots each in 8-9 s, 2.1 GiB (the
+#   workers' imports; a shot adds little). The ELM pilot 2947615 took 20 roster shots
+#   and built nothing, so its re-pilot named 20 others (SHOTS).
+#   cpus-per-task=8   NTM stores over 8 tasks: about 605 shots x 5.5 s / 8 = 7 min a task.
+#   mem=12G           the NTM stores (8.1 GiB, 67 %); the rest take --mem=3G on the
+#                     command line: ELM and H-mode stores, and every method's features.
+#   time=00:30:00     estimated: NTM's 7 min x 4 for cold GPFS reads; the rest well under.
 set -euo pipefail
 REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"
 ENV=/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker
