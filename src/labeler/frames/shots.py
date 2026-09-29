@@ -141,12 +141,18 @@ def _inside(starts, bin_ms, window) -> np.ndarray:
 def _store_problem(paths: Paths, spec: EventSpec, shot: int, window) -> str | None:
     """Why a roster shot's review store gives nothing in `window`, or None.
 
-    Its rows must hold every required role (`features.match_roles`; a stale
-    tearing-mode store passes, since it is rebuilt, never read, D65), and each
+    Its rows must hold every required role (`features.match_roles`), and each
     required trace row a value inside the window at the coarsest level, which
     holds one wherever a column below it does (`rows.pool`). A store whose
     required rows are all NaN (the ECE of sawtooth 187154) would give no
     observed frame. The rest of `features`' reading is left to Task 2.8's.
+
+    A stale tearing-mode store (D65) passes here, and the shot stays in the
+    split, but it is never read: `prepare` rebuilds only the stores outside the
+    roster, so it drops this one from the features ("stale store: ...", in the
+    shot's `.dropped.json`), and a test shot so dropped is counted in the
+    evaluation's md. Rebuilding it is the review's (`review.build --force`). No
+    roster store was stale when Task 2.7 ran.
     """
     path = store_path(paths, spec, shot)
     if not path.is_file():

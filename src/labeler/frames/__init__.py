@@ -211,11 +211,16 @@ def _roster_shots(path, _mtime_ns, _ino, _size) -> frozenset[int]:
     return frozenset(int(shot) for shot in rosters.read_roster(path).shot)
 
 
+def stores_dir(paths: Paths, spec: EventSpec) -> Path:
+    """Where the stores of the shots outside the roster are built."""
+    return _frames(paths) / "stores" / spec.store_event
+
+
 def store_path(paths: Paths, spec: EventSpec, shot: int) -> Path:
     """A roster shot's review store, else the one built for this package."""
     if int(shot) in roster_shots(paths, spec.store_event):
         return paths.spectrogram_file(spec.store_event, shot)
-    return _frames(paths) / "stores" / spec.store_event / f"{int(shot)}.h5"
+    return stores_dir(paths, spec) / f"{int(shot)}.h5"
 
 
 def features_dir(paths: Paths, method: str) -> Path:
