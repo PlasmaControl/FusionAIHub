@@ -17,7 +17,12 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   The train shots are marked with the number of folds only when `cv/folds.csv`
   is there, has a `fold` column and is the one `chosen.json` names
   (`folds_check`, D18's check applied to the folds); otherwise both products
-  are `partial`, saying why;
+  are `partial`, saying why. The frame-model phenomena (NTM, H-mode, ELMing,
+  sawteeth) are counted from their own inputs (`frame_coverage`): the owner's
+  review, the frame model's split with its meta's `labelled_shots` (the legacy
+  table's), and the application's `summary.csv`; each missing part is a
+  `partial` entry naming its `phenomenon`, after AE's, and no frame model's
+  bar is read;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
   `<candidate>/review/labels.csv` (D18), over the version's scored window
@@ -125,6 +130,7 @@ from typing import NamedTuple
 import pandas as pd
 import torch
 
+from .. import frames
 from ..ae import seg as ae_seg
 from ..ae import xpower
 from ..ae.xpower import evaluate as ae_evaluate
@@ -222,6 +228,10 @@ NO_EARLIER = (
     "first are not counted"
 )
 NO_LOOK_SPLIT = "no split.csv, so the earlier version's test shots are not counted"
+FRAMES_COMING = "no saved label, split or suggestions: its frame model has not run"
+NO_FRAMES_SPLIT = "the frame model's shots are not split yet (Task 2.7)"
+NO_FRAMES_META = "the frame split has no meta, so the legacy table is not counted"
+NO_FRAMES_SUMMARY = "the frame model has not been applied: no summary.csv (Task 2.11)"
 
 
 def inputs(
@@ -402,6 +412,65 @@ def second_look(
     return ae_evaluate.second_look(version, test, record, theirs, chosen), None
 
 
+def _frame_entry(reason: str, category: str, *missing: Path) -> dict:
+    """A frame-model phenomenon's `partial` entry: why, naming it and the files
+    it lacks."""
+    return {
+        "reason": reason,
+        "phenomenon": category,
+        "missing": [str(p) for p in missing],
+    }
+
+
+def frame_coverage(
+    paths: Paths, snap: Snapshot
+) -> tuple[dict[str, coverage.Counts], list[dict]]:
+    """The frame-model phenomena's counts and the `partial` entries saying what
+    each lacks, in `coverage.FRAME_SOURCES`' order, each entry naming its
+    `phenomenon`. One with no saved label, split or summary is not counted (it
+    is "coming"). One with any is counted from the owner's live review (none
+    saved is a true zero), its frame model's split (`frames.shots_file`), the
+    legacy table's `labelled_shots` in the split's meta
+    (`frames.shots_meta_file`; read only with the split, for a phenomenon with
+    a legacy table) and the application's `summary.csv`
+    (`frames.summary_file`), each missing part an entry, in that order. Each
+    file is read through `snap`, so it is pinned. Nothing else is read: not the
+    frame models' `evaluation.json`, since no bar gates the coverage (D59)."""
+    counts: dict[str, coverage.Counts] = {}
+    why: list[dict] = []
+    for category, source in coverage.FRAME_SOURCES.items():
+        method = source.method
+        live = labels.labels_path(paths.label_tables / category)
+        split_csv = frames.shots_file(paths, method)
+        meta_json = frames.shots_meta_file(paths, method)
+        summary_csv = frames.summary_file(paths, method)
+        if not any(p.is_file() for p in (live, split_csv, summary_csv)):
+            why.append(
+                _frame_entry(FRAMES_COMING, category, live, split_csv, summary_csv)
+            )
+            continue
+        saved = snap.labels(f"labels_{category}", live) if live.is_file() else {}
+        split = legacy = summary = None
+        if not split_csv.is_file():
+            why.append(_frame_entry(NO_FRAMES_SPLIT, category, split_csv))
+        else:
+            table = snap.csv(f"frames_split_{method}", split_csv)
+            split = coverage.frame_split(table, f"{method} ({split_csv})")
+            if source.legacy is not None and not meta_json.is_file():
+                why.append(_frame_entry(NO_FRAMES_META, category, meta_json))
+            elif source.legacy is not None:
+                meta = snap.json(f"frames_meta_{method}", meta_json)
+                if "labelled_shots" not in meta:
+                    raise KeyError(f"{method}: {meta_json} has no labelled_shots")
+                legacy = meta["labelled_shots"]
+        if summary_csv.is_file():
+            summary = snap.csv(f"frames_summary_{method}", summary_csv)
+        else:
+            why.append(_frame_entry(NO_FRAMES_SUMMARY, category, summary_csv))
+        counts[category] = coverage.frame_counts(saved, split, summary, legacy=legacy)
+    return counts, why
+
+
 def build(
     paths: Paths,
     out: Path,
@@ -539,6 +608,8 @@ def _draw(
                 cross_validated=folds.cross_validated,
             )
         }
+        frame_counts, frame_why = frame_coverage(paths, snap)
+        counts |= frame_counts
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
         if chosen is None:
@@ -552,6 +623,8 @@ def _draw(
             lacking(counted, CV_VAL, shots=held)
         if summary is None:
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
+        for entry in frame_why:  # after AE's own, which keep their order (D62)
+            lacking(counted, **entry)
     picked: dict = {}
     figures = ("fig_interpreter", "fig_examples")
     scored = None

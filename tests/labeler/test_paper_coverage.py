@@ -149,7 +149,7 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
     ], "the folds' shots as one group, and no validation bar"
     assert tree.small_text(fig) == []
     lines = coverage.table_datasets({"alfven_eigenmode": folded}).splitlines()
-    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- & -- \\\\"
     assert "AE's train shots are cross-validated over 5 folds" in lines[0]
     assert "no shot is held out for validation (--)" in lines[0]
     with_val = dataclasses.replace(folded, split={"train": 100, "val": 20, "test": 60})
@@ -170,7 +170,7 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
         "no\nsplit",
     ], "cross-validated, its folds not counted: no count, and still no val"
     lines = coverage.table_datasets({"alfven_eigenmode": uncounted}).splitlines()
-    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- & -- \\\\"
     assert lines[0].endswith(
         "; AE's train shots are cross-validated, so no shot is held out for "
         "validation (--)"
@@ -209,17 +209,18 @@ def test_the_datasets_table(tmp_path):
     assert lines[0] == (
         "% Shots per phenomenon: reviewed by a person, with any present span, the "
         "model's split of the reviewed shots and those in no split (reviewed = "
-        "train + val + test + no split), and the extension's suggestions (not "
-        "labels); -- where that run has not happened"
-    ), "a validation split's comment, as before"
-    assert lines[1] == "\\begin{tabular}{lccccccc}"
+        "train + val + test + no split), the extension's suggestions (not labels), "
+        "and the shots a legacy human table labels (Legacy labelled, never counted "
+        "as reviewed); -- where that run has not happened"
+    ), "a validation split's comment, with the legacy column's"
+    assert lines[1] == "\\begin{tabular}{lcccccccc}"
     assert lines[3] == (
         "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
-        "& No split & Suggested & Suggested positive \\\\"
+        "& No split & Suggested & Suggested positive & Legacy labelled \\\\"
     )
-    assert lines[5] == "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 \\\\"
+    assert lines[5] == "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 & -- \\\\"
     assert lines[6:10] == [
-        f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\"
+        f"{name} & \\multicolumn{{8}}{{c}}{{coming}} \\\\"
         for name in ("NTM", "H-mode", "ELMing", "sawteeth")
     ]
 
@@ -228,4 +229,4 @@ def test_without_the_extension_the_table_says_so(tmp_path):
     saved, _, _ = _inputs(tmp_path)
     counts = {"alfven_eigenmode": coverage.ae_counts(saved, None, None)}
     lines = coverage.table_datasets(counts).splitlines()
-    assert lines[5] == "AE & 4 & 2 & 0.9 & -- & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 4 & 2 & 0.9 & -- & -- & -- & -- & -- \\\\"
