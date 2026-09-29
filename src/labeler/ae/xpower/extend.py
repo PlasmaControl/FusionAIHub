@@ -66,6 +66,7 @@ from . import (
     gallery_dir,
     model_dir,
     pilot_area,
+    scored_until,
     suggestions_dir,
 )
 from .data import raw_rows, window_frames
@@ -186,6 +187,7 @@ def label_shot(job: tuple[int, int, int, int], pictures: bool = True) -> dict:
             first=first,
             prob=prob,
             threshold=blob["threshold"],
+            scored_until_ms=scored_until(version),
         )
     runs = sum(1 for r in table if r[1] == PRESENT)
     summary = {
