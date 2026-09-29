@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=2500M
+#SBATCH --mem=3500M
 #SBATCH --time=01:00:00
 #SBATCH --array=0-14
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
@@ -54,7 +54,16 @@
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #   then:       sbatch ae_xpower_posthoc.sbatch   (its summary is the record's (c))
 #
-# ------------------------------------------ sizing (measured 2026-09-28, A = job 2943054)
+# ------------------------------------------ sizing (measured 2026-09-29, v3: B = job 2944516,
+#                                            C = job 2944532)
+#   v3 loads whole windows at 0-250 kHz, about 1.9 times v2's pixels a shot.
+#   B, fold task 0 alone at 8G, to measure: 12 min 12 s, sacct MaxRSS 2,903,096 KiB
+#   (2835 MiB). C, tasks 1-14 at 3500M: 10 min 15 s to 22 min 10 s; MaxRSS 2,138,908
+#   to 2,851,568 KiB; CPU 81.1-86.4 %.
+#   mem=3500M      B's 2835 MiB x 1.2 is 3402 MiB; rounded up. The array shares one
+#                  --mem, so the smaller folds use 60-80 % of it.
+#   time=01:00:00  C's longest task, 22 min 10 s, x 2.7.
+# before v3 (measured 2026-09-28, A = job 2943054):
 #   A, v2's 15 fold tasks: 72 train + 24 early-stopping shots loaded, 4 threads (CPU
 #   75.4-89.2 %), 6 min 31 s to 16 min 13 s a task; sacct MaxRSS 1,780,848 to
 #   2,156,464 KiB, peak 2106 MiB. A seeded fold loads and trains the same shots.
