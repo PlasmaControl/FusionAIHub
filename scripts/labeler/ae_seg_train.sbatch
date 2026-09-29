@@ -23,6 +23,10 @@
 # the 70 % gate.
 #
 #   pilot:      PILOT=12 sbatch <this>   (12 shots, 2 epochs, into runs/ae_seg/pilot; 3 test shots)
+#   v2:         VERSION=v2 PILOT=12 sbatch <this>, then VERSION=v2 sbatch --mem=<from that
+#               pilot> <this>: pseudo-v2 over 0-250 kHz, v3's snapshot and test shots, into
+#               models/ae_seg/v2 (a pilot into runs/ae_seg/pilot-v2), scored over the owner's
+#               whole windows (round three, §2.5)
 #   full run:   sbatch --mem=<from the pilot> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
@@ -46,9 +50,13 @@ export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
-echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
-MODELS="$ROOT/models/ae_seg/v1"
-if [ -n "${PILOT:-}" ]; then MODELS="$ROOT/runs/ae_seg/pilot"; fi
-srun "$ENV/bin/python" -m labeler.ae.seg.train ${PILOT:+--pilot "$PILOT"}
-srun "$ENV/bin/python" -m labeler.ae.seg.evaluate --models "$MODELS" ${PILOT:+--limit 3}
+VERSION="${VERSION:-v1}"
+echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
+MODELS="$ROOT/models/ae_seg/$VERSION"
+PILOT_DIR="$ROOT/runs/ae_seg/pilot"
+if [ "$VERSION" != v1 ]; then PILOT_DIR="$PILOT_DIR-$VERSION"; fi
+if [ -n "${PILOT:-}" ]; then MODELS="$PILOT_DIR"; fi
+srun "$ENV/bin/python" -m labeler.ae.seg.train --version "$VERSION" ${PILOT:+--pilot "$PILOT"}
+srun "$ENV/bin/python" -m labeler.ae.seg.evaluate --version "$VERSION" --models "$MODELS" \
+    ${PILOT:+--limit 3}
 echo "finished at $(date -Is)"
