@@ -8,9 +8,9 @@ the current label without its version line.
 
 Each line keeps two identities. `reviewer` is the login of the process that
 served the page (`getpass.getuser()`): the checker's blind-read integrity
-rules key on it, so it is never taken from the client. `name` is what the
-reviewer typed in the page's name box, or null: an attribution, not an
-authentication. Lines written before names existed have no `name` key and
+rules key on it, so it is never taken from the client. `name` is the
+reviewer's name as the page sent it (picked from its list, or typed on an older
+server), or null: an attribution, not an authentication. Lines written before names existed have no `name` key and
 read as null.
 """
 

@@ -226,7 +226,7 @@ def save(
     interval schema; catalog tiling, observability, points and allowed windows
     are checked separately by the catalog checker.
 
-    `reviewer` is the server's login; `name` is what the reviewer typed, or None
+    `reviewer` is the server's login; `name` is the reviewer's name, or None
     (see `versions`).
     """
     with _write_lock:

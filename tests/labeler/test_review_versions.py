@@ -223,15 +223,19 @@ def test_the_list_is_the_saved_names_until_the_first_name_is_added(client, event
 
     added = client.post("/api/names", json={"name": "Barbara"}).json()
     assert added == {"names": ["ada", "Barbara", "Grace", "Linus"], "name": "Barbara"}
-    assert names_file.read_text() == "ada\nBarbara\nGrace\nLinus\n"
+    assert names_file.read_text() == "ada\nGrace\nLinus\nBarbara\n"
     labels.save(event_dir, 170815, label, source=TABLE, name="Zed")
     assert client.get("/api/names").json() == {"names": added["names"]}
 
 
-def test_the_owner_s_edits_to_the_file_are_read_once_each(client, event_dir):
+def test_the_owner_s_edits_to_the_file_are_read_once_each_and_kept(client, event_dir):
     names_file = reviewers.names_path(event_dir.parent)
-    names_file.write_text("Grace\n\n  Ada \nada\nbad\u0007name\n")
+    owner = "\ufeffGrace\n\n  Ada \nada\nbad\u0007name"
+    names_file.write_text(owner, encoding="utf-8")
     assert client.get("/api/names").json() == {"names": ["Ada", "Grace"]}
+    added = client.post("/api/names", json={"name": "Barbara"}).json()
+    assert added["names"] == ["Ada", "Barbara", "Grace"]
+    assert names_file.read_text() == owner.removeprefix("\ufeff") + "\nBarbara\n"
 
 
 @pytest.mark.parametrize(
