@@ -12,27 +12,37 @@
 
 # One editor's span suggestions over the frozen cohort's non-blind shots:
 #   python -m labeler.events.spans --event $EVENT --workers $WORKERS
-# merges into $LABELER_ROOT/suggestions/<method>/v1/<event>_suggest_<method>_v1.csv; a
-# shot already there is skipped unless FORCE is set. The corpus and the raw cache are
-# only read (Ip too: the ELM and sawtooth drafts start where it reaches 0.8 of its
-# flat-top). WORKERS is one a CPU unless set; more keeps the CPUs busy through slow
-# reads. SHOTS names shots; LIMIT takes the queue's first N. GOLD=1 also scores the
-# drafts on the event's gold-tier roster shots (`--gold`) and writes the score into
-# the table's meta ("gold"); a later run without it keeps the score. FORCE changes
-# what the page opens unsaved shots on; saved labels are never touched.
+# merges into $LABELER_ROOT/suggestions/<method>/<v>/<event>_suggest_<method>_<v>.csv,
+# <v> VERSION (`--version`), v1 unless set: v1's tables predate the dead-filterscope
+# and ramp-up rules, and v2's, written beside them, have them. A table whose meta
+# records other rules than the method's now is refused, never rewritten: name a new
+# VERSION. A shot already in the table is skipped unless FORCE is set. The corpus
+# and the raw cache are only read (Ip too: the ELM and sawtooth drafts start where
+# it reaches 0.8 of its flat-top). WORKERS is one a CPU unless set; more keeps the
+# CPUs busy through slow reads. SHOTS names shots; LIMIT takes the queue's first N.
+# GOLD=1 also scores the drafts on the event's gold-tier roster shots (`--gold`) and
+# writes the score into the table's meta ("gold"); a later run without it keeps the
+# score. FORCE changes what a page open on the table shows for unsaved shots; saved
+# labels are never touched.
 #
 #   pilot:      the full run's shape on the queue's first 20 shots, e.g.
-#               EVENT=high_confinement_mode LIMIT=20 sbatch --cpus-per-task=4 --mem=3G <this>
-#   full run:   EVENT=sawtooth_oscillation sbatch <this>
-#               EVENT=high_confinement_mode sbatch --cpus-per-task=4 --mem=3G <this>
-#               EVENT=edge_localized_mode sbatch --cpus-per-task=4 --mem=5G <this>
-#               each with --mem reset to its pilot's MaxRSS x 1.2
-#   redo:       every shot again, with the gold score, after a rule change, e.g.
-#               EVENT=sawtooth_oscillation FORCE=1 GOLD=1 sbatch <this>
-#               EVENT=edge_localized_mode FORCE=1 GOLD=1 \
+#               EVENT=high_confinement_mode VERSION=v2 LIMIT=20 \
+#                 sbatch --cpus-per-task=4 --mem=3G <this>
+#   full run:   the current rules in their own tables, v1's untouched (a v1 table
+#               refuses a rerun under them), e.g.
+#               EVENT=sawtooth_oscillation VERSION=v2 GOLD=1 sbatch <this>
+#               EVENT=high_confinement_mode VERSION=v2 sbatch --cpus-per-task=4 --mem=3G <this>
+#               EVENT=edge_localized_mode VERSION=v2 GOLD=1 \
 #                 sbatch --cpus-per-task=4 --mem=5G <this>
-#               then rebuild their stores (review_build.sbatch, FORCE=1)
-#   extension:  EVENT=... WINDOWS=population sbatch --time=02:00:00 <this>
+#               each with --mem reset to its pilot's MaxRSS x 1.2
+#   redo:       every shot of a version again, its rules unchanged, with the gold
+#               score, e.g.
+#               EVENT=sawtooth_oscillation VERSION=v2 FORCE=1 GOLD=1 sbatch <this>
+#               EVENT=edge_localized_mode VERSION=v2 FORCE=1 GOLD=1 \
+#                 sbatch --cpus-per-task=4 --mem=5G <this>
+#               then rebuild the stores of a page open on them (review_build.sbatch,
+#               FORCE=1)
+#   extension:  EVENT=... VERSION=v2 WINDOWS=population sbatch --time=02:00:00 <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 # The tearing-mode editor's `window` method reads nothing: run it on the login node.
 #
@@ -59,9 +69,10 @@ export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/Fusion
 export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
 : "${EVENT:?set EVENT to the editor, e.g. EVENT=sawtooth_oscillation}"
-echo "job ${SLURM_JOB_ID:-none} $EVENT on $(hostname) at $(date -Is), root $ROOT"
+echo "job ${SLURM_JOB_ID:-none} $EVENT ${VERSION:-v1} on $(hostname)" \
+    "at $(date -Is), root $ROOT"
 srun "$ENV/bin/python" -m labeler.events.spans --event "$EVENT" \
     --windows "${WINDOWS:-cohort}" --workers "${WORKERS:-${SLURM_CPUS_PER_TASK:-8}}" \
     ${LIMIT:+--limit "$LIMIT"} ${SHOTS:+--shots $SHOTS} ${FORCE:+--force} \
-    ${GOLD:+--gold}
+    ${GOLD:+--gold} ${VERSION:+--version "$VERSION"}
 echo "finished at $(date -Is)"
