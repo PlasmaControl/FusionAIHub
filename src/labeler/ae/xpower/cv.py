@@ -18,8 +18,9 @@ they differ in size by at most one shot (24 each on the real data). `--folds`
 writes `cv/folds.csv` (shot, split, fold; the test shots have no fold) and
 `cv/folds.json` before any training. Every later step (the fold tasks, the
 choice, `train --from-cv` and `evaluate --test`) refuses unless the file holds
-exactly the folds the snapshot and TokEye's masks give then (`checked_folds`),
-and the choice, the final model and `chosen.json` name the file's sha256.
+exactly the folds the snapshot and TokEye's masks (`xpower.tokeye_masks`, a
+whole-window version's `ae/masks-full`) give then (`checked_folds`), and the
+choice, the final model and `chosen.json` name the file's sha256.
 
 **A fold task.** Fold K is predicted; fold (K + 1) mod 5 stops the training
 (`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs: v1's
@@ -31,7 +32,10 @@ source-table label, so only inside that table's window; a fold shot the table
 lacks is refused before training): `p<shot>` P(AE), `o<shot>` the owner's
 states, `m<shot>` MHD, `s<shot>` scored. Then `fold<K>.json`, the record that
 marks the task done, with the source table's sha256 and the frames its window
-dropped.
+dropped. A whole-window version's (v3's) frames are the owner's whole window
+instead (`evaluate.whole_frames`, from TokEye's `ae/masks-full`), which no source
+table filters: nothing is refused for lacking one, and the record's
+`source_sha256` is null and `source_dropped` 0.
 
 **The choice.** The out-of-fold frames of all five folds, pooled per candidate
 (every pool shot once), at thresholds 0.10 to 0.90 in steps of 0.05, as
@@ -93,6 +97,7 @@ from . import (
     CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
+    WHOLE_WINDOW_VERSIONS,
     evaluate,
     event_dir,
     model_dir,
@@ -174,7 +179,7 @@ def _folds_text(split: dict[int, str], folds: dict[int, int]) -> str:
 def _expected(paths: Paths, version: str):
     """The snapshot's sha256 and labels, the split, the folds and folds.csv."""
     data, saved = read_snapshot(paths, version)
-    split = make_split(saved, seldnet_split(tokeye_masks(paths)))
+    split = make_split(saved, seldnet_split(tokeye_masks(paths, version)))
     folds = make_folds(s for s, v in split.items() if v != "test")
     return _sha(data), saved, split, folds, _folds_text(split, folds)
 
@@ -305,22 +310,28 @@ def run_fold(
     digest, saved, _, folds, folds_sha = checked_folds(paths, folds_from, version)
     if seeded:
         _chosen_for_seeds(folds_from, candidate, folds_sha)
-    source = evaluate.source_table(paths)  # the test's source-window filter
     by = _by_fold(folds, pilot)
-    lacking = [s for s in by[fold] if s not in source.labels]
-    if lacking:
-        raise ValueError(
-            f"{source.path or event_dir(paths)}: no source-table label for fold "
-            f"{fold}'s shots {', '.join(map(str, lacking))}; the test scores only "
-            "frames inside that table's windows"
-        )
+    whole = version in WHOLE_WINDOW_VERSIONS
+    if whole:  # the owner's whole windows, which no source table filters
+        source, source_sha = None, evaluate.source_sha(paths, version)
+    else:
+        source = evaluate.source_table(paths)  # the test's source-window filter
+        source_sha = source.sha256
+        lacking = [s for s in by[fold] if s not in source.labels]
+        if lacking:
+            raise ValueError(
+                f"{source.path or event_dir(paths)}: no source-table label for fold "
+                f"{fold}'s shots {', '.join(map(str, lacking))}; the test scores only "
+                "frames inside that table's windows"
+            )
     stop = stop_fold(fold)
     train_folds = [f for f in range(N_FOLDS) if f not in (fold, stop)]
     train_shots = [s for f in train_folds for s in by[f]]
 
     def shot(s):
         rows = store_rows(paths.spectrogram_file(EVENT, s))
-        return load_shot(s, saved[s], rows, tokeye_masks(paths), band=spec["band"])
+        masks = tokeye_masks(paths, version)
+        return load_shot(s, saved[s], rows, masks, band=spec["band"])
 
     config = replace(fold_config(spec, pilot), seed=seed)
     model, history, _ = train.fit(
@@ -329,14 +340,19 @@ def run_fold(
     blob = {"band_khz": list(spec["band"]), "threshold": 0.5, "candidate": candidate}
     arrays, dropped = {}, 0
     for s in by[fold]:
-        frames = evaluate.shot_frames(
-            s,
-            paths=paths,
-            label=saved[s],
-            model=model,
-            blob=blob,
-            source=source.labels[s],
-        )
+        if whole:
+            frames = evaluate.whole_frames(
+                s, paths=paths, label=saved[s], model=model, blob=blob, version=version
+            )
+        else:
+            frames = evaluate.shot_frames(
+                s,
+                paths=paths,
+                label=saved[s],
+                model=model,
+                blob=blob,
+                source=source.labels[s],
+            )
         dropped += frames.source_dropped
         arrays[f"p{s}"] = np.asarray(frames.prob, dtype=np.float32)
         arrays[f"o{s}"] = np.asarray(frames.owner, dtype=np.int8)
@@ -367,7 +383,7 @@ def run_fold(
         "pilot": pilot,
         "labels_sha256": digest,
         "folds_sha256": folds_sha,
-        "source_sha256": source.sha256,
+        "source_sha256": source_sha,
         "source_dropped": dropped,
         "npz_sha256": _sha(buffer.getvalue()),
         "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024),
@@ -430,7 +446,7 @@ def oof_frames(paths: Paths, version: str, seed: int = SEED) -> list:
     spec = train.candidate_spec(version, name)
     config = asdict(replace(fold_config(spec, 0), seed=seed))
     config = json.loads(json.dumps(config))  # as a record holds it
-    source_sha = evaluate.source_table(paths).sha256
+    source_sha = evaluate.source_sha(paths, version)
     by = _by_fold(folds.folds, 0)
     frames = []
     for k in range(N_FOLDS):
@@ -586,7 +602,7 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
     """Pool the 15 fold records, apply the rule, write choice.json and frontier.md."""
     check_version(models, version)
     digest, _, _, folds, folds_sha = checked_folds(paths, models, version)
-    source_sha = evaluate.source_table(paths).sha256
+    source_sha = evaluate.source_sha(paths, version)
     names = train.candidates(version)
     missing = [
         f"{name} fold {k}"
@@ -702,17 +718,24 @@ def frontier_md(choice: dict) -> str:
     """The pooled out-of-fold table, the rule and what it chose."""
     n = choice["frames"]
     epochs = sorted(choice["best_epochs"][choice["candidate"]])
+    if choice["version"] in WHOLE_WINDOW_VERSIONS:
+        window = "the owner's whole windows"
+        dropped = "none dropped, as no source table filters a whole window"
+    else:
+        window = "0-2 s"
+        dropped = (
+            f"{n['source_dropped']} frames outside the source table's window "
+            "dropped, as the test drops them"
+        )
     lines = [
         f"# AE {choice['version']}: the cross-validated choice",
         "",
         (
             f"Out-of-fold frames of {n['shots']} shots in {N_FOLDS} folds "
             f"(each predicted by a model that neither trained nor stopped on it): "
-            f"{n['scored']} frames of 0-2 s, {n['present']} present, "
-            f"{n['mhd_absent']} MHD frames the owner called absent; "
-            f"{n['source_dropped']} frames outside the source table's window "
-            f"dropped, as the test drops them. Labels sha256 "
-            f"{choice['labels_sha256'][:12]}..."
+            f"{n['scored']} frames of {window}, {n['present']} present, "
+            f"{n['mhd_absent']} MHD frames the owner called absent; {dropped}. "
+            f"Labels sha256 {choice['labels_sha256'][:12]}..."
         ),
         "",
         "The rule (the ledger's Deviation 11), over every (candidate, threshold):",

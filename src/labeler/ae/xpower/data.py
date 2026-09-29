@@ -13,8 +13,9 @@ averaged onto 2 ms sub-frames, five to each frame of `labeler.scoring.frames`.
 
 **MHD frames** are where TokEye's cleaned coherent mask (`$LABELER_ROOT/ae/masks`)
 lights a line at or under ~60 kHz on at least two of the four chords for at least
-half of a frame's columns. TokEye covers 0-2 s. They are the hard negatives
-training up-weights and the named check `evaluate` runs.
+half of a frame's columns. v1's masks cover 0-2 s; `ae/masks-full` the whole shot
+(v3). They are the hard negatives training up-weights and the named check
+`evaluate` runs.
 
 **The split.** The test shots are the reviewed shots of the earlier detector's
 own validation block (SELDNet's `valid`, a block of sessions), so every method

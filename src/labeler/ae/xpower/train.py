@@ -15,7 +15,8 @@ The second is the final model of a version chosen by cross-validation (`cv`,
 the ledger's Deviation 11): `cv/choice.json`'s candidate, trained on exactly
 the pool shots of `cv/folds.csv` (every train and validation shot of the
 version's label snapshot; the file is checked against the snapshot and TokEye's
-masks, and its sha256 against the choice's) for the choice's fixed epoch count
+masks, a whole-window version's the whole-shot ones (`xpower.tokeye_masks`),
+and its sha256 against the choice's) for the choice's fixed epoch count
 (the median of its folds' best epochs) with no early stopping, saved at the
 choice's threshold with the choice's, the folds' and the snapshot's sha256,
 into `models/ae_xpower/<version>/<candidate>/`; then `chosen.json` beside it.
@@ -87,7 +88,8 @@ THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
 #: the earlier detector's band and the full band at two weights on MHD frames,
 #: chosen on the validation shots (`evaluate --choose`); v2's keep v1's band
 #: and vary only the MHD weight, chosen by cross-validation (`cv`, the ledger's
-#: Deviation 11).
+#: Deviation 11); v3's are v2's weights on the full band, 0-250 kHz, chosen the
+#: same way over the owner's whole windows.
 CANDIDATES_BY_VERSION = {
     "v1": {
         "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
@@ -98,6 +100,11 @@ CANDIDATES_BY_VERSION = {
         "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
         "band80-mhd10": {"band": BAND_KHZ, "mhd_weight": 10.0},
         "band80-mhd30": {"band": BAND_KHZ, "mhd_weight": 30.0},
+    },
+    "v3": {
+        "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
+        "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
+        "band0-mhd30": {"band": FULL_BAND_KHZ, "mhd_weight": 30.0},
     },
 }
 #: The default version's candidates (v1's), for readers that name no version.
@@ -499,7 +506,7 @@ def train_from_cv(
                 s,
                 folds.saved[s],
                 store_rows(paths.spectrogram_file(EVENT, s)),
-                tokeye_masks(paths),
+                tokeye_masks(paths, version),
                 band=spec["band"],
             )
             for s in pool
@@ -630,7 +637,7 @@ def main(argv=None) -> int:
         snapshot_file.parent.mkdir()
         snapshot_file.write_bytes(labels_bytes)
         saved = labels.read_saved(snapshot)
-    split = make_split(saved, seldnet_split(tokeye_masks(paths)))
+    split = make_split(saved, seldnet_split(tokeye_masks(paths, args.version)))
     epochs = TrainConfig.epochs if args.epochs is None else args.epochs
     config = TrainConfig(
         epochs=2 if args.pilot else epochs, mhd_weight=spec["mhd_weight"]
@@ -645,7 +652,7 @@ def main(argv=None) -> int:
             s,
             saved[s],
             store_rows(paths.spectrogram_file(EVENT, s)),
-            tokeye_masks(paths),
+            tokeye_masks(paths, args.version),
             band=spec["band"],
         )
         for s, v in sorted(split.items())

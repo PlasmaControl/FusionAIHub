@@ -7,12 +7,13 @@ The first scores every trained candidate of the version (`train.candidates`)
 on the validation shots and writes `chosen.json`; the second scores the chosen
 one, once, on the test shots and writes `evaluation.json` and `evaluation.md`,
 all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`). A
-version chosen by cross-validation (v2, `labeler.ae.xpower.cv`) is not chosen
-here: `--choose` only checks that `chosen.json` is the one `train --from-cv`
-wrote from `cv/choice.json`, and the test checks the model against both.
-v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's chosen
-model's `split.csv`, checked before scoring to be v2 test shots) as a second
-table and a `v1_subset` block; the bar is judged on the whole split only.
+version chosen by cross-validation (v2 and v3, `labeler.ae.xpower.cv`) is not
+chosen here: `--choose` only checks that `chosen.json` is the one `train
+--from-cv` wrote from `cv/choice.json`, and the test checks the model against
+both. v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's
+chosen model's `split.csv`, checked before scoring to be v2 test shots) as a
+second table and a `v1_subset` block, and v3's reports v2's the same way
+(`v2_subset`); the bar is judged on the whole split only.
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
 repeated, and a pilot there scores 20 test shots at most, and for a
 cross-validated version only a pilot choice's model (never a copy of the
@@ -23,10 +24,19 @@ must be the models directory's name and the version its checkpoints record.
 **Frames.** The 10 ms frames of 0-2 s that the owner called present or absent,
 that TokEye's record covers, that the model's rows cover and that lie inside
 the source table's window (`source_table`; the record names it by sha256).
-0-2 s is all TokEye and the earlier detector ever saw, so every method is
-scored on the same frames. A cross-validated version's out-of-fold frames are
-these too (`cv`), and its test refuses a source table other than the one they
-were chosen with.
+0-2 s is all v1's TokEye masks and the earlier detector's inputs cover, so
+every method is scored on the same frames. A cross-validated version's
+out-of-fold frames are these too (`cv`), and its test refuses a source table
+other than the one they were chosen with.
+
+A whole-window version (`WHOLE_WINDOW_VERSIONS`, v3) is scored instead on the
+frames of the owner's whole window (`whole_frames`) that the owner called
+present or absent, that TokEye's whole-shot record covers and that the model's
+rows cover, by `WHOLE_METHODS`: `source` and `uci` cover 0-2 s only. No source
+table filters them (the table covers 0-2 s), so its fold records and choice
+name none (`source_sha`) and its test compares none. Its out-of-fold frames are
+these too. Beside the bar, not judged against it, its test also scores v2's
+exact 0-2 s table: the frames above, by every method (`window_0_2s`).
 
 **Methods.** `ae_xpower`, the chosen candidate at its validation threshold;
 `seldnet`, the earlier detector (`ae_seldnet_threeway_sce.pt`), a frame present
@@ -77,6 +87,7 @@ from . import (
     EVENT,
     LABEL_SNAPSHOTS,
     VERSION,
+    WHOLE_WINDOW_VERSIONS,
     check_bound,
     check_full,
     check_limit,
@@ -86,6 +97,7 @@ from . import (
     model_dir,
     pilot_area,
     seldnet_dir,
+    seldnet_inputs,
     tokeye_masks,
 )
 from .data import (
@@ -118,8 +130,11 @@ BAR = {
     "f1_vs_seldnet_low": -0.03,
     "mhd_fp_rate": 0.05,
 }
-SUBSET_OF = {"v2": "v1"}  # the earlier version whose test shots are reported
+#: The earlier version whose test shots are reported.
+SUBSET_OF = {"v2": "v1", "v3": "v2"}
 METHODS = ("ae_xpower", "seldnet", "tokeye", "source", "uci", "always")
+#: A whole-window version's methods: `source` and `uci` cover 0-2 s only.
+WHOLE_METHODS = ("ae_xpower", "seldnet", "tokeye", "always")
 
 
 @dataclass
@@ -219,6 +234,14 @@ def source_table(paths: Paths) -> SourceTable:
     return SourceTable(file, hashlib.sha256(data).hexdigest(), found)
 
 
+def source_sha(paths: Paths, version: str) -> str | None:
+    """The source table's sha256, as fold records and choices name it; None for
+    a whole-window version, which filters by no source table."""
+    if version in WHOLE_WINDOW_VERSIONS:
+        return None
+    return source_table(paths).sha256
+
+
 def shot_frames(
     shot: int,
     *,
@@ -260,6 +283,44 @@ def shot_frames(
         said["seldnet"] = seldnet_said(seldnet, spec_path, t_ms, first, n)
     mhd = tk["covered"] & (tk["low"] >= MIN_FRACTION)
     return ShotFrames(int(shot), owner, mhd, scored, said, prob, dropped)
+
+
+def whole_frames(
+    shot: int,
+    *,
+    paths: Paths,
+    label,
+    model,
+    blob: dict,
+    version: str,
+    seldnet=None,
+    spec_path=None,
+) -> ShotFrames:
+    """The frames of the owner's whole window of one shot, as `shot_frames` makes
+    those of 0-2 s but from the version's TokEye record (`tokeye_masks`), and
+    every method of `WHOLE_METHODS` the arguments allow. No source table
+    filters them, so `source_dropped` is 0."""
+    first, n = window_frames(label.window)
+    rows = store_rows(paths.spectrogram_file(EVENT, shot))
+    prob, observed = probabilities(model, rows, first, n, band=blob["band_khz"])
+    owner = targets(label, first, n)
+    masks = tokeye_masks(paths, version)
+    path = clean_path(masks, shot)
+    if path is None:
+        raise FileNotFoundError(f"{masks}: no TokEye mask for {shot}")
+    tk = tokeye_frames(path, first, n)
+    scored = np.isin(owner, (ABSENT, PRESENT)) & tk["covered"] & observed
+    said = {
+        "ae_xpower": prob >= blob["threshold"],
+        "tokeye": tk["ae"] >= MIN_FRACTION,  # 80-250 kHz, as over 0-2 s
+        "always": np.ones(n, dtype=bool),
+    }
+    if seldnet is not None:
+        with np.load(path) as z:
+            t_ms = np.asarray(z["t_ms"], dtype=np.float64)
+        said["seldnet"] = seldnet_said(seldnet, spec_path, t_ms, first, n)
+    mhd = tk["covered"] & (tk["low"] >= MIN_FRACTION)
+    return ShotFrames(int(shot), owner, mhd, scored, said, prob, 0)
 
 
 def window_cells(shot: int, *, paths: Paths, label, model, blob: dict) -> np.ndarray:
@@ -390,10 +451,14 @@ def _fmt(e: dict) -> str:
 
 
 def report_md(scores: dict, bar: dict, meta: dict, subset: dict | None = None) -> str:
-    """`evaluation.md`: the table the paper's AE score figure and table read."""
+    """`evaluation.md`: the table the paper's AE score figure and table read. A
+    whole-window version's (`meta["frames_window"]` "whole") is over the
+    owner's whole windows, with v2's 0-2 s table after the bar."""
     n = scores["frames"]
+    whole = meta.get("frames_window") == "whole"
+    frames = "frames of the owner's whole windows" if whole else "frames of 0-2 s"
     summary = (
-        f"{n['shots']} shots, {n['scored']} frames of 0-2 s ({n['present']} present), "
+        f"{n['shots']} shots, {n['scored']} {frames} ({n['present']} present), "
         f"{n['mhd_absent']} MHD frames the owner called absent on "
         f"{n['shots_with_mhd_absent']} shots. Threshold {meta['threshold']}, band "
         f"{meta['band_khz']} kHz. 95 % shot-bootstrap intervals."
@@ -411,9 +476,28 @@ def report_md(scores: dict, bar: dict, meta: dict, subset: dict | None = None) -
         "Tier: suggestions."
     )
     lines += ["", verdict_line, ""]
+    if whole:
+        lines += _early_md(scores["window_0_2s"])
     if subset is not None:
         lines += _subset_md(subset)
     return "\n".join(lines)
+
+
+def _early_md(early: dict) -> list[str]:
+    """A whole-window version's 0-2 s table, as v2 was scored: beside the bar."""
+    n = early["frames"]
+    return [
+        "## 0-2 s, as v2 was scored",
+        "",
+        (
+            f"v2's frames, for comparison and not judged against the bar: the "
+            f"{n['scored']} frames of 0-2 s ({n['present']} present) that TokEye's "
+            "and SELDNet's 0-2 s records cover, inside the source table's windows."
+        ),
+        "",
+        *_tables(early),
+        "",
+    ]
 
 
 def _tables(scores: dict) -> list[str]:
@@ -530,7 +614,8 @@ def cv_chosen(
     `model.pt`) against its `model_sha256`; the model's split (`split`, else its
     `split.csv`) against the folds: their test shots, and all of their pool
     shots to train (a pilot's, the first N); and the source table (`source`,
-    else the current one) against the one the choice's frames were scored with."""
+    else the current one) against the one the choice's frames were scored with,
+    or, for a whole-window version, the choice against naming none."""
     from . import cv  # cv imports this module
 
     chosen_file, cv_files = models / "chosen.json", cv.cv_dir(models)
@@ -570,6 +655,13 @@ def cv_chosen(
             f"{split_file}: shots {', '.join(map(str, differ))} are not split as "
             f"the folds ({folds_file}) have them"
         )
+    if version in WHOLE_WINDOW_VERSIONS:
+        if choice.get("source_sha256") is not None:
+            raise ValueError(
+                f"{choice_file}: names a source table (source_sha256); a "
+                "whole-window version's frames are filtered by none"
+            )
+        return chosen
     source = source_table(paths) if source is None else source
     if source.sha256 != choice.get("source_sha256"):
         raise ValueError(
@@ -804,7 +896,7 @@ def frames_of_test(
     frames, windows = [], []
     model, blob, saved = inputs.model, inputs.blob, inputs.saved
     for s in shots:
-        spec = paths.root / "ae" / "dataset" / f"{s}_{splits[s]}.npz"
+        spec = seldnet_inputs(paths) / f"{s}_{splits[s]}.npz"
         frames.append(
             shot_frames(
                 s,
@@ -826,6 +918,30 @@ def frames_of_test(
     return frames, windows
 
 
+def frames_whole_of_test(
+    paths: Paths, inputs: Inputs, shots: Sequence[int], version: str
+) -> list[ShotFrames]:
+    """Each test shot's frames of the owner's whole window (`whole_frames`), with
+    every method of `WHOLE_METHODS`: SELDNet on the version's inputs
+    (`seldnet_inputs`), under the split TokEye's record is named by."""
+    seldnet = load_seldnet(paths)
+    splits = seldnet_split(tokeye_masks(paths, version))
+    model, blob, saved = inputs.model, inputs.blob, inputs.saved
+    return [
+        whole_frames(
+            s,
+            paths=paths,
+            label=saved[s],
+            model=model,
+            blob=blob,
+            version=version,
+            seldnet=seldnet,
+            spec_path=seldnet_inputs(paths, version) / f"{s}_{splits[s]}.npz",
+        )
+        for s in shots
+    ]
+
+
 def run_test(
     paths: Paths, models: Path, limit: int = 0, *, version: str = VERSION
 ) -> dict:
@@ -840,27 +956,38 @@ def run_test(
     inputs = load_test(paths, models, version)
     split = inputs.split
     subset = earlier_test(paths, version, {s for s, v in split.items() if v == "test"})
-    shots, windows = frames_of_test(paths, inputs, _reviewed(split, "test", limit))
-    scores = score(shots, METHODS)
-    scores["window"] = {"f1": _estimate(np.asarray(windows), stats.f1)}
+    test = _reviewed(split, "test", limit)
+    whole = version in WHOLE_WINDOW_VERSIONS
+    if whole:
+        # The owner's whole windows, and beside them v2's exact 0-2 s table.
+        shots = frames_whole_of_test(paths, inputs, test, version)
+        early, _ = frames_of_test(paths, inputs, test, whole_window=False)
+        scores = score(shots, WHOLE_METHODS)
+        scores["window_0_2s"] = score(early, METHODS)
+    else:
+        shots, windows = frames_of_test(paths, inputs, test)
+        scores = score(shots, METHODS)
+        scores["window"] = {"f1": _estimate(np.asarray(windows), stats.f1)}
     bar = verdict(scores)  # on the whole split only
     if subset is not None:
         within = [f for f in shots if f.shot in set(subset["shots"])]
         if within:
             wanted = {f.shot for f in within}
-            subset |= score(within, METHODS)
-            subset["window"] = {
-                "f1": _estimate(
-                    np.asarray([c for f, c in zip(shots, windows) if f.shot in wanted]),
-                    stats.f1,
-                )
-            }
+            if whole:
+                subset |= score(within, WHOLE_METHODS)
+                early_within = [f for f in early if f.shot in wanted]
+                subset["window_0_2s"] = score(early_within, METHODS)
+            else:
+                subset |= score(within, METHODS)
+                kept = [c for f, c in zip(shots, windows) if f.shot in wanted]
+                subset["window"] = {"f1": _estimate(np.asarray(kept), stats.f1)}
     meta = {
         **identity(inputs, version),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "tier": "suggestions",
         "limit": limit,
+        "frames_window": "whole" if whole else "0-2 s",
         **inputs.cv_meta,
     }
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
