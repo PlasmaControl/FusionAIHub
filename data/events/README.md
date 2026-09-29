@@ -5,6 +5,7 @@ producer extensions. `events.yaml` lists the raw sources, output filenames,
 formatters, and shared storage conventions.
 
 ```text
+data/events/reviewers.txt                   # the review page's list of names
 data/events/<category>/
   raw/                                      # unchanged original data
   formatter.py

@@ -5,7 +5,9 @@
 **Data.** Every shot of the AE split with a pseudo-mask (`pseudo`): as input its
 three cross-power rows at store level 8 (2.048 ms columns, 257 bins to
 250 kHz), as target its pseudo-mask with the regions the reviewer rejected set
-to background (`regions.reviewed_mask`). The split is the chosen AE model's
+to background (`regions.reviewed_mask`). A decision made on the review
+page's pseudo-v1-full masks is not one on pseudo-v1: training warns and ignores
+it (`regions.other_decisions`). The split is the chosen AE model's
 (`models/ae_xpower/v1/<chosen>/split.csv`): a shot is a test shot of both
 models or of neither. Each shot is cut to the columns its mask scores, and
 `MARGIN_COLS` either side for context.
@@ -464,6 +466,14 @@ def main(argv=None) -> int:
     except FileNotFoundError:
         masks_bytes, masks_hash = b"", None
     saved, decisions = read_review_bytes(labels_bytes, masks_bytes)
+    other = regions.other_decisions(decisions, spec.pseudo)
+    if other:
+        print(
+            f"warning: {len(other)} shots' mask decisions were made on another mask "
+            f"set than {spec.pseudo} and are ignored: {', '.join(map(str, other[:10]))}"
+            + (" ..." if len(other) > 10 else ""),
+            file=sys.stderr,
+        )
     ae_models = ae_model_dir(paths, spec.ae_version)
     ae_file = chosen_model(ae_models)
     input_files = {

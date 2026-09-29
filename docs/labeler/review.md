@@ -47,10 +47,15 @@ after the newest save.
   *confirmed* (saved as the source had it) or *changed*. A dot marks a shot with
   unsaved edits. Unsaved edits live in the browser until you save or revert, so
   a reload keeps them.
-- **Your name**, in the box at the top right, goes with every save and is shown
-  beside it (`saved Sep 26, 14:02 by Ada Lovelace`). The browser remembers it.
-  It is an attribution, not a login: the history also records the login that
-  runs the server.
+- **Your name.** The page first asks who is reviewing: pick your name from the
+  list, or type it and press Add Name if it is not there, then press Continue.
+  A new tab or window asks again, with your last name already picked; a reload
+  does not. The name, at the top right (click it to change), goes with every
+  save and is shown beside it (`saved Sep 26, 14:02 by Ada Lovelace`). It is an
+  attribution, not a login: the history also records the login that runs the
+  server. The list is `data/events/reviewers.txt`, one name per line, which you
+  may edit (Add Name only appends a line); until a name is added it is the
+  names already saved in the review logs.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
   each one, when, how many spans, and how many ms changed. The first version
   is compared with the event's current source table; later ones with the version
@@ -58,12 +63,24 @@ after the newest save.
   version and never rewrites one, but a crash between writing the label and
   its history line can leave the current label without its version line.
 - **Mask** (Alfvén eigenmode shots with a pseudo-mask): TokEye's coherent lines
-  inside the label's AE frames, 80-250 kHz, drawn in cyan over the rows
-  (`labeler.ae.seg.pseudo` builds them). The segmentation model learns from
-  them. A click on a region that is not the mode (an MHD harmonic, pickup)
+  inside the label's AE frames, 80-250 kHz, over the label's whole window, drawn
+  in cyan over the rows: `pseudo-v1-full`, pseudo-v1's rules
+  (`labeler.ae.seg.pseudo`) over TokEye's whole-shot masks, built by
+  `python -m labeler.ae.seg.whole` from the labels saved when it ran. SegNet v1
+  learnt from pseudo-v1 (TokEye's 0-2 s masks), so a decision saved here is
+  stale to it, as to v2 and v3. A click on a region that is not the mode (an MHD harmonic, pickup)
   rejects it, grey; a second click takes that back. Each click is saved at
   once, with your name. `M` hides and shows the mask, and the browser
   remembers which. The header counts the regions kept.
+- **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot
+  masks light on two of the four chords, AE or not, in the band each row
+  shows, drawn in faint cyan over TokEye's 0-6 s, past the label windows' 2 s:
+  under the mask inside the label's window, over the veil outside it
+  (`python -m labeler.ae.seg.whole` builds it into
+  `segmentation/alfven_eigenmode/tokeye-full/`) from the same TokEye masks as
+  the mask. A picture only: nothing trains on it and a click never lands on it.
+  `M` hides it with the mask; a shot with the layer and no mask says
+  "TokEye only" in the header.
 - **Save and next** shows the shot it goes to. It is the next shot in the
   queue, reviewed or not, wrapping at the end; `U` still jumps to the next
   unreviewed one.
@@ -91,7 +108,7 @@ that edit back. Restoring the current label leaves it alone.
 | `S` / `R` | save / revert to the source |
 | `←` `→` or `J` `K` / `U` | previous, next shot (an edit stays as a draft) / next unreviewed |
 | `H` | saved versions, and restore one |
-| `M` / click a mask region | AE: hide or show the pseudo-mask / reject the region, or take that back |
+| `M` / click a mask region | AE: hide or show the pseudo-mask and TokEye layer / reject the region, or take that back |
 | `[` `]` | contrast |
 | `?` | this list |
 
@@ -259,14 +276,14 @@ Saves go under the event's directory in the label tables
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
 - `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
-  running the server), `name` (what the name box held, or null), time, the
+  running the server), `name` (the reviewer's name, or null), time, the
   window and spans saved, and the source file they were compared with. It is
   only ever appended to: a shot's versions are its lines in order, numbered
   from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
   names existed have no `name` and read as unnamed.
 - `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
   shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
-  (the server's login), `name` (the name box, or null), and time. A shot's last
+  (the server's login), `name` (the reviewer's name, or null), and time. A shot's last
   line is its decision. Its `revision` is the number of that shot's log lines,
   including decisions on older masks; it is derived from the log rather than
   stored as a separate field. GET returns the revision and each POST must name
@@ -281,7 +298,8 @@ Saves go under the event's directory in the label tables
 
 A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the
-server, so a page reload before a restart never breaks a save.
+server, so a page reload before a restart never breaks a save. From a server
+older than the list of names the page keeps the typed name box.
 
 ## The row store
 

@@ -13,6 +13,7 @@
   --veil: rgba(236, 238, 236, 0.62);
   --mask: rgba(0, 229, 255, 0.6);
   --rejected: rgba(200, 200, 200, 0.85);
+  --tokeye: rgba(0, 229, 255, 0.3);
   --gutter: 96px;
   color-scheme: light;
   font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -33,6 +34,7 @@
     --veil: rgba(21, 26, 24, 0.62);
     --mask: rgba(0, 229, 255, 0.6);
     --rejected: rgba(200, 200, 200, 0.85);
+    --tokeye: rgba(0, 229, 255, 0.3);
     color-scheme: dark;
   }
 }
@@ -82,6 +84,7 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
 #status.error { color: var(--error); }
 #help { width: 28px; padding: 3px 0; }
 #reviewer-name { width: 11em; }
+#reviewer { max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
 #stale { color: var(--unsaved); }
 #next-shot { font-variant-numeric: tabular-nums; }
 
@@ -199,6 +202,14 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.3); }
 dialog td { padding: 2px 16px 2px 0; }
 dialog form { margin-top: 10px; text-align: right; }
 dialog h2 { margin: 0 0 8px; font-size: 14px; }
+#who { width: 300px; padding: 18px 20px; }
+#who .hint { margin: 0; color: var(--muted); }
+#who-names { display: block; width: 100%; margin: 10px 0 4px; padding: 2px; }
+#who-names option { padding: 3px 6px; }
+.who-add { display: flex; gap: 8px; margin-top: 8px; }
+.who-add input { flex: 1; min-width: 0; }
+#who-error { margin: 6px 0 0; min-height: 1.35em; color: var(--error); }
+.who-go { text-align: right; }
 #version-list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
 #version-list li {
   display: flex;

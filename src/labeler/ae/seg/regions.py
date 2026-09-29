@@ -14,7 +14,10 @@ made on another version of the pseudo-mask (another sha256) is stale: the page
 says so and training ignores it.
 
 Training takes the pseudo-mask with every rejected region set to background
-(`reviewed_mask`).
+(`reviewed_mask`). SegNet trains on pseudo-v1, and the review page draws
+pseudo-v1-full (`whole.REVIEW`): a decision made there names that set in
+`pseudo`, so training on pseudo-v1 cannot use it and says so
+(`other_decisions`).
 """
 
 from __future__ import annotations
@@ -107,12 +110,18 @@ def read_decisions(event_dir) -> dict[int, dict]:
 
 
 def save_decision(
-    event_dir, shot: int, rejected, *, pseudo_sha256: str, name: str | None = None
+    event_dir,
+    shot: int,
+    rejected,
+    *,
+    pseudo_sha256: str,
+    name: str | None = None,
+    pseudo: str = PSEUDO,
 ) -> dict:
-    """Append one decision; the line written."""
+    """Append one decision, made on the masks named `pseudo`; the line written."""
     entry = {
         "shot": int(shot),
-        "pseudo": PSEUDO,
+        "pseudo": pseudo,
         "pseudo_sha256": pseudo_sha256,
         "rejected": sorted({int(k) for k in rejected}),
         "name": name,
@@ -137,9 +146,19 @@ def reviewed_mask(pm: PseudoMask, decision: dict | None, sha256: str) -> np.ndar
     return mask
 
 
-def shot_view(paths, event_dir, shot: int) -> dict | None:
-    """What the review page draws for one shot, or None without a pseudo-mask."""
-    path = pseudo_file(paths, shot)
+def other_decisions(decisions: dict, pseudo: str = PSEUDO) -> list[int]:
+    """The shots whose last decision was made on another mask set than `pseudo`."""
+    return sorted(s for s, d in decisions.items() if d.get("pseudo", PSEUDO) != pseudo)
+
+
+def shot_view(
+    paths, event_dir, shot: int, *, path=None, pseudo: str = PSEUDO
+) -> dict | None:
+    """What the review page draws for one shot, or None without a pseudo-mask.
+
+    `path` is the shot's file among the masks named `pseudo` (default pseudo-v1's).
+    """
+    path = pseudo_file(paths, shot) if path is None else Path(path)
     if not path.is_file():
         return None
     pm = PseudoMask.load(path)
@@ -150,7 +169,7 @@ def shot_view(paths, event_dir, shot: int) -> dict | None:
     return {
         "shot": int(shot),
         "revision": len(history),
-        "pseudo": PSEUDO,
+        "pseudo": pseudo,
         "pseudo_sha256": sha,
         "grid": {"t0_ms": pm.t0_ms, "dt_ms": pm.dt_ms, "n": int(pm.mask.shape[1])},
         "y0_khz": pm.y0_khz,

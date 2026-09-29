@@ -15,11 +15,12 @@
   <span id="tier"></span>
   <span id="state" class="pill"></span>
   <span id="saved"></span>
-  <span id="masks" hidden title="AE pseudo-mask: click a region on the rows to reject it, M hides it"></span>
+  <span id="masks" hidden title="AE pseudo-mask: click a region on the rows to reject it, M hides it and the faint TokEye layer"></span>
   <span id="status" role="status" aria-live="polite"></span>
   <span id="stale" hidden>Restart the server for names and history</span>
   <input id="reviewer-name" placeholder="Your name" maxlength="64" autocomplete="name" spellcheck="false"
          aria-label="Your name, recorded with each save" title="Recorded with each save" hidden>
+  <button id="reviewer" type="button" title="Recorded with each save: click to change" hidden></button>
   <button id="help" type="button" aria-label="Keys">?</button>
 </header>
 <main id="top">
@@ -46,7 +47,7 @@
     <tr><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>J</kbd> <kbd>K</kbd></td><td>Previous, next shot; an edit stays as a draft</td></tr>
     <tr><td><kbd>U</kbd></td><td>Next unreviewed</td></tr>
     <tr><td><kbd>H</kbd></td><td>Saved versions: who saved what, and restore one</td></tr>
-    <tr><td><kbd>M</kbd></td><td>AE: show or hide the pseudo-mask, TokEye's lines inside the label</td></tr>
+    <tr><td><kbd>M</kbd></td><td>AE: show or hide the pseudo-mask, TokEye's lines inside the label's AE frames, and, faint, all of TokEye's lines over the whole shot</td></tr>
     <tr><td>Click a mask region</td><td>Reject it, or take that back; saved at once, with your name</td></tr>
     <tr><td>Drag on the label</td><td>Add, move or resize a span; the foot moves the window</td></tr>
     <tr><td>Shift-drag on the rows</td><td>Add a span</td></tr>
@@ -66,6 +67,19 @@
   <h2 id="versions-title">Saved versions</h2>
   <ul id="version-list"></ul>
   <form method="dialog"><button autofocus>Close</button></form>
+</dialog>
+<dialog id="who" aria-labelledby="who-title">
+  <h2 id="who-title">Who is reviewing?</h2>
+  <p class="hint">Your name is saved with each label and mask.</p>
+  <select id="who-names" size="6" aria-label="Names"></select>
+  <p id="who-empty" class="hint" hidden>No names yet: add yours.</p>
+  <div class="who-add">
+    <input id="who-new" placeholder="Name not listed?" maxlength="64" autocomplete="name" spellcheck="false"
+           aria-label="A name not on the list">
+    <button id="who-add" type="button">Add Name</button>
+  </div>
+  <p id="who-error" role="alert"></p>
+  <div class="who-go"><button id="who-continue" class="primary" type="button" disabled>Continue</button></div>
 </dialog>
 <script src="/app.js"></script>
 </body>
