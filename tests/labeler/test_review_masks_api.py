@@ -99,6 +99,17 @@ def test_a_rejected_region_becomes_background_unless_the_decision_is_stale():
     assert (regions.reviewed_mask(pm, None, "a" * 64) == pm.mask).all()
 
 
+def test_training_names_the_decisions_made_on_the_page_s_whole_window_masks():
+    decisions = {
+        3: {"pseudo": whole.REVIEW},
+        1: {"pseudo": "pseudo-v1"},
+        2: {},
+        4: {"pseudo": whole.REVIEW},
+    }
+    assert regions.other_decisions(decisions) == [3, 4]
+    assert regions.other_decisions(decisions, whole.REVIEW) == [1, 2]
+
+
 def test_the_page_reads_the_regions_and_saves_a_rejection_with_the_name(client, paths):
     view = client.get(_url()).json()
     assert [r["id"] for r in view["regions"]] == [1, 2]
