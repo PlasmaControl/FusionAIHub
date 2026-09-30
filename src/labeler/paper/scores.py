@@ -1,32 +1,18 @@
-r"""Frame scores: the AE methods, their MHD check, and the segmentation.
+r"""fig_scores, the selected models' F1 and ROC, and the score tables.
 
-`draw_scores` is one panel per paper phenomenon (`ORDER`): frame precision,
-recall and F1 with 95 % shot-bootstrap intervals. AE's panel, across the top,
-is `models/ae_xpower/<version>/evaluation.json` (`labeler.ae.xpower.evaluate`);
-the other four, below it, are coming. Its dots and whiskers sit on an axis from
-`SCORE_FLOOR`, so the differences A1 tests show; a value below the floor is
-drawn on it, with its number. `draw_mhd` is AE's alone: each method's
-false-positive rate on MHD frames (the owner says absent and TokEye sees a
-0-60 kHz line) beside its rate on the other absent frames, against the bar, on
-an axis capped at `MHD_CAP`; a bar past the cap runs to the edge and carries
-its value.
+`draw_scores` is one model per paper phenomenon (`ORDER`), the one selected for
+main inference (`labeler.paper.roc.SELECTED`): ae_xpower for AE, the frame
+models for the other four. Two panels, side by side: each model's test F1
+with its 95 % shot-bootstrap interval, from its `evaluation.json`, its value
+written beside it; and each model's ROC on the same test shots, from its
+`roc.json` (`labeler.paper.roc`), its threshold's point marked, its AUROC in
+the key, beside the dashed chance diagonal. A phenomenon with no evaluation
+has no dot and its tick says `NOT_SCORED`; one with no ROC has no curve and
+its key says `NO_ROC`. No other method, no baseline, and no precision or
+recall is drawn: those are the tables'.
 
-**Each AE figure states its bar's verdict as the record gives it** (`bar`),
-under its axis, with the numbers it turns on (`a1_said`, `a2_said`): A1's
-dashed marks are only its absolute floors (`FLOORS_LABEL`), so fig_scores says
-A1's paired clause, F1 − SELDnet's lower bound against its bar, and any floor
-the model misses; fig_mhd says both of A2's clauses, the MHD rate against its
-bar and MHD FP − SELDnet's upper bound against 0. They are stated, not drawn: a
-difference sits on its own scale around 0, not on a score axis from
-`SCORE_FLOOR` or a rate axis to `MHD_CAP`, and a bound 0.002 from its bar is a
-gap no whisker shows at this size, where the text gives both numbers. A record
-that passes says pass. `draw_segmentation` is
-`models/ae_seg/v1/evaluation.json` (`labeler.ae.seg.evaluate`), with every bar
-G1-G3 set (G1's on the Dice and on its interval's lower end); its MHD
-false-positive rate, where lower is better, has its own axis from 0 to
-`SEG_FP_TOP` so G3 reads. Recipe and TokEye are hatched, as the sources of the
-pseudo-masks the segmentation is scored against. `table_ae`,
-`table_segmentation` and `table_differences` give the same numbers as LaTeX
+`table_ae`, `table_segmentation` and `table_differences` give the AE methods'
+and the segmentation's scores and their paired differences as LaTeX
 `tabular`s, at three decimals, for the owner to caption.
 
 **The tables fit ICML's 487.8 pt text width** at `\small` or larger, in Times.
@@ -41,23 +27,24 @@ manuscript loads amsmath, but `icml2025.sty` does not, so each table that uses
 negative number outside math is written `$-$0.188`, and one that rounds to zero
 is `0.000`, unsigned, in math too (`number`, `text_number`).
 
-The AE methods are the same six everywhere (`AE_METHODS`): the model, the two
-detectors it is compared with, the start table, the UCI windows and the
-always-present baseline.
+The AE methods are the same six in table_ae_scores (`AE_METHODS`): the model,
+the two detectors it is compared with, the start table, the UCI windows and
+the always-present baseline.
 """
 
 from __future__ import annotations
 
 import json
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 from matplotlib.figure import Figure
-from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 
-from . import AE, COLUMN_IN, FONT_PT, ORDER, PAGE_IN, placeholder, save, style, title
+from . import FONT_PT, PAGE_IN, save, style, title
 
 AE_NAMES = {
     "ae_xpower": "ae_xpower",
@@ -67,22 +54,8 @@ AE_NAMES = {
     "uci": "UCI windows",
     "always": "always",
 }
-AE_METHODS = tuple(AE_NAMES)  # in fig_scores, fig_mhd and table_ae_scores
-METRICS = {"precision": "precision", "recall": "recall", "f1": "F1"}
-SCORE_FLOOR = 0.6
-MHD_CAP = 0.4
-MARKERS = {
-    "ae_xpower": "o",
-    "seldnet": "s",
-    "tokeye": "D",
-    "source": "^",
-    "uci": "v",
-    "always": "X",
-}
+AE_METHODS = tuple(AE_NAMES)  # in table_ae_scores
 SEG_NAMES = {"ae_seg": "ae_seg", "recipe": "recipe", "tokeye": "TokEye"}
-PSEUDO_SOURCES = ("recipe", "tokeye")  # the pseudo-masks are built from these
-PSEUDO_LABEL = "pseudo-mask source"
-HATCH = "////"
 SEG_METRICS = {
     "dice": "Dice",
     "frame_precision": "frame P",
@@ -90,31 +63,20 @@ SEG_METRICS = {
     "frame_f1": "frame F1",
     "fp_rate_mhd": "MHD FP",
 }
-SEG_BARS = {
-    "dice": ("dice", "dice_low"),
-    "frame_precision": ("frame_precision",),
-    "fp_rate_mhd": ("mhd_fp_rate",),
+#: fig_scores' colour per phenomenon, the same in both panels.
+PHENOMENON_COLOURS = {
+    "alfven_eigenmode": "#d62728",
+    "neoclassical_tearing_mode": "#1f77b4",
+    "high_confinement_mode": "#2ca02c",
+    "edge_localized_mode": "#9467bd",
+    "sawtooth_oscillation": "#ff7f0e",
 }
-SEG_FP = "fp_rate_mhd"  # lower is better: its own axis
-SEG_SCORES = tuple(m for m in SEG_METRICS if m != SEG_FP)
-SEG_FP_TOP = 0.2  # the axis reaches further only for an interval past it
-SEG_FP_STEP = 0.05
-LOWER_BETTER = "lower is better"
-AE_BARS = {"precision": "precision", "recall": "recall", "f1": "f1"}  # A1
-BAR_LABEL = "bar"
-LOW_BAR_LABEL = "bar on the lower bound"
-FLOORS_LABEL = "A1 floors"  # fig_scores' dashes: A1's absolute floors alone
-MARKS = (BAR_LABEL, LOW_BAR_LABEL, FLOORS_LABEL)  # after the methods in a legend
-COLOURS = {
-    "ae_xpower": "#d62728",
-    "ae_seg": "#d62728",
-    "seldnet": "#1f77b4",
-    "tokeye": "#2ca02c",
-    "recipe": "#ff7f0e",
-    "source": "#9467bd",
-    "uci": "#8c564b",
-    "always": "#7f7f7f",
-}
+NOT_SCORED = "not scored"  # a phenomenon's tick, without its evaluation
+NO_ROC = "no ROC"  # its key, without its roc.json
+CHANCE = "chance"
+AT_THRESHOLD = "at the model's threshold"
+F1_LABEL = "test F1 (95 % shot-bootstrap interval)"
+SCORES_HEIGHT_IN = 2.4
 DECIMALS = 3
 AMSMATH = r"needs amsmath for its \text{}"  # in each table that uses it, once
 INTERVAL_NOTE = (
@@ -160,6 +122,17 @@ DIFFERENCES = (
 )
 
 
+class Selected(NamedTuple):
+    """One phenomenon's model selected for main inference, as fig_scores draws
+    it: its evaluation's F1 estimate (`stats.Estimate.as_json`; None when it is
+    not scored) and its `roc.json` record (None when there is none)."""
+
+    category: str
+    method: str
+    f1: dict | None
+    roc: dict | None
+
+
 def read(path) -> dict | None:
     """An evaluation record, or None if the run has not written it."""
     path = Path(path)
@@ -174,311 +147,107 @@ def interval(estimate: dict) -> tuple[float, float, float]:
     )
 
 
-def _bars(
-    ax,
-    groups: Sequence[str],
-    methods: Sequence[str],
-    get: Callable[[str, str], tuple[float, float, float]],
-    names: dict[str, str],
-) -> None:
-    """Grouped bars with interval whiskers; `get(method, group)` is an interval.
-    The pseudo-masks' sources are hatched."""
-    width = 0.8 / len(methods)
-    x = np.arange(len(groups))
-    for i, m in enumerate(methods):
-        v, lo, hi = np.array([get(m, g) for g in groups]).T
-        at = x - 0.4 + (i + 0.5) * width
-        ax.bar(
-            at,
-            v,
-            width,
-            color=COLOURS[m],
-            label=names[m],
-            hatch=HATCH if m in PSEUDO_SOURCES else None,
-            edgecolor="white" if m in PSEUDO_SOURCES else None,
-            linewidth=0,
-        )
-        whisker = np.nan_to_num(np.array([v - lo, hi - v]))
-        ax.errorbar(
-            at, v, yerr=whisker, fmt="none", ecolor="black", elinewidth=0.6, capsize=1
-        )
+def _scored(s: Selected) -> bool:
+    return s.f1 is not None and not math.isnan(interval(s.f1)[0])
 
 
-def _dots(ax, ae: dict, methods: Sequence[str]) -> None:
-    """Dot and whisker per method and metric, on an axis from `SCORE_FLOOR`."""
-    width = 0.8 / len(methods)
-    x = np.arange(len(METRICS))
-    for i, m in enumerate(methods):
-        v, lo, hi = np.array([interval(ae["methods"][m][g]) for g in METRICS]).T
-        at = x - 0.4 + (i + 0.5) * width
-        shown = np.maximum(v, SCORE_FLOOR)
-        whisker = np.nan_to_num(
-            np.array(
-                [shown - np.maximum(lo, SCORE_FLOOR), np.maximum(hi, shown) - shown]
-            )
-        )
-        whisker[:, v < SCORE_FLOOR] = 0
+def _f1_panel(ax, selected: Sequence[Selected]) -> None:
+    """A dot per scored phenomenon, its interval a whisker, its value beside it."""
+    for i, s in enumerate(selected):
+        if not _scored(s):
+            continue
+        v, lo, hi = interval(s.f1)
+        colour = PHENOMENON_COLOURS[s.category]
+        whisker = np.nan_to_num(np.array([[v - lo], [hi - v]]))
         ax.errorbar(
-            at,
-            shown,
+            [i],
+            [v],
             yerr=whisker,
-            fmt=MARKERS[m],
-            ms=3,
-            color=COLOURS[m],
-            ecolor=COLOURS[m],
-            elinewidth=0.7,
-            capsize=0,
-            label=AE_NAMES[m],
+            fmt="o",
+            ms=4,
+            color=colour,
+            ecolor=colour,
+            elinewidth=0.8,
+            capsize=2,
             clip_on=False,
+            label=title(s.category),
         )
-        for a, value in zip(at, v, strict=True):
-            if value < SCORE_FLOOR:
-                ax.annotate(
-                    f"{value:.2f}",
-                    (a, SCORE_FLOOR),
-                    xytext=(0, 4),  # clear of the marker drawn at the floor
-                    textcoords="offset points",
-                    rotation=90,
-                    ha="center",
-                    va="bottom",
-                    fontsize=FONT_PT - 1,
-                    color=COLOURS[m],
-                )
-    bars = ae.get("bar_thresholds", {})
-    first = True
-    for k, metric in enumerate(METRICS):
-        if AE_BARS.get(metric) in bars:
-            ax.hlines(
-                bars[AE_BARS[metric]],
-                k - 0.45,
-                k + 0.45,
-                colors="black",
-                linestyles="--",
-                lw=0.6,
-                label=FLOORS_LABEL if first else "_" + FLOORS_LABEL,
-            )
-            first = False
-
-
-def _bars_last(handles: list, names: list) -> tuple[list, list]:
-    """The methods first, then the bars' marks."""
-    order = sorted(range(len(names)), key=lambda i: names[i] in MARKS)
-    return [handles[i] for i in order], [names[i] for i in order]
-
-
-def _said(x: float, spec: str = f".{DECIMALS}f") -> str:
-    """`x` for a figure's text, its minus U+2212 as the ticks write it; a value
-    that rounds to zero is unsigned."""
-    text = format(abs(x), spec)
-    return f"\u2212{text}" if x < 0 and float(text) != 0 else text
-
-
-def _holds(key: str, lo: float, hi: float, thresholds: dict) -> bool:
-    """Whether the paired difference `key` meets its part of the bar, by the
-    test `table_differences` applies (`DIFFERENCES`)."""
-    [test] = [d[5] for d in DIFFERENCES if d[1] == key]
-    return test(lo, hi, thresholds)
-
-
-def _decided(ae: dict, bar: str) -> bool | None:
-    """The record's verdict on `bar`, None when it gives none."""
-    return ae.get("bar", {}).get(bar)
-
-
-def _head(ae: dict, bar: str) -> str:
-    """`bar`'s verdict from the record, as in "A1 fail:"."""
-    return f"{bar} {'pass' if _decided(ae, bar) else 'fail'}:"
-
-
-def a1_said(ae: dict) -> str | None:
-    """A1's verdict and what its floors cannot show: F1 − SELDnet's lower bound
-    against its bar, and each floor the model's score misses; None when the
-    record gives no verdict on A1."""
-    if _decided(ae, "A1") is None:
-        return None
-    t = ae["bar_thresholds"]
-    _, lo, hi = interval(ae["differences"]["f1_minus_seldnet"])
-    sign = "\u2265" if _holds("f1_minus_seldnet", lo, hi, t) else "<"
-    clauses = [
-        (
-            f"F1 \u2212 {AE_NAMES['seldnet']} lower bound {_said(lo)} {sign} "
-            f"{_said(t['f1_vs_seldnet_low'], 'g')}"
+        ax.annotate(
+            f"{v:.2f}",
+            (i, v),
+            xytext=(5, 0),
+            textcoords="offset points",
+            ha="left",
+            va="center",
+            fontsize=FONT_PT - 1,
         )
+    ticks = [
+        title(s.category) if _scored(s) else f"{title(s.category)}\n{NOT_SCORED}"
+        for s in selected
     ]
-    model = ae["methods"]["ae_xpower"]
-    for metric, key in AE_BARS.items():
-        value = interval(model[metric])[0]
-        if key in t and not value >= t[key]:
-            clauses.append(f"{METRICS[metric]} {_said(value)} < {_said(t[key], 'g')}")
-    return "\n".join([_head(ae, "A1"), *clauses])  # a panel a third of the page
+    ax.set_xticks(range(len(selected)), ticks)
+    ax.set_xlim(-0.5, len(selected) - 0.5)
+    ax.set_ylim(0, 1)
+    ax.set_ylabel(F1_LABEL)
 
 
-def a2_said(ae: dict) -> str | None:
-    """A2's verdict and both its clauses: the model's MHD rate against its bar,
-    and MHD FP − SELDnet's upper bound against 0; None when the record gives
-    no verdict on A2."""
-    if _decided(ae, "A2") is None:
-        return None
-    t = ae["bar_thresholds"]
-    rate = interval(ae["methods"]["ae_xpower"]["fp_rate_mhd"])[0]
-    _, lo, hi = interval(ae["differences"]["mhd_fp_minus_seldnet"])
-    under = "\u2264" if rate <= t["mhd_fp_rate"] else ">"
-    below = "<" if _holds("mhd_fp_minus_seldnet", lo, hi, t) else "\u2265"
-    return "\n".join(
-        [
-            (
-                f"{_head(ae, 'A2')} MHD FP {_said(rate)} {under} "
-                f"{_said(t['mhd_fp_rate'], 'g')}"
-            ),
-            f"MHD FP \u2212 {AE_NAMES['seldnet']} upper bound {_said(hi)} {below} 0",
-        ]
+def roc_key(s: Selected) -> str:
+    """The phenomenon's entry in the ROC's key: its AUROC, or `NO_ROC`."""
+    if s.roc is None:
+        return f"{title(s.category)} ({NO_ROC})"
+    return f"{title(s.category)} (AUROC {s.roc['auroc']:.2f})"
+
+
+def _roc_panel(ax, selected: Sequence[Selected]) -> None:
+    """A curve per phenomenon with a ROC, its threshold's point marked, and
+    the chance diagonal; the key beside it."""
+    handles = []
+    for s in selected:
+        colour = PHENOMENON_COLOURS[s.category]
+        if s.roc is None:
+            handles.append(Line2D([], [], color=colour, lw=1.0, ls=":"))
+        else:
+            points = s.roc["curve"]
+            [line] = ax.plot(points["fpr"], points["tpr"], color=colour, lw=1.0)
+            at = s.roc["threshold"]
+            ax.plot(
+                [at["fpr"]],
+                [at["tpr"]],
+                "o",
+                ms=3.5,
+                color=colour,
+                mec="white",
+                mew=0.5,
+                zorder=3,
+                clip_on=False,
+            )
+            handles.append(line)
+        handles[-1].set_label(roc_key(s))
+    [chance] = ax.plot([0, 1], [0, 1], ls="--", color="#999999", lw=0.7)
+    chance.set_label(CHANCE)
+    point = Line2D([], [], ls="none", marker="o", ms=3.5, color="#444444")
+    point.set_label(AT_THRESHOLD)
+    ax.legend(
+        handles=[*handles, chance, point],
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        frameon=False,
     )
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
+    ax.set_xlabel("false-positive rate")
+    ax.set_ylabel("true-positive rate")
 
 
-def draw_scores(ae: dict, stem: Path) -> Figure:
-    """The phenomena's frame scores: AE across the top, the rest coming below."""
+def draw_scores(selected: Sequence[Selected], stem: Path) -> Figure:
+    """The selected models' test F1 and, beside it, their ROC (module
+    docstring), one per phenomenon in the order given."""
     with style():
-        fig = Figure(figsize=(PAGE_IN, 3.2), layout="constrained")
-        grid = fig.add_gridspec(2, len(ORDER) - 1)
-        axes = [fig.add_subplot(grid[0, :])]
-        axes += [fig.add_subplot(grid[1, i]) for i in range(len(ORDER) - 1)]
-        for ax, category in zip(axes, ORDER, strict=True):
-            if category != AE:
-                placeholder(ax, title(category))
-                continue
-            methods = [m for m in AE_METHODS if m in ae["methods"]]
-            _dots(ax, ae, methods)
-            for k in range(1, len(METRICS)):
-                ax.axvline(k - 0.5, color="#dddddd", lw=0.5)
-            ax.set_xticks(range(len(METRICS)), list(METRICS.values()))
-            ax.set_xlim(-0.5, len(METRICS) - 0.5)
-            ax.set_ylim(SCORE_FLOOR, 1)
-            ax.set_ylabel(f"frame score (axis from {SCORE_FLOOR:g})")
-            if said := a1_said(ae):
-                ax.set_xlabel(said)
-            n = ae["frames"]
-            ax.set_title(f"{title(AE)}: {n['shots']} test shots, {n['scored']} frames")
-            handles, names = _bars_last(*ax.get_legend_handles_labels())
-        fig.legend(handles, names, loc="outside lower center", ncols=4)
-        save(fig, stem)
-    return fig
-
-
-def draw_mhd(ae: dict, stem: Path) -> Figure:
-    """Each AE method's false-positive rate on MHD frames and on the rest."""
-    methods = [m for m in AE_METHODS if m in ae["methods"]]
-    y = np.arange(len(methods))[::-1].astype(float)
-    with style():
-        fig = Figure(figsize=(COLUMN_IN, 2.4), layout="constrained")  # A2's lines
-        ax = fig.subplots()
-        for offset, key, colour, ink, name in (
-            (0.18, "fp_rate_mhd", "#1f77b4", "white", "MHD frames"),
-            (-0.18, "fp_rate_other", "#bbbbbb", "black", "other absent frames"),
-        ):
-            v, lo, hi = np.array([interval(ae["methods"][m][key]) for m in methods]).T
-            past = v > MHD_CAP
-            ax.barh(y + offset, np.minimum(v, MHD_CAP), 0.34, color=colour, label=name)
-            whisker = np.nan_to_num(np.array([v - lo, hi - v]))
-            whisker[:, past] = 0
-            ax.errorbar(
-                np.minimum(v, MHD_CAP),
-                y + offset,
-                xerr=whisker,
-                fmt="none",
-                ecolor="black",
-                elinewidth=0.6,
-            )
-            for at, value in zip(y[past] + offset, v[past], strict=True):
-                ax.text(
-                    MHD_CAP * 0.99,
-                    at,
-                    f"{value:.2f}",
-                    ha="right",
-                    va="center",
-                    color=ink,
-                    fontsize=FONT_PT - 1,
-                )
-        bar = ae["bar_thresholds"]["mhd_fp_rate"]
-        ax.axvline(bar, color="black", ls="--", lw=0.6)
-        ax.set_yticks(y, [AE_NAMES[m] for m in methods])
-        ax.set_xlim(0, MHD_CAP)
-        label = f"false-positive rate (bar: MHD ≤ {bar:g}; axis to {MHD_CAP:g})"
-        ax.set_xlabel("\n".join(x for x in (label, a2_said(ae)) if x))
-        n = ae["frames"]
-        ax.set_title(
-            f"{n['mhd_absent']} MHD frames in {n['shots_with_mhd_absent']} test shots"
-        )
-        fig.legend(loc="outside lower center", ncols=2, frameon=False)
-        save(fig, stem)
-    return fig
-
-
-def _seg_bars(ax, seg: dict, metrics: Sequence[str], drawn: dict) -> None:
-    """The G bars on `metrics`' groups, each key once in the legend."""
-    for i, metric in enumerate(metrics):
-        for k, key in enumerate(SEG_BARS.get(metric, ())):
-            if key not in seg["bar_thresholds"]:
-                continue
-            name = BAR_LABEL if k == 0 else LOW_BAR_LABEL
-            ax.hlines(
-                seg["bar_thresholds"][key],
-                i - 0.45,
-                i + 0.45,
-                colors="black",
-                linestyles="--" if k == 0 else ":",
-                lw=0.6,
-                label=name if not drawn[name] else "_" + name,
-            )
-            drawn[name] = True
-
-
-def fp_top(seg: dict, methods: Sequence[str]) -> float:
-    """`SEG_FP_TOP`, or the next `SEG_FP_STEP` past the highest value or upper
-    interval end; one undefined (NaN) is left out, so it hides none after it."""
-    ends = (v for m in methods for v in interval(seg["methods"][m][SEG_FP])[::2])
-    highest = max((v for v in ends if not math.isnan(v)), default=0.0)
-    steps = math.ceil(round(highest / SEG_FP_STEP, 6))
-    return max(SEG_FP_TOP, steps * SEG_FP_STEP)
-
-
-def draw_segmentation(seg: dict, stem: Path) -> Figure:
-    """The segmentation's pixel and frame scores, and beside them its MHD
-    false-positive rate on its own zoomed axis, each bar G1-G3 marked."""
-    methods = [m for m in SEG_NAMES if m in seg["methods"]]
-
-    def get(m: str, g: str) -> tuple[float, float, float]:
-        return interval(seg["methods"][m][g])
-
-    with style():
-        fig = Figure(figsize=(COLUMN_IN, 2.3), layout="constrained")
-        ax, fp = fig.subplots(1, 2, width_ratios=[len(SEG_SCORES), 1.25])
-        drawn = {BAR_LABEL: False, LOW_BAR_LABEL: False}
-        _bars(ax, list(SEG_SCORES), methods, get, SEG_NAMES)
-        _seg_bars(ax, seg, SEG_SCORES, drawn)
-        ax.set_xticks(range(len(SEG_SCORES)), [SEG_METRICS[m] for m in SEG_SCORES])
-        ax.set_ylim(0, 1)
-        ax.set_ylabel("score")
-        _bars(fp, [SEG_FP], methods, get, SEG_NAMES)
-        _seg_bars(fp, seg, (SEG_FP,), drawn)
-        fp.set_xticks([0], [SEG_METRICS[SEG_FP]])
-        fp.set_xlim(-0.5, 0.5)
-        fp.set_ylim(0, fp_top(seg, methods))
-        fp.set_title(LOWER_BETTER, fontsize=FONT_PT - 1, style="italic")
-        c = seg["counts"]
-        fig.suptitle(
-            f"{c['shots']} test shots: {c['ae_pixels']:,} AE pixels of "
-            f"{c['scored_pixels']:,}",
-            fontsize=FONT_PT,
-        )
-        found: dict[str, object] = {}
-        for axes in (ax, fp):
-            for handle, name in zip(*axes.get_legend_handles_labels(), strict=True):
-                found.setdefault(name, handle)
-        handles, names = _bars_last(list(found.values()), list(found))
-        if any(m in PSEUDO_SOURCES for m in methods):
-            handles.append(Patch(facecolor="white", edgecolor="black", hatch=HATCH))
-            names.append(PSEUDO_LABEL)
-        fig.legend(handles, names, loc="outside lower center", ncols=3)
+        fig = Figure(figsize=(PAGE_IN, SCORES_HEIGHT_IN), layout="constrained")
+        f1, roc = fig.subplots(1, 2, width_ratios=[1.15, 1])
+        _f1_panel(f1, selected)
+        _roc_panel(roc, selected)
         save(fig, stem)
     return fig
 
