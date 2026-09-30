@@ -475,9 +475,9 @@ def _times_ms(crashes):
 
 def _verdicts(t_s, y, pulse=True):
     env, _ = heuristics.envelope(y, t_s)
-    steps, _, z = heuristics.step_z(env)
+    steps, sigma, z = heuristics.step_z(env)
     return [
-        heuristics.crash_test(env, steps, z, k, pulse=pulse)[0]
+        heuristics.crash_test(env, steps, sigma, z, k, pulse=pulse)[0]
         for k in heuristics.crash_candidates(z)
     ]
 
@@ -488,6 +488,7 @@ def test_v3s_constants_are_the_briefs():
     assert (h.NOISE_BINS, h.MAD_SIGMA, h.Z_DROP, h.Z_PULSE) == (401, 1.4826, 5, 3)
     assert (h.CRASH_BLOCK, h.CRASH_SEP_BINS, h.HOT_BINS, h.HOT_SLACK) == (3, 5, 10, 1)
     assert (h.MIN_FALL, h.COLLAPSE_FALL, h.FAST_FRAC) == (0.02, 0.5, 0.5)
+    assert h.COLLAPSE_BLOCK_FRAC == 0.5
     assert (h.PULSE_BLOCK, h.PULSE_REACH, h.PULSE_DIAG) == (3, 6, "ece")
     assert (h.MERGE_MS, h.COLLAPSE_GUARD_MS) == (5.0, 300.0)
     assert h.SXR_FANS == (
@@ -598,6 +599,48 @@ def test_a_collapse_drops_the_train_in_the_300_ms_after_it():
     assert kept == pytest.approx(V3_CRASHES_MS[~guarded] + 0.2, abs=1.0)
 
 
+def test_a_broad_quench_is_a_collapse_wherever_the_hottest_channel_is():
+    t_s, y = v3_rows(crashes_ms=[], centre=10.0)
+    t_ms = t_s * 1e3
+    y[16:] *= np.where(t_ms < 1000.3, 1.0, 0.1).astype(np.float32)  # 32 of 48
+    got = _v3(t_s, y)
+    assert got.events == ()
+    [collapse] = got.collapses_s
+    assert collapse * 1e3 == pytest.approx(1000.5)
+    env, _ = heuristics.envelope(y, t_s)
+    steps, sigma, z = heuristics.step_z(env)
+    verdict, measured = heuristics.crash_test(env, steps, sigma, z, 1000, pulse=True)
+    assert verdict == heuristics.COLLAPSE and "hot" not in measured
+    assert (measured["lo"], measured["stop"], measured["voting"]) == (16, 48, 48)
+    hot = heuristics._hottest(env, 1000)
+    assert hot < 16 - heuristics.HOT_SLACK, "outside the block: the core test fails"
+
+
+def test_an_edge_fall_is_no_collapse_when_the_core_holds():
+    # 190637 at 3359.5 ms: channels 40-44 fell by over half, the hottest 31.
+    t_s, y = v3_rows(crashes_ms=[], centre=31.0)
+    t_ms = t_s * 1e3
+    y[40:45] *= np.where(t_ms < 1000.3, 1.0, 0.4).astype(np.float32)
+    got = _v3(t_s, y)
+    assert got.events == () and got.collapses_s == ()
+    assert set(_verdicts(t_s, y)) == {"core"}
+
+
+def test_a_gap_in_the_record_is_no_collapse():
+    t_s, y = v3_rows()
+    t_ms = t_s * 1e3
+    keep = (t_ms < 1002.0) | (t_ms >= 1007.0)
+    t_s, y = t_s[keep], y[:, keep]
+    env, _ = heuristics.envelope(y, t_s)
+    assert (env[:, 1002:1007] == 0).all(), "v2's envelope: an empty bin is 0"
+    got = _v3(t_s, y)
+    assert got.collapses_s == ()
+    times = _times_ms(got)
+    far = V3_CRASHES_MS[np.abs(V3_CRASHES_MS - 1004.5) > 10]
+    assert len(far) == 29 and len(times) <= 30
+    assert all(np.abs(times - t).min() <= 1.0 for t in far), "the others are kept"
+
+
 def test_a_dropping_block_away_from_the_hottest_channel_is_no_crash():
     t_s, y = v3_rows(core=(31, 38), pulse=((27, 31), (38, 42)))
     assert _v3(t_s, y).events == ()
@@ -633,17 +676,18 @@ def test_v3_reads_the_ece_array_or_an_sxr_fan():
     assert len(_v3(t_s, y[:24], diag="sxr", channels=range(24)).events) == 30
 
 
-def _crash(diag, t_ms):
+def _crash(diag, t_ms, fall=0.1):
     return schema.Event(
         shot=1, source="ece_sawtooth", evidence_kind="heuristic",
         phenomenon="sawtooth", t0_s=t_ms * 1e-3, t1_s=t_ms * 1e-3,
-        confidence=0.5, diag=diag, channel=-1,
+        confidence=0.5, diag=diag, channel=-1, attrs={"fall": fall},
     )
 
 
-def _found(diag, times_ms, collapses_ms=()):
+def _found(diag, times_ms, collapses_ms=(), falls=None):
+    falls = [0.1] * len(times_ms) if falls is None else falls
     return heuristics.Crashes(
-        diag, tuple(_crash(diag, t) for t in times_ms),
+        diag, tuple(_crash(diag, t, f) for t, f in zip(times_ms, falls, strict=True)),
         tuple(t * 1e-3 for t in collapses_ms),
     )
 
@@ -662,12 +706,31 @@ def test_the_union_merges_crashes_within_5_ms_and_keeps_the_earlier():
     ]
 
 
+def test_of_two_crashes_within_5_ms_the_larger_fall_stays():
+    # 189324's ECE: 2666.5 ms (fall 0.041) and 2671.5 ms (0.179).
+    ece = _found("ece", [2666.5, 2671.5], falls=[0.041, 0.179])
+    got = heuristics.sawtooth_events_v3([ece])
+    assert [round(e.t0_s * 1e3, 1) for e in got] == [2671.5]
+    # A chain: the strongest stays, and both neighbours are within 5 ms of it.
+    chain = _found("ece", [100.0, 104.0, 108.0], falls=[0.1, 0.3, 0.2])
+    got = heuristics.sawtooth_events_v3([chain])
+    assert [round(e.t0_s * 1e3, 1) for e in got] == [104.0]
+    tie = [_found("ece", [103.0], falls=[0.2]), _found("sxr", [100.0], falls=[0.2])]
+    [kept] = heuristics.sawtooth_events_v3(tie)
+    assert (kept.diag, round(kept.t0_s * 1e3, 1)) == ("sxr", 100.0), "a tie: earlier"
+
+
 def test_the_guard_drops_crashes_from_a_collapse_to_300_ms_after_it():
     ece = _found("ece", [590.0, 600.0, 750.0, 900.0, 910.0])
     sxr = _found("sxr", [], collapses_ms=[600.0])
     got = heuristics.sawtooth_events_v3([ece, sxr])
     assert [round(e.t0_s * 1e3, 1) for e in got] == [590.0, 910.0], "900 is in it"
     assert heuristics.sawtooth_events_v3([]) == []
+    # The guard runs before the merge: 899 goes, and 903 does not go with it.
+    ece = _found("ece", [899.0], falls=[0.3])
+    sxr = _found("sxr", [903.0], collapses_ms=[600.0], falls=[0.1])
+    got = heuristics.sawtooth_events_v3([ece, sxr])
+    assert [(e.diag, round(e.t0_s * 1e3, 1)) for e in got] == [("sxr", 903.0)]
 
 
 # ------------------------------------------------------------- L->H and H->L

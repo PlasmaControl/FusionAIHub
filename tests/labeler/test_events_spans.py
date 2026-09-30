@@ -22,7 +22,7 @@ SHOT = 198658
 #: noise, and the fixture's array has none.
 SYNTH_ECE_NOISE = 0.005
 #: What `read` says of a group the shot does not have.
-NO_SXR = f"shot {SHOT}: no 'sxr' in the corpus or the raw cache"
+NO_SXR = f"NoDataError: shot {SHOT}: no 'sxr' in the corpus or the raw cache"
 
 
 def test_runs_need_min_count_points_and_are_padded():
@@ -434,6 +434,7 @@ def _sxr(quench_ms=None):
         core=(SXR_BLOCK[0] - SXR_LIT[0], SXR_BLOCK[1] - SXR_LIT[0]),
         pulse=(),
         crashes_ms=SXR_CRASHES_MS,
+        drop=0.1,  # half ECE's: where the two merge, ECE's crash is the larger
         t_ms=(500.0, 2500.0),
         seed=1,
     )
@@ -496,7 +497,7 @@ def test_v3_drafts_from_the_first_lit_sxr_fan_alone(tmp_path, monkeypatch):
     assert start == pytest.approx(SXR_CRASHES_MS[0] - spans.PAD_MS, abs=1)
     assert stop == pytest.approx(SXR_CRASHES_MS[-1] + spans.PAD_MS, abs=1)
     assert found.measured == ((500.0, pytest.approx(2499.9)),)
-    no_ece = f"shot {SHOT}: no 'ece' in the corpus or the raw cache"
+    no_ece = f"NoDataError: shot {SHOT}: no 'ece' in the corpus or the raw cache"
     assert found.info == {
         "diagnostics": ["sxr"],
         "sxr_fan": "SX90RP1F",
@@ -545,6 +546,25 @@ def test_a_collapse_on_sxr_drops_ece_crashes_after_it(tmp_path, monkeypatch):
     assert b == pytest.approx(600.3 + spans.PAD_MS, abs=1)
     assert c == pytest.approx(950.3 - spans.PAD_MS, abs=1)
     assert d == pytest.approx(SXR_CRASHES_MS[-1] + spans.PAD_MS, abs=1)
+
+
+def test_a_broken_diagnostic_is_left_out_and_the_other_drafts(tmp_path, monkeypatch):
+    p = tree.paths(tmp_path)
+    t_s, y = _sxr()
+    _reads(monkeypatch, ece=v3_rows(), sxr=(t_s, y[:200]))  # short of every fan
+    found = spans.detect_sawtooth(SHOT, p)
+    assert found.info["diagnostics"] == ["ece"]
+    assert found.info["not_run"]["sxr"].startswith("IndexError: ")
+    [(start, _, _)] = found.spans
+    assert start == pytest.approx(V3_CRASHES_MS[0] - spans.PAD_MS, abs=1)
+    ece_t, ece_y = v3_rows()
+    _reads(monkeypatch, ece=(ece_t, ece_y[:47]), sxr=_sxr())  # not the 48 channels
+    found = spans.detect_sawtooth(SHOT, p)
+    assert found.info["diagnostics"] == ["sxr"]
+    assert found.info["not_run"]["ece"].startswith("ValueError: ")
+    _reads(monkeypatch, ece=(ece_t, ece_y[:47]), sxr=(t_s, y[:200]))
+    with pytest.raises(NoDataError, match="ece: ValueError: .*; sxr: IndexError: "):
+        spans.detect_sawtooth(SHOT, p)
 
 
 def test_v3_with_neither_diagnostic_is_no_data(tmp_path, monkeypatch):

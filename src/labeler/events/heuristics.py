@@ -22,7 +22,10 @@ every 10 ms on every shot, and its inversion thresholds are fractions of the
 profile's own largest step, so noise and drift of the right shape pass while
 real crashes, their steps measured 2-8 ms out after the heat pulse decayed,
 fail. Over 32 shots it finds 2,091 crashes forward and 2,080 on the same ECE
-time-reversed; the v3 prototype found 5,247 and 406 over 231 shots.
+time-reversed. v3, over round three's 231 evaluation shots in their catalog
+windows, finds 5,527 forward and 375 on the same records time-reversed; 171
+and 26 of the shots have a present span, and the mean present fraction of the
+window is 0.250 and 0.012.
 
 `sawtooth_events` (v2) is kept for its table - the v1 and v2 span tables and
 the pipeline's events were made by it - and for the reference check below.
@@ -77,6 +80,7 @@ item 8), and no classifier may be trained to predict one from the others.
 """
 from __future__ import annotations
 
+import bisect
 import itertools
 import math
 from collections.abc import Mapping, Sequence
@@ -154,6 +158,11 @@ HOT_SLACK = 1
 #: collapse (a thermal quench), not a crash.
 MIN_FALL = 0.02
 COLLAPSE_FALL = 0.5
+#: A fall over `COLLAPSE_FALL` in at least this fraction of the channels that
+#: can vote is a collapse whatever the hottest channel says: an edge channel
+#: can read high through a quench (186224 at 3476.5 ms: channels 2-27 fell by
+#: 0.66 with channel 46 the hottest). 190637's edge fall took 5 of 48.
+COLLAPSE_BLOCK_FRAC = 0.5
 #: The fall has to be fast: the block's change from bins k-7 .. k-5 to bins
 #: k-3 .. k-1 must not be a fall of more than `FAST_FRAC` of the crash's own
 #: step. A smooth roll-over falls as fast before bin k as across it.
@@ -163,10 +172,10 @@ FAST_FRAC = 0.5
 #: integrated and its heat pulse is weak, so the SXR part has no pulse test.
 PULSE_BLOCK = 3
 PULSE_REACH = 6
-#: The union: a crash within `MERGE_MS` of the previous one (either diagnostic)
-#: is the same crash, and every crash within `COLLAPSE_GUARD_MS` after a
-#: collapse on either is dropped (186224's disruption drafted a false SXR span
-#: without it). The quench and the recovery after it are not sawteeth.
+#: The union: every crash within `COLLAPSE_GUARD_MS` after a collapse on
+#: either diagnostic is dropped (186224's disruption drafted a false SXR span
+#: without it) - the quench and the recovery after it are not sawteeth - and
+#: then two crashes within `MERGE_MS` (either diagnostic) are one crash.
 MERGE_MS = 5.0
 COLLAPSE_GUARD_MS = 300.0
 #: The diagnostics v3 reads, and the one of them that has the pulse test.
@@ -378,6 +387,17 @@ def envelope(y, t_s, env_ms: float = ENV_MS):
     sums[:, counts == 0] = 0.0
     env = sums / np.maximum(counts, 1)
     return env, (edges[:-1] + float(env_ms) / 2.0) * 1e-3
+
+
+def _bin_counts(t_s, env_ms: float = ENV_MS) -> np.ndarray:
+    """`(m,)`: how many samples each of `envelope`'s bins holds, on its edges
+    and its arithmetic. v3 makes a bin with none NaN where `envelope` makes it
+    0, so a digitiser gap is no fall to zero."""
+    t_ms = np.asarray(t_s, dtype=np.float64) * 1e3
+    nbin = max(1, round((float(t_ms[-1]) - float(t_ms[0])) / float(env_ms)))
+    edges = float(t_ms[0]) + np.arange(nbin + 1, dtype=np.float64) * float(env_ms)
+    starts = np.searchsorted(t_ms, edges[:-1], side="left")
+    return np.diff(np.append(starts, t_ms.size))
 
 
 # ------------------------------------------------------- the inversion test
@@ -800,7 +820,13 @@ def _hottest(env: np.ndarray, k: int) -> int:
     return int(np.argmax(median_filter(pre, size=3, mode="constant", cval=0.0)))
 
 
-def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
+def _voting(steps, sigma, k: int) -> int:
+    """The channels that can vote at bin `k`: a finite step and nonzero noise."""
+    ok = (np.asarray(sigma)[:, k] > 0) & np.isfinite(np.asarray(steps)[:, k])
+    return int(ok.sum())
+
+
+def crash_test(env, steps, sigma, z, k: int, *, pulse: bool) -> tuple[str, dict]:
     """`(verdict, measured)` for the candidate at bin `k`: `CRASH`, `COLLAPSE`,
     or the name of the test it failed, in the order they are made.
 
@@ -811,6 +837,9 @@ def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
       there): a smooth roll-over, not a crash.
     - "level": the block's mean level over k-3 .. k-1 is not positive, so its
       fall has no fraction.
+    - `COLLAPSE`, broad: the block fell by more than `COLLAPSE_FALL` of that
+      level and spans at least `COLLAPSE_BLOCK_FRAC` of the channels that can
+      vote (`_voting`), whatever the core test would say.
     - "core": the hottest channel (`_hottest`) is more than `HOT_SLACK`
       channels outside the block.
     - `COLLAPSE`: the block fell by more than `COLLAPSE_FALL` of that level.
@@ -819,8 +848,8 @@ def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
       `Z_PULSE` starts within `PULSE_REACH` channels of the block.
 
     `measured` holds what was measured by the time the verdict was reached:
-    the block (`lo`, `stop`, end-exclusive), its `z_min`, `fall` and `hot`,
-    and the pulse run (`pulse_lo`, `pulse_stop`) that passed.
+    the block (`lo`, `stop`, end-exclusive), its `z_min`, `fall`, `voting`
+    and `hot`, and the pulse run (`pulse_lo`, `pulse_stop`) that passed.
 
     A collapse is a candidate that passes every test but the fall's upper
     bound and the pulse: a quench drops the core with everything else, so
@@ -828,7 +857,9 @@ def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
     before the core test and on any level, dividing by max(level, 1e-9): on
     190637 an edge fall at 3359.5 ms (channels 40-44, the hottest 31) then
     guarded 300 ms of the owner's sawtooth span, and on 198658 channels 41-47
-    below zero before the plasma made one at -0.5 ms.
+    below zero before the plasma made one at -0.5 ms. A fall over half of
+    the voting channels is a collapse before the core test, because a quench
+    can leave an edge channel the hottest (`COLLAPSE_BLOCK_FRAC`).
     """
     env = np.atleast_2d(np.asarray(env, dtype=np.float64))
     col = np.asarray(z, dtype=np.float64)[:, k]
@@ -858,7 +889,10 @@ def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
     if not level > 0.0:
         return "level", got
     fall = -step / level
-    got["fall"] = float(fall)
+    voting = _voting(steps, sigma, k)
+    got.update(fall=float(fall), voting=voting)
+    if fall > COLLAPSE_FALL and stop - lo >= COLLAPSE_BLOCK_FRAC * voting:
+        return COLLAPSE, got
     hot = _hottest(env, k)
     got["hot"] = hot
     if not lo - HOT_SLACK <= hot <= stop - 1 + HOT_SLACK:
@@ -904,10 +938,11 @@ def sawtooth_crashes(
 ) -> Crashes:
     """One diagnostic's `(C, n)` rows, in channel order -> its v3 crashes.
 
-    The 1 ms `envelope`, `step_z`, `crash_candidates`, and `crash_test` at
-    each; the pulse test only on `PULSE_DIAG` (the ECE array, which has to be
-    the `N_ECE_CHANNELS` of it). The crash time is the centre of the bin the
-    crash falls in.
+    The 1 ms `envelope`, with the bins no sample falls in NaN (`_bin_counts`)
+    rather than `envelope`'s 0; `step_z`, `crash_candidates`, and `crash_test`
+    at each; the pulse test only on `PULSE_DIAG` (the ECE array, which has to
+    be the `N_ECE_CHANNELS` of it). The crash time is the centre of the bin
+    the crash falls in.
 
     `channels` is the index each row stands for - an SXR fan's lit chords -
     and the attrs' channel bounds are in those terms, end-exclusive like
@@ -932,11 +967,12 @@ def sawtooth_crashes(
     if index.shape != (y.shape[0],):
         raise ValueError(f"{index.size} channel indices for {y.shape[0]} rows")
     env, t_env_s = envelope(y, t_s)
+    env[:, _bin_counts(t_s) == 0] = np.nan
     steps, sigma, z = step_z(env)
     cov = (float(t_cov[0]), float(t_cov[1]))
     events, collapses = [], []
     for k in crash_candidates(z):
-        verdict, got = crash_test(env, steps, z, k, pulse=diag == PULSE_DIAG)
+        verdict, got = crash_test(env, steps, sigma, z, k, pulse=diag == PULSE_DIAG)
         if verdict == COLLAPSE:
             collapses.append(float(t_env_s[k]))
         if verdict != CRASH:
@@ -953,7 +989,7 @@ def sawtooth_crashes(
             row["pulse_channel_lo"] = int(index[got["pulse_lo"]])
             row["pulse_channel_stop"] = int(index[got["pulse_stop"] - 1]) + 1
             took += got["pulse_stop"] - got["pulse_lo"]
-        voting = int(((sigma[:, k] > 0) & np.isfinite(steps[:, k])).sum())
+        voting = got["voting"]
         events.append(
             Event(
                 shot=int(shot),
@@ -974,26 +1010,33 @@ def sawtooth_crashes(
 
 
 def sawtooth_events_v3(found: Sequence[Crashes]) -> list[Event]:
-    """The diagnostics' crashes as one list: their union, less the guard.
+    """The diagnostics' crashes as one list, in time order: the guard, then
+    the union.
 
-    In time order, a crash within `MERGE_MS` of the last one kept is the same
-    crash, and the earlier one stays. Then every crash from a collapse on
-    either diagnostic to `COLLAPSE_GUARD_MS` after it is dropped.
+    Every crash from a collapse on either diagnostic to `COLLAPSE_GUARD_MS`
+    after it is dropped first, so a crash outside the guard cannot merge into
+    one inside it and go with it. Then, of two crashes within `MERGE_MS`, the
+    one with the larger `fall` stays (the earlier on a tie): strongest first,
+    each is kept unless a kept one lies within `MERGE_MS`. On 189324 ECE's
+    crashes at 2666.5 ms (fall 0.041) and 2671.5 ms (0.179) merge, and the
+    earlier-kept rule had kept the weaker.
     """
-    events = sorted(
-        (e for crashes in found for e in crashes.events), key=lambda e: e.t0_s
-    )
     collapses = sorted(t for crashes in found for t in crashes.collapses_s)
-    kept: list[Event] = []
-    for event in events:
-        if kept and (event.t0_s - kept[-1].t0_s) * 1e3 <= MERGE_MS + _TIME_TOL_MS:
-            continue
-        kept.append(event)
     guard = COLLAPSE_GUARD_MS + _TIME_TOL_MS
-    return [
-        e for e in kept
+    events = [
+        e for crashes in found for e in crashes.events
         if not any(0.0 <= (e.t0_s - c) * 1e3 <= guard for c in collapses)
     ]
+    kept_t: list[float] = []
+    kept: list[Event] = []
+    for event in sorted(events, key=lambda e: (-e.attrs["fall"], e.t0_s)):
+        i = bisect.bisect_left(kept_t, event.t0_s)
+        near = kept_t[max(i - 1, 0):i + 1]
+        if any(abs(event.t0_s - t) * 1e3 <= MERGE_MS + _TIME_TOL_MS for t in near):
+            continue
+        kept_t.insert(i, event.t0_s)
+        kept.insert(i, event)
+    return kept
 
 
 #: v3's constants, as the span table's meta records them.
@@ -1012,6 +1055,7 @@ SAWTOOTH_V3_CONSTANTS = {
     "hot_slack": HOT_SLACK,
     "min_fall": MIN_FALL,
     "collapse_fall": COLLAPSE_FALL,
+    "collapse_block_frac": COLLAPSE_BLOCK_FRAC,
     "fast_frac": FAST_FRAC,
     "pulse_block": PULSE_BLOCK,
     "pulse_reach": PULSE_REACH,
