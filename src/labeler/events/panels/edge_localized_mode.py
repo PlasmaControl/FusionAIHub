@@ -15,12 +15,15 @@ so a spike at the end of the discharge does not set the row's scale.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
 from .. import spans
-from ..raw import raw_signal
+from ..raw import FetchDisabledError, raw_signal
 from ..verify import Panel
 from ._shared import (
+    CLIPPED,
     MISSING,
     ROBUST_PERCENTILES,
     optional,
@@ -28,6 +31,8 @@ from ._shared import (
     power_panel,
     robust_clip,
 )
+
+log = logging.getLogger(__name__)
 
 #: R0 resampled to 250 kHz, 256-sample windows every 64: 0.98 kHz bins and
 #: 0.256 ms columns, the AE rows' resolution, up to 125 kHz.
@@ -42,7 +47,6 @@ MAX_KHZ = 125.0
 #: 0.0125 V up the record can carry real ELMs (196093, 190602, 192766 show 180
 #: to 469), so the 0.02 V a first survey suggested would drop some.
 FLAT_V = 0.011
-CLIPPED = ", clipped to its plasma range"
 
 
 def co2_panel(shot, *, t_range=None, paths=None) -> list[Panel]:
@@ -118,7 +122,9 @@ def dalpha_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     try:
         pcphd03 = pcphd03_panel(shot, **kwargs)
         note = "" if pcphd03 else " (PCPHD03 flat, left out)"
-    except MISSING:
+    except MISSING as error:
+        if isinstance(error, FetchDisabledError):
+            log.warning("shot %s: no PCPHD03 panel: %s", shot, error)
         pcphd03, note = [], " (PCPHD03 not found)"
     fs = optional(
         "D-alpha filterscope",

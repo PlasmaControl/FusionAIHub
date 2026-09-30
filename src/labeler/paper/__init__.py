@@ -3,13 +3,17 @@
 The manuscript (`dev/label_paper`: "Tokamak-SI: Automatic Shot Interpreter with
 a Catalog of Fusion Reactor Data") shows the interpreter on one phenomenon, AE,
 first. A figure that will show every paper phenomenon (`ORDER`: the catalog's,
-less disruption for now) draws all five now: AE from the round-two runs, the
-other four as empty panels marked "coming", so the layout and sizes are settled
-before their numbers exist.
+less disruption for now) draws all five now. The score figures draw AE from the
+round-two runs and the other four as empty panels marked "coming", so the layout
+and sizes are settled before their numbers exist. The coverage figure and table
+count all five: AE from the round-two runs, the other four from their frame
+models' splits (the original labels with the owner's reviews over them, F2),
+the owner's review and the applications; only a phenomenon with none of its
+inputs yet is marked "coming".
 
 - `scores`: the AE methods' frame scores (one panel per phenomenon), their
   false-positive rates on MHD frames, the segmentation's scores, and tables;
-- `coverage`: reviewed, positive and suggested shots per phenomenon;
+- `coverage`: labelled, reviewed, positive and suggested shots per phenomenon;
 - `shots`: one discharge as the interpreter shows it, and AE examples;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
   manuscript's `figures/`;

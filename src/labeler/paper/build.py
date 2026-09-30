@@ -17,12 +17,30 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   The train shots are marked with the number of folds only when `cv/folds.csv`
   is there, has a `fold` column and is the one `chosen.json` names
   (`folds_check`, D18's check applied to the folds); otherwise both products
-  are `partial`, saying why;
+  are `partial`, saying why. The frame-model phenomena (NTM, H-mode, ELMing,
+  sawteeth) are counted from their own inputs, all `frames.VERSION`'s
+  (`frame_coverage`, F1): the owner's review; the frame model's split with its
+  meta's `labelled_shots`, `positive_shots` and `present_s`, over the original
+  labels with the owner's over them (F2, F4); the application's
+  `summary.csv`; and the suggestion table's meta, whose `bar` and
+  `effectively_always` mark a model that failed its primary bar or is
+  effectively always (F8), never gating anything (D59). Each missing part is a
+  `partial` entry naming its `phenomenon`, after AE's;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
-  `<candidate>/review/labels.csv` (D18), with the segmentation's mask, SegNet
-  run over the same stores, where its `model.pt` exists. The copy's sha256 must be the one the AE evaluation names
-  (`labels_sha256`); if it is not, or none is named, both are skipped.
+  `<candidate>/review/labels.csv` (D18), over the version's scored window
+  (`shots.scored_ms`: 0-2 s for v1 and v2, the owner's whole window for v3),
+  with the segmentation's mask over the band its blob records (80-250 kHz for
+  v1's, which records none; 0-250 kHz for SegNet v2's), SegNet run over the
+  same stores, where its `model.pt` exists. The copy's sha256 must be the one
+  the AE evaluation names (`labels_sha256`); if it is not, or none is named,
+  both are skipped. The interpreter's other four tracks are worked out here
+  and passed to the figure (`interpreter_tracks`, F9): the shot's suggested
+  states from its frame model's `frames.VERSION` suggestion table, read
+  through the snapshot; else "no <group> data" where it lacks one of the
+  model's required groups on disk (a metadata check, never a fetch); else
+  "coming" without a table, and "not applied to this shot" with one that
+  lacks it. The manifest's `interpreter_tracks` says which, per phenomenon.
 
 The owner's live labels are read for the coverage alone; every scored product
 uses the labels the model was scored against.
@@ -86,9 +104,12 @@ a cross-validated version's `cv/folds.csv` is the one its `chosen.json` names
 either is missing), each sha256 in `labels_sha256` (the live table's too), the
 time, the
 interpreter's shot, its pool and the branch of the rule that fired, the example
-shots, the rules that picked them, and the drawn shots' F1 over 0-2 s and over
-the whole window. The shots are ranked by their F1 over 0-2 s
-(`shots.rank_keys`).
+shots, the rules that picked them, and the drawn shots' F1 over 0-2 s
+(`f1_0_2s`) and over the owner's whole window (`f1_window`), both for every
+version. The shots are ranked, the interpreter's pool's off-periods counted and
+the rules said over the version's scored window (`shots.rank_keys`,
+`shots.pick_texts`): 0-2 s for v1 and v2, whose figures mark it with a dashed
+line at 2 s, and the owner's whole window for v3, whose figures have none.
 
 **The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
 read once, hashed, and parsed from those bytes; a second read of one is refused,
@@ -118,12 +139,15 @@ from typing import NamedTuple
 import pandas as pd
 import torch
 
+from .. import frames
 from ..ae import seg as ae_seg
 from ..ae import xpower
 from ..ae.xpower import evaluate as ae_evaluate
+from ..ae.xpower.data import targets
 from ..config import Paths, atomic_path, git_dirty, git_sha
+from ..events import raw, suggestions
 from ..events.review import labels
-from . import AE, coverage, paper_dir, scores, shots
+from . import AE, COMING, coverage, paper_dir, scores, shots
 from .snapshot import Snapshot
 from .staging import Stranded, discard, staging_dir, swap
 
@@ -215,6 +239,14 @@ NO_EARLIER = (
     "first are not counted"
 )
 NO_LOOK_SPLIT = "no split.csv, so the earlier version's test shots are not counted"
+FRAMES_COMING = "no saved label, split or suggestions: its frame model has not run"
+NO_FRAMES_SPLIT = "the frame model's shots are not split yet (Task 2.7)"
+NO_FRAMES_META = "the frame split has no meta, so its labelled shots are not counted"
+NO_FRAMES_SUMMARY = "the frame model has not been applied: no summary.csv (Task 2.11)"
+NO_FRAMES_TABLE_META = (
+    "the suggestion table has no meta, so whether the model met its bar or is "
+    "effectively always is not marked"
+)
 
 
 def inputs(
@@ -395,6 +427,85 @@ def second_look(
     return ae_evaluate.second_look(version, test, record, theirs, chosen), None
 
 
+def _frame_entry(reason: str, category: str, *missing: Path) -> dict:
+    """A frame-model phenomenon's `partial` entry: why, naming it and the files
+    it lacks."""
+    return {
+        "reason": reason,
+        "phenomenon": category,
+        "missing": [str(p) for p in missing],
+    }
+
+
+def frame_coverage(
+    paths: Paths, snap: Snapshot
+) -> tuple[dict[str, coverage.Counts], list[dict]]:
+    """The frame-model phenomena's counts and the `partial` entries saying what
+    each lacks, in `coverage.FRAME_SOURCES`' order, each entry naming its
+    `phenomenon`. One with no saved label, split or summary is not counted (it
+    is "coming"). One with any is counted from the owner's live review (none
+    saved is a true zero), its frame model's split (`frames.shots_file`), the
+    split's meta (`frames.shots_meta_file`: the labelled and positive shots and
+    the present time, over the original labels with the owner's over them;
+    read only with the split), the application's `summary.csv`
+    (`frames.summary_file`) and the suggestion table's meta (read only with the
+    summary: its `bar` and `effectively_always`, F8), each missing part an
+    entry, in that order; all are `frames.VERSION`'s (F1). Each file is read
+    through `snap`, so it is pinned. Nothing else is read: not the frame
+    models' `evaluation.json`, and the bar read from the table's meta marks the
+    suggestions, never gating them (D59)."""
+    counts: dict[str, coverage.Counts] = {}
+    why: list[dict] = []
+    version = frames.VERSION
+    for category, source in coverage.FRAME_SOURCES.items():
+        method = source.method
+        event = frames.SPECS[method].event
+        live = labels.labels_path(paths.label_tables / category)
+        split_csv = frames.shots_file(paths, method, version)
+        meta_json = frames.shots_meta_file(paths, method, version)
+        summary_csv = frames.summary_file(paths, method, version)
+        table = suggestions.table_path(paths, event, method, version)
+        table_meta_json = table.with_suffix(".meta.json")
+        if not any(p.is_file() for p in (live, split_csv, summary_csv)):
+            why.append(
+                _frame_entry(FRAMES_COMING, category, live, split_csv, summary_csv)
+            )
+            continue
+        saved = snap.labels(f"labels_{category}", live) if live.is_file() else {}
+        split = meta = summary = table_meta = None
+        if not split_csv.is_file():
+            why.append(_frame_entry(NO_FRAMES_SPLIT, category, split_csv))
+        else:
+            shots = snap.csv(f"frames_split_{method}", split_csv)
+            split = coverage.frame_split(shots, f"{method} ({split_csv})")
+            if meta_json.is_file():
+                meta = snap.json(f"frames_meta_{method}", meta_json)
+            else:
+                why.append(_frame_entry(NO_FRAMES_META, category, meta_json))
+        if summary_csv.is_file():
+            summary = snap.csv(f"frames_summary_{method}", summary_csv)
+            if table_meta_json.is_file():
+                table_meta = snap.json(f"frames_table_meta_{method}", table_meta_json)
+            else:
+                why.append(
+                    _frame_entry(NO_FRAMES_TABLE_META, category, table_meta_json)
+                )
+        else:
+            why.append(_frame_entry(NO_FRAMES_SUMMARY, category, summary_csv))
+        try:
+            counts[category] = coverage.frame_counts(
+                saved,
+                split,
+                summary,
+                meta=meta,
+                table_meta=table_meta,
+                primary=source.primary,
+            )
+        except KeyError as error:
+            raise KeyError(f"{method}: {error.args[0]}") from None
+    return counts, why
+
+
 def build(
     paths: Paths,
     out: Path,
@@ -532,6 +643,8 @@ def _draw(
                 cross_validated=folds.cross_validated,
             )
         }
+        frame_counts, frame_why = frame_coverage(paths, snap)
+        counts |= frame_counts
         figure("fig_coverage", coverage.draw_coverage, counts)
         table("table_datasets", coverage.table_datasets(counts))
         if chosen is None:
@@ -545,6 +658,8 @@ def _draw(
             lacking(counted, CV_VAL, shots=held)
         if summary is None:
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
+        for entry in frame_why:  # after AE's own, which keep their order (D62)
+            lacking(counted, **entry)
     picked: dict = {}
     figures = ("fig_interpreter", "fig_examples")
     scored = None
@@ -558,7 +673,16 @@ def _draw(
             (why, {})
             if why
             else _shot_figures(
-                paths, found, snap, saved, split, shot, examples, figure, lacking
+                paths,
+                found,
+                snap,
+                saved,
+                split,
+                shot,
+                examples,
+                figure,
+                lacking,
+                version=version,
             )
         )
         for product in figures if why else ():
@@ -596,6 +720,55 @@ def _draw(
     return manifest
 
 
+#: The manifest's word for a track drawn from its suggestion table (F9).
+SUGGESTED_TRACK = "suggestions"
+
+
+def interpreter_tracks(paths: Paths, snap: Snapshot, s: shots.AEShot) -> dict:
+    """The interpreter shot's track for each frame-model phenomenon (F9), in
+    `coverage.FRAME_SOURCES`' order: its suggested state per frame of `s` where
+    the shot is in the frame model's `frames.VERSION` suggestion table (read
+    through `snap`, so it is pinned); else `shots.NO_DATA`'s text for the first
+    of the model's required groups not on disk (`raw.record_tier`, metadata
+    only, never a fetch); else `COMING` where there is no table, and
+    `shots.NOT_APPLIED` where the table lacks the shot."""
+    found: dict[str, object] = {}
+    for category, source in coverage.FRAME_SOURCES.items():
+        spec = frames.SPECS[source.method]
+        table = suggestions.table_path(paths, spec.event, spec.method, frames.VERSION)
+        label = None
+        if table.is_file():
+            label = snap.labels(f"frames_table_{spec.method}", table).get(s.shot)
+        if label is not None:
+            found[category] = targets(label, s.first, len(s.prob))
+            continue
+        lacking = next(
+            (
+                group
+                for group in spec.required_groups
+                if raw.record_tier(s.shot, group, paths=paths) is None
+            ),
+            None,
+        )
+        if lacking is not None:
+            found[category] = shots.NO_DATA.format(lacking)
+        else:
+            found[category] = shots.NOT_APPLIED if table.is_file() else COMING
+    return found
+
+
+def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
+    """Why the shot figures are skipped when no test shot has an F1 over the
+    scored window ending at `until_ms`: `NO_F1` for 0-2 s; None is the owner's
+    whole window."""
+    if until_ms == shots.SCORED_MS:
+        return NO_F1
+    return (
+        f"no test shot has an F1 over the {shots.window_name(until_ms)}: neither "
+        "the owner nor the model calls a scored frame there present"
+    )
+
+
 def _shot_figures(
     paths: Paths,
     found: dict[str, Path],
@@ -606,11 +779,17 @@ def _shot_figures(
     examples: int,
     figure: Callable,
     lacking: Callable,
+    version: str = VERSION,
 ) -> tuple[str | None, dict]:
     """Score every test shot against the model's copy of the labels (D18) and
     draw the two shot figures. Why they could not be drawn (None when they
-    were), and the picks for the manifest."""
+    were), and the picks for the manifest. The F1, the picks and their rules
+    are over `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2,
+    the owner's whole window for v3); `shot_f1` gives every drawn shot's F1
+    over 0-2 s and over the owner's whole window, whatever the version."""
     figures = ("fig_interpreter", "fig_examples")
+    until = shots.scored_ms(version)
+    texts = shots.pick_texts(until)
     model = snap.model("ae_model", found["ae_model"], split)
     segmentation = (
         snap.segmentation("seg_model", found["seg_model"])
@@ -629,24 +808,32 @@ def _shot_figures(
         """The shot's picture, its store read once."""
         data = snap.read(f"store_{s}", _store(paths, s))
         return shots.picture(
-            s, label=saved[s], model=model, store=data, segmentation=segmentation
+            s,
+            label=saved[s],
+            model=model,
+            store=data,
+            segmentation=segmentation,
+            scored_until_ms=until,
         )
 
     pictures = {s: one(s) for s in usable}
     ranked = [shots.rank_keys(p) for p in pictures.values()]
     f1 = {r.shot: r.f1 for r in ranked}
     if all(math.isnan(v) for v in f1.values()):
-        return NO_F1, {}
-    pick = shots.interpreter_pick(f1, poi, {r.shot: r.gap for r in ranked})
+        return no_f1(until), {}
+    gaps = {r.shot: r.gap for r in ranked}
+    pick = shots.interpreter_pick(f1, poi, gaps, until_ms=until)
+    # A whole-window version's examples hold a shot whose window runs past 2 s.
+    long = None
+    if until is None:
+        long = {s for s in f1 if saved[s].window[1] > shots.LONG_MS}
     picked = {
         "interpreter_shot": pick["shot"] if shot is None else shot,
-        "interpreter_rule": shots.INTERPRETER_RULE
-        if shot is None
-        else "named by --shot",
+        "interpreter_rule": texts.interpreter if shot is None else "named by --shot",
         "interpreter_branch": pick["branch"] if shot is None else None,
         "interpreter_pool": pick["pool"],
-        "example_shots": shots.pick_examples(f1, examples),
-        "example_rule": shots.EXAMPLES_RULE,
+        "example_shots": shots.pick_examples(f1, examples, long=long),
+        "example_rule": texts.examples,
     }
     named = picked["interpreter_shot"]
     if named not in pictures and named in saved and _store(paths, named).is_file():
@@ -654,7 +841,16 @@ def _shot_figures(
     drawn = {s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures}
     if named not in drawn:
         return f"{NO_NAMED}: {named}", picked
-    figure("fig_interpreter", shots.draw_interpreter, drawn[named])
+    tracks = interpreter_tracks(paths, snap, drawn[named])
+    picked["interpreter_tracks"] = {
+        category: track if isinstance(track, str) else SUGGESTED_TRACK
+        for category, track in tracks.items()
+    }
+    figure(
+        "fig_interpreter",
+        lambda s, stem: shots.draw_interpreter(s, stem, tracks),
+        drawn[named],
+    )
     figure(
         "fig_examples",
         shots.draw_examples,
@@ -669,7 +865,7 @@ def _shot_figures(
     if unstored:
         lacking(figures, NO_STORE, missing=[str(p) for p in unstored])
     picked["shot_f1"] = {
-        str(s): {"f1_0_2s": _number(d.f1), "f1_window": _number(d.f1_window)}
+        str(s): {"f1_0_2s": _number(d.f1_0_2s), "f1_window": _number(d.f1_window)}
         for s, d in sorted(drawn.items())
     }
     return None, picked

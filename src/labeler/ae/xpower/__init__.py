@@ -4,12 +4,20 @@
 `model` is the network, `train` fits it, `evaluate` scores it against the earlier
 methods on the held-out shots, `gallery` draws one JPEG per shot, and `extend`
 runs it over shots nobody has labelled, as suggestions. `cv` cross-validates the
-candidates of a version chosen that way (v2).
+candidates of a version chosen that way (v2 and v3).
 
 **Label snapshots.** v1 read the owner's live `review/labels.csv` and copied it
 into each model directory. A version in `LABEL_SNAPSHOTS` reads its labels only
 from its frozen snapshot, `models/ae_xpower/<version>/review/labels.csv`, and
 refuses to run when that file's sha256 is not the one recorded here.
+
+**Whole windows.** v1's TokEye masks (`ae/masks`) and SELDNet's inputs
+(`ae/dataset`) cover 0-2 s only, so v1 and v2 are scored on 0-2 s
+(`SCORED_UNTIL_MS`). The owner labelled AE to the end of the shot, so a version
+in `WHOLE_WINDOW_VERSIONS` (v3) reads TokEye's whole-shot masks and SELDNet's
+whole-shot inputs instead (`ae/masks-full`, `ae/dataset-full`: `labeler.ae.full`)
+and is scored over the owner's whole windows. `tokeye_masks`, `seldnet_inputs`
+and `scored_until` give each version's; with no version, v1's.
 
 **Binding.** Every command's `--version` must be its models directory's name and
 the version its checkpoints record (`check_bound`). A full scoring is never made
@@ -35,9 +43,15 @@ EVENT = "alfven_eigenmode"
 #: Deviation 11: 180 shots as of 2026-09-27 22:05 EDT, for v2), by sha256.
 LABEL_SNAPSHOTS = {
     "v2": "5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de",
+    # Round three's Step 0: 180 shots as of 2026-09-28 22:31 EDT, for v3.
+    "v3": "15095cea095b9f78fb117663a234725baacd7cbe4dc66c01878dd082056583ec",
 }
 #: Versions whose candidate and threshold `cv` chooses, not `evaluate --choose`.
-CV_VERSIONS = frozenset({"v2"})
+CV_VERSIONS = frozenset({"v2", "v3"})
+#: Versions scored over the owner's whole windows, from TokEye's whole-shot masks.
+WHOLE_WINDOW_VERSIONS = frozenset({"v3"})
+#: Where the other versions' scored window ends: 0-2 s, all TokEye's v1 masks cover.
+SCORED_UNTIL_MS = 2000.0
 #: The pilot rule: a pilot is 20 shots or fewer.
 PILOT_MAX = 20
 
@@ -161,9 +175,27 @@ def gallery_dir(paths: Paths, version: str = VERSION) -> Path:
     return paths.root / "gallery" / EVENT / f"{METHOD}-{version}"
 
 
-def tokeye_masks(paths: Paths) -> Path:
-    """TokEye's cleaned coherent masks for the AE180 shots, `<shot>_<split>_*`."""
+def tokeye_masks(paths: Paths, version: str | None = None) -> Path:
+    """TokEye's cleaned coherent masks for the AE180 shots, `<shot>_<split>_*`:
+    the whole-shot ones, `ae/masks-full`, for a whole-window version; else
+    v1's, `ae/masks` (0-2 s)."""
+    if version in WHOLE_WINDOW_VERSIONS:
+        return paths.root / "ae" / "masks-full"  # `labeler.ae.full.masks_full_dir`
     return paths.root / "ae" / "masks"
+
+
+def seldnet_inputs(paths: Paths, version: str | None = None) -> Path:
+    """SELDNet's inputs, `<shot>_<split>.npz`: the whole-shot ones,
+    `ae/dataset-full`, for a whole-window version; else v1's, `ae/dataset`."""
+    if version in WHOLE_WINDOW_VERSIONS:
+        return paths.root / "ae" / "dataset-full"  # `full.dataset_full_dir`
+    return paths.root / "ae" / "dataset"
+
+
+def scored_until(version: str | None = None) -> float | None:
+    """Where a version's scored frames end (ms): None, the owner's whole window,
+    for a whole-window version; else SCORED_UNTIL_MS."""
+    return None if version in WHOLE_WINDOW_VERSIONS else SCORED_UNTIL_MS
 
 
 def seldnet_dir(paths: Paths) -> Path:

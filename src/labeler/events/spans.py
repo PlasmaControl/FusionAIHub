@@ -3,10 +3,10 @@
 v1's detectors find these phenomena as points and transitions:
 `transients.elm_clock_events` the ELMs on a D-alpha filterscope,
 `heuristics.lh_transitions` the L-H and H-L transitions from D-alpha, density
-and beam power, `heuristics.sawtooth_events` the crashes on the ECE array. This
-module turns one shot's into the spans the review page edits, over the shot's
-catalog window, and writes them as a suggestion table (`suggestions`) that the
-page opens unreviewed shots on:
+and beam power, and for sawteeth, since v3, `heuristics.sawtooth_crashes` the
+crashes on the ECE array and on an SXR fan. This module turns one shot's into
+the spans the review page edits, over the shot's catalog window, and writes them
+as a suggestion table (`suggestions`) that the page opens unreviewed shots on:
 
 - H-mode (method `dalpha_lh`): present from each L-H to the next H-L, or to the
   end of the stretch the inputs measured. An H-L with no L-H before it makes the
@@ -17,8 +17,17 @@ page opens unreviewed shots on:
   method saw the shot in L-mode: ELMs are an H-mode phenomenon, and the clock
   also counts L-mode D-alpha spikes. A shot whose H-mode inputs are missing
   keeps its runs whole; any other failure of the H-mode method is an error.
+  A stretch of at least `DEAD_MS` over which the filterscope repeats one value
+  (`dead_stretches`) is a channel that stopped reading: not observable, not
+  absent. `elm_onsets` gives the clock's ELMs inside the present spans, which
+  the frame models score as a baseline.
 - Sawteeth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
-  most `SAWTOOTH_MAX_GAP_MS`.
+  most `SAWTOOTH_MAX_GAP_MS`. Since v3 the crashes are the union of the ECE
+  array's and the first lit SXR fan's (`sxr_fan`), less those in the 300 ms
+  after a collapse (`heuristics.sawtooth_events_v3`), over the union of what the
+  two measured; either may be missing. v1's and v2's tables were drafted from
+  `heuristics.sawtooth_events` on ECE alone, which calls sawteeth present on
+  4,815 of the 4,822 population shots and over 71 % of their time.
 
 ELM and sawtooth runs form only from the events inside the shot's window and
 after the plasma starts (`plasma_start`): the first time the 25 ms centred mean
@@ -26,7 +35,11 @@ of |Ip| inside the window reaches `RAMP_FRACTION` of its plateau, the catalog's
 flat-top rule (`catalog.window`), with Ip from the corpus or the raw cache. A
 shot with no Ip starts `RAMP_FALLBACK_MS` into its window. Events before the
 start are dropped before the runs are grouped, so the ramp-up's crash-like
-steps and spikes neither make a run nor join one; the time before is absent.
+steps and spikes neither make a run nor join one. The ramp-up itself, from the
+window's start to the plasma's, is uncertain where the detector saw events there
+(`ramp_up`): for sawteeth all of it once the array saw a crash in it, for ELMs
+each piece of it outside the H-mode method's L-mode that holds an ELM, so its
+L-mode time stays absent.
 - Tearing modes (`window`): no method yet, so the window alone, all absent. It
   gives the page the catalog window to open each shot on.
 
@@ -35,16 +48,27 @@ Inside the window, time the detector's inputs did not measure is not observable
 could not run on is not observable throughout, and the table's meta keeps why
 (`skipped`). The meta's `per_shot` keeps what the page does not show, by shot:
 where the drafts started (`start_ms`, and `start_from`: "ip", or the fallback
-and why), and for ELMs the filterscope read (`channel`) and whether the H-mode
-gate ran (`hmode_gate`: "ran", or why not). Inputs come from the corpus, else
-the raw cache; nothing is fetched.
+and why) and how many events made the ramp-up uncertain (`ramp_events`), and
+for ELMs the filterscope read (`channel`), whether the H-mode gate ran
+(`hmode_gate`: "ran", or why not) and how much of the window the channel's dead
+stretches take (`dead_ms`); `ramp_events` and `dead_ms` appear only when not
+zero. For sawteeth it keeps the diagnostics that ran (`diagnostics`), the SXR
+fan (`sxr_fan`), each diagnostic's crashes over its whole record (`crashes`),
+the collapses (`collapses_ms`), and why a diagnostic did not run (`not_run`,
+only when one did not). Inputs come from the corpus, else the raw cache;
+nothing is fetched.
 
     pixi run -e labelmaker python -m labeler.events.spans --event edge_localized_mode
 
 runs over the frozen cohort's non-blind shots in queue order (`--limit N` takes
 the first N, `--shots` names them; `--windows population` takes the population
-instead) and merges into the method's table. A shot already in the table is
-skipped unless `--force`, so a rerun never changes what a reviewer was shown.
+instead) and merges into the method's table of `--version` (`VERSION` unless
+named), so a table drafted under changed rules goes beside the one reviewers
+opened: v1's tables predate the dead-stretch and ramp-up rules, v2's have them.
+A table whose meta records other rules than the method's now is not run into
+(`check_rule`): the run is refused, and the table and its meta stay as they
+are. A shot already in the table is skipped unless `--force`, so a rerun never
+changes what a reviewer was shown.
 `--gold` also scores the method's drafts on the event's gold shots (`gold`) and
 writes the score into the table's meta, where a later run without it keeps it.
 """
@@ -54,6 +78,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
@@ -78,6 +103,9 @@ MIN_RUN = 3
 PAD_MS = 5.0
 ELM_MAX_GAP_MS = 200.0
 SAWTOOTH_MAX_GAP_MS = 300.0
+#: A filterscope that repeats one value for this long has stopped reading: round
+#: two's review of the editors found such stretches on 21 of the 450 queue shots.
+DEAD_MS = 200.0
 #: The resolutions `pipeline` measures each detector's coverage at.
 ELM_MIN_GAP_S = transients.MIN_DISTANCE_MS * 1e-3
 SAWTOOTH_MIN_GAP_S = heuristics.STEP_SPAN_MS * 1e-3
@@ -97,6 +125,18 @@ RAMP_FALLBACK_MS = 700.0
 #: What a missing or unreadable input raises: the Ip read and the H-mode gate
 #: fall back on these alone.
 INPUT_MISSING = (NoDataError, KeyError, OSError)
+#: What stops one of v3's sawtooth diagnostics and not the shot: a missing
+#: input, or a broken group - rows short of a fan's (`IndexError`), a time axis
+#: that does not fit its samples (`ValueError`). The other diagnostic runs on.
+CRASH_LEG_FAILED = (*INPUT_MISSING, IndexError, ValueError)
+#: The sawtooth method's crash rule since v3, as its table's meta records it
+#: beside `heuristics.SAWTOOTH_V3_CONSTANTS`: a table drafted by v2's detector
+#: records neither, so `check_rule` refuses to run v3 into it.
+SAWTOOTH_CRASH = (
+    "v3: heuristics.sawtooth_events_v3 - steps in each channel's own noise on "
+    "ECE and the first lit SXR fan, a fast fall at the hottest channel, the ECE "
+    "heat pulse, their union, and no crash in the 300 ms after a collapse"
+)
 START_RULE = {
     "ip_fraction": RAMP_FRACTION,
     "ip_mean_ms": RAMP_MEAN_MS,
@@ -104,6 +144,7 @@ START_RULE = {
     "fallback_ms": RAMP_FALLBACK_MS,
     "ip": "the corpus's 'ip', else the raw cache's",
     "events": "only those in [start, window end] form runs",
+    "ramp": "[window start, start) is uncertain where the detector saw events there",
 }
 
 Window = tuple[int, int]
@@ -186,6 +227,10 @@ def minus(intervals: Sequence[Interval], holes: Iterable[Interval]) -> list:
     return out
 
 
+def _within(t: float, intervals: Iterable[Interval]) -> bool:
+    return any(a <= t <= b for a, b in intervals)
+
+
 def shot_rows(shot: int, window: Window, found: Found | None) -> list[list]:
     """The shot's rows tiling `window`: not observable where the method could not
     see, absent where it could, and its spans."""
@@ -258,6 +303,30 @@ def from_start(intervals: Iterable[Interval], start: float) -> list[Interval]:
     return [(max(a, start), b) for a, b in intervals if b > start]
 
 
+def ramp_pieces(
+    start: float, window: Window, holes: Iterable[Interval] = ()
+) -> list[Interval]:
+    """The ramp-up, `[window start, start)` inside the window, less `holes`."""
+    stop = min(float(start), float(window[1]))
+    return minus([(float(window[0]), stop)], holes) if stop > window[0] else []
+
+
+def ramp_up(times_ms: Iterable[float], pieces: Iterable[Interval], info: dict):
+    """`(spans, info)`: each of the ramp-up's `pieces` (`[a, b)`) that holds any
+    of the events `times_ms`, uncertain, and `info` with how many they hold
+    (`ramp_events`); the other pieces stay absent, and `info` is as it was when
+    none holds one. The detector saw something there, but the start rule keeps
+    it out of the runs."""
+    times = list(times_ms)
+    spans, n = [], 0
+    for a, b in pieces:
+        held = sum(1 for t in times if a <= t < b)
+        if held:
+            spans.append((a, b, UNCERTAIN))
+            n += held
+    return spans, ({**info, "ramp_events": n} if n else info)
+
+
 def read(shot: int, group: str, paths: Paths, channels=None):
     """`(t_s, y)` of one group from the corpus, else the raw cache; never fetched."""
     for root in (paths.corpus, paths.raw_cache):
@@ -288,23 +357,79 @@ def dalpha_channel(y, shot: int) -> int:
     return channel
 
 
+def dead_stretches(t_ms, y, min_ms=DEAD_MS) -> list[Interval]:
+    """Each run of identical consecutive finite samples of `y` lasting at least
+    `min_ms`, from its first sample's time to its last's: a filterscope that
+    stopped reading holds one value. A gap (NaN) is the coverage's to say."""
+    t = np.asarray(t_ms, dtype=np.float64).ravel()
+    y = np.asarray(y).ravel()
+    same = np.r_[False, (y[1:] == y[:-1]) & np.isfinite(y[1:]), False]
+    edges = np.diff(same.astype(np.int8))
+    firsts, lasts = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+    return [
+        (float(t[a]), float(t[b]))
+        for a, b in zip(firsts, lasts)
+        if t[b] - t[a] >= min_ms
+    ]
+
+
 def detect_elm(shot: int, paths: Paths, window: Window | None = None) -> Found:
-    """ELM runs; with a `window`, only from the plasma's start (`plasma_start`)."""
+    """ELM runs over what the channel measured less its dead stretches; with a
+    `window`, only from the plasma's start (`plasma_start`), and the ramp-up
+    before it uncertain where the clock saw ELMs there outside L-mode
+    (`ramp_up`)."""
+    return _elm(shot, paths, window)[1]
+
+
+def _elm(shot: int, paths: Paths, window: Window | None):
+    """`(elms, found)`: the clock's ELM times (ms), and `detect_elm`'s `Found`."""
     t_s, y = _dalpha(shot, paths)
     channel = dalpha_channel(y, shot)
     cov = coverage.Coverage.measured(t_s, y[channel], min_gap_s=ELM_MIN_GAP_S)
+    dead = dead_stretches(t_s * 1000.0, y[channel])
     found = transients.elm_clock_events(y[channel], t_s, shot=shot, channel=channel)
     elms = [e.t0_s * 1000 for e in found if e.phenomenon == transients.ELM_PHENOMENON]
     info = {"channel": f"FS{channel + 1:02d}"}
+    grouped, ramp = elms, []
     if window is not None:
         start, info = started(shot, paths, window, info)
-        elms = in_plasma(elms, start, window)
-    spans = runs(elms, max_gap_ms=ELM_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS)
+        grouped = in_plasma(elms, start, window)
+    spans = runs(grouped, max_gap_ms=ELM_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS)
     holes, info["hmode_gate"] = lmode(shot, paths)
     spans = minus(spans, holes)
     if window is not None:
         spans = from_start(spans, start)
-    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov), info)
+        # D63: the ramp-up's L-mode time stays absent, and the clock's L-mode
+        # spikes in it are not counted.
+        ramp, info = ramp_up(elms, ramp_pieces(start, window, holes), info)
+    lo, hi = (-np.inf, np.inf) if window is None else window
+    dead_ms = sum(max(0.0, min(b, hi) - max(a, lo)) for a, b in dead)
+    if dead_ms > 0:
+        info["dead_ms"] = round(dead_ms, 1)
+    drafted = (*ramp, *((a, b, PRESENT) for a, b in spans))
+    return elms, Found(drafted, tuple(minus(_ms(cov), dead)), info)
+
+
+@dataclass(frozen=True)
+class Onsets:
+    """The ELM clock's onsets inside `detect_elm`'s present spans, in ms and in
+    order, and that call's `Found`: the ELMs the draft puts in ELMy H-mode, which
+    the frame models score as a baseline."""
+
+    times_ms: tuple[float, ...]
+    found: Found
+
+
+def elm_onsets(shot: int, paths: Paths, window: Window | None = None) -> Onsets:
+    """`Onsets` from one `detect_elm` of the shot, its present spans clipped to
+    what the channel measured inside `window` as the table's rows are
+    (`shot_rows`)."""
+    elms, found = _elm(shot, paths, window)
+    lo, hi = (-np.inf, np.inf) if window is None else window
+    seen = clip([(a, b, ABSENT) for a, b in found.measured], [(lo, hi)])
+    drafted = clip(found.spans, [(a, b) for a, b, _ in seen])
+    present = [(a, b) for a, b, state in drafted if state == PRESENT]
+    return Onsets(tuple(sorted(float(t) for t in elms if _within(t, present))), found)
 
 
 def started(shot: int, paths: Paths, window: Window, info=None):
@@ -356,24 +481,102 @@ def detect_hmode(shot: int, paths: Paths, window: Window | None = None) -> Found
     return Found(tuple(hmode_spans(marks, measured)), measured)
 
 
-def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Found:
-    """Sawtooth runs; with a `window`, only from the plasma's start."""
-    t_s, y = read(shot, "ece", paths)
+def sxr_fan(shot: int, paths: Paths):
+    """`(name, t_s, y, chords)`: the first of `heuristics.SXR_FANS` with
+    `SXR_MIN_CHORDS` chords finite over at least `SXR_LIT_FRAC` of the record,
+    read a fan at a time, and its lit chords (`y`, and their indices in the fan)
+    in chord order. The sawtooth review panels draw the same fan."""
+    for name, first in heuristics.SXR_FANS:
+        t_s, y = read(shot, "sxr", paths, range(first, first + heuristics.SXR_CHORDS))
+        lit = np.isfinite(y).mean(axis=1) >= heuristics.SXR_LIT_FRAC
+        if lit.sum() >= heuristics.SXR_MIN_CHORDS:
+            return name, t_s, y[lit], np.flatnonzero(lit)
+    raise NoDataError(
+        f"shot {shot}: no SXR fan has {heuristics.SXR_MIN_CHORDS} finite chords"
+    )
+
+
+def _crash_rows(shot: int, diag: str, paths: Paths):
+    """`(t_s, y, chords, fan)` of one of v3's diagnostics: the ECE array, or
+    `sxr_fan`'s lit chords, their indices in the fan and its name."""
+    if diag == "sxr":
+        fan, t_s, y, chords = sxr_fan(shot, paths)
+        return t_s, y, chords, fan
+    t_s, y = read(shot, diag, paths)
+    return t_s, y, None, None
+
+
+def _crash_leg(shot: int, diag: str, paths: Paths):
+    """`(crashes, coverage, fan)` of one of v3's diagnostics."""
+    t_s, y, chords, fan = _crash_rows(shot, diag, paths)
     cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
-    found = heuristics.sawtooth_events(y, t_s, shot=shot, t_cov=cov.hull)
-    crashes = [
-        e.t0_s * 1000 for e in found if e.phenomenon == heuristics.SAWTOOTH_PHENOMENON
-    ]
-    info = {}
+    crashes = heuristics.sawtooth_crashes(
+        y,
+        t_s,
+        shot=shot,
+        diag=diag,
+        t_cov=cov.hull,
+        channels=chords,
+        attrs=None if fan is None else {"fan": fan},
+    )
+    return crashes, cov, fan
+
+
+def _sawtooth_crashes(shot: int, paths: Paths):
+    """`(crashes, coverages, info)`: `heuristics.sawtooth_crashes` on each of
+    v3's diagnostics there is, the intervals each measured, and
+    `detect_sawtooth`'s info. A diagnostic that fails (`CRASH_LEG_FAILED`) is
+    left out, its error under `not_run`; a `NoDataError` naming both when
+    neither ran."""
+    found, measured, fans, not_run = [], [], {}, {}
+    for diag in heuristics.CRASH_DIAGS:
+        try:
+            crashes, cov, fan = _crash_leg(shot, diag, paths)
+        except CRASH_LEG_FAILED as error:
+            log.info("shot %d: no v3 crashes on %s: %s", shot, diag, error)
+            not_run[diag] = f"{type(error).__name__}: {error}"
+            continue
+        found.append(crashes)
+        measured.append(cov.intervals)
+        if fan is not None:
+            fans["sxr_fan"] = fan
+    if not found:
+        why = "; ".join(f"{diag}: {error}" for diag, error in not_run.items())
+        raise NoDataError(f"shot {shot}: no sawtooth diagnostic ran - {why}")
+    collapses = sorted(t for c in found for t in c.collapses_s)
+    info = {
+        "diagnostics": [c.diag for c in found],
+        **fans,
+        "crashes": {c.diag: len(c.events) for c in found},
+        "collapses_ms": [round(t * 1000.0, 1) for t in collapses],
+    }
+    return found, measured, info | ({"not_run": not_run} if not_run else {})
+
+
+def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Found:
+    """Sawtooth runs from v3's crashes, over the union of what ECE and the SXR
+    fan measured; with a `window`, only from the plasma's start, and the ramp-up
+    before it uncertain where there were crashes (`ramp_up`).
+
+    v3 reads the ECE array and the first lit SXR fan (`sxr_fan`), runs
+    `heuristics.sawtooth_crashes` on each there is and takes their union less
+    the collapse guard (`heuristics.sawtooth_events_v3`). A shot with neither
+    raises `NoDataError`."""
+    found, measured, info = _sawtooth_crashes(shot, paths)
+    cov = coverage.union_intervals(*measured)
+    crashes = [e.t0_s * 1000 for e in heuristics.sawtooth_events_v3(found)]
+    ramp = []
     if window is not None:
-        start, info = started(shot, paths, window)
+        start, info = started(shot, paths, window, info)
+        ramp, info = ramp_up(crashes, ramp_pieces(start, window), info)
         crashes = in_plasma(crashes, start, window)
     spans = runs(
         crashes, max_gap_ms=SAWTOOTH_MAX_GAP_MS, min_count=MIN_RUN, pad_ms=PAD_MS
     )
     if window is not None:
         spans = from_start(spans, start)
-    return Found(tuple((a, b, PRESENT) for a, b in spans), _ms(cov), info)
+    measured_ms = tuple((lo * 1000.0, hi * 1000.0) for lo, hi in cov)
+    return Found((*ramp, *((a, b, PRESENT) for a, b in spans)), measured_ms, info)
 
 
 def detect_window(shot: int, paths: Paths, window: Window | None = None) -> Found:
@@ -406,8 +609,12 @@ METHODS = {
                 "pad_ms": PAD_MS,
                 "max_gap_ms": ELM_MAX_GAP_MS,
                 "min_gap_s": ELM_MIN_GAP_S,
+                "min_dead_ms": DEAD_MS,
                 "start": START_RULE,
-                "l_mode": "less the time the dalpha_lh method saw in L-mode",
+                "l_mode": (
+                    "less the time the dalpha_lh method saw in L-mode, "
+                    "the ramp-up's too"
+                ),
             },
         ),
         Method(
@@ -421,13 +628,15 @@ METHODS = {
             "sawtooth_oscillation",
             "ece_sawtooth",
             detect_sawtooth,
-            ("ece", "ip"),
+            ("ece", "sxr", "ip"),
             {
                 "min_run": MIN_RUN,
                 "pad_ms": PAD_MS,
                 "max_gap_ms": SAWTOOTH_MAX_GAP_MS,
                 "min_gap_s": SAWTOOTH_MIN_GAP_S,
                 "start": START_RULE,
+                "crash": SAWTOOTH_CRASH,
+                "crash_constants": heuristics.SAWTOOTH_V3_CONSTANTS,
             },
         ),
         Method("neoclassical_tearing_mode", "window", detect_window, ()),
@@ -513,19 +722,42 @@ def gold(method: Method, paths: Paths, reference=None) -> dict:
     }
 
 
+class RuleChanged(ValueError):
+    """A table drafted under other rules than its method's now."""
+
+
+def check_rule(method: Method, path: Path) -> None:
+    """Raise `RuleChanged` when the table at `path` exists and its meta's `rule`
+    is not `method.rule`: a run would draft new rows under rules its old rows
+    and its meta never had, so the new ones go into a new version instead."""
+    meta_path = path.with_suffix(".meta.json")
+    if not path.is_file():
+        return
+    meta = json.loads(meta_path.read_text()) if meta_path.is_file() else {}
+    if meta.get("rule") != json.loads(json.dumps(method.rule)):
+        raise RuleChanged(
+            f"{meta_path} records other rules than {method.name}'s now; its table "
+            "is left as it is: name a new --version (e.g. v2) to draft under these"
+        )
+
+
 def run(
     method: Method,
     targets: pd.DataFrame,
     paths: Paths,
     *,
     windows: str,
+    version: str = VERSION,
     force: bool = False,
     workers: int = 1,
     scored: dict | None = None,
 ) -> dict:
-    """Suggest `targets`' shots and merge them into the method's table; `scored`
-    (`gold`) replaces the meta's gold score, which is otherwise kept."""
-    path = suggestions.table_path(paths, method.event, method.name, VERSION)
+    """Suggest `targets`' shots and merge them into the method's `version` table;
+    `scored` (`gold`) replaces the meta's gold score, which is otherwise kept.
+    A table drafted under other rules is refused before anything runs
+    (`check_rule`)."""
+    path = suggestions.table_path(paths, method.event, method.name, version)
+    check_rule(method, path)
     meta_path = path.with_suffix(".meta.json")
     old = pd.read_csv(path, keep_default_na=False) if path.is_file() else None
     old_meta = json.loads(meta_path.read_text()) if meta_path.is_file() else {}
@@ -556,7 +788,7 @@ def run(
     meta = {
         "event": method.event,
         "method": method.name,
-        "version": VERSION,
+        "version": version,
         "git_sha": git_sha(),
         "inputs": list(method.inputs),
         "rule": method.rule,
@@ -580,6 +812,12 @@ def run(
     }
 
 
+def _version(text: str) -> str:
+    if not re.fullmatch(r"v\d+", text):
+        raise argparse.ArgumentTypeError(f"not a version such as v1 or v2: {text!r}")
+    return text
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--event", required=True, choices=sorted(METHODS))
@@ -587,6 +825,12 @@ def main(argv=None) -> int:
     parser.add_argument("--shots", type=int, nargs="+", help="only these shots")
     parser.add_argument("--limit", type=int, default=0, help="only the first N")
     parser.add_argument("--force", action="store_true", help="rerun shots done")
+    parser.add_argument(
+        "--version",
+        type=_version,
+        default=VERSION,
+        help="the table's version, v1, v2, ... (default: %(default)s)",
+    )
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument(
         "--gold",
@@ -607,6 +851,11 @@ def main(argv=None) -> int:
     if args.limit:
         targets = targets.head(args.limit)
     method = METHODS[args.event]
+    table = suggestions.table_path(paths, args.event, method.name, args.version)
+    try:
+        check_rule(method, table)  # before `gold`, which reads every gold shot
+    except RuleChanged as error:
+        parser.error(str(error))
     scored = None
     if args.gold is not None:
         scored = gold(method, paths, Path(args.gold) if args.gold else None)
@@ -615,6 +864,7 @@ def main(argv=None) -> int:
         targets,
         paths,
         windows=args.windows,
+        version=args.version,
         force=args.force,
         workers=args.workers,
         scored=scored,

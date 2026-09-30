@@ -4,6 +4,7 @@
     python -m labeler.ae.xpower.cv --candidate NAME --fold K     # 3 x 5 tasks
     python -m labeler.ae.xpower.cv --choose                      # after all 15
     python -m labeler.ae.xpower.cv --candidate NAME --fold K --seed S  # seed study
+    python -m labeler.ae.xpower.cv --candidate NAME --fold K --ablate  # ablation
 
 all for `--version` (default v2) in `--models` (default
 `$LABELER_ROOT/models/ae_xpower/<version>`), under `cv/`.
@@ -18,8 +19,9 @@ they differ in size by at most one shot (24 each on the real data). `--folds`
 writes `cv/folds.csv` (shot, split, fold; the test shots have no fold) and
 `cv/folds.json` before any training. Every later step (the fold tasks, the
 choice, `train --from-cv` and `evaluate --test`) refuses unless the file holds
-exactly the folds the snapshot and TokEye's masks give then (`checked_folds`),
-and the choice, the final model and `chosen.json` name the file's sha256.
+exactly the folds the snapshot and TokEye's masks (`xpower.tokeye_masks`, a
+whole-window version's `ae/masks-full`) give then (`checked_folds`), and the
+choice, the final model and `chosen.json` name the file's sha256.
 
 **A fold task.** Fold K is predicted; fold (K + 1) mod 5 stops the training
 (`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs: v1's
@@ -31,7 +33,10 @@ source-table label, so only inside that table's window; a fold shot the table
 lacks is refused before training): `p<shot>` P(AE), `o<shot>` the owner's
 states, `m<shot>` MHD, `s<shot>` scored. Then `fold<K>.json`, the record that
 marks the task done, with the source table's sha256 and the frames its window
-dropped.
+dropped. A whole-window version's (v3's) frames are the owner's whole window
+instead (`evaluate.whole_frames`, from TokEye's `ae/masks-full`), which no source
+table filters: nothing is refused for lacking one, and the record's
+`source_sha256` is null and `source_dropped` 0.
 
 **The choice.** The out-of-fold frames of all five folds, pooled per candidate
 (every pool shot once), at thresholds 0.10 to 0.90 in steps of 0.05, as
@@ -69,6 +74,26 @@ pilot's under its `pilot/`): a seed aimed at any other directory, the version's
 so is a record already there, which a seeded run never replaces. Each record
 carries its `seed`. `seed_study` pools each seed's five folds, as the choice
 pools them, into one row at the chosen threshold, for `posthoc`.
+
+**The ablation** (post hoc, cross-validation only: no decision depends on it,
+and no test shot is read). `--ablate` trains `--candidate`, one of
+`ABLATIONS[version]` and never one of the version's own, in its fold, as `cv/`
+trains the version's own: the version's `cv/folds.csv` (checked as every step
+checks it, and its sha256 against `chosen.json`'s and `cv/choice.json`'s), the
+same stop fold, epoch cap and `TrainConfig`, and the version's data (its label
+snapshot, TokEye record and frames); only the band and MHD weight are the
+candidate's. It writes only under
+`runs/ae_xpower/ablation/<version>/<candidate>/` (`ablation_dir`; a pilot's
+under its `pilot/`), refuses any other directory (the version's `cv/` among
+them) and a record already there, and marks each record `ablation`.
+`candidate_frames` reads one back as `--choose` reads a record;
+`labeler.ae.xpower.diagnosis --ablation` puts them beside the versions' own.
+
+**Inputs.** A whole-window version's fold records and choice name
+`ae/masks-full` and `ae/dataset-full` by their manifests' sha256 (`inputs`,
+`labeler.ae.full.inputs_identity`), and every read of a record refuses one
+naming others than the manifests list now; a record naming none (v3's own,
+made before the manifests) stands on the version's `inputs.json`.
 """
 
 from __future__ import annotations
@@ -89,10 +114,12 @@ import torch
 
 from ...config import Paths, atomic_path, git_sha
 from ...scoring import stats
+from ..full import check_inputs, inputs_identity
 from . import (
     CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
+    WHOLE_WINDOW_VERSIONS,
     evaluate,
     event_dir,
     model_dir,
@@ -119,6 +146,13 @@ TIES = (
 PILOT_EPOCHS = 2
 #: The seed study's training seeds, beside the default (`data.SEED`).
 STUDY_SEEDS = (20260924, 20260925, 20260926)
+#: The ablation's candidates, per version: outside the version's own, each the
+#: other version's on its band. On v3's whole-window folds, v2's band 80-250 kHz
+#: at v2's two lower weights; on v2's 0-2 s folds, v3's 0-250 kHz at weight 3.
+ABLATIONS = {
+    "v2": {"band0-mhd3": train.candidates("v3")["band0-mhd3"]},
+    "v3": {n: train.candidates("v2")[n] for n in ("band80-mhd3", "band80-mhd10")},
+}
 #: The fields a saved choice must repeat when `--choose` runs again.
 DECISION = ("candidate", "threshold", "branch", "table", "final_epochs", "sources")
 
@@ -132,6 +166,31 @@ def seed_dir(paths: Paths, version: str, seed: int, pilot: int = 0) -> Path:
     to: `runs/ae_xpower/seeds/<version>/seed<S>`, a pilot's under its `pilot/`."""
     out = paths.runs / "ae_xpower" / "seeds" / version / f"seed{seed}"
     return out / "pilot" if pilot else out
+
+
+def ablation_dir(paths: Paths, version: str, candidate: str, pilot: int = 0) -> Path:
+    """The only models directory an ablation fold writes to:
+    `runs/ae_xpower/ablation/<version>/<candidate>`, a pilot's under its `pilot/`;
+    its records go in its `cv/<candidate>/`."""
+    out = paths.runs / "ae_xpower" / "ablation" / version / candidate
+    return out / "pilot" if pilot else out
+
+
+def ablation_spec(version: str, candidate: str) -> dict:
+    """The ablation candidate `candidate` of `version`, {band, mhd_weight};
+    refused for one of the version's own candidates or one not in ABLATIONS."""
+    if candidate in train.candidates(version):
+        raise ValueError(
+            f"{candidate} is one of version {version}'s own candidates; its folds "
+            "are in the version's cv/"
+        )
+    names = ABLATIONS.get(version, {})
+    if candidate not in names:
+        raise ValueError(
+            f"candidate {candidate} is not one of version {version}'s ablations: "
+            + (", ".join(names) or "none")
+        )
+    return names[candidate]
 
 
 def stop_fold(k: int) -> int:
@@ -174,7 +233,7 @@ def _folds_text(split: dict[int, str], folds: dict[int, int]) -> str:
 def _expected(paths: Paths, version: str):
     """The snapshot's sha256 and labels, the split, the folds and folds.csv."""
     data, saved = read_snapshot(paths, version)
-    split = make_split(saved, seldnet_split(tokeye_masks(paths)))
+    split = make_split(saved, seldnet_split(tokeye_masks(paths, version)))
     folds = make_folds(s for s, v in split.items() if v != "test")
     return _sha(data), saved, split, folds, _folds_text(split, folds)
 
@@ -277,50 +336,70 @@ def run_fold(
     version: str,
     pilot: int = 0,
     seed: int = SEED,
+    ablate: bool = False,
     log=print,
 ) -> dict:
     """Train on three folds, stop on fold `fold` + 1, predict fold `fold`; with
-    another `seed`, the seed study's fold, into `seed_dir` only, never replaced."""
+    another `seed`, the seed study's fold, into `seed_dir` only, never replaced;
+    with `ablate`, an ablation candidate's fold, into `ablation_dir` only, never
+    replaced."""
     seeded = seed != SEED
-    own = seed_dir(paths, version, seed, pilot)
-    if seeded and models.resolve() != own.resolve():
-        raise ValueError(
-            f"{models}: a fold trained with seed {seed} writes only under {own}"
-        )
-    folds_from = model_dir(paths, version) if seeded else models  # the cv/ folds
+    if seeded and ablate:
+        raise ValueError("an ablation trains with the default seed only")
+    own, what = None, ""  # a seeded or ablation fold's only directory
+    if seeded:
+        own, what = seed_dir(paths, version, seed, pilot), f"trained with seed {seed}"
+    elif ablate:
+        own, what = ablation_dir(paths, version, candidate, pilot), "of the ablation"
+    if own is not None and models.resolve() != own.resolve():
+        raise ValueError(f"{models}: a fold {what} writes only under {own}")
+    # The version's own cv/ folds, which a seeded or ablation fold only reads.
+    folds_from = models if own is None else model_dir(paths, version)
     check_version(folds_from, version)
-    spec = train.candidate_spec(version, candidate)
+    if ablate:
+        spec = ablation_spec(version, candidate)
+    else:
+        spec = train.candidate_spec(version, candidate)
     if not 0 <= fold < N_FOLDS:
         raise ValueError(f"--fold must be 0 to {N_FOLDS - 1}")
     in_runs = pilot_area(models, paths.runs)
     if pilot and not in_runs:
         raise ValueError(f"{models}: a pilot writes under {paths.runs}")
     record_file, npz_file = _record_paths(models, candidate, fold)
-    if seeded and (record_file.exists() or npz_file.exists()):
+    if own is not None and (record_file.exists() or npz_file.exists()):
         raise FileExistsError(
-            f"{record_file}: a seeded fold is trained once; nothing is replaced"
+            f"{record_file}: a fold {what} is trained once; nothing is replaced"
         )
     if record_file.exists() and not in_runs:
         raise FileExistsError(f"{record_file}: a fold is trained once")
     digest, saved, _, folds, folds_sha = checked_folds(paths, folds_from, version)
     if seeded:
         _chosen_for_seeds(folds_from, candidate, folds_sha)
-    source = evaluate.source_table(paths)  # the test's source-window filter
+    if ablate:
+        _chosen_folds(folds_from, folds_sha)
     by = _by_fold(folds, pilot)
-    lacking = [s for s in by[fold] if s not in source.labels]
-    if lacking:
-        raise ValueError(
-            f"{source.path or event_dir(paths)}: no source-table label for fold "
-            f"{fold}'s shots {', '.join(map(str, lacking))}; the test scores only "
-            "frames inside that table's windows"
-        )
+    whole = version in WHOLE_WINDOW_VERSIONS
+    inputs = inputs_identity(paths, version)  # {} unless whole-window
+    if whole:  # the owner's whole windows, which no source table filters
+        source, source_sha = None, evaluate.source_sha(paths, version)
+    else:
+        source = evaluate.source_table(paths)  # the test's source-window filter
+        source_sha = source.sha256
+        lacking = [s for s in by[fold] if s not in source.labels]
+        if lacking:
+            raise ValueError(
+                f"{source.path or event_dir(paths)}: no source-table label for fold "
+                f"{fold}'s shots {', '.join(map(str, lacking))}; the test scores only "
+                "frames inside that table's windows"
+            )
     stop = stop_fold(fold)
     train_folds = [f for f in range(N_FOLDS) if f not in (fold, stop)]
     train_shots = [s for f in train_folds for s in by[f]]
 
     def shot(s):
         rows = store_rows(paths.spectrogram_file(EVENT, s))
-        return load_shot(s, saved[s], rows, tokeye_masks(paths), band=spec["band"])
+        masks = tokeye_masks(paths, version)
+        return load_shot(s, saved[s], rows, masks, band=spec["band"])
 
     config = replace(fold_config(spec, pilot), seed=seed)
     model, history, _ = train.fit(
@@ -329,19 +408,28 @@ def run_fold(
     blob = {"band_khz": list(spec["band"]), "threshold": 0.5, "candidate": candidate}
     arrays, dropped = {}, 0
     for s in by[fold]:
-        frames = evaluate.shot_frames(
-            s,
-            paths=paths,
-            label=saved[s],
-            model=model,
-            blob=blob,
-            source=source.labels[s],
-        )
+        if whole:
+            frames = evaluate.whole_frames(
+                s, paths=paths, label=saved[s], model=model, blob=blob, version=version
+            )
+        else:
+            frames = evaluate.shot_frames(
+                s,
+                paths=paths,
+                label=saved[s],
+                model=model,
+                blob=blob,
+                source=source.labels[s],
+            )
         dropped += frames.source_dropped
         arrays[f"p{s}"] = np.asarray(frames.prob, dtype=np.float32)
         arrays[f"o{s}"] = np.asarray(frames.owner, dtype=np.int8)
         arrays[f"m{s}"] = np.asarray(frames.mhd, dtype=bool)
         arrays[f"s{s}"] = np.asarray(frames.scored, dtype=bool)
+    if inputs_identity(paths, version) != inputs:
+        raise ValueError(
+            f"{record_file}: ae/masks-full or ae/dataset-full changed during the fold"
+        )
     buffer = io.BytesIO()
     np.savez_compressed(buffer, **arrays)
     record_file.parent.mkdir(parents=True, exist_ok=True)
@@ -367,13 +455,17 @@ def run_fold(
         "pilot": pilot,
         "labels_sha256": digest,
         "folds_sha256": folds_sha,
-        "source_sha256": source.sha256,
+        "source_sha256": source_sha,
         "source_dropped": dropped,
         "npz_sha256": _sha(buffer.getvalue()),
         "peak_rss_mb": round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024),
         "git_sha": git_sha(),
         "made_at": _now(),
     }
+    if whole:
+        record["inputs"] = inputs
+    if ablate:
+        record["ablation"] = True
     with atomic_path(record_file) as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
     return record
@@ -395,6 +487,18 @@ def _chosen_for_seeds(models: Path, candidate: str, folds_sha: str) -> dict:
             f"{chosen.get('candidate')}, not {candidate}"
         )
     return chosen
+
+
+def _chosen_folds(models: Path, folds_sha: str) -> None:
+    """Refuse folds (by sha256) other than the ones `chosen.json` and
+    `cv/choice.json` were made from."""
+    for file in (models / "chosen.json", cv_dir(models) / "choice.json"):
+        named = json.loads(file.read_text()).get("folds_sha256")
+        if named != folds_sha:
+            raise ValueError(
+                f"{cv_dir(models) / 'folds.csv'}: sha256 {folds_sha} differs from "
+                f"{file}'s folds_sha256 {named}"
+            )
 
 
 def _study_inputs(paths: Paths, version: str) -> tuple:
@@ -428,9 +532,27 @@ def oof_frames(paths: Paths, version: str, seed: int = SEED) -> list:
             f"{cv_dir(where) / name}: seed {seed}'s folds {lacking} are missing"
         )
     spec = train.candidate_spec(version, name)
+    return _fold_frames(paths, version, folds, where, name, spec, seed=seed)
+
+
+def _fold_frames(
+    paths: Paths,
+    version: str,
+    folds: Folds,
+    where: Path,
+    name: str,
+    spec: dict,
+    *,
+    seed: int = SEED,
+    extra: dict | None = None,
+) -> list:
+    """Candidate `name`'s out-of-fold frames of all five folds under `where`,
+    each record checked as `--choose` checks it (and against `extra`), its
+    inputs among them (`check_inputs`)."""
     config = asdict(replace(fold_config(spec, 0), seed=seed))
     config = json.loads(json.dumps(config))  # as a record holds it
-    source_sha = evaluate.source_table(paths).sha256
+    source_sha = evaluate.source_sha(paths, version)
+    identity = inputs_identity(paths, version)
     by = _by_fold(folds.folds, 0)
     frames = []
     for k in range(N_FOLDS):
@@ -445,9 +567,34 @@ def oof_frames(paths: Paths, version: str, seed: int = SEED) -> list:
             "mhd_weight": spec["mhd_weight"],
             "band_khz": list(spec["band"]),
             "config": config,
+            **(extra or {}),
         }
-        frames += _load_fold(where, name, k, expect)[1]
+        record, fold_frames = _load_fold(where, name, k, expect)
+        file = _record_paths(where, name, k)[0]
+        check_inputs(paths, version, record.get("inputs"), file, identity=identity)
+        frames += fold_frames
     return frames
+
+
+def candidate_frames(paths: Paths, version: str, candidate: str) -> list:
+    """A candidate's out-of-fold frames of all five folds on the version's folds
+    (checked, and by sha256 against `chosen.json`'s and the choice's), each
+    record checked as `--choose` checks it: one of the version's own from its
+    `cv/`, an ablation candidate's (`ABLATIONS`) from `ablation_dir`, as an
+    ablation's."""
+    models = model_dir(paths, version)
+    check_version(models, version)
+    folds = checked_folds(paths, models, version)
+    _chosen_folds(models, folds.sha256)
+    if candidate in train.candidates(version):
+        spec, where, extra = train.candidate_spec(version, candidate), models, None
+    else:
+        spec = ablation_spec(version, candidate)
+        where, extra = ablation_dir(paths, version, candidate), {"ablation": True}
+    lacking = _lacking(where, candidate)
+    if lacking:
+        raise FileNotFoundError(f"{cv_dir(where) / candidate}: folds {lacking} missing")
+    return _fold_frames(paths, version, folds, where, candidate, spec, extra=extra)
 
 
 def seed_study(paths: Paths, version: str, seeds=STUDY_SEEDS) -> dict:
@@ -586,7 +733,8 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
     """Pool the 15 fold records, apply the rule, write choice.json and frontier.md."""
     check_version(models, version)
     digest, _, _, folds, folds_sha = checked_folds(paths, models, version)
-    source_sha = evaluate.source_table(paths).sha256
+    source_sha = evaluate.source_sha(paths, version)
+    identity = inputs_identity(paths, version)  # {} unless whole-window
     names = train.candidates(version)
     missing = [
         f"{name} fold {k}"
@@ -624,6 +772,10 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
                 "config": config,
             }
             record, fold_frames = _load_fold(models, name, k, expect)
+            record_file = _record_paths(models, name, k)[0]
+            check_inputs(
+                paths, version, record.get("inputs"), record_file, identity=identity
+            )
             frames += fold_frames
             records.append(record)
             best[name].append(record["best_epoch"])
@@ -632,7 +784,6 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
                 "epochs_run": record["epochs_run"],
                 "stop_fold": record["stop_fold"],
             }
-            record_file = _record_paths(models, name, k)[0]
             sources[f"{name}/fold{k}.json"] = _sha(record_file.read_bytes())
         if sorted(f.shot for f in frames) != sorted(s for v in by.values() for s in v):
             raise ValueError(f"{cv_dir(models) / name}: folds miss or repeat a shot")
@@ -677,6 +828,8 @@ def run_choose(paths: Paths, models: Path, version: str) -> dict:
         "git_sha": git_sha(),
         "made_at": _now(),
     }
+    if version in WHOLE_WINDOW_VERSIONS:
+        choice["inputs"] = identity
     file = cv_dir(models) / "choice.json"
     if file.exists() and not pilot_area(models, paths.runs):
         saved = json.loads(file.read_text())
@@ -702,17 +855,24 @@ def frontier_md(choice: dict) -> str:
     """The pooled out-of-fold table, the rule and what it chose."""
     n = choice["frames"]
     epochs = sorted(choice["best_epochs"][choice["candidate"]])
+    if choice["version"] in WHOLE_WINDOW_VERSIONS:
+        window = "the owner's whole windows"
+        dropped = "none dropped, as no source table filters a whole window"
+    else:
+        window = "0-2 s"
+        dropped = (
+            f"{n['source_dropped']} frames outside the source table's window "
+            "dropped, as the test drops them"
+        )
     lines = [
         f"# AE {choice['version']}: the cross-validated choice",
         "",
         (
             f"Out-of-fold frames of {n['shots']} shots in {N_FOLDS} folds "
             f"(each predicted by a model that neither trained nor stopped on it): "
-            f"{n['scored']} frames of 0-2 s, {n['present']} present, "
-            f"{n['mhd_absent']} MHD frames the owner called absent; "
-            f"{n['source_dropped']} frames outside the source table's window "
-            f"dropped, as the test drops them. Labels sha256 "
-            f"{choice['labels_sha256'][:12]}..."
+            f"{n['scored']} frames of {window}, {n['present']} present, "
+            f"{n['mhd_absent']} MHD frames the owner called absent; {dropped}. "
+            f"Labels sha256 {choice['labels_sha256'][:12]}..."
         ),
         "",
         "The rule (the ledger's Deviation 11), over every (candidate, threshold):",
@@ -776,6 +936,14 @@ def main(argv=None) -> int:
             "study's, into runs/ae_xpower/seeds/<version>/seed<S>"
         ),
     )
+    p.add_argument(
+        "--ablate",
+        action="store_true",
+        help=(
+            "a fold task of an ablation candidate (cv.ABLATIONS) on the version's "
+            "folds, into runs/ae_xpower/ablation/<version>/<candidate>"
+        ),
+    )
     args = p.parse_args(argv)
     task = args.candidate is not None or args.fold is not None
     if args.folds + args.choose + task != 1:
@@ -786,12 +954,18 @@ def main(argv=None) -> int:
         p.error("a pilot is 5 to 20 shots")
     if args.seed != SEED and not task:
         p.error("--seed is for a fold task")
+    if args.ablate and not task:
+        p.error("--ablate is for a fold task")
+    if args.ablate and args.seed != SEED:
+        p.error("an ablation trains with the default seed only")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
     paths = Paths.from_env()
     pilot_models = paths.runs / "ae_xpower" / "pilot" / args.version
     models = args.models or (
         seed_dir(paths, args.version, args.seed, args.pilot)
         if args.seed != SEED
+        else ablation_dir(paths, args.version, args.candidate, args.pilot)
+        if args.ablate
         else pilot_models
         if args.pilot
         else model_dir(paths, args.version)
@@ -814,6 +988,7 @@ def main(argv=None) -> int:
                 version=args.version,
                 pilot=args.pilot,
                 seed=args.seed,
+                ablate=args.ablate,
                 log=lambda m: print(m, flush=True),
             )
             print(

@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=2500M
+#SBATCH --mem=3500M
 #SBATCH --time=01:00:00
 #SBATCH --array=0-14
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%A_%a.out
@@ -54,7 +54,42 @@
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #   then:       sbatch ae_xpower_posthoc.sbatch   (its summary is the record's (c))
 #
-# ------------------------------------------ sizing (measured 2026-09-28, A = job 2943054)
+# The ablation (post hoc, cross-validation only: no decision depends on it, and no
+# test shot is read). ABLATE=<c> trains candidate c, one of cv.ABLATIONS[$VERSION]
+# and never one of the version's own, on the version's cv/folds.csv (checked, and its
+# sha256 against chosen.json's and cv/choice.json's), with nothing else changed
+# (folds, stop rule, epoch cap, TrainConfig, data): only the band and MHD weight
+# are c's. Task K is c's fold K: --array=0-4, and a task past 4 is refused. It
+# writes only to $LABELER_ROOT/runs/ae_xpower/ablation/$VERSION/<c>/cv/<c>/ (a pilot's
+# under <c>/pilot/cv/); the version's cv/ is refused, and a record already there is
+# never replaced. No --folds step: the folds are cv/'s. The three runs:
+#   v3's whole-window folds, band 80-250 kHz:  ABLATE=band80-mhd3, ABLATE=band80-mhd10
+#   v2's 0-2 s folds, band 0-250 kHz:          ABLATE=band0-mhd3
+# Pilot first (10 pool shots, 2 a fold, 2 epochs, into .../<c>/pilot/cv; it is exempt
+# from the gate but reported):
+#   pilot:      VERSION=v3 ABLATE=band80-mhd3 PILOT=10 sbatch --array=0-4 <this>
+#               VERSION=v2 ABLATE=band0-mhd3 PILOT=10 sbatch --array=0-4 <this>
+#   ablation:   VERSION=v3 ABLATE=band80-mhd3 sbatch --array=0-4 <this>
+#               VERSION=v3 ABLATE=band80-mhd10 sbatch --array=0-4 <this>
+#               VERSION=v2 ABLATE=band0-mhd3 sbatch --array=0-4 <this>
+#   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
+#   then:       python -m labeler.ae.xpower.diagnosis --ablation   (login node, seconds;
+#               runs/ae_xpower/ablation/summary.md)
+#   sizing:     the header's 3500M and 01:00:00 for all three, from C. v3's run
+#               loads C's shots and whole windows on a narrower band (80-250 kHz,
+#               about two thirds of C's rows); v2's loads C's band over 0-2 s only.
+#               Not A's 2500M for v2's: A's peak, 2106 MiB, is on the 80-250 kHz band.
+#
+# ------------------------------------------ sizing (measured 2026-09-29, v3: B = job 2944516,
+#                                            C = job 2944532)
+#   v3 loads whole windows at 0-250 kHz, about 1.9 times v2's pixels a shot.
+#   B, fold task 0 alone at 8G, to measure: 12 min 12 s, sacct MaxRSS 2,903,096 KiB
+#   (2835 MiB). C, tasks 1-14 at 3500M: 10 min 15 s to 22 min 10 s; MaxRSS 2,138,908
+#   to 2,851,568 KiB; CPU 81.1-86.4 %.
+#   mem=3500M      B's 2835 MiB x 1.2 is 3402 MiB; rounded up. The array shares one
+#                  --mem, so the smaller folds use 60-80 % of it.
+#   time=01:00:00  C's longest task, 22 min 10 s, x 2.7.
+# before v3 (measured 2026-09-28, A = job 2943054):
 #   A, v2's 15 fold tasks: 72 train + 24 early-stopping shots loaded, 4 threads (CPU
 #   75.4-89.2 %), 6 min 31 s to 16 min 13 s a task; sacct MaxRSS 1,780,848 to
 #   2,156,464 KiB, peak 2106 MiB. A seeded fold loads and trains the same shots.
@@ -69,13 +104,19 @@ ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
 VERSION="${VERSION:-v2}"
 K="${SLURM_ARRAY_TASK_ID:-0}"
-CANDIDATE="$("$ENV/bin/python" -c "from labeler.ae.xpower.train import candidates; print(list(candidates('$VERSION'))[$K // 5])")"
+if [ -n "${ABLATE:-}" ]; then  # an ablation candidate: task K is its fold K
+    [ "$K" -lt 5 ] || { echo "ABLATE: tasks 0-4 only, not $K" >&2; exit 2; }
+    CANDIDATE="$ABLATE"
+else
+    CANDIDATE="$("$ENV/bin/python" -c "from labeler.ae.xpower.train import candidates; print(list(candidates('$VERSION'))[$K // 5])")"
+fi
 FOLD=$((K % 5))
-echo "job ${SLURM_JOB_ID:-none} task $K ($VERSION $CANDIDATE fold $FOLD${SEED:+ seed $SEED}) on $(hostname) at $(date -Is), root $ROOT"
+echo "job ${SLURM_JOB_ID:-none} task $K ($VERSION $CANDIDATE fold $FOLD${SEED:+ seed $SEED}${ABLATE:+ ablation}) on $(hostname) at $(date -Is), root $ROOT"
 srun "$ENV/bin/python" -m labeler.ae.xpower.cv --version "$VERSION" \
-    --candidate "$CANDIDATE" --fold "$FOLD" ${PILOT:+--pilot "$PILOT"} ${SEED:+--seed "$SEED"}
+    --candidate "$CANDIDATE" --fold "$FOLD" ${PILOT:+--pilot "$PILOT"} ${SEED:+--seed "$SEED"} \
+    ${ABLATE:+--ablate}
 echo "finished at $(date -Is)"

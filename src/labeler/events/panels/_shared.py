@@ -18,6 +18,7 @@ from scipy import signal
 from ...config import Paths
 from ...features.store import read_feature
 from .. import spans
+from ..raw import FetchDisabledError
 from ..verify import NoDataError, Panel
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,8 @@ Z_DB = (-3.0, 27.0)
 #: 3.6 V against 0.02 V ELMs) would flatten everything else in the row.
 ROBUST_PERCENTILES = (0.5, 99.5)
 ROBUST_MARGIN = 1.0
+#: What a row's title says when `robust_clip` moved a sample of it.
+CLIPPED = ", clipped to its plasma range"
 
 
 def optional(what: str, shot: int, build: Callable[[], Iterable[Panel]]) -> list:
@@ -38,7 +41,10 @@ def optional(what: str, shot: int, build: Callable[[], Iterable[Panel]]) -> list
     try:
         return list(build())
     except MISSING as error:
-        log.info("shot %s: no %s panel: %s", shot, what, error)
+        # Fetching off (a job) is a gap the job log should show, not a quiet one.
+        disabled = isinstance(error, FetchDisabledError)
+        level = logging.WARNING if disabled else logging.INFO
+        log.log(level, "shot %s: no %s panel: %s", shot, what, error)
         return []
 
 
