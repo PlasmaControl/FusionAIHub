@@ -114,7 +114,8 @@ MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
 #: A frame-model track's key (F9): what it holds is a suggestion.
 SUGGESTED = "suggested: {}"
-#: A signal panel's text where the shot's store lacks its rows (`paper.roster`).
+#: A signal panel's text where the shot's store lacks its rows, or the n map's
+#: where it has no TokEye gate (`paper.roster`).
 NO_DATA = "no {} data"
 #: A track's text where the frame model's table exists without the shot.
 NOT_APPLIED = "not applied to this shot"
