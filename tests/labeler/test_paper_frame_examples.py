@@ -3,6 +3,7 @@ gallery drawing they share."""
 
 from __future__ import annotations
 
+import io
 import json
 import math
 
@@ -44,6 +45,15 @@ def test_the_products_are_named_by_phenomenon_and_owned():
         if name != names[roc.AE_METHOD]:
             assert build.PRODUCTS[name] == build.FIGURE
             assert {name + ".pdf", name + ".png"} <= build.OWNED
+
+
+def test_only_shots_with_a_present_bin_are_ranked(scored):
+    data, _ = frame_examples.read_features(scored, METHOD, TEST)
+    found = frame_examples.present_shots(data)
+    for shot, blob in data.items():
+        with np.load(io.BytesIO(blob)) as z:
+            assert (shot in found) == bool((z["states"] == PRESENT_T).any())
+    assert "present bin" in frame_examples.RULE
 
 
 def test_the_picks_are_pick_examples_over_the_f1_without_nan():
@@ -88,6 +98,10 @@ def test_each_figure_draws_three_shots_with_input_target_and_p(tmp_path):
         assert model.get_ylim() == (0, 1)
         [threshold] = [ln for ln in model.lines if ln.get_linestyle() == ":"]
         assert list(threshold.get_ydata()) == [0.6, 0.6], "the model's threshold"
+    strip = axes[1]
+    [unknown] = [p for p in strip.patches if p.get_label() == "target: unknown"]
+    assert unknown.get_edgecolor()[:3] == pytest.approx((0.6, 0.6, 0.6))
+    assert unknown.get_linewidth() == 0.4
     [legend] = fig.legends
     labels = [t.get_text() for t in legend.get_texts()]
     assert labels == [
@@ -97,6 +111,22 @@ def test_each_figure_draws_three_shots_with_input_target_and_p(tmp_path):
         "target: unknown",
         frame_examples.MODEL_LABEL,
         frame_examples.THRESHOLD_LABEL,
+    ]
+
+
+def test_an_optional_role_s_flag_channel_is_named():
+    spec = frames.SPECS["hmode_frames"]
+    optional = [r for r in spec.roles if r.optional]
+    assert optional, "H-mode has an optional role"
+    fig = Figure()
+    ax = fig.subplots()
+    width = sum(frames.features._width(r) for r in spec.roles)
+    gallery.draw_rows(ax, spec, np.zeros((width, 10)), 0, 50)
+    names = [t.get_text() for t in ax.get_yticklabels()]
+    assert names == [
+        n
+        for r in spec.roles
+        for n in ([r.name, f"{r.name} seen"] if r.optional else [r.name])
     ]
 
 
@@ -171,7 +201,9 @@ def test_the_build_draws_the_frame_figure_and_records_the_picks(
     found, snap, evaluation = _read(scored, METHOD)
     why, record, made, partial = _call(scored, tmp_path, evaluation, snap, found)
     assert why is None and made == {NAME: [NAME + ".pdf", NAME + ".png"]}
-    assert sorted(record["example_shots"]) == TEST, "two test shots in all"
+    data, _ = frame_examples.read_features(scored, METHOD, TEST)
+    present = sorted(frame_examples.present_shots(data))
+    assert present and sorted(record["example_shots"]) == present, "with a present bin"
     assert record["example_rule"] == frame_examples.RULE
     assert record["test_shots"] == 2 and record["features_missing"] == {}
     assert record["threshold"] == 0.5
@@ -186,7 +218,7 @@ def test_the_build_draws_the_frame_figure_and_records_the_picks(
     # each F1 is the evaluation's own over the scored bins
     read, _ = evaluate.read_shots(scored, METHOD, TEST)
     model, _ = frames_train.load(frames.model_dir(scored, METHOD) / "model.pt")
-    for s in read:
+    for s in (s for s in read if s.shot in record["example_shots"]):
         prob = evaluate.model_probs(model, frames.SPECS[METHOD], s)
         f1 = evaluate.score(prob, s.states, 0.5, s.observed)["f1"]
         assert record["shot_f1"][str(s.shot)] == build._number(
