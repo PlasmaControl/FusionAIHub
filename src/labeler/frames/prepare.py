@@ -5,8 +5,8 @@
     python -m labeler.frames.prepare --method M [--shots ...] [--limit N]
         [--index I --count N] [--workers W]
 
-**Shots.** The method's shots file's (`frames.shots_file`, every split), or
-`--shots`. Shard I of N (`shard`) takes every N-th of them in shot order from
+**Shots.** The method's shots file's (`frames.shots_file`, every split, of
+`frames.VERSION`, as every file here is, F1), or `--shots`. Shard I of N (`shard`) takes every N-th of them in shot order from
 the I-th, and `--limit` the shard's first N. I and N default to
 SLURM_ARRAY_TASK_ID and SLURM_ARRAY_TASK_COUNT (D67), so each task of an array
 is its own shard.
@@ -14,7 +14,8 @@ is its own shard.
 **Stores** (`--stores`, `build_stores`). Each shot outside the store event's
 roster gets its store built under `frames/stores/<store_event>/`
 (`frames.store_path`) by `review.build.build(out=)`, never into `spectrograms/`,
-which the review page serves; nothing is fetched under LABELER_NO_FETCH=1. A
+which the review page serves; nothing is fetched under LABELER_NO_FETCH=1. The
+stores hold no target, so they are not versioned: v1's serve v2. A
 roster shot's store is the review's and is left as it is. A store already built
 is kept unless `--force`, or unless it cannot be opened, or it is stale (a
 tearing-mode store from before d9fb57d, `features.StaleStore`, D65): those are
@@ -26,13 +27,15 @@ inside its window (the split's, `frames.shots_meta_file`'s `windows`) go to
 - `x`, `(C, n_sub)` float16 in [0, 1]: the sub-frames of those bins;
 - `observed`, `(n_frames,)`: each 10 ms frame's;
 - `bins`, `(n_bins,)`: each bin's start, ms; `states`, `(n_bins,)` int8: its
-  target (`targets.target_bins`; for the owner split, the owner's label as the
-  split froze it, `frames.owner_file`, D40), UNKNOWN where the target has no bin;
+  target, the original's (`targets.target_bins`) with the owner's label as the
+  split froze it (`frames.owner_file`) over it (`targets.merged`, F2), UNKNOWN
+  where neither has the bin;
 - `first`, the first frame, and `window`, the window in ms.
 
 A shot whose features cannot be made is dropped: its npz is removed and its
 reason written to `features_dir/<shot>.dropped.json` (`dropped` reads them all).
-The reasons: not in the split, no target, no whole bin in the window, no store,
+The reasons: not in the split, no target (no original that can be read, and no
+owner's label), no whole bin in the window, no store,
 a stale store, a store that cannot be read, and no observed frame (a store whose
 required rows hold nothing inside the window, as sawtooth 187154's ECE).
 
@@ -64,6 +67,7 @@ from ..events.review import labels
 from ..scoring.frames import FRAME_MS
 from . import (
     SPECS,
+    VERSION,
     EventSpec,
     features_dir,
     owner_file,
@@ -93,7 +97,7 @@ def shard(shots, index: int, count: int) -> list[int]:
 
 def split_shots(paths: Paths, method: str) -> dict[int, str]:
     """The method's shots file, shot -> split; raises before the split is made."""
-    path = shots_file(paths, method)
+    path = shots_file(paths, method, VERSION)
     if not path.is_file():
         raise FileNotFoundError(
             f"{path}: no split; run python -m labeler.frames.shots --method {method}"
@@ -203,7 +207,7 @@ def _drop(folder, shot: int, reason: str) -> tuple[int, str]:
 def dropped(paths: Paths, method: str) -> dict[int, str]:
     """Every dropped shot's reason, by shot."""
     found = {}
-    for path in sorted(features_dir(paths, method).glob(f"*{DROPPED}")):
+    for path in sorted(features_dir(paths, method, VERSION).glob(f"*{DROPPED}")):
         record = json.loads(path.read_text())
         found[int(record["shot"])] = record["reason"]
     return found
@@ -230,7 +234,7 @@ def bin_range(window, bin_ms: float) -> tuple[int, int]:
 def _features_one(job) -> tuple[int, str | None]:
     paths, method, shot, window, target = job
     spec = SPECS[method]
-    folder = features_dir(paths, method)
+    folder = features_dir(paths, method, VERSION)
     per = round(spec.bin_ms / FRAME_MS)
     k0, k1 = bin_range(window, spec.bin_ms)
     if k1 <= k0:
@@ -266,12 +270,13 @@ def prepare(paths: Paths, method: str, shots, *, workers: int = 1) -> dict:
     """Write each of `shots`' features (module docstring); what was done: the
     shots `written`, and the `dropped` ones with their reasons."""
     spec = SPECS[method]
-    windows = json.loads(shots_meta_file(paths, method).read_text())["windows"]
+    meta_path = shots_meta_file(paths, method, VERSION)
+    windows = json.loads(meta_path.read_text())["windows"]
     split = split_shots(paths, method)
     wanted = sorted({int(shot) for shot in shots})
-    folder = features_dir(paths, method)
+    folder = features_dir(paths, method, VERSION)
     folder.mkdir(parents=True, exist_ok=True)
-    saved = None
+    saved = labels.read_labels(owner_file(paths, method, VERSION))
     record = {"method": method, "shots": wanted, "written": [], "dropped": {}}
     jobs = []
     for shot in wanted:
@@ -281,16 +286,14 @@ def prepare(paths: Paths, method: str, shots, *, workers: int = 1) -> dict:
             continue
         lo, hi = windows[str(shot)][:2]
         try:
-            if split[shot] == "owner":
-                if saved is None:
-                    saved = labels.read_labels(owner_file(paths, method))
-                target = targets.label_bins(saved[shot], spec.bin_ms)
-            else:
-                target = targets.target_bins(paths, spec, shot)
+            original = targets.target_bins(paths, spec, shot)
         except (OSError, ValueError, KeyError) as error:
-            reason = f"no target: {type(error).__name__}: {error}"
-            record["dropped"][str(shot)] = _drop(folder, shot, reason)[1]
-            continue
+            if shot not in saved:
+                reason = f"no target: {type(error).__name__}: {error}"
+                record["dropped"][str(shot)] = _drop(folder, shot, reason)[1]
+                continue
+            original = None  # the owner's label alone, as `shots` merged it
+        target = targets.merged(original, saved.get(shot), spec.bin_ms)
         jobs.append((paths, method, shot, (int(lo), int(hi)), target))
     for shot, reason in _run(_features_one, jobs, workers):
         if reason is None:
@@ -342,7 +345,7 @@ def main(argv=None) -> int:
         name = f"{args.method}-{args.index}-of-{args.count}.json"
     else:
         record = prepare(paths, args.method, mine, workers=args.workers)
-        out = features_dir(paths, args.method) / "records"
+        out = features_dir(paths, args.method, VERSION) / "records"
         name = f"{args.index}-of-{args.count}.json"
     record |= {
         "index": args.index,

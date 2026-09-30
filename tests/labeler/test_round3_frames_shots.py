@@ -1,4 +1,5 @@
-"""Round three, Task 2.7: each frame model's eligible shots, split and owner saves."""
+"""Round three, Task 2.7 and F2: each frame model's eligible shots, split and
+owner saves; v2's target is the original's with the owner's labels over it."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import pytest
 
 from labeler import frames
 from labeler.events import raw, spans
+from labeler.events.catalog.states import PRESENT
 from labeler.events.review import labels
 from labeler.frames import shots as frames_shots
 from labeler.frames import targets
@@ -21,6 +23,8 @@ from . import editor_tree, frames_tree
 from .frames_tree import (
     BLIND,
     ELM,
+    EVENT_MS,
+    HMODE,
     IP_SHOT,
     IP_WINDOW,
     LABELS_SHOT,
@@ -34,11 +38,15 @@ from .frames_tree import (
     WINDOW,
 )
 
-SPLITS = ("train", "val", "test", "owner")
+SPLITS = ("train", "val", "test")
 META_KEYS = {
     "method",
+    "version",
     "labelled_shots",
     "positive_shots",
+    "legacy_labelled_shots",
+    "present_s",
+    "owner",
     "seed",
     "counts",
     "owner_snapshot",
@@ -47,12 +55,24 @@ META_KEYS = {
     "labels_window",
 }
 #: Each method's (labelled, positive) target shots: the ELM grids but SPARE's,
-#: LABELS_SHOT's absent throughout; two of every other target.
+#: LABELS_SHOT's absent throughout; two of every other target. The owner's saves
+#: (one shot each, present over EVENT_MS) change none of these counts.
 LABELLED = {
     "elm_frames": (5, 4),
     "hmode_frames": (2, 2),
     "ntm_frames": (2, 2),
     "sawtooth_frames": (2, 2),
+}
+#: Each method's merged present time, s (F4): its present bins times bin_ms.
+#: ELM: 16 50 ms bins on each of four grids; NTM: 16 on each of two. H-mode:
+#: BLIND's 15 H-only bins (the 600 ms bin is H and L, uncertain) and the saved
+#: shot's 16, the owner's present over the uncertain bin; sawteeth: BLIND's 75
+#: 10 ms bins (1000-1050 ms uncertain) and the saved shot's 80, likewise.
+PRESENT_S = {
+    "elm_frames": 3.2,
+    "hmode_frames": 1.55,
+    "ntm_frames": 1.6,
+    "sawtooth_frames": 1.55,
 }
 
 
@@ -89,9 +109,9 @@ def test_the_left_out_shots_each_with_its_reason(tree, monkeypatch):
     }
     assert list(frame.columns) == list(frames_shots.ELIGIBLE_COLUMNS)
     assert _rows(frame) == [
-        (SHOTS[ELM], 1, 1, 1, *WINDOW, "catalog"),  # the owner's save
         (IP_SHOT, 0, 1, 0, *IP_WINDOW, "ip"),
         (LABELS_SHOT, 0, 0, 0, *LABELS_SHOT_HULL, "labels"),
+        (SHOTS[ELM], 1, 1, 1, *WINDOW, "catalog"),  # the owner saved it
     ]
     for method in ("hmode_frames", "ntm_frames", "sawtooth_frames"):
         spec = frames.SPECS[method]
@@ -152,19 +172,19 @@ def test_a_review_store_with_no_signal_is_left_out(tmp_path, monkeypatch):
             for level in f["rows"][name]:
                 f["rows"][name][level][...] = np.nan  # the ECE of 187154
     frame, left = frames_shots.eligible(p, spec)
-    assert left == {"blind": [BLIND], "owner: no signal in the window": [shot]}
+    assert left == {"blind": [BLIND], "no signal in the window": [shot]}
     assert frame.empty
     # A roster shot with no review store, or one without a required row.
     elm = frames.SPECS["elm_frames"]
     frames.store_path(p, elm, SHOTS[ELM]).unlink()
     _, left = frames_shots.eligible(p, elm)
-    assert left["owner: no review store"] == [SHOTS[ELM]]
+    assert left["no review store"] == [SHOTS[ELM]]
     ntm = frames.SPECS["ntm_frames"]
     with h5py.File(frames.store_path(p, ntm, SHOTS[NTM]), "r+") as f:
         meta = json.loads(f["rows"]["p0"].attrs["meta"])
         f["rows"]["p0"].attrs["meta"] = json.dumps(meta | {"title": "another row"})
     _, left = frames_shots.eligible(p, ntm)
-    assert left["owner: unusable review store"] == [SHOTS[NTM]]
+    assert left["unusable review store"] == [SHOTS[NTM]]
 
 
 def test_the_ip_window_ends_at_a_restrike(tmp_path, monkeypatch):
@@ -184,24 +204,57 @@ def test_the_ip_window_ends_at_a_restrike(tmp_path, monkeypatch):
     assert targets.window_for(IP_SHOT, p, None, catalog={}) == (IP_WINDOW, "ip")
 
 
-def test_the_saved_shots_are_the_owner_split(tree, made):
+def test_the_saved_shots_are_frozen_and_split_with_the_rest(tree, made):
+    # F2: no owner split; the owner's shots are split as any other, flagged.
     for method, spec in frames.SPECS.items():
         shots, meta = made[method]
         source = labels.labels_path(tree.label_tables / spec.event)
         saved = set(labels.read_labels(source))
         assert saved == {SHOTS[spec.store_event]}
-        assert set(shots.shot[shots.split == "owner"]) == saved
-        assert not saved & set(shots.shot[shots.split != "owner"])
+        assert set(shots.split) <= set(SPLITS)
+        assert set(shots.shot[shots.owner == 1]) == saved
         copy = frames.owner_file(tree, method)
+        assert copy.parent == frames.shots_file(tree, method).parent
         assert copy.read_bytes() == source.read_bytes()
         snapshot = meta["owner_snapshot"]
         assert snapshot["path"] == str(copy)
         assert snapshot["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+        assert meta["owner"] == {"saved": 1, "overriding": 1, "added": 0}
+        assert set(meta["counts"]) == set(SPLITS)
     shots, _ = made["elm_frames"]
-    assert _rows(shots[shots.split == "owner"]) == [(SHOTS[ELM], "owner", 1, 1)]
+    assert _rows(shots[shots.owner == 1]) == [(SHOTS[ELM], "train", 1, 1, 1)]
 
 
-def test_without_saves_there_is_no_owner_split(tmp_path, monkeypatch):
+def test_a_saved_shot_the_original_lacks_is_added(tmp_path, monkeypatch):
+    p = frames_tree.build(tmp_path)
+    editor_tree.no_fetch(monkeypatch)
+    # The H-mode shot is in no ELM grid; its filterscopes are in the corpus.
+    event = p.label_tables / ELM
+    labels.save(
+        event,
+        SHOTS[HMODE],
+        labels.normalise(WINDOW, [(*EVENT_MS, PRESENT)]),
+        source=None,
+    )
+    spec = frames.SPECS["elm_frames"]
+    assert SHOTS[HMODE] not in targets.target_shots(p, spec)
+    found = frames_shots.read_targets(p, spec)
+    merged = frames_shots.merge_targets(found, labels.read_saved(event), spec.bin_ms)
+    starts, states = merged[SHOTS[HMODE]]
+    alone = targets.label_bins(labels.read_saved(event)[SHOTS[HMODE]], spec.bin_ms)
+    assert (starts.tolist(), states.tolist()) == (alone[0].tolist(), alone[1].tolist())
+    shots = frames_shots.make(p, "elm_frames")
+    meta = json.loads(frames.shots_meta_file(p, "elm_frames").read_text())
+    assert meta["owner"] == {"saved": 2, "overriding": 1, "added": 1}
+    row = shots.set_index("shot").loc[SHOTS[HMODE]]
+    assert (row.split, row.positive, row.roster, row.owner) == ("train", 1, 0, 1)
+    # Counted with the labelled shots, not with the original's.
+    assert (meta["labelled_shots"], meta["positive_shots"]) == (6, 5)
+    assert meta["legacy_labelled_shots"] == 5
+    assert meta["present_s"] == 4.0
+
+
+def test_without_saves_there_is_no_owner_shot(tmp_path, monkeypatch):
     p = frames_tree.build(tmp_path)
     editor_tree.no_fetch(monkeypatch)
     spec = frames.SPECS["ntm_frames"]
@@ -212,9 +265,9 @@ def test_without_saves_there_is_no_owner_split(tmp_path, monkeypatch):
         None,
         None,
     )
+    assert meta["owner"] == {"saved": 0, "overriding": 0, "added": 0}
     assert not frames.owner_file(p, "ntm_frames").exists()
-    # The shot the owner had saved is an ordinary target shot now.
-    assert _rows(shots) == [(SHOTS[spec.store_event], "train", 1, 1)]
+    assert _rows(shots) == [(SHOTS[spec.store_event], "train", 1, 1, 0)]
 
 
 def test_the_split_is_reproducible_and_stratified():
@@ -243,21 +296,25 @@ def test_the_csv_columns_and_the_json_keys(tree, made):
     for method in frames.SPECS:
         shots, meta = made[method]
         path = frames.shots_file(tree, method)
-        assert path.read_text().splitlines()[0] == "shot,split,positive,roster"
+        assert path == tree.root / "frames/shots/v2" / f"{method}.csv"
+        assert path.read_text().splitlines()[0] == "shot,split,positive,roster,owner"
         read = pd.read_csv(path)
         pd.testing.assert_frame_equal(read, shots.reset_index(drop=True))
-        assert all(read[c].dtype.kind == "i" for c in ("shot", "positive", "roster"))
+        ints = ("shot", "positive", "roster", "owner")
+        assert all(read[c].dtype.kind == "i" for c in ints)
         assert set(read.positive) <= {0, 1} and set(read.roster) <= {0, 1}
+        assert set(read.owner) <= {0, 1}
         assert read.shot.is_monotonic_increasing
         assert META_KEYS <= set(meta)
         assert {"path", "sha256"} <= set(meta["owner_snapshot"])
         assert (meta["method"], meta["seed"]) == (method, frames.SEED)
+        assert meta["version"] == frames.VERSION
         assert meta["counts"] == {s: int((read.split == s).sum()) for s in SPLITS}
     shots, meta = made["elm_frames"]
     assert _rows(shots) == [
-        (IP_SHOT, "train", 1, 0),
-        (LABELS_SHOT, "train", 0, 0),
-        (SHOTS[ELM], "owner", 1, 1),
+        (IP_SHOT, "train", 1, 0, 0),
+        (LABELS_SHOT, "train", 0, 0, 0),
+        (SHOTS[ELM], "train", 1, 1, 1),
     ]
     assert meta["left_out"] == {"blind": 1, "no filterscopes": 1, "no labelled bin": 1}
     assert meta["left_out_shots"]["no filterscopes"] == [LEGACY]
@@ -277,6 +334,8 @@ def test_labelled_shots_counts_the_grids_with_a_labelled_bin(made):
     for method, (labelled, positive) in LABELLED.items():
         _, meta = made[method]
         assert (meta["labelled_shots"], meta["positive_shots"]) == (labelled, positive)
+        assert meta["legacy_labelled_shots"] == labelled
+        assert meta["present_s"] == PRESENT_S[method]
 
 
 def test_force_is_needed_to_overwrite(tmp_path, monkeypatch, capsys):
@@ -287,7 +346,8 @@ def test_force_is_needed_to_overwrite(tmp_path, monkeypatch, capsys):
     (line,) = capsys.readouterr().out.splitlines()
     out = json.loads(line)
     assert out["method"] == "elm_frames"
-    assert out["counts"] == {"train": 2, "val": 0, "test": 0, "owner": 1}
+    assert out["counts"] == {"train": 3, "val": 0, "test": 0}
+    assert (out["version"], out["owner"]["saved"]) == (frames.VERSION, 1)
     path = frames.shots_file(p, "elm_frames")
     first = path.read_bytes()
     with pytest.raises(FileExistsError, match="--force"):

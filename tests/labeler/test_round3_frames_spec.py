@@ -12,6 +12,7 @@ import pytest
 
 from labeler import frames
 from labeler.events import rosters
+from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from labeler.events.interval_tables import write_label_grid
 from labeler.events.panels._shared import CLIPPED, robust_limits
 from labeler.events.review import labels
@@ -185,23 +186,42 @@ def test_the_specs_are_the_four_events_with_their_bars():
     assert len(set(frames.SPECS.values())) == 4  # hashable, though a bar is a dict
     assert frames.DERIVED == {"lmode_frames": ("hmode_frames", LMODE)}
     assert frames.SEED == 20260923
+    # F3: H-mode's threshold is picked on both classes' F1, as H1 reads them.
+    assert {m: s.threshold_rule for m, s in frames.SPECS.items()} == {
+        "elm_frames": "f1",
+        "hmode_frames": "macro_f1",
+        "ntm_frames": "f1",
+        "sawtooth_frames": "f1",
+    }
 
 
 def test_the_path_helpers(tree):
     root = tree.root
-    assert frames.shots_file(tree, "elm_frames") == root / "frames/shots/elm_frames.csv"
-    assert (
-        frames.shots_meta_file(tree, "elm_frames")
-        == root / "frames/shots/elm_frames.json"
+    assert frames.VERSION == "v2"
+    # F1: v1's files stay where v1 wrote them; v2's go under the version.
+    shots = root / "frames/shots"
+    assert frames.shots_file(tree, "elm_frames", "v1") == shots / "elm_frames.csv"
+    assert frames.shots_meta_file(tree, "elm_frames", "v1") == (
+        shots / "elm_frames.json"
     )
-    assert (
-        frames.features_dir(tree, "ntm_frames") == root / "frames/features/ntm_frames"
+    assert frames.owner_file(tree, "elm_frames", "v1") == (
+        shots / "elm_frames.owner.csv"
     )
-    assert frames.model_dir(tree, "ntm_frames") == root / "models/ntm_frames/v1"
-    assert frames.model_dir(tree, "ntm_frames", "v2") == root / "models/ntm_frames/v2"
+    assert frames.features_dir(tree, "ntm_frames", "v1") == (
+        root / "frames/features/ntm_frames"
+    )
+    assert frames.shots_file(tree, "elm_frames") == shots / "v2/elm_frames.csv"
+    assert frames.shots_meta_file(tree, "elm_frames") == shots / "v2/elm_frames.json"
+    assert frames.owner_file(tree, "elm_frames") == shots / "v2/elm_frames.owner.csv"
+    assert frames.features_dir(tree, "ntm_frames") == (
+        root / "frames/features/v2/ntm_frames"
+    )
+    assert frames.shots_file(tree, "ntm_frames", "v3") == shots / "v3/ntm_frames.csv"
+    assert frames.model_dir(tree, "ntm_frames") == root / "models/ntm_frames/v2"
+    assert frames.model_dir(tree, "ntm_frames", "v1") == root / "models/ntm_frames/v1"
     assert (
         frames.summary_file(tree, "sawtooth_frames")
-        == root / "suggestions/sawtooth_frames/v1/summary.csv"
+        == root / "suggestions/sawtooth_frames/v2/summary.csv"
     )
     assert (
         frames.gallery_dir(tree, frames.SPECS["hmode_frames"], "v2")
@@ -305,6 +325,39 @@ def test_table_bins_mask_the_uncertain_and_the_unobservable(tree):
     assert (starts[0], starts[-1]) == (150.0, 1800.0)
     with pytest.raises(ValueError, match="10 ms"):
         targets.table_bins(label, WINDOW, 15.0)
+
+
+def test_the_owner_s_label_is_laid_over_the_original_bin_by_bin():
+    # The original: 50 ms bins 100-400 ms, unknown, absent, present, uncertain,
+    # absent, unknown.
+    starts = np.arange(100.0, 400.0, 50.0)
+    states = np.array([UNKNOWN, ABSENT, PRESENT_T, UNCERTAIN_T, ABSENT, UNKNOWN])
+    # The owner's: window 150-500 ms, present 150-250 and uncertain 300-350 ms,
+    # not observable 450-500 ms; absent elsewhere in the window.
+    saved = labels.normalise(
+        (150, 500),
+        [(150, 250, PRESENT), (300, 350, UNCERTAIN), (450, 500, NOT_OBSERVABLE)],
+    )
+    got = _by_start(*targets.merged((starts, states), saved, 50.0))
+    assert got == {
+        100.0: UNKNOWN,  # the owner's window starts after it: the original's
+        150.0: PRESENT_T,  # absent, the owner's present over it
+        200.0: PRESENT_T,
+        250.0: ABSENT,  # uncertain, the owner's absent over it
+        300.0: UNCERTAIN_T,  # absent, the owner's uncertain over it
+        350.0: ABSENT,  # unknown, the owner's absent over it
+        400.0: ABSENT,  # past the original: the owner's alone
+        450.0: UNKNOWN,  # the owner's not observable: unknown either way
+    }
+    # An owner's unknown bin keeps the original's state.
+    kept = targets.merged((np.array([450.0]), np.array([PRESENT_T])), saved, 50.0)
+    assert _by_start(*kept)[450.0] == PRESENT_T
+    # No save: the original, as it is; no original: the owner's label alone.
+    original = (starts, states)
+    assert targets.merged(original, None, 50.0) is original
+    alone = targets.merged(None, saved, 50.0)
+    assert _by_start(*alone) == _by_start(*targets.label_bins(saved, 50.0))
+    assert targets.merged(None, None, 50.0) is None
 
 
 def test_labelled_is_false_only_when_every_bin_is_unknown():

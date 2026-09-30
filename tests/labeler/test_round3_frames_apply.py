@@ -101,24 +101,35 @@ def test_apply_labels_the_roster_and_an_in_memory_population_shot(elm, monkeypat
     assert sorted(halves[0] + halves[1]) == sorted(rows)
 
 
-def test_frame_probs_pool_a_bin_at_the_window_edge_over_its_frames():
+def test_frame_probs_leave_a_partial_bin_at_either_window_edge_unobserved():
+    logits = [0.0, 0.0, 4.0, -4.0, -4.0, -4.0, -4.0, 9.0, 9.0, 9.0, 9.0]
+
     class Fixed:
         def eval(self):
             return self
 
         def __call__(self, x):
-            return torch.tensor([[0.0, 0.0, 4.0, -4.0, -4.0, -4.0, -4.0]])
+            return torch.tensor([logits])
 
-    spec = frames.SPECS["hmode_frames"]  # 50 ms bins, mean
-    x = np.zeros((5, 7), np.float32)
-    observed = np.array([1, 1, 1, 1, 1, 1, 0], bool)
-    # Frames 3..9: bin 0 holds frames 3-4, bin 1 frames 5-9.
+    spec = frames.SPECS["hmode_frames"]  # 50 ms bins of 5 frames, mean
+    x = np.zeros((5, len(logits)), np.float32)
+    observed = np.ones(len(logits), bool)
+    # F7: frames 3..13, a window starting and ending mid-bin. Bin 0 holds
+    # frames 3-4 and bin 2 frames 10-13, too few for a bin: not observed, so
+    # they are not trained, scored or labelled on part of a bin's frames. Bin 1,
+    # frames 5-9, is whole: its logits pooled as in training.
     prob = apply.frame_probs(Fixed(), spec, x, observed, 3)
-    assert np.allclose(prob[:2], 0.5)
-    assert np.all(np.isnan(prob[2:]))  # bin 1 has a frame not observed
-    observed[-1] = True
-    prob = apply.frame_probs(Fixed(), spec, x, observed, 3)
-    assert np.allclose(prob[2:], 1 / (1 + np.exp(4.0 * 3 / 5)))
+    assert np.all(np.isnan(prob[:2])) and np.all(np.isnan(prob[7:]))
+    assert np.allclose(prob[2:7], 1 / (1 + np.exp(4.0 * 3 / 5)))
+    # A whole bin with a frame not observed is not observed either.
+    observed[6] = False
+    assert np.all(np.isnan(apply.frame_probs(Fixed(), spec, x, observed, 3)))
+    # Starting on a bin's edge, the first bin is whole.
+    observed[6] = True
+    prob = apply.frame_probs(Fixed(), spec, x, observed, 0)
+    assert np.allclose(prob[:5], 1 / (1 + np.exp(4.0 / 5)))
+    assert np.allclose(prob[5:10], 1 / (1 + np.exp(-19.0 / 5)))
+    assert np.isnan(prob[10])
 
 
 def _run_all(method, counts=(("--roster", 1), ("--population", 2))) -> None:
@@ -139,12 +150,16 @@ def test_merge_writes_the_table_meta_and_summary(elm, capsys):
     capsys.readouterr()
     assert apply.main(["--method", "elm_frames", "--merge"]) == 0
     said = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    table = suggestions.table_path(elm, ELM, "elm_frames", "v1")
+    table = suggestions.table_path(elm, ELM, "elm_frames", frames.VERSION)
     assert said["tables"] == {"elm_frames": str(table)}
     meta = json.loads(table.with_suffix(".meta.json").read_text())
     model = frames.model_dir(elm, "elm_frames") / "model.pt"
     scored = json.loads((model.parent / "evaluation.json").read_text())
     assert meta["tier"] == "suggestions" and meta["bar"] == scored["bar"]
+    assert table.parent == elm.root / "suggestions" / "elm_frames" / "v2"
+    # F6: the model's flag goes beside its bar.
+    assert meta["effectively_always"] == scored["effectively_always"]
+    assert isinstance(meta["effectively_always"], bool)
     assert meta["model_sha256"] == hashlib.sha256(model.read_bytes()).hexdigest()
     assert meta["sets"]["roster"]["done"] == 1
     assert meta["sets"]["population"]["done"] == 1
@@ -175,12 +190,15 @@ def test_merge_writes_the_table_meta_and_summary(elm, capsys):
 def test_lmode_frames_gets_its_own_table(hmode, capsys):
     _run_all("hmode_frames")
     assert apply.main(["--method", "hmode_frames", "--merge"]) == 0
-    h = suggestions.table_path(hmode, HMODE, "hmode_frames", "v1")
-    l_ = suggestions.table_path(hmode, LMODE, "lmode_frames", "v1")
-    assert l_.parent == hmode.root / "suggestions" / "lmode_frames" / "v1"
+    h = suggestions.table_path(hmode, HMODE, "hmode_frames", frames.VERSION)
+    l_ = suggestions.table_path(hmode, LMODE, "lmode_frames", frames.VERSION)
+    assert l_.parent == hmode.root / "suggestions" / "lmode_frames" / "v2"
     meta = json.loads(l_.with_suffix(".meta.json").read_text())
     assert meta["method"] == "lmode_frames" and meta["event"] == LMODE
     assert meta["derived_from"] == "hmode_frames" and meta["tier"] == "suggestions"
+    scored = frames.model_dir(hmode, "hmode_frames") / "evaluation.json"
+    flag = json.loads(scored.read_text())["effectively_always"]
+    assert meta["effectively_always"] == flag
     assert meta["failed_file"] == str(l_.parent / "failed.jsonl")
     assert (l_.parent / "failed.jsonl").is_file()
     h_rows, l_rows = pd.read_csv(h), pd.read_csv(l_)
@@ -200,7 +218,7 @@ def test_lmode_frames_gets_its_own_table(hmode, capsys):
 def test_the_gallery_draws_one_picture_a_shot(elm, capsys):
     assert gallery.main(["--method", "elm_frames"]) == 0
     folder = frames.gallery_dir(elm, frames.SPECS["elm_frames"])
-    assert folder == elm.root / "gallery" / ELM / "elm_frames-v1"
+    assert folder == elm.root / "gallery" / ELM / "elm_frames-v2"
     test = sorted(int(p.stem) for p in (folder / "test").glob("*.jpg"))
     roster = sorted(int(p.stem) for p in (folder / "roster").glob("*.jpg"))
     assert test == TEST and roster == [SHOTS[ELM]]
@@ -247,7 +265,7 @@ def test_a_shot_that_raises_is_failed_and_counted_not_fatal(elm, monkeypatch):
     assert sorted(s for m in manifests for s in m["failed"]) == [SHOTS[HMODE]]
     said = apply.merge(elm, "elm_frames")
     assert said["failed"] == 1
-    table = suggestions.table_path(elm, ELM, "elm_frames", "v1")
+    table = suggestions.table_path(elm, ELM, "elm_frames", frames.VERSION)
     meta = json.loads(table.with_suffix(".meta.json").read_text())
     assert meta["sets"]["population"]["failed"] == 1
     assert meta["sets"]["population"]["done"] == 0

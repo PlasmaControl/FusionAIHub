@@ -25,7 +25,7 @@ from . import frames_tree
 from .frames_tree import ELM, IP_SHOT, LABELS_SHOT, POPULATION_ONLY, SHOTS
 
 WIDTHS = {"elm_frames": 2, "hmode_frames": 5, "ntm_frames": 42, "sawtooth_frames": 41}
-#: The ELM method's test shots here; its owner shot is SHOTS[ELM].
+#: The ELM method's test shots here; its owner shot, SHOTS[ELM], is in train.
 TEST = sorted([IP_SHOT, LABELS_SHOT])
 
 
@@ -44,6 +44,7 @@ def _save_model(paths, method, out=None, threshold=0.5, train_shots=()):
     record = {
         "method": method,
         "threshold": threshold,
+        "threshold_rule": spec.threshold_rule,
         "channels": WIDTHS[method],
         "subs": subs,
         "width": 32,
@@ -174,6 +175,7 @@ def test_the_elm_bar_with_stubbed_onsets(elm, monkeypatch):
     assert record["paired"]["f1 - elm_onsets"]["low"] == 0.0
     assert record["paired"]["f1 - always"]["low"] > 0
     assert record["bar"] == {"E1": True, "E2": True, "E3": True, "all": True}
+    assert record["effectively_always"] is False
     # A model that says present everywhere is `always`: no better than it, and
     # worse than the onsets.
     monkeypatch.setattr(evaluate, "model_probs", _always)
@@ -184,6 +186,14 @@ def test_the_elm_bar_with_stubbed_onsets(elm, monkeypatch):
     assert record["paired"]["f1 - elm_onsets"]["low"] < -0.03
     assert not record["bar"]["E2"] and not record["bar"]["E3"]
     assert not record["bar"]["all"]
+    # F6: its calls are always-present on every scored bin, and the paired
+    # interval is zero: both tests hold.
+    assert record["effectively_always"] is True
+    assert record["always_like"]["held"] == {"agreement": True, "interval": True}
+    assert record["always_like"]["agreement"] == 1.0
+    md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
+    assert evaluate.always_line(record["always_like"]) in md
+    assert "Effectively always: yes, its calls equal always-present on 100.0%" in md
     # Without round-three-b's elm_onsets the ELM test is refused, not guessed.
     written.unlink()
     monkeypatch.delattr(spans, "elm_onsets")
@@ -191,26 +201,67 @@ def test_the_elm_bar_with_stubbed_onsets(elm, monkeypatch):
         evaluate.evaluate(elm, "elm_frames")
 
 
-def test_the_owner_table_is_separate_and_labelled(elm):
+def test_the_owner_s_shots_in_test_are_scored_with_the_rest(elm):
     record = evaluate.evaluate(elm, "elm_frames")
     assert record["test"]["shots"]["elm_frames"] == TEST
     owner = record["owner"]
-    assert owner["shots"]["elm_frames"] == [SHOTS[ELM]]
+    assert owner["test_shots"] == []  # the owner's shot is in train
+    assert owner["saved"] == {"saved": 1, "overriding": 1, "added": 0}
     assert "spans of ELMy time, not onsets" in owner["note"]
-    assert set(owner["scores"]) == {"elm_frames", "elm_onsets", "elm_clock", "always"}
-    assert owner["intervals"]["elm_frames"]["f1"]["replicates"] == 2000
-    assert "paired" not in owner  # no bar reads the owner's table
     assert owner["snapshot"]["sha256"]
-    # The test's cells are the test shots' alone.
+    assert set(record["scores"]) == {"elm_frames", "elm_onsets", "elm_clock", "always"}
+    # The test's cells are the test shots' alone, by their merged target.
     cells = np.zeros(4)
     for shot in TEST:
         z = _npz(elm, "elm_frames", shot)
         observed = z["observed"].reshape(-1, 5).all(axis=1)
         cells += evaluate.score(z["states"] >= 0, z["states"], 0.5, observed)["cells"]
     assert sum(record["scores"]["always"]["cells"]) == cells.sum()
+    # F2: no owner split; the owner's shot in test is one more test shot.
+    (frames.model_dir(elm, "elm_frames") / "evaluation.json").unlink()
+    _resplit(elm, "elm_frames", {SHOTS[ELM]: "test"})
+    _save_model(elm, "elm_frames")
+    record = evaluate.evaluate(elm, "elm_frames")
+    assert record["test"]["shots"]["elm_frames"] == sorted([SHOTS[ELM], *TEST])
+    assert record["owner"]["test_shots"] == [SHOTS[ELM]]
+    assert "owner" not in record["split_years"]
     md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
-    head, tail = md.split("## The owner's saves")
-    assert evaluate.ELM_OWNER_NOTE in tail and "spans of ELMy time" not in head
+    line = "1 of the 3 scored test shots carry an owner label. "
+    assert line + evaluate.ELM_OWNER_NOTE in md
+    assert md.count("## The owner's saves") == 1
+
+
+def test_effectively_always_by_either_test():
+    def record(cells, high):
+        paired = {} if high is None else {"f1 - always": {"high": high}}
+        return {"scores": {"ntm_frames": {"cells": cells}}, "paired": paired}
+
+    # 995 of 1000 scored bins called present: the agreement test holds.
+    found = evaluate.always_like("ntm_frames", record([500, 495, 0, 5], 0.2))
+    assert found["value"] and found["held"] == {"agreement": True, "interval": False}
+    assert found["agreement"] == pytest.approx(0.995)
+    line = evaluate.always_line(found)
+    assert line.startswith("Effectively always: yes, its calls equal always-present")
+    assert "interval" not in line
+    # Half called present, but F1 no better than always's: the interval holds.
+    found = evaluate.always_like("ntm_frames", record([400, 100, 100, 400], 0.005))
+    assert found["value"] and found["held"] == {"agreement": False, "interval": True}
+    line = evaluate.always_line(found)
+    assert line == (
+        "Effectively always: yes, the paired f1 - always interval's upper end is "
+        "0.005 (effectively always below 0.01)."
+    )
+    # Neither, and an undefined interval holds nothing.
+    found = evaluate.always_like("ntm_frames", record([400, 100, 100, 400], None))
+    assert not found["value"] and found["high"] is None
+    line = evaluate.always_line(found)
+    assert line.startswith("Effectively always: no; its calls equal always-present")
+    assert "upper end is undefined" in line
+    # H-mode's is F1(H)'s.
+    hmode = {"scores": {"hmode_frames": {"cells": [0, 0, 0, 0]}}, "paired": {}}
+    found = evaluate.always_like("hmode_frames", hmode)
+    assert found["key"] == "f1(H) - always" and found["agreement"] is None
+    assert not found["value"]
 
 
 @pytest.mark.parametrize("method", sorted(frames.SPECS))
@@ -227,14 +278,17 @@ def test_the_json_bar_keys_per_method(tree, monkeypatch, method):
     assert all(isinstance(v, bool) for v in record["bar"].values())
     assert set(record["scores"]) >= {method, *spec.baselines}
     assert record["tier"] == "suggestions"
+    assert isinstance(record["effectively_always"], bool)
+    assert record["effectively_always"] == record["always_like"]["value"]
+    assert record["model"]["threshold_rule"] == spec.threshold_rule
     md = (frames.model_dir(tree, method) / "evaluation.md").read_text()
+    assert md.count("Effectively always: ") == 1
     assert "Campaign years" in md and "| legacy (outside the roster) |" in md
     assert "2013-2019" not in md and "2024-2025" not in md
     assert set(record["split_years"]) == {
         "train",
         "val",
         "test",
-        "owner",
         "legacy",
         "roster",
     }
@@ -245,6 +299,7 @@ def test_the_json_bar_keys_per_method(tree, monkeypatch, method):
             == evaluate.swapped(record["scores"][method]["cells"]).tolist()
         )
         assert "f1(H) - always" in record["paired"]
+        assert record["always_like"]["key"] == "f1(H) - always"
         assert "D44" in md and "Jalal Butt" in md and "cannot rank" in md
         # dalpha_lh needs CO2, which the tree's H-mode shot lacks: left out.
         assert str(shot) in record["test"]["baseline_left_out"]["dalpha_lh"]
@@ -267,6 +322,7 @@ def test_reading_evaluation_json_twice_gives_the_same_bytes(elm):
     record = json.loads(first)
     assert "made_at" not in record
     assert set(record) >= {"bar", "scores", "intervals", "paired", "owner"}
+    assert set(record) >= {"effectively_always", "always_like"}
     # A pilot's may be scored again, to the same bytes.
     pilot = _save_model(elm, "elm_frames", out=train.pilot_dir(elm, "elm_frames"))
     evaluate.evaluate(elm, "elm_frames", out=pilot)

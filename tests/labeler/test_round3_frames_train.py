@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 
 import numpy as np
 import pandas as pd
@@ -62,6 +64,8 @@ def test_masked_bins_carry_no_loss():
     observed = np.array([True, True, True, True, False])
     weights = train.bin_weights(states, observed, pos_weight=3.0)
     assert weights.tolist() == [1.0, 3.0, 0.0, 0.0, 0.0]
+    both = train.bin_weights(states, observed, 1.0, absent_weight=2.5)
+    assert both.tolist() == [2.5, 1.0, 0.0, 0.0, 0.0]
     logits = torch.zeros(1, 25, requires_grad=True)
     loss = train.bin_loss(logits, states[None], weights[None], 5, "mean")
     loss.backward()
@@ -74,12 +78,67 @@ def test_masked_bins_carry_no_loss():
     assert torch.isclose(loss.detach(), again)
 
 
-def test_the_positive_weight_is_the_ratio_up_to_its_cap():
+def test_the_minority_class_weighs_the_ratio_up_to_its_cap():
+    # F3: whichever class is the fewer, present or absent, weighs the ratio.
     absent = np.full(40, ABSENT, np.int8)
-    assert train.positive_weight([np.r_[absent, [PRESENT_T] * 4]], 5.0) == 5.0
-    assert train.positive_weight([np.r_[absent[:8], [PRESENT_T] * 4]], 5.0) == 2.0
-    assert train.positive_weight([np.r_[absent[:2], [PRESENT_T] * 4]], 5.0) == 1.0
-    assert train.positive_weight([absent], 5.0) == 1.0
+    present = np.full(40, PRESENT_T, np.int8)
+    ignored = np.array([UNKNOWN, UNCERTAIN_T] * 10, np.int8)  # never counted
+
+    def weights(*parts):
+        return train.class_weights([np.r_[parts]], 5.0)
+
+    assert weights(absent, present[:4], ignored) == {"absent": 1.0, "present": 5.0}
+    assert weights(absent[:8], present[:4]) == {"absent": 1.0, "present": 2.0}
+    # H-mode's case: H the majority, so L (absent) weighs the ratio.
+    assert weights(absent[:2], present[:4]) == {"absent": 2.0, "present": 1.0}
+    assert weights(absent[:4], present) == {"absent": 5.0, "present": 1.0}
+    assert weights(absent[:4], present[:4]) == {"absent": 1.0, "present": 1.0}
+    assert weights(absent) == {"absent": 1.0, "present": 1.0}
+    assert weights(present) == {"absent": 1.0, "present": 1.0}
+    assert train.class_weights([], 5.0) == {"absent": 1.0, "present": 1.0}
+
+
+def _shot(states) -> train.Shot:
+    states = np.asarray(states, np.int8)
+    return train.Shot(1, np.zeros((1, len(states))), states, np.ones(len(states), bool))
+
+
+def test_balanced_crops_centre_half_on_absent_and_half_on_present():
+    # F11: 30 bins, absent from 12 to 17; a present-only shot; an unscored one.
+    mixed = _shot([PRESENT_T] * 12 + [ABSENT] * 6 + [PRESENT_T] * 12)
+    only = _shot([PRESENT_T] * 25 + [UNCERTAIN_T] * 5)
+    unscored = _shot([UNKNOWN] * 30)
+    shots = [mixed, only, unscored]
+    rng = np.random.default_rng(0)
+    windows = train.crop_windows(shots, rng, 8, balance=True)
+    of = {i: [w for w in windows if w[0] == i] for i in range(3)}
+    assert train.centre_counts(of[0]) == {"absent": 2, "present": 2}
+    assert train.centre_counts(of[1]) == {"present": train.CROPS_PER_SHOT}
+    assert of[2] == []  # no scored bin, no crop
+    for i, start, name in windows:
+        assert 0 <= start <= 30 - 8
+        assert (shots[i].states[start : start + 8] == train.CENTRES[name]).any()
+    # An absent bin is never near an edge here, so its crop is centred on it.
+    assert all(mixed.states[w[1] + 4] == ABSENT for w in of[0] if w[2] == "absent")
+    # Over the train shots, as many crops centre on absent time as on present.
+    many = train.crop_windows([mixed] * 5, rng, 8, balance=True)
+    assert train.centre_counts(many) == {"absent": 10, "present": 10}
+    # The crops' scored bins give the class weights, not the shots' (F11).
+    scored = train.crop_states([mixed], of[0], 8)
+    assert [len(x) for x in scored] == [8] * 4
+    assert all(np.isin(x, (ABSENT, PRESENT_T)).all() for x in scored)
+    assert train.class_weights(scored, 5.0) == train.class_weights(
+        [np.concatenate(scored)], 5.0
+    )
+    # Unbalanced, each crop starts at random, a short shot's at 0.
+    windows = train.crop_windows([mixed, _shot([ABSENT] * 5)], rng, 8)
+    assert train.centre_counts(windows) == {"random": 2 * train.CROPS_PER_SHOT}
+    assert {w[1] for w in windows if w[0] == 1} == {0}
+    x, states, weights = train.crops(
+        [mixed, _shot([ABSENT] * 5)], windows, 8, 1, 1, {"absent": 2.0, "present": 1.0}
+    )
+    assert x.shape == (8, 1, 8) and states.shape == weights.shape == (8, 8)
+    assert weights[-1].tolist() == [2.0] * 5 + [0.0] * 3  # the padding unscored
 
 
 def test_the_threshold_has_the_best_f1_ties_nearest_a_half():
@@ -91,11 +150,30 @@ def test_the_threshold_has_the_best_f1_ties_nearest_a_half():
     assert train.pick_threshold([prob], [states], [scored]) == 0.3
 
 
+def test_the_macro_threshold_weighs_the_absent_class_too():
+    # F3: eight H bins and two L bins, one L bin at P(H) 0.3 and one H bin at
+    # 0.25. Calling both H is F1(H)'s best (0.941 from 0.15 to 0.25, 0.25 the
+    # nearest 0.5), but it costs F1(L) a third; the macro rule's best (0.867,
+    # from 0.35 to 0.90) calls both L.
+    prob = np.array([0.9] * 7 + [0.25, 0.3, 0.1])
+    states = np.array([PRESENT_T] * 8 + [ABSENT] * 2, np.int8)
+    scored = np.ones(10, bool)
+    assert train.pick_threshold([prob], [states], [scored], "f1") == 0.25
+    assert train.pick_threshold([prob], [states], [scored], "macro_f1") == 0.5
+    cells = train.bin_cells(prob, states, 0.5, scored)  # tp 7, fp 0, fn 1, tn 2
+    assert cells.tolist() == [7, 0, 1, 2]
+    f1_h, f1_l = 14 / 15, 4 / 5
+    assert train.rule_score(cells, "macro_f1") == pytest.approx((f1_h + f1_l) / 2)
+    assert train.rule_score(cells, "f1") == pytest.approx(f1_h)
+    with pytest.raises(ValueError, match="rule"):
+        train.rule_score(cells, "accuracy")
+
+
 @pytest.fixture
 def prepared(tmp_path, monkeypatch):
     """The ELM method's split and features on the tree, with a val shot: the
-    tree's ELM split has two train shots and the owner's, so the owner's is
-    trained on here and IP_SHOT is val."""
+    tree's ELM split has three train shots, the owner's among them, so IP_SHOT
+    is made val here."""
     paths = frames_tree.build(tmp_path / "tree")
     for event in frames_tree.STORE_ROWS:
         monkeypatch.setitem(review_build.BUILDERS, event, frames_tree.builder)
@@ -123,6 +201,18 @@ def test_fit_saves_a_model_with_its_threshold(prepared):
     split = frames.shots_file(prepared, "elm_frames").read_bytes()
     assert blob["split_sha256"] == hashlib.sha256(split).hexdigest()
     assert blob["config"]["epochs"] == 2 and blob["spec"]["method"] == "elm_frames"
+    assert blob["threshold_rule"] == "f1"
+    # Both classes' weights (F3): the scored train bins hold fewer present.
+    assert set(blob["weights"]) == {"absent", "present"}
+    assert blob["weights"]["absent"] == 1.0 and blob["weights"]["present"] > 1.0
+    assert blob["balance_crops"] is False
+    per_epoch = [h["centres"] for h in blob["history"]]
+    assert per_epoch == [{"random": 2 * train.CROPS_PER_SHOT}] * len(per_epoch)
+    assert blob["crop_centres"] == {"random": 2 * 4 * len(per_epoch)}
+    assert (
+        json.loads((path.parent / "training.json").read_text())["weights"]
+        == (blob["weights"])
+    )
     assert blob["shots"] == {
         "train": sorted([SHOTS[ELM], LABELS_SHOT]),
         "val": [IP_SHOT],
@@ -142,6 +232,30 @@ def test_a_pilot_writes_under_runs_and_may_be_replaced(prepared):
         )
         assert path == out / "model.pt"
     assert not (frames.model_dir(prepared, "elm_frames") / "model.pt").exists()
+
+
+def test_balanced_crops_weigh_the_crops_drawn(prepared, monkeypatch):
+    balanced = [m for m, s in frames.SPECS.items() if s.balance_crops]
+    assert balanced == ["sawtooth_frames"], "the sawteeth's alone (F11)"
+    spec = dataclasses.replace(frames.SPECS["elm_frames"], balance_crops=True)
+    monkeypatch.setitem(frames.SPECS, "elm_frames", spec)
+    out = prepared.runs / "frames" / "pilot" / "elm_frames"
+    config = train.TrainConfig(epochs=1)
+    path = train.fit("elm_frames", prepared, config, out=out, log=None)
+    record = json.loads((path.parent / "training.json").read_text())
+    assert record["balance_crops"] is True and record["spec"]["balance_crops"]
+    # The first epoch's crops, drawn at the seed, give the weights (F11).
+    shots = [
+        train.read_shot(prepared, "elm_frames", s) for s in record["shots"]["train"]
+    ]
+    crop_bins = int(train.CROP_MS // spec.bin_ms)
+    rng = np.random.default_rng(train.SEED)
+    windows = train.crop_windows(shots, rng, crop_bins, balance=True)
+    drawn = train.crop_states(shots, windows, crop_bins)
+    assert record["weights"] == train.class_weights(drawn, config.pos_weight_max)
+    assert record["crop_centres"] == train.centre_counts(windows)
+    assert record["history"][0]["centres"] == record["crop_centres"]
+    assert sum(record["crop_centres"].values()) == 2 * train.CROPS_PER_SHOT
 
 
 def test_torch_takes_slurm_cpus_per_task_threads(prepared, monkeypatch, capsys):

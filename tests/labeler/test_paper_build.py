@@ -689,7 +689,7 @@ def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_pa
     shas = after["labels_sha256"]
     assert shas["live"] != shas["scored"] == shas["ae_evaluation"]
     table = (tmp_path / "after" / "table_datasets.tex").read_text().splitlines()
-    assert table[5].startswith("AE & 4 & 4 & 2.6 & 1 / 0 / 2 & 1 & "), table[5]
+    assert table[5].startswith("AE & 4 & 4 & 4 & 2.6 & 1 & 0 & 2 & 1 & "), table[5]
 
 
 AE_PRODUCTS = (
@@ -775,25 +775,27 @@ def test_version_v2_draws_from_v2_records(runs, tmp_path):
 
 
 V1_DATASETS = (
-    "% Shots per phenomenon: reviewed by a person, with any present span, the "
-    "model's split of the reviewed shots and those in no split (reviewed = "
-    "train + val + test + no split), the extension's suggestions (not labels), "
-    "and the shots a legacy human table labels (Legacy labelled, never counted "
-    "as reviewed); -- where that run has not happened\n"
-    "\\begin{tabular}{lcccccccc}\n"
+    "% Shots per phenomenon: labelled, reviewed by the owner, with any present "
+    "span and their present time, the model's split (Train, Val, Test) and the "
+    "extension's suggestions (not labels); -- where that run has not happened; "
+    "AE's labels are the owner's reviews, so its Labelled = Reviewed = Train + "
+    "Val + Test + No split (the reviewed shots saved after the model was "
+    "trained)\n"
+    "\\begin{tabular}{lcccccccccc}\n"
     "\\toprule\n"
-    "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
-    "& No split & Suggested & Suggested positive & Legacy labelled \\\\\n"
+    "Phenomenon & Labelled & Reviewed by the owner & Positive & Present (s) "
+    "& Train & Val & Test & No split & Suggested & Suggested positive \\\\\n"
     "\\midrule\n"
-    "AE & 3 & 3 & 1.8 & 1 / 0 / 2 & 0 & -- & -- & -- \\\\\n"
+    "AE & 3 & 3 & 3 & 1.8 & 1 & 0 & 2 & 0 & -- & -- \\\\\n"
     + "".join(
-        f"{name} & \\multicolumn{{8}}{{c}}{{coming}} \\\\\n"
+        f"{name} & \\multicolumn{{10}}{{c}}{{coming}} \\\\\n"
         for name in ("NTM", "H-mode", "ELMing", "sawteeth")
     )
     + "\\bottomrule\n\\end{tabular}\n"
 )  # the `runs` tree's table_datasets.tex at 2258daf, before any folds were drawn,
-#   less the disruption row the paper has left out since 2026-09-28, with the
-#   Legacy labelled column of round three (D62)
+#   less the disruption row the paper has left out since 2026-09-28, in the
+#   columns of frames v2 (F8): Labelled and Reviewed by the owner apart (AE's
+#   are equal), and Train, Val and Test a column each
 
 
 def _split_panels(monkeypatch) -> list:
@@ -815,8 +817,8 @@ def _ticks(ax) -> list[str]:
 
 
 def test_v1_is_not_cross_validated(runs, tmp_path, monkeypatch):
-    """v1, with no folds, draws its three-way split as before, byte for byte,
-    and records no folds check."""
+    """v1, with no folds, draws its three-way split as before, its table byte
+    for byte (in frames v2's columns, F8), and records no folds check."""
     panels = _split_panels(monkeypatch)
     v1 = build.build(runs, tmp_path / "v1")
     assert (tmp_path / "v1" / "table_datasets.tex").read_text() == V1_DATASETS
@@ -879,7 +881,7 @@ def test_a_cross_validated_version_is_checked_against_its_record(
     assert _ticks(split) == [tick, "test", "no\nsplit"], "no validation bar"
     assert [bar.get_height() for bar in split.patches] == [2, 1, 0]
     lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
-    assert lines[5] == "AE & 3 & 3 & 1.8 & 2 / -- / 1 & 0 & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 3 & 3 & 3 & 1.8 & 2 & -- & 1 & 0 & -- & -- \\\\"
     over = " over 2 folds" if why is None else ""
     assert (
         f"AE's train shots are cross-validated{over}, so no shot is held out for "
@@ -931,7 +933,7 @@ def test_validation_shots_in_a_cross_validated_split_are_named(
     assert _ticks(split) == ["train\n(2 folds)", "test", "no\nsplit"]
     assert [bar.get_height() for bar in split.patches] == [1, 1, 0]
     lines = (tmp_path / "v2" / "table_datasets.tex").read_text().splitlines()
-    assert lines[5] == "AE & 3 & 3 & 1.8 & 1 / -- / 1 & 0 & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 3 & 3 & 3 & 1.8 & 1 & -- & 1 & 0 & -- & -- \\\\"
     assert manifest["folds_match"] is True
     held = {"reason": build.CV_VAL, "shots": [102]}
     for product in ("fig_coverage", "table_datasets"):
