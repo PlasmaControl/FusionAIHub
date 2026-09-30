@@ -12,7 +12,7 @@
 
 # One frame model's training on its train shots, stopped and thresholded on its val shots:
 #   python -m labeler.frames.train --method $METHOD [--pilot] [--limit N] [--seed S]
-# writes $LABELER_ROOT/models/<method>/v1/{training.json,model.pt}; a model is trained
+# writes $LABELER_ROOT/models/<method>/v2/{training.json,model.pt}; a model is trained
 # once on its split. PILOT=1 trains 2 epochs into runs/frames/pilot/<method>/, which a
 # pilot may replace; LIMIT takes the first N train and N val shots (a pilot too); SEED
 # is the run's seed (20260923 unless set). Torch takes SLURM_CPUS_PER_TASK threads.

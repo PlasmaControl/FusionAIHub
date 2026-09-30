@@ -12,7 +12,7 @@
 
 # One frame model's pictures, one a test shot and one a roster shot:
 #   python -m labeler.frames.gallery --method $METHOD [--limit N]
-# writes $LABELER_ROOT/gallery/<event>/<method>-v1/{test,roster}/<shot>.jpg: the
+# writes $LABELER_ROOT/gallery/<event>/<method>-v2/{test,roster}/<shot>.jpg: the
 # features the model reads, the target where the shot has one, P and the threshold,
 # titled as suggestions. PILOT=1 draws the first 20 of each (LIMIT, 20 unless set),
 # which the full run draws over. The stores and features are only read; nothing is

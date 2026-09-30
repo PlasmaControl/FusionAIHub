@@ -14,12 +14,14 @@
 #   python -m labeler.frames.prepare --method $METHOD [--stores] --index I --count N --workers W
 # --stores builds each shot outside the roster a store under
 # $LABELER_ROOT/frames/stores/<event>/ (review.build(out=), never spectrograms/; a
-# stale tearing-mode store is rebuilt); without it, $LABELER_ROOT/frames/features/<method>/
-# <shot>.npz, a dropped shot's reason beside it. Each run writes its record under
+# stale tearing-mode store is rebuilt; stores are unversioned); without it,
+# $LABELER_ROOT/frames/features/v2/<method>/<shot>.npz, a dropped shot's reason beside it. Each run writes its record under
 # records/. Task I of an array of N is shard I of N (SLURM_ARRAY_TASK_ID and
 # SLURM_ARRAY_TASK_COUNT, D67); without an array, one shard. PILOT=1 takes each shard's
 # first 20 shots (LIMIT, 20 unless set); SHOTS names shots; FORCE=1 rebuilds built stores.
-# Nothing is fetched. Exits 1 when a store could not be built. Sawteeth need no stores.
+# Nothing is fetched. Exits 1 when a store could not be built. Sawteeth's v2 shots
+# (the ece_sawtooth v2 detector's population table) are mostly outside the roster,
+# so they need --stores first, as the other methods' legacy shots do.
 #
 #   pilot:      METHOD=ntm_frames PILOT=1 sbatch <this> --stores
 #   full run:   METHOD=ntm_frames sbatch --array=0-7 <this> --stores
