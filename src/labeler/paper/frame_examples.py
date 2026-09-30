@@ -67,9 +67,9 @@ class FrameShot:
     split: str = "test"
 
 
-def figure_name(category: str) -> str:
-    """The product's name."""
-    return f"fig_examples_{category}"
+def figure_name(method: str) -> str:
+    """The product's name: `fig_examples_ntm` for `ntm_frames`."""
+    return f"fig_examples_{method.removesuffix('_frames')}"
 
 
 def shot_f1(model, spec, scored: frames_evaluate.Shot, threshold: float) -> float:

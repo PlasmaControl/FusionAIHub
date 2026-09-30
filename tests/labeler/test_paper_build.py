@@ -15,10 +15,24 @@ import h5py
 import pytest
 
 from labeler.ae import xpower
-from labeler.paper import AE, ORDER, build, coverage, roc, roster, scores, shots
+from labeler.paper import (
+    AE,
+    ORDER,
+    build,
+    coverage,
+    frame_examples,
+    roc,
+    roster,
+    scores,
+    shots,
+)
 
 from . import ae_tree
 from . import paper_tree as tree
+
+EXAMPLES = tuple(
+    frame_examples.figure_name(m) for m in roc.SELECTED.values() if m != roc.AE_METHOD
+)
 
 
 @pytest.fixture(autouse=True)
@@ -72,7 +86,7 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         "table_differences",
     ]
     missing = _missing(build.inputs(runs)["seg_evaluation"])
-    assert printed["skipped"] == {
+    assert _skipped(printed) == {
         "table_seg_scores": missing,
         "fig_interpreter": NO_ROSTER,
     }
@@ -99,6 +113,12 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     ]
     for name, files in manifest["products"].items():
         assert all((out / f).is_file() for f in files), name
+
+
+def _skipped(record: dict) -> dict:
+    """`skipped` without the frame models' example figures, which these tests
+    leave to `test_paper_frame_examples`."""
+    return {k: v for k, v in record["skipped"].items() if k not in EXAMPLES}
 
 
 def _missing(*paths) -> dict:
@@ -746,6 +766,7 @@ AE_PRODUCTS = (
 
 
 FRAME_PRODUCTS = (
+    *EXAMPLES,
     "fig_scores",
     "table_ae_scores",
     "fig_interpreter",
@@ -806,7 +827,7 @@ def test_version_v2_draws_from_v2_records(runs, tmp_path):
     assert build.main(["--out", str(out), "--version", "v2"]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert (manifest["version"], manifest["seg_version"]) == ("v2", "v1")
-    assert manifest["skipped"] == {"fig_interpreter": NO_ROSTER}
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
     assert set(AE_PRODUCTS) <= set(manifest["products"])
     assert manifest["labels_match"] is True
     pinned = manifest["inputs"]
@@ -1005,7 +1026,7 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     assert build.main(argv) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert (manifest["version"], manifest["seg_version"]) == ("v2", "v1")
-    assert manifest["skipped"] == {"fig_interpreter": NO_ROSTER}
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
     assert {"table_seg_scores", "table_differences"} <= set(manifest["products"])
     assert _seg_products_of(manifest) == dict.fromkeys(_seg_products_of(manifest))
     seg = runs.root / "models" / "ae_seg" / "v1"
@@ -1061,7 +1082,7 @@ def test_a_seg_version_not_run_skips_only_the_segmentation(runs, tmp_path):
     manifest = json.loads((out / "manifest.json").read_text())
     seg = str(build.inputs(runs, "v2", "v9")["seg_evaluation"])
     assert "/ae_seg/v9/" in seg
-    assert manifest["skipped"] == {
+    assert _skipped(manifest) == {
         "table_seg_scores": _missing(seg),
         "fig_interpreter": NO_ROSTER,
     }
