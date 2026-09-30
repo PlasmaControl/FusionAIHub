@@ -1,7 +1,7 @@
 """Score a method's model on its test shots, once, against its baselines and its
 bar (round three, Part B; spec §3.4).
 
-    python -m labeler.frames.evaluate --method M [--pilot]
+    python -m labeler.frames.evaluate --method M [--pilot | --rethreshold]
 
 **Bins.** A shot's bins are its features' (`prepare`, of `frames.VERSION`, F1):
 the whole `bin_ms` bins inside its window, and their states the original's
@@ -10,7 +10,7 @@ when its target is ABSENT or PRESENT_T and every one of its 10 ms frames is
 observed (`score`); UNKNOWN and UNCERTAIN_T bins are not. The model says
 present where its P, its frames' logits pooled as it was trained
 (`model.bin_logits`), reaches the threshold chosen on the val shots
-(`train.fit`).
+(`train.fit`), or re-chosen on them (`threshold.json`, `train.load`).
 
 **Baselines** (`baselines`, the spec's `baselines`), each a decision per bin:
 - `always`: present everywhere;
@@ -68,7 +68,17 @@ the test cannot show: D44's limits for H/L, and the campaign years (`shot_years`
 of the split's shots (train, val, test; the legacy ones, outside the roster,
 and the roster's) beside the population's, with the population's years
 that no test shot is from. The md also counts the test shots left out for want
-of features (`prepare`'s drops), with their reasons.
+of features (`prepare`'s drops), with their reasons. `model` names the
+threshold's source (`threshold_source`), the trained threshold and
+threshold.json's sha256 (None without one).
+
+**A re-chosen threshold** (`--rethreshold`, T1). Where `threshold.json` sits
+beside the model and the existing `evaluation.json` scored the same model at
+another threshold, the test is scored again at threshold.json's, by the same
+code (the bar and `effectively_always` with it): the old `evaluation.json` and
+`evaluation.md` are first moved to `evaluation.trained-threshold.json` and
+`.md` (`TRAINED_STEM`), which are never overwritten, and the new record names
+the old one (`previous_evaluation`). Anything else is refused (`rescore_check`).
 """
 
 from __future__ import annotations
@@ -132,6 +142,8 @@ OWNER_NOTE = (
 #: interval's upper end below which it is too (F6).
 ALWAYS_AGREEMENT = 0.99
 ALWAYS_MARGIN = 0.01
+#: Where `--rethreshold` moves the test's record at the trained threshold.
+TRAINED_STEM = "evaluation.trained-threshold"
 SAWTOOTH_NOTE = (
     "The target is the table of the ece_sawtooth v3 detector (ECE and SXR "
     "crashes; D56 as amended): the model is a distillation of that detector, and "
@@ -574,16 +586,48 @@ def _check(blob: dict, spec: EventSpec, split: dict, split_bytes: bytes) -> None
         )
 
 
-def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
-    """Score the method's model once on its test shots (module docstring); the
-    record written to `evaluation.json`."""
+def rescore_check(out: Path, blob: dict, model_sha256: str) -> dict:
+    """Whether `--rethreshold` may score the test again (module docstring):
+    `blob` (`train.load`'s) has a threshold from threshold.json, and
+    `evaluation.json` scored this model at another threshold, with no
+    `evaluation.trained-threshold.*` yet; else refused. The old record's path
+    once moved, its sha256 and its threshold."""
+    target = out / "evaluation.json"
+    if blob["threshold_source"] != frames_train.THRESHOLD_FILE:
+        raise ValueError(f"{out}: no threshold.json, so the test is scored once")
+    if not target.is_file():
+        raise FileNotFoundError(f"{target}: no test score to score again")
+    data = target.read_bytes()
+    old = json.loads(data)["model"]
+    if old["sha256"] != model_sha256:
+        raise ValueError(f"{target}: it scored another model")
+    if float(old["threshold"]) == float(blob["threshold"]):
+        raise ValueError(f"{target}: already scored at {blob['threshold']}")
+    there = [str(p) for p in (out / f"{TRAINED_STEM}.json", out / f"{TRAINED_STEM}.md")]
+    if any(Path(p).exists() for p in there):
+        raise FileExistsError(f"{', '.join(there)}: never overwritten")
+    return {
+        "path": there[0],
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "threshold": float(old["threshold"]),
+    }
+
+
+def evaluate(
+    paths: Paths, method: str, *, out: Path | None = None, rethreshold: bool = False
+) -> dict:
+    """Score the method's model once on its test shots (module docstring), or
+    again at a re-chosen threshold (`rethreshold`); the record written to
+    `evaluation.json`."""
     spec = SPECS[method]
     out = model_dir(paths, method, VERSION) if out is None else Path(out)
     target = out / "evaluation.json"
-    if target.exists() and not pilot_area(out, paths.runs):
+    if not rethreshold and target.exists() and not pilot_area(out, paths.runs):
         raise FileExistsError(f"{target}: the test shots are scored once")
     model_path = out / "model.pt"
     model, blob = frames_train.load(model_path)
+    model_sha = hashlib.sha256(model_path.read_bytes()).hexdigest()
+    previous = rescore_check(out, blob, model_sha) if rethreshold else None
     split_bytes = shots_file(paths, method, VERSION).read_bytes()
     split = prepare.split_shots(paths, method)
     _check(blob, spec, split, split_bytes)
@@ -602,9 +646,12 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
         "tier": "suggestions",
         "model": {
             "path": str(model_path),
-            "sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
+            "sha256": model_sha,
             "threshold": threshold,
             "threshold_rule": blob.get("threshold_rule", "f1"),
+            "threshold_source": blob["threshold_source"],
+            "trained_threshold": blob["trained_threshold"],
+            "threshold_sha256": blob["threshold_sha256"],
             "split_sha256": blob["split_sha256"],
         },
         "bin_ms": spec.bin_ms,
@@ -646,7 +693,13 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
     record["split_years"] = split_years(paths, method, years)
     record["population_years"] = year_counts(_population_shots(paths), years)
     record["labels_window"] = labels_window(meta)
+    if previous is not None:
+        record["previous_evaluation"] = previous
     record["git_sha"] = git_sha()
+    if previous is not None:  # the trained threshold's record, kept
+        for suffix in (".json", ".md"):
+            if (out / f"evaluation{suffix}").exists():
+                (out / f"evaluation{suffix}").rename(out / f"{TRAINED_STEM}{suffix}")
     with atomic_path(target) as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
     with atomic_path(out / "evaluation.md") as tmp:
@@ -796,6 +849,28 @@ def years_md(record: dict) -> list[str]:
     return [*lines, "", said]
 
 
+def threshold_said(record: dict) -> str:
+    """The md's words on the threshold: chosen on the val shots at training, or
+    re-chosen on them (threshold.json), and then which record scored the
+    trained one."""
+    model = record["model"]
+    said = f"Threshold {model['threshold']}"
+    if model.get("threshold_source", "training") == "training":
+        return said + " (chosen on the val shots)"
+    said += (
+        ", re-chosen on the val shots (threshold.json) in place of the trained "
+        f"{model['trained_threshold']}"
+    )
+    previous = record.get("previous_evaluation")
+    if previous is None:
+        return said
+    return (
+        f"{said}, after the test had been scored at "
+        f"{previous['threshold']} ({Path(previous['path']).name}); the test shots "
+        "did not choose it"
+    )
+
+
 def report_md(spec: EventSpec, record: dict) -> str:
     """`evaluation.md`: the test's tables, the bar, whether the model is
     effectively always, the owner's shots in test and what the test cannot
@@ -808,9 +883,9 @@ def report_md(spec: EventSpec, record: dict) -> str:
         (
             f"{len(test['shots'][method])} test shots, {n['scored']} scored "
             f"{spec.bin_ms:g} ms bins ({n['present']} present, {n['absent']} "
-            f"absent). Threshold {record['model']['threshold']} (chosen on the val "
-            f"shots); bins pooled by their frames' {spec.pool}. 95 % shot-bootstrap "
-            f"intervals, {record['replicates']} replicates, seed {record['seed']}."
+            f"absent). {threshold_said(record)}; bins pooled by their frames' "
+            f"{spec.pool}. 95 % shot-bootstrap intervals, {record['replicates']} "
+            f"replicates, seed {record['seed']}."
         ),
         "",
         *_score_table(method, record),
@@ -916,16 +991,23 @@ def report_md(spec: EventSpec, record: dict) -> str:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--method", required=True, choices=list(SPECS))
-    p.add_argument(
+    which = p.add_mutually_exclusive_group()
+    which.add_argument(
         "--pilot",
         action="store_true",
         help="the pilot's model, runs/frames/pilot/<method>; may be rescored",
+    )
+    which.add_argument(
+        "--rethreshold",
+        action="store_true",
+        help="score the test again at threshold.json's threshold, the old record "
+        f"kept as {TRAINED_STEM}.json and .md",
     )
     args = p.parse_args(argv)
     paths = Paths.from_env()
     out = frames_train.pilot_dir(paths, args.method) if args.pilot else None
     try:
-        record = evaluate(paths, args.method, out=out)
+        record = evaluate(paths, args.method, out=out, rethreshold=args.rethreshold)
     except (OSError, ValueError, RuntimeError) as error:
         p.error(str(error))
     line = {"method": args.method, "bar": record["bar"], "tier": record["tier"]}

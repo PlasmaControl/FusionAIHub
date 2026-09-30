@@ -59,6 +59,13 @@ pilot (`--pilot`, or any `--limit`, which takes the first N train and N val
 shots) writes under `runs/frames/pilot/<method>/`, which it may replace, for
 `PILOT_EPOCHS` unless `--epochs` says otherwise. Torch takes SLURM_CPUS_PER_TASK
 threads (4 without).
+
+**Loading** (`load`), the one way every reader gets a frame model's threshold
+(`evaluate`, `apply`, `gallery`, `labeler.paper.roc`): where a
+`threshold.json` (`THRESHOLD_FILE`, `labeler.frames.rethreshold`'s, T1) sits
+beside `model.pt`, the checkpoint's `threshold` is its re-chosen one, and
+`trained_threshold` training's; `threshold_source` says which ("threshold.json"
+or "training") and `threshold_sha256` names the file (`with_threshold`).
 """
 
 from __future__ import annotations
@@ -66,6 +73,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import io
 import json
 import math
 import os
@@ -96,6 +104,8 @@ from .model import RowsCNN, bin_logits
 from .targets import ABSENT, PRESENT_T
 
 THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
+#: A threshold re-chosen on the val shots after training (T1), beside `model.pt`.
+THRESHOLD_FILE = "threshold.json"
 #: Each crop's length, and how many a train shot gives an epoch.
 CROP_MS = 2560.0
 CROPS_PER_SHOT = 4
@@ -350,11 +360,12 @@ def rule_score(cells, rule: str) -> float:
     return (present + f1_of([tn, fn, fp, tp])) / 2.0
 
 
-def pick_threshold(probs, states, observed, rule: str = "f1") -> float:
-    """The threshold with the best pooled score by `rule` (`rule_score`); a tie
-    goes to the one nearest 0.5."""
+def pick_threshold(probs, states, observed, rule: str = "f1", grid=THRESHOLDS) -> float:
+    """The threshold of `grid` (training's `THRESHOLDS` by default) with the
+    best pooled score by `rule` (`rule_score`); a tie goes to the one nearest
+    0.5."""
     best, found = -1.0, 0.5
-    for threshold in sorted(THRESHOLDS, key=lambda t: abs(t - 0.5)):
+    for threshold in sorted(grid, key=lambda t: abs(t - 0.5)):
         cells = sum(
             bin_cells(p, s, threshold, o)
             for p, s, o in zip(probs, states, observed, strict=True)
@@ -527,13 +538,48 @@ def save(out: Path, model: RowsCNN, record: dict) -> None:
         torch.save({"state_dict": model.state_dict(), **record}, tmp)
 
 
-def load(path) -> tuple[RowsCNN, dict]:
-    """A saved model, in eval mode, and its checkpoint."""
-    blob = torch.load(path, map_location="cpu", weights_only=False)
+def load(path, *, folder=None) -> tuple[RowsCNN, dict]:
+    """A saved model, in eval mode, and its checkpoint, its threshold the one a
+    `threshold.json` in the model's folder re-chose, if there is one
+    (`with_threshold`). A model read from a file object names its `folder`."""
+    if isinstance(path, (str, os.PathLike)):
+        data = Path(path).read_bytes()
+        folder = Path(path).parent if folder is None else folder
+    elif folder is None:
+        raise TypeError("a model read from a file object needs its folder")
+    else:
+        data = path.read()
+    blob = torch.load(io.BytesIO(data), map_location="cpu", weights_only=False)
     model = RowsCNN(blob["channels"], blob["subs"], blob.get("width", 32))
     model.load_state_dict(blob["state_dict"])
     model.eval()
-    return model, blob
+    return model, with_threshold(blob, folder, hashlib.sha256(data).hexdigest())
+
+
+def with_threshold(blob: dict, folder, model_sha256: str) -> dict:
+    """The checkpoint with `trained_threshold` (its own `threshold`) and, where
+    `folder` holds a `threshold.json`, that file's `threshold`; else its own.
+    `threshold_source` is "threshold.json" or "training", and
+    `threshold_sha256` the file's (None without one). A threshold.json made
+    for another model (its `model.sha256`) is refused."""
+    trained = float(blob["threshold"])
+    out = blob | {
+        "trained_threshold": trained,
+        "threshold_source": "training",
+        "threshold_sha256": None,
+    }
+    path = Path(folder) / THRESHOLD_FILE
+    if not path.is_file():
+        return out
+    data = path.read_bytes()
+    found = json.loads(data)
+    if found["model"]["sha256"] != model_sha256:
+        raise ValueError(f"{path}: it was re-chosen for another model")
+    return out | {
+        "threshold": float(found["threshold"]),
+        "threshold_source": THRESHOLD_FILE,
+        "threshold_sha256": hashlib.sha256(data).hexdigest(),
+    }
 
 
 def main(argv=None) -> int:
