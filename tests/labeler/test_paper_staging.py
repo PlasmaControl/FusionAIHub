@@ -14,7 +14,7 @@ from labeler.paper import build, staging
 
 from . import ae_tree
 
-OWNED = build.OWNED
+OWNED = build.CLAIMED  # the retired names too: fig_mhd.pdf below is one
 
 
 @pytest.fixture(autouse=True)

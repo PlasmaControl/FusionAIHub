@@ -187,7 +187,7 @@ def test_a_whole_window_build_picks_and_records_over_the_whole_window(
     assert manifest["example_shots"] == [102, 103]
     late = manifest["shot_f1"]["103"]
     assert late == {"f1_0_2s": 1.0, "f1_window": 0.9231}, "12/13 at 4 decimals"
-    assert "fig_examples" in manifest["products"]
+    assert "fig_examples_ae" in manifest["products"]
     assert not [k for k in manifest if k.startswith("interpreter_")]
     [picked] = drawn
     assert all(s.scored_until_ms is None and s.mask.all() for s in picked)
