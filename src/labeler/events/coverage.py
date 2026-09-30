@@ -493,10 +493,10 @@ def skip_key(step: str) -> list[tuple[str, str, int, str]]:
     pass)` keys it is a fact about.
 
     The step names are `pipeline.process_shot`'s: `"channel bes:26"`,
-    `"mask mhr:4:wide"`, `"actuator gas"`, `"elm_clock"`, `"sawtooth"`.
-    Anything unrecognised becomes a row under its own name rather than
-    being dropped - a skip nobody can read is still better than a skip
-    nobody can see.
+    `"mask mhr:4:wide"`, `"actuator gas"`, `"elm_clock"`, `"sawtooth"`,
+    `"sawtooth sxr"`. Anything unrecognised becomes a row under its own
+    name rather than being dropped - a skip nobody can read is still better
+    than a skip nobody can see.
     """
     head, _, rest = step.partition(" ")
     if head in _BLOCK_STEPS and rest:
@@ -506,6 +506,10 @@ def skip_key(step: str) -> list[tuple[str, str, int, str]]:
         # `"actuator gas"`: the group is what was not read, and the group
         # name is what the ran rows carry in `diag`.
         return [("actuator", rest, -1, "")]
+    if head == "sawtooth" and rest:
+        # `"sawtooth sxr"`: one of the v3 detector's two diagnostics did not
+        # run and the other did, so the row is that diagnostic's own key.
+        return [("ece_sawtooth", rest, -1, "")]
     sources = _STEP_SOURCES.get(step, (step,))
     diag = _STEP_DIAGS.get(step, "")
     return [(source, diag, -1, "") for source in sources]

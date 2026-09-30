@@ -403,6 +403,7 @@ def write_sources(
     *,
     run_id: str,
     merge: bool = True,
+    sources: Sequence[str] | None = None,
 ) -> pd.DataFrame:
     """Write one shot's per-source completion record; return the new file.
 
@@ -422,7 +423,9 @@ def write_sources(
 
     Merged and atomic like `write_events`, on the same reasoning and with
     the same key: a re-run of one channel replaces that channel's rows and
-    leaves every other source's alone.
+    leaves every other source's alone. `sources` also replaces every row of
+    the sources it lists, as `write_events`' does, so a step whose keys
+    changed leaves none of its old ones behind (`refresh_sawtooth`).
     """
     path = Path(path)
     now = datetime.now(UTC).isoformat(timespec="seconds")
@@ -442,6 +445,8 @@ def write_sources(
         old = read_sources(path)
         if not old.empty:
             keep = ~pd.MultiIndex.from_frame(old[list(SOURCE_KEY)]).isin(keys)
+            if sources is not None:
+                keep &= ~old["source"].isin(set(sources)).to_numpy()
             parts.insert(0, old[keep])
     kept = [p for p in parts if not p.empty]
     out = pd.concat(kept, ignore_index=True) if kept else _empty_sources()
