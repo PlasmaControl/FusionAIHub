@@ -54,7 +54,9 @@ its test is a second use of them, made after v2's breakdown was seen, which
 `models/ae_seg/v3` (a pilot to `runs/ae_seg/pilot-v3`).
 
 **SegNet v4** (`--version v4`) is SegNet v1's recipe on pseudo-v4 (60-250 kHz):
-the live labels file and the chosen ae_xpower v1 model's split, as v1's. It
+the live labels file and the chosen ae_xpower v1 model's split, as v1's. The
+live labels have moved since v1 trained (6 of the 162 split shots), so v4
+differs from v1 in those edits as well as in the band. It
 refuses unless that split is SegNet v1's own (`models/ae_seg/v1/split.csv`),
 shot for shot: its test is a second use of v1's test shots, which
 `training.json` states (`test_reuse`). The blob records the band and version, as

@@ -16,10 +16,11 @@ Code: `src/labeler/ae/xpower/` (`data`, `model`, `train`, `cv`, `evaluate`,
 Jobs: `scripts/labeler/ae_xpower_*.sbatch`. `$LABELER_ROOT` is
 `/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`.
 
-There are two versions. **v1** trained three candidates, chose one on its
+There are four versions. **v1** trained three candidates, chose one on its
 validation shots and was tested once (A2 failed: it mistook MHD for AE). **v2**
-is the one this page describes in full: the same model, chosen by five-fold
-cross-validation with a rule that weighs the MHD mistake (the ledger's
+is the one this page describes in full (v3 is v2's recipe over the owner's
+whole window at 0-250 kHz, v4 v2's at 60-250 kHz, below): the same model,
+chosen by five-fold cross-validation with a rule that weighs the MHD mistake (the ledger's
 Deviation 11). Every command takes `--version`; it must be the models
 directory's name and the version the checkpoint records, or the command
 refuses.
@@ -46,7 +47,11 @@ v2's. Its test is a second use of v2's test shots, after v2's was scored, so
 names v2's scoring; its `v2_subset` table is its whole test. v2's own records
 are untouched: `evaluate --test --version v2` still refuses a second scoring.
 The jobs are v2's with `VERSION=v4` (each script's header has the v4 lines).
-SegNet v4 (`labeler.ae.seg`, SegNet v1 at 60-250 kHz) is separate.
+v4's baselines stay at v2's bands: TokEye's AE call and the MHD-frame rule
+(`data`'s fixed TokEye bins) are not moved to 60 kHz, so only the model's band
+differs from v2. SegNet v4 (`labeler.ae.seg`: SegNet v1 at 60-250 kHz, on the
+live labels, which the owner has edited on 6 of its 162 split shots since
+SegNet v1) is separate.
 
 ## Inputs
 
