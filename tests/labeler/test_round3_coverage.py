@@ -165,6 +165,9 @@ def test_the_frame_sources_are_the_four_paper_phenomena():
     assert primaries == ["N1", "H1", "E1", "S1"]
     detectors = [c for c, s in coverage.FRAME_SOURCES.items() if s.detector]
     assert detectors == [SAW], "sawteeth's labels are the detector's (D56)"
+    assert coverage.FRAME_SOURCES[SAW].origin == (
+        "the ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended)"
+    ), "v3, not v2, which over-called"
     assert coverage.tick(SAW) == "sawteeth (detector)"
     assert [coverage.tick(c) for c in (AE, ELM)] == [title(AE), "ELMing"]
     assert "Jalalvand" not in json.dumps(
@@ -372,7 +375,8 @@ def test_the_table_with_the_frame_phenomena(tmp_path):
         "Val + Test + No split (the reviewed shots saved after the model was "
         "trained); for ELMing and sawteeth, "
         + FRAME_CLAUSE
-        + "ELMing: Hiro's table, sawteeth: the ece_sawtooth v2 detector's table"
+        + "ELMing: Hiro's table, sawteeth: the ece_sawtooth v3 detector (ECE and "
+        + "SXR crashes; D56 as amended)"
         + DAGGER_CLAUSE
         + "ELMing (bar not met)"
     )

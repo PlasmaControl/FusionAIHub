@@ -119,8 +119,9 @@ OWNER_NOTE = (
 ALWAYS_AGREEMENT = 0.99
 ALWAYS_MARGIN = 0.01
 SAWTOOTH_NOTE = (
-    "The target is the ece_sawtooth v2 detector's table: the model is a "
-    "distillation of that detector, and it is scored only against it."
+    "The target is the table of the ece_sawtooth v3 detector (ECE and SXR "
+    "crashes; D56 as amended): the model is a distillation of that detector, and "
+    "it is scored only against it."
 )
 
 

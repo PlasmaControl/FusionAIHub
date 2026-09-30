@@ -173,7 +173,7 @@ SPECS: dict[str, EventSpec] = {
             Role("ece", "ECE Te, ch 32-35", "trace", channels=4),
             Role("sxr", "SXR", "trace", optional=True, channels=4),
         ),
-        target="ece_sawtooth_v2",
+        target="ece_sawtooth_v3",
         sub_ms=2.0,
         bin_ms=10.0,
         pool="mean",

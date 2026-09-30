@@ -12,7 +12,9 @@ grids and Jaemin Seo's tearing archive, which holds every sampled 0 (D41). A
 cell's state is its maximum over rho, unknown where every rho is (spec §3.2),
 and a bin of several cells takes their maximum, so an onset anywhere in it
 makes it present. The sawtooth's target is an interval table, the
-`ece_sawtooth` v2 suggestions (D56), whose 10 ms frames (`scoring.frames`) are
+suggestions of the ece_sawtooth v3 detector (ECE and SXR crashes; D56 as
+amended: v2's over-called, the owner found on 2026-09-29), at
+`suggestions/ece_sawtooth/v3/`, whose 10 ms frames (`scoring.frames`) are
 pooled to bins the same way. `target_shots` and `target_bins` read a spec's
 original target, whichever kind it is.
 
@@ -57,7 +59,7 @@ GRIDS = {
     "tearing_archive": ("neoclassical_tearing_mode",),
 }
 #: Each interval-table target's suggestion table, `(method, version)` (D56).
-TABLES = {"ece_sawtooth_v2": ("ece_sawtooth", "v2")}
+TABLES = {"ece_sawtooth_v3": ("ece_sawtooth", "v3")}
 
 
 def _per(bin_ms: float, unit_ms: float, units: str) -> int:

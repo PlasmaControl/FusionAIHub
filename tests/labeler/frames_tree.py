@@ -17,8 +17,8 @@
   on the 600 ms cell. `IP_SHOT`, `LEGACY` and `LABELS_SHOT` are legacy ELM shots
   beyond the cohort and every roster, `LABELS_SHOT` absent in every cell of
   `LABELS_SHOT_HULL`; `SPARE`'s ELM grid is unknown in every cell;
-- the `ece_sawtooth` v2 table (`SAWTOOTH_SPANS`): present over `EVENT_MS` but
-  for an uncertain 1000-1050 ms, and not observable over 1850-1900 ms;
+- the `ece_sawtooth` v3 table (`SAWTOOTH_SPANS`, D56 as amended): present over
+  `EVENT_MS` but for an uncertain 1000-1050 ms, and not observable over 1850-1900 ms;
 - a cohort of 6 (`COHORT`: `BLIND` the blind one, which has every target, and
   `SPARE` with no labelled bin) over `WINDOW`, and a population with one shot
   more (`POPULATION_ONLY`, over `POPULATION_WINDOW`);
@@ -98,7 +98,7 @@ GROUPS = {
 #: The H and L grids' cells: unknown on the first and last (50 and 1900 ms).
 HL_CELLS = (50, 1950)
 L_MS = ((100, 650), (1400, 1900))
-SAWTOOTH_TABLE = ("ece_sawtooth", "v2")
+SAWTOOTH_TABLE = ("ece_sawtooth", "v3")
 SAWTOOTH_SPANS = (
     (600, 1000, PRESENT),
     (1000, 1050, UNCERTAIN),
@@ -303,7 +303,7 @@ def _grids(paths: Paths) -> None:
 
 
 def sawtooth_table(paths: Paths) -> Path:
-    """The `ece_sawtooth` v2 suggestion table's path."""
+    """The `ece_sawtooth` v3 suggestion table's path."""
     return suggestions.table_path(paths, SAWTOOTH, *SAWTOOTH_TABLE)
 
 
