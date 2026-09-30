@@ -15,9 +15,11 @@ from labeler.ae.seg import poi, pseudo
 from labeler.ae.seg import train as seg_train
 from labeler.ae.seg.pseudo import IGNORE
 from labeler.ae.xpower import cv, evaluate, model_dir, train
-from labeler.ae.xpower.data import BAND60_KHZ, band_slice
+from labeler.ae.xpower.data import BAND60_KHZ, band_slice, clean_path, tokeye_clean
 from labeler.ae.xpower.model import FrameCNN, FrameCNNConfig
 from labeler.config import sha256_of
+from labeler.events.review import labels
+from labeler.events.review.rows import Grid
 from labeler.paper import build as paper_build
 from labeler.paper import scores as paper_scores
 
@@ -223,6 +225,68 @@ def test_pseudo_v4_is_pseudo_v1_with_the_band_at_60_khz(tmp_path, monkeypatch):
     assert index.shot.tolist() == [101, 102]
 
 
+def test_pseudo_v4_builds_60_80_khz_apart_so_80_250_is_pseudo_v1s(tmp_path):
+    """Regions, MIN_AREA, rings and unlit columns do not cross 80 kHz."""
+    paths = ae_tree.build(tmp_path, {101: "train"}, tokeye_dt=0.256)
+    label = labels.normalise((0, 2000), [(300, 900, 1), (1000, 1100, 1)])
+    made = pseudo.make(paths, 101, label)
+    shape = made.mask.shape
+    grid = Grid(made.t0_ms, made.dt_ms, shape[1])
+    t_ms, clean, ann = tokeye_clean(clean_path(paths.root / "ae" / "masks", 101))
+    clean = clean.copy()
+    t = grid.t0_ms + (np.arange(grid.n) + 0.5) * grid.dt_ms
+    col_of = np.floor((t_ms - grid.t0_ms) / grid.dt_ms).astype(np.int64)
+
+    def light(rows, cols):
+        at = np.isin(col_of, cols)
+        for k in rows:  # page bin k takes TokEye bins 2k - 2 and 2k - 1
+            clean[:2, 2 * k - 1, at] = True
+
+    dy = 500 / 512
+    at80 = band_slice(0.0, dy, shape[0], (80.0, 250.0)).start
+    at60 = band_slice(0.0, dy, shape[0], BAND60_KHZ).start
+    assert (at60, at80) == (62, 82)
+    dark = np.flatnonzero((t > 1000) & (t < 1100))  # present, TokEye dark
+    ae = np.flatnonzero((t > 310) & (t < 890))  # present, the 146 kHz line lit
+    only_low = dark[len(dark) // 2 : len(dark) // 2 + 3]
+    light(range(70, 73), only_low)  # a column lit only at 60-80 kHz
+    joined = ae[10:12]
+    light(range(78, 84), joined)  # 2 x 2 above 80 passes MIN_AREA only joined
+    straddle = ae[30:33]
+    light(range(76, 88), straddle)  # a region straddling 80 kHz
+    below = ae[50:53]
+    light(range(76, 82), below)  # just below 80: its ring would reach 82-83
+    tokeye = (t_ms, clean, ann)
+    v1 = pseudo.build(101, label, grid, shape[0], 0.0, dy, tokeye)
+    v4 = pseudo.build(101, label, grid, shape[0], 0.0, dy, tokeye, BAND60_KHZ)
+    assert (v4.mask[at80:] == v1.mask[at80:]).all(), "80-250 kHz as pseudo-v1's"
+    assert (v1.mask[:at80] == IGNORE).all() and (v4.mask[:at60] == IGNORE).all()
+    assert (v1.mask[:, only_low] == IGNORE).all(), "unlit in pseudo-v1's band"
+    assert (v4.mask[70:73][:, only_low] == 1).all()
+    assert (v4.mask[at80:][:, only_low] == IGNORE).all()
+    assert v4.present_unlit == v1.present_unlit - len(only_low) > 0
+    assert (v1.mask[82:84][:, joined] == IGNORE).all(), "too small alone"
+    assert (v4.mask[78:82][:, joined] == 1).all()
+    assert (v4.mask[82:88][:, straddle] == 1).all()
+    assert (v4.mask[76:82][:, straddle] == 1).all()
+    assert (v4.mask[82:84][:, below] == 0).all(), "no ring across 80 kHz"
+    assert (v4.mask[76:82][:, below] == 1).all()
+    # One build over 60-250 kHz would couple them, so this fixture guards it.
+    lit = pseudo.pool_columns(pseudo.tokeye_rows(clean), t_ms, grid)[: shape[0]]
+    state = pseudo.column_states(label, grid)
+    state[~pseudo.covered_columns(t_ms, grid)] = pseudo.OUTSIDE
+    coupled, _ = pseudo._band_mask(
+        lit,
+        state == pseudo.PRESENT,
+        state == pseudo.ABSENT,
+        band_slice(0.0, dy, shape[0], BAND60_KHZ),
+        shape[0],
+        grid.n,
+    )
+    for cols in (only_low, joined, below):
+        assert (coupled[at80:][:, cols] != v1.mask[at80:][:, cols]).any()
+
+
 def test_segnet_v4_trains_on_v1s_split_and_states_its_second_use(
     tmp_path, monkeypatch, capsys
 ):
@@ -236,6 +300,12 @@ def test_segnet_v4_trains_on_v1s_split_and_states_its_second_use(
     v1_split = seg.model_dir(paths, "v1") / "split.csv"
     stderr = _refused(seg_train.main, ["--version", "v4", "--epochs", "1"], capsys)
     assert str(v1_split) in stderr and "FileNotFoundError" in stderr
+    v1_split.parent.mkdir(parents=True, exist_ok=True)
+    v1_split.write_text("shot,split\n101,train\n102,val\n103,val\n104,test\n")
+    stderr = _refused(seg_train.main, ["--version", "v4", "--epochs", "1"], capsys)
+    assert "SegNet v1's split differs from ours" in stderr
+    assert not seg.model_dir(paths, "v4").exists()
+    v1_split.unlink()
     assert seg_train.main(["--epochs", "1"]) == 0  # SegNet v1
     assert seg_train.main(["--version", "v4", "--epochs", "1"]) == 0
     models = seg.model_dir(paths, "v4")

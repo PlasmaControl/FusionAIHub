@@ -91,7 +91,12 @@ the exit status is 2. `meta.json` records the NTM table's sha256 too.
 
 pseudo-v1's rules, inputs (TokEye's 0-2 s masks, the live labels file) and grid,
 with the band at 60-250 kHz in place of 80-250 kHz (`build`'s `band_khz`): the
-owner's review page draws AE from 60 kHz. `meta.json` records the band.
+owner's review page draws AE from 60 kHz. The band is built as two, each by
+pseudo-v1's rules on its own: 80-250 kHz exactly as pseudo-v1 builds it and
+60-80 kHz apart, the rows joined, so on the same labels a pseudo-v4 row at or
+above 80 kHz is pseudo-v1's. `meta.json` records the band. Its labels are the
+live file's, which the owner has edited since SegNet v1 trained, so pseudo-v4
+also differs from the masks SegNet v1 trained on where those edits reach.
 """
 
 from __future__ import annotations
@@ -256,6 +261,30 @@ def column_states(label: labels.Label, grid) -> np.ndarray:
     return out
 
 
+def _band_mask(lit, present, absent, rows: slice, n_y: int, n: int):
+    """pseudo-v1's rules on the bins `rows` alone: `(mask, unlit)`, the mask
+    IGNORE outside `rows`, `unlit` the present columns with no AE pixel there."""
+    in_band = np.zeros(n_y, dtype=bool)
+    in_band[rows] = True
+    positive = lit & in_band[:, None] & present[None, :]
+    regions, count = ndimage.label(positive, structure=EIGHT)
+    sizes = np.bincount(regions.ravel(), minlength=count + 1)
+    small = (sizes < MIN_AREA)[regions] & positive
+    positive &= ~small
+    ring = ndimage.binary_dilation(
+        positive, structure=np.ones((2 * RING_BINS + 1, 2 * RING_COLS + 1), bool)
+    )
+    mask = np.full((n_y, n), IGNORE, dtype=np.uint8)
+    scored = in_band[:, None] & (absent | present)[None, :]
+    mask[scored] = 0
+    mask[ring & ~positive & present[None, :] & in_band[:, None]] = IGNORE
+    mask[small] = IGNORE
+    unlit = present & ~positive.any(axis=0)
+    mask[:, unlit] = IGNORE
+    mask[positive] = 1
+    return mask, unlit
+
+
 def build(
     shot: int,
     label: labels.Label,
@@ -268,33 +297,29 @@ def build(
 ) -> PseudoMask:
     """The pseudo-mask on `grid`; `tokeye` is `tokeye_clean`'s `(t_ms, clean, ann)`.
 
-    pseudo-v1 is `BAND_KHZ`; pseudo-v4 and the review page's mask pass their own
-    band.
+    pseudo-v1 is `BAND_KHZ`. A band that spans its lower edge, 80 kHz
+    (pseudo-v4's 60-250 kHz), is built as two bands, each by pseudo-v1's rules
+    on its own, and their rows joined: [80, hi] exactly as pseudo-v1 builds it,
+    and [lo, 80) apart, so no region, MIN_AREA, ring or unlit column couples
+    them. `present_unlit` counts the present columns with no AE pixel in either.
     """
     t_ms, clean, _ = tokeye
-    band = band_slice(y0, dy, n_y, band_khz)
-    in_band = np.zeros(n_y, dtype=bool)
-    in_band[band] = True
     lit = pool_columns(tokeye_rows(clean), t_ms, grid)[:n_y]
     state = column_states(label, grid)
     state[~covered_columns(t_ms, grid)] = OUTSIDE
     present, absent = state == PRESENT, state == ABSENT
-    positive = lit & in_band[:, None] & present[None, :]
-    regions, count = ndimage.label(positive, structure=EIGHT)
-    sizes = np.bincount(regions.ravel(), minlength=count + 1)
-    small = (sizes < MIN_AREA)[regions] & positive
-    positive &= ~small
-    ring = ndimage.binary_dilation(
-        positive, structure=np.ones((2 * RING_BINS + 1, 2 * RING_COLS + 1), bool)
-    )
-    mask = np.full((n_y, grid.n), IGNORE, dtype=np.uint8)
-    scored = in_band[:, None] & (absent | present)[None, :]
-    mask[scored] = 0
-    mask[ring & ~positive & present[None, :] & in_band[:, None]] = IGNORE
-    mask[small] = IGNORE
-    unlit = present & ~positive.any(axis=0)
-    mask[:, unlit] = IGNORE
-    mask[positive] = 1
+    lo, hi = band_khz
+    edge = BAND_KHZ[0]
+    if not lo < edge < hi:
+        band = band_slice(y0, dy, n_y, band_khz)
+        mask, unlit = _band_mask(lit, present, absent, band, n_y, grid.n)
+    else:
+        upper = band_slice(y0, dy, n_y, (edge, hi))
+        lower = slice(band_slice(y0, dy, n_y, band_khz).start, upper.start)
+        mask, unlit = _band_mask(lit, present, absent, upper, n_y, grid.n)
+        below, below_unlit = _band_mask(lit, present, absent, lower, n_y, grid.n)
+        mask[lower] = below[lower]
+        unlit &= below_unlit
     return PseudoMask(
         int(shot), grid.t0_ms, grid.dt_ms, float(y0), float(dy), mask, int(unlit.sum())
     )
