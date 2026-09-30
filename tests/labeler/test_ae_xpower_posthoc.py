@@ -96,6 +96,7 @@ def test_the_record_never_writes_the_test_record(tested):
     placed = sum(e["mhd_frames"] for e in record["places"].values())
     assert placed == evaluation["frames"]["mhd_absent"]  # every MHD frame, once
     assert record["seed_study"]["status"] == "not run"
+    assert "test_reuse" not in record, "only a second-use test (v4) has the key"
 
 
 def test_a_pilot_writes_only_under_runs(tested):

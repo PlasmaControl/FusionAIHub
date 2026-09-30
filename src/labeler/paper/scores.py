@@ -556,9 +556,11 @@ def _verdict(bar: dict) -> str:
     return ", ".join(f"{k} {'pass' if v else 'fail'}" for k, v in bar.items())
 
 
-def table_ae(ae: dict, second_look: str | None = None) -> str:
+def table_ae(ae: dict, second_look: str | None = None, reuse: str | None = None) -> str:
     """The AE frame scores; the comment ends with the second look, when there
-    is one (`labeler.paper.build.second_look`)."""
+    is one (`labeler.paper.build.second_look`), and then the reuse note, when
+    the test is a second use of an earlier version's (ae_xpower v4's
+    `test_reuse`)."""
     keys = ("precision", "recall", "f1", "fp_rate_mhd", "fp_rate_other")
     rows = [
         [_tex(AE_NAMES[m]), *(_fmt(ae["methods"][m][k]) for k in keys)]
@@ -574,6 +576,8 @@ def table_ae(ae: dict, second_look: str | None = None) -> str:
     )
     if second_look:
         comment += f"; {second_look}"
+    if reuse:
+        comment += f"; {reuse}"
     header = ("Method", "Precision", "Recall", "F1", "FP (MHD)", "FP (other)")
     return tabular(header, rows, comment)
 
