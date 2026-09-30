@@ -33,14 +33,22 @@ class Snapshot:
 
     def read(self, key: str, path: Path) -> bytes:
         """`path`'s bytes, pinned under `key`; a `ValueError` if `key` was read."""
+        self._unread(key)
+        return self.pin(key, path, Path(path).read_bytes())
+
+    def pin(self, key: str, path: Path, data: bytes) -> bytes:
+        """`data`, `path`'s bytes as the caller read them, pinned under `key`
+        as `read` pins; a `ValueError` if `key` was read."""
+        self._unread(key)
+        self.pinned[key] = (Path(path), hashlib.sha256(data).hexdigest())
+        return data
+
+    def _unread(self, key: str) -> None:
         if key in self.pinned:
             raise ValueError(
                 f"{key}: already read, from {self.pinned[key][0]}; a second read "
                 "could pin other bytes than the ones drawn"
             )
-        data = Path(path).read_bytes()
-        self.pinned[key] = (Path(path), hashlib.sha256(data).hexdigest())
-        return data
 
     def sha(self, key: str) -> str | None:
         return self.pinned[key][1] if key in self.pinned else None
@@ -53,6 +61,14 @@ class Snapshot:
 
     def split(self, key: str, path: Path) -> dict[int, str]:
         return read_split(path, data=self.read(key, path))
+
+    def copy(self, key: str, path: Path) -> Path:
+        """`path`'s bytes, pinned under `key`, as a file of the same name in the
+        scratch directory, for a parser that needs a path."""
+        copy = self.scratch / key / Path(path).name
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(self.read(key, path))
+        return copy
 
     def labels(self, key: str, path: Path) -> dict:
         """A `review/labels.csv`, parsed as the review parses it."""

@@ -32,12 +32,19 @@
 #               shots or fewer comes first; it is exempt from the gate but reported)
 #   full run:   sbatch --dependency=afterok:<cv array id> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
+#   v4:         VERSION=v4 PILOT=10 sbatch <this>, then VERSION=v4 sbatch
+#               --dependency=afterok:<v4 cv array id> <this>: models/ae_xpower/v4/
+#               {cv/choice.json, <candidate>/, chosen.json}; then
+#               VERSION=v4 sbatch --dependency=afterok:<id> ae_xpower_evaluate.sbatch
 #
 # ------------------------------------------ sizing (measured 2026-09-29, v3's final, job 2944533)
 #   The choice: 5 s, MaxRSS 231,232 KiB. The final model, band0-mhd3 on 120 shots for
 #   18 epochs: 10 min 1 s, sacct MaxRSS 3,824,656 KiB (3735 MiB), CPU 84.2 %.
 #   mem=4500M      3735 MiB x 1.2 is 4482 MiB; rounded up.
 #   time=01:30:00  kept: 60 epochs, the most a final trains, take about 33 min; x 2.7.
+#   v4 (an estimate, not measured): v2's 120 shots over 0-2 s on 60-250 kHz, about 11 %
+#                  more pixels than v1's 80-250 kHz final (~2530 MB, below): 2530 x 1.11 x 1.2
+#                  is about 3400M: pass --mem=3400M.
 # before v3 (measured 2026-09-26, v1's train header):
 #   The choice reads 15 small npz records: seconds.
 #   v1's full runs: 88 train shots, ~21 s an epoch (band80, 4 threads; 44 batches of 16

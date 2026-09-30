@@ -15,6 +15,7 @@
 # (candidate, fold), 3 candidates x 5 folds = 15 tasks. Task id K gives
 #   candidate = train.candidates("$VERSION")[K // 5], fold = K % 5:
 #   0-4 band80-mhd3    5-9 band80-mhd10    10-14 band80-mhd30   (folds 0-4 in order)
+# (v4, VERSION=v4: 0-4 band60-mhd3    5-9 band60-mhd10    10-14 band60-mhd30.)
 # Task (c, k) trains candidate c on the three folds other than k and (k+1) mod 5,
 # early-stops on fold (k+1) mod 5 (validation F1 at 0.5), and writes fold k's
 # out-of-fold P(AE) to $LABELER_ROOT/models/ae_xpower/$VERSION/cv/<c>/fold<k>.{npz,json}.
@@ -35,6 +36,16 @@
 #   full run:   sbatch <this>
 #   gate each:  python -m labeler.jobstats --job-id <array id>_<k> --cpu-only
 #   then:       sbatch --dependency=afterok:<array id> ae_xpower_final.sbatch
+#
+# v4 (2026-09-30) is v2 with the band at 60-250 kHz: v2's snapshot (copy
+# models/ae_xpower/v2/review/labels.csv into models/ae_xpower/v4/review/ first; its
+# sha256 is checked), v2's folds (--folds refuses unless they are v2's cv/folds.csv,
+# byte for byte), 0-2 s scoring:
+#   python -m labeler.ae.xpower.cv --version v4 --folds [--pilot 10]
+#   VERSION=v4 PILOT=10 sbatch <this>, then VERSION=v4 sbatch --mem=2800M <this>
+#   sizing:     an estimate, not measured: A's rows and 0-2 s frames on 60-250 kHz, about
+#               11 % more pixels than A's 80-250 kHz, so A's 2106 MiB x 1.11 x 1.2 is about
+#               2800M: pass --mem=2800M (the header's 3500M would read about 67 %).
 #
 # The seed study (post hoc: no decision depends on it). SEED=<S> trains with
 # TrainConfig.seed S instead of the default 20260923, and only the chosen candidate

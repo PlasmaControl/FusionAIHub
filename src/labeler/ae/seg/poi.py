@@ -39,6 +39,11 @@ records (`train.blob_version`).
 **SegNet v3** (`--version v3`) is drawn as SegNet v2 is, from its own model
 (`models/ae_seg/v3`), into `poi/alfven_eigenmode/ae_seg-v3/` and
 `gallery/alfven_eigenmode/ae_seg-v3/`.
+
+**SegNet v4** (`--version v4`) is drawn as SegNet v1 is (AE180's shots, the
+scored [0, 2000) ms window), over the band its blob records, 60-250 kHz, from
+`models/ae_seg/v4`, into `poi/alfven_eigenmode/ae_seg-v4/` and
+`gallery/alfven_eigenmode/ae_seg-v4/`.
 """
 
 from __future__ import annotations
@@ -413,7 +418,7 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="the SegNet version the model is (default v1); v2 and v3 draw over "
-        "0-250 kHz",
+        "0-250 kHz; v4 over 60-250 kHz",
     )
     p.add_argument("--shots", type=int, nargs="*", help="default: every AE180 shot")
     p.add_argument("--from-corpus", action="store_true", help="rows from the corpus")

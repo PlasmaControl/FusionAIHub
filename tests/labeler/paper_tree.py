@@ -148,12 +148,6 @@ def as_version(paths: Paths, version: str = "v2", *, keep: bool = False) -> Path
     return new
 
 
-POI_CSV = (
-    "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
-    "102,1,300,900,140,152,40,True\n"
-)
-
-
 def seg_model(
     paths: Paths, seg_version: str = "v1", threshold: float = 0.0, net=None
 ) -> Path:
@@ -175,8 +169,8 @@ def seg_model(
 def seg_record(paths: Paths, seg_version: str = "v1", *, frame: str = "v1") -> str:
     """The segmentation at `seg_version`, as `labeler.ae.seg` leaves it: its
     `evaluation.json` naming its own copy of the labels (taken from the frame
-    model `frame`'s) and that model, its `model.pt` (`seg_model`), the copy, and
-    points of interest for 102. The copy's sha256."""
+    model `frame`'s) and that model, its `model.pt` (`seg_model`) and the copy.
+    The copy's sha256."""
     seg = paths.root / "models" / "ae_seg" / seg_version
     copy = seg / "review" / "labels.csv"
     copy.parent.mkdir(parents=True)
@@ -188,7 +182,4 @@ def seg_record(paths: Paths, seg_version: str = "v1", *, frame: str = "v1") -> s
     record["meta"]["ae_model"] = str(model)
     (seg / "evaluation.json").write_text(json.dumps(record))
     seg_model(paths, seg_version)
-    poi = paths.root / "poi" / "alfven_eigenmode" / f"ae_seg-{seg_version}" / "poi.csv"
-    poi.parent.mkdir(parents=True)
-    poi.write_text(POI_CSV)
     return sha

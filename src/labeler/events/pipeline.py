@@ -228,8 +228,8 @@ class ShotResult:
     """What one shot's run produced, and what it did not.
 
     `skipped` maps a step to why it did not happen - `"channel bes:26"` ->
-    `"group absent"`, `"sawtooth"` -> `"KeyError: no group 'ece'"` - and is
-    the answer to "was there no ELM here, or did nobody look". `error` is
+    `"group absent"`, `"sawtooth sxr"` -> `KeyError: "no group 'sxr'"` -
+    and is the answer to "was there no ELM here, or did nobody look". `error` is
     non-empty for two failures only: the corpus file could not be read, or
     the results could not be written.
     """
@@ -588,20 +588,23 @@ def _qh_coverage(
     return cov, ""
 
 
-def _read_group(corpus_file, diag: str, *, stop: int | None = None):
+def _read_group(corpus_file, diag: str, *, stop: int | None = None,
+                rows: range | None = None):
     """`(t_s, y)` of a whole corpus group, exactly as it is on disk.
 
     Non-finite samples are NOT stripped, unlike `masks.read_waveform`: the
-    heuristics all turn a non-finite bin into "no change" (`sawtooth_events`
-    via `envelope`, `lh_transitions` via `_usable_span`), a filterscope
-    record's NaN head and tail are part of what they are written to handle,
-    and stripping on channel 0's behalf would move every other channel's
-    samples. This is also what `scripts/labeler/sawtooth_reference_check.py`
-    reads, so the pipeline's sawtooth count is the one that script pins.
+    heuristics all turn a non-finite bin into "no change" (`sawtooth_crashes`
+    and `sawtooth_events` via `envelope`, `lh_transitions` via
+    `_usable_span`), a filterscope record's NaN head and tail are part of
+    what they are written to handle, and stripping on channel 0's behalf
+    would move every other channel's samples. The ECE array is read the way
+    `scripts/labeler/sawtooth_reference_check.py` reads it; that script
+    checks v2's port, which the pipeline ran until 2026-09-30.
 
     `stop` reads only the first `stop` channels - D-alpha is filterscopes
     0-7 and the other 96 channels are NaN on every shot, and the group is
-    104 rows wide.
+    104 rows wide. `rows` reads that range of them instead: an SXR fan is
+    32 of the group's 320 rows (`heuristics.SXR_FANS`).
     """
     with h5py.File(corpus_file, "r", locking=False) as f:
         if diag not in f or "ydata" not in f[diag]:
@@ -609,17 +612,61 @@ def _read_group(corpus_file, diag: str, *, stop: int | None = None):
         dset = f[diag]["ydata"]
         if dset.ndim != 2 or dset.shape[-1] < channels.MIN_SAMPLES:
             raise ValueError(f"{diag}: absent on this shot (ydata is {dset.shape})")
-        if stop is not None and dset.shape[0] < stop:
+        if rows is None:
+            rows = range(dset.shape[0] if stop is None else stop)
+        if dset.shape[0] < rows.stop:
             raise ValueError(
-                f"{diag}: {dset.shape[0]} channels, {stop} wanted"
+                f"{diag}: {dset.shape[0]} channels, {rows.stop} wanted"
             )
-        y = np.asarray(dset[:stop, :] if stop else dset[:, :], dtype=np.float32)
+        y = np.asarray(dset[rows.start:rows.stop, :], dtype=np.float32)
         t_s = np.asarray(f[diag]["xdata"][:], dtype=np.float64)
     if t_s.size != y.shape[1]:
         raise ValueError(
             f"{diag}: xdata has {t_s.size} samples, ydata {y.shape[1]}"
         )
     return t_s, y
+
+
+def sawtooth_block(
+    shot: int, corpus_file,
+) -> tuple[list[Event], dict[tuple[str, str, int, str], coverage.Coverage],
+           dict[str, str]]:
+    """The sawtooth step on one corpus file: `(events, ran, skipped)`.
+
+    v3, the detector the span tables and the paper use: the ECE array and
+    the first lit SXR fan off `corpus_file`, `heuristics.sawtooth_crashes`
+    on each there is - read and run by `heuristics.crash_legs`, which
+    `spans.detect_sawtooth` reads through too - then the collapse guard and
+    the union (`heuristics.sawtooth_events_v3`). Every event says
+    `attrs["detector"] = "v3"`; the source is still `ece_sawtooth`.
+
+    Each diagnostic that ran is its own `ran` key, `(ece_sawtooth, diag, -1,
+    "")` with the coverage its rows measured, so the source's coverage is
+    their union and an event carries its own diagnostic's. One that could
+    not run is `skipped["sawtooth <diag>"]` - an SXR group missing is not a
+    failure when the ECE is there - and the step is `skipped["sawtooth"]`
+    only when neither ran or the detector raised. Then `finish_shot` writes
+    the source's sources rows whole (`write_sources(sources=)`), so that one
+    skipped row replaces an earlier run's ECE and SXR rows.
+
+    One function, guarded as a step, because `finish_shot` and
+    `refresh_sawtooth` must run the same step: the latter replaces v2's rows
+    in files this module wrote without re-running the masks.
+    """
+    try:
+        legs, not_run = heuristics.crash_legs(
+            lambda group, rows: _read_group(corpus_file, group, rows=rows),
+            shot=shot, min_gap_s=SAWTOOTH_MIN_GAP_S,
+        )
+        found = heuristics.sawtooth_events_v3([crashes for crashes, _, _ in legs])
+    except Exception as exc:  # noqa: BLE001 - per-step isolation
+        return [], {}, {"sawtooth": _cause(exc)}
+    ran = {
+        (heuristics.SAWTOOTH_SOURCE, crashes.diag, -1, ""): cov
+        for crashes, cov, _ in legs
+    }
+    skipped = {f"sawtooth {diag}": why[:200] for diag, why in not_run.items()}
+    return found, ran, skipped
 
 
 def _actuator_features(corpus_file, skipped: dict[str, str]):
@@ -1164,20 +1211,13 @@ def finish_shot(
         res.skipped["elm_clock"] = _cause(exc)
 
     # ------------------------------------------------------- the sawteeth
-    try:
-        ece_t_s, ece_y = _read_group(corpus_file, "ece")
-        ece_cov = coverage.Coverage.measured(
-            ece_t_s, ece_y, min_gap_s=SAWTOOTH_MIN_GAP_S)
-        found = heuristics.sawtooth_events(
-            ece_y, ece_t_s, shot=shot, t_cov=ece_cov.hull,
-        )
-        del ece_y
-        events.extend(found)
-        res.n_sawteeth = len(found)
+    found, sawtooth_ran, sawtooth_skipped = sawtooth_block(shot, corpus_file)
+    events.extend(found)
+    res.n_sawteeth = len(found)
+    if sawtooth_ran:
         sources.add(heuristics.SAWTOOTH_SOURCE)
-        ran[(heuristics.SAWTOOTH_SOURCE, "ece", -1, "")] = ece_cov
-    except Exception as exc:  # noqa: BLE001 - per-step isolation
-        res.skipped["sawtooth"] = _cause(exc)
+    ran.update(sawtooth_ran)
+    res.skipped.update(sawtooth_skipped)
 
     # --------------------------------------------------- the L-H detector
     try:
@@ -1342,6 +1382,10 @@ def finish_shot(
                     shot, ran=ran, skipped=res.skipped, events=events,
                 ),
                 run_id=run_id, merge=True,
+                # A sawtooth step that ran on neither diagnostic owns every
+                # `ece_sawtooth` row, so an earlier run's SXR "ok" row cannot
+                # outlive its one skipped row and still claim coverage.
+                sources=None if sawtooth_ran else [heuristics.SAWTOOTH_SOURCE],
             )
             if index:
                 # `index=False` is for a SLURM array: `events_index.parquet`
@@ -1472,5 +1516,6 @@ __all__ = [
     "process_shot",
     "rules_block",
     "rules_shot",
+    "sawtooth_block",
     "summarise",
 ]

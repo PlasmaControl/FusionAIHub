@@ -5,8 +5,10 @@ V2 and V3 cross-power, 0.256 ms columns, 257 bins to 250 kHz, each 0-255 over
 -3..27 dB above its bin's quiet-time median, cut to a band: 80-250 kHz (the AE
 band, and the earlier detector's input) or 0-250 kHz (which lets a model see an
 MHD mode's 0-60 kHz fundamental beside its harmonics, and learn that the pair is
-not AE). v1's candidates (`train.candidates`) hold both. Columns are
-averaged onto 2 ms sub-frames, five to each frame of `labeler.scoring.frames`.
+not AE), or 60-250 kHz (v4's: the review page's AE band since the owner
+lowered it on 2026-09-30). v1's candidates (`train.candidates`) hold the first
+two. Columns are averaged onto 2 ms sub-frames, five to each frame of
+`labeler.scoring.frames`.
 
 **Targets** are the owner's saved labels, `review/labels.csv`, as frame states
 (`frame_states`): present, absent, uncertain, not observable, or outside.
@@ -42,6 +44,8 @@ from ..labels import apply_notch, bin_active_fraction, notch_bins
 
 BAND_KHZ = (80.0, 250.0)
 FULL_BAND_KHZ = (0.0, 250.0)
+#: v4's band: the review page's AE band since 2026-09-30.
+BAND60_KHZ = (60.0, 250.0)
 SUB_MS = 2.0
 SUBS = int(FRAME_MS / SUB_MS)
 #: Input frames either side of a labelled window, so its edges see context.

@@ -1,4 +1,4 @@
-"""The paper's score figures and tables: AE filled, the other phenomena coming."""
+"""fig_scores (the selected models' F1 and ROC) and the score tables."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import re
 import pytest
 from matplotlib.text import Text
 
-from labeler.paper import COMING, coverage, scores
+from labeler.paper import ORDER, PAGE_IN, coverage, roc, scores, title
 
 from . import paper_tree as tree
 
@@ -29,195 +29,166 @@ def test_an_undefined_estimate_is_nan():
     assert scores.read("/nonexistent/evaluation.json") is None
 
 
-def _legend(fig) -> list[str]:
+def _roc(auroc: float) -> dict:
+    """A `roc.json`'s fields fig_scores reads."""
+    return {
+        "auroc": auroc,
+        "auprc": round(auroc - 0.1, 2),
+        "positive_share": 0.25,
+        "curve": {"fpr": [0.0, 0.1, 0.4, 1.0], "tpr": [0.0, 0.7, 0.9, 1.0]},
+        "pr": {"recall": [0.0, 0.7, 0.9, 1.0], "precision": [1.0, 0.8, 0.5, 0.25]},
+        "threshold": {
+            "value": 0.5,
+            "fpr": 0.1,
+            "tpr": 0.7,
+            "precision": 0.8,
+            "recall": 0.7,
+        },
+    }
+
+
+def _selected() -> list[scores.Selected]:
+    """The five selected models: F1 0.9 - 0.1 i, AUROC 0.95 - 0.05 i."""
+    out = []
+    for i, (category, method) in enumerate(roc.SELECTED.items()):
+        v = round(0.9 - 0.1 * i, 2)
+        f1, auroc = tree.est(v, v - 0.05, v + 0.03), round(0.95 - 0.05 * i, 2)
+        out.append(scores.Selected(category, method, f1, _roc(auroc)))
+    return out
+
+
+def _panels(fig):
+    f1, curves, pr = fig.axes
+    return f1, curves, pr
+
+
+def _key(fig) -> list[str]:
     [legend] = fig.legends
     return [t.get_text() for t in legend.get_texts()]
 
 
-def test_the_scores_grid_fills_ae_and_marks_the_rest_coming(tmp_path):
-    ae = tree.ae_evaluation()
-    fig = scores.draw_scores(ae, tmp_path / "fig_scores")
+def _curves(ax) -> list:
+    """The panel's curves: lines with more than two points."""
+    return [ln for ln in ax.get_lines() if len(ln.get_xdata()) > 2]
+
+
+def test_fig_scores_has_one_f1_dot_per_phenomenon(tmp_path):
+    selected = _selected()
+    fig = scores.draw_scores(selected, tmp_path / "fig_scores")
     assert (tmp_path / "fig_scores.pdf").stat().st_size > 0
     assert (tmp_path / "fig_scores.png").stat().st_size > 0
-    first, *rest = fig.axes
-    assert first.get_title() == "AE: 40 test shots, 9000 frames"
-    assert [ax.get_title() for ax in rest] == [
+    assert tuple(fig.get_size_inches()) == pytest.approx((PAGE_IN, 2.8))
+    assert len(fig.axes) == 3, "F1, ROC, PR"
+    f1, _, _ = _panels(fig)
+    names = [title(c) for c in ORDER]
+    assert [c.get_label() for c in f1.containers] == names
+    dots = [float(c.lines[0].get_ydata()[0]) for c in f1.containers]
+    assert dots == pytest.approx([0.9, 0.8, 0.7, 0.6, 0.5])
+    assert _texts(f1) == ["0.90", "0.80", "0.70", "0.60", "0.50"]
+    assert [t.get_text() for t in f1.get_xticklabels()] == names
+    assert f1.get_ylim() == (0, 1)
+    assert tree.small_text(fig) == []
+
+
+def test_fig_scores_draws_only_the_selected_models(tmp_path):
+    fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
+    f1, curves, pr = _panels(fig)
+    drawn = [t.get_text() for t in fig.findobj(Text)]
+    for name in [*scores.AE_NAMES.values(), "baseline"]:
+        assert not [t for t in drawn if name.lower() in t.lower()], name
+    assert len(f1.containers) == len(ORDER)
+    lines = [ln for ln in curves.get_lines() if len(ln.get_xdata()) > 1]
+    assert len(lines) == len(ORDER) + 1, "a curve each and the chance diagonal"
+    colours = [c.lines[0].get_color() for c in f1.containers]
+    assert [ln.get_color() for ln in lines[: len(ORDER)]] == colours
+    assert len(set(colours)) == len(ORDER)
+    assert [ln.get_color() for ln in _curves(pr)] == colours
+
+
+def test_the_key_gives_each_auroc_and_auprc(tmp_path):
+    fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
+    _, curves, _ = _panels(fig)
+    assert _key(fig) == [
+        "AE: AUROC 0.95, AUPRC 0.85",
+        "NTM: AUROC 0.90, AUPRC 0.80",
+        "H-mode: AUROC 0.85, AUPRC 0.75",
+        "ELMing: AUROC 0.80, AUPRC 0.70",
+        "sawteeth: AUROC 0.75, AUPRC 0.65",
+        scores.CHANCE,
+        scores.CHANCE_PR,
+        scores.AT_THRESHOLD,
+    ]
+    [chance] = [ln for ln in curves.get_lines() if ln.get_linestyle() == "--"]
+    assert list(chance.get_xydata().ravel()) == [0, 0, 1, 1]
+    marks = [ln for ln in curves.get_lines() if ln.get_marker() == "o"]
+    assert [tuple(m.get_xydata()[0]) for m in marks] == [(0.1, 0.7)] * len(ORDER)
+    assert curves.get_xlim() == curves.get_ylim() == (0, 1)
+    assert curves.get_xlabel() == "false-positive rate"
+    assert curves.get_ylabel() == "true-positive rate"
+    assert curves.get_aspect() == 1
+
+
+def test_the_third_panel_is_the_precision_recall_curve(tmp_path):
+    fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
+    _, _, pr = _panels(fig)
+    assert (pr.get_xlabel(), pr.get_ylabel()) == ("recall", "precision")
+    assert pr.get_xlim() == pr.get_ylim() == (0, 1)
+    [first, *_] = _curves(pr)
+    assert list(first.get_xdata()) == [0.0, 0.7, 0.9, 1.0]
+    assert list(first.get_ydata()) == [1.0, 0.8, 0.5, 0.25]
+    marks = [ln for ln in pr.get_lines() if ln.get_marker() == "o"]
+    assert [tuple(m.get_xydata()[0]) for m in marks] == [(0.7, 0.8)] * len(ORDER)
+    ticks = [ln for ln in pr.get_lines() if ln.get_linestyle() == ":"]
+    assert len(ticks) == len(ORDER), "a positive-share tick each"
+    for tick in ticks:
+        xs, ys = tick.get_xdata(), tick.get_ydata()
+        assert xs[-1] == 1 and xs[0] > 0.5 and list(ys) == [0.25, 0.25]
+    assert [t.get_color() for t in ticks] == [c.get_color() for c in _curves(pr)]
+    assert tree.small_text(fig) == []
+
+
+def test_a_phenomenon_without_its_roc_or_evaluation_says_so(tmp_path):
+    selected = _selected()
+    selected[1] = selected[1]._replace(roc=None)
+    selected[2] = selected[2]._replace(f1=None)
+    selected[3] = selected[3]._replace(f1=tree.est(None))
+    fig = scores.draw_scores(selected, tmp_path / "fig_scores")
+    f1, curves, pr = _panels(fig)
+    assert [c.get_label() for c in f1.containers] == ["AE", "NTM", "sawteeth"]
+    assert [t.get_text() for t in f1.get_xticklabels()] == [
+        "AE",
         "NTM",
-        "H-mode",
-        "ELMing",
+        f"H-mode\n{scores.NOT_SCORED}",
+        f"ELMing\n{scores.NOT_SCORED}",
         "sawteeth",
     ]
-    assert all(_texts(ax) == [COMING] for ax in rest)
-    assert COMING not in _texts(first)
-    assert _legend(fig)[: len(scores.AE_METHODS)] == [
-        scores.AE_NAMES[m] for m in scores.AE_METHODS
-    ]
+    assert _key(fig)[1] == f"NTM: {scores.NO_ROC}"
+    lines = [ln for ln in curves.get_lines() if len(ln.get_xdata()) > 1]
+    assert len(lines) == len(ORDER), "four curves and the chance diagonal"
+    assert len(_curves(pr)) == len(ORDER) - 1
     assert tree.small_text(fig) == []
 
 
-def test_the_scores_axis_starts_at_the_floor_and_marks_what_is_below(tmp_path):
-    ae = tree.ae_evaluation()
-    fig = scores.draw_scores(ae, tmp_path / "fig_scores")
-    first = fig.axes[0]
-    assert first.get_ylim()[0] == scores.SCORE_FLOOR
-    assert f"{scores.SCORE_FLOOR:g}" in first.get_ylabel()
-    dots = {c.get_label(): c.lines[0].get_ydata() for c in first.containers}
-    below = []
-    for m in scores.AE_METHODS:
-        values = [ae["methods"][m][k]["value"] for k in scores.METRICS]
-        drawn = [max(v, scores.SCORE_FLOOR) for v in values]
-        assert list(dots[scores.AE_NAMES[m]]) == pytest.approx(drawn), m
-        below += [f"{v:.2f}" for v in values if v < scores.SCORE_FLOOR]
-    assert below and sorted(_texts(first)) == sorted(below)
-    marks = [c for c in first.collections if scores.FLOORS_LABEL in c.get_label()]
-    levels = sorted(float(c.get_segments()[0][0][1]) for c in marks)
-    assert levels == [0.75, 0.75, 0.9], "A1: precision, recall, F1"
+def test_a_roc_without_a_pr_curve_draws_its_roc_and_says_no_pr(tmp_path):
+    selected = _selected()
+    old = {k: v for k, v in selected[2].roc.items() if k not in ("auprc", "pr")}
+    old["threshold"] = {k: v for k, v in old["threshold"].items() if k[0] != "p"}
+    del old["positive_share"]
+    selected[2] = selected[2]._replace(roc=old)
+    fig = scores.draw_scores(selected, tmp_path / "fig_scores")
+    _, curves, pr = _panels(fig)
+    assert _key(fig)[2] == f"H-mode: AUROC 0.85, {scores.NO_PR}"
+    assert len(_curves(curves)) == len(ORDER)
+    assert len(_curves(pr)) == len(ORDER) - 1
+    assert len([ln for ln in pr.get_lines() if ln.get_marker() == "o"]) == 4
+    assert tree.small_text(fig) == []
 
 
-def _clear(fig, text) -> None:
-    """`text` lies inside the figure and over no other text drawn."""
-    fig.draw_without_rendering()
-    box = text.get_window_extent()
-    assert fig.bbox.x0 <= box.x0 and box.x1 <= fig.bbox.x1, text.get_text()
-    others = [
-        t
-        for t in fig.findobj(Text)
-        if t is not text and t.get_visible() and t.get_text().strip()
-    ]
-    assert [t.get_text() for t in others if box.overlaps(t.get_window_extent())] == []
-
-
-def test_the_scores_figure_states_a1s_verdict_from_the_record(tmp_path):
-    passed = tree.ae_evaluation()
-    passed["methods"]["ae_xpower"]["f1"] = tree.est(0.93, 0.91, 0.95)
-    failed = tree.ae_evaluation()
-    failed["bar"]["A1"] = False
-    failed["differences"]["f1_minus_seldnet"] = tree.est(-0.017, -0.032, 0.0005)
-    for ae, said in (
-        (passed, "A1 pass:\nF1 − SELDnet lower bound −0.020 ≥ −0.03"),
-        (failed, "A1 fail:\nF1 − SELDnet lower bound −0.032 < −0.03\nF1 0.890 < 0.9"),
-    ):
-        fig = scores.draw_scores(ae, tmp_path / "fig_scores")
-        first = fig.axes[0]
-        assert first.get_xlabel() == said
-        assert _legend(fig)[-1] == "A1 floors"
-        assert tree.small_text(fig) == []
-        _clear(fig, first.xaxis.label)
-
-
-def test_the_figures_and_the_table_show_the_same_ae_methods(tmp_path):
-    ae = tree.ae_evaluation()
+def test_table_ae_scores_keeps_its_six_methods():
     names = [scores.AE_NAMES[m] for m in scores.AE_METHODS]
-    fig = scores.draw_mhd(ae, tmp_path / "fig_mhd")
-    assert [t.get_text() for t in fig.axes[0].get_yticklabels()] == names
-    rows = scores.table_ae(ae).splitlines()[5 : 5 + len(names)]
+    assert len(names) == 6
+    rows = scores.table_ae(tree.ae_evaluation()).splitlines()[5 : 5 + len(names)]
     assert [row.split(" & ")[0].replace("\\_", "_") for row in rows] == names
-
-
-def test_the_mhd_figure_has_every_method_against_the_bar(tmp_path):
-    ae = tree.ae_evaluation()
-    fig = scores.draw_mhd(ae, tmp_path / "fig_mhd")
-    [ax] = fig.axes
-    widths = [bar.get_width() for bar in ax.patches]
-    assert widths == pytest.approx(
-        [0.02 * (i + 1) for i in range(6)] + [0.01 * (i + 1) for i in range(6)]
-    )
-    [line] = ax.lines
-    assert list(line.get_xdata()) == [0.05, 0.05]
-    assert ax.get_title() == "600 MHD frames in 12 test shots"
-    assert ax.get_xlim() == (0, scores.MHD_CAP)
-    assert "MHD ≤ 0.05" in ax.get_xlabel()
-    assert tree.small_text(fig) == []
-
-
-def test_the_mhd_figure_states_a2s_verdict_from_the_record(tmp_path):
-    passed = tree.ae_evaluation()
-    passed["bar"]["A2"] = True
-    passed["differences"]["mhd_fp_minus_seldnet"] = tree.est(-0.069, -0.13, -0.022)
-    for ae, said in (
-        (
-            passed,
-            (
-                "A2 pass: MHD FP 0.020 ≤ 0.05\n"
-                "MHD FP − SELDnet upper bound −0.022 < 0"
-            ),
-        ),
-        (
-            tree.ae_evaluation(),
-            (
-                "A2 fail: MHD FP 0.020 ≤ 0.05\n"
-                "MHD FP − SELDnet upper bound 0.010 ≥ 0"
-            ),
-        ),
-    ):
-        fig = scores.draw_mhd(ae, tmp_path / "fig_mhd")
-        [ax] = fig.axes
-        assert ax.get_xlabel().endswith("\n" + said)
-        assert tree.small_text(fig) == []
-        _clear(fig, ax.xaxis.label)
-
-
-def test_the_mhd_figure_draws_a_bar_past_its_cap_to_the_edge(tmp_path):
-    ae = tree.ae_evaluation()
-    ae["methods"]["always"]["fp_rate_mhd"] = tree.est(1.0, 1.0, 1.0)
-    ae["methods"]["always"]["fp_rate_other"] = tree.est(1.0, 1.0, 1.0)
-    fig = scores.draw_mhd(ae, tmp_path / "fig_mhd")
-    [ax] = fig.axes
-    widths = [bar.get_width() for bar in ax.patches]
-    assert widths[5] == widths[11] == scores.MHD_CAP
-    assert _texts(ax) == ["1.00", "1.00"]
-    for t in ax.texts:
-        assert t.get_position()[0] <= scores.MHD_CAP
-
-
-def _levels(ax) -> list[float]:
-    marks = [c for c in ax.collections if "bar" in c.get_label()]
-    return sorted(round(float(c.get_segments()[0][0][1]), 2) for c in marks)
-
-
-def test_the_segmentation_figure(tmp_path):
-    seg = tree.seg_evaluation()
-    fig = scores.draw_segmentation(seg, tmp_path / "fig_segmentation")
-    ax, fp = fig.axes
-    for axes, metrics in ((ax, scores.SEG_SCORES), (fp, (scores.SEG_FP,))):
-        bars = [p for p in axes.patches if p.get_height() > 0]
-        expected = [
-            seg["methods"][m][metric]["value"]
-            for m in scores.SEG_NAMES
-            for metric in metrics
-        ]
-        assert [bar.get_height() for bar in bars] == pytest.approx(expected)
-        n = len(metrics)
-        hatched = [bool(bar.get_hatch()) for bar in bars]
-        assert hatched == [False] * n + [True] * (2 * n), "recipe, TokEye: sources"
-    assert fig.get_suptitle() == "40 test shots: 123,456 AE pixels of 7,654,321"
-    assert _levels(ax) == [0.65, 0.75, 0.9], "G1 (both), G2"
-    assert ax.get_ylim() == (0, 1)
-    assert _levels(fp) == [0.05], "G3, on its own axis"
-    assert fp.get_ylim() == (0, scores.SEG_FP_TOP)
-    assert scores.LOWER_BETTER in _texts(fp) + [fp.get_title()]
-    assert "pseudo-mask source" in _legend(fig)
-    assert tree.small_text(fig) == []
-
-
-def test_the_segmentation_fp_axis_reaches_a_wider_interval(tmp_path):
-    seg = tree.seg_evaluation()
-    seg["methods"]["tokeye"]["fp_rate_mhd"] = tree.est(0.2, 0.15, 0.27)
-    fig = scores.draw_segmentation(seg, tmp_path / "fig_segmentation")
-    assert fig.axes[1].get_ylim()[1] == pytest.approx(0.3)
-
-
-def test_the_segmentation_fp_axis_ignores_undefined_ends():
-    seg = tree.seg_evaluation()
-    methods = list(scores.SEG_NAMES)
-    seg["methods"][methods[0]]["fp_rate_mhd"] = tree.est(None)
-    seg["methods"][methods[-1]]["fp_rate_mhd"] = tree.est(0.2, 0.15, 0.27)
-    assert scores.fp_top(seg, methods) == pytest.approx(0.3), "a first NaN hides none"
-    seg["methods"][methods[1]]["fp_rate_mhd"] = tree.est(0.02, 0.01, None)
-    assert scores.fp_top(seg, methods) == pytest.approx(0.3)
-    for m in methods:
-        seg["methods"][m]["fp_rate_mhd"] = tree.est(None)
-    assert scores.fp_top(seg, methods) == scores.SEG_FP_TOP, "nothing to reach"
 
 
 def _score(value: str, up: str, down: str) -> str:

@@ -8,9 +8,9 @@ draws every AE180 shot from its review store into
 the source table's), and writes `index.csv` beside the folders; from a models
 directory under `runs/` (a pilot's), into its own `gallery/` instead, never the
 version's. `extend` draws its shots into `extension/` with the same `draw`. A
-version with a label snapshot (v2) takes the owner's labels from its snapshot,
+version with a label snapshot (v2-v4) takes the owner's labels from its snapshot,
 not the live file; `--version` must be the models directory's name and the
-checkpoint's version. A version chosen by cross-validation (v2) is drawn only
+checkpoint's version. A version chosen by cross-validation (v2-v4) is drawn only
 after its test: a picture gives the model's F1 against the owner on a test shot
 too, so the gallery refuses until the models directory's `evaluation.json` has
 scored the model it draws (`check_tested`), and only from its own models
@@ -19,7 +19,7 @@ elsewhere. Each index row names the version's label snapshot by sha256
 (`snapshot_sha256`, blank for v1, which has none).
 
 **The F1 in a reviewed picture's title** is over the frames the test scores.
-A version scored on 0-2 s (v1, v2) gives the F1 of `evaluate.shot_frames`'s
+A version scored on 0-2 s (v1, v2, v4) gives the F1 of `evaluate.shot_frames`'s
 frames, with the source table's window, counted by `evaluate.cells` as the test
 does. A whole-window version (`WHOLE_WINDOW_VERSIONS`, v3) is scored, titled
 ("whole window") and indexed over the owner's whole window instead: the frames
