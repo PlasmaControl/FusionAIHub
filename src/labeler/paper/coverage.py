@@ -4,9 +4,10 @@ For each catalog phenomenon: the shots with a label ("labelled"), those with
 any present span and their present time; how the model split them (train,
 val, test); and, in the table alone, the shots the extension suggested labels
 for, with those it calls positive. A suggested shot is a suggestion, not a
-label (v1 spec §3). The figure's shots panel is on a log axis, its bars from
-1; its present-time panel is linear. The figure has no suggestions panel (the
-owner, 2026-09-29 23:51: "remove the suggestions by year graphs").
+label (v1 spec §3). The figure's shots and present-time panels are on log
+axes, their bars from 1 (the owner, 2026-09-29 23:51 and 2026-09-30 01:05).
+The figure has no suggestions panel (the owner, 2026-09-29 23:51: "remove the
+suggestions by year graphs").
 
 AE's labels are the owner's live review
 (`data/events/alfven_eigenmode/review/labels.csv`), so its labelled shots are
@@ -92,7 +93,7 @@ ALWAYS = "≈ always"
 DAGGER = r"$^\dagger$"
 FRAME_ROW_IN = 1.5  # the frame row's height, inches
 #: The room past the longest bar for its number (`_room`): `ROOM` times it on a
-#: linear axis, and `ROOM` times its decades on the shots panel's log axis.
+#: linear axis, and `ROOM` times its decades on a log axis.
 ROOM = 1.3
 #: Where the log axis's bars start: 0 has no place on it.
 BAR_FROM = 1
@@ -373,6 +374,20 @@ def _room(ax, top: float, log: bool = False) -> None:
         ax.set_xlim(0, ROOM * top if top > 0 else 1)
 
 
+def _at_start(ax, y: float, text: str) -> None:
+    """A value with no bar on a log axis: its number where `bar_label` would
+    put it, at the axis's start."""
+    ax.annotate(
+        text,
+        (BAR_FROM, y),
+        xytext=(1, 0),
+        textcoords="offset points",
+        ha="left",
+        va="center",
+        fontsize=VALUE_PT,
+    )
+
+
 def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
     """The labelled shots and those with a present span, on a log axis: each
     bar from `BAR_FROM` to its count, its number beside it. A count of 0 draws
@@ -396,19 +411,11 @@ def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
         if values:  # nothing drawn, and no key, for a series without a bar
             widths = [v - BAR_FROM for v in values]
             bars = ax.barh(at, widths, height, left=BAR_FROM, color=colour, label=name)
-            numbers = [f"{v:g}" for v in values]
+            numbers = [f"{v:,}" for v in values]
             ax.bar_label(bars, labels=numbers, padding=1, fontsize=VALUE_PT)
             top = max(top, *values)
-        for y_bar in zeros:  # where bar_label would put it, at the axis's start
-            ax.annotate(
-                "0",
-                (BAR_FROM, y_bar),
-                xytext=(1, 0),
-                textcoords="offset points",
-                ha="left",
-                va="center",
-                fontsize=VALUE_PT,
-            )
+        for y_bar in zeros:
+            _at_start(ax, y_bar, "0")
     _coming_rows(ax, rows, counts)
     for y, category in zip(rows, ORDER, strict=True):
         c = counts.get(category)
@@ -425,19 +432,29 @@ def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
 
 
 def _present_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
+    """The present time, on a log axis as the shots panel's: each bar from
+    `BAR_FROM` s to its value, its number beside it. A time of at most
+    `BAR_FROM` s draws no bar but keeps its number; none (0, or not read)
+    draws neither."""
+    ax.set_xscale("log")
     at, values = [], []
     for y, category in zip(rows, ORDER, strict=True):
         c = counts.get(category)
-        if c is not None and c.present_s:
+        if c is None or not c.present_s:
+            continue
+        if c.present_s > BAR_FROM:
             at.append(y)
             values.append(c.present_s)
+        else:
+            _at_start(ax, y, f"{c.present_s:.1f}")
     if values:
-        bars = ax.barh(at, values, 0.5, color=PRESENT_COLOUR)
+        widths = [v - BAR_FROM for v in values]
+        bars = ax.barh(at, widths, 0.5, left=BAR_FROM, color=PRESENT_COLOUR)
         ax.bar_label(
             bars, labels=[f"{v:.1f}" for v in values], padding=1, fontsize=VALUE_PT
         )
     _coming_rows(ax, rows, counts)
-    _room(ax, max(values, default=0))
+    _room(ax, max(values, default=0), log=True)
     ax.set_yticks(rows, [])
     ax.set_title("present time (s)")
 

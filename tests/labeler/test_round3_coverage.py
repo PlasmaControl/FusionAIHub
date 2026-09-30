@@ -19,6 +19,7 @@ from labeler.events import suggestions
 from labeler.events.review import labels
 from labeler.frames import shots as frame_shots
 from labeler.paper import AE, COMING, build, coverage, title
+from labeler.paper.snapshot import Snapshot
 
 from . import ae_tree
 from . import paper_tree as tree
@@ -206,13 +207,20 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     assert _texts(shots).count(coverage.NOT_RUN) == 1, "sawteeth: no meta read"
     assert coverage.NONE_REVIEWED not in _texts(shots)
     # On a log axis from 1: labelled AE, ELM; positive AE, ELM, each numbered.
-    assert shots.get_xscale() == "log" and present.get_xscale() == "linear"
+    assert shots.get_xscale() == "log" and present.get_xscale() == "log"
     assert [bar.get_x() for bar in shots.patches] == [1] * 4
     assert _widths(shots) == [4 - 1, 576 - 1, 2 - 1, 443 - 1]
     assert {"4", "576", "2", "443"} <= set(_texts(shots))
     assert shots.get_xlim() == pytest.approx((1, 576**coverage.ROOM))
     assert _ticks(shots)[-2:] == ["ELMing", "sawteeth (detector)"]
-    assert _widths(present) == [0.9, 1234.5], "AE's and the meta's present_s"
+    # The present time on a log axis from 1 s too: the meta's 1234.5 s a bar,
+    # AE's 0.9 s no bar but its number at the axis's start.
+    assert _widths(present) == [1234.5 - 1], "the meta's present_s"
+    assert [bar.get_x() for bar in present.patches] == [1]
+    [short] = [t for t in present.texts if t.get_text() == "0.9"]
+    assert short.xy[0] == 1, "AE's present_s"
+    assert "1234.5" in _texts(present)
+    assert present.get_xlim() == pytest.approx((1, 1234.5**coverage.ROOM))
     ntm_split, hmode_split, elm_split, saw_split = fig.axes[3:7]
     for ax in (ntm_split, hmode_split):
         assert _texts(ax) == [COMING] and not ax.patches
@@ -615,15 +623,19 @@ def test_labels_alone_count_the_owners_review(runs, tmp_path):
 
 
 def test_no_frame_model_bar_is_read(runs, tmp_path):
-    record = frames.model_dir(runs, "elm_frames") / "evaluation.json"
+    """The coverage's marks are the suggestion table's meta's, never the frame
+    model's `evaluation.json`: fig_scores alone reads that (F5), and a broken
+    one fails the build."""
+    model = frames.model_dir(runs, "elm_frames")
+    record = model / "evaluation.json"
     record.parent.mkdir(parents=True)
     record.write_text("not json: the coverage must never read it")
-    manifest = build.build(runs, tmp_path / "paper")
-    assert "fig_coverage" in manifest["products"]
-    assert all(
-        not v["path"].startswith(str(frames.model_dir(runs, "elm_frames")))
-        for v in manifest["inputs"].values()
-    )
+    snap = Snapshot(tmp_path)
+    counts, _ = build.frame_coverage(runs, snap)
+    assert counts[ELM].bar_met is False, "ELM_TABLE_META's E1"
+    assert not [p for p, _ in snap.pinned.values() if p.is_relative_to(model)]
+    with pytest.raises(json.JSONDecodeError):
+        build.build(runs, tmp_path / "paper")
 
 
 def test_the_split_file_is_read_as_the_frame_split(runs):

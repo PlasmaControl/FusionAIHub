@@ -190,8 +190,9 @@ TRACE_LW = 0.3
 #: The n map's key names an n with at least this share of its lit pixels, those
 #: the TokEye gate keeps: the map's scattered noise pixels light every n, and a
 #: key of all of them overflows the panel. Shot 199563 lit ten ungated; gated,
-#: n=2 holds 34 % and n=1 18 %, and the noise lights the other n at 5-10 % each.
-KEY_MIN_SHARE = 0.10
+#: n=2 holds 34 % and n=1 18 %, and the noise lights n=0 at 10.0 % and the
+#: other n below it, so the cut sits between n=1 and the noise.
+KEY_MIN_SHARE = 0.15
 #: A row per colour: the ECE groups'.
 ROW_COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
 #: The n map's TokEye gate (F4): the probe whose record TokEye segments, the
@@ -200,6 +201,9 @@ GATE_GROUP = "mirnov"
 GATE_ROW = next(iter(PROBES))
 GATE_TITLE = "MPI66M322D"
 GATE_PASS = "zoom"  # the event layer's zoom pass (`masks.ZOOM_DECIM`)
+#: Tiles per TokEye batch on the CPU: the whole record's 23 in one batch took
+#: the build to 10 GB on the login node.
+GATE_BATCH = 8
 #: The TokEye checkpoint's key in a snapshot.
 GATE_KEY = "tokeye_unet"
 #: The n panel's text without a gate, and why there is none.
@@ -519,7 +523,7 @@ def coherent(model, y: np.ndarray, fs_hz: float) -> tuple[np.ndarray, dict]:
     autocast): `(512, T)` bool, lit where the coherent channel (0) is at
     least `PROB_THRESHOLD`; and `prep`'s meta."""
     spec, meta = masks.prep(y, fs_hz=fs_hz, decim=masks.ZOOM_DECIM)
-    probs = masks.infer(model, spec, "cpu", amp=False)
+    probs = masks.infer(model, spec, "cpu", amp=False, batch=GATE_BATCH)
     return probs[0] >= PROB_THRESHOLD, meta
 
 
