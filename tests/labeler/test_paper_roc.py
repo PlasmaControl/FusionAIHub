@@ -67,6 +67,52 @@ def test_the_thinned_curve_keeps_its_ends_and_at_most_its_points():
     assert [x.tolist() for x in short] == [[0, 0.5, 1], [0, 0.7, 1]]
 
 
+def test_the_average_precision_is_the_step_sum_over_distinct_scores():
+    # 0.9 P, 0.8 P, 0.8 N, 0.3 N: thresholds 0.9 (R 1/2, P 1), 0.8 (R 1, P 2/3),
+    # 0.3 (R 1, P 1/2): AP = 1/2 * 1 + 1/2 * 2/3 + 0
+    score, truth = [0.9, 0.8, 0.8, 0.3], [True, True, False, False]
+    assert roc.average_precision(score, truth) == pytest.approx(5 / 6)
+    # a tie of a positive with a negative is one threshold: P 1/2, R 1
+    tied = roc.average_precision([0.5, 0.5], [True, False])
+    assert tied == 0.5
+    rng = np.random.default_rng(1)
+    score = rng.integers(0, 6, 80) / 5  # many ties
+    truth = rng.random(80) < 0.3
+    ap, last = 0.0, 0.0
+    for t in sorted(set(score), reverse=True):  # by every threshold
+        said = score >= t
+        hit = (said & truth).sum()
+        recall, precision = hit / truth.sum(), hit / said.sum()
+        ap += (recall - last) * precision
+        last = recall
+    assert roc.average_precision(score, truth) == pytest.approx(ap)
+    try:
+        from sklearn.metrics import average_precision_score
+    except ImportError:
+        return
+    x = rng.random(200)
+    y = rng.random(200) < 0.2
+    for a, b in ((score, truth), (x, y)):
+        assert roc.average_precision(a, b) == pytest.approx(
+            average_precision_score(b, a)
+        )
+
+
+def test_the_pr_curve_thins_like_the_roc_and_keeps_both_ends():
+    rng = np.random.default_rng(2)
+    score, truth = rng.random(3000), rng.random(3000) < 0.1
+    fp, tp, fpr, tpr = roc.curve(score, truth)
+    recall, precision = roc.pr_points(fp, tp, int(truth.sum()))
+    keep = roc.thin_index(fpr, tpr)
+    assert len(keep) <= roc.ROC_POINTS
+    assert keep[0] == 0 and keep[-1] == len(fpr) - 1
+    assert (recall[keep][0], precision[keep][0]) == (0, 1)
+    assert recall[keep][-1] == 1
+    assert precision[keep][-1] == pytest.approx(truth.mean())
+    x, _ = roc.thin(fpr, tpr)
+    assert len(x) == len(keep)
+
+
 def _scored(threshold: float = 0.5) -> roc.Scored:
     score = np.array([0.9, 0.7, 0.6, 0.4, 0.3, 0.2])
     truth = np.array([True, True, False, True, False, False])
@@ -98,7 +144,19 @@ def test_the_f1_check_refuses_a_mismatch():
     assert found["f1_check"]["cells"] == [2, 1, 1, 2]
     assert found["f1_check"]["evaluation_key"] == f"scores.{NTM}.f1"
     assert (found["n_pos"], found["n_neg"], found["shots"]) == (3, 3, 3)
-    assert found["threshold"] == {"value": 0.5, "fpr": 1 / 3, "tpr": 2 / 3}
+    assert found["threshold"] == {
+        "value": 0.5,
+        "fpr": 1 / 3,
+        "tpr": 2 / 3,
+        "precision": 2 / 3,
+        "recall": 2 / 3,
+    }
+    p, r = found["threshold"]["precision"], found["threshold"]["recall"]
+    assert 2 * p * r / (p + r) == pytest.approx(f1, abs=1e-9), "PR point gives F1"
+    assert found["positive_share"] == 0.5
+    assert found["pr"]["recall"][0] == 0 and found["pr"]["precision"][0] == 1
+    assert found["pr"]["recall"][-1] == 1 and found["pr"]["precision"][-1] == 0.5
+    assert found["auprc"] == roc.average_precision(scored.score, scored.truth)
     assert found["curve"]["fpr"][0] == 0 and found["curve"]["tpr"][-1] == 1
     assert found["phenomenon"] == "neoclassical_tearing_mode"
     assert found["note"] == roc.NOTE
@@ -168,3 +226,65 @@ def test_the_cli_refuses_to_overwrite_a_roc(paths, monkeypatch, capsys):
     assert not roc.roc_file(paths, roc.AE_METHOD).exists()
     assert roc.methods_of(None) == roc.methods_of(["all", NTM])
     assert roc.methods_of([NTM, roc.AE_METHOD]) == [roc.AE_METHOD, NTM]
+
+
+def _old_record(found: dict) -> dict:
+    """A record as F5 wrote it: no PR fields."""
+    return {
+        k: v for k, v in found.items() if k not in ("auprc", "pr", "positive_share")
+    }
+
+
+def _fake_roc(monkeypatch, found: dict) -> None:
+    monkeypatch.setattr(roc, "roc", lambda paths, method, ae_version="v2": found)
+
+
+def test_replace_without_pr_replaces_an_old_record_only(paths, monkeypatch):
+    scored = _scored()
+    new = _record(
+        scored,
+        _frame_evaluation(
+            float(stats.f1(roc.cells(scored.score, scored.truth, scored.threshold)))
+        ),
+    )
+    _fake_roc(monkeypatch, new)
+    target = roc.roc_file(paths, NTM)
+    target.parent.mkdir(parents=True)
+
+    def put(record: dict) -> None:
+        target.write_text(json.dumps(record))
+
+    put(_old_record(new))
+    with pytest.raises(FileExistsError, match="recorded once"):
+        roc.write(paths, [NTM])
+    roc.write(paths, [NTM], replace_without_pr=True)
+    assert json.loads(target.read_text())["auprc"] == new["auprc"]
+    before = target.read_text()  # now has auprc: refused
+    with pytest.raises(FileExistsError, match="has PR"):
+        roc.write(paths, [NTM], replace_without_pr=True)
+    assert target.read_text() == before
+    for change in ({"auroc": new["auroc"] - 1e-6}, {"n_pos": 99}, {"n_neg": 99}):
+        put({**_old_record(new), **change})
+        kept = target.read_text()
+        with pytest.raises(ValueError, match="differ"):
+            roc.write(paths, [NTM], replace_without_pr=True)
+        assert target.read_text() == kept
+    with pytest.raises(SystemExit):
+        roc.main(["--method", NTM])
+    assert target.read_text() == kept
+
+
+def test_replace_without_pr_writes_nothing_if_any_is_refused(paths, monkeypatch):
+    scored = _scored()
+    cells = roc.cells(scored.score, scored.truth, scored.threshold)
+    new = _record(scored, _frame_evaluation(float(stats.f1(cells))))
+    _fake_roc(monkeypatch, new)
+    for method in (NTM, roc.AE_METHOD):
+        target = roc.roc_file(paths, method)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(_old_record(new)))
+    bad = roc.roc_file(paths, roc.AE_METHOD)
+    bad.write_text(json.dumps({**_old_record(new), "n_pos": 1}))
+    with pytest.raises(ValueError, match="differ"):
+        roc.write(paths, [roc.AE_METHOD, NTM], replace_without_pr=True)
+    assert "auprc" not in json.loads(roc.roc_file(paths, NTM).read_text())
