@@ -41,7 +41,7 @@ def test_whole_window_versions_read_the_whole_shot_records(tmp_path):
     assert xpower.tokeye_masks(paths, "v3") == full.masks_full_dir(paths)
     assert xpower.seldnet_inputs(paths, "v3") == full.dataset_full_dir(paths)
     assert xpower.scored_until("v3") is None
-    assert evaluate.SUBSET_OF == {"v2": "v1", "v3": "v2"}
+    assert evaluate.SUBSET_OF == {"v2": "v1", "v3": "v2", "v4": "v2"}
     assert evaluate.WHOLE_METHODS == ("ae_xpower", "seldnet", "tokeye", "always")
 
 

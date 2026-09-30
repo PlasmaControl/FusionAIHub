@@ -52,6 +52,15 @@ and unless its split, `pseudo.v2_split` as v2's, is SegNet v2's own
 its test is a second use of them, made after v2's breakdown was seen, which
 `training.json` states (`test_reuse`, `reuse_note`). It writes to
 `models/ae_seg/v3` (a pilot to `runs/ae_seg/pilot-v3`).
+
+**SegNet v4** (`--version v4`) is SegNet v1's recipe on pseudo-v4 (60-250 kHz):
+the live labels file and the chosen ae_xpower v1 model's split, as v1's. The
+live labels have moved since v1 trained (6 of the 162 split shots), so v4
+differs from v1 in those edits as well as in the band. It refuses unless that
+split is SegNet v1's own (`models/ae_seg/v1/split.csv`), shot for shot: its
+test is a second use of v1's test shots, which
+`training.json` states (`test_reuse`). The blob records the band and version, as
+v2's. It writes to `models/ae_seg/v4` (a pilot to `runs/ae_seg/pilot-v4`).
 """
 
 from __future__ import annotations
@@ -219,13 +228,26 @@ def pos_weight(examples: Sequence[Example], cap: float) -> float:
     return float(np.clip(neg / pos if pos else cap, 1.0, cap))
 
 
+def pick_device(name: str = "auto") -> torch.device:
+    """`name`'s device: "auto" is the GPU when one is visible, else the CPU. A
+    SLURM CPU job sees none, so it trains as before; the head node's GPUs do."""
+    if name == "auto":
+        name = "cuda" if torch.cuda.is_available() else "cpu"
+    if name == "cuda" and not torch.cuda.is_available():
+        raise ValueError("--device cuda: no GPU is visible")
+    return torch.device(name)
+
+
 def masked_loss(logits: torch.Tensor, target: torch.Tensor, weight: float):
     """BCE with AE pixels weighted `weight`, plus soft Dice; IGNORE pixels count
     in neither. `logits` `(B, H, W)`, `target` `(B, H, W)` uint8."""
     valid = (target != IGNORE).float()
     truth = (target == 1).float()
     bce = F.binary_cross_entropy_with_logits(
-        logits, truth, pos_weight=torch.tensor(weight), reduction="none"
+        logits,
+        truth,
+        pos_weight=torch.tensor(weight, device=logits.device),
+        reduction="none",
     )
     bce = (bce * valid).sum() / valid.sum().clamp(min=1.0)
     p = torch.sigmoid(logits) * valid
@@ -235,10 +257,12 @@ def masked_loss(logits: torch.Tensor, target: torch.Tensor, weight: float):
 
 @torch.no_grad()
 def predict(model: SegNet, x: np.ndarray) -> np.ndarray:
-    """P(AE) per pixel of `(3, n_y, n)` uint8 rows, `(n_y, n)` float32."""
+    """P(AE) per pixel of `(3, n_y, n)` uint8 rows, `(n_y, n)` float32, on the
+    model's device."""
     model.eval()
-    batch = torch.from_numpy(x[None].astype(np.float32) / 255.0)
-    return torch.sigmoid(model(batch))[0, 0].numpy()
+    device = next(model.parameters()).device
+    batch = torch.from_numpy(x[None].astype(np.float32) / 255.0).to(device)
+    return torch.sigmoid(model(batch))[0, 0].cpu().numpy()
 
 
 def pixel_cells(prob: np.ndarray, target: np.ndarray, threshold: float) -> np.ndarray:
@@ -277,12 +301,15 @@ def fit(
     val: Sequence[Example],
     config: TrainConfig | None = None,
     log: Callable[[str], None] = print,
+    device: torch.device | None = None,
 ) -> tuple[SegNet, list[dict], float]:
-    """The model at its best validation epoch, the per-epoch history, the threshold."""
+    """The model at its best validation epoch, the per-epoch history, the
+    threshold; trained on `device` (default the CPU)."""
+    device = device or torch.device("cpu")
     config = config or TrainConfig()
     torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
-    model = SegNet(SegNetConfig(width=config.width))
+    model = SegNet(SegNetConfig(width=config.width)).to(device)
     optimiser = torch.optim.AdamW(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
     )
@@ -297,8 +324,9 @@ def fit(
         losses = []
         for i in range(0, len(order), config.batch):
             pick = order[i : i + config.batch]
-            batch = torch.from_numpy(x[pick].astype(np.float32) / 255.0)
-            loss = masked_loss(model(batch)[:, 0], torch.from_numpy(y[pick]), weight)
+            batch = torch.from_numpy(x[pick].astype(np.float32) / 255.0).to(device)
+            target = torch.from_numpy(y[pick]).to(device)
+            loss = masked_loss(model(batch)[:, 0], target, weight)
             optimiser.zero_grad()
             loss.backward()
             optimiser.step()
@@ -347,13 +375,15 @@ def save(
     band_khz=None,
     version: str | None = None,
     clicks: dict | None = None,
+    device: str | None = None,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index).
     Given `band_khz` and `version`, which go together, the blob records both and
     `training.json` both and the version's pseudo-masks; v1's record neither.
     `clicks` goes into `training.json` as it is: `main`'s `clicked_shots` (the
     shots whose decisions on other masks reach the targets) and
-    `left_out_decisions` (why each other one does not)."""
+    `left_out_decisions` (why each other one does not). `device`, when given, is
+    what it trained on; the weights are saved on the CPU either way."""
     if (band_khz is None) != (version is None):
         raise ValueError(f"{out}: a model records its band and version together")
     named, described = {}, {}
@@ -375,7 +405,7 @@ def save(
         with atomic_path(out / name) as tmp:
             tmp.write_bytes(data)
     blob = {
-        "state_dict": model.state_dict(),
+        "state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
         "config": model.config.as_dict(),
         "threshold": threshold,
         "train": asdict(config),
@@ -402,6 +432,7 @@ def save(
             v: sum(x == v for x in split.values()) for v in sorted(set(split.values()))
         },
         **(clicks or {}),
+        **({"device": device} if device else {}),
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
@@ -451,7 +482,8 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="v1 (the default): pseudo-v1 and the live labels; v2: pseudo-v2 and "
-        "ae_xpower v3's snapshot; v3: pseudo-v3, the same snapshot and v2's split",
+        "ae_xpower v3's snapshot; v3: pseudo-v3, the same snapshot and v2's split; "
+        "v4: pseudo-v4 (60-250 kHz), v1's labels rule and split",
     )
     p.add_argument(
         "--out", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
@@ -461,16 +493,30 @@ def main(argv=None) -> int:
         type=int,
         default=0,
         help="6-20 shots (4 of them validation), 2 epochs, to runs/ae_seg/pilot "
-        "(v2: pilot-v2; v3: pilot-v3)",
+        "(v2: pilot-v2; v3: pilot-v3; v4: pilot-v4)",
     )
     p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
+    p.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="auto (the default): the GPU when one is visible, else the CPU",
+    )
     args = p.parse_args(argv)
     if args.pilot and not 6 <= args.pilot <= 20:
         p.error("a pilot is 6 to 20 shots")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
+    try:
+        device = pick_device(args.device)
+    except ValueError as error:
+        p.error(str(error))
+    print(f"training on {device}")
     paths = Paths.from_env()
     version, spec = args.version, SEG_VERSIONS[args.version]
     v1 = version == "v1"  # v1 makes every call as it did before v2
+    # v2's recipe (v2, v3): an ae_xpower snapshot and pseudo.v2_split. v1's (v1,
+    # v4): the live labels and the chosen ae_xpower v1 model's split.
+    v2_recipe = spec.labels is not None
     if spec.gated and not pseudo.gate_passed(paths, version):
         p.error(
             f"{pseudo_dir(paths, version) / 'rules.json'}: {spec.pseudo}'s gate "
@@ -485,7 +531,7 @@ def main(argv=None) -> int:
     directory = event_dir(paths)
     # Every version reads the live region decisions (`regions.transfer`).
     masks_file = regions.log_path(directory)
-    if v1:
+    if not v2_recipe:
         labels_file = labels.labels_path(directory)
         labels_bytes = labels_file.read_bytes()
     else:
@@ -520,7 +566,7 @@ def main(argv=None) -> int:
         masks_sha256=masks_hash,
     )
     split = read_split(ae_file.parent / "split.csv")
-    if not v1:
+    if v2_recipe:
         # SegNet v2's own split, with validation shots (v3's has none), refused
         # unless its test shots are the chosen ae_xpower model's.
         masks = tokeye_masks(paths, spec.ae_version)
@@ -599,7 +645,7 @@ def main(argv=None) -> int:
     val = [examples[s] for s, v in sorted(split.items()) if v == "val"]
     config = TrainConfig(epochs=2 if args.pilot else args.epochs)
     model, history, threshold = fit(
-        train, val, config, log=lambda m: print(m, flush=True)
+        train, val, config, log=lambda m: print(m, flush=True), device=device
     )
     for key, path in input_files.items():
         if _sha(path) != initial[key]:
@@ -624,6 +670,7 @@ def main(argv=None) -> int:
             band_khz=None if v1 else spec.band_khz,
             version=None if v1 else version,
             clicks=clicks,
+            device=device.type,
         )
     except (FileExistsError, ValueError) as error:
         p.error(str(error))

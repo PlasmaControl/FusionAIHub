@@ -6,8 +6,8 @@
     python -m labeler.ae.xpower.cv --candidate NAME --fold K --seed S  # seed study
     python -m labeler.ae.xpower.cv --candidate NAME --fold K --ablate  # ablation
 
-all for `--version` (default v2) in `--models` (default
-`$LABELER_ROOT/models/ae_xpower/<version>`), under `cv/`.
+all for `--version` (default v2; v3 and v4 are chosen the same way) in
+`--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`), under `cv/`.
 
 **Labels.** Only the version's snapshot (`labeler.ae.xpower.read_snapshot`),
 never the owner's live table; every product records its sha256.
@@ -21,7 +21,10 @@ writes `cv/folds.csv` (shot, split, fold; the test shots have no fold) and
 choice, `train --from-cv` and `evaluate --test`) refuses unless the file holds
 exactly the folds the snapshot and TokEye's masks (`xpower.tokeye_masks`, a
 whole-window version's `ae/masks-full`) give then (`checked_folds`), and the
-choice, the final model and `chosen.json` name the file's sha256.
+choice, the final model and `chosen.json` name the file's sha256. A version
+whose test is a second use of an earlier version's (`xpower.TEST_OF`: v4, of
+v2's) writes its folds only when they are the earlier version's `cv/folds.csv`
+byte for byte: the same snapshot, split, test shots and folds.
 
 **A fold task.** Fold K is predicted; fold (K + 1) mod 5 stops the training
 (`train.fit`: validation F1 at 0.5, patience 10, up to 60 epochs: v1's
@@ -119,6 +122,7 @@ from . import (
     CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
+    TEST_OF,
     WHOLE_WINDOW_VERSIONS,
     evaluate,
     event_dir,
@@ -242,6 +246,13 @@ def write_folds(paths: Paths, models: Path, version: str) -> dict:
     """`cv/folds.csv` and `cv/folds.json`, once; the same folds again is a no-op."""
     check_version(models, version)
     digest, _, split, folds, text = _expected(paths, version)
+    if version in TEST_OF:  # the earlier version's folds, test shots and all
+        earlier = cv_dir(model_dir(paths, TEST_OF[version])) / "folds.csv"
+        if not earlier.is_file() or earlier.read_bytes() != text.encode():
+            raise ValueError(
+                f"{earlier}: version {version}'s folds must be version "
+                f"{TEST_OF[version]}'s, byte for byte; they are missing or differ"
+            )
     out = cv_dir(models)
     file = out / "folds.csv"
     counts = {

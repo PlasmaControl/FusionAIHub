@@ -1,6 +1,6 @@
 """The AE model's post-hoc record, computed after its one test.
 
-    python -m labeler.ae.xpower.posthoc --version v2 [--limit N]
+    python -m labeler.ae.xpower.posthoc --version v2 [--limit N]  # or v3, v4
 
 **Post hoc.** Everything here is computed after the version's test, from the
 same model, threshold and frames the test scored, and no decision depends on
@@ -43,7 +43,9 @@ all five folds.
 
 **(d) The second look** (`evaluate.second_look`): how many test shots were the
 earlier version's (`evaluate.SUBSET_OF`) test shots, with that version's model
-and when its test was scored, from its records.
+and when its test was scored, from its records; for a version whose test is a
+second use of all of them (v4, `xpower.TEST_OF`), the test record's
+`test_reuse` note after it.
 """
 
 from __future__ import annotations
@@ -229,6 +231,12 @@ def run(paths: Paths, version: str, limit: int = 0) -> dict:
         },
         "seed_study": seed_summary(paths, version, record),
         "second_look": look(paths, version, test, json.loads(inputs.chosen_bytes)),
+        # Only a version whose test is a second use (v4) has the key.
+        **(
+            {"test_reuse": record["meta"]["test_reuse"]}
+            if record["meta"].get("test_reuse")
+            else {}
+        ),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
@@ -348,6 +356,8 @@ def posthoc_md(record: dict) -> str:
     ]
     second = record["second_look"]
     lines += [second["said"] + "." if second else "No earlier version.", ""]
+    if record.get("test_reuse"):
+        lines += [record["test_reuse"], ""]
     return "\n".join(lines)
 
 

@@ -38,9 +38,9 @@ window (v3), TokEye's whole-shot masks and an observed store
 
 **The mask** is what the segmentation says, semantically: every pixel SegNet
 calls AE, P(AE) at its threshold inside the band its blob records
-(`labeler.ae.seg.train.blob_band`: 0-250 kHz for SegNet v2, 80-250 kHz for v1's
-blob, which records none; `labeler.ae.seg.poi.ae_pixels`, the call its
-evaluation scores, there only over the pseudo-mask's scored pixels), a
+(`labeler.ae.seg.train.blob_band`: 0-250 kHz for SegNet v2, 60-250 kHz for
+SegNet v4, 80-250 kHz for v1's blob, which records none;
+`labeler.ae.seg.poi.ae_pixels`, the call its evaluation scores, there only over the pseudo-mask's scored pixels), a
 translucent fill with a thin outline. It is
 run on the picture's own rows, at the store level it reads (`PICTURE_LEVEL`), so
 it lies on the picture's pixels. Its regions, the points of interest of

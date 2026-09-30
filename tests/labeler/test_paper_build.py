@@ -1078,6 +1078,59 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     assert "fig_examples_ae" not in manifest["partial"], manifest["partial"]
 
 
+def test_version_v4_with_segnet_v4_names_v2s_scoring_and_the_reuse(runs, tmp_path):
+    """ae_xpower v4 beside SegNet v4: the second look names v2's scoring, and the
+    AE table and the segmentation's carry their reuse notes; the build is v2's else."""
+    from labeler.ae import seg as ae_seg
+    from labeler.ae.seg import train as seg_train
+    from labeler.ae.seg.model import SegNet, SegNetConfig
+
+    tree.seg_record(runs, "v4")
+    seg = runs.root / "models" / "ae_seg" / "v4"
+    record = json.loads((seg / "evaluation.json").read_text())
+    record["meta"]["version"] = "v4"
+    (seg / "evaluation.json").write_text(json.dumps(record))
+    for name in ("model.pt", "split.csv", "training.json"):
+        (seg / name).unlink(missing_ok=True)
+    seg_train.save(
+        seg,
+        SegNet(SegNetConfig(width=4)),
+        threshold=0.0,
+        split={},
+        history=[],
+        config=seg_train.TrainConfig(width=4),
+        inputs={},
+        band_khz=(60.0, 250.0),
+        version="v4",
+    )
+    tree.as_version(runs, "v2", keep=True)
+    models = tree.as_version(runs, "v4", keep=True)
+    scored = json.loads((models / "evaluation.json").read_text())
+    ae_note = xpower.reuse_note("v4", 2)
+    scored.setdefault("meta", {})["test_reuse"] = ae_note
+    (models / "evaluation.json").write_text(json.dumps(scored))
+    out = tmp_path / "paper"
+    argv = ["--out", str(out), "--version", "v4", "--seg-version", "v4"]
+    assert build.main(argv) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert (manifest["version"], manifest["seg_version"]) == ("v4", "v4")
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
+    assert manifest["inputs"]["ae_model"]["path"].startswith(str(models))
+    assert manifest["inputs"]["seg_evaluation"]["path"] == str(seg / "evaluation.json")
+    look = manifest["second_look"]
+    assert (look["version"], look["shots"], look["of"]) == ("v2", 2, 2)
+    earlier = xpower.model_dir(runs, "v2")
+    assert manifest["inputs"]["ae_earlier_evaluation"]["path"] == str(
+        earlier / "evaluation.json"
+    )
+    comment = (out / "table_ae_scores.tex").read_text().splitlines()[0]
+    assert "2 of the 2 test shots were v2's test shots" in comment
+    assert f"; {ae_note}" in comment, "the frame model's own reuse note"
+    note = ae_seg.reuse_note("v4", record["counts"]["shots"])
+    comment = (out / "table_seg_scores.tex").read_text().splitlines()[0]
+    assert f"; {note}" in comment
+
+
 def test_the_segmentation_is_checked_against_its_own_copy(runs, tmp_path):
     tree.seg_record(runs)
     seg = runs.root / "models" / "ae_seg" / "v1"

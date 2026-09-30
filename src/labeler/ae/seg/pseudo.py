@@ -84,6 +84,19 @@ mask is written the gate (`markers.GATE`, on SegNet v2 training shots only) is
 judged on the rule shots' masks, with the 5 % budget at 80-250 kHz; rules.json
 and rules.md are written either way, and on a failed gate nothing else is and
 the exit status is 2. `meta.json` records the NTM table's sha256 too.
+
+**pseudo-v4** (SegNet v4's masks, `SEG_VERSIONS["v4"]`):
+
+    python -m labeler.ae.seg.pseudo --version v4 [--shots S ...]
+
+pseudo-v1's rules, inputs (TokEye's 0-2 s masks, the live labels file) and grid,
+with the band at 60-250 kHz in place of 80-250 kHz (`build`'s `band_khz`): the
+owner's review page draws AE from 60 kHz. The band is built as two, each by
+pseudo-v1's rules on its own: 80-250 kHz exactly as pseudo-v1 builds it and
+60-80 kHz apart, the rows joined, so on the same labels a pseudo-v4 row at or
+above 80 kHz is pseudo-v1's. `meta.json` records the band. Its labels are the
+live file's, which the owner has edited since SegNet v1 trained, so pseudo-v4
+also differs from the masks SegNet v1 trained on where those edits reach.
 """
 
 from __future__ import annotations
@@ -121,7 +134,7 @@ from ..xpower.data import (
     tokeye_clean,
     window_frames,
 )
-from . import EVENT, PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir
+from . import EVENT, SEG_VERSIONS, VERSION, pseudo_dir
 from . import markers as v3markers
 from .mhdlines import (
     TOKEYE_VERSION,
@@ -248,18 +261,11 @@ def column_states(label: labels.Label, grid) -> np.ndarray:
     return out
 
 
-def build(
-    shot: int, label: labels.Label, grid, n_y: int, y0: float, dy: float, tokeye
-) -> PseudoMask:
-    """The pseudo-mask on `grid`; `tokeye` is `tokeye_clean`'s `(t_ms, clean, ann)`."""
-    t_ms, clean, _ = tokeye
-    band = band_slice(y0, dy, n_y, BAND_KHZ)
+def _band_mask(lit, present, absent, rows: slice, n_y: int, n: int):
+    """pseudo-v1's rules on the bins `rows` alone: `(mask, unlit)`, the mask
+    IGNORE outside `rows`, `unlit` the present columns with no AE pixel there."""
     in_band = np.zeros(n_y, dtype=bool)
-    in_band[band] = True
-    lit = pool_columns(tokeye_rows(clean), t_ms, grid)[:n_y]
-    state = column_states(label, grid)
-    state[~covered_columns(t_ms, grid)] = OUTSIDE
-    present, absent = state == PRESENT, state == ABSENT
+    in_band[rows] = True
     positive = lit & in_band[:, None] & present[None, :]
     regions, count = ndimage.label(positive, structure=EIGHT)
     sizes = np.bincount(regions.ravel(), minlength=count + 1)
@@ -268,7 +274,7 @@ def build(
     ring = ndimage.binary_dilation(
         positive, structure=np.ones((2 * RING_BINS + 1, 2 * RING_COLS + 1), bool)
     )
-    mask = np.full((n_y, grid.n), IGNORE, dtype=np.uint8)
+    mask = np.full((n_y, n), IGNORE, dtype=np.uint8)
     scored = in_band[:, None] & (absent | present)[None, :]
     mask[scored] = 0
     mask[ring & ~positive & present[None, :] & in_band[:, None]] = IGNORE
@@ -276,6 +282,44 @@ def build(
     unlit = present & ~positive.any(axis=0)
     mask[:, unlit] = IGNORE
     mask[positive] = 1
+    return mask, unlit
+
+
+def build(
+    shot: int,
+    label: labels.Label,
+    grid,
+    n_y: int,
+    y0: float,
+    dy: float,
+    tokeye,
+    band_khz=BAND_KHZ,
+) -> PseudoMask:
+    """The pseudo-mask on `grid`; `tokeye` is `tokeye_clean`'s `(t_ms, clean, ann)`.
+
+    pseudo-v1 is `BAND_KHZ`. A band that spans its lower edge, 80 kHz
+    (pseudo-v4's 60-250 kHz), is built as two bands, each by pseudo-v1's rules
+    on its own, and their rows joined: [80, hi] exactly as pseudo-v1 builds it,
+    and [lo, 80) apart, so no region, MIN_AREA, ring or unlit column couples
+    them. `present_unlit` counts the present columns with no AE pixel in either.
+    """
+    t_ms, clean, _ = tokeye
+    lit = pool_columns(tokeye_rows(clean), t_ms, grid)[:n_y]
+    state = column_states(label, grid)
+    state[~covered_columns(t_ms, grid)] = OUTSIDE
+    present, absent = state == PRESENT, state == ABSENT
+    lo, hi = band_khz
+    edge = BAND_KHZ[0]
+    if not lo < edge < hi:
+        band = band_slice(y0, dy, n_y, band_khz)
+        mask, unlit = _band_mask(lit, present, absent, band, n_y, grid.n)
+    else:
+        upper = band_slice(y0, dy, n_y, (edge, hi))
+        lower = slice(band_slice(y0, dy, n_y, band_khz).start, upper.start)
+        mask, unlit = _band_mask(lit, present, absent, upper, n_y, grid.n)
+        below, below_unlit = _band_mask(lit, present, absent, lower, n_y, grid.n)
+        mask[lower] = below[lower]
+        unlit &= below_unlit
     return PseudoMask(
         int(shot), grid.t0_ms, grid.dt_ms, float(y0), float(dy), mask, int(unlit.sum())
     )
@@ -298,7 +342,12 @@ def summary(pm: PseudoMask, file: str) -> dict:
 
 
 def make(
-    paths: Paths, shot: int, label: labels.Label, *, tokeye_bytes: bytes | None = None
+    paths: Paths,
+    shot: int,
+    label: labels.Label,
+    *,
+    tokeye_bytes: bytes | None = None,
+    band_khz=BAND_KHZ,
 ) -> PseudoMask:
     grid, values, y0, dy = store_rows(paths.spectrogram_file(EVENT, shot), LEVEL)
     tokeye = clean_path(tokeye_masks(paths), shot)
@@ -306,7 +355,14 @@ def make(
         raise FileNotFoundError(f"{shot} has no TokEye mask")
     data = tokeye.read_bytes() if tokeye_bytes is None else tokeye_bytes
     return build(
-        shot, label, grid, values.shape[1], y0, dy, tokeye_clean(BytesIO(data))
+        shot,
+        label,
+        grid,
+        values.shape[1],
+        y0,
+        dy,
+        tokeye_clean(BytesIO(data)),
+        band_khz,
     )
 
 
@@ -691,7 +747,8 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="v1 (the default): pseudo-v1; v2: pseudo-v2 (from v3's snapshot); "
-        "v3: pseudo-v3 (pseudo-v2 with the per-line MHD markers and their gate)",
+        "v3: pseudo-v3 (pseudo-v2 with the per-line MHD markers and their gate); "
+        "v4: pseudo-v4 (pseudo-v1's rules at 60-250 kHz)",
     )
     args = p.parse_args(argv)
     if args.version == "v2":
@@ -702,7 +759,8 @@ def main(argv=None) -> int:
     directory = event_dir(paths)
     saved = labels.read_saved(directory)
     shots = args.shots or sorted(saved)
-    out = pseudo_dir(paths)
+    spec = SEG_VERSIONS[args.version]
+    out = pseudo_dir(paths, args.version)
     out.mkdir(parents=True, exist_ok=True)
     rows, failed, tokeye_hashes = [], [], {}
     for shot in shots:
@@ -711,7 +769,9 @@ def main(argv=None) -> int:
             if tokeye is None:
                 raise FileNotFoundError(f"{shot} has no TokEye mask")
             data = tokeye.read_bytes()
-            pm = make(paths, shot, saved[shot], tokeye_bytes=data)
+            pm = make(
+                paths, shot, saved[shot], tokeye_bytes=data, band_khz=spec.band_khz
+            )
             tokeye_hashes[str(shot)] = hashlib.sha256(data).hexdigest()
         except (KeyError, OSError, ValueError) as error:
             failed.append(shot)
@@ -725,7 +785,9 @@ def main(argv=None) -> int:
         writer.writerows(rows)
     labels_file = labels.labels_path(directory)
     meta = {
-        "pseudo": PSEUDO,
+        "pseudo": spec.pseudo,
+        # v1's record is as it was; a later version on v1's rules names its band.
+        **({} if args.version == VERSION else {"band_khz": list(spec.band_khz)}),
         "shots": len(rows),
         "failed": failed,
         "tokeye_sha256": tokeye_hashes,
