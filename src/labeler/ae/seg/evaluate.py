@@ -56,6 +56,12 @@ markers IGNORE in present frames (the mask's `mhd`), and its AE pixels below
 (`markers.ntm_intervals`), beside TokEye's lit pixels there. Every report says
 that `recipe`'s and `tokeye`'s pixel Dice are high by construction
 (`BY_CONSTRUCTION`).
+
+**SegNet v4** (`--version v4`) is scored as v1, over 0-2 s, on pseudo-v4's
+pixels, over the band its blob records (60-250 kHz): every method and a frame's
+present call are cut to that band, and evaluation.md names it. Its test shots
+are v1's, so evaluation.md states that its test is a second use of them, made
+after v1's test was scored (`reuse_note`).
 """
 
 from __future__ import annotations
@@ -442,6 +448,13 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
         f"{meta['threshold']}. 95 % shot-bootstrap intervals."
     )
     whole = meta.get("frames_window") == "whole"
+    if not whole and meta.get("version", VERSION) != VERSION:
+        # A later 0-2 s version (v4) names its band; v1's report is as it was.
+        lo, hi = meta["band_khz"]
+        summary = summary.replace(
+            f"Threshold {meta['threshold']}.",
+            f"Threshold {meta['threshold']}, band {lo:g}-{hi:g} kHz.",
+        )
     if whole:
         lo, hi = meta["band_khz"]
         summary = (
@@ -632,7 +645,7 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="the SegNet version the model is (default v1); v2 and v3 are scored "
-        "over the owner's whole windows",
+        "over the owner's whole windows; v4 as v1, over 0-2 s at 60-250 kHz",
     )
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
