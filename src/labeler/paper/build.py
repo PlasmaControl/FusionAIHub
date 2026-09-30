@@ -415,9 +415,9 @@ def selected_inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
 
 
 def frame_example_key(what: str, method: str) -> str:
-    """A frame model's example input: `frames_<what>_<method>`, `what` being
+    """A frame model's example input: `frames_examples_<what>_<method>`, `what` being
     `model`, `split` or `split_meta`."""
-    return f"frames_{what}_{method}"
+    return f"frames_examples_{what}_{method}"
 
 
 def frame_example_inputs(paths: Paths) -> dict[str, Path]:
