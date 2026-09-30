@@ -11,7 +11,8 @@ Each picture is a JPEG, `gallery_dir(paths, spec)/{test,roster}/<shot>.jpg`:
   wrote into its features (the original's with the owner's label over them,
   `targets.merged`, F2); else why not (not in the split, or its features
   dropped, with `prepare`'s reason);
-- P per frame, the threshold dotted, and the frames said present shaded.
+- P per frame, the threshold dotted (`train.load`'s: threshold.json's where
+  one was re-chosen, T1), and the frames said present shaded.
 A test shot is drawn from its prepared features, a roster shot from its review
 store (`apply.label`). `--limit` draws the first N of each set. The pictures
 are suggestions, never reviewed labels, and their titles say so. Every file is

@@ -22,7 +22,13 @@ from labeler.frames.features import features
 
 from . import editor_tree, frames_tree
 from .frames_tree import ELM, HMODE, LMODE, POPULATION_ONLY, SHOTS, WINDOW
-from .test_round3_frames_evaluate import TEST, _resplit, _save_model, _truth_onsets
+from .test_round3_frames_evaluate import (
+    TEST,
+    _resplit,
+    _save_model,
+    _truth_onsets,
+    rechoose,
+)
 
 
 def _files(folder) -> list:
@@ -304,3 +310,49 @@ def test_a_shot_that_raises_is_failed_and_counted_not_fatal(elm, monkeypatch):
     assert row == {"shot": SHOTS[HMODE], "error": "IndexError: a row too short"}
     summary = pd.read_csv(frames.summary_file(elm, "elm_frames"))
     assert list(summary.shot) == [SHOTS[ELM]]
+
+
+def test_the_merge_follows_the_re_chosen_threshold(hmode):
+    _run_all("hmode_frames")
+    spec = frames.SPECS["hmode_frames"]
+    out = frames.model_dir(hmode, "hmode_frames")
+    sha = hashlib.sha256((out / "model.pt").read_bytes()).hexdigest()
+    labelled = {}
+    for which in apply.SETS:
+        labelled |= apply._read_shards(hmode, spec, which, sha)[1]
+
+    def follows(threshold) -> dict:
+        """The H table's meta, each shot's frames its shards' P at `threshold`:
+        H where P reaches it, L on the other observable frames."""
+        h_sum = pd.read_csv(frames.summary_file(hmode, "hmode_frames"))
+        l_sum = pd.read_csv(frames.summary_file(hmode, "lmode_frames"))
+        for shot, (_, _, prob) in labelled.items():
+            seen = np.isfinite(prob)
+            h_row = h_sum[h_sum.shot == shot].iloc[0]
+            l_row = l_sum[l_sum.shot == shot].iloc[0]
+            assert h_row.present_frames == np.sum(seen & (prob >= threshold))
+            assert l_row.present_frames == np.sum(seen & (prob < threshold))
+        metas = {}
+        for event, method in ((HMODE, "hmode_frames"), (LMODE, "lmode_frames")):
+            table = suggestions.table_path(hmode, event, method, frames.VERSION)
+            metas[method] = json.loads(table.with_suffix(".meta.json").read_text())
+        for meta in metas.values():
+            assert meta["threshold"] == threshold and meta["trained_threshold"] == 0.5
+        h_sha, l_sha = (metas[m]["threshold_sha256"] for m in metas)
+        assert h_sha == l_sha
+        return metas["hmode_frames"]
+
+    apply.merge(hmode, "hmode_frames")
+    meta = follows(0.5)
+    assert meta["threshold_source"] == "training" and meta["threshold_sha256"] is None
+    path = rechoose(out, 0.45)
+    # The evaluation scored 0.5: the merge waits for the test at 0.45.
+    with pytest.raises(ValueError, match="--rethreshold"):
+        apply.merge(hmode, "hmode_frames")
+    evaluate.evaluate(hmode, "hmode_frames", rethreshold=True)
+    apply.merge(hmode, "hmode_frames")
+    meta = follows(0.45)
+    assert meta["threshold_source"] == "threshold.json"
+    assert meta["threshold_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    scored = (out / "evaluation.json").read_bytes()
+    assert meta["evaluation_sha256"] == hashlib.sha256(scored).hexdigest()
