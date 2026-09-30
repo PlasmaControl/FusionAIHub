@@ -7,13 +7,16 @@ The first scores every trained candidate of the version (`train.candidates`)
 on the validation shots and writes `chosen.json`; the second scores the chosen
 one, once, on the test shots and writes `evaluation.json` and `evaluation.md`,
 all in `--models` (default `$LABELER_ROOT/models/ae_xpower/<version>`). A
-version chosen by cross-validation (v2 and v3, `labeler.ae.xpower.cv`) is not
+version chosen by cross-validation (v2-v4, `labeler.ae.xpower.cv`) is not
 chosen here: `--choose` only checks that `chosen.json` is the one `train
 --from-cv` wrote from `cv/choice.json`, and the test checks the model against
 both. v2's test also reports v1's test shots (`SUBSET_OF`, the 58 of v1's
 chosen model's `split.csv`, checked before scoring to be v2 test shots) as a
 second table and a `v1_subset` block, and v3's reports v2's the same way
-(`v2_subset`); the bar is judged on the whole split only.
+(`v2_subset`); the bar is judged on the whole split only. v4's test shots are
+v2's, every one (`xpower.TEST_OF`, checked before scoring), so its `v2_subset`
+is its whole split again; its record's meta and evaluation.md carry the note
+that its test is a second use of them (`test_reuse`, `xpower.reuse_note`).
 The test is never scored in full (`--limit 0`) under `runs/`, where it could be
 repeated, and a pilot there scores 20 test shots at most, and for a
 cross-validated version only a pilot choice's model (never a copy of the
@@ -91,6 +94,7 @@ from . import (
     CV_VERSIONS,
     EVENT,
     LABEL_SNAPSHOTS,
+    TEST_OF,
     VERSION,
     WHOLE_WINDOW_VERSIONS,
     check_bound,
@@ -101,6 +105,7 @@ from . import (
     event_dir,
     model_dir,
     pilot_area,
+    reuse_note,
     seldnet_dir,
     seldnet_inputs,
     tokeye_masks,
@@ -135,8 +140,8 @@ BAR = {
     "f1_vs_seldnet_low": -0.03,
     "mhd_fp_rate": 0.05,
 }
-#: The earlier version whose test shots are reported.
-SUBSET_OF = {"v2": "v1", "v3": "v2"}
+#: The earlier version whose test shots are reported (v4's are all of v2's).
+SUBSET_OF = {"v2": "v1", "v3": "v2", "v4": "v2"}
 METHODS = ("ae_xpower", "seldnet", "tokeye", "source", "uci", "always")
 #: A whole-window version's methods: `source` and `uci` cover 0-2 s only.
 WHOLE_METHODS = ("ae_xpower", "seldnet", "tokeye", "always")
@@ -481,6 +486,8 @@ def report_md(scores: dict, bar: dict, meta: dict, subset: dict | None = None) -
         "Tier: suggestions."
     )
     lines += ["", verdict_line, ""]
+    if meta.get("test_reuse"):
+        lines += [meta["test_reuse"], ""]
     if whole:
         lines += _early_md(scores["window_0_2s"])
     if subset is not None:
@@ -746,6 +753,12 @@ def earlier_test(paths: Paths, version: str, test: set[int]) -> dict | None:
             f"{split_file}: {earlier}'s test shots must be {version} test shots; "
             f"not: {', '.join(map(str, outside)) or 'none listed'}"
         )
+    if version in TEST_OF and set(shots) != test:  # a second use of all of them
+        extra = ", ".join(map(str, sorted(test - set(shots))))
+        raise ValueError(
+            f"{split_file}: version {version}'s test shots must be exactly "
+            f"{earlier}'s; {version} also tests {extra}"
+        )
     return {
         "version": earlier,
         "candidate": name,
@@ -1003,6 +1016,9 @@ def run_test(
         "frames_window": "whole" if whole else "0-2 s",
         **inputs.cv_meta,
     }
+    note = reuse_note(version, sum(v == "test" for v in split.values()))
+    if note:  # a second use of an earlier version's test shots
+        meta["test_reuse"] = note
     if whole:  # masks-full's and dataset-full's manifests, as load_test checked
         meta["inputs"] = inputs_identity(paths, version)
     record = {"meta": meta, "bar": bar, "bar_thresholds": BAR, **scores}
