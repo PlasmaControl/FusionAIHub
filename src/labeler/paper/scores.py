@@ -80,7 +80,7 @@ PHENOMENON_COLOURS = {
 NOT_SCORED = "not scored"  # a phenomenon's tick, without its evaluation
 NO_ROC = "no ROC"  # its key, without its roc.json
 NO_PR = "no PR"  # its key, with a roc.json that has no auprc
-CHANCE = "chance"
+CHANCE = "chance: diagonal"
 CHANCE_PR = "chance: positive share"
 AT_THRESHOLD = "at the model's threshold"
 F1_LABEL = "test F1 (95 % shot-bootstrap interval)"
@@ -254,7 +254,15 @@ def _pr_panel(ax, selected: Sequence[Selected]) -> None:
             continue
         colour = PHENOMENON_COLOURS[s.category]
         points = s.roc["pr"]
-        ax.plot(points["recall"], points["precision"], color=colour, lw=1.0)
+        # a step at each point, as the average precision sums it: a straight
+        # line between two would claim precision no threshold has
+        ax.plot(
+            points["recall"],
+            points["precision"],
+            color=colour,
+            lw=1.0,
+            drawstyle="steps-pre",
+        )
         at = s.roc["threshold"]
         _mark(ax, at["recall"], at["precision"], colour)
         share = s.roc["positive_share"]

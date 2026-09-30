@@ -25,6 +25,21 @@ def paths(tmp_path, monkeypatch):
     return tree.temporary_paths(tmp_path, monkeypatch)
 
 
+@pytest.fixture(autouse=True)
+def committed(monkeypatch):
+    """The tests' code counts as committed: `write` refuses a dirty tree."""
+    monkeypatch.setattr(roc, "git_dirty", lambda: False)
+
+
+@pytest.mark.parametrize("dirty", [True, None])
+def test_no_record_is_written_from_uncommitted_code(paths, monkeypatch, dirty):
+    monkeypatch.setattr(roc, "git_dirty", lambda: dirty)
+    monkeypatch.setattr(roc, "roc", lambda *a, **k: pytest.fail("computed"))
+    with pytest.raises(RuntimeError, match="commit first"):
+        roc.write(paths, [NTM])
+    assert not roc.roc_file(paths, NTM).exists()
+
+
 def _mann_whitney(score, truth) -> float:
     """P(a positive outscores a negative), a tie counted half, by every pair."""
     pos = [s for s, t in zip(score, truth, strict=True) if t]
@@ -86,15 +101,18 @@ def test_the_average_precision_is_the_step_sum_over_distinct_scores():
         ap += (recall - last) * precision
         last = recall
     assert roc.average_precision(score, truth) == pytest.approx(ap)
-    try:
-        from sklearn.metrics import average_precision_score
-    except ImportError:
-        return
+
+
+def test_the_average_precision_is_scikit_learns():
+    metrics = pytest.importorskip("sklearn.metrics")
+    rng = np.random.default_rng(1)
+    score = rng.integers(0, 6, 80) / 5  # many ties
+    truth = rng.random(80) < 0.3
     x = rng.random(200)
     y = rng.random(200) < 0.2
     for a, b in ((score, truth), (x, y)):
         assert roc.average_precision(a, b) == pytest.approx(
-            average_precision_score(b, a)
+            metrics.average_precision_score(b, a)
         )
 
 

@@ -50,6 +50,11 @@ second test. Every target is checked before any is computed. `--method`
 `--replace-without-pr`: it replaces an existing `roc.json` only when that file
 has no `auprc` and the new record has the same `auroc`, `n_pos` and `n_neg`
 (`replace_check`); otherwise it refuses, and nothing is written.
+
+**From committed code only.** A record names the commit it was computed at
+(`git_sha`), so `write` refuses while tracked files differ from it (or git
+cannot say): F6's five records name 0b8a5c5, which has no PR code; 539ccc8
+reproduces them byte for byte but for `git_sha`.
 """
 
 from __future__ import annotations
@@ -71,7 +76,7 @@ from .. import frames
 from ..ae import xpower
 from ..ae.xpower import WHOLE_WINDOW_VERSIONS
 from ..ae.xpower import evaluate as ae_evaluate
-from ..config import Paths, atomic_path, git_sha
+from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events.catalog.states import PRESENT
 from ..frames import evaluate as frames_evaluate
 from ..frames import prepare
@@ -451,7 +456,12 @@ def write(
     `auprc` is replaced instead, if the new record has its `auroc`, `n_pos` and
     `n_neg` (`replace_check`); every record is computed and checked before any
     is written. `done(method, record, path, seconds)` is called after each
-    write."""
+    write. Refused (`RuntimeError`) first while the code is not committed."""
+    if git_dirty() is not False:
+        raise RuntimeError(
+            "tracked files differ from the commit (or git cannot say), so no "
+            "record could name the code that computed it: commit first"
+        )
     targets = {m: roc_file(paths, m, ae_version) for m in methods}
     there = {m: t for m, t in targets.items() if t.exists()}
     old = {}

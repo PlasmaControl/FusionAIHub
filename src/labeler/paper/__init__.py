@@ -4,15 +4,16 @@ The manuscript (`dev/label_paper`: "Tokamak-SI: Automatic Shot Interpreter with
 a Catalog of Fusion Reactor Data") shows the interpreter on one phenomenon, AE,
 first. A figure that will show every paper phenomenon (`ORDER`: the catalog's,
 less disruption for now) draws all five now. The score figure draws each
-phenomenon's selected model: its test F1 and its ROC over the same test shots.
+phenomenon's selected model: its test F1, and its ROC and precision-recall
+curve over the same test shots.
 The coverage figure and table count all five: AE from the round-two runs, the
 other four from their frame models' splits (the original labels with the
 owner's reviews over them, F2), the owner's review and the applications; only a
 phenomenon with none of its inputs yet is marked "coming".
 
-- `scores`: the selected models' test F1 and ROC (`fig_scores`), and the AE
+- `scores`: the selected models' test F1, ROC and PR (`fig_scores`), and the AE
   methods' and the segmentation's score tables;
-- `roc`: each selected model's ROC over the test shots its F1 was scored on,
+- `roc`: each selected model's ROC and PR over the test shots its F1 was scored on,
   recorded as `roc.json` beside its evaluation;
 - `coverage`: labelled, reviewed, positive and suggested shots per phenomenon;
 - `shots`: AE examples from the test shots, and the pieces of a shot figure
