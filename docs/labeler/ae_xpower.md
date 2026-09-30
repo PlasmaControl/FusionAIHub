@@ -184,9 +184,18 @@ A picture shows the three cross-power rows, the owner's frames, and the model's
 P(AE) with its threshold and the MHD frames ticked. A reviewed picture's title
 gives the model's F1 against the owner over the frames the test scores,
 "F1 vs owner, 0-2 s"; `index.csv` has it as `f1_0_2s` and, as before, the F1
-over the owner's whole window as `f1_vs_owner`. Because a picture shows F1 on
-test shots, v2's gallery refuses until `evaluation.json` has scored the model
-it draws, and it draws only from v2's own models directory (a pilot's under
+over the owner's whole window as `f1_vs_owner`. v3 is scored over the owner's
+whole windows, so its title says "F1 vs owner, whole window"; `index.csv` names
+the window each version is scored on (`scored_window`, "0-2 s" or "whole") and
+its F1 there (`f1_scored`), and keeps `f1_0_2s` for every version. For v3,
+`f1_scored` counts only the frames its test scores (those the whole-shot TokEye
+record covers and the store observes), where `f1_vs_owner` counts every frame
+of the window. Only a version scored on 0-2 s draws the "scored: 0-2 s" line,
+and no gallery or POI picture draws an 80 kHz line (the owner, 2026-09-28: that
+floor was only the labelling view). Because a picture shows F1 on test shots,
+a cross-validated version's gallery (v2, v3) refuses until `evaluation.json`
+has scored the model it draws, and it draws only from that version's own
+models directory (a pilot's under
 `runs/` draws into its own `gallery/`).
 
 ## The extension and its gate (D47)
@@ -335,10 +344,10 @@ v1's directory has one `<candidate>/` per candidate and `validation_frontier.{cs
 
 | file | what it is |
 |---|---|
-| `reviewed/<shot>.jpg` | a shot the owner has saved, with F1 vs owner over 0-2 s in its title |
+| `reviewed/<shot>.jpg` | a shot the owner has saved, with F1 vs owner over the scored window (0-2 s; v3's whole window) in its title |
 | `unreviewed/<shot>.jpg` | a shot not yet saved; the strip is the source table's |
 | `extension/<shot>.jpg` | an extension shot (none for v2) |
-| `index.csv` | one row per picture: shot, group, split, file, window, present frames, `f1_vs_owner`, threshold, candidate, version, `snapshot_sha256`, `f1_0_2s` |
+| `index.csv` | one row per picture: shot, group, split, file, window, present frames, `f1_vs_owner`, threshold, candidate, version, `snapshot_sha256`, `f1_0_2s`, `scored_window`, `f1_scored` |
 
 **`$LABELER_ROOT/runs/ae_xpower/`** holds pilots and post-hoc runs, where a
 record may be replaced (except the seed study's) and nothing counts as the test:

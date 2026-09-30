@@ -212,7 +212,13 @@ class SaveRefused(ValueError):
 
 
 def save(
-    event_dir, shot: int, label: Label, *, source: str | None, name: str | None = None
+    event_dir,
+    shot: int,
+    label: Label,
+    *,
+    source: str | None,
+    name: str | None = None,
+    source_sha256: str | None = None,
 ) -> dict:
     """Replace one shot's rows in `labels.csv` and append the save to history.
 
@@ -227,7 +233,10 @@ def save(
     are checked separately by the catalog checker.
 
     `reviewer` is the server's login; `name` is the reviewer's name, or None
-    (see `versions`).
+    (see `versions`). `source` names the table the save was made against and
+    `source_sha256` is that table's sha256 when it was made, kept in the history
+    line when given (see `agreement`: a save without one is matched to the table
+    by name).
     """
     with _write_lock:
         path = labels_path(event_dir)
@@ -267,6 +276,8 @@ def save(
             **label.as_json(),
             "source": source,
         }
+        if source_sha256 is not None:
+            entry["source_sha256"] = source_sha256
         with history_path(event_dir).open("a") as stream:
             stream.write(json.dumps(entry) + "\n")
     return entry

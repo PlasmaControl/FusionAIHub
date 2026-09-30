@@ -66,12 +66,17 @@ after the newest save.
   inside the label's AE frames, 80-250 kHz, over the label's whole window, drawn
   in cyan over the rows: `pseudo-v1-full`, pseudo-v1's rules
   (`labeler.ae.seg.pseudo`) over TokEye's whole-shot masks, built by
-  `python -m labeler.ae.seg.whole` from the labels saved when it ran. SegNet v1
-  learnt from pseudo-v1 (TokEye's 0-2 s masks), so a decision saved here is
-  stale to it, as to v2 and v3. A click on a region that is not the mode (an MHD harmonic, pickup)
-  rejects it, grey; a second click takes that back. Each click is saved at
-  once, with your name. `M` hides and shows the mask, and the browser
-  remembers which. The header counts the regions kept.
+  `python -m labeler.ae.seg.whole` from the labels saved when it ran; a rerun
+  keeps a mask whose content is unchanged, and so the decisions on it. A click
+  on a region that is not the mode (an MHD harmonic, pickup) rejects it, grey; a
+  second click takes that back. SegNet trains on its own version's masks, not
+  these, and each rejection reaches it (`labeler.ae.seg.regions.transfer`): the
+  region's pixels are background in that version's mask where it scores them
+  (never scored where it does not, as pseudo-v1 after 2 s), and the rest of that
+  mask's line the region touches, outside the regions drawn here (below 80 kHz
+  in pseudo-v2 and v3), is left unscored. Each click is saved at once, with your
+  name. `M` hides and shows the mask, and the browser remembers which. The
+  header counts the regions kept.
 - **TokEye layer** (Alfvén eigenmode shots): every line TokEye's whole-shot
   masks light on two of the four chords, AE or not, in the band each row
   shows, drawn in faint cyan over TokEye's 0-6 s, past the label windows' 2 s:
@@ -127,15 +132,33 @@ are these:
 
 - *present*: the method saw the phenomenon.
 - *absent*: the inputs were measured and showed nothing.
-- *uncertain*: see H-mode below.
-- *not observable*: the method's inputs did not measure that time. A shot the
-  method could not run on is not observable throughout, and the table's
-  `.meta.json` records why under `skipped`.
+- *uncertain*: see H-mode, and in v2 the ramp-up, below.
+- *not observable*: the method's inputs did not measure that time; in v2 that
+  includes an ELM filterscope that stopped reading (below). A shot the method
+  could not run on is not observable throughout, and the table's `.meta.json`
+  records why under `skipped`.
 
-The meta's `rule` holds only the constants that method uses. Its `per_shot`
-records, for each shot, what the page does not show: where the draft started,
-and for ELMs the filterscope read and whether the H-mode gate ran. `gold`
-holds the score from the last `--gold` run.
+**Versions.** `spans --version` names the table a run writes,
+`$LABELER_ROOT/suggestions/<method>/<version>/`. The pages open on v1's: the
+four editors' `review/source.json` name v1 tables, and `cohort_rosters --point`
+writes v1's. v2's tables, beside them, add two rules to the ELM and sawtooth
+drafts: the ramp-up's uncertain time and, for ELMs, dead filterscopes. The
+H-mode and tearing-mode v2 tables hold v1's rows. A table keeps the rules it
+was drafted under: a run into a table whose meta records other rules than the
+method's now is refused and changes nothing (`check_rule`), so v1's tables keep
+the old rules and a changed rule goes into a new version. A page opens on v2
+only once its pointer is moved to the v2 table (`labels.write_pointer`).
+
+The meta's `rule` holds only the constants that method uses; v2's adds
+`min_dead_ms` to the ELM rule, `ramp` to both `start` rules, and the ramp-up to
+the ELM `l_mode`. Its `per_shot` records, for each shot, what the page does not
+show: where the draft started (`start_ms`, and `start_from`: "ip", or the
+fallback and why) and, in v2, how many events made the ramp-up uncertain
+(`ramp_events`); for ELMs also the filterscope read (`channel`), whether the
+H-mode gate ran (`hmode_gate`: "ran", or why not) and, in v2, how many ms of the
+window that filterscope's dead stretches take (`dead_ms`). `ramp_events` and
+`dead_ms` appear only when not zero. `gold` holds the score from the last
+`--gold` run.
 
 **ELM and sawtooth drafts start in the plasma.** A span is a run of at least 3
 events (ELMs at most 200 ms apart, sawtooth crashes at most 300 ms), padded by
@@ -145,9 +168,28 @@ and spikes of the ramp-up neither make a run nor join one. The start is the
 first time the 25 ms centred mean of |Ip| inside the window reaches 0.8 of its
 plateau (its 95th percentile), the catalog's flat-top fraction. Ip comes from
 the corpus or the raw cache. A shot without Ip starts 700 ms into its window,
-the median on the 450 shots. Time before the start is absent. Sawteeth in the
-ramp-up are left out with it: 189061's 227-530 ms, for one. Add them by hand
-where you see them.
+the median on the 450 shots.
+
+**The ramp-up**, from the window's start to the plasma's, is where v1 and v2
+differ. In v1 it is absent, and the events in it are left out with it: 189061's
+sawteeth at 227-530 ms, for one. In v2 it is uncertain where the detector saw
+any event there, one is enough, and absent where it saw none (`ramp_up`):
+
+- Sawteeth: the whole ramp-up, once the ECE array saw a crash in it. 189061's
+  is uncertain from 6 to 557 ms, on 7 crashes. 443 of the queue's 450 v2
+  drafts open this way, 43 of them on one or two crashes.
+- ELMs: the ramp-up less the time the H-mode draft calls absent (L-mode),
+  piece by piece. Each piece that holds an ELM is uncertain, and the L-mode
+  time stays absent, so a ramp-up all in L-mode stays absent. The H-mode
+  draft's uncertain time, and time it did not measure, are not L-mode, so ELMs
+  there count: 189324's ramp-up is uncertain at 8-302 ms, where the H-mode
+  draft is uncertain too (56 ELMs), and absent at 302-830 ms. Without the
+  H-mode gate the ramp-up is one piece. 80 of the 450 v2 drafts have an
+  uncertain ramp-up, 13 of them without the gate.
+
+Like any span, the uncertain time is clipped to what the inputs measured. The
+ramp-up's events still neither make a run nor join one, so in either version
+mark the sawteeth or ELMs you see there by hand.
 
 **ELMs** (`elm_clock`).
 
@@ -167,12 +209,23 @@ where you see them.
 - Draft: the runs of ELMs, less any time the H-mode method saw the shot in
   L-mode, because the clock also counts L-mode D-alpha spikes. A shot whose
   H-mode inputs are missing keeps its runs whole, and `per_shot` records why
-  under `hmode_gate`.
+  under `hmode_gate`. In v2 the ramp-up is uncertain where it holds ELMs
+  outside L-mode (above).
+- Dead filterscopes (v2): a stretch of at least 200 ms (`min_dead_ms`) over
+  which the filterscope read repeats one value is a channel that stopped
+  reading (`dead_stretches`). It is not observable, not absent, and no span
+  covers it; `dead_ms` gives its length inside the window. 186636's FS02 is
+  dead from 3877 ms to the window's end at 7285 ms. Only the filterscope the
+  draft reads is checked, and the draft never switches to another, even when
+  another filterscope is live over the dead stretch. The H-mode editor draws
+  each lit filterscope. v1 has no such rule: its drafts call that time absent.
 
 **H-mode** (`dalpha_lh`).
 
 - Rows:
-  - the D-alpha filterscopes FS01-FS08, what the method reads;
+  - the D-alpha filterscopes FS01-FS08, what the method reads, each clipped
+    to its robust range over the plasma window as the ELM traces are (the
+    title says so when anything was cut);
   - the density, the CO2 R0 chord averaged over 1 ms;
   - the NBI power summed over the beams, in MW;
   - beta_N, only on the shots the features store holds (62 of the 450).
@@ -206,9 +259,13 @@ where you see them.
   4.6 V and barely move. A crash-like drop is a sample where the 5-sample mean
   falls by more than 6 standard deviations of its own change, taken second by
   second. The Thomson and SXR chords are chosen over the whole record,
-  whatever the view.
+  whatever the view. The SXR chords are clipped to their robust range over
+  the plasma window, as the ELM traces are, and the title says so when
+  anything was cut. The ECE rows are not: each sample is already its
+  0.05 ms median.
 - A shot without ECE, Thomson or SXR gets the others' rows alone.
-- Draft: the runs of crashes, starting in the plasma as above.
+- Draft: the runs of crashes, starting in the plasma as above. In v2 the
+  ramp-up is uncertain once the array saw a crash in it (above).
 
 **Tearing modes** (`window`).
 
@@ -244,8 +301,9 @@ pixi run -e labelmaker fdp run python -m labeler.events.raw --event edge_localiz
 pixi run -e labelmaker fdp run python -m labeler.events.raw --event high_confinement_mode
 # The drafts, over the queue; --force redoes shots already drafted, --gold scores
 # the drafts on the roster's gold shots into the meta (sbatch: scripts/labeler/spans.sbatch).
-pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --gold
-# The roster in queue order, and --point opens the page on the draft.
+# --version v2 writes beside v1's tables, which refuse a rerun under today's rules.
+pixi run -e labelmaker python -m labeler.events.spans --event sawtooth_oscillation --version v2 --gold
+# The roster in queue order, and --point opens the page on the v1 draft.
 pixi run -e labelmaker python -m labeler.events.review.cohort_rosters \
     --event sawtooth_oscillation --point
 # The row store ahead of the review; --force rebuilds built shots
@@ -256,14 +314,20 @@ pixi run -e labelmaker python -m labeler.events.review.agreement --event sawtoot
 ```
 
 `agreement` counts a saved shot only when its last save in
-`review/history.jsonl` was opened on the table the pointer names now. Saves
-opened on another table, before the pointer moved, are counted under
-`excluded_saves`. It reports frame precision and recall over 10 ms frames. It
-is `ready` at 50 shots with both at least 0.75. `spans --gold` uses the same
-scorer on the roster's gold-tier shots. Its reference is the saved labels
-(`review/labels.csv`), or the label table whose path follows `--gold`. The ten
-gold sawtooth shots have no gold label yet, so their score counts 0 shots, and
-`missing` names the ten.
+`review/history.jsonl` was made against the table the pointer names now: the
+save's `source_sha256` is that table's sha256, so a table rebuilt under its own
+name leaves out the saves made against the old one. A save with no
+`source_sha256` (a line written before the page recorded it) is matched by the
+table's name. Saves made against another table, before the pointer moved, or
+against this one before it was rewritten, are counted under `excluded_saves` by
+that table's name. The table is hashed when the save is made, not when the page
+opened the shot: a draft begun before a pointer moved is recorded against the
+new table, so save or discard pending drafts before moving a pointer. It
+reports frame precision and recall over 10 ms frames. It is `ready` at 50 shots
+with both at least 0.75. `spans --gold` uses the same scorer on the roster's
+gold-tier shots. Its reference is the saved labels (`review/labels.csv`), or the
+label table whose path follows `--gold`. The ten gold sawtooth shots have no
+gold label yet, so their score counts 0 shots, and `missing` names the ten.
 
 ## What a save writes
 
@@ -277,10 +341,13 @@ Saves go under the event's directory in the label tables
   any other format table.
 - `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
   running the server), `name` (the reviewer's name, or null), time, the
-  window and spans saved, and the source file they were compared with. It is
-  only ever appended to: a shot's versions are its lines in order, numbered
-  from 1, and `GET /api/history?event=&shot=` lists them. Lines written before
-  names existed have no `name` and read as unnamed.
+  window and spans saved, the source file they were compared with and that
+  file's sha256 (`source_sha256`; absent when the event has no source table).
+  It is only ever appended to: a shot's versions are its lines in order,
+  numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
+  written before names existed have no `name` and read as unnamed; lines
+  written before the sha256 was recorded have no `source_sha256` and match the
+  source table by name.
 - `review/masks.jsonl` (Alfvén eigenmode only) gets one line per mask click:
   shot, the pseudo-mask's version and sha256, the regions rejected, `reviewer`
   (the server's login), `name` (the reviewer's name, or null), and time. A shot's last

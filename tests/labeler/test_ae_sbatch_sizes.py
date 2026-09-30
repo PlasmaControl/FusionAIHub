@@ -7,7 +7,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
 
 def test_poi_pilot_matches_four_workers_and_memory_uses_the_full_run():
     text = (SCRIPTS / "ae_seg_poi.sbatch").read_text()
-    assert "#SBATCH --mem=6200M" in text
+    assert "#SBATCH --mem=7500M" in text and "2945169" in text and "6,342,728K" in text
     pilot = next(line for line in text.splitlines() if "pilot:" in line)
     shots = pilot.split('SHOTS="')[1].split('"')[0].split()
     assert len(shots) >= 8

@@ -83,12 +83,14 @@ def test_the_coverage_figure(tmp_path):
     assert (tmp_path / "fig_coverage.pdf").is_file()
     shots, present, split, years = fig.axes
     assert _coming(shots) == 4 and _coming(present) == 4
-    assert [bar.get_width() for bar in shots.patches] == [4, 2], "reviewed, positive"
-    [legend] = fig.legends
+    assert [bar.get_width() for bar in shots.patches] == [4, 2], "labelled, positive"
+    legend, key = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
-        "reviewed",
+        "labelled",
         "with a present span",
-    ]
+    ], "AE's labelled shots are its reviewed ones"
+    assert [t.get_text() for t in key.get_texts()] == list(coverage.SUGGESTED)
+    assert years.get_legend() is None, "the years' entries are in the shared key"
     assert [bar.get_width() for bar in present.patches] == [0.9]
     assert "0.9" in _texts(present)
     assert [bar.get_height() for bar in split.patches] == [1, 1, 1, 1]
@@ -98,8 +100,8 @@ def test_the_coverage_figure(tmp_path):
         "test",
         "no\nsplit",
     ]
-    assert [bar.get_height() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
-    assert [t.get_text() for t in years.get_xticklabels()] == ["2024", "2025", "?"]
+    assert [bar.get_width() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
+    assert [t.get_text() for t in years.get_yticklabels()] == ["2024", "2025", "?"]
     assert "suggest" in years.get_title()
     assert tree.small_text(fig) == []
 
@@ -135,6 +137,9 @@ def test_the_fold_count_is_the_distinct_folds(tmp_path):
     assert coverage.fold_count(pd.DataFrame()) is None
 
 
+FOLDED_ROW = "AE & 198 & 198 & 198 & 316.3 & 120 & -- & 60 & 18 & -- & -- \\\\"
+
+
 def test_a_cross_validated_split_shows_its_folds(tmp_path):
     folded = coverage.Counts(**CROSS_VALIDATED)
     fig = coverage.draw_coverage(
@@ -149,7 +154,7 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
     ], "the folds' shots as one group, and no validation bar"
     assert tree.small_text(fig) == []
     lines = coverage.table_datasets({"alfven_eigenmode": folded}).splitlines()
-    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert lines[5] == FOLDED_ROW
     assert "AE's train shots are cross-validated over 5 folds" in lines[0]
     assert "no shot is held out for validation (--)" in lines[0]
     with_val = dataclasses.replace(folded, split={"train": 100, "val": 20, "test": 60})
@@ -161,7 +166,7 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
         "no\nsplit",
     ], "no validation bar in every case (the build names such shots, `CV_VAL`)"
     lines = coverage.table_datasets({"alfven_eigenmode": with_val}).splitlines()
-    assert "& 100 / -- / 60 &" in lines[5]
+    assert "& 100 & -- & 60 &" in lines[5]
     uncounted = dataclasses.replace(folded, folds=None)
     fig = coverage.draw_coverage({"alfven_eigenmode": uncounted}, tmp_path / "fig")
     assert [t.get_text() for t in fig.axes[2].get_xticklabels()] == [
@@ -170,7 +175,7 @@ def test_a_cross_validated_split_shows_its_folds(tmp_path):
         "no\nsplit",
     ], "cross-validated, its folds not counted: no count, and still no val"
     lines = coverage.table_datasets({"alfven_eigenmode": uncounted}).splitlines()
-    assert lines[5] == "AE & 198 & 198 & 316.3 & 120 / -- / 60 & 18 & -- & -- \\\\"
+    assert lines[5] == FOLDED_ROW
     assert lines[0].endswith(
         "; AE's train shots are cross-validated, so no shot is held out for "
         "validation (--)"
@@ -197,9 +202,9 @@ def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
         assert ax.get_legend() is None and len(ax.patches) == 0
     [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
-        "reviewed",
+        "labelled",
         "with a present span",
-    ]
+    ], "AE's labelled shots are its reviewed ones"
     assert tree.small_text(fig) == []
 
 
@@ -207,19 +212,21 @@ def test_the_datasets_table(tmp_path):
     counts = {"alfven_eigenmode": coverage.ae_counts(*_inputs(tmp_path))}
     lines = coverage.table_datasets(counts).splitlines()
     assert lines[0] == (
-        "% Shots per phenomenon: reviewed by a person, with any present span, the "
-        "model's split of the reviewed shots and those in no split (reviewed = "
-        "train + val + test + no split), and the extension's suggestions (not "
-        "labels); -- where that run has not happened"
-    ), "a validation split's comment, as before"
-    assert lines[1] == "\\begin{tabular}{lccccccc}"
+        "% Shots per phenomenon: labelled, reviewed by the owner, with any present "
+        "span and their present time, the model's split (Train, Val, Test) and the "
+        "extension's suggestions (not labels); -- where that run has not happened; "
+        "AE's labels are the owner's reviews, so its Labelled = Reviewed = Train + "
+        "Val + Test + No split (the reviewed shots saved after the model was "
+        "trained)"
+    ), "a validation split's comment: no frame phenomenon, no dagger"
+    assert lines[1] == "\\begin{tabular}{lcccccccccc}"
     assert lines[3] == (
-        "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
-        "& No split & Suggested & Suggested positive \\\\"
+        "Phenomenon & Labelled & Reviewed by the owner & Positive & Present (s) "
+        "& Train & Val & Test & No split & Suggested & Suggested positive \\\\"
     )
-    assert lines[5] == "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 \\\\"
+    assert lines[5] == "AE & 4 & 4 & 2 & 0.9 & 1 & 1 & 1 & 1 & 4 & 2 \\\\"
     assert lines[6:10] == [
-        f"{name} & \\multicolumn{{7}}{{c}}{{coming}} \\\\"
+        f"{name} & \\multicolumn{{10}}{{c}}{{coming}} \\\\"
         for name in ("NTM", "H-mode", "ELMing", "sawteeth")
     ]
 
@@ -228,4 +235,4 @@ def test_without_the_extension_the_table_says_so(tmp_path):
     saved, _, _ = _inputs(tmp_path)
     counts = {"alfven_eigenmode": coverage.ae_counts(saved, None, None)}
     lines = coverage.table_datasets(counts).splitlines()
-    assert lines[5] == "AE & 4 & 2 & 0.9 & -- & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 4 & 4 & 2 & 0.9 & -- & -- & -- & -- & -- & -- \\\\"

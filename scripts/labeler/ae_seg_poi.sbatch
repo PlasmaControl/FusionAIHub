@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=6200M
+#SBATCH --mem=7500M
 #SBATCH --time=00:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -20,9 +20,20 @@
 #               At least 8 shots: two shots per worker, all four workers active.
 #   full run:   sbatch --dependency=afterok:<the ae_seg_train job> <this>
 #   new shots:  FROM_CORPUS=1 SHOTS="<shots>" sbatch <this>
+#   v2:         VERSION=v2 sbatch --dependency=afterok:<the v2 ae_seg_train job> <this>
+#               -> poi/alfven_eigenmode/ae_seg-v2 and gallery/alfven_eigenmode/ae_seg-v2
+#   v3:         VERSION=v3 SHOTS="170659 172011 170795 170719 172008 172012 172018 171999"
+#               sbatch <this> (pilot), then VERSION=v3 sbatch <this>
+#               -> poi/alfven_eigenmode/ae_seg-v3 and gallery/alfven_eigenmode/ae_seg-v3
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26, login node)
+# ------------------------------------------ sizing (measured 2026-09-29, v2's full run 2945169)
+#   SegNet v2 over 0-250 kHz and whole records, 180 shots, 4 workers: 2 min 50 s, CPU 80.6 %;
+#   sacct MaxRSS 6,342,728K, 99.9 % of 6200M (jobstats, sampling every 30 s, read 80.3 %).
+#   mem=7500M     6194 MiB x 1.2 is 7433 MiB; rounded up.
+#   v3 (an estimate from v2's run, not measured): the same network, band and shots, so the
+#   same 6,342,728K at 7500M and ~2 min 50 s; check it on the v3 pilot's MaxRSS.
+# before v2 (measured 2026-09-26, login node):
 #   probe, 2 store shots, 2 workers: 8.7 s wall with ~4 s of start-up, largest process 1.08 GB;
 #   1 corpus shot: 7.9 s, 1.37 GB.
 #   mem=6200M     full run 2942540: sacct MaxRSS 5,240,864K at 5G, at the limit;
@@ -36,11 +47,12 @@ ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
-echo "job ${SLURM_JOB_ID:-none} on $(hostname) at $(date -Is), root $ROOT"
+VERSION="${VERSION:-v1}"
+echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"
 # SHOTS is left unquoted on purpose: it is a list of shot numbers.
 # shellcheck disable=SC2086
-srun "$ENV/bin/python" -m labeler.ae.seg.poi --workers "${SLURM_CPUS_PER_TASK:-4}" \
-    ${FROM_CORPUS:+--from-corpus} ${SHOTS:+--shots $SHOTS}
+srun "$ENV/bin/python" -m labeler.ae.seg.poi --version "$VERSION" \
+    --workers "${SLURM_CPUS_PER_TASK:-4}" ${FROM_CORPUS:+--from-corpus} ${SHOTS:+--shots $SHOTS}
 echo "finished at $(date -Is)"

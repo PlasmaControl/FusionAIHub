@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=3200M
+#SBATCH --mem=4500M
 #SBATCH --time=01:30:00
 #SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
 #SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/runs/slurm/%j.out
@@ -33,7 +33,12 @@
 #   full run:   sbatch --dependency=afterok:<cv array id> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
 #
-# ------------------------------------------ sizing (measured 2026-09-26, v1's train header)
+# ------------------------------------------ sizing (measured 2026-09-29, v3's final, job 2944533)
+#   The choice: 5 s, MaxRSS 231,232 KiB. The final model, band0-mhd3 on 120 shots for
+#   18 epochs: 10 min 1 s, sacct MaxRSS 3,824,656 KiB (3735 MiB), CPU 84.2 %.
+#   mem=4500M      3735 MiB x 1.2 is 4482 MiB; rounded up.
+#   time=01:30:00  kept: 60 epochs, the most a final trains, take about 33 min; x 2.7.
+# before v3 (measured 2026-09-26, v1's train header):
 #   The choice reads 15 small npz records: seconds.
 #   v1's full runs: 88 train shots, ~21 s an epoch (band80, 4 threads; 44 batches of 16
 #   crops at 0.47 s); peak RSS 2311 MB with 104 shots loaded, 1182 MB with 20
@@ -48,7 +53,7 @@ ROOT="$("$ENV/bin/python" "$REPO/src/labeler/env.py" LABELER_ROOT "/scratch/gpfs
 export LD_LIBRARY_PATH="$ENV/lib:${LD_LIBRARY_PATH:-}"
 export LABELER_ROOT="$ROOT" PYTHONPATH="$REPO/src"
 export LABELER_LABEL_TABLES="${LABELER_LABEL_TABLES:-/scratch/gpfs/nc1514/FusionAIHub/data/events}"
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 HDF5_USE_FILE_LOCKING=FALSE LABELER_NO_FETCH=1
 cd "$REPO"
 VERSION="${VERSION:-v2}"
 echo "job ${SLURM_JOB_ID:-none} ($VERSION) on $(hostname) at $(date -Is), root $ROOT"

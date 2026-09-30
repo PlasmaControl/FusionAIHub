@@ -8,8 +8,10 @@ is Thomson scattering's hottest core chords, every 10 ms (`te_panels`).
 The SXR row draws the `CHOSEN` chords of the first lit fan with the most
 crash-like drops over the Ip flat-top (`crash_drops`), not the brightest: on
 about 25 shots the brightest sit near 4.6 V and barely move (189061's chords 10
-and 12, against 9 and 11 that crash). A shot without ECE, Thomson or SXR gets
-the others' rows alone.
+and 12, against 9 and 11 that crash). Its chords are clipped to their robust
+range over the plasma window (`_shared.robust_clip`), as the ELM D-alpha rows
+are, so a spike after the plasma does not set the row's scale. A shot without
+ECE, Thomson or SXR gets the others' rows alone.
 """
 
 from __future__ import annotations
@@ -19,9 +21,17 @@ from scipy.ndimage import uniform_filter1d
 
 from ...config import Paths
 from .. import spans
+from ..heuristics import SXR_CHORDS, SXR_FANS, SXR_LIT_FRAC, SXR_MIN_CHORDS
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
-from ._shared import despike, optional, plasma_window, robust_limits
+from ._shared import (
+    CLIPPED,
+    despike,
+    optional,
+    plasma_window,
+    robust_clip,
+    robust_limits,
+)
 
 #: Four rows of four ADJACENT channels covering 20-35, sixteen in all. The
 #: flip a sawtooth crash makes is a RELATIVE thing - inner channels drop as
@@ -61,15 +71,11 @@ TE_MARGIN = 0.25
 TE_CLIPPED = ", clipped above its plasma range"
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
-#: the record is drawn: its `CHOSEN` chords with the most crash-like drops.
-SXR_ARRAYS = (
-    ("SX90RM1F", 192),
-    ("SX90RP1F", 256),
-    ("SX90RM1S", 224),
-    ("SX90RP1S", 288),
-)
-CHORDS = 32
-MIN_CHORDS = 8
+#: the record is drawn: its `CHOSEN` chords with the most crash-like drops. The
+#: rule is `heuristics.SXR_FANS`, which the sawtooth detector's SXR part reads.
+SXR_ARRAYS = SXR_FANS
+CHORDS = SXR_CHORDS
+MIN_CHORDS = SXR_MIN_CHORDS
 CHOSEN = 4
 #: A crash-like drop: a sample where the `SMOOTH_SAMPLES`-sample mean falls by
 #: more than `DROP_SIGMA` standard deviations of its own sample-to-sample
@@ -170,13 +176,14 @@ def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
 
 def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     """The first lit fan's `CHOSEN` chords with the most crash-like drops, the
-    brighter first among equals, chosen over the whole record whatever the view."""
+    brighter first among equals, chosen and clipped over the whole record
+    whatever the view."""
     span = chord_span(shot, paths)
     for name, first in SXR_ARRAYS:
         rows = list(range(first, first + CHORDS))
         array = raw_signal(int(shot), "sxr", channels=rows, paths=paths)
         y = np.asarray(array.y)
-        lit = np.isfinite(y).mean(axis=1) >= 0.5
+        lit = np.isfinite(y).mean(axis=1) >= SXR_LIT_FRAC
         if lit.sum() < MIN_CHORDS:
             continue
         drops = np.full(CHORDS, -1)
@@ -185,14 +192,16 @@ def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         level[lit] = np.nanmedian(y[lit], axis=1)
         top = np.sort(np.lexsort((-level, -drops))[:CHOSEN])
         x = np.asarray(array.x)
+        chosen, clipped = robust_clip(x, y[top], plasma_window(shot, paths))
         if t_range is not None:
             keep = (x >= t_range[0]) & (x <= t_range[1])
-            x, y = x[keep], y[:, keep]
+            x, chosen = x[keep], chosen[:, keep]
         return [
             Panel(
-                title=f"SXR {name}, the {CHOSEN} chords with the most crash-like drops",
+                title=f"SXR {name}, the {CHOSEN} chords with the most crash-like drops"
+                + (CLIPPED if clipped else ""),
                 x=x,
-                y=y[top],
+                y=chosen,
                 legend=[f"{name}{c + 1:02d}" for c in top],
             )
         ]

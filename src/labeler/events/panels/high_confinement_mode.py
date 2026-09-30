@@ -3,9 +3,11 @@
 At the L-H transition the divertor D-alpha falls within a few ms while the
 density rises (v1 spec §6.2); the beams and beta_N say whether the shot was
 heated enough to get there and what the confinement did. D-alpha is the
-corpus's filterscopes FS01-FS08, what `dalpha_lh` reads; the density is the
-CO2 R0 chord averaged over 1 ms; the beams are the corpus's eight NBI powers
-summed; beta_N is the features store's.
+corpus's filterscopes FS01-FS08, what `dalpha_lh` reads, each clipped to its
+robust range over the plasma window (`_shared.robust_clip`) so a spike at the
+end of the discharge does not set the row's scale; the density is the CO2 R0
+chord averaged over 1 ms; the beams are the corpus's eight NBI powers summed;
+beta_N is the features store's.
 """
 
 from __future__ import annotations
@@ -14,7 +16,14 @@ import numpy as np
 
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
-from ._shared import betan_panel, bin_mean, optional
+from ._shared import (
+    CLIPPED,
+    betan_panel,
+    bin_mean,
+    optional,
+    plasma_window,
+    robust_clip,
+)
 
 DALPHA_CHANNELS = tuple(range(8))
 DENSITY_BIN_MS = 1.0
@@ -31,11 +40,12 @@ def dalpha_panel(shot, *, t_range=None, paths=None) -> list[Panel]:
     lit = [i for i, row in enumerate(fs.y) if np.isfinite(row).any()]
     if not lit:
         raise NoDataError(f"shot {int(shot)}: no finite D-alpha filterscope")
+    y, clipped = robust_clip(fs.x, fs.y[lit], plasma_window(shot, paths))
     return [
         Panel(
-            title="D-alpha filterscopes",
+            title="D-alpha filterscopes" + (CLIPPED if clipped else ""),
             x=fs.x,
-            y=fs.y[lit],
+            y=y,
             ylabel="D-α",
             legend=[f"FS{c + 1:02d}" for c in lit],
         )

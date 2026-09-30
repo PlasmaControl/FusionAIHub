@@ -1,0 +1,175 @@
+"""Round three's jobs, read from the scripts and never submitted: the new ones'
+scheduler contract and the flags they pass, SegNet's version, the frame models'
+variables and shards (Task 2.11), and no fetch in any job the round submits."""
+
+from __future__ import annotations
+
+import contextlib
+import importlib.util
+import io
+import re
+import sys
+from pathlib import Path
+
+import pytest
+
+from .test_ae_sbatch import EXPORTS, FLAG, OUT, _help, _runs, _sbatch, _script
+
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "labeler"
+TOKEYE_PY = "/scratch/gpfs/nc1514/tokeye/.venv/bin/python"
+#: The CPU jobs round three adds, and the commands each runs, in order.
+NEW_CPU = {
+    "ae_masks_full_check.sbatch": ("labeler.ae.full",),
+    "ae_below80.sbatch": ("labeler.ae.xpower.below80",),
+    "frames_shots.sbatch": ("labeler.frames.shots",),
+    "frames_prepare.sbatch": ("labeler.frames.prepare",),
+    "frames_train.sbatch": ("labeler.frames.train",),
+    "frames_apply.sbatch": ("labeler.frames.apply",),
+    "frames_gallery.sbatch": ("labeler.frames.gallery",),
+}
+#: Part B's jobs (Task 2.11), the variables they read (D67), and the arrays among them.
+FRAMES = tuple(sorted(name for name in NEW_CPU if name.startswith("frames_")))
+FRAMES_VARIABLES = {"METHOD", "PILOT", "LIMIT", "SHOTS", "FORCE", "SEED"}
+#: What every job reads besides: the checkout and the environment's own.
+SHARED_VARIABLES = {"REPO", "LABELER_LABEL_TABLES", "LD_LIBRARY_PATH"}
+ARRAYS = ("frames_apply.sbatch", "frames_prepare.sbatch")
+#: Every existing script round three submits.
+EXISTING = (
+    "ae_seg_poi.sbatch",
+    "ae_seg_train.sbatch",
+    "ae_xpower_cv.sbatch",
+    "ae_xpower_evaluate.sbatch",
+    "ae_xpower_extend.sbatch",
+    "ae_xpower_final.sbatch",
+    "ae_xpower_gallery.sbatch",
+    "review_build.sbatch",
+    "spans.sbatch",
+)
+
+
+def _first_run(text: str) -> int:
+    return text.index("\nsrun ")
+
+
+def _exported_before_the_run(text: str, name: str) -> bool:
+    """`name=1` on an export line above the first srun."""
+    head = text[: _first_run(text)]
+    return re.search(rf"^export .*(?<![\w-]){name}=1\b", head, re.MULTILINE) is not None
+
+
+@pytest.mark.parametrize("name", sorted(NEW_CPU))
+def test_a_new_cpu_job_on_the_short_queue_that_fetches_nothing(name):
+    text = _script(name)
+    queue = (_sbatch(text, "partition"), _sbatch(text, "qos"))
+    assert queue == ("pppl", "pppl-short-stellar")
+    assert _sbatch(text, "gres") is None and "--gpus" not in text
+    assert all(_sbatch(text, f) for f in ("cpus-per-task", "mem", "time"))
+    assert _sbatch(text, "output").startswith(OUT)
+    for export in EXPORTS:
+        assert -1 < text.find(export) < _first_run(text), export
+    assert _exported_before_the_run(text, "LABELER_NO_FETCH")
+    assert "python -m labeler.jobstats --job-id" in text and "--cpu-only" in text
+    assert "sizing (measured" in text
+
+
+@pytest.mark.parametrize("name", sorted(NEW_CPU))
+def test_a_new_cpu_job_passes_flags_its_commands_take(name):
+    runs = _runs(_script(name))
+    assert tuple(module for module, _ in runs) == NEW_CPU[name]
+    for module, flags in runs:
+        text = _help(module)
+        for flag in flags:
+            assert re.search(rf"(?<![\w-]){flag}\b", text), (module, flag)
+
+
+def _runner_help() -> str:
+    """`scripts/labeler/ae_masks_full.py --help`, loaded as its test loads it."""
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "ae_masks_full_help", SCRIPTS / "ae_masks_full.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), pytest.raises(SystemExit):
+            module.main(["--help"])
+    finally:
+        sys.path.remove(str(SCRIPTS))
+    return out.getvalue()
+
+
+def test_tokeye_over_whole_shots_is_the_one_gpu_job():
+    text = _script("ae_masks_full.sbatch")
+    assert (_sbatch(text, "partition"), _sbatch(text, "gres")) == ("gpu", "gpu:1")
+    assert all(_sbatch(text, f) for f in ("cpus-per-task", "mem", "time"))
+    assert _sbatch(text, "output").startswith(OUT)
+    first = _first_run(text)
+    assert -1 < text.find(f"PY={TOKEYE_PY}") < first, "the tokeye venv"
+    assert -1 < text.find('PYTHONPATH="$ROOT/ae/pylibs:$REPO/src"') < first
+    assert -1 < text.find("nvidia-smi --query-gpu=name,memory.total") < first
+    assert _exported_before_the_run(text, "LABELER_NO_FETCH")
+    assert _exported_before_the_run(text, "HF_HUB_OFFLINE")
+    assert "python -m labeler.jobstats --job-id" in text and "--gpu" in text
+    assert "sizing (measured" in text
+    lines = text.replace("\\\n", " ").splitlines()
+    [run] = [line for line in lines if line.startswith("srun ")]
+    assert run.startswith('srun "$PY" -u "$REPO/scripts/labeler/ae_masks_full.py"')
+    flags = re.findall(FLAG, run)
+    assert {"--device", "--batch", "--workers", "--tile-ms"} <= set(flags)
+    helped = _runner_help()
+    for flag in flags:
+        assert re.search(rf"(?<![\w-]){flag}\b", helped), flag
+
+
+@pytest.mark.parametrize("name", EXISTING)
+def test_every_job_the_round_submits_fetches_nothing(name):
+    assert _exported_before_the_run(_script(name), "LABELER_NO_FETCH"), name
+
+
+def test_segnet_trains_scores_and_draws_the_version_it_is_given():
+    text = _script("ae_seg_train.sbatch")
+    assert 'VERSION="${VERSION:-v1}"' in text, "v1 by default, so v1's commands mean v1"
+    assert 'MODELS="$ROOT/models/ae_seg/$VERSION"' in text
+    for module, flags in _runs(text):
+        assert "--version" in flags, module
+    assert text.count('--version "$VERSION"') == 2, "both runs take the variable"
+    assert 'PILOT_DIR="$PILOT_DIR-$VERSION"' in text, "a v2 pilot is not v1's"
+    poi = _script("ae_seg_poi.sbatch")
+    assert 'VERSION="${VERSION:-v1}"' in poi
+    [(module, flags)] = _runs(poi)
+    assert module == "labeler.ae.seg.poi" and "--version" in flags
+    assert poi.count('--version "$VERSION"') == 1
+
+
+def _variables(text: str) -> set[str]:
+    """The variables a script reads from its caller: those it uses and never sets,
+    and those it sets only to a default of their own (`X="${X:-...}"`)."""
+    body = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("#")
+    )
+    used = set(re.findall(r"\$\{?([A-Za-z_]\w*)", body))
+    assigned = set(re.findall(r"(?:^|\s)([A-Za-z_]\w*)=", body, re.MULTILINE))
+    defaulted = set(
+        re.findall(r"(?:^|\s)([A-Za-z_]\w*)=\"\$\{\1:-", body, re.MULTILINE)
+    )
+    return {v for v in used - (assigned - defaulted) if not v.startswith("SLURM_")}
+
+
+@pytest.mark.parametrize("name", FRAMES)
+def test_a_frames_job_reads_only_its_variables(name):
+    text = _script(name)
+    assert _variables(text) <= FRAMES_VARIABLES | SHARED_VARIABLES, name
+    assert "METHOD" in _variables(text)
+    assert 'REPO="${REPO:-/scratch/gpfs/nc1514/FusionAIHub}"' in text
+    assert "--gres" not in text and "gpu" not in _sbatch(text, "partition")
+    assert "estimate" in text.split("sizing (measured", 1)[1]
+
+
+@pytest.mark.parametrize("name", ARRAYS)
+def test_a_frames_array_takes_its_shard_from_slurm(name):
+    lines = _script(name).replace("\\\n", " ").splitlines()
+    [run] = [line for line in lines if line.startswith("srun ")]
+    assert '--index "${SLURM_ARRAY_TASK_ID:-0}"' in run
+    assert '--count "${SLURM_ARRAY_TASK_COUNT:-1}"' in run
+    assert run.rstrip().endswith('"$@"')  # --stores, --roster, --population, --merge
