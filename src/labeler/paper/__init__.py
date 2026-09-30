@@ -3,28 +3,39 @@
 The manuscript (`dev/label_paper`: "Tokamak-SI: Automatic Shot Interpreter with
 a Catalog of Fusion Reactor Data") shows the interpreter on one phenomenon, AE,
 first. A figure that will show every paper phenomenon (`ORDER`: the catalog's,
-less disruption for now) draws all five now. The score figures draw AE from the
-round-two runs and the other four as empty panels marked "coming", so the layout
-and sizes are settled before their numbers exist. The coverage figure and table
-count all five: AE from the round-two runs, the other four from their frame
-models' splits (the original labels with the owner's reviews over them, F2),
-the owner's review and the applications; only a phenomenon with none of its
-inputs yet is marked "coming".
+less disruption for now) draws all five now. The score figure draws each
+phenomenon's selected model: its test F1, and its ROC and precision-recall
+curve over the same test shots.
+The coverage figure and table count all five: AE from the round-two runs, the
+other four from their frame models' splits (the original labels with the
+owner's reviews over them, F2), the owner's review and the applications; only a
+phenomenon with none of its inputs yet is marked "coming".
 
-- `scores`: the AE methods' frame scores (one panel per phenomenon), their
-  false-positive rates on MHD frames, the segmentation's scores, and tables;
+- `scores`: the selected models' test F1, ROC and PR (`fig_scores`), and the AE
+  methods' and the segmentation's score tables;
+- `roc`: each selected model's ROC and PR over the test shots its F1 was scored on,
+  recorded as `roc.json` beside its evaluation;
 - `coverage`: labelled, reviewed, positive and suggested shots per phenomenon;
-- `shots`: one discharge as the interpreter shows it, and AE examples;
+- `shots`: AE examples from the test shots, and the pieces of a shot figure
+  the interpreter figure shares (the spectrogram, the mask, the state bars,
+  the legend);
+- `frame_examples`: the frame models' examples (`fig_examples_ntm`,
+  `fig_examples_hmode`, `fig_examples_elm`, `fig_examples_sawtooth`): three test
+  shots each, the best, median and worst F1, drawn as the frames gallery draws
+  a test shot (`labeler.frames.gallery`);
+- `roster`: the interpreter figure, `fig_interpreter`: one roster shot's
+  suggestions from the models, every phenomenon on it;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
   manuscript's `figures/`;
 - `snapshot`: each file the build reads, read once and pinned by its sha256;
 - `staging`: the directory the build draws into, and the swap that puts it in
   the old output's place.
 
-Nothing here trains or fetches. The score figures and tables read the JSON the
-evaluations wrote; to rank and draw the example and interpreter shots, `build`
-runs the chosen model over its test shots' review stores, against the labels it
-was scored on. `build` records every input it read.
+Nothing here trains or fetches. The score figure and tables read the JSON the
+evaluations and `roc` wrote; to rank and draw the example shots, `build` runs the chosen
+model over its test shots' review stores, against the labels it was scored on,
+and to draw the interpreter figure, over its roster shot's corpus CO2. `build`
+records every input it read.
 """
 
 from __future__ import annotations
@@ -47,6 +58,9 @@ COLUMN_IN = 3.25  # ICML \columnwidth, inches
 PAGE_IN = 6.75  # ICML \textwidth
 FONT_PT = 7
 COMING = "coming"
+#: torch's threads: the build and the roster CLI run one shot at a time, on the
+#: login node.
+LOGIN_THREADS = 2
 STYLE = {
     "font.size": FONT_PT,
     "axes.titlesize": FONT_PT,

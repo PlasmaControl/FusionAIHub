@@ -1,12 +1,10 @@
-"""The one-discharge interpreter figure and the AE examples."""
+"""The AE examples: a test shot's picture, its mask and the examples figure."""
 
 from __future__ import annotations
 
 import dataclasses
-import re
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from labeler.ae.seg import EVENT as SEG_EVENT
@@ -14,9 +12,7 @@ from labeler.ae.seg import train as seg_train
 from labeler.ae.seg.poi import ae_pixels
 from labeler.ae.xpower.data import BAND_KHZ, band_slice, store_rows
 from labeler.ae.xpower.evaluate import chosen_model
-from labeler.events.catalog.states import UNCERTAIN
-from labeler.paper import COMING, shots
-from labeler.scoring.frames import FRAME_MS
+from labeler.paper import shots
 
 from . import ae_tree, paper_tree
 
@@ -95,27 +91,15 @@ def test_examples_run_from_the_best_test_shot_to_the_worst():
     assert shots.pick_examples(F1) == [1, 5, 2]
     assert shots.pick_examples(F1, n=5) == [1, 4, 5, 2]
     assert shots.pick_examples(F1, n=1) == [1]
-    points = pd.DataFrame({"shot": [4, 2]})
-    assert shots.interpreter_pick(F1, points)["shot"] == 4
-    assert shots.interpreter_pick(F1, None)["shot"] == 1
-    with pytest.raises(ValueError, match="no test shot"):
-        shots.interpreter_pick({6: float("nan")}, None)
+    assert shots.pick_examples({10: 0.9, 13: 0.99, 14: 1.0}, 2) == [14, 10]
 
 
-def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
+def test_the_examples_mask_is_a_fill_with_an_outline(tree, tmp_path):
     paths, model_file = tree
     s = _masked(shots.ae_shot(paths, 102, model_file=model_file), (300.0, 900.0))
-    fig = shots.draw_interpreter(s, tmp_path / "fig_interpreter")
-    assert (tmp_path / "fig_interpreter.pdf").is_file()
-    spec, *tracks = fig.axes
-    assert [ax.get_ylabel() for ax in tracks] == [
-        "AE",
-        "NTM",
-        "H-mode",
-        "ELMing",
-        "sawteeth",
-    ]
-    assert [t.get_text() for ax in tracks for t in ax.texts] == [COMING] * 4
+    fig = shots.draw_examples([s], tmp_path / "fig_examples")
+    assert (tmp_path / "fig_examples.pdf").is_file()
+    spec, strip, _ = fig.axes
     assert not spec.texts and not spec.patches, "no boxes, no numbers"
     [mask] = _mask_images(spec)
     assert mask.get_label() == shots.MASK_LABEL
@@ -127,7 +111,7 @@ def test_the_interpreter_figure_has_a_track_per_phenomenon(tree, tmp_path):
     x0, y0, x1, y1 = outline.get_paths()[0].get_extents().extents
     assert (x0, x1) == pytest.approx((300.0, 900.0), abs=s.grid.dt_ms)
     assert (y0, y1) == pytest.approx((140.0, 152.0), abs=s.dy)
-    [present] = tracks[0].collections[0].get_paths()
+    [present] = strip.collections[0].get_paths()
     extent = present.get_extents()
     assert (extent.x0, extent.x1) == (300.0, 900.0), "the owner's present frames"
     labels = [t.get_text() for t in fig.legends[0].get_texts()]
@@ -171,136 +155,10 @@ def test_the_scored_window_is_marked(tree, tmp_path):
         prob=np.r_[s.prob, np.zeros(100)],
         owner=np.r_[s.owner, np.zeros(100, dtype=s.owner.dtype)],
     )
-    for draw, name in (
-        (shots.draw_interpreter, "fig_interpreter"),
-        (lambda x, stem: shots.draw_examples([x], stem), "fig_examples"),
-    ):
-        fig = draw(late, tmp_path / name)
-        spec = fig.axes[0]
-        assert shots.SCORED_LABEL in [t.get_text() for t in spec.texts]
-        assert any(
-            list(line.get_xdata()) == [shots.SCORED_MS] * 2 for line in spec.lines
-        )
-
-
-def _owner(*spans: tuple[int, int, int], n: int = 200) -> np.ndarray:
-    """Per-frame owner states from `(first, stop, state)` spans; absent elsewhere."""
-    owner = np.zeros(n, dtype=np.int8)
-    for a, b, state in spans:
-        owner[a:b] = state
-    return owner
-
-
-def test_the_off_period_is_the_longest_run_of_absent_frames_inside_the_ae_span():
-    lead_in = _owner((30, 200, 1), n=250)  # absent before breakdown, then after 2 s
-    gap = _owner((30, 100, 1), (120, 200, 1))  # AE turns off for 200 ms, then on
-    two = _owner((30, 100, 1), (103, 110, 1), (113, 200, 1))  # off twice, 30 ms
-    unsure = _owner((30, 100, 1), (105, 106, UNCERTAIN), (120, 200, 1))
-    trailing = _owner((30, 150, 1))  # AE turns off at 1.5 s and never comes back
-    late = _owner((30, 190, 1), (210, 250, 1), n=250)  # back on only after 2 s
-    assert shots.longest_off(lead_in, first=0) == 0
-    assert shots.longest_off(gap, first=0) == 20
-    assert shots.longest_off(two, first=0) == 3, "the longest run, not the sum"
-    assert shots.longest_off(unsure, first=0) == 14, "an uncertain frame is not off"
-    assert shots.longest_off(trailing, first=0) == 0, "off for good is not a gap"
-    assert shots.longest_off(late, first=0) == 0, "the scored window is 0-2 s"
-    assert shots.longest_off(_owner(), first=0) == 0, "no AE at all"
-    assert shots.longest_off(gap, first=100) == 0, "frames 100.. : 1-2 s only"
-
-
-def test_the_pool_needs_5_whole_absent_frames():
-    assert shots.MIN_GAP_FRAMES == 5
-    assert shots.MIN_GAP_FRAMES * FRAME_MS == 50
-    four = _owner((30, 100, 1), (104, 200, 1))
-    five = _owner((30, 100, 1), (105, 200, 1))
-    threes = _owner((30, 100, 1), (103, 110, 1), (113, 200, 1))
-    owners = {1: four, 2: five, 3: threes}
-    gaps = {s: shots.longest_off(owner, first=0) for s, owner in owners.items()}
-    assert gaps == {1: 4, 2: 5, 3: 3}
-    f1 = {1: 1.0, 2: 0.99, 3: 0.995}
-    poi = pd.DataFrame({"shot": [1, 2, 3]})
-    pick = shots.interpreter_pick(f1, poi, gaps)
-    assert (pick["shot"], pick["branch"]) == (2, shots.POOL_GAP), (
-        "a 4-frame gap and two separate 3-frame gaps are out; 5 frames are in"
-    )
-    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 1, "longest_off_frames": 5}}
-    short = shots.interpreter_pick(f1, poi, {1: 4, 3: 3})
-    assert (short["shot"], short["branch"]) == (1, shots.POOL_FALLBACK)
-
-
-OFF_FRAMES = (
-    "at least 5 whole consecutive absent 10 ms frames between the owner's first "
-    "and last present frames in 0-2 s"
-)
-
-
-def test_the_pool_texts_say_only_what_the_code_checks():
-    """Whole frames: 5 absent frames are an off-period of 50 ms or more, but one
-    of 50-59 ms off the 10 ms grid can hold only 4. So each text gives the rule
-    in frames, and 50 ms only as what the frames imply for a shot in the pool."""
-    texts = {
-        "INTERPRETER_RULE": shots.INTERPRETER_RULE,
-        "POOL_GAP": shots.POOL_GAP,
-        "POOL_FALLBACK": shots.POOL_FALLBACK,
-        "POOL_UNMARKED": shots.POOL_UNMARKED,
-    }
-    for name, text in texts.items():
-        assert OFF_FRAMES in text, name
-    assert shots.POOL_GAP.endswith(f"{OFF_FRAMES} (so an off-period of at least 50 ms)")
-    assert "so an off-period of at least 50 ms" in shots.INTERPRETER_RULE
-    said = {name: re.findall(r"\d+ ms", text) for name, text in texts.items()}
-    assert said == {
-        "INTERPRETER_RULE": ["10 ms", "50 ms"],
-        "POOL_GAP": ["10 ms", "50 ms"],
-        "POOL_FALLBACK": ["10 ms"],
-        "POOL_UNMARKED": ["10 ms"],
-    }, "no text says what a 54 ms off-period of 4 whole frames would make false"
-    named = shots.POOL_UNMARKED.format(shots="2, 3")
-    assert "no point of interest (2, 3) have at least 5 whole" in named
-
-
-def test_the_interpreter_shows_a_shot_where_ae_turns_off_and_on():
-    lead_in, gap = _owner((30, 200, 1)), _owner((30, 100, 1), (120, 200, 1))
-    trailing = _owner((30, 150, 1))  # AE ends before 2 s and never returns
-    owners = {1: lead_in, 2: gap, 3: trailing}
-    gaps = {s: shots.longest_off(owner, first=0) for s, owner in owners.items()}
-    f1 = {1: 1.0, 2: 0.99, 3: 0.995}
-    poi = pd.DataFrame({"shot": [1] * 3 + [2] * 9 + [3] * 4})
-    pick = shots.interpreter_pick(f1, poi, gaps)
-    assert pick["shot"] == 2, "the best F1 among the shots where AE comes back"
-    assert pick["branch"] == shots.POOL_GAP
-    assert pick["pool"] == {"2": {"f1": 0.99, "poi": 9, "longest_off_frames": 20}}
-
-
-def test_the_fallback_says_which_case_fired():
-    f1 = {1: 1.0, 2: 0.99, 3: 0.98}
-    poi = pd.DataFrame({"shot": [1, 1, 2, 3]})
-    none = shots.interpreter_pick(f1, poi, {1: 0, 2: 0, 3: 0})
-    assert (none["shot"], none["branch"]) == (1, shots.POOL_FALLBACK)
-    assert sorted(none["pool"]) == ["1", "2", "3"], "D40 as written"
-    marked = pd.DataFrame({"shot": [1]})
-    unmarked = shots.interpreter_pick(f1, marked, {1: 0, 2: 20, 3: 5})
-    assert unmarked["branch"] == shots.POOL_UNMARKED.format(shots="2, 3")
-    assert "2, 3" in unmarked["branch"], "the shots are named"
-    assert (unmarked["shot"], sorted(unmarked["pool"])) == (1, ["1"]), (
-        "the pool keeps D40's point of interest"
-    )
-    bare = shots.interpreter_pick(f1, None, {1: 0, 2: 0, 3: 0})
-    assert (bare["branch"], sorted(bare["pool"])) == (
-        shots.POOL_FALLBACK,
-        ["1", "2", "3"],
-    ), "no point of interest anywhere: every test shot"
-
-
-def test_the_interpreter_ties_go_to_fewer_points_then_the_lower_shot():
-    f1 = {10: 0.9, 11: 0.99, 12: 0.99004, 13: 0.99, 14: 1.0}
-    gaps = {10: 5, 11: 5, 12: 5, 13: 5, 14: 0}
-    poi = pd.DataFrame({"shot": [10] * 5 + [11] * 30 + [12] * 8 + [13] * 2 + [14]})
-    assert shots.interpreter_pick(f1, poi, gaps)["shot"] == 13, "F1 at 3 decimals"
-    even = pd.DataFrame({"shot": [11] * 3 + [13] * 3 + [12] * 3})
-    assert shots.interpreter_pick(f1, even, gaps)["shot"] == 11, "then the lower shot"
-    assert "absent" in shots.INTERPRETER_RULE
-    assert shots.pick_examples(f1, 2) == [14, 10]
+    fig = shots.draw_examples([late], tmp_path / "fig_examples")
+    spec = fig.axes[0]
+    assert shots.SCORED_LABEL in [t.get_text() for t in spec.texts]
+    assert any(list(line.get_xdata()) == [shots.SCORED_MS] * 2 for line in spec.lines)
 
 
 def test_the_scored_f1_is_over_0_to_2_s():
@@ -326,16 +184,13 @@ def test_the_examples_legend_is_what_the_panels_draw(tree, tmp_path):
     assert "owner: uncertain" not in shown and "owner: not observable" not in shown
     assert "owner: present" in shown and "model: present" in shown
     assert fig.axes[0].get_title() == (f"shot 102 (test): F1 (0-2 s) {two[0].f1:.2f}")
-    fig = shots.draw_interpreter(two[0], tmp_path / "fig_interpreter")
-    _legend_matches_drawn(fig)
-    assert paper_tree.small_text(fig) == []
 
 
 def test_a_mask_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
     paths, model_file = tree
     s = shots.ae_shot(paths, 102, model_file=model_file)
     late = _masked(s, (2100.0, 2180.0))  # drawn to 2050 ms; the store to 2200
-    fig = shots.draw_interpreter(late, tmp_path / "fig_interpreter")
+    fig = shots.draw_examples([late], tmp_path / "fig_examples")
     assert fig.axes[0].get_xlim()[1] < 2100.0
     [mask] = _mask_images(fig.axes[0])
     assert mask.get_label() == "_" + shots.MASK_LABEL, "drawn, clipped away"
@@ -343,7 +198,7 @@ def test_a_mask_wholly_off_the_axes_gets_no_legend_key(tree, tmp_path):
     assert shots.MASK_LABEL not in shown
     _legend_matches_drawn(fig)
     both = dataclasses.replace(late, mask=late.mask | _masked(s, (300.0, 900.0)).mask)
-    fig = shots.draw_interpreter(both, tmp_path / "fig_interpreter")
+    fig = shots.draw_examples([both], tmp_path / "fig_examples")
     shown = [t.get_text() for t in fig.legends[0].get_texts()]
     assert shots.MASK_LABEL in shown, "a pixel in view: keyed"
     _legend_matches_drawn(fig)

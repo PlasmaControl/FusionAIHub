@@ -44,9 +44,12 @@ def _npz(paths, method, shot):
         return {k: z[k] for k in z.files}
 
 
-def _save_model(paths, method, out=None, threshold=0.5, train_shots=()):
-    """A random model on the method's split, as `train.fit` saves one, trained
-    (so its record says) on `train_shots`."""
+def _save_model(
+    paths, method, out=None, threshold=0.5, train_shots=(), val_shots=(), model=None
+):
+    """A random model (or `model`) on the method's split, as `train.fit` saves
+    one, trained (so its record says) on `train_shots` and stopped on
+    `val_shots`."""
     spec = frames.SPECS[method]
     out = frames.model_dir(paths, method) if out is None else out
     subs = round(10 / spec.sub_ms)
@@ -59,10 +62,23 @@ def _save_model(paths, method, out=None, threshold=0.5, train_shots=()):
         "subs": subs,
         "width": 32,
         "split_sha256": hashlib.sha256(split).hexdigest(),
-        "shots": {"train": [int(s) for s in train_shots], "val": []},
+        "shots": {
+            "train": [int(s) for s in train_shots],
+            "val": [int(s) for s in val_shots],
+        },
     }
-    train.save(out, RowsCNN(WIDTHS[method], subs).eval(), record)
+    model = RowsCNN(WIDTHS[method], subs).eval() if model is None else model
+    train.save(out, model, record)
     return out
+
+
+def rechoose(out, threshold: float):
+    """A `threshold.json` beside `out`'s model.pt at `threshold`, holding what
+    `train.load` reads of the one `rethreshold` writes."""
+    sha = hashlib.sha256((out / "model.pt").read_bytes()).hexdigest()
+    path = out / train.THRESHOLD_FILE
+    path.write_text(json.dumps({"threshold": threshold, "model": {"sha256": sha}}))
+    return path
 
 
 def _resplit(paths, method, splits: dict) -> None:
@@ -466,3 +482,84 @@ def test_the_md_counts_the_test_shots_without_features(elm):
     assert record["test"]["left_out"] == {str(LABELS_SHOT): "no observed frame"}
     md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
     assert "- 1 test shots left out for missing features: no observed frame (1)" in md
+
+
+def _h_below_half(model, spec, shot):
+    """P(H) 0.4 on the H bins and 0.2 on the L bins: all L at 0.5, right at 0.3."""
+    prob = np.where(shot.states == PRESENT_T, 0.4, 0.2)
+    return np.where(shot.observed, prob, np.nan)
+
+
+def test_rethreshold_scores_the_test_again_and_keeps_the_old_record(tree, monkeypatch):
+    method, shot = "hmode_frames", SHOTS[HMODE]
+    frames_shots.make(tree, method)
+    assert prepare.prepare(tree, method, [shot])["written"] == [shot]
+    _resplit(tree, method, {shot: "test"})
+    out = _save_model(tree, method)
+    monkeypatch.setattr(evaluate, "model_probs", _h_below_half)
+    monkeypatch.setattr(evaluate, "git_dirty", lambda: False)  # committed code
+    with pytest.raises(ValueError, match="threshold.json"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    first = evaluate.evaluate(tree, method)
+    assert first["model"]["threshold_source"] == "training"
+    assert first["model"]["threshold_sha256"] is None
+    old = {s: (out / f"evaluation{s}").read_bytes() for s in (".json", ".md")}
+    # Without a threshold.json the test is scored once, and at the threshold
+    # it scored there is nothing to score again.
+    with pytest.raises(ValueError, match="threshold.json"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    rechoose(out, 0.5)
+    with pytest.raises(ValueError, match="already scored"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    path = rechoose(out, 0.3)
+    with pytest.raises(FileExistsError, match="once"):
+        evaluate.evaluate(tree, method)
+    assert {s: (out / f"evaluation{s}").read_bytes() for s in old} == old
+    record = evaluate.evaluate(tree, method, rethreshold=True)
+    kept = out / f"{evaluate.TRAINED_STEM}.json"
+    assert kept.read_bytes() == old[".json"]
+    assert (out / f"{evaluate.TRAINED_STEM}.md").read_bytes() == old[".md"]
+    assert json.loads((out / "evaluation.json").read_text()) == record
+    model = record["model"]
+    assert (model["threshold"], model["trained_threshold"]) == (0.3, 0.5)
+    assert model["threshold_source"] == "threshold.json"
+    assert model["threshold_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert record["previous_evaluation"] == {
+        "path": str(kept),
+        "sha256": hashlib.sha256(old[".json"]).hexdigest(),
+        "threshold": 0.5,
+    }
+    # The scores, the bar and effectively_always are the new threshold's.
+    assert first["scores"][method]["f1(H)"] == 0.0 and first["effectively_always"]
+    assert record["scores"][method]["f1(H)"] == record["scores"][method]["f1(L)"] == 1
+    assert record["bar"]["H1"] and not record["effectively_always"]
+    assert record["scores"]["always"] == first["scores"]["always"]
+    md = (out / "evaluation.md").read_text()
+    assert "Threshold 0.3, re-chosen on the val shots (threshold.json)" in md
+    assert f"{evaluate.TRAINED_STEM}.json" in md
+    # The trained threshold's record is never overwritten.
+    rechoose(out, 0.35)
+    with pytest.raises(FileExistsError, match="trained-threshold"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    assert kept.read_bytes() == old[".json"]
+
+
+@pytest.mark.parametrize("dirty", [True, None])
+def test_rethreshold_refuses_uncommitted_code(tree, monkeypatch, dirty):
+    """`--rethreshold` replaces a record that names its commit, so it is refused
+    first while the tree differs from the commit or git cannot say."""
+    method, shot = "hmode_frames", SHOTS[HMODE]
+    frames_shots.make(tree, method)
+    assert prepare.prepare(tree, method, [shot])["written"] == [shot]
+    _resplit(tree, method, {shot: "test"})
+    out = _save_model(tree, method)
+    monkeypatch.setattr(evaluate, "model_probs", _h_below_half)
+    evaluate.evaluate(tree, method)
+    rechoose(out, 0.3)
+    old = {s: (out / f"evaluation{s}").read_bytes() for s in (".json", ".md")}
+    monkeypatch.setattr(evaluate, "git_dirty", lambda: dirty)
+    monkeypatch.setattr(evaluate, "read_shots", lambda *a, **k: pytest.fail("read"))
+    with pytest.raises(RuntimeError, match="commit first"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    assert {s: (out / f"evaluation{s}").read_bytes() for s in old} == old
+    assert not list(out.glob(f"{evaluate.TRAINED_STEM}.*"))

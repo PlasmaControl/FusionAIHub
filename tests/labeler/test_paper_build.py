@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 import os
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -16,10 +15,24 @@ import h5py
 import pytest
 
 from labeler.ae import xpower
-from labeler.paper import build, coverage, shots
+from labeler.paper import (
+    AE,
+    ORDER,
+    build,
+    coverage,
+    frame_examples,
+    roc,
+    roster,
+    scores,
+    shots,
+)
 
 from . import ae_tree
 from . import paper_tree as tree
+
+EXAMPLES = tuple(
+    frame_examples.figure_name(m) for m in roc.SELECTED.values() if m != roc.AE_METHOD
+)
 
 
 @pytest.fixture(autouse=True)
@@ -31,12 +44,33 @@ def paths(tmp_path, monkeypatch):
 
 @pytest.fixture
 def runs(tmp_path, monkeypatch):
+    """The AE runs' records, and no roster candidate, so `fig_interpreter` is
+    skipped (`NO_ROSTER`) unless a test gives it one (`_roster`)."""
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})
     models = ae_tree.chosen(paths, {101: "train", 102: "test", 103: "test"})
     (models / "evaluation.json").write_text(json.dumps(tree.ae_evaluation()))
     tree.record_labels(paths)
     ae_tree.env(monkeypatch, paths)
+    monkeypatch.setattr(roster, "candidates", lambda paths, snap=None: [])
     return paths
+
+
+NO_ROSTER = {"reason": build.NO_CANDIDATE, "missing": []}
+
+
+def _roster(paths, monkeypatch, shots=(102,), corpus=(102,)) -> list:
+    """`shots` as the roster's candidates, over 0-1000 ms, and `corpus` with
+    1.2 s of corpus CO2."""
+    found = [roster.Candidate(s, 2024, (0, 1000)) for s in shots]
+    monkeypatch.setattr(roster, "candidates", lambda paths, snap=None: found)
+    ae_tree.corpus(paths.corpus.parent, corpus, seconds=(-0.1, 1.1))
+    return found
+
+
+def _no_old_keys(manifest: dict) -> None:
+    """The old AE-shot interpreter's keys are gone: `interpreter` alone."""
+    assert "interpreter" in manifest
+    assert not [k for k in manifest if k.startswith("interpreter_")], manifest
 
 
 def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
@@ -45,36 +79,25 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed["products"] == [
         "fig_coverage",
-        "fig_examples",
-        "fig_interpreter",
-        "fig_mhd",
+        "fig_examples_ae",
         "fig_scores",
         "table_ae_scores",
         "table_datasets",
         "table_differences",
     ]
     missing = _missing(build.inputs(runs)["seg_evaluation"])
-    assert printed["skipped"] == {
-        "fig_segmentation": missing,
+    assert _skipped(printed) == {
         "table_seg_scores": missing,
+        "fig_interpreter": NO_ROSTER,
     }
     assert printed["copied"] == sorted(p.name for p in dest.iterdir())
     assert printed["old_output_kept"] is None, "the old output was deleted whole"
-    assert len(printed["copied"]) == 8
+    assert len(printed["copied"]) == 6
     assert all(name.endswith((".pdf", ".tex")) for name in printed["copied"])
     manifest = json.loads((out / "manifest.json").read_text())
-    assert manifest["interpreter_shot"] == 102, "the best test shot; no POI yet"
+    assert manifest["interpreter"] is None
+    _no_old_keys(manifest)
     assert manifest["example_shots"] == [102, 103]
-    assert manifest["interpreter_rule"] == shots.INTERPRETER_RULE
-    rule = manifest["interpreter_rule"]
-    assert "at least 5 whole consecutive absent 10 ms frames" in rule, "MIN_GAP_FRAMES"
-    assert manifest["interpreter_branch"] == shots.POOL_FALLBACK, (
-        "AE ends at 900 ms and never comes back"
-    )
-    pool = manifest["interpreter_pool"]
-    assert sorted(pool) == ["102", "103"]
-    assert set(pool["102"]) == {"f1", "poi", "longest_off_frames"}
-    assert pool["102"]["longest_off_frames"] == 0
     assert manifest["example_rule"] == shots.EXAMPLES_RULE
     assert sorted(manifest["shot_f1"]) == ["102", "103"], "the shots drawn"
     assert set(manifest["shot_f1"]["102"]) == {"f1_0_2s", "f1_window"}
@@ -92,6 +115,12 @@ def test_the_build_draws_what_its_inputs_allow(runs, tmp_path, capsys):
         assert all((out / f).is_file() for f in files), name
 
 
+def _skipped(record: dict) -> dict:
+    """`skipped` without the frame models' example figures, which these tests
+    leave to `test_paper_frame_examples`."""
+    return {k: v for k, v in record["skipped"].items() if k not in EXAMPLES}
+
+
 def _missing(*paths) -> dict:
     return {"reason": build.MISSING, "missing": [str(p) for p in paths]}
 
@@ -107,31 +136,120 @@ def test_without_the_chosen_model_the_shot_figures_wait(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper")
     missing = _missing(build.inputs(runs)["ae_chosen"])
     assert manifest["skipped"]["fig_interpreter"] == missing
-    assert manifest["skipped"]["fig_examples"] == missing
+    assert manifest["skipped"]["fig_examples_ae"] == missing
     assert "fig_coverage" in manifest["products"], "the split is left empty"
-    assert "interpreter_shot" not in manifest
+    assert manifest["interpreter"] is None
 
 
-def test_the_interpreter_shot_can_be_named(runs, tmp_path):
-    manifest = build.build(runs, tmp_path / "paper", shot=103, examples=1)
-    assert (manifest["interpreter_shot"], manifest["example_shots"]) == (103, [102])
-    assert manifest["interpreter_rule"] == "named by --shot"
+def test_the_interpreter_is_the_roster_figure(runs, tmp_path, monkeypatch):
+    """The build draws `roster.draw`'s figure as `fig_interpreter`, from the
+    roster's pick, with the build's AE model (read once, as the examples read
+    it) and SegNet `--interpreter-seg-version` (v3, none here: no mask)."""
+    _roster(runs, monkeypatch)
+    drawn = []
+    draw = roster.draw
+
+    def spy(s, stem):
+        drawn.append((s, stem.name))
+        return draw(s, stem)
+
+    monkeypatch.setattr(roster, "draw", spy)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["products"]["fig_interpreter"] == build.files_of("fig_interpreter")
+    [(s, stem)] = drawn
+    assert (s.shot, stem, list(s.tracks)) == (102, "fig_interpreter", list(ORDER))
+    _no_old_keys(manifest)
+    found, got = build.inputs(runs), manifest["interpreter"]
+    assert (got["shot"], got["pick_rule"], got["candidates"]) == (
+        102,
+        roster.PICK_RULE,
+        1,
+    )
+    assert (got["ae_version"], got["seg_version"]) == ("v1", "v3")
+    assert got["ae_model"] == manifest["inputs"]["ae_model"]
+    assert got["seg_model"] is None and got["seg_band_khz"] is None
+    assert got["tables"] == dict.fromkeys(roster.TABLES.values())
+    assert got["stores"] == dict.fromkeys(roster.TABLES), "no store of 102's"
+    assert got["n_gate"] is None, "no n map to gate"
+    assert got["tier"] == roster.TIER == "suggestions"
+    no_mask = {
+        "reason": build.NO_INTERPRETER_MASK,
+        "missing": [str(found["interpreter_seg_model"])],
+    }
+    tables = [
+        {
+            "reason": build.NO_TRACK_TABLE,
+            "phenomenon": category,
+            "missing": [str(roster.table_file(runs, category))],
+        }
+        for category in roster.TABLES
+    ]
+    panels = [
+        {
+            "reason": build.NO_PANEL_STORE.format(f"no {p.title} data"),
+            "panel": p.title,
+            "missing": [str(runs.spectrogram_file(p.event, 102))],
+        }
+        for p in roster.PANELS
+    ]
+    assert manifest["partial"]["fig_interpreter"] == [no_mask, *tables, *panels]
+
+
+def test_the_interpreter_shot_must_be_a_roster_candidate(
+    runs, tmp_path, monkeypatch, capsys
+):
+    _roster(runs, monkeypatch, shots=(102, 103))
+    manifest = build.build(runs, tmp_path / "paper", shot=101, examples=1)
+    assert manifest["skipped"]["fig_interpreter"] == {
+        "reason": "101: not a non-blind roster shot with corpus CO2",
+        "missing": [],
+    }
+    assert manifest["interpreter"] is None
+    assert manifest["example_shots"] == [102], "the examples keep their own pick"
+    manifest = build.build(runs, tmp_path / "paper", shot=102)
+    assert manifest["interpreter"]["pick_rule"] == roster.NAMED == "named by --shot"
+    assert "fig_interpreter" in manifest["products"]
+    corpus = runs.corpus_file(103)
+    manifest = build.build(runs, tmp_path / "paper", shot=103)
+    entry = manifest["skipped"]["fig_interpreter"]
+    assert entry["reason"].startswith(f"{build.NO_CO2}: shot 103 has no corpus file")
+    assert entry["missing"] == [str(corpus)]
+    with pytest.raises(SystemExit):
+        build.main(["--help"])
+    said = " ".join(capsys.readouterr().out.split())
+    assert (
+        "--shot SHOT the interpreter's shot, which must be a roster candidate" in said
+    )
+    assert "--interpreter-seg-version" in said
+
+
+def test_the_interpreter_s_segnet_has_its_own_flag(runs, tmp_path, monkeypatch):
+    """`--seg-version` is the AE figures' SegNet, `--interpreter-seg-version`
+    the interpreter's; one version is one SegNet, read once."""
+    _roster(runs, monkeypatch)
+    tree.seg_record(runs)
+    v3 = tree.seg_model(runs, "v3")
+    out = tmp_path / "paper"
+    assert build.main(["--out", str(out), "--seg-version", "v1"]) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    pinned, got = manifest["inputs"], manifest["interpreter"]
+    assert (manifest["seg_version"], got["seg_version"]) == ("v1", "v3")
+    assert pinned["seg_model"]["path"].endswith("/models/ae_seg/v1/model.pt")
+    assert got["seg_model"] == pinned["interpreter_seg_model"]
+    assert got["seg_model"]["path"] == str(v3)
+    assert got["seg_band_khz"] is not None
+    argv = ["--out", str(out), "--interpreter-seg-version", "v1"]
+    assert build.main(argv) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert manifest["interpreter"]["seg_version"] == manifest["seg_version"] == "v1"
+    assert manifest["interpreter"]["seg_model"] == manifest["inputs"]["seg_model"]
+    assert "interpreter_seg_model" not in manifest["inputs"]
 
 
 def _skipped_shot_figures(manifest: dict, reason: str) -> None:
-    for product in ("fig_interpreter", "fig_examples"):
-        assert manifest["skipped"][product] == {"reason": reason, "missing": []}
-        assert product not in manifest["products"]
+    assert manifest["skipped"]["fig_examples_ae"] == {"reason": reason, "missing": []}
+    assert "fig_examples_ae" not in manifest["products"]
     assert "fig_scores" in manifest["products"], "the rest is drawn"
-
-
-def test_a_named_shot_without_a_label_or_a_store_is_refused(runs, tmp_path):
-    manifest = build.build(runs, tmp_path / "paper", shot=999)
-    _skipped_shot_figures(manifest, f"{build.NO_NAMED}: 999")
-    assert manifest["interpreter_shot"] == 999, "the manifest says which"
-    runs.spectrogram_file(xpower.EVENT, 103).unlink()
-    manifest = build.build(runs, tmp_path / "paper", shot=103)
-    _skipped_shot_figures(manifest, f"{build.NO_NAMED}: 103")
 
 
 def test_no_test_shot_with_an_f1_skips_the_shot_products(runs, tmp_path):
@@ -142,7 +260,6 @@ def test_no_test_shot_with_an_f1_skips_the_shot_products(runs, tmp_path):
     tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
     _skipped_shot_figures(manifest, build.NO_F1)
-    assert "interpreter_shot" not in manifest
 
 
 def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path):
@@ -152,15 +269,15 @@ def test_products_drawn_without_an_input_are_recorded_as_partial(runs, tmp_path)
         "reason": "extension not run: A2 failed (D47)",
         "missing": [str(found["summary"])],
     }
-    no_poi = {"reason": build.NO_POI, "missing": [str(found["poi"])]}
     no_mask = {"reason": build.NO_MASK, "missing": [str(found["seg_model"])]}
-    assert {k: _ae(v) for k, v in manifest["partial"].items()} == {
+    ae_own = {k: _ae(v) for k, v in manifest["partial"].items() if k != "fig_scores"}
+    assert ae_own == {
         "fig_coverage": [no_summary],
         "table_datasets": [no_summary],
-        "fig_interpreter": [no_mask, no_poi],
-        "fig_examples": [no_mask],
+        "fig_examples_ae": [no_mask],
         "table_differences": [_missing(found["seg_evaluation"])],
     }
+    assert manifest["partial"]["fig_scores"] == _unscored(runs, scored=(AE,))
     assert set(manifest["partial"]) <= set(manifest["products"])
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, tmp_path / "paper")
@@ -236,19 +353,20 @@ def _files(out: Path) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(out.iterdir())}
 
 
-def test_labels_missing_entirely_skip_and_never_crash(runs, tmp_path):
+def test_labels_missing_entirely_skip_and_never_crash(runs, tmp_path, monkeypatch):
     live = build.inputs(runs)["ae_labels"]
     live.unlink()
     out = tmp_path / "paper"
     manifest = build.build(runs, out)
     for product in ("fig_coverage", "table_datasets"):
         assert manifest["skipped"][product] == _missing(live)
-    assert "fig_examples" in manifest["products"], "from the model's own copy"
+    assert "fig_examples_ae" in manifest["products"], "from the model's own copy"
     copy = tree.scored_labels(runs)
     copy.unlink()
+    _roster(runs, monkeypatch)
     manifest = build.build(runs, out)
-    for product in ("fig_interpreter", "fig_examples"):
-        assert manifest["skipped"][product] == _missing(copy)
+    assert manifest["skipped"]["fig_examples_ae"] == _missing(copy)
+    assert "fig_interpreter" in manifest["products"], "it reads no labels"
     assert "fig_scores" in manifest["products"], "the rest is drawn"
     assert set(_files(out)) == {
         f for files in manifest["products"].values() for f in files
@@ -261,56 +379,10 @@ def test_a_test_shot_without_a_label_makes_the_shot_products_partial(runs, tmp_p
     copy.write_text("\n".join(r for r in rows if not r.startswith("103,")) + "\n")
     tree.record_labels(runs)
     manifest = build.build(runs, tmp_path / "paper")
-    for product in ("fig_interpreter", "fig_examples"):
-        assert product in manifest["products"]
-        assert {"reason": build.NO_LABEL, "shots": [103]} in manifest["partial"][
-            product
-        ]
+    assert "fig_examples_ae" in manifest["products"]
+    no_label = {"reason": build.NO_LABEL, "shots": [103]}
+    assert no_label in manifest["partial"]["fig_examples_ae"]
     assert manifest["example_shots"] == [102]
-    assert sorted(manifest["interpreter_pool"]) == ["102"]
-
-
-@pytest.mark.parametrize(
-    ("off_ms", "branch", "pool", "off"),
-    [
-        ((500, 600), shots.POOL_GAP, ["103"], 10),
-        ((500, 550), shots.POOL_GAP, ["103"], 5),
-        ((500, 540), shots.POOL_FALLBACK, ["102", "103"], 4),
-        ((502, 556), shots.POOL_FALLBACK, ["102", "103"], 4),
-        ((496, 550), shots.POOL_GAP, ["103"], 5),
-    ],
-    ids=["100-ms", "50-ms", "40-ms", "54-ms-in-4-frames", "54-ms-in-5-frames"],
-)
-def test_the_pool_is_the_test_shots_where_ae_comes_back(
-    runs, tmp_path, off_ms, branch, pool, off
-):
-    """AE is off from `off_ms[0]` to `off_ms[1]`; a frame a present span touches
-    is present, so 54 ms off the 10 ms grid is 4 whole absent frames (the
-    review's 175240, out) or 5 (170672, in)."""
-    copy = tree.scored_labels(runs)
-    rows = [r for r in copy.read_text().splitlines() if not r.startswith("103,")]
-    start, stop = off_ms
-    back = (
-        (0, 300, 0),
-        (300, start, 1),
-        (start, stop, 0),
-        (stop, 900, 1),
-        (900, 2000, 0),
-    )
-    copy.write_text("\n".join([*rows, *(f"103,{c},{a},{b}," for a, b, c in back)]))
-    tree.record_labels(runs)
-    manifest = build.build(runs, tmp_path / "paper")
-    assert manifest["interpreter_branch"] == branch, "5 whole absent frames are in"
-    if branch == shots.POOL_GAP:
-        assert manifest["interpreter_shot"] == 103, "the one shot where AE comes back"
-    else:
-        said = re.findall(r"\d+ ms", manifest["interpreter_branch"])
-        assert said == ["10 ms"], "nothing that AE off for 54 ms would make false"
-    drawn = manifest["interpreter_pool"]
-    assert sorted(drawn) == pool
-    assert (drawn["103"]["longest_off_frames"], drawn["103"]["poi"]) == (off, 0), (
-        "the off-period only; 900 ms to 2 s does not count"
-    )
 
 
 def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
@@ -336,7 +408,7 @@ def test_a_failure_mid_build_leaves_out_as_it_was(runs, tmp_path, monkeypatch):
     (xpower.model_dir(runs) / "chosen.json").unlink()
     manifest = build.build(runs, out)
     after = _files(out)
-    assert "fig_examples.pdf" not in after, "a skipped product leaves with its files"
+    assert "fig_examples_ae.pdf" not in after, "a skipped product leaves with its files"
     assert after["notes.txt"] == before["notes.txt"], "a file not ours is kept"
     assert json.loads(after["manifest.json"]) == manifest
 
@@ -453,12 +525,12 @@ def test_a_symlinked_out_keeps_its_link(runs, tmp_path):
     manifest = build.build(runs, out)
     assert out.is_symlink() and os.readlink(out) == str(target), "still that link"
     drawn = {f for files in manifest["products"].values() for f in files}
-    assert "fig_examples.pdf" not in drawn
+    assert "fig_examples_ae.pdf" not in drawn
     files = _files(target)
     assert set(files) == drawn | {"manifest.json", "notes.txt"}
     assert files["notes.txt"] == b"the owner's"
     assert json.loads(files["manifest.json"]) == manifest, "the new output"
-    assert list(tmp_path.rglob("fig_examples*")) == [], "no stale product anywhere"
+    assert list(tmp_path.rglob("fig_examples_ae*")) == [], "no stale product anywhere"
     assert sorted(p.name for p in target.parent.iterdir()) == ["paper"]
     assert _beside(tmp_path) == ["paper"], "nothing left beside the link"
 
@@ -513,7 +585,7 @@ def test_a_kept_old_output_is_named_and_the_build_succeeds(
     assert str(kept) in said.err
     assert (out / "notes.txt").read_text() == "the owner's", "not moved over"
     manifest = json.loads((out / "manifest.json").read_text())
-    assert "fig_examples" in manifest["products"], "the new output is in place"
+    assert "fig_examples_ae" in manifest["products"], "the new output is in place"
     assert _beside(tmp_path) == sorted(["paper", kept.name])
 
 
@@ -535,12 +607,6 @@ def _spy_reads(monkeypatch, opened: Counter) -> None:
 
 
 def test_the_manifest_pins_every_file_the_build_reads(runs, tmp_path, monkeypatch):
-    poi = build.inputs(runs)["poi"]
-    poi.parent.mkdir(parents=True)
-    poi.write_text(
-        "shot,region,t_start_ms,t_end_ms,f_lo_khz,f_hi_khz,pixels,in_scored_window\n"
-        "102,1,300,900,140,152,40,True\n"
-    )
     tree.seg_model(runs)
     opened: Counter = Counter()
     _spy_reads(monkeypatch, opened)
@@ -585,6 +651,30 @@ def test_the_snapshot_refuses_a_second_read(runs, tmp_path):
             "now": now,
         }
     }
+
+
+def test_the_snapshot_pins_bytes_its_caller_read(tmp_path):
+    """`pin` pins bytes read elsewhere as `read` pins its own, under the same
+    second-read guard, and `changed` hashes their file again."""
+    snap = build.Snapshot(tmp_path / "scratch")
+    path = tmp_path / "101.npz"
+    path.write_bytes(b"drawn")
+    data = path.read_bytes()
+    assert snap.pin("features", path, data) is data
+    assert snap.pinned["features"] == (path, hashlib.sha256(b"drawn").hexdigest())
+    for again in (
+        lambda: snap.pin("features", path, b"other"),
+        lambda: snap.read("features", path),
+    ):
+        with pytest.raises(ValueError, match="features: already read"):
+            again()
+    assert snap.sha("features") == hashlib.sha256(b"drawn").hexdigest()
+    snap.read("read", path)
+    with pytest.raises(ValueError, match="read: already read"):
+        snap.pin("read", path, data)
+    assert snap.changed() == {}
+    path.write_bytes(b"rewritten")
+    assert set(snap.changed()) == {"features", "read"}
 
 
 def test_an_input_changed_mid_build_is_recorded(runs, tmp_path, monkeypatch):
@@ -638,14 +728,12 @@ def test_labels_unlike_the_evaluations_refuse_the_shot_products(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper")
     assert manifest["labels_match"] is False
     assert "fig_scores" in manifest["products"], "the scores are the record's own"
-    for product in ("fig_interpreter", "fig_examples"):
-        entry = manifest["skipped"][product]
-        assert entry["reason"].startswith(build.LABELS_DIFFER), entry
-    assert "interpreter_shot" not in manifest
+    entry = manifest["skipped"]["fig_examples_ae"]
+    assert entry["reason"].startswith(build.LABELS_DIFFER), entry
     _name_labels(runs, None)
     manifest = build.build(runs, tmp_path / "paper")
     assert manifest["labels_match"] is None
-    assert manifest["skipped"]["fig_examples"]["reason"] == build.LABELS_UNNAMED
+    assert manifest["skipped"]["fig_examples_ae"]["reason"] == build.LABELS_UNNAMED
 
 
 def _name_copy(paths, sha: str) -> None:
@@ -672,7 +760,7 @@ def test_a_copy_unlike_labels_copy_sha256_refuses_the_shot_products(runs, tmp_pa
     _name_copy(runs, scored)
     manifest = build.build(runs, tmp_path / "paper")
     assert manifest["labels_match"] is True, "the copy's own sha256 is enough"
-    assert "fig_interpreter" in manifest["products"]
+    assert "fig_examples_ae" in manifest["products"]
 
 
 def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_path):
@@ -683,7 +771,7 @@ def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_pa
     rows += ["104,0,0,500,", "104,1,500,700,", "104,0,700,2000,"]  # in no split
     live.write_text("\n".join(rows) + "\n")
     after = build.build(runs, tmp_path / "after")
-    for key in ("shot_f1", "interpreter_pool", "example_shots", "interpreter_shot"):
+    for key in ("shot_f1", "example_shots"):
         assert after[key] == before[key], key
     assert after["labels_match"] is True, "the copy is the evaluation's"
     shas = after["labels_sha256"]
@@ -694,22 +782,19 @@ def test_the_scored_products_use_the_labels_the_model_was_scored_on(runs, tmp_pa
 
 AE_PRODUCTS = (
     "fig_scores",
-    "fig_mhd",
     "table_ae_scores",
-    "fig_segmentation",
     "table_seg_scores",
     "table_differences",
-    "fig_interpreter",
-    "fig_examples",
+    "fig_examples_ae",
 )
 
 
 FRAME_PRODUCTS = (
+    *EXAMPLES,
     "fig_scores",
-    "fig_mhd",
     "table_ae_scores",
     "fig_interpreter",
-    "fig_examples",
+    "fig_examples_ae",
 )
 
 
@@ -727,7 +812,6 @@ def test_version_v2_skips_until_its_records_exist(runs, tmp_path, capsys):
     printed = json.loads(capsys.readouterr().out)
     assert printed["products"] == [
         "fig_coverage",
-        "fig_segmentation",
         "table_datasets",
         "table_differences",
         "table_seg_scores",
@@ -740,16 +824,21 @@ def test_version_v2_skips_until_its_records_exist(runs, tmp_path, capsys):
         assert entry["missing"], product
         assert all("/v2/" in m for m in entry["missing"]), (product, entry)
     evaluation, chosen = models / "evaluation.json", models / "chosen.json"
-    assert manifest["skipped"]["fig_interpreter"]["missing"] == [
+    assert manifest["skipped"]["fig_examples_ae"]["missing"] == [
         str(evaluation),
         str(chosen),
     ]
-    assert manifest["skipped"]["fig_scores"]["missing"] == [str(evaluation)]
+    assert manifest["skipped"]["fig_interpreter"]["missing"] == [str(chosen)]
+    found = build.inputs(runs, "v2")
+    assert manifest["skipped"]["fig_scores"]["missing"] == [
+        str(found[build.evaluation_key(m)]) for m in roc.SELECTED.values()
+    ], "no selected model's evaluation"
+    assert manifest["skipped"]["fig_scores"]["missing"][0] == str(evaluation)
     assert manifest["partial"]["table_differences"] == [_missing(evaluation)]
     assert {"reason": build.NO_CHOSEN, "missing": [str(chosen)]} in manifest["partial"][
         "fig_coverage"
     ], "the owner's labels have no version"
-    frame = [k for k in manifest["inputs"] if not k.startswith(("seg_", "poi"))]
+    frame = [k for k in manifest["inputs"] if not k.startswith("seg_")]
     assert all("/v1/" not in manifest["inputs"][k]["path"] for k in frame)
     assert manifest["seg_labels_match"] is True
 
@@ -762,7 +851,7 @@ def test_version_v2_draws_from_v2_records(runs, tmp_path):
     assert build.main(["--out", str(out), "--version", "v2"]) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert (manifest["version"], manifest["seg_version"]) == ("v2", "v1")
-    assert manifest["skipped"] == {}
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
     assert set(AE_PRODUCTS) <= set(manifest["products"])
     assert manifest["labels_match"] is True
     pinned = manifest["inputs"]
@@ -771,7 +860,6 @@ def test_version_v2_draws_from_v2_records(runs, tmp_path):
     assert pinned["ae_scored_labels"]["path"] == str(
         models / "band80-mhd3" / "review" / "labels.csv"
     )
-    assert manifest["interpreter_shot"] == 102
 
 
 V1_DATASETS = (
@@ -942,8 +1030,7 @@ def test_validation_shots_in_a_cross_validated_split_are_named(
 
 def _seg_products_of(manifest: dict) -> dict:
     return {
-        k: manifest["partial"].get(k)
-        for k in ("fig_segmentation", "table_seg_scores", "table_differences")
+        k: manifest["partial"].get(k) for k in ("table_seg_scores", "table_differences")
     }
 
 
@@ -963,16 +1050,14 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     assert build.main(argv) == 0
     manifest = json.loads((out / "manifest.json").read_text())
     assert (manifest["version"], manifest["seg_version"]) == ("v2", "v1")
-    assert manifest["skipped"] == {}
-    assert {"fig_segmentation", "table_seg_scores", "table_differences"} <= set(
-        manifest["products"]
-    )
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
+    assert {"table_seg_scores", "table_differences"} <= set(manifest["products"])
     assert _seg_products_of(manifest) == dict.fromkeys(_seg_products_of(manifest))
     seg = runs.root / "models" / "ae_seg" / "v1"
     pinned = manifest["inputs"]
     assert pinned["seg_evaluation"]["path"] == str(seg / "evaluation.json")
     assert pinned["seg_labels"]["path"] == str(seg / "review" / "labels.csv")
-    assert pinned["poi"]["path"].endswith("/ae_seg-v1/poi.csv")
+    assert not [k for k in pinned if "poi" in k], "no points of interest are read"
     assert pinned["seg_model"]["path"] == str(seg / "model.pt"), "the mask's SegNet"
     assert pinned["ae_model"]["path"].startswith(str(models))
     assert manifest["labels_match"] is True, "the frame model on its own copy"
@@ -990,9 +1075,60 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
     said = "1 of the 2 test shots were v1's test shots, scored with v1's model"
     comment = (out / "table_ae_scores.tex").read_text().splitlines()[0]
     assert f"; {said} band80-mhd3" in comment, "counted from v1's records"
-    assert manifest["interpreter_pool"]["102"]["poi"] == 1, "the v1 POI boxes"
-    for product in ("fig_interpreter", "fig_examples"):
-        assert product not in manifest["partial"], manifest["partial"]
+    assert "fig_examples_ae" not in manifest["partial"], manifest["partial"]
+
+
+def test_version_v4_with_segnet_v4_names_v2s_scoring_and_the_reuse(runs, tmp_path):
+    """ae_xpower v4 beside SegNet v4: the second look names v2's scoring, and the
+    AE table and the segmentation's carry their reuse notes; the build is v2's else."""
+    from labeler.ae import seg as ae_seg
+    from labeler.ae.seg import train as seg_train
+    from labeler.ae.seg.model import SegNet, SegNetConfig
+
+    tree.seg_record(runs, "v4")
+    seg = runs.root / "models" / "ae_seg" / "v4"
+    record = json.loads((seg / "evaluation.json").read_text())
+    record["meta"]["version"] = "v4"
+    (seg / "evaluation.json").write_text(json.dumps(record))
+    for name in ("model.pt", "split.csv", "training.json"):
+        (seg / name).unlink(missing_ok=True)
+    seg_train.save(
+        seg,
+        SegNet(SegNetConfig(width=4)),
+        threshold=0.0,
+        split={},
+        history=[],
+        config=seg_train.TrainConfig(width=4),
+        inputs={},
+        band_khz=(60.0, 250.0),
+        version="v4",
+    )
+    tree.as_version(runs, "v2", keep=True)
+    models = tree.as_version(runs, "v4", keep=True)
+    scored = json.loads((models / "evaluation.json").read_text())
+    ae_note = xpower.reuse_note("v4", 2)
+    scored.setdefault("meta", {})["test_reuse"] = ae_note
+    (models / "evaluation.json").write_text(json.dumps(scored))
+    out = tmp_path / "paper"
+    argv = ["--out", str(out), "--version", "v4", "--seg-version", "v4"]
+    assert build.main(argv) == 0
+    manifest = json.loads((out / "manifest.json").read_text())
+    assert (manifest["version"], manifest["seg_version"]) == ("v4", "v4")
+    assert _skipped(manifest) == {"fig_interpreter": NO_ROSTER}
+    assert manifest["inputs"]["ae_model"]["path"].startswith(str(models))
+    assert manifest["inputs"]["seg_evaluation"]["path"] == str(seg / "evaluation.json")
+    look = manifest["second_look"]
+    assert (look["version"], look["shots"], look["of"]) == ("v2", 2, 2)
+    earlier = xpower.model_dir(runs, "v2")
+    assert manifest["inputs"]["ae_earlier_evaluation"]["path"] == str(
+        earlier / "evaluation.json"
+    )
+    comment = (out / "table_ae_scores.tex").read_text().splitlines()[0]
+    assert "2 of the 2 test shots were v2's test shots" in comment
+    assert f"; {ae_note}" in comment, "the frame model's own reuse note"
+    note = ae_seg.reuse_note("v4", record["counts"]["shots"])
+    comment = (out / "table_seg_scores.tex").read_text().splitlines()[0]
+    assert f"; {note}" in comment
 
 
 def test_the_segmentation_is_checked_against_its_own_copy(runs, tmp_path):
@@ -1004,15 +1140,14 @@ def test_the_segmentation_is_checked_against_its_own_copy(runs, tmp_path):
     assert manifest["seg_version"] == "v1"
     assert manifest["labels_match"] is True
     assert manifest["seg_labels_match"] is False
-    for product in ("fig_segmentation", "table_seg_scores"):
-        assert product in manifest["products"], "the scores are the record's own"
-        (entry,) = manifest["partial"][product]
-        assert entry["reason"].startswith(build.SEG_LABELS_DIFFER), entry
+    assert "table_seg_scores" in manifest["products"], "the scores are the record's"
+    (entry,) = manifest["partial"]["table_seg_scores"]
+    assert entry["reason"].startswith(build.SEG_LABELS_DIFFER), entry
     copy.unlink()
     manifest = build.build(runs, tmp_path / "paper")
     assert manifest["seg_labels_match"] is None
     no_copy = {"reason": build.NO_SEG_COPY, "missing": [str(copy)]}
-    assert manifest["partial"]["fig_segmentation"] == [no_copy]
+    assert manifest["partial"]["table_seg_scores"] == [no_copy]
 
 
 def test_a_seg_version_not_run_skips_only_the_segmentation(runs, tmp_path):
@@ -1024,15 +1159,171 @@ def test_a_seg_version_not_run_skips_only_the_segmentation(runs, tmp_path):
     manifest = json.loads((out / "manifest.json").read_text())
     seg = str(build.inputs(runs, "v2", "v9")["seg_evaluation"])
     assert "/ae_seg/v9/" in seg
-    assert manifest["skipped"] == {
-        "fig_segmentation": _missing(seg),
+    assert _skipped(manifest) == {
         "table_seg_scores": _missing(seg),
+        "fig_interpreter": NO_ROSTER,
     }
     unlooked = {
         "reason": build.NO_EARLIER,
         "missing": [str(xpower.model_dir(runs) / "evaluation.json")],
     }
     assert manifest["partial"]["table_differences"] == [_missing(seg), unlooked]
-    assert {"fig_scores", "fig_interpreter", "fig_examples"} <= set(
-        manifest["products"]
+    assert {"fig_scores", "fig_examples_ae"} <= set(manifest["products"])
+
+
+def _unscored(paths, scored=(), rocs=(), version=build.VERSION) -> list[dict]:
+    """fig_scores' `partial` entries: each phenomenon's without its evaluation
+    (not in `scored`), then without its ROC (not in `rocs`)."""
+    found, entries = build.inputs(paths, version), []
+    for category, method in roc.SELECTED.items():
+        if category not in scored:
+            where = [str(found[build.evaluation_key(method)])]
+            reason = build.NOT_SCORED_WHY
+            entries.append({"reason": reason, "phenomenon": category, "missing": where})
+        if category not in rocs:
+            where = [str(found[build.roc_key(method)])]
+            reason = build.NO_ROC_WHY
+            entries.append({"reason": reason, "phenomenon": category, "missing": where})
+    return entries
+
+
+def _selected_records(paths) -> dict[str, dict]:
+    """A frame evaluation for each frame model (F1 0.8 - 0.1 i) and a
+    `roc.json` for every selected model, each naming its evaluation's sha256."""
+    records = {}
+    for i, method in enumerate(roc.SELECTED.values()):
+        evaluation = roc.evaluation_file(paths, method, build.VERSION)
+        if method != roc.AE_METHOD:
+            v = round(0.8 - 0.1 * i, 2)
+            key = roc.f1_key(method)
+            f1 = {"intervals": {method: {key: tree.est(v, v - 0.1, v + 0.05)}}}
+            evaluation.parent.mkdir(parents=True, exist_ok=True)
+            evaluation.write_text(json.dumps(f1))
+        record = {
+            "auroc": 0.9,
+            "auprc": 0.8,
+            "positive_share": 0.3,
+            "curve": {"fpr": [0.0, 0.2, 1.0], "tpr": [0.0, 0.8, 1.0]},
+            "pr": {"recall": [0.0, 0.8, 1.0], "precision": [1.0, 0.7, 0.3]},
+            "threshold": {
+                "value": 0.5,
+                "fpr": 0.2,
+                "tpr": 0.8,
+                "precision": 0.7,
+                "recall": 0.8,
+            },
+            "evaluation": {"sha256": _sha(evaluation.read_text())},
+        }
+        roc.roc_file(paths, method, build.VERSION).write_text(json.dumps(record))
+        records[method] = record
+    return records
+
+
+def _spy_scores(monkeypatch) -> list:
+    drawn = []
+    draw = scores.draw_scores
+
+    def spy(selected, stem):
+        drawn.append(selected)
+        return draw(selected, stem)
+
+    monkeypatch.setattr(scores, "draw_scores", spy)
+    return drawn
+
+
+def test_fig_scores_draws_each_selected_models_f1_and_roc(runs, tmp_path, monkeypatch):
+    records = _selected_records(runs)
+    drawn = _spy_scores(monkeypatch)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert manifest["products"]["fig_scores"] == build.files_of("fig_scores")
+    assert "fig_scores" not in manifest["partial"]
+    [selected] = drawn
+    assert [s.category for s in selected] == list(ORDER)
+    assert [s.method for s in selected] == list(roc.SELECTED.values())
+    assert [s.roc for s in selected] == list(records.values())
+    assert selected[0].f1 == tree.ae_evaluation()["methods"]["ae_xpower"]["f1"]
+    assert [s.f1["value"] for s in selected[1:]] == [0.7, 0.6, 0.5, 0.4]
+    pinned, found = manifest["inputs"], build.inputs(runs)
+    for method in roc.SELECTED.values():
+        for key in (build.evaluation_key(method), build.roc_key(method)):
+            assert pinned[key]["path"] == str(found[key]), key
+            assert pinned[key]["sha256"] == _sha(found[key].read_text()), key
+    assert "frames_evaluation_hmode_frames" in pinned and "roc_ae_xpower" in pinned
+
+
+def test_a_selected_model_without_its_roc_or_evaluation_is_partial(
+    runs, tmp_path, monkeypatch
+):
+    _selected_records(runs)
+    found = build.inputs(runs)
+    found[build.roc_key("ntm_frames")].unlink()
+    moved = found[build.evaluation_key("hmode_frames")]
+    moved.write_text(moved.read_text() + "\n")  # not the evaluation its ROC names
+    found[build.evaluation_key("elm_frames")].unlink()
+    found[build.roc_key("elm_frames")].unlink()
+    drawn = _spy_scores(monkeypatch)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert "fig_scores" in manifest["products"]
+    hmode = "high_confinement_mode"
+    other = {
+        "reason": build.ROC_OTHER,
+        "phenomenon": hmode,
+        "roc": str(found[build.roc_key("hmode_frames")]),
+    }
+    missing = _unscored(
+        runs,
+        scored=set(ORDER) - {"edge_localized_mode"},
+        rocs=set(ORDER) - {"neoclassical_tearing_mode", "edge_localized_mode"},
     )
+    assert manifest["partial"]["fig_scores"] == missing[:1] + [other] + missing[1:]
+    [selected] = drawn
+    assert [s.roc is None for s in selected] == [False, True, True, True, False]
+    assert [s.f1 is None for s in selected] == [False, False, False, True, False]
+
+
+def test_a_roc_without_a_pr_curve_is_partial(runs, tmp_path, monkeypatch):
+    """An old roc.json (no auprc) draws its ROC, and is listed as partial."""
+    _selected_records(runs)
+    found = build.inputs(runs)
+    old = found[build.roc_key("sawtooth_frames")]
+    record = json.loads(old.read_text())
+    for key in ("auprc", "pr", "positive_share"):
+        del record[key]
+    old.write_text(json.dumps(record))
+    drawn = _spy_scores(monkeypatch)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert "fig_scores" in manifest["products"]
+    assert manifest["partial"]["fig_scores"] == [
+        {
+            "reason": build.NO_PR_WHY,
+            "phenomenon": "sawtooth_oscillation",
+            "roc": str(old),
+        }
+    ]
+    [selected] = drawn
+    assert all(s.roc is not None for s in selected)
+    assert "auprc" not in selected[-1].roc
+
+
+def test_the_retired_products_leave_an_older_output(runs, tmp_path):
+    """fig_mhd, fig_segmentation, fig_roster_interpreter and fig_examples are
+    no longer drawn, and a rebuild drops them from an older output; the
+    tables and fig_examples_ae are written."""
+    tree.seg_record(runs)
+    out = tmp_path / "paper"
+    out.mkdir()
+    retired = sorted(build.RETIRED)
+    for name in [*retired, "notes.txt"]:
+        (out / name).write_text("an older build's")
+    assert len(retired) == 8 and not build.RETIRED & build.OWNED
+    assert not set(build.RETIRED_PRODUCTS) & set(build.PRODUCTS)
+    manifest = build.build(runs, out)
+    files = set(_files(out))
+    assert not files & build.RETIRED, "dropped"
+    assert (out / "notes.txt").read_text() == "an older build's", "not the build's"
+    assert {"fig_examples_ae.pdf", "fig_examples_ae.png"} <= files
+    for table in ("table_ae_scores", "table_seg_scores", "table_differences"):
+        assert manifest["products"][table] == [f"{table}.tex"], table
+        assert (out / f"{table}.tex").stat().st_size > 0, table
+    assert set(manifest["products"]) <= set(build.PRODUCTS)
+    assert build.SEG_PRODUCTS == ("table_seg_scores",)

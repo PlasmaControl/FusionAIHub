@@ -49,6 +49,7 @@ from labeler.events import lexicon as lx
 from labeler.events import pipeline as pl
 
 from .conftest import SYNTH_COUNTER_S
+from .test_events_heuristics import v3_rows
 
 SHOT = 199999
 #: A stand-in sha, so nothing here needs the pinned checkpoint on disk.
@@ -460,6 +461,94 @@ def test_the_heuristics_add_their_own_sources(shot_file, paths, model):
     assert {"nbi_on", "rmp_on", "gas_on"} <= on
 
 
+# ------------------------------------------------- the sawtooth step is v3
+
+#: `_add_sxr`'s train: thirty crashes from 802.3 ms, after the fixture's ECE
+#: record ends at 0.8 s, so no crash of one merges into the other's.
+SXR_CRASHES_S = (802.3 + 50.0 * np.arange(30)) * 1e-3
+
+
+def _add_sxr(corpus_file):
+    """A 320-row `sxr` group over 0.5-2.5 s: `v3_rows`' train on chords 4-27
+    of the first fan (SX90RM1F, rows 192-223), and every other row dark."""
+    t_s, fan = v3_rows(
+        n_channels=24, centre=10.0, core=(8, 13), pulse=(),
+        crashes_ms=SXR_CRASHES_S * 1e3, drop=0.1, t_ms=(500.0, 2500.0), seed=1,
+    )
+    y = np.full((320, t_s.size), np.nan, dtype=np.float32)
+    y[196:220] = fan
+    with h5py.File(corpus_file, "a") as f:
+        g = f.create_group("sxr")
+        g.create_dataset("xdata", data=t_s.astype(np.float32))
+        g.create_dataset("ydata", data=y)
+
+
+def _sawtooth_sources(paths):
+    """`{diag: row}` of the sources file's `ece_sawtooth` rows."""
+    src = schema.read_sources(paths.sources_file(SHOT))
+    return {r["diag"]: r for _, r in src[src.source == "ece_sawtooth"].iterrows()}
+
+
+def test_the_sawtooth_step_runs_v3_on_the_ece_and_the_first_lit_sxr_fan(
+    shot_file, paths, synth_shot, model,
+):
+    _add_sxr(shot_file)
+    res = _run(paths, model)
+    df = schema.read_events(paths.events_file(SHOT), source="ece_sawtooth")
+    assert res.n_sawteeth == len(df) == 10 + 30
+    assert df.groupby("diag").size().to_dict() == {"ece": 10, "sxr": 30}
+    ece, sxr = df[df.diag == "ece"], df[df.diag == "sxr"]
+    np.testing.assert_allclose(ece.t0_s, synth_shot["crash_times_s"], atol=2e-3)
+    np.testing.assert_allclose(sxr.t0_s, SXR_CRASHES_S, atol=2e-3)
+    attrs = [json.loads(a) for a in df["attrs"]]
+    assert {a["detector"] for a in attrs} == {"v3"} == {heuristics.SAWTOOTH_V3}
+    assert {json.loads(a)["fan"] for a in sxr["attrs"]} == {"SX90RM1F"}
+    # Both diagnostics ran, each is its own row with its own coverage - so
+    # the source's coverage is their union - and each event carries its own.
+    rows = _sawtooth_sources(paths)
+    assert set(rows) == {"ece", "sxr"}
+    assert {r.status for r in rows.values()} == {"ok"}
+    assert (rows["ece"].n_events, rows["sxr"].n_events) == (10, 30)
+    assert json.loads(rows["ece"].intervals) == [
+        [0.0, pytest.approx(0.8, abs=1e-4)]
+    ]
+    assert json.loads(rows["sxr"].intervals) == [
+        [pytest.approx(0.5, abs=1e-4), pytest.approx(2.5, abs=1e-3)]
+    ]
+    for a, diag in zip(attrs, df.diag, strict=True):
+        assert a["coverage_intervals"] == json.loads(rows[diag].intervals)
+    assert sxr.t_cov0_s.min() == pytest.approx(0.5, abs=1e-4)
+    assert not any(step.startswith("sawtooth") for step in res.skipped)
+
+
+def test_no_sxr_group_is_not_a_failure_when_the_ece_is_there(shot_file, paths,
+                                                             synth_shot, model):
+    res = _run(paths, model)                      # the fixture has no `sxr`
+    df = schema.read_events(paths.events_file(SHOT), source="ece_sawtooth")
+    assert res.n_sawteeth == len(df) == 10
+    assert set(df.diag) == {"ece"}
+    np.testing.assert_allclose(df.t0_s, synth_shot["crash_times_s"], atol=2e-3)
+    assert "sawtooth" not in res.skipped
+    assert res.skipped["sawtooth sxr"] == 'KeyError: "no group \'sxr\'"'
+    rows = _sawtooth_sources(paths)
+    assert (rows["ece"].status, rows["ece"].n_events) == ("ok", 10)
+    assert (rows["sxr"].status, rows["sxr"].reason) == (
+        "skipped", 'KeyError: "no group \'sxr\'"'
+    )
+
+
+def test_an_sxr_fan_short_of_chords_leaves_the_ece_crashes(shot_file, paths,
+                                                           model):
+    with h5py.File(shot_file, "a") as f:
+        g = f.create_group("sxr")
+        g.create_dataset("xdata", data=np.linspace(0, 1, 2000, dtype=np.float32))
+        g.create_dataset("ydata", data=np.full((320, 2000), np.nan, np.float32))
+    res = _run(paths, model)
+    assert res.n_sawteeth == 10
+    assert "no SXR fan has 8 finite chords" in res.skipped["sawtooth sxr"]
+    assert _sawtooth_sources(paths)["sxr"].status == "skipped"
+
+
 def test_the_gas_valve_is_channel_0_and_not_the_group_maximum(shot_file,
                                                               paths, model):
     # `features/namespace.py`'s `gas` IS `gas_raw#0` (PTDATA `gasa`), and
@@ -656,8 +745,32 @@ def test_a_missing_group_is_a_skip_and_not_an_error(paths, synth_shot, model):
     assert res.error == ""
     assert res.n_blocks == 4
     assert res.n_sawteeth == 0
-    assert "sawtooth" in res.skipped
+    assert "no sawtooth diagnostic ran" in res.skipped["sawtooth"]
+    assert "sawtooth sxr" not in res.skipped, "neither ran: one step skip"
     assert res.n_tracks == 4
+    [row] = _sawtooth_sources(paths).values()
+    assert (row.diag, row.status) == ("ece", "skipped")
+
+
+def test_a_re_run_with_neither_sawtooth_diagnostic_leaves_no_sxr_ok_row(
+    shot_file, paths, synth_shot, model,
+):
+    # The step that ran on neither owns every `ece_sawtooth` row: an earlier
+    # run's SXR "ok" row would otherwise survive the merge beside the one
+    # skipped ECE row and still claim coverage.
+    _add_sxr(shot_file)
+    _run(paths, model)
+    first = _sawtooth_sources(paths)
+    assert {d: r.status for d, r in first.items()} == {"ece": "ok", "sxr": "ok"}
+    others = schema.read_sources(paths.sources_file(SHOT))
+    others = set(others.source[others.source != "ece_sawtooth"])
+    _write_corpus(paths.corpus, SHOT, synth_shot,
+                  groups=("mhr", "co2", "filterscopes", "pinj", "tinj"))
+    res = _run(paths, model)
+    assert "no sawtooth diagnostic ran" in res.skipped["sawtooth"]
+    [row] = _sawtooth_sources(paths).values()
+    assert (row.diag, row.status) == ("ece", "skipped")
+    assert others <= set(schema.read_sources(paths.sources_file(SHOT)).source)
 
 
 def test_a_failing_step_is_recorded_and_the_shot_carries_on(
@@ -666,7 +779,7 @@ def test_a_failing_step_is_recorded_and_the_shot_carries_on(
     def boom(*a, **kw):
         raise RuntimeError("the envelope exploded")
 
-    monkeypatch.setattr(heuristics, "sawtooth_events", boom)
+    monkeypatch.setattr(heuristics, "sawtooth_events_v3", boom)
     res = _run(paths, model)
     assert res.error == ""
     assert "RuntimeError" in res.skipped["sawtooth"]
