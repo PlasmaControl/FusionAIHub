@@ -7,8 +7,15 @@
 
 reads what the round-two runs wrote (`inputs`) and draws what they allow:
 
-- `fig_scores`, `fig_mhd`, `table_ae_scores.tex`: the AE evaluation;
-- `fig_segmentation`, `table_seg_scores.tex`: the segmentation's evaluation;
+- `fig_scores`: each phenomenon's model selected for main inference
+  (`roc.SELECTED`: ae_xpower at `--version`, the frame models at
+  `frames.VERSION`), its test F1 from its `evaluation.json` and its ROC from
+  its `roc.json` (`labeler.paper.roc`), drawn only beside the evaluation it
+  names by sha256. A phenomenon with no evaluation or no ROC is drawn without
+  it and is `partial`, naming its `phenomenon`; with no evaluation at all,
+  fig_scores is skipped;
+- `table_ae_scores.tex`: the AE evaluation;
+- `table_seg_scores.tex`: the segmentation's evaluation;
 - `table_differences.tex`: the paired differences both evaluations hold;
 - `fig_coverage`, `table_datasets.tex`: the owner's live AE review, with the
   chosen model's split (the reviewed shots in no split apart) and the
@@ -27,7 +34,7 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   `effectively_always` mark a model that failed its primary bar or is
   effectively always (F8), never gating anything (D59). Each missing part is a
   `partial` entry naming its `phenomenon`, after AE's;
-- `fig_examples`: the chosen model run over its test shots (`split.csv`),
+- `fig_examples_ae`: the chosen model run over its test shots (`split.csv`),
   scored against its own copy of the labels, `<candidate>/review/labels.csv`
   (D18), over the version's scored window (`shots.scored_ms`: 0-2 s for v1
   and v2, the owner's whole window for v3), with the segmentation's mask over
@@ -38,7 +45,7 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_interpreter`: the roster figure (`paper.roster`), the models'
   suggestions on one non-blind roster shot of the frozen cohort with corpus
   CO2 (`roster.candidates`): `--shot`'s, which must be one, else
-  `roster.PICK_RULE`'s. The chosen model (`--version`'s, the one fig_examples
+  `roster.PICK_RULE`'s. The chosen model (`--version`'s, the one fig_examples_ae
   reads) and SegNet (`--interpreter-seg-version`'s) run over the shot's corpus
   CO2; its signal panels are the rows of its review stores the frame models
   read, and its other four tracks the frame models' `frames.VERSION`
@@ -62,12 +69,14 @@ place; a swap that can neither finish nor put the old output back (another
 build's output landed at `out` meanwhile, say) deletes nothing and raises
 `Stranded`, which names where each one is. The build claims only the names it
 writes (`OWNED`: the manifest and each product's own `.pdf` and `.png`, or
-`.tex`); anything else in `out` stays, moved into the new output (a symlink as
-itself), and a failed build deletes none of it. Of the old output only those
-names are deleted: an entry written into it late, through a handle held on it,
-is moved into the new output too, or, if its name is taken there, kept with the
-old directory, which the build names on stderr and in its JSON line
-(`old_output_kept`) and still succeeds. `out` is resolved once, first: a
+`.tex`) and the retired products' (`RETIRED`: fig_mhd, fig_segmentation,
+fig_roster_interpreter and fig_examples, now fig_examples_ae), so a rebuild
+drops those (`CLAIMED`); anything else in `out` stays, moved into the new
+output (a symlink as itself), and a failed build deletes none of it. Of the old
+output only those names are deleted: an entry written into it late, through a
+handle held on it, is moved into the new output too, or, if its name is taken
+there, kept with the old directory, which the build names on stderr and in its
+JSON line (`old_output_kept`) and still succeeds. `out` is resolved once, first: a
 symlinked `--out` keeps its link, the new output swapped in at its target, with
 the staging directory and the old output's holder beside that. A broken link is
 built into its target, which the build makes, as it makes a new `--out`.
@@ -82,8 +91,8 @@ labels, which have no version.
 
 `--seg-version` (default `v1`) names the segmentation's, apart: a new frame
 model does not retrain SegNet, so v2's frame figures stand beside SegNet v1.
-fig_segmentation, table_seg_scores, the segmentation's rows of
-table_differences and fig_examples' mask read `models/ae_seg/<seg-version>/`.
+table_seg_scores, the segmentation's rows of table_differences and
+fig_examples_ae's mask read `models/ae_seg/<seg-version>/`.
 The segmentation's own copy of the labels (`<seg-version>/review/labels.csv`) is
 pinned and checked against its record's `labels_sha256` (`seg_labels_match`),
 not against the frame model's; a copy missing or unlike the record makes its
@@ -165,7 +174,7 @@ from ..events import suggestions
 from ..events.review import labels
 from ..events.spans import cohort_path
 from ..events.verify import NoDataError
-from . import AE, LOGIN_THREADS, coverage, paper_dir, roster, scores, shots
+from . import AE, LOGIN_THREADS, coverage, paper_dir, roc, roster, scores, shots
 from .snapshot import Snapshot
 from .staging import Stranded, discard, staging_dir, swap
 
@@ -185,16 +194,23 @@ FIGURE = (".pdf", ".png")  # what `paper.save` writes for a figure
 TABLE = (".tex",)
 PRODUCTS = {
     "fig_scores": FIGURE,
-    "fig_mhd": FIGURE,
     "table_ae_scores": TABLE,
-    "fig_segmentation": FIGURE,
     "table_seg_scores": TABLE,
     "table_differences": TABLE,
     "fig_coverage": FIGURE,
     "table_datasets": TABLE,
     "fig_interpreter": FIGURE,
-    "fig_examples": FIGURE,
+    "fig_examples_ae": FIGURE,
 }
+#: Products an older build wrote, and no longer: fig_mhd and fig_segmentation
+#: (removed), fig_roster_interpreter (now fig_interpreter) and fig_examples (now
+#: fig_examples_ae).
+RETIRED_PRODUCTS = (
+    "fig_mhd",
+    "fig_segmentation",
+    "fig_roster_interpreter",
+    "fig_examples",
+)
 
 
 def files_of(product: str) -> list[str]:
@@ -202,8 +218,12 @@ def files_of(product: str) -> list[str]:
     return [product + suffix for suffix in PRODUCTS[product]]
 
 
-# Every name the build writes into `out`; the swap keeps anything else there.
+# Every name the build writes into `out`.
 OWNED = frozenset({MANIFEST, *(f for p in PRODUCTS for f in files_of(p))})
+# The retired products' files: a rebuild drops them from an older `out`.
+RETIRED = frozenset(p + suffix for p in RETIRED_PRODUCTS for suffix in FIGURE)
+# What the swap claims in `out`; it keeps anything else there.
+CLAIMED = OWNED | RETIRED
 
 # Why a product is skipped or drawn in part (`skipped`, `partial`).
 MISSING = "missing inputs"
@@ -243,7 +263,7 @@ NO_F1 = (
 AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
 LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
 LABELS_DIFFER = "the model's review/labels.csv is not what its evaluation scored (D18)"
-SEG_PRODUCTS = ("fig_segmentation", "table_seg_scores")
+SEG_PRODUCTS = ("table_seg_scores",)
 NO_SEG_COPY = "the segmentation has no review/labels.csv to check its record against"
 SEG_LABELS_UNNAMED = "the segmentation's evaluation names no labels_sha256"
 SEG_LABELS_DIFFER = (
@@ -272,6 +292,18 @@ NO_INTERPRETER_MASK = "no mask: the interpreter's SegNet has no model.pt"
 NO_TRACK_TABLE = (
     f'the frame model has no suggestion table, so its track says "{roster.NO_TABLE}"'
 )
+NOT_SCORED_WHY = (
+    "the selected model has no evaluation.json, so it has no F1 dot and its tick "
+    f'says "{scores.NOT_SCORED}"'
+)
+NO_ROC_WHY = (
+    "the selected model has no roc.json (python -m labeler.paper.roc), so it has "
+    f'no curve and its key says "{scores.NO_ROC}"'
+)
+ROC_OTHER = (
+    "the roc.json does not name the evaluation.json read (by its sha256), so its "
+    f'curve is not drawn and its key says "{scores.NO_ROC}"'
+)
 NO_PANEL_STORE = 'the shot has no review store for this panel, so it says "{}"'
 NO_PANEL_ROW = (
     "the shot's review store has none of this panel's rows over the figure's "
@@ -290,7 +322,8 @@ def inputs(
     SegNet's `interpreter_seg_version`; the build adds the chosen model, its
     split, its copy of the labels (`ae_scored_labels`) and the stores it reads,
     and the interpreter's tables and stores (`roster.table_key`,
-    `roster.store_key`)."""
+    `roster.store_key`). fig_scores' are each selected model's evaluation and
+    ROC (`selected_inputs`)."""
     models = xpower.model_dir(paths, version)
     seg = ae_seg.model_dir(paths).parent / seg_version
     interpreter_seg = ae_seg.model_dir(paths, interpreter_seg_version)
@@ -305,7 +338,30 @@ def inputs(
         "interpreter_seg_model": interpreter_seg / "model.pt",
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
         "cohort": cohort_path(paths),  # the roster candidates' (`roster.candidates`)
+        **selected_inputs(paths, version),
     }
+
+
+def evaluation_key(method: str) -> str:
+    """A selected model's `evaluation.json`'s key: AE's `ae_evaluation`, a
+    frame model's `frames_evaluation_<method>`."""
+    return "ae_evaluation" if method == roc.AE_METHOD else f"frames_evaluation_{method}"
+
+
+def roc_key(method: str) -> str:
+    """A selected model's `roc.json`'s key."""
+    return f"roc_{method}"
+
+
+def selected_inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
+    """Each phenomenon's selected model's (`roc.SELECTED`) `evaluation.json`
+    and `roc.json`, for fig_scores: AE's at `version`, the frame models' at
+    `frames.VERSION`."""
+    found = {}
+    for method in roc.SELECTED.values():
+        found[evaluation_key(method)] = roc.evaluation_file(paths, method, version)
+        found[roc_key(method)] = roc.roc_file(paths, method, version)
+    return found
 
 
 def _recorded(record: dict | None, *where: str) -> str | None:
@@ -573,7 +629,7 @@ def build(
                 seg_version=seg_version,
                 interpreter_seg_version=interpreter_seg_version,
             )
-        kept = swap(staged, out, owned=OWNED)
+        kept = swap(staged, out, owned=CLAIMED)
     except Stranded:
         raise  # `staged` holds the new output, and the message says so
     except BaseException:
@@ -638,13 +694,13 @@ def _draw(
     if ae is not None:
         look, unlooked = second_look(paths, found, snap, version, chosen, split)
     said = look["said"] if look else None
-    if ready(("fig_scores", "fig_mhd", "table_ae_scores"), "ae_evaluation"):
-        figure("fig_scores", scores.draw_scores, ae)
-        figure("fig_mhd", scores.draw_mhd, ae)
+    unscored = _scores(found, snap, ae, figure, lacking)
+    if unscored is not None:
+        skipped["fig_scores"] = unscored
+    if ready(("table_ae_scores",), "ae_evaluation"):
         table("table_ae_scores", scores.table_ae(ae, said))
     seg_match, seg_shas = None, {}
     if ready(SEG_PRODUCTS, "seg_evaluation"):
-        figure("fig_segmentation", scores.draw_segmentation, seg)
         table("table_seg_scores", scores.table_segmentation(seg))
         copy = found["seg_labels"]
         if copy.is_file():
@@ -715,7 +771,7 @@ def _draw(
         return loaded[key]
 
     picked: dict = {}
-    examples_only = ("fig_examples",)
+    examples_only = ("fig_examples_ae",)
     scored = None
     if ready(examples_only, "ae_evaluation", "ae_chosen") and ready(
         examples_only, "ae_model", "ae_split", "ae_scored_labels"
@@ -737,15 +793,15 @@ def _draw(
                 version=version,
             )
         if why:
-            made.pop("fig_examples", None)
-            skipped["fig_examples"] = {"reason": why, "missing": []}
+            made.pop("fig_examples_ae", None)
+            skipped["fig_examples_ae"] = {"reason": why, "missing": []}
     elif "ae_scored_labels" in found and found["ae_scored_labels"].is_file():
         read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
     interpreter = None
     only = ("fig_interpreter",)
     if ready(only, "ae_chosen") and ready(only, "ae_model", "cohort"):
-        # One version is one SegNet: the interpreter's shares fig_examples' pin.
+        # One version is one SegNet: the interpreter's shares fig_examples_ae's pin.
         same = found["interpreter_seg_model"] == found["seg_model"]
         seg_key = "seg_model" if same else "interpreter_seg_model"
         interpreter, why = _interpreter(
@@ -793,6 +849,48 @@ def _draw(
     return manifest
 
 
+def _scores(
+    found: dict[str, Path],
+    snap: Snapshot,
+    ae: dict | None,
+    figure: Callable,
+    lacking: Callable,
+) -> dict | None:
+    """Draw fig_scores from each phenomenon's selected model (`roc.SELECTED`,
+    in `ORDER`): its evaluation's F1 (`roc.f1_estimate`; AE's is `ae`, read
+    already) and its `roc.json`, each read through `snap`. A ROC is drawn only
+    beside the evaluation it names by sha256. Each part missing is a `partial`
+    entry naming its `phenomenon`: no evaluation (`NOT_SCORED_WHY`), then no
+    ROC (`NO_ROC_WHY`) or one of another evaluation (`ROC_OTHER`). fig_scores'
+    `skipped` entry when no phenomenon is scored, else None."""
+    product = ("fig_scores",)
+    methods = roc.SELECTED.values()
+    evaluations = [found[evaluation_key(m)] for m in methods]
+    if not any(p.is_file() for p in evaluations):
+        return {"reason": MISSING, "missing": [str(p) for p in evaluations]}
+    selected = []
+    for category, method in roc.SELECTED.items():
+        key, curve = evaluation_key(method), roc_key(method)
+        if method == roc.AE_METHOD:
+            evaluation = ae
+        else:
+            evaluation = snap.json(key, found[key]) if found[key].is_file() else None
+        record = snap.json(curve, found[curve]) if found[curve].is_file() else None
+        if evaluation is None:
+            where = [str(found[key])]
+            lacking(product, NOT_SCORED_WHY, phenomenon=category, missing=where)
+        if record is None:
+            where = [str(found[curve])]
+            lacking(product, NO_ROC_WHY, phenomenon=category, missing=where)
+        elif record.get("evaluation", {}).get("sha256") != snap.sha(key):
+            lacking(product, ROC_OTHER, phenomenon=category, roc=str(found[curve]))
+            record = None
+        f1 = None if evaluation is None else roc.f1_estimate(method, evaluation)
+        selected.append(scores.Selected(category, method, f1, record))
+    figure("fig_scores", scores.draw_scores, selected)
+    return None
+
+
 def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
     """Why the shot figures are skipped when no test shot has an F1 over the
     scored window ending at `until_ms`: `NO_F1` for 0-2 s; None is the owner's
@@ -819,12 +917,12 @@ def _examples(
     version: str = VERSION,
 ) -> tuple[str | None, dict]:
     """Score every test shot against the model's copy of the labels (D18) and
-    draw fig_examples. Why it could not be drawn (None when it was), and the
+    draw fig_examples_ae. Why it could not be drawn (None when it was), and the
     picks for the manifest. The F1, the picks and their rule are over
     `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2, the
     owner's whole window for v3); `shot_f1` gives every drawn shot's F1 over
     0-2 s and over the owner's whole window, whatever the version."""
-    product = ("fig_examples",)
+    product = ("fig_examples_ae",)
     until = shots.scored_ms(version)
     tested = shots.test_shots(model.split)
     unlabelled = [s for s in tested if s not in saved]
@@ -854,7 +952,7 @@ def _examples(
     if until is None:
         long = {s for s in f1 if saved[s].window[1] > shots.LONG_MS}
     picks = shots.pick_examples(f1, examples, long=long)
-    figure("fig_examples", shots.draw_examples, [pictures[s] for s in picks])
+    figure("fig_examples_ae", shots.draw_examples, [pictures[s] for s in picks])
     if segmentation is None:
         lacking(product, NO_MASK, missing=[str(seg_file)])
     if unlabelled:

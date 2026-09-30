@@ -498,7 +498,7 @@ LEGEND_ORDER = (
 def _legend(fig: Figure) -> None:
     """One key per label some panel draws, with that artist's own style; the
     mask, an image, which a legend cannot key, as a patch of its fill and
-    outline (`MASK_LABELS`: fig_examples' "segmentation: AE" and the
+    outline (`MASK_LABELS`: fig_examples_ae's "segmentation: AE" and the
     interpreter figure's "segmentation")."""
     found: dict[str, object] = {}
     for ax in fig.axes:

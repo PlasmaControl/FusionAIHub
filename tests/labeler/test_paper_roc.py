@@ -1,0 +1,170 @@
+"""`labeler.paper.roc`: each selected model's ROC over its evaluation's scored set."""
+
+from __future__ import annotations
+
+import itertools
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+import torch
+
+from labeler.frames import evaluate as frames_evaluate
+from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
+from labeler.paper import AE, ORDER, roc, roster
+from labeler.scoring import stats
+
+from . import paper_tree as tree
+
+NTM = "ntm_frames"
+
+
+@pytest.fixture
+def paths(tmp_path, monkeypatch):
+    return tree.temporary_paths(tmp_path, monkeypatch)
+
+
+def _mann_whitney(score, truth) -> float:
+    """P(a positive outscores a negative), a tie counted half, by every pair."""
+    pos = [s for s, t in zip(score, truth, strict=True) if t]
+    neg = [s for s, t in zip(score, truth, strict=True) if not t]
+    wins = sum(1.0 if p > n else 0.5 if p == n else 0.0 for p in pos for n in neg)
+    return wins / (len(pos) * len(neg))
+
+
+def test_the_auroc_counts_a_tie_half():
+    score, truth = [0.9, 0.8, 0.8, 0.3], [True, True, False, False]
+    fp, tp, fpr, tpr = roc.curve(score, truth)
+    assert fp.tolist() == [0, 0, 1, 2] and tp.tolist() == [0, 1, 2, 2]
+    assert fpr.tolist() == [0, 0, 0.5, 1] and tpr.tolist() == [0, 0.5, 1, 1]
+    assert roc.auroc(score, truth) == 0.875, "(1 + 1 + 1/2 + 1) / 4"
+    rng = np.random.default_rng(0)
+    score = rng.integers(0, 5, 60) / 4  # many ties
+    truth = rng.random(60) < 0.4
+    assert roc.auroc(score, truth) == pytest.approx(_mann_whitney(score, truth))
+    with pytest.raises(ValueError, match="finite"):
+        roc.curve([0.5, np.nan], [True, False])
+    with pytest.raises(ValueError, match="no ROC"):
+        roc.curve([0.5, 0.4], [True, True])
+
+
+def test_the_thinned_curve_keeps_its_ends_and_at_most_its_points():
+    rng = np.random.default_rng(1)
+    truth = rng.random(5000) < 0.3
+    score = rng.random(5000) + truth * 0.5
+    _, _, fpr, tpr = roc.curve(score, truth)
+    assert len(fpr) > roc.ROC_POINTS
+    thin_fpr, thin_tpr = roc.thin(fpr, tpr)
+    assert 2 < len(thin_fpr) <= roc.ROC_POINTS
+    assert (thin_fpr[0], thin_tpr[0]) == (0, 0)
+    assert (thin_fpr[-1], thin_tpr[-1]) == (1, 1)
+    assert (np.diff(thin_fpr) >= 0).all() and (np.diff(thin_tpr) >= 0).all()
+    assert set(zip(thin_fpr, thin_tpr, strict=True)) <= set(
+        zip(fpr, tpr, strict=True)
+    ), "points of the full curve"
+    short = roc.thin([0, 0.5, 1], [0, 0.7, 1])
+    assert [x.tolist() for x in short] == [[0, 0.5, 1], [0, 0.7, 1]]
+
+
+def _scored(threshold: float = 0.5) -> roc.Scored:
+    score = np.array([0.9, 0.7, 0.6, 0.4, 0.3, 0.2])
+    truth = np.array([True, True, False, True, False, False])
+    return roc.Scored(score, truth, 3, threshold, Path("m/model.pt"), "abc", "bins")
+
+
+def _frame_evaluation(f1: float, sha: str = "abc") -> dict:
+    return {"scores": {NTM: {"f1": f1}}, "model": {"sha256": sha}}
+
+
+def _record(scored: roc.Scored, evaluation: dict) -> dict:
+    return roc.record(
+        scored,
+        evaluation,
+        method=NTM,
+        version="v1",
+        evaluation_path=Path("m/evaluation.json"),
+        evaluation_sha256="def",
+    )
+
+
+def test_the_f1_check_refuses_a_mismatch():
+    scored = _scored()
+    cells = roc.cells(scored.score, scored.truth, scored.threshold)
+    assert cells.tolist() == [2, 1, 1, 2], "0.6 >= 0.5 is said present"
+    f1 = float(stats.f1(cells))
+    found = _record(scored, _frame_evaluation(f1 + 1e-12))
+    assert found["f1_check"]["computed"] == f1
+    assert found["f1_check"]["cells"] == [2, 1, 1, 2]
+    assert found["f1_check"]["evaluation_key"] == f"scores.{NTM}.f1"
+    assert (found["n_pos"], found["n_neg"], found["shots"]) == (3, 3, 3)
+    assert found["threshold"] == {"value": 0.5, "fpr": 1 / 3, "tpr": 2 / 3}
+    assert found["curve"]["fpr"][0] == 0 and found["curve"]["tpr"][-1] == 1
+    assert found["phenomenon"] == "neoclassical_tearing_mode"
+    assert found["note"] == roc.NOTE
+    assert found["evaluation"] == {"path": "m/evaluation.json", "sha256": "def"}
+    json.dumps(found, allow_nan=False)
+    with pytest.raises(roc.F1Mismatch, match="not the evaluation's"):
+        _record(scored, _frame_evaluation(f1 + 1e-6))
+    with pytest.raises(roc.F1Mismatch):
+        roc.check_f1(f1, None, "no F1 recorded")
+    with pytest.raises(ValueError, match="sha256"):
+        _record(scored, _frame_evaluation(f1, sha="other"))
+
+
+def test_the_recorded_f1_is_where_draw_scores_reads_it():
+    ae = tree.ae_evaluation()
+    assert roc.recorded_f1(roc.AE_METHOD, ae) == ("methods.ae_xpower.f1.value", 0.89)
+    assert roc.f1_estimate(roc.AE_METHOD, ae) == ae["methods"]["ae_xpower"]["f1"]
+    assert roc.f1_key(NTM) == "f1"
+    assert roc.f1_key("hmode_frames") == "f1(H)", "H-mode's ROC is for H"
+    hmode = {"scores": {"hmode_frames": {"f1(H)": 0.7, "f1(L)": 0.4}}}
+    assert roc.recorded_f1("hmode_frames", hmode) == ("scores.hmode_frames.f1(H)", 0.7)
+    assert list(roc.SELECTED) == list(ORDER)
+    assert roc.SELECTED[AE] == roc.AE_METHOD
+    assert all(roc.SELECTED[c] == roster.TABLES[c] for c in ORDER if c != AE)
+
+
+def test_the_bins_are_the_ones_evaluate_scores():
+    states = np.array(
+        [ABSENT, PRESENT_T, UNKNOWN, UNCERTAIN_T, PRESENT_T, ABSENT, PRESENT_T]
+        + [ABSENT, PRESENT_T, ABSENT]
+    )
+    prob = np.array([0.1, 0.8, 0.9, 0.9, np.nan, 0.6, 0.5, 0.2, 0.3, 0.7])
+    observed = np.array([True] * 8 + [False, True])
+    score, truth = roc.scored_bins(prob, states, observed)
+    assert score.tolist() == [0.1, 0.8, 0.6, 0.5, 0.2, 0.7]
+    assert truth.tolist() == [False, True, False, True, False, False]
+    for threshold, obs in itertools.product((0.0, 0.5, 0.65, 1.0), (observed, None)):
+        s, t = roc.scored_bins(prob, states, obs)
+        cells = frames_evaluate.score(prob, states, threshold, obs)["cells"]
+        assert roc.cells(s, t, threshold).tolist() == cells, (threshold, obs)
+
+
+def test_a_whole_window_ae_version_is_refused(paths):
+    with pytest.raises(ValueError, match="whole windows"):
+        roc.ae_scored(paths, "v3")
+
+
+def test_the_cli_refuses_to_overwrite_a_roc(paths, monkeypatch, capsys):
+    monkeypatch.setattr(torch, "set_num_threads", lambda n: None)
+    target = roc.roc_file(paths, NTM)
+    assert target.name == roc.ROC_FILE
+    assert target.parent == roc.evaluation_file(paths, NTM).parent
+    target.parent.mkdir(parents=True)
+    target.write_text("{}\n")
+
+    def computed(*args, **kwargs):
+        raise AssertionError("computed before the refusal")
+
+    monkeypatch.setattr(roc, "roc", computed)
+    with pytest.raises(FileExistsError, match="recorded once"):
+        roc.write(paths, [roc.AE_METHOD, NTM])
+    with pytest.raises(SystemExit) as refused:
+        roc.main(["--method", NTM])
+    assert refused.value.code == 2
+    assert "recorded once" in capsys.readouterr().err
+    assert target.read_text() == "{}\n"
+    assert not roc.roc_file(paths, roc.AE_METHOD).exists()
+    assert roc.methods_of(None) == roc.methods_of(["all", NTM])
+    assert roc.methods_of([NTM, roc.AE_METHOD]) == [roc.AE_METHOD, NTM]
