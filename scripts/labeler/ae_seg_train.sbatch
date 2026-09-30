@@ -19,8 +19,13 @@
 #       {model.pt, split.csv, training.json}
 #   python -m labeler.ae.seg.evaluate  the test shots, against the recipe and TokEye baselines
 #       -> evaluation.{json,md} beside the model
-# Nothing is fetched. CPU only: SegNet has ~0.28 M parameters, and a GPU would idle far below
-# the 70 % gate.
+# Nothing is fetched. CPU here: SegNet has ~0.28 M parameters, and a cluster GPU would idle
+# far below the 70 % gate. On the head node's GPUs instead (about 35x faster an epoch), from
+# the repo, through the default env (the labelmaker env's torch is CPU-only):
+#   PYTHONPATH=$PWD/src pixi run --frozen --no-install -e default \
+#       python -m labeler.ae.seg.train --version <v> --device cuda
+#   (then labeler.ae.seg.evaluate --version <v> --device cuda the same way)
+# --device auto, the default, takes a GPU when one is visible; training.json records which.
 #
 #   pilot:      PILOT=12 sbatch <this>   (12 shots, 2 epochs, into runs/ae_seg/pilot; 3 test shots)
 #   v2:         VERSION=v2 PILOT=12 sbatch <this>, then VERSION=v2 sbatch --mem=<from that

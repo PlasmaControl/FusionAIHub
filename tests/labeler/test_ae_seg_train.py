@@ -103,6 +103,48 @@ def test_fit_learns_a_bright_line(two_threads):
     assert train.best_epoch(history) > 0
 
 
+def test_auto_is_the_cpu_without_a_gpu_and_cuda_is_refused(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert train.pick_device("auto") == torch.device("cpu")
+    with pytest.raises(ValueError, match="no GPU is visible"):
+        train.pick_device("cuda")
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no GPU")
+def test_fit_on_the_gpu_learns_the_line_and_saves_cpu_weights(tmp_path):
+    ex = _example()
+    config = train.TrainConfig(
+        epochs=30,
+        batch=4,
+        crop_cols=32,
+        crops_per_shot=4,
+        lr=1e-2,
+        patience=30,
+        width=4,
+    )
+    device = torch.device("cuda")
+    model, history, threshold = train.fit(
+        [ex, _example(seed=1)], [ex], config, log=str, device=device
+    )
+    assert next(model.parameters()).device.type == "cuda"
+    prob = train.predict(model, ex.x)
+    assert train.dice_of(train.pixel_cells(prob, ex.y, threshold)) > 0.8
+    train.save(
+        tmp_path / "m",
+        model,
+        threshold=threshold,
+        split={1: "train", 2: "val", 3: "test"},
+        history=history,
+        config=config,
+        inputs={},
+        device="cuda",
+    )
+    blob = torch.load(tmp_path / "m" / "model.pt", weights_only=False)
+    assert all(v.device.type == "cpu" for v in blob["state_dict"].values())
+    record = json.loads((tmp_path / "m" / "training.json").read_text())
+    assert record["device"] == "cuda"
+
+
 @dataclass(frozen=True)
 class Small(train.TrainConfig):
     batch: int = 2
@@ -261,7 +303,7 @@ def test_changed_training_inputs_refuse_to_save(
             change_file()
         return example
 
-    def fit(train_examples, val_examples, config, log):
+    def fit(train_examples, val_examples, config, log, device=None):
         if when == "fit":
             change_file()
         return train.SegNet(train.SegNetConfig(width=4)), [], 0.5
