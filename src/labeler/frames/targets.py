@@ -14,7 +14,16 @@ and a bin of several cells takes their maximum, so an onset anywhere in it
 makes it present. The sawtooth's target is an interval table, the
 `ece_sawtooth` v2 suggestions (D56), whose 10 ms frames (`scoring.frames`) are
 pooled to bins the same way. `target_shots` and `target_bins` read a spec's
-target, whichever kind it is.
+original target, whichever kind it is.
+
+From v2 a shot's target is its original's bins with the owner's saved label
+over them (`merged`, F2; the owner's words of 2026-09-29 20:20, "just use the
+original labels and shots. if i reviewed them then override or add to it"). On
+every bin where the owner's label is not UNKNOWN (UNCERTAIN_T included), the
+owner's state replaces the original's; elsewhere the original's stands. A shot
+the owner saved that the original lacks is added with the owner's label alone.
+`merged` is the one rule: `shots` splits by it, `prepare` writes its states
+into the features, and `train`, `evaluate` and `gallery` read those states.
 """
 
 from __future__ import annotations
@@ -143,6 +152,31 @@ def label_bins(label, bin_ms) -> tuple[np.ndarray, np.ndarray]:
     return table_bins(label, label.window, bin_ms)
 
 
+def merged(original, label, bin_ms) -> tuple[np.ndarray, np.ndarray] | None:
+    """`(bin starts ms, states)` of a shot's target (F2): `original`, its
+    `target_bins` or None, with the owner's saved `Label` (or None) over it.
+
+    The bins run from the first either has to the last. Where the owner's
+    `label_bins` state is not UNKNOWN it replaces the original's; elsewhere the
+    original's stands, UNKNOWN off its bins. None when neither is given."""
+    if label is None:
+        return original
+    over_starts, over = label_bins(label, bin_ms)
+    if original is None:
+        return over_starts, over
+    starts, states = original
+    ko = np.rint(np.asarray(starts, dtype=np.float64) / bin_ms).astype(np.int64)
+    kl = np.rint(np.asarray(over_starts, dtype=np.float64) / bin_ms).astype(np.int64)
+    ks = np.concatenate([ko, kl])
+    if not len(ks):
+        return np.zeros(0), np.zeros(0, dtype=np.int8)
+    axis = np.arange(ks.min(), ks.max() + 1)
+    out = _placed(axis, ko, np.asarray(states, dtype=np.int8))
+    owned = _placed(axis, kl, over)
+    out = np.where(owned != UNKNOWN, owned, out).astype(np.int8)
+    return axis * float(bin_ms), out
+
+
 def _table(paths: Paths, spec: EventSpec) -> Path:
     return suggestions.table_path(paths, spec.event, *TABLES[spec.target])
 
@@ -165,8 +199,8 @@ def target_shots(paths: Paths, spec: EventSpec) -> list[int]:
 
 
 def target_bins(paths: Paths, spec: EventSpec, shot: int):
-    """`(bin starts ms, states)` of one shot's target over all of it: its grid's
-    bins (`legacy_bins`, `hl_bins`), or its table label's window's."""
+    """`(bin starts ms, states)` of one shot's original target over all of it:
+    its grid's bins (`legacy_bins`, `hl_bins`), or its table label's window's."""
     if spec.target == "jalal_butt_hl":
         h, l_ = (grid_path(paths, event, shot) for event in GRIDS[spec.target])
         return hl_bins(h, l_, spec.bin_ms)

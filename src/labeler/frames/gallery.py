@@ -7,12 +7,15 @@ Each picture is a JPEG, `gallery_dir(paths, spec)/{test,roster}/<shot>.jpg`:
 - the rows the model reads, as it reads them: its features (`features`), one
   block of channels a role, scaled 0-1;
 - the target per bin where the shot has one (a test shot's, or a roster shot's
-  in the split): present, absent, uncertain or unknown; else why not (not in
-  the split, or its features dropped, with `prepare`'s reason);
+  in the split): present, absent, uncertain or unknown, the states `prepare`
+  wrote into its features (the original's with the owner's label over them,
+  `targets.merged`, F2); else why not (not in the split, or its features
+  dropped, with `prepare`'s reason);
 - P per frame, the threshold dotted, and the frames said present shaded.
 A test shot is drawn from its prepared features, a roster shot from its review
 store (`apply.label`). `--limit` draws the first N of each set. The pictures
-are suggestions, never reviewed labels, and their titles say so.
+are suggestions, never reviewed labels, and their titles say so. Every file is
+`frames.VERSION`'s (F1).
 """
 
 from __future__ import annotations
@@ -144,7 +147,7 @@ def _target(paths: Paths, method: str, shot: int, split: dict, gone: dict):
     """`(target, why)`: the shot's `(bin starts, states)` from its features, or
     None and why not; `split` and `gone` are `prepare.split_shots` and
     `prepare.dropped`."""
-    path = features_dir(paths, method) / f"{shot}.npz"
+    path = features_dir(paths, method, VERSION) / f"{shot}.npz"
     if path.is_file():
         with np.load(path) as z:
             return (z["bins"], z["states"]), ""
@@ -157,9 +160,9 @@ def _target(paths: Paths, method: str, shot: int, split: dict, gone: dict):
 
 def draw_test(paths: Paths, method: str, model, threshold: float, shots) -> list:
     """The test shots' pictures, from their prepared features."""
-    spec, out, drawn = SPECS[method], gallery_dir(paths, SPECS[method]), []
+    spec, out, drawn = SPECS[method], gallery_dir(paths, SPECS[method], VERSION), []
     for shot in shots:
-        with np.load(features_dir(paths, method) / f"{shot}.npz") as z:
+        with np.load(features_dir(paths, method, VERSION) / f"{shot}.npz") as z:
             x, observed, first = z["x"], z["observed"], int(z["first"])
             target = (z["bins"], z["states"])
         prob = frames_apply.frame_probs(model, spec, x, observed, first)
@@ -180,7 +183,7 @@ def draw_test(paths: Paths, method: str, model, threshold: float, shots) -> list
 def draw_roster(paths: Paths, method: str, model, threshold: float, shots) -> tuple:
     """The roster shots' pictures, from their review stores; the shots drawn and
     those that could not be, with why."""
-    spec, out = SPECS[method], gallery_dir(paths, SPECS[method])
+    spec, out = SPECS[method], gallery_dir(paths, SPECS[method], VERSION)
     found = frames_apply.windows(paths)
     split, gone = prepare.split_shots(paths, method), prepare.dropped(paths, method)
     drawn, left = [], {}
@@ -215,13 +218,14 @@ def draw_roster(paths: Paths, method: str, model, threshold: float, shots) -> tu
 def gallery(paths: Paths, method: str, *, limit: int = 0) -> dict:
     """Draw the method's test and roster pictures (module docstring)."""
     spec = SPECS[method]
-    model, blob = frames_train.load(model_dir(paths, method) / "model.pt")
+    model, blob = frames_train.load(model_dir(paths, method, VERSION) / "model.pt")
     threshold = float(blob["threshold"])
     split = prepare.split_shots(paths, method)
     test = [
         s
         for s in sorted(split)
-        if split[s] == "test" and (features_dir(paths, method) / f"{s}.npz").is_file()
+        if split[s] == "test"
+        and (features_dir(paths, method, VERSION) / f"{s}.npz").is_file()
     ]
     roster = frames_apply.set_shots(paths, spec, "roster")
     if limit:
@@ -232,7 +236,7 @@ def gallery(paths: Paths, method: str, *, limit: int = 0) -> dict:
         "test": draw_test(paths, method, model, threshold, test),
         "roster": drawn_roster,
         "left_out": left,
-        "folder": str(gallery_dir(paths, spec)),
+        "folder": str(gallery_dir(paths, spec, VERSION)),
     }
 
 

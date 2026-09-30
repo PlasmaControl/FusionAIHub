@@ -20,17 +20,20 @@ A shot's window is its catalog window (`targets.catalog_windows`, the cohort's
 then the population's); nothing is fetched.
 
 **Frames.** Every whole 10 ms frame of the window. The model's frame logits are
-pooled to the spec's bins as it was trained (`model.bin_logits`), a bin at the
-window's edge over the frames it has there, and each frame takes its bin's P
-(`frame_probs`). A bin with a frame not observed is not observable; the others
-are present where P reaches the model's threshold (`train.fit`), else absent.
+pooled to the spec's bins as it was trained (`model.bin_logits`), and each frame
+takes its bin's P (`frame_probs`). A bin with a frame not observed is not
+observable, and so is a partial bin at the window's edge, one with fewer than
+its `bin_ms / 10` frames inside the window (F7): training and the test score
+whole bins only, and v1's pooling of such a bin over the frames it had put a
+lone short H bin at the start of every H-mode shot. The others are present
+where P reaches the model's threshold (`train.fit`), else absent.
 The confidence is P for a present frame, 1 - P for an absent one, and blank for
 one not observable, as the AE extension writes them.
 
 **Shards.** Each writes `<set>-<I>-of-<N>.npz` (each shot's P per frame, NaN
 where not observable), `.failed.jsonl` and, last, `.json` (the shots it was
 given, done, skipped with their reasons, and failed; the model's sha256) under
-`suggestions/<method>/v1/shards/`. A shot that raises, whatever the error, is
+`suggestions/<method>/<frames.VERSION>/shards/`. A shot that raises, whatever the error, is
 failed with its error's type and message, and the shard goes on: the failures
 are counted, not fatal, and the merge's tallies say how many there were. A
 limited run (`--limit`, `--shots`) is a pilot and writes under `shards/pilot/`,
@@ -38,9 +41,11 @@ which `--merge` never reads.
 
 **Merge.** Whatever the bar (D50), once the test is scored: every shard of both
 sets must be there for the model that `evaluation.json` scored, each given its
-shard's shots. It writes `suggestions.table_path(paths, event, method, "v1")`
-(`suggestions.write_table`) with a meta holding the bar's verdict, the tier
-`suggestions` and the model's sha256 (D47, D49), and `frames.summary_file`, one
+shard's shots. It writes `suggestions.table_path(paths, event, method,
+frames.VERSION)` (`suggestions.write_table`) with a meta holding the bar's
+verdict, whether the model is effectively always (`effectively_always`, from
+`evaluation.json`, F6), the tier `suggestions` and the model's sha256 (D47,
+D49), and `frames.summary_file`, one
 row a shot in `ae.xpower.extend.SUMMARY_COLUMNS`, the year its campaign's
 (`evaluate.shot_years`), blank where none is known; and `failed.jsonl`, the
 failed shots, beside the table, the meta counting them (`sets.<set>.failed`)
@@ -144,9 +149,9 @@ def windows(paths: Paths) -> dict[int, tuple[int, int]]:
 
 
 def frame_probs(model, spec: EventSpec, x, observed, first: int) -> np.ndarray:
-    """Each frame's bin's P, the frame logits pooled per bin as in training (a
-    bin at an edge over the frames it has); NaN in a bin with a frame not
-    observed."""
+    """Each frame's bin's P, the frame logits pooled per bin as in training; NaN
+    in a bin with a frame not observed, and in a partial bin at the window's
+    edge, one with fewer than a bin's frames (F7)."""
     per = frames_train.frames_per_bin(spec)
     observed = np.asarray(observed, bool)
     n = len(observed)
@@ -164,7 +169,7 @@ def frame_probs(model, spec: EventSpec, x, observed, first: int) -> np.ndarray:
     else:
         pooled = np.bincount(inverse, logits) / frames
     prob = 1.0 / (1.0 + np.exp(-pooled))
-    seen = np.bincount(inverse, observed) == frames
+    seen = (np.bincount(inverse, observed) == frames) & (frames == per)
     return np.where(seen[inverse], prob[inverse], np.nan)
 
 
@@ -258,7 +263,7 @@ def summary_row(shot, window, states, confidence, rows, year) -> dict:
 
 
 def _setup(paths: Paths, method: str):
-    path = model_dir(paths, method) / "model.pt"
+    path = model_dir(paths, method, VERSION) / "model.pt"
     model, blob = frames_train.load(path)
     return path, model, blob
 
@@ -443,7 +448,7 @@ def _write(paths, method, event, labelled, threshold, meta, years, derive=False)
     path = suggestions.table_path(paths, event, method, VERSION)
     suggestions.write_table(path, rows, meta)
     frame = pd.DataFrame(summary, columns=list(SUMMARY_COLUMNS))
-    with atomic_path(summary_file(paths, method)) as tmp:
+    with atomic_path(summary_file(paths, method, VERSION)) as tmp:
         frame.to_csv(tmp, index=False)
     return path
 
@@ -452,7 +457,7 @@ def merge(paths: Paths, method: str) -> dict:
     """Write the method's table, meta and summary from its shards (module
     docstring), and `lmode_frames`' for `hmode_frames`."""
     spec = SPECS[method]
-    model_path = model_dir(paths, method) / "model.pt"
+    model_path = model_dir(paths, method, VERSION) / "model.pt"
     evaluation_path = model_path.parent / "evaluation.json"
     if not evaluation_path.is_file():
         raise FileNotFoundError(f"{evaluation_path}: the test is scored before a merge")
@@ -483,6 +488,7 @@ def merge(paths: Paths, method: str) -> dict:
         "event": spec.event,
         "tier": "suggestions",
         "bar": evaluation["bar"],
+        "effectively_always": evaluation["effectively_always"],
         "bar_criteria": evaluation.get("bar_criteria"),
         "model": str(model_path),
         "model_sha256": model_sha,

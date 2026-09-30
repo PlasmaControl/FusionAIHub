@@ -9,7 +9,7 @@ the ones it was trained and scored on (D18), never the live table the owner
 keeps saving; `ae_shot` reads them from disk. `draw_interpreter` is the paper's
 one-discharge figure: that spectrogram and its mask over one
 track per catalog phenomenon, AE's holding the owner's frames above the
-model's, the other four coming. `draw_examples` stacks a few test shots (the
+model's. `draw_examples` stacks a few test shots (the
 model's `split.csv`), which `pick_examples` takes: the best, the median and the
 worst F1 against the owner; a whole-window version's picks hold at least one
 shot whose owner window runs past 2 s (`LONG_MS`) when a test shot's does.
@@ -63,6 +63,15 @@ shot number. When that pool is empty the same rule runs over all those test
 shots, and the branch says why: no test shot has that many absent frames
 (`POOL_FALLBACK`), or the ones that do have no point of interest
 (`POOL_UNMARKED`, which names them).
+
+**The other four tracks** (F9) are what `paper.build` found for the shot,
+passed in (`draw_interpreter`'s `tracks`), so the figure reads nothing: the
+suggested states per frame where the shot is in that phenomenon's frame-model
+suggestion table, drawn as `paper.roster` draws its tracks (`state_bars`,
+keyed `SUGGESTED`'s, never the owner's); `NO_DATA` ("no filterscopes data",
+say) where the shot lacks one of the model's required groups on disk;
+`NOT_APPLIED` where the table exists without the shot; and `COMING` where
+there is no table, or nothing was passed.
 
 Every legend lists only what some panel draws: it is built from the drawn
 artists' own labels, so its keys have their style (the mask's, an image's, as a
@@ -124,8 +133,17 @@ STATE_NAMES = {
     NOT_OBSERVABLE: "not observable",
 }
 MASK_LABEL = "segmentation: AE"
+#: The roster figure's fill, SegNet over its whole picture (`paper.roster`).
+ROSTER_MASK_LABEL = "segmentation"
+MASK_LABELS = (MASK_LABEL, ROSTER_MASK_LABEL)
 MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
+#: A frame-model track's key (F9): what it holds is a suggestion.
+SUGGESTED = "suggested: {}"
+#: A track's text where the shot lacks one of the model's groups on disk.
+NO_DATA = "no {} data"
+NOT_APPLIED = "not applied to this shot"
+TEXT_COLOUR = "#888888"
 MIN_GAP_FRAMES = 5  # whole absent frames: 50 ms or more, but 50-59 ms can be 4
 GAP_MS = MIN_GAP_FRAMES * FRAME_MS
 OFF_MS = f"so an off-period of at least {GAP_MS} ms"  # what those frames imply
@@ -501,19 +519,26 @@ def _extent(s: AEShot) -> tuple[float, float, float, float]:
     )
 
 
-def _spectrogram(ax, s: AEShot) -> None:
+def show_image(ax, image, extent, top_khz: float, ylabel: str) -> None:
+    """A store's image row, bytes 0-255, on the paper's frequency axis: 0 to
+    `top_khz`, each pixel as it is (the spectrograms' one style)."""
     ax.imshow(
-        s.image,
+        image,
         origin="lower",
         aspect="auto",
-        extent=_extent(s),
+        extent=extent,
         cmap="inferno",
         vmin=0,
         vmax=255,
         interpolation="nearest",
     )
-    ax.set_ylim(0, 250)
-    ax.set_ylabel(f"{CROSS_ROWS[0].replace('x', ' × ')}\nkHz")
+    ax.set_ylim(0, top_khz)
+    ax.set_ylabel(ylabel)
+
+
+def _spectrogram(ax, s: AEShot) -> None:
+    ylabel = f"{CROSS_ROWS[0].replace('x', ' × ')}\nkHz"
+    show_image(ax, s.image, _extent(s), 250, ylabel)
 
 
 def mask_rgba(mask: np.ndarray) -> np.ndarray:
@@ -524,10 +549,10 @@ def mask_rgba(mask: np.ndarray) -> np.ndarray:
     return rgba
 
 
-def _mask(ax, s: AEShot) -> None:
-    """SegNet's AE pixels, a translucent fill with a thin outline, labelled for
-    the legend when some pixel lies in view. Call it after the axes' limits are
-    set."""
+def _mask(ax, s: AEShot, label: str = MASK_LABEL) -> None:
+    """SegNet's pixels, a translucent fill with a thin outline, labelled
+    `label` for the legend when some pixel lies in view. Call it after the
+    axes' limits are set."""
     if s.mask is None or not s.mask.any():
         return
     (x0, x1), (y0, y1) = sorted(ax.get_xlim()), sorted(ax.get_ylim())
@@ -540,7 +565,7 @@ def _mask(ax, s: AEShot) -> None:
         aspect="auto",
         extent=_extent(s),
         interpolation="nearest",
-        label=MASK_LABEL if seen.any() else "_" + MASK_LABEL,
+        label=label if seen.any() else "_" + label,
     )
     ax.contour(
         times, freqs, s.mask, levels=[0.5], colors=MASK_COLOUR, linewidths=MASK_LW
@@ -588,31 +613,60 @@ def _model_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
         ax.broken_barh(spans, y, color=MODEL_COLOUR, lw=0, label=MODEL_LABEL)
 
 
+def text_track(ax, text: str) -> None:
+    """`text` across a track, grey italic: `COMING`, `NO_DATA`'s and the rest."""
+    ax.text(
+        0.5,
+        0.5,
+        text,
+        transform=ax.transAxes,
+        ha="center",
+        va="center",
+        color=TEXT_COLOUR,
+        style="italic",
+    )
+
+
+def state_bars(ax, s, states, y: tuple[float, float] = (0.1, 0.8)) -> None:
+    """One bar per suggested state `states` (per frame of `s.edges`) holds,
+    keyed as a suggestion (`SUGGESTED`)."""
+    edges = s.edges
+    states = np.asarray(states)
+    for state, colour in STATE_COLOURS.items():
+        spans = [(edges[a], edges[b] - edges[a]) for a, b in runs(states == state)]
+        if spans:
+            label = SUGGESTED.format(STATE_NAMES[state])
+            ax.broken_barh(spans, y, color=colour, lw=0, label=label)
+
+
 LEGEND_ORDER = (
     *(f"owner: {name}" for name in STATE_NAMES.values()),
     MODEL_LABEL,
     THRESHOLD_LABEL,
-    MASK_LABEL,
+    *(SUGGESTED.format(name) for name in STATE_NAMES.values()),
+    *MASK_LABELS,
 )
 
 
 def _legend(fig: Figure) -> None:
     """One key per label some panel draws, with that artist's own style; the
     mask, an image, which a legend cannot key, as a patch of its fill and
-    outline."""
+    outline (`MASK_LABELS`: the paper's "segmentation: AE" and the roster
+    figure's "segmentation")."""
     found: dict[str, object] = {}
     for ax in fig.axes:
         for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
             found.setdefault(name, handle)
-        if any(image.get_label() == MASK_LABEL for image in ax.images):
-            found.setdefault(
-                MASK_LABEL,
-                Patch(
-                    facecolor=to_rgba(MASK_COLOUR, MASK_ALPHA),
-                    edgecolor=MASK_COLOUR,
-                    linewidth=MASK_LW,
-                ),
-            )
+        for label in MASK_LABELS:
+            if any(image.get_label() == label for image in ax.images):
+                found.setdefault(
+                    label,
+                    Patch(
+                        facecolor=to_rgba(MASK_COLOUR, MASK_ALPHA),
+                        edgecolor=MASK_COLOUR,
+                        linewidth=MASK_LW,
+                    ),
+                )
     names = sorted(
         found, key=lambda n: LEGEND_ORDER.index(n) if n in LEGEND_ORDER else 99
     )
@@ -625,12 +679,18 @@ def _legend(fig: Figure) -> None:
         )
 
 
-def draw_interpreter(s: AEShot, stem: Path) -> Figure:
-    """The spectrogram with AE's mask over a track per phenomenon."""
+def draw_interpreter(
+    s: AEShot, stem: Path, tracks: Mapping[str, object] | None = None
+) -> Figure:
+    """The spectrogram with AE's mask over a track per phenomenon. `tracks`
+    gives each other phenomenon's track (F9): its suggested state per frame of
+    `s`, or a text (`NO_DATA`'s, `NOT_APPLIED`, `COMING`); one not given is
+    `COMING`."""
+    tracks = tracks or {}
     t0, t1 = s.edges[0] - MARGIN_MS, s.edges[-1] + MARGIN_MS
     with style():
         fig = Figure(figsize=(PAGE_IN, 3.4), layout="constrained")
-        spec, *tracks = fig.subplots(
+        spec, *axes = fig.subplots(
             1 + len(ORDER),
             1,
             sharex=True,
@@ -640,28 +700,23 @@ def draw_interpreter(s: AEShot, stem: Path) -> Figure:
         spec.set_xlim(t0, t1)
         _mask(spec, s)
         spec.set_title(f"shot {s.shot}: what the interpreter marks")
-        for ax, category in zip(tracks, ORDER, strict=True):
+        for ax, category in zip(axes, ORDER, strict=True):
             ax.set_ylim(0, 2)
             ax.set_yticks([])
             ax.set_ylabel(title(category), rotation=0, ha="right", va="center")
-            if category != AE:
-                ax.text(
-                    0.5,
-                    0.5,
-                    COMING,
-                    transform=ax.transAxes,
-                    ha="center",
-                    va="center",
-                    color="#888888",
-                    style="italic",
-                )
+            if category == AE:
+                _owner_bars(ax, s, (1.05, 0.9))
+                _model_bars(ax, s, (0.05, 0.9))
                 continue
-            _owner_bars(ax, s, (1.05, 0.9))
-            _model_bars(ax, s, (0.05, 0.9))
-        _scored_line([spec, *tracks], s, dark={spec})
-        for ax in tracks[:-1]:
+            track = tracks.get(category, COMING)
+            if isinstance(track, str):
+                text_track(ax, track)
+            else:
+                state_bars(ax, s, track, (0.2, 1.6))
+        _scored_line([spec, *axes], s, dark={spec})
+        for ax in axes[:-1]:
             ax.tick_params(bottom=False)
-        tracks[-1].set_xlabel("time (ms)")
+        axes[-1].set_xlabel("time (ms)")
         _legend(fig)
         save(fig, stem)
     return fig

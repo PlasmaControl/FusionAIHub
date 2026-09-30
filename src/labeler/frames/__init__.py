@@ -9,7 +9,19 @@ reach:
   to which the 10 ms frames' logits are pooled by their maximum (onsets) or
   their mean (states);
 - `required_groups`: the corpus or cache groups a shot needs (`raw.record_tier`);
-- `baselines` and `bar`: what it is scored against, and the bar (spec §3.4).
+- `baselines` and `bar`: what it is scored against, and the bar (spec §3.4);
+- `threshold_rule`: what the threshold is picked on val to maximise (F3): the
+  present class's F1 ("f1"), or the mean of both classes' F1 ("macro_f1",
+  H-mode's, whose H1 asks for F1(H) and F1(L));
+- `balance_crops`: whether training centres half of each shot's crops on
+  absent time and half on present (F11): the sawteeth's, whose shots nearly all
+  hold some (`labeler.frames.train.crop_windows`).
+
+v2 (F1): the split, its meta, the owner's frozen saves and the features are
+versioned. v1's stay where v1 wrote them (`frames/shots/<method>.csv`,
+`frames/features/<method>/`); any other version's go under
+`frames/shots/<version>/` and `frames/features/<version>/<method>/`. The stores
+are not versioned: they hold no targets.
 
 `lmode_frames` has no spec of its own (D38): it is `hmode_frames`' model, read
 as 1 - P(H) on the labelled bins (`DERIVED`).
@@ -28,7 +40,9 @@ from pathlib import Path
 from ..config import Paths
 from ..events import rosters
 
-VERSION = "v1"
+VERSION = "v2"
+#: The version whose files sit unversioned, where v1 wrote them.
+V1 = "v1"
 SEED = 20260923
 
 
@@ -77,6 +91,10 @@ class EventSpec:
     baselines: tuple[str, ...]
     #: Left out of the hash, so a spec can still be a key.
     bar: dict = field(hash=False)
+    #: "f1" (the present class's) or "macro_f1" (the mean of F1(H) and F1(L)).
+    threshold_rule: str = "f1"
+    #: Half of each train shot's crops centred on absent bins, half on present.
+    balance_crops: bool = False
 
 
 SPECS: dict[str, EventSpec] = {
@@ -119,6 +137,7 @@ SPECS: dict[str, EventSpec] = {
             "H1": (("f1(H)", ">=", 0.95), ("f1(L)", ">=", 0.70)),
             "H2": (("lo(f1(H) - always)", ">", 0.0),),
         },
+        threshold_rule="macro_f1",
     ),
     "ntm_frames": EventSpec(
         method="ntm_frames",
@@ -164,6 +183,7 @@ SPECS: dict[str, EventSpec] = {
             "S1": (("f1", ">=", 0.85),),
             "S2": (("lo(f1 - always)", ">", 0.0),),
         },
+        balance_crops=True,
     ),
 }
 #: Methods with no model of their own: `(the method whose model they read, the
@@ -175,19 +195,25 @@ def _frames(paths: Paths) -> Path:
     return paths.root / "frames"
 
 
-def shots_file(paths: Paths, method: str) -> Path:
+def _shots(paths: Paths, version: str) -> Path:
+    base = _frames(paths) / "shots"
+    return base if version == V1 else base / version
+
+
+def shots_file(paths: Paths, method: str, version: str = VERSION) -> Path:
     """The method's shots and their split."""
-    return _frames(paths) / "shots" / f"{method}.csv"
+    return _shots(paths, version) / f"{method}.csv"
 
 
-def shots_meta_file(paths: Paths, method: str) -> Path:
+def shots_meta_file(paths: Paths, method: str, version: str = VERSION) -> Path:
     """The split's metadata, D60's `labelled_shots` among it."""
-    return _frames(paths) / "shots" / f"{method}.json"
+    return _shots(paths, version) / f"{method}.json"
 
 
-def owner_file(paths: Paths, method: str) -> Path:
-    """The owner's saves as the split froze them, its `owner` split's labels (D40)."""
-    return _frames(paths) / "shots" / f"{method}.owner.csv"
+def owner_file(paths: Paths, method: str, version: str = VERSION) -> Path:
+    """The owner's saves as the split froze them: v1's `owner` split (D40), and
+    from v2 the labels laid over the original's (F2)."""
+    return _shots(paths, version) / f"{method}.owner.csv"
 
 
 def grid_path(paths: Paths, event: str, shot: int) -> Path:
@@ -223,9 +249,10 @@ def store_path(paths: Paths, spec: EventSpec, shot: int) -> Path:
     return stores_dir(paths, spec) / f"{int(shot)}.h5"
 
 
-def features_dir(paths: Paths, method: str) -> Path:
+def features_dir(paths: Paths, method: str, version: str = VERSION) -> Path:
     """Each shot's features, as the model reads them."""
-    return _frames(paths) / "features" / method
+    base = _frames(paths) / "features"
+    return base / method if version == V1 else base / version / method
 
 
 def model_dir(paths: Paths, method: str, version: str = VERSION) -> Path:

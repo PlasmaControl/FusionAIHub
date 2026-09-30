@@ -12,15 +12,25 @@ import pandas as pd
 import pytest
 
 from labeler import frames
+from labeler.events.catalog.states import PRESENT
 from labeler.events.review import build as review_build
-from labeler.events.review import rows
+from labeler.events.review import labels, rows
 from labeler.frames import prepare
 from labeler.frames import shots as frames_shots
 from labeler.frames.features import STALE_TITLE, StaleStore, features
-from labeler.frames.targets import ABSENT, PRESENT_T, UNKNOWN
+from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
 
 from . import editor_tree, frames_tree
-from .frames_tree import ELM, EVENT_MS, IP_SHOT, LABELS_SHOT, NTM, SHOTS, WINDOW
+from .frames_tree import (
+    ELM,
+    EVENT_MS,
+    HMODE,
+    IP_SHOT,
+    LABELS_SHOT,
+    NTM,
+    SHOTS,
+    WINDOW,
+)
 
 KEYS = {"x", "observed", "bins", "states"}
 #: A legacy tearing-mode shot in no roster, for a store under frames/stores/.
@@ -85,6 +95,7 @@ def test_prepare_writes_one_npz_a_shot_with_the_keys(tree):
     record = prepare.prepare(tree, "elm_frames", shots)
     assert record["written"] == sorted(shots) and record["dropped"] == {}
     folder = frames.features_dir(tree, "elm_frames")
+    assert folder == tree.root / "frames/features/v2/elm_frames"
     assert sorted(int(p.stem) for p in folder.glob("*.npz")) == sorted(shots)
     spec = frames.SPECS["elm_frames"]
     meta = json.loads(frames.shots_meta_file(tree, "elm_frames").read_text())
@@ -106,7 +117,8 @@ def test_prepare_writes_one_npz_a_shot_with_the_keys(tree):
         assert x.shape == (2, 5 * len(observed)) and x.dtype == np.float16
         assert np.all((x >= 0) & (x <= 1))
         assert states.dtype == np.int8 and states.shape == bins.shape
-    # The owner shot's states are the owner's save, present over EVENT_MS.
+    # The owner's shot's states are its grid's with the save over them, present
+    # over EVENT_MS and absent elsewhere in its window.
     with np.load(folder / f"{SHOTS[ELM]}.npz") as z:
         bins, states = z["bins"], z["states"]
     during = (bins >= EVENT_MS[0]) & (bins < EVENT_MS[1])
@@ -216,3 +228,21 @@ def test_unknown_bins_stay_unknown(tree):
             PRESENT_T,
             2,
         }
+        by = dict(zip(z["bins"].tolist(), z["states"].tolist(), strict=True))
+    # F2: the grids' 600 ms bin is H and L (uncertain); the owner's save says H.
+    assert by[600.0] == PRESENT_T and UNCERTAIN_T not in by.values()
+
+
+def test_an_added_shot_s_states_are_the_owner_s_label(tree):
+    # The H-mode shot is in no ELM grid: the owner's ELM save on it is added.
+    saved = labels.normalise(WINDOW, [(*EVENT_MS, PRESENT)])
+    labels.save(tree.label_tables / ELM, SHOTS[HMODE], saved, source=None)
+    frames_shots.make(tree, "elm_frames")
+    prepare.build_stores(tree, "elm_frames", [SHOTS[HMODE]])
+    record = prepare.prepare(tree, "elm_frames", [SHOTS[HMODE]])
+    assert record["written"] == [SHOTS[HMODE]]
+    folder = frames.features_dir(tree, "elm_frames")
+    with np.load(folder / f"{SHOTS[HMODE]}.npz") as z:
+        bins, states = z["bins"], z["states"]
+    during = (bins >= EVENT_MS[0]) & (bins < EVENT_MS[1])
+    assert np.all(states[during] == PRESENT_T) and np.all(states[~during] == ABSENT)

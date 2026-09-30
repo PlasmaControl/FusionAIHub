@@ -1,8 +1,11 @@
-"""The paper's coverage of the frame-model phenomena: the owner's review, the
-legacy tables' labelled shots, the frame models' splits and their suggestions."""
+"""The paper's coverage of the frame-model phenomena (F2): their original labels
+with the owner's reviews over them, counted from the split's meta, the owner's
+review apart, the frame models' train/val/test splits and their suggestions,
+marked where the model failed its primary bar or is effectively always (F8)."""
 
 from __future__ import annotations
 
+import io
 import json
 from dataclasses import replace
 from itertools import pairwise
@@ -12,8 +15,10 @@ import pytest
 
 from labeler import frames
 from labeler.ae.xpower import train
+from labeler.events import suggestions
 from labeler.events.review import labels
-from labeler.paper import AE, COMING, build, coverage
+from labeler.frames import shots as frame_shots
+from labeler.paper import AE, COMING, build, coverage, title
 
 from . import ae_tree
 from . import paper_tree as tree
@@ -37,16 +42,29 @@ ELM_LABELS = (
     "301,0,0,100,\n301,1,100,300,\n301,0,300,2000,\n"
     "302,0,0,2000,\n"
     "309,1,0,1000,\n309,0,1000,2000,\n"
-)  # 3 reviewed, 2 with a present span, 1.2 s present; 309 saved after the split
+)  # 3 reviewed by the owner; 309 saved after the split
 ELM_SPLIT = (
-    "shot,split,positive,roster\n"
-    "301,owner,1,1\n302,owner,0,1\n"
-    "303,train,1,0\n304,train,0,0\n305,train,1,0\n306,val,1,0\n307,test,0,0\n"
-)
+    "shot,split,positive,roster,owner\n"
+    "301,train,1,1,1\n302,test,0,1,1\n"
+    "303,train,1,0,0\n304,train,0,0,0\n305,train,1,0,0\n306,val,1,0,0\n"
+    "307,test,0,0,0\n"
+)  # 4 / 1 / 2: the owner's saved shots split with the rest, no owner split
 SAW_SPLIT = (
-    "shot,split,positive,roster\n401,train,1,1\n402,train,1,1\n403,val,1,1\n"
-    "404,test,0,1\n"
+    "shot,split,positive,roster,owner\n401,train,1,1,0\n402,train,1,1,0\n"
+    "403,val,1,1,0\n404,test,0,1,0\n"
 )
+ELM_META = {
+    "method": "elm_frames",
+    "labelled_shots": 576,
+    "positive_shots": 443,
+    "legacy_labelled_shots": 575,
+    "present_s": 1234.5,
+    "owner": {"saved": 3, "overriding": 2, "added": 1},
+}  # the merged target's counts: the grids are never re-read by the coverage
+ELM_TABLE_META = {
+    "bar": {"E1": False, "E2": True, "E3": True, "all": False},
+    "effectively_always": False,
+}  # E1, the primary bar, failed
 AE_COUNTS = coverage.Counts(
     reviewed=4,
     positive=2,
@@ -70,43 +88,87 @@ def _elm(tmp_path) -> coverage.Counts:
     (tmp_path / "summary.csv").write_text(SUMMARY)
     split = coverage.frame_split(pd.read_csv(tmp_path / "split.csv"))
     summary = pd.read_csv(tmp_path / "summary.csv")
-    return coverage.frame_counts(labels.read_saved(event), split, summary, legacy=576)
+    return coverage.frame_counts(
+        labels.read_saved(event),
+        split,
+        summary,
+        meta=ELM_META,
+        table_meta=ELM_TABLE_META,
+        primary=coverage.FRAME_SOURCES[ELM].primary,
+    )
 
 
-def _saw() -> coverage.Counts:
+def _saw(meta: dict | None = None) -> coverage.Counts:
     split = {401: "train", 402: "train", 403: "val", 404: "test"}
-    return coverage.frame_counts({}, split, None)
+    return coverage.frame_counts({}, split, None, meta=meta)
 
 
 def test_a_frame_models_counts(tmp_path):
     elm = _elm(tmp_path)
-    assert (elm.reviewed, elm.positive, elm.present_s) == (3, 2, 1.2)
-    assert elm.split == {"train": 3, "val": 1, "test": 1, "owner": 2}, "all its shots"
-    assert elm.unsplit == 1, "309 was saved after the split"
-    assert (elm.legacy, elm.frame, elm.cross_validated) == (576, True, False)
+    assert elm.reviewed == 3, "the owner's saved shots, 309 among them"
+    assert (elm.labelled, elm.positive, elm.present_s) == (576, 443, 1234.5)
+    assert elm.labelled_shots == 576, "the meta's, not the owner's saves"
+    assert elm.split == {"train": 4, "val": 1, "test": 2}, "no owner split"
+    assert elm.unsplit is None, "its unsplit shots are those the split left out"
+    assert (elm.frame, elm.cross_validated) == (True, False)
     assert (elm.suggested, elm.suggested_positive) == (4, 2)
+    assert (elm.bar_met, elm.always) == (False, False)
+    assert elm.marks == [coverage.BAR_NOT_MET]
     saw = _saw()
-    assert (saw.reviewed, saw.positive, saw.unsplit, saw.legacy) == (0, 0, 0, None)
-    assert saw.split == {"train": 2, "val": 1, "test": 1, "owner": 0}
+    assert (saw.reviewed, saw.labelled, saw.positive, saw.present_s) == (
+        0,
+        None,
+        None,
+        None,
+    ), "no meta: not counted, not a zero"
+    assert saw.split == {"train": 2, "val": 1, "test": 1}
     assert saw.by_year is None and saw.suggested is None
+    assert (saw.bar_met, saw.always, saw.marks) == (None, None, [])
     bare = coverage.frame_counts({}, None, None)
     assert (bare.split, bare.unsplit, bare.frame) == (None, None, True)
-    assert AE_COUNTS.legacy is None and AE_COUNTS.frame is False, "AE's defaults"
+    assert AE_COUNTS.labelled_shots == AE_COUNTS.reviewed == 4, "AE's labels"
+    assert (AE_COUNTS.frame, AE_COUNTS.marks) == (False, []), "AE's defaults"
 
 
-def test_a_split_outside_the_four_is_refused():
-    table = pd.DataFrame({"shot": [1, 2], "split": ["train", "valid"]})
-    with pytest.raises(ValueError, match="valid"):
-        coverage.frame_split(table)
+def test_a_frame_model_s_marks_are_its_table_meta_s():
+    split = {1: "train"}
+    for bar, always, marks in (
+        (True, False, []),
+        (True, True, [coverage.ALWAYS]),
+        (False, True, [coverage.BAR_NOT_MET, coverage.ALWAYS]),
+    ):
+        table_meta = {"bar": {"S1": bar, "S2": True}, "effectively_always": always}
+        counts = coverage.frame_counts(
+            {}, split, None, table_meta=table_meta, primary="S1"
+        )
+        assert counts.marks == marks
+    unmarked = replace(AE_COUNTS, bar_met=False, always=True)
+    assert unmarked.marks == [], "only a frame model is marked"
+    with pytest.raises(KeyError, match="present_s"):
+        coverage.frame_counts({}, split, None, meta={"labelled_shots": 1})
+    with pytest.raises(KeyError, match="effectively_always"):
+        coverage.frame_counts({}, split, None, table_meta={"bar": {}}, primary="S1")
+
+
+def test_a_split_outside_the_three_is_refused():
+    for odd in ("valid", "owner"):  # v1's owner split among them
+        table = pd.DataFrame({"shot": [1, 2], "split": ["train", odd]})
+        with pytest.raises(ValueError, match=odd):
+            coverage.frame_split(table)
 
 
 def test_the_frame_sources_are_the_four_paper_phenomena():
     assert list(coverage.FRAME_SOURCES) == [NTM, HMODE, ELM, SAW]
     assert "disruption" not in coverage.FRAME_SOURCES
     assert {s.method for s in coverage.FRAME_SOURCES.values()} <= set(frames.SPECS)
-    assert coverage.FRAME_SOURCES[SAW].legacy is None
+    primaries = [s.primary for s in coverage.FRAME_SOURCES.values()]
+    assert primaries == ["N1", "H1", "E1", "S1"]
+    detectors = [c for c, s in coverage.FRAME_SOURCES.items() if s.detector]
+    assert detectors == [SAW], "sawteeth's labels are the detector's (D56)"
+    assert coverage.tick(SAW) == "sawteeth (detector)"
+    assert [coverage.tick(c) for c in (AE, ELM)] == [title(AE), "ELMing"]
     assert "Jalalvand" not in json.dumps(
-        {k: [s.legacy, s.also] for k, s in coverage.FRAME_SOURCES.items()}
+        {k: [s.origin, s.also] for k, s in coverage.FRAME_SOURCES.items()}
     )
 
 
@@ -136,30 +198,34 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert (tmp_path / "fig_coverage.pdf").is_file()
     assert len(fig.axes) == 12
-    shots = fig.axes[0]
+    shots, present = fig.axes[:2]
     assert sum(t == COMING for t in _texts(shots)) == 2, "NTM and H-mode"
-    assert _texts(shots).count(coverage.NONE_REVIEWED) == 1, "sawteeth: a true zero"
-    assert _widths(shots) == [4, 3, 2, 2], "reviewed AE, ELM; positive AE, ELM"
+    assert _texts(shots).count(coverage.NOT_RUN) == 1, "sawteeth: no meta read"
+    assert coverage.NONE_REVIEWED not in _texts(shots)
+    assert _widths(shots) == [4, 576, 2, 443], "labelled AE, ELM; positive AE, ELM"
+    assert _ticks(shots)[-2:] == ["ELMing", "sawteeth (detector)"]
+    assert _widths(present) == [0.9, 1234.5], "AE's and the meta's present_s"
     ntm_split, hmode_split, elm_split, saw_split = fig.axes[4:8]
     for ax in (ntm_split, hmode_split):
         assert _texts(ax) == [COMING] and not ax.patches
-    assert _widths(elm_split) == [576, 3, 1, 1, 2]
-    assert _ticks(elm_split) == ["legacy", "train", "val", "test", "owner"]
-    assert elm_split.get_title() == "ELMing: model split\nand Hiro's table"
-    assert "576" in _texts(elm_split)
-    assert _widths(saw_split) == [2, 1, 1, 0]
-    assert _ticks(saw_split) == ["train", "val", "test", "owner"]
+    assert _widths(elm_split) == [4, 1, 2]
+    assert _texts(elm_split) == ["4", "1", "2"]
+    assert _widths(saw_split) == [2, 1, 1]
+    for ax in (elm_split, saw_split):
+        assert _ticks(ax) == ["train", "val", "test"], "no legacy, no owner bar"
+    assert elm_split.get_title() == "ELMing: model split"
     assert saw_split.get_title() == "sawteeth: model split"
     ntm_years, _, elm_years, saw_years = fig.axes[8:12]
     assert _texts(ntm_years) == [COMING]
     assert _widths(elm_years) == [2, 1, 1, 1, 1, 0]
     assert _ticks(elm_years) == ["2024", "2025", "?"]
-    assert elm_years.get_title() == "ELMing suggestions\nby year"
+    assert elm_years.get_title() == "ELMing suggestions\nby year\n(bar not met)"
     assert elm_years.get_legend() is None, "the frame rows share one key"
     assert _texts(saw_years) == [coverage.NOT_RUN] and not saw_years.patches
+    assert saw_years.get_title() == "sawteeth suggestions\nby year", "not read"
     legend, key = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
-        "reviewed",
+        "labelled",
         "with a present span",
     ]
     names = [t.get_text() for t in key.get_texts()]
@@ -188,19 +254,34 @@ def _tick_labels(ax) -> list:
     return [t for t in xs + ys if t.get_text()]
 
 
-def _population(legacy: int | None) -> coverage.Counts:
-    split = {"train": 20400, "val": 4300, "test": 4350, "owner": 150}
+def _population(labelled: int = 900) -> coverage.Counts:
+    split = {"train": 20400, "val": 4300, "test": 4350}
     return coverage.Counts(
-        900, 610, 812.4, split, BY_YEAR, unsplit=12, legacy=legacy, frame=True
+        108, 610, 812.4, split, BY_YEAR, labelled=labelled, frame=True
     )
 
 
+def test_a_frame_phenomenon_says_none_labelled_only_when_counted(tmp_path):
+    empty = {"labelled_shots": 0, "positive_shots": 0, "present_s": 0.0}
+    for saw, mark in (
+        (_saw(empty), coverage.NONE_LABELLED),
+        (_saw(), coverage.NOT_RUN),
+    ):
+        fig = coverage.draw_coverage({AE: AE_COUNTS, SAW: saw}, tmp_path / "fig")
+        texts = _texts(fig.axes[0])
+        assert texts.count(mark) == 1
+        assert coverage.NONE_REVIEWED not in texts, "a frame phenomenon's labels"
+
+
 def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
-    legacies = (14210, 31876, 28521, None)  # the tearing archive's to Hiro's
+    labelled = (14210, 31876, 28521, 4822)  # the tearing archive's to the detector's
+    marks = ((True, False), (False, True), (False, False), (False, True))
     counts = {AE: AE_COUNTS} | {
-        category: _population(legacy)
-        for category, legacy in zip(coverage.FRAME_SOURCES, legacies, strict=True)
-    }
+        category: replace(_population(n), bar_met=bar, always=always)
+        for category, n, (bar, always) in zip(
+            coverage.FRAME_SOURCES, labelled, marks, strict=True
+        )
+    }  # both marks on the widest title, sawteeth's
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert all(ax.get_legend() is None for ax in fig.axes[4:12])
     fig.draw_without_rendering()
@@ -215,7 +296,10 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
     for ax in fig.axes[8:12]:
         assert _ticks(ax) == ["2021", "2022", "2023", "2024", "2025", "?"]
         assert _apart(fig, ax), ax.get_title()
-    assert "28,521" in _texts(fig.axes[6])
+    assert _texts(fig.axes[6]) == ["20,400", "4,300", "4,350"]
+    assert fig.axes[11].get_title() == (
+        "sawteeth suggestions\nby year\n(bar not met, ≈ always)"
+    )
     shown = [
         text
         for ax in fig.axes
@@ -233,7 +317,7 @@ def test_ae_s_years_are_in_the_shared_key_and_six_years_stay_apart(tmp_path):
     its entries are in the one key the years panels share, which covers none of
     its bars or ticks, and its six years' ticks do not touch."""
     ae = replace(AE_COUNTS, by_year=BY_YEAR)
-    framed = {category: _population(None) for category in coverage.FRAME_SOURCES}
+    framed = {category: _population() for category in coverage.FRAME_SOURCES}
     for counts in ({AE: ae}, {AE: ae} | framed):
         fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
         years = fig.axes[3]
@@ -262,47 +346,89 @@ def test_ae_alone_keeps_its_one_row(tmp_path):
     assert coverage.NONE_REVIEWED not in _texts(fig.axes[0])
 
 
+FRAME_CLAUSE = (
+    "Labelled counts every shot of the original labels with the owner's reviews "
+    "over them (blind and left-out shots too), Train, Val and Test the frame "
+    "model's split of those with its inputs on disk, and No split is --: their "
+    "other labelled shots are those the split left out (blind, or without the "
+    "model's inputs on disk, or with no labelled bin in their window); original "
+    "labels: "
+)
+DAGGER_CLAUSE = (
+    "; $^\\dagger$: the frame model failed its primary bar (E1, H1, N1 or S1: bar "
+    "not met) or is effectively the always-present baseline (≈ always), so its "
+    "suggestions say little: "
+)
+
+
 def test_the_table_with_the_frame_phenomena(tmp_path):
     counts = {AE: AE_COUNTS, ELM: _elm(tmp_path), SAW: _saw()}
     lines = coverage.table_datasets(counts).splitlines()
     assert lines[0] == (
-        "% Shots per phenomenon: reviewed by a person, with any present span, the "
-        "model's split of the reviewed shots and those in no split (reviewed = "
-        "train + val + test + no split), the extension's suggestions (not labels), "
-        "and the shots a legacy human table labels (Legacy labelled, never counted "
-        "as reviewed); -- where that run has not happened; for ELMing and "
-        "sawteeth, the split is the frame model's, of its own shots (the owner's "
-        "saved shots held out of it as its owner split), not of the reviewed "
-        "ones, and No split counts their reviewed shots in none of its splits; "
-        "legacy tables: ELMing: Hiro's table, sawteeth: none"
+        "% Shots per phenomenon: labelled, reviewed by the owner, with any present "
+        "span and their present time, the model's split (Train, Val, Test) and the "
+        "extension's suggestions (not labels); -- where that run has not happened; "
+        "AE's labels are the owner's reviews, so its Labelled = Reviewed = Train + "
+        "Val + Test + No split (the reviewed shots saved after the model was "
+        "trained); for ELMing and sawteeth, "
+        + FRAME_CLAUSE
+        + "ELMing: Hiro's table, sawteeth: the ece_sawtooth v2 detector's table"
+        + DAGGER_CLAUSE
+        + "ELMing (bar not met)"
     )
-    assert lines[1] == "\\begin{tabular}{lcccccccc}"
+    assert lines[1] == "\\begin{tabular}{lcccccccccc}"
     assert lines[3] == (
-        "Phenomenon & Reviewed & Positive & Present (s) & Train / val / test "
-        "& No split & Suggested & Suggested positive & Legacy labelled \\\\"
+        "Phenomenon & Labelled & Reviewed by the owner & Positive & Present (s) "
+        "& Train & Val & Test & No split & Suggested & Suggested positive \\\\"
     )
     assert lines[5:10] == [
-        "AE & 4 & 2 & 0.9 & 1 / 1 / 1 & 1 & 4 & 2 & -- \\\\",
-        "NTM & \\multicolumn{8}{c}{coming} \\\\",
-        "H-mode & \\multicolumn{8}{c}{coming} \\\\",
-        "ELMing & 3 & 2 & 1.2 & 3 / 1 / 1 & 1 & 4 & 2 & 576 \\\\",
-        "sawteeth & 0 & 0 & 0.0 & 2 / 1 / 1 & 0 & -- & -- & -- \\\\",
+        "AE & 4 & 4 & 2 & 0.9 & 1 & 1 & 1 & 1 & 4 & 2 \\\\",
+        "NTM & \\multicolumn{10}{c}{coming} \\\\",
+        "H-mode & \\multicolumn{10}{c}{coming} \\\\",
+        "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
+        "sawteeth & -- & 0 & -- & -- & 2 & 1 & 1 & -- & -- & -- \\\\",
     ]
+    ae = lines[5].removesuffix(" \\\\").split(" & ")
+    labelled, reviewed, train_val_test, unsplit = ae[1], ae[2], ae[5:8], ae[8]
+    assert (
+        int(labelled) == int(reviewed) == sum(map(int, train_val_test)) + int(unsplit)
+    ), "the comment's arithmetic holds for AE's row"
 
 
 def test_h_mode_names_l_mode_with_its_table(tmp_path):
-    hmode = coverage.frame_counts({}, {1: "train"}, None, legacy=428)
+    meta = {"labelled_shots": 4822, "positive_shots": 4800, "present_s": 12.3}
+    table_meta = {"bar": {"H1": True, "H2": False}, "effectively_always": True}
+    hmode = coverage.frame_counts(
+        {},
+        {1: "train"},
+        pd.read_csv(io.StringIO(SUMMARY)),
+        meta=meta,
+        table_meta=table_meta,
+        primary="H1",
+    )
     counts = {AE: AE_COUNTS, HMODE: hmode}
     lines = coverage.table_datasets(counts).splitlines()
     assert lines[0].endswith(
-        "; for H-mode, the split is the frame model's, of its own shots (the "
-        "owner's saved shots held out of it as its owner split), not of the "
-        "reviewed ones, and No split counts their reviewed shots in none of its "
-        "splits; legacy tables: H-mode (and L-mode): Jalal Butt's table"
+        "; for H-mode, "
+        + FRAME_CLAUSE
+        + "H-mode (and L-mode): Jalal Butt's table"
+        + DAGGER_CLAUSE
+        + "H-mode (≈ always)"
     )
-    assert lines[7] == "H-mode & 0 & 0 & 0.0 & 1 / 0 / 0 & 0 & -- & -- & 428 \\\\"
+    assert lines[7] == (
+        "H-mode & 4822 & 0 & 4800 & 12.3 & 1 & 0 & 0 & -- & 4$^\\dagger$ & 2 \\\\"
+    )
     fig = coverage.draw_coverage(counts, tmp_path / "fig")
-    assert fig.axes[5].get_title() == "H-mode: model split\nand Jalal Butt's table"
+    assert fig.axes[5].get_title() == "H-mode: model split"
+    assert fig.axes[9].get_title() == "H-mode suggestions\nby year\n(≈ always)"
+
+
+def test_an_unmarked_model_has_no_dagger(tmp_path):
+    elm = replace(_elm(tmp_path), bar_met=True, always=False)
+    assert elm.marks == []
+    lines = coverage.table_datasets({AE: AE_COUNTS, ELM: elm}).splitlines()
+    assert "dagger" not in lines[0]
+    assert lines[8] == "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4 & 2 \\\\"
 
 
 @pytest.fixture
@@ -316,14 +442,26 @@ def runs(tmp_path, monkeypatch):
     live = labels.labels_path(paths.label_tables / ELM)
     live.parent.mkdir(parents=True)
     live.write_text(ELM_LABELS)
-    for method, text in (("elm_frames", ELM_SPLIT), ("sawtooth_frames", SAW_SPLIT)):
+    saw_meta = {"labelled_shots": 4, "positive_shots": 3, "present_s": 2.5}
+    for method, text, meta in (
+        ("elm_frames", ELM_SPLIT, ELM_META),
+        ("sawtooth_frames", SAW_SPLIT, saw_meta),
+    ):
         frames.shots_file(paths, method).parent.mkdir(parents=True, exist_ok=True)
         frames.shots_file(paths, method).write_text(text)
-    meta = {"method": "elm_frames", "labelled_shots": 576, "positive_shots": 443}
-    frames.shots_meta_file(paths, "elm_frames").write_text(json.dumps(meta))
+        frames.shots_meta_file(paths, method).write_text(json.dumps(meta))
     frames.summary_file(paths, "elm_frames").parent.mkdir(parents=True)
     frames.summary_file(paths, "elm_frames").write_text(SUMMARY)
+    table_meta = _table_meta(paths)
+    table_meta.parent.mkdir(parents=True, exist_ok=True)
+    table_meta.write_text(json.dumps(ELM_TABLE_META))
     return paths
+
+
+def _table_meta(paths):
+    """ELM's v2 suggestion table's meta, which `frames.apply` writes."""
+    table = suggestions.table_path(paths, ELM, "elm_frames", frames.VERSION)
+    return table.with_suffix(".meta.json")
 
 
 def _theirs(entries: list[dict]) -> list[dict]:
@@ -333,13 +471,14 @@ def _theirs(entries: list[dict]) -> list[dict]:
 def test_the_build_counts_the_frame_phenomena(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper")
     lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
-    assert lines[5] == "AE & 3 & 3 & 1.8 & 1 / 0 / 2 & 0 & -- & -- & -- \\\\"
+    assert lines[5] == "AE & 3 & 3 & 3 & 1.8 & 1 & 0 & 2 & 0 & -- & -- \\\\"
     assert lines[6:10] == [
-        "NTM & \\multicolumn{8}{c}{coming} \\\\",
-        "H-mode & \\multicolumn{8}{c}{coming} \\\\",
-        "ELMing & 3 & 2 & 1.2 & 3 / 1 / 1 & 1 & 4 & 2 & 576 \\\\",
-        "sawteeth & 0 & 0 & 0.0 & 2 / 1 / 1 & 0 & -- & -- & -- \\\\",
+        "NTM & \\multicolumn{10}{c}{coming} \\\\",
+        "H-mode & \\multicolumn{10}{c}{coming} \\\\",
+        "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
+        "sawteeth & 4 & 0 & 3 & 2.5 & 2 & 1 & 1 & -- & -- & -- \\\\",
     ]
+    assert "ELMing (bar not met)" in lines[0]
 
     def coming(c, m):
         where = [
@@ -374,17 +513,25 @@ def test_the_build_counts_the_frame_phenomena(runs, tmp_path):
         "frames_split_elm_frames",
         "frames_meta_elm_frames",
         "frames_summary_elm_frames",
+        "frames_table_meta_elm_frames",
         "frames_split_sawtooth_frames",
+        "frames_meta_sawtooth_frames",
     }
+    assert manifest["inputs"]["frames_split_elm_frames"]["path"] == str(
+        frames.shots_file(runs, "elm_frames", frames.VERSION)
+    ), "v2's split, under frames/shots/v2/"
+    assert "/shots/v2/" in manifest["inputs"]["frames_meta_elm_frames"]["path"]
     assert manifest["consistent"] is True
 
 
-def test_a_split_without_its_meta_leaves_the_legacy_count_out(runs, tmp_path):
+def test_a_split_without_its_meta_leaves_the_labelled_counts_out(runs, tmp_path):
     meta = frames.shots_meta_file(runs, "elm_frames")
     meta.unlink()
     manifest = build.build(runs, tmp_path / "paper")
     lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
-    assert lines[8] == "ELMing & 3 & 2 & 1.2 & 3 / 1 / 1 & 1 & 4 & 2 & -- \\\\"
+    assert lines[8] == (
+        "ELMing & -- & 3 & -- & -- & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\"
+    ), "not counted, not a zero: the owner's saves alone are not its labels"
     missing = {
         "reason": build.NO_FRAMES_META,
         "phenomenon": ELM,
@@ -394,14 +541,30 @@ def test_a_split_without_its_meta_leaves_the_legacy_count_out(runs, tmp_path):
     assert "frames_meta_elm_frames" not in manifest["inputs"]
 
 
+def test_a_table_without_its_meta_leaves_the_marks_out(runs, tmp_path):
+    table_meta = _table_meta(runs)
+    table_meta.unlink()
+    manifest = build.build(runs, tmp_path / "paper")
+    lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
+    assert lines[8] == "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4 & 2 \\\\"
+    assert "dagger" not in lines[0]
+    missing = {
+        "reason": build.NO_FRAMES_TABLE_META,
+        "phenomenon": ELM,
+        "missing": [str(table_meta)],
+    }
+    assert missing in manifest["partial"]["table_datasets"]
+    assert "frames_table_meta_elm_frames" not in manifest["inputs"]
+
+
 def test_labels_alone_count_the_owners_review(runs, tmp_path):
     for method in ("elm_frames", "sawtooth_frames"):
         frames.shots_file(runs, method).unlink()
     frames.summary_file(runs, "elm_frames").unlink()
     manifest = build.build(runs, tmp_path / "paper")
     lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
-    assert lines[8] == "ELMing & 3 & 2 & 1.2 & -- & -- & -- & -- & -- \\\\"
-    assert lines[9] == "sawteeth & \\multicolumn{8}{c}{coming} \\\\"
+    assert lines[8] == "ELMing & -- & 3 & -- & -- & -- & -- & -- & -- & -- & -- \\\\"
+    assert lines[9] == "sawteeth & \\multicolumn{10}{c}{coming} \\\\"
     entries = _theirs(manifest["partial"]["table_datasets"])
     reasons = [(e["phenomenon"], e["reason"]) for e in entries]
     assert reasons == [
@@ -427,14 +590,15 @@ def test_no_frame_model_bar_is_read(runs, tmp_path):
 
 def test_the_split_file_is_read_as_the_frame_split(runs):
     table = pd.read_csv(frames.shots_file(runs, "elm_frames"))
+    assert list(table.columns) == list(frame_shots.COLUMNS)
     assert coverage.frame_split(table) == {
-        301: "owner",
-        302: "owner",
+        301: "train",
+        302: "test",
         303: "train",
         304: "train",
         305: "train",
         306: "val",
         307: "test",
     }
-    with pytest.raises(ValueError):  # four columns: not an AE split.csv
+    with pytest.raises(ValueError):  # five columns: not an AE split.csv
         train.read_split(frames.shots_file(runs, "elm_frames"))

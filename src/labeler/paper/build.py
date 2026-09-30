@@ -18,11 +18,14 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   is there, has a `fold` column and is the one `chosen.json` names
   (`folds_check`, D18's check applied to the folds); otherwise both products
   are `partial`, saying why. The frame-model phenomena (NTM, H-mode, ELMing,
-  sawteeth) are counted from their own inputs (`frame_coverage`): the owner's
-  review, the frame model's split with its meta's `labelled_shots` (the legacy
-  table's), and the application's `summary.csv`; each missing part is a
-  `partial` entry naming its `phenomenon`, after AE's, and no frame model's
-  bar is read;
+  sawteeth) are counted from their own inputs, all `frames.VERSION`'s
+  (`frame_coverage`, F1): the owner's review; the frame model's split with its
+  meta's `labelled_shots`, `positive_shots` and `present_s`, over the original
+  labels with the owner's over them (F2, F4); the application's
+  `summary.csv`; and the suggestion table's meta, whose `bar` and
+  `effectively_always` mark a model that failed its primary bar or is
+  effectively always (F8), never gating anything (D59). Each missing part is a
+  `partial` entry naming its `phenomenon`, after AE's;
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
   `<candidate>/review/labels.csv` (D18), over the version's scored window
@@ -31,7 +34,13 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   v1's, which records none; 0-250 kHz for SegNet v2's), SegNet run over the
   same stores, where its `model.pt` exists. The copy's sha256 must be the one
   the AE evaluation names (`labels_sha256`); if it is not, or none is named,
-  both are skipped.
+  both are skipped. The interpreter's other four tracks are worked out here
+  and passed to the figure (`interpreter_tracks`, F9): the shot's suggested
+  states from its frame model's `frames.VERSION` suggestion table, read
+  through the snapshot; else "no <group> data" where it lacks one of the
+  model's required groups on disk (a metadata check, never a fetch); else
+  "coming" without a table, and "not applied to this shot" with one that
+  lacks it. The manifest's `interpreter_tracks` says which, per phenomenon.
 
 The owner's live labels are read for the coverage alone; every scored product
 uses the labels the model was scored against.
@@ -134,9 +143,11 @@ from .. import frames
 from ..ae import seg as ae_seg
 from ..ae import xpower
 from ..ae.xpower import evaluate as ae_evaluate
+from ..ae.xpower.data import targets
 from ..config import Paths, atomic_path, git_dirty, git_sha
+from ..events import raw, suggestions
 from ..events.review import labels
-from . import AE, coverage, paper_dir, scores, shots
+from . import AE, COMING, coverage, paper_dir, scores, shots
 from .snapshot import Snapshot
 from .staging import Stranded, discard, staging_dir, swap
 
@@ -230,8 +241,12 @@ NO_EARLIER = (
 NO_LOOK_SPLIT = "no split.csv, so the earlier version's test shots are not counted"
 FRAMES_COMING = "no saved label, split or suggestions: its frame model has not run"
 NO_FRAMES_SPLIT = "the frame model's shots are not split yet (Task 2.7)"
-NO_FRAMES_META = "the frame split has no meta, so the legacy table is not counted"
+NO_FRAMES_META = "the frame split has no meta, so its labelled shots are not counted"
 NO_FRAMES_SUMMARY = "the frame model has not been applied: no summary.csv (Task 2.11)"
+NO_FRAMES_TABLE_META = (
+    "the suggestion table has no meta, so whether the model met its bar or is "
+    "effectively always is not marked"
+)
 
 
 def inputs(
@@ -430,44 +445,64 @@ def frame_coverage(
     `phenomenon`. One with no saved label, split or summary is not counted (it
     is "coming"). One with any is counted from the owner's live review (none
     saved is a true zero), its frame model's split (`frames.shots_file`), the
-    legacy table's `labelled_shots` in the split's meta
-    (`frames.shots_meta_file`; read only with the split, for a phenomenon with
-    a legacy table) and the application's `summary.csv`
-    (`frames.summary_file`), each missing part an entry, in that order. Each
-    file is read through `snap`, so it is pinned. Nothing else is read: not the
-    frame models' `evaluation.json`, since no bar gates the coverage (D59)."""
+    split's meta (`frames.shots_meta_file`: the labelled and positive shots and
+    the present time, over the original labels with the owner's over them;
+    read only with the split), the application's `summary.csv`
+    (`frames.summary_file`) and the suggestion table's meta (read only with the
+    summary: its `bar` and `effectively_always`, F8), each missing part an
+    entry, in that order; all are `frames.VERSION`'s (F1). Each file is read
+    through `snap`, so it is pinned. Nothing else is read: not the frame
+    models' `evaluation.json`, and the bar read from the table's meta marks the
+    suggestions, never gating them (D59)."""
     counts: dict[str, coverage.Counts] = {}
     why: list[dict] = []
+    version = frames.VERSION
     for category, source in coverage.FRAME_SOURCES.items():
         method = source.method
+        event = frames.SPECS[method].event
         live = labels.labels_path(paths.label_tables / category)
-        split_csv = frames.shots_file(paths, method)
-        meta_json = frames.shots_meta_file(paths, method)
-        summary_csv = frames.summary_file(paths, method)
+        split_csv = frames.shots_file(paths, method, version)
+        meta_json = frames.shots_meta_file(paths, method, version)
+        summary_csv = frames.summary_file(paths, method, version)
+        table = suggestions.table_path(paths, event, method, version)
+        table_meta_json = table.with_suffix(".meta.json")
         if not any(p.is_file() for p in (live, split_csv, summary_csv)):
             why.append(
                 _frame_entry(FRAMES_COMING, category, live, split_csv, summary_csv)
             )
             continue
         saved = snap.labels(f"labels_{category}", live) if live.is_file() else {}
-        split = legacy = summary = None
+        split = meta = summary = table_meta = None
         if not split_csv.is_file():
             why.append(_frame_entry(NO_FRAMES_SPLIT, category, split_csv))
         else:
-            table = snap.csv(f"frames_split_{method}", split_csv)
-            split = coverage.frame_split(table, f"{method} ({split_csv})")
-            if source.legacy is not None and not meta_json.is_file():
-                why.append(_frame_entry(NO_FRAMES_META, category, meta_json))
-            elif source.legacy is not None:
+            shots = snap.csv(f"frames_split_{method}", split_csv)
+            split = coverage.frame_split(shots, f"{method} ({split_csv})")
+            if meta_json.is_file():
                 meta = snap.json(f"frames_meta_{method}", meta_json)
-                if "labelled_shots" not in meta:
-                    raise KeyError(f"{method}: {meta_json} has no labelled_shots")
-                legacy = meta["labelled_shots"]
+            else:
+                why.append(_frame_entry(NO_FRAMES_META, category, meta_json))
         if summary_csv.is_file():
             summary = snap.csv(f"frames_summary_{method}", summary_csv)
+            if table_meta_json.is_file():
+                table_meta = snap.json(f"frames_table_meta_{method}", table_meta_json)
+            else:
+                why.append(
+                    _frame_entry(NO_FRAMES_TABLE_META, category, table_meta_json)
+                )
         else:
             why.append(_frame_entry(NO_FRAMES_SUMMARY, category, summary_csv))
-        counts[category] = coverage.frame_counts(saved, split, summary, legacy=legacy)
+        try:
+            counts[category] = coverage.frame_counts(
+                saved,
+                split,
+                summary,
+                meta=meta,
+                table_meta=table_meta,
+                primary=source.primary,
+            )
+        except KeyError as error:
+            raise KeyError(f"{method}: {error.args[0]}") from None
     return counts, why
 
 
@@ -685,6 +720,43 @@ def _draw(
     return manifest
 
 
+#: The manifest's word for a track drawn from its suggestion table (F9).
+SUGGESTED_TRACK = "suggestions"
+
+
+def interpreter_tracks(paths: Paths, snap: Snapshot, s: shots.AEShot) -> dict:
+    """The interpreter shot's track for each frame-model phenomenon (F9), in
+    `coverage.FRAME_SOURCES`' order: its suggested state per frame of `s` where
+    the shot is in the frame model's `frames.VERSION` suggestion table (read
+    through `snap`, so it is pinned); else `shots.NO_DATA`'s text for the first
+    of the model's required groups not on disk (`raw.record_tier`, metadata
+    only, never a fetch); else `COMING` where there is no table, and
+    `shots.NOT_APPLIED` where the table lacks the shot."""
+    found: dict[str, object] = {}
+    for category, source in coverage.FRAME_SOURCES.items():
+        spec = frames.SPECS[source.method]
+        table = suggestions.table_path(paths, spec.event, spec.method, frames.VERSION)
+        label = None
+        if table.is_file():
+            label = snap.labels(f"frames_table_{spec.method}", table).get(s.shot)
+        if label is not None:
+            found[category] = targets(label, s.first, len(s.prob))
+            continue
+        lacking = next(
+            (
+                group
+                for group in spec.required_groups
+                if raw.record_tier(s.shot, group, paths=paths) is None
+            ),
+            None,
+        )
+        if lacking is not None:
+            found[category] = shots.NO_DATA.format(lacking)
+        else:
+            found[category] = shots.NOT_APPLIED if table.is_file() else COMING
+    return found
+
+
 def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
     """Why the shot figures are skipped when no test shot has an F1 over the
     scored window ending at `until_ms`: `NO_F1` for 0-2 s; None is the owner's
@@ -769,7 +841,16 @@ def _shot_figures(
     drawn = {s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures}
     if named not in drawn:
         return f"{NO_NAMED}: {named}", picked
-    figure("fig_interpreter", shots.draw_interpreter, drawn[named])
+    tracks = interpreter_tracks(paths, snap, drawn[named])
+    picked["interpreter_tracks"] = {
+        category: track if isinstance(track, str) else SUGGESTED_TRACK
+        for category, track in tracks.items()
+    }
+    figure(
+        "fig_interpreter",
+        lambda s, stem: shots.draw_interpreter(s, stem, tracks),
+        drawn[named],
+    )
     figure(
         "fig_examples",
         shots.draw_examples,

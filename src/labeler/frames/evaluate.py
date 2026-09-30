@@ -3,8 +3,9 @@ bar (round three, Part B; spec §3.4).
 
     python -m labeler.frames.evaluate --method M [--pilot]
 
-**Bins.** A shot's bins are its features' (`prepare`): the whole `bin_ms` bins
-inside its window. A bin is scored when its target is ABSENT or PRESENT_T and
+**Bins.** A shot's bins are its features' (`prepare`, of `frames.VERSION`, F1):
+the whole `bin_ms` bins inside its window, and their states the original's
+target with the owner's label over it (`targets.merged`, F2). A bin is scored when its target is ABSENT or PRESENT_T and
 every one of its 10 ms frames is observed (`score`); UNKNOWN and UNCERTAIN_T
 bins are not. The model says present where its P, its frames' logits pooled as
 it was trained (`model.bin_logits`), reaches the threshold chosen on the val
@@ -37,17 +38,28 @@ model's score or on the lower end of a paired difference's interval
 (`lo(...)`); an undefined quantity fails. Whatever the verdict, the tier is
 `suggestions`.
 
-**The owner's saves.** The `owner` split (D40) is scored against the owner's
-saves, frozen with the split, in a table of its own that no bar reads. For ELMs
-those saves are spans of ELMy time, not onsets, and the table says so.
+**Effectively always** (`always_like`, F6). The model is effectively the
+`always` baseline when its calls equal "always present" on at least
+`ALWAYS_AGREEMENT` (99 %) of the scored test bins, or when the upper end of the
+paired F1 - always interval (F1(H) - always for H-mode) is below
+`ALWAYS_MARGIN` (0.01). `evaluation.json`'s `effectively_always` says whether,
+`always_like` the numbers and which of the two held, and the md says it in one
+line; `apply` copies the flag into each suggestion table's meta, beside `bar`,
+and the coverage marks such a model's suggestions.
+
+**The owner's saves.** There is no owner split (F2 supersedes D40's): the
+owner's saves are laid over the original's target, and the owner's shots in
+test are scored with the rest, by the merged target. `owner` counts them (the
+shots file's `owner` column). For ELMs those saves are spans of ELMy time, not
+onsets, and the md says so.
 
 **Output.** `evaluation.json` (the same bytes each time for the same inputs: no
 clock in it) and `evaluation.md`, beside `model.pt` in `frames.model_dir`. The
 test shots are scored once: an existing `evaluation.json` is refused, except
 for a pilot's (`--pilot`, `train.pilot_dir`, under `runs/`). The md says what
 the test cannot show: D44's limits for H/L, and the campaign years (`shot_years`)
-of the split's shots (train, val, test, owner; the legacy ones, outside the
-roster, and the roster's) beside the population's, with the population's years
+of the split's shots (train, val, test; the legacy ones, outside the roster,
+and the roster's) beside the population's, with the population's years
 that no test shot is from. The md also counts the test shots left out for want
 of features (`prepare`'s drops), with their reasons.
 """
@@ -92,14 +104,19 @@ OPS = {">=": operator.ge, ">": operator.gt}
 #: The method whose model also scores L, and the name L's scores go under.
 LMODE = {"hmode_frames": "lmode_frames"}
 ELM_OWNER_NOTE = (
-    "The owner's ELM saves are spans of ELMy time, not onsets: a bin is present "
-    "when it lies in an ELMy span, so this table scores the onset model against "
-    "spans, not against the target it learned."
+    "The owner's ELM saves are spans of ELMy time, not onsets: on the bins they "
+    "cover, a bin is present when it lies in an ELMy span, not when it holds an "
+    "onset, so on those shots the onset model is scored against spans."
 )
 OWNER_NOTE = (
-    "The owner's saves, frozen with the split; scored in a table of their own, "
-    "never against the bar."
+    "The owner's saves, frozen with the split, are laid over the original's "
+    "target (F2) and scored with the rest."
 )
+#: The share of scored test bins on which a model calling "always present"
+#: makes it effectively the `always` baseline, and the paired F1 - always
+#: interval's upper end below which it is too (F6).
+ALWAYS_AGREEMENT = 0.99
+ALWAYS_MARGIN = 0.01
 SAWTOOTH_NOTE = (
     "The target is the ece_sawtooth v2 detector's table: the model is a "
     "distillation of that detector, and it is scored only against it."
@@ -169,7 +186,7 @@ def read_shots(paths: Paths, method: str, shots) -> tuple[list[Shot], dict]:
     """The shots with features, and the others with their reasons."""
     gone, found, left = prepare.dropped(paths, method), [], {}
     for shot in sorted(int(s) for s in shots):
-        path = features_dir(paths, method) / f"{shot}.npz"
+        path = features_dir(paths, method, VERSION) / f"{shot}.npz"
         if not path.is_file():
             left[str(shot)] = gone.get(shot, "not prepared")
             continue
@@ -352,6 +369,32 @@ def verdict(spec: EventSpec, record: dict) -> dict:
     return out
 
 
+def always_like(method: str, record: dict) -> dict:
+    """Whether the model is effectively the `always` baseline (module docstring,
+    F6): `value`, and `agreement`, the share of the scored test bins it calls
+    present, and `high`, the upper end of the paired F1 - always interval
+    (`key`), each with whether it `held`. An undefined number holds nothing."""
+    tp, fp, fn, tn = record["scores"][method]["cells"]
+    scored = tp + fp + fn + tn
+    agreement = (tp + fp) / scored if scored else None
+    key = f"f1{next(iter(views(method)))} - always"
+    found = record["paired"].get(key)
+    high = None if found is None else found.get("high")
+    held = {
+        "agreement": agreement is not None and agreement >= ALWAYS_AGREEMENT,
+        "interval": high is not None and high < ALWAYS_MARGIN,
+    }
+    return {
+        "value": any(held.values()),
+        "agreement": agreement,
+        "agreement_at_least": ALWAYS_AGREEMENT,
+        "key": key,
+        "high": high,
+        "high_below": ALWAYS_MARGIN,
+        "held": held,
+    }
+
+
 def model_probs(model, spec: EventSpec, shot: Shot) -> np.ndarray:
     """The model's P per bin of one shot, NaN where a frame is not observed."""
     per = frames_train.frames_per_bin(spec)
@@ -427,10 +470,10 @@ def _population_shots(paths: Paths) -> list[int]:
 def split_years(paths: Paths, method: str, years: Years) -> dict[str, dict]:
     """The split's shots by campaign year: each split's, the legacy shots' (outside
     the roster; their targets are the legacy tables') and the roster's."""
-    frame = pd.read_csv(shots_file(paths, method))
+    frame = pd.read_csv(shots_file(paths, method, VERSION))
     out = {
         name: year_counts(frame.shot[frame.split == name], years)
-        for name in ("train", "val", "test", "owner")
+        for name in ("train", "val", "test")
     }
     out["legacy"] = year_counts(frame.shot[frame.roster == 0], years)
     out["roster"] = year_counts(frame.shot[frame.roster == 1], years)
@@ -456,7 +499,7 @@ def _check(blob: dict, spec: EventSpec, split: dict, split_bytes: bytes) -> None
         raise ValueError(
             f"{spec.method}: the split changed since the model was trained"
         )
-    test = {s for s, v in split.items() if v in ("test", "owner")}
+    test = {s for s, v in split.items() if v == "test"}
     trained = set(blob.get("shots", {}).get("train", [])) | set(
         blob.get("shots", {}).get("val", [])
     )
@@ -467,24 +510,25 @@ def _check(blob: dict, spec: EventSpec, split: dict, split_bytes: bytes) -> None
 
 
 def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
-    """Score the method's model once on its test and owner shots (module
-    docstring); the record written to `evaluation.json`."""
+    """Score the method's model once on its test shots (module docstring); the
+    record written to `evaluation.json`."""
     spec = SPECS[method]
-    out = model_dir(paths, method) if out is None else Path(out)
+    out = model_dir(paths, method, VERSION) if out is None else Path(out)
     target = out / "evaluation.json"
     if target.exists() and not pilot_area(out, paths.runs):
         raise FileExistsError(f"{target}: the test shots are scored once")
     model_path = out / "model.pt"
     model, blob = frames_train.load(model_path)
-    split_bytes = shots_file(paths, method).read_bytes()
+    split_bytes = shots_file(paths, method, VERSION).read_bytes()
     split = prepare.split_shots(paths, method)
     _check(blob, spec, split, split_bytes)
-    meta = json.loads(shots_meta_file(paths, method).read_text())
+    meta = json.loads(shots_meta_file(paths, method, VERSION).read_text())
+    frame = pd.read_csv(shots_file(paths, method, VERSION))
+    saved = {int(s) for s in frame.shot[frame.owner == 1]}
     threshold = float(blob["threshold"])
-    sets = {
-        name: read_shots(paths, method, [s for s, v in split.items() if v == name])
-        for name in ("test", "owner")
-    }
+    shots, left = read_shots(
+        paths, method, [s for s, v in split.items() if v == "test"]
+    )
     record = {
         "method": method,
         "version": VERSION,
@@ -493,6 +537,7 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
             "path": str(model_path),
             "sha256": hashlib.sha256(model_path.read_bytes()).hexdigest(),
             "threshold": threshold,
+            "threshold_rule": blob.get("threshold_rule", "f1"),
             "split_sha256": blob["split_sha256"],
         },
         "bin_ms": spec.bin_ms,
@@ -502,33 +547,29 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
         "seed": SEED,
     }
     years = shot_years(paths)
-    tables = {}
-    for name, (shots, left) in sets.items():
-        said = {method: {s.shot: model_probs(model, spec, s) for s in shots}}
-        found, left_out = baselines(paths, spec, shots) if shots else ({}, {})
-        for base in spec.baselines:
-            said[base] = found.get(base, {})
-        thresholds = {method: threshold} | dict.fromkeys(spec.baselines, 0.5)
-        tables[name] = table(method, said, thresholds, shots) | {
-            "left_out": left,
-            "baseline_left_out": left_out,
-            "bins": _bin_counts(shots),
-            "years": year_counts([s.shot for s in shots], years),
-        }
-    test = tables["test"]
+    said = {method: {s.shot: model_probs(model, spec, s) for s in shots}}
+    found, left_out = baselines(paths, spec, shots) if shots else ({}, {})
+    for base in spec.baselines:
+        said[base] = found.get(base, {})
+    thresholds = {method: threshold} | dict.fromkeys(spec.baselines, 0.5)
+    test = table(method, said, thresholds, shots) | {
+        "left_out": left,
+        "baseline_left_out": left_out,
+        "bins": _bin_counts(shots),
+        "years": year_counts([s.shot for s in shots], years),
+    }
     record |= {k: test[k] for k in ("scores", "intervals", "paired")}
     record["bar"] = verdict(spec, record)
+    record["always_like"] = always_like(method, record)
+    record["effectively_always"] = record["always_like"]["value"]
     record["test"] = {
         k: test[k] for k in ("shots", "left_out", "baseline_left_out", "bins", "years")
     }
-    owner = tables["owner"]
     record["owner"] = {
         "note": ELM_OWNER_NOTE if spec.method == "elm_frames" else OWNER_NOTE,
         "snapshot": meta.get("owner_snapshot"),
-        **{
-            k: owner[k]
-            for k in ("scores", "intervals", "shots", "left_out", "bins", "years")
-        },
+        "saved": meta.get("owner"),
+        "test_shots": sorted(s for s in test["shots"][method] if s in saved),
     }
     record["split_years"] = split_years(paths, method, years)
     record["population_years"] = year_counts(_population_shots(paths), years)
@@ -577,6 +618,28 @@ def _score_table(method: str, part: dict) -> list[str]:
     return lines
 
 
+def always_line(found: dict) -> str:
+    """The md's one line on whether the model is effectively always (F6)."""
+    agreement, high = found["agreement"], found["high"]
+    parts = {
+        "agreement": (
+            "its calls equal always-present on "
+            + ("no scored bin" if agreement is None else f"{agreement:.1%}")
+            + f" of the scored test bins (effectively always from "
+            f"{found['agreement_at_least']:.0%})"
+        ),
+        "interval": (
+            f"the paired {found['key']} interval's upper end is "
+            + ("undefined" if high is None else f"{high:.3f}")
+            + f" (effectively always below {found['high_below']:g})"
+        ),
+    }
+    held = [parts[k] for k, v in found["held"].items() if v]
+    if held:
+        return "Effectively always: yes, " + " and ".join(held) + "."
+    return "Effectively always: no; " + "; ".join(parts.values()) + "."
+
+
 def _years_line(years: dict) -> str:
     said = ", ".join(f"{k}: {v}" for k, v in years.items() if v)
     return said or "none"
@@ -610,7 +673,6 @@ def years_md(record: dict) -> list[str]:
         "train": "train",
         "val": "val",
         "test": "test (the split)",
-        "owner": "owner",
         "legacy": "legacy (outside the roster)",
         "roster": "roster",
     }
@@ -641,8 +703,9 @@ def years_md(record: dict) -> list[str]:
 
 
 def report_md(spec: EventSpec, record: dict) -> str:
-    """`evaluation.md`: the test's tables, the bar, the owner's table and what the
-    test cannot show."""
+    """`evaluation.md`: the test's tables, the bar, whether the model is
+    effectively always, the owner's shots in test and what the test cannot
+    show."""
     method, test = spec.method, record["test"]
     n = test["bins"]
     lines = [
@@ -680,6 +743,8 @@ def report_md(spec: EventSpec, record: dict) -> str:
             "Tier: suggestions, whatever the bar."
         ),
         "",
+        always_line(record["always_like"]),
+        "",
     ]
     gone = Counter(test["left_out"].values())
     if gone:
@@ -696,22 +761,19 @@ def report_md(spec: EventSpec, record: dict) -> str:
         lines.append(
             f"- {base} ({gated}): ran on {ran} test shots, left out of {len(left)}."
         )
-    lines += ["", "## The owner's saves", "", record["owner"]["note"], ""]
     owner = record["owner"]
-    if owner["shots"].get(method):
-        lines += [
-            (
-                f"{len(owner['shots'][method])} owner shots, "
-                f"{owner['bins']['scored']} scored bins "
-                f"({owner['bins']['present']} present); no bar reads this table."
-            ),
-            "",
-            *_score_table(method, owner),
-            "",
-        ]
-    else:
-        lines += ["No owner shot has features.", ""]
-    lines += ["## What this test can and cannot show", ""]
+    lines += [
+        "",
+        "## The owner's saves",
+        "",
+        (
+            f"{len(owner['test_shots'])} of the {len(test['shots'][method])} scored "
+            "test shots carry an owner label. " + owner["note"]
+        ),
+        "",
+        "## What this test can and cannot show",
+        "",
+    ]
     if method in LMODE:
         low_l = record["intervals"][method]["f1(L)"]
         width = (
