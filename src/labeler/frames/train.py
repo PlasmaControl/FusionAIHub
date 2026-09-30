@@ -47,14 +47,18 @@ classes' F1 ("macro_f1", H-mode's: F1(H) and F1(L), as its bar H1 reads them).
 
 **Output.** `training.json`, then `model.pt` (`save`), in `frames.model_dir`:
 the state dict, the `TrainConfig`, the threshold and its rule, both classes'
-weights, whether the crops were balanced (`balance_crops`) and their count by
-centre class, over the run and per epoch (`crop_centres`: "absent" and
-"present", or "random"), the channels, sub-frames and width, the spec, the
-split's sha256 and the shots trained on. A model is trained
-once on its split, so an existing `model.pt` is refused. A pilot (`--pilot`, or
-any `--limit`, which takes the first N train and N val shots) writes under
-`runs/frames/pilot/<method>/`, which it may replace, for `PILOT_EPOCHS` unless
-`--epochs` says otherwise. Torch takes SLURM_CPUS_PER_TASK threads (4 without).
+weights and the scored bins by class they came from (`weight_bins`, F17, from
+`class_bins`: `from`, "train" or "crops"; `train`, the whole train shots'; and
+`crops`, the first epoch's crops' when they are balanced, else None), so what
+the balancing did can be seen; whether the crops were balanced
+(`balance_crops`) and their count by centre class, over the run and per epoch
+(`crop_centres`: "absent" and "present", or "random"); the channels,
+sub-frames and width, the spec, the split's sha256 and the shots trained on. A
+model is trained once on its split, so an existing `model.pt` is refused. A
+pilot (`--pilot`, or any `--limit`, which takes the first N train and N val
+shots) writes under `runs/frames/pilot/<method>/`, which it may replace, for
+`PILOT_EPOCHS` unless `--epochs` says otherwise. Torch takes SLURM_CPUS_PER_TASK
+threads (4 without).
 """
 
 from __future__ import annotations
@@ -170,14 +174,24 @@ def bin_loss(frame_logits, states, weights, frames_per_bin: int, pool: str):
     return total / weight.clamp(min=1.0)
 
 
+def class_bins(states) -> dict[str, int]:
+    """`{"absent": n, "present": n}`: the ABSENT and PRESENT_T bins in `states`
+    (arrays), the counts `class_weights` weighs."""
+    arrays = [np.asarray(s).ravel() for s in states]
+    states = np.concatenate(arrays) if arrays else np.zeros(0)
+    return {
+        "absent": int(np.sum(states == ABSENT)),
+        "present": int(np.sum(states == PRESENT_T)),
+    }
+
+
 def class_weights(states, cap: float) -> dict[str, float]:
     """`{"absent": w, "present": w}` from the scored bins in `states` (arrays):
     the minority class weighs the majority-to-minority ratio, from 1 up to
     `cap`, and the majority 1 (F3); both 1 when a class has no bin, or on a
     tie."""
-    arrays = [np.asarray(s).ravel() for s in states]
-    states = np.concatenate(arrays) if arrays else np.zeros(0)
-    present, absent = int(np.sum(states == PRESENT_T)), int(np.sum(states == ABSENT))
+    counts = class_bins(states)
+    present, absent = counts["present"], counts["absent"]
     weights = {"absent": 1.0, "present": 1.0}
     if present and absent:
         minority = "present" if present < absent else "absent"
@@ -410,10 +424,11 @@ def fit(
     (channels,) = channels
     balance = spec.balance_crops
     weights = None
+    train_bins = [s.states[s.observed] for s in train]
+    weight_bins = {"from": "crops" if balance else "train"}
+    weight_bins |= {"train": class_bins(train_bins), "crops": None}
     if not balance:
-        weights = class_weights(
-            [s.states[s.observed] for s in train], config.pos_weight_max
-        )
+        weights = class_weights(train_bins, config.pos_weight_max)
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     model = RowsCNN(channels, subs)
@@ -425,9 +440,9 @@ def fit(
         started = time.monotonic()
         windows = crop_windows(train, rng, crop_bins, balance)
         if weights is None:  # F11: the first epoch's crops, held for the run
-            weights = class_weights(
-                crop_states(train, windows, crop_bins), config.pos_weight_max
-            )
+            drawn_bins = crop_states(train, windows, crop_bins)
+            weight_bins["crops"] = class_bins(drawn_bins)
+            weights = class_weights(drawn_bins, config.pos_weight_max)
         drawn = centre_counts(windows)
         for name, count in drawn.items():
             centres[name] = centres.get(name, 0) + count
@@ -484,6 +499,7 @@ def fit(
         "spec": asdict(spec),
         "split_sha256": hashlib.sha256(split_bytes).hexdigest(),
         "weights": weights,
+        "weight_bins": weight_bins,
         "balance_crops": balance,
         "crop_centres": dict(sorted(centres.items())),
         "seed": seed,

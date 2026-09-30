@@ -561,6 +561,34 @@ def test_a_table_without_its_meta_leaves_the_marks_out(runs, tmp_path):
     assert "frames_table_meta_elm_frames" not in manifest["inputs"]
 
 
+def test_the_h_mode_row_reads_the_h_model_s_table_meta_alone(runs, tmp_path):
+    # F15: there is no L row; H-mode's, "H-mode (and L-mode)", is marked
+    # from hmode_frames' table meta, and lmode_frames' (its own flags) is not
+    # read: here only L's says "effectively always".
+    method = "hmode_frames"
+    frames.shots_file(runs, method).write_text(SAW_SPLIT)
+    meta = {"labelled_shots": 4, "positive_shots": 3, "present_s": 2.5}
+    frames.shots_meta_file(runs, method).write_text(json.dumps(meta))
+    frames.summary_file(runs, method).parent.mkdir(parents=True)
+    frames.summary_file(runs, method).write_text(SUMMARY)
+    h_meta = {"bar": {"H1": True, "H2": True, "all": True}}
+    h_meta["effectively_always"] = False
+    l_meta = h_meta | {"effectively_always": True, "effectively_never": False}
+    for m, event, found in (
+        (method, HMODE, h_meta),
+        ("lmode_frames", "low_confinement_mode", l_meta),
+    ):
+        path = suggestions.table_path(runs, event, m, frames.VERSION)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.with_suffix(".meta.json").write_text(json.dumps(found))
+    manifest = build.build(runs, tmp_path / "paper")
+    lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
+    assert lines[7] == "H-mode & 4 & 0 & 3 & 2.5 & 2 & 1 & 1 & -- & 4 & 2 \\\\"
+    assert "H-mode (≈ always)" not in lines[0]
+    assert "frames_table_meta_hmode_frames" in manifest["inputs"]
+    assert not [k for k in manifest["inputs"] if "lmode" in k]
+
+
 def test_labels_alone_count_the_owners_review(runs, tmp_path):
     for method in ("elm_frames", "sawtooth_frames"):
         frames.shots_file(runs, method).unlink()

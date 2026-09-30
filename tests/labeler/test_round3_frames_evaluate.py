@@ -13,16 +13,26 @@ import pytest
 from labeler import frames
 from labeler.events import spans
 from labeler.events.catalog.population import POOL_COLUMNS
-from labeler.events.catalog.states import PRESENT
+from labeler.events.catalog.states import PRESENT, UNCERTAIN
 from labeler.events.review import build as review_build
-from labeler.frames import evaluate, prepare, train
+from labeler.events.review import labels
+from labeler.frames import evaluate, prepare, targets, train
 from labeler.frames import shots as frames_shots
 from labeler.frames.model import RowsCNN
 from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
 from labeler.scoring import stats
 
 from . import frames_tree
-from .frames_tree import ELM, IP_SHOT, LABELS_SHOT, POPULATION_ONLY, SHOTS
+from .frames_tree import (
+    ELM,
+    EVENT_MS,
+    HMODE,
+    IP_SHOT,
+    LABELS_SHOT,
+    POPULATION_ONLY,
+    SHOTS,
+    WINDOW,
+)
 
 WIDTHS = {"elm_frames": 2, "hmode_frames": 5, "ntm_frames": 42, "sawtooth_frames": 41}
 #: The ELM method's test shots here; its owner shot, SHOTS[ELM], is in train.
@@ -207,7 +217,8 @@ def test_the_owner_s_shots_in_test_are_scored_with_the_rest(elm):
     owner = record["owner"]
     assert owner["test_shots"] == []  # the owner's shot is in train
     assert owner["saved"] == {"saved": 1, "overriding": 1, "added": 0}
-    assert "spans of ELMy time, not onsets" in owner["note"]
+    assert "ELMy time, not onsets" in owner["note"]
+    assert "E1" in owner["note"] and "E2" in owner["note"]
     assert owner["snapshot"]["sha256"]
     assert set(record["scores"]) == {"elm_frames", "elm_onsets", "elm_clock", "always"}
     # The test's cells are the test shots' alone, by their merged target.
@@ -226,9 +237,63 @@ def test_the_owner_s_shots_in_test_are_scored_with_the_rest(elm):
     assert record["owner"]["test_shots"] == [SHOTS[ELM]]
     assert "owner" not in record["split_years"]
     md = (frames.model_dir(elm, "elm_frames") / "evaluation.md").read_text()
-    line = "1 of the 3 scored test shots carry an owner label. "
+    line = (
+        "1 of the 3 scored test shots carry an owner label, 0 of them the "
+        "owner's alone (added, not overriding). "
+    )
     assert line + evaluate.ELM_OWNER_NOTE in md
     assert md.count("## The owner's saves") == 1
+
+
+def test_the_owner_s_flips_and_added_shots_are_counted(tree, monkeypatch):
+    # F14: the owner's ELM saves are spans of ELMy time over Hiro's onsets. On
+    # SHOTS[ELM] they add 1400-1500 ms (0 to 1), leave 1300-1400 out (1 to 0)
+    # and call 1000-1050 uncertain; the H-mode shot is in no ELM grid, so its
+    # save is its target alone (added).
+    event = tree.label_tables / ELM
+    spans_ = [
+        (600, 1000, PRESENT),
+        (1000, 1050, UNCERTAIN),
+        (1050, 1300, PRESENT),
+        (1400, 1500, PRESENT),
+    ]
+    labels.save(event, SHOTS[ELM], labels.normalise(WINDOW, spans_), source=None)
+    alone = labels.normalise(WINDOW, [(*EVENT_MS, PRESENT)])
+    labels.save(event, SHOTS[HMODE], alone, source=None)
+    frames_shots.make(tree, "elm_frames")
+    meta = json.loads(frames.shots_meta_file(tree, "elm_frames").read_text())
+    owned = [SHOTS[ELM], SHOTS[HMODE]]
+    prepare.build_stores(tree, "elm_frames", [*owned, *TEST])
+    written = prepare.prepare(tree, "elm_frames", [*owned, *TEST])["written"]
+    assert written == sorted([*owned, *TEST])
+    _resplit(tree, "elm_frames", dict.fromkeys([*owned, *TEST], "test"))
+    _save_model(tree, "elm_frames")
+    monkeypatch.setattr(spans, "elm_onsets", _truth_onsets(tree), raising=False)
+    record = evaluate.evaluate(tree, "elm_frames")
+    owner = record["owner"]
+    assert owner["test_shots"] == sorted(owned)
+    assert owner["added_test_shots"] == [SHOTS[HMODE]]
+    # Every bin of both windows (100-1900 ms, 36 bins each) is observed and the
+    # owner's; the added shot's 16 present and 20 absent bins had no original.
+    changed = {
+        "absent_to_present": 2,
+        "present_to_absent": 2,
+        "present_to_uncertain": 1,
+        "unknown_to_present": 16,
+        "unknown_to_absent": 20,
+    }
+    for scope in ("test", "all"):
+        found = owner["flips"][scope]
+        assert (found["shots"], found["bins"], found["owned"]) == (2, 72, 72)
+        flips = {k: v for k, v in found.items() if k in targets.FLIP_KEYS and v}
+        assert flips == changed
+    # The shots meta's whole-split counts, made before the resplit, agree.
+    assert meta["owner_flips"]["all"] == owner["flips"]["all"]
+    md = (frames.model_dir(tree, "elm_frames") / "evaluation.md").read_text()
+    assert "4 scored test shots carry an owner label, 1 of them the owner's" in md
+    assert evaluate.flips_line(owner["flips"]) in md
+    assert "0→1 2, 1→0 2, 0 or 1 to uncertain 1, and unknown to 0 or 1 36" in md
+    assert evaluate.ELM_OWNER_NOTE in md
 
 
 def test_effectively_always_by_either_test():

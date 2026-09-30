@@ -33,6 +33,11 @@ inside its window (the split's, `frames.shots_meta_file`'s `windows`) go to
   where neither has the bin;
 - `first`, the first frame, and `window`, the window in ms.
 
+Before any, `check_frozen` refuses a split whose frozen files have changed: the
+owner's saves as the split froze them (their sha256 in the meta's
+`owner_snapshot`; no file when it froze none), and the original's table where
+the meta pins it (`original`, the sawteeth's; the grids are a file per shot).
+
 A shot whose features cannot be made is dropped: its npz is removed and its
 reason written to `features_dir/<shot>.dropped.json` (`dropped` reads them all).
 The reasons: not in the split, no target (no original that can be read, and no
@@ -56,13 +61,13 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from datetime import UTC, datetime
 from multiprocessing import get_context
+from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas as pd
 
-from ..ae.xpower.data import window_frames
-from ..config import Paths, atomic_path, git_sha
+from ..config import Paths, atomic_path, git_sha, sha256_of
 from ..events.review import build as review_build
 from ..events.review import labels
 from ..scoring.frames import FRAME_MS
@@ -80,7 +85,6 @@ from . import (
     targets,
 )
 from .features import StaleStore, features, match_roles
-from .targets import UNKNOWN
 
 log = logging.getLogger(__name__)
 
@@ -214,22 +218,42 @@ def dropped(paths: Paths, method: str) -> dict[int, str]:
     return found
 
 
-def _aligned(starts, states, k0: int, k1: int, bin_ms: float) -> np.ndarray:
-    """The target's states on bins `k0 .. k1 - 1`; UNKNOWN where it has none."""
-    k = np.rint(np.asarray(starts, dtype=np.float64) / bin_ms).astype(np.int64)
-    states = np.asarray(states, dtype=np.int8)
-    out = np.full(k1 - k0, UNKNOWN, dtype=np.int8)
-    inside = (k >= k0) & (k < k1)
-    out[k[inside] - k0] = states[inside]
-    return out
+def _sha256(path) -> str | None:
+    return sha256_of(path) if Path(path).is_file() else None
 
 
-def bin_range(window, bin_ms: float) -> tuple[int, int]:
-    """`(k0, k1)`: the whole bins `k0 .. k1 - 1` of `bin_ms` inside the whole 10 ms
-    frames of `window`."""
-    per = round(bin_ms / FRAME_MS)
-    first, n = window_frames(window)
-    return -(-first // per), (first + n) // per
+def check_frozen(paths: Paths, method: str, meta: dict) -> None:
+    """Refuse (F16), a ValueError naming the file, when what the split froze has
+    changed since: the owner's frozen saves (`frames.owner_file`), whose sha256
+    must be `meta["owner_snapshot"]`'s, and which must be absent when that is
+    None; and the original's one file where the meta pins it (`meta["original"]`,
+    `targets.original_pin`). A meta made before the pin, and a grid target,
+    which pins nothing, have no original to check."""
+    copy = owner_file(paths, method, VERSION)
+    froze = (meta.get("owner_snapshot") or {}).get("sha256")
+    found = _sha256(copy)
+    if froze is None and found is not None:
+        raise ValueError(
+            f"{method}: {copy} is there, but the split froze no owner's saves: it "
+            "is stale; remove it, or make the split again (frames.shots --force)"
+        )
+    if found != froze:
+        now = "is gone" if found is None else f"has sha256 {found}"
+        raise ValueError(
+            f"{method}: the owner's frozen saves {copy} {now}, not the sha256 "
+            f"{froze} the split froze: make the split again (frames.shots --force)"
+        )
+    pin = meta.get("original") or {}
+    if pin.get("sha256") is None:
+        return
+    found = _sha256(pin["path"])
+    if found != pin["sha256"]:
+        now = "is gone" if found is None else f"has sha256 {found}"
+        raise ValueError(
+            f"{method}: the original target {pin['path']} {now}, not the sha256 "
+            f"{pin['sha256']} the split pinned: it changed since the split was "
+            "made; make the split again (frames.shots --force)"
+        )
 
 
 def _features_one(job) -> tuple[int, str | None]:
@@ -237,7 +261,7 @@ def _features_one(job) -> tuple[int, str | None]:
     spec = SPECS[method]
     folder = features_dir(paths, method, VERSION)
     per = round(spec.bin_ms / FRAME_MS)
-    k0, k1 = bin_range(window, spec.bin_ms)
+    k0, k1 = targets.bin_range(window, spec.bin_ms)
     if k1 <= k0:
         return _drop(folder, shot, "no whole bin in the window")
     path = store_path(paths, spec, shot)
@@ -251,13 +275,12 @@ def _features_one(job) -> tuple[int, str | None]:
         return _drop(folder, shot, f"unusable store: {type(error).__name__}: {error}")
     if not observed.any():
         return _drop(folder, shot, "no observed frame")
-    starts, states = target
     bins = (k0 + np.arange(k1 - k0)) * float(spec.bin_ms)
     arrays = {
         "x": x.astype(np.float16),
         "observed": observed,
         "bins": bins,
-        "states": _aligned(starts, states, k0, k1, spec.bin_ms),
+        "states": targets.on_bins(target, k0, k1, spec.bin_ms),
         "first": np.int64(k0 * per),
         "window": np.asarray(window, dtype=np.int64),
     }
@@ -271,8 +294,9 @@ def prepare(paths: Paths, method: str, shots, *, workers: int = 1) -> dict:
     """Write each of `shots`' features (module docstring); what was done: the
     shots `written`, and the `dropped` ones with their reasons."""
     spec = SPECS[method]
-    meta_path = shots_meta_file(paths, method, VERSION)
-    windows = json.loads(meta_path.read_text())["windows"]
+    meta = json.loads(shots_meta_file(paths, method, VERSION).read_text())
+    check_frozen(paths, method, meta)
+    windows = meta["windows"]
     split = split_shots(paths, method)
     wanted = sorted({int(shot) for shot in shots})
     folder = features_dir(paths, method, VERSION)

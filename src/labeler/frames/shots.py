@@ -21,7 +21,11 @@ shots every other check passed:
 
 `make` freezes the owner's saves (`labels.labels_path`) as `frames.owner_file`,
 with their sha256, and every target is merged with that copy, never the live
-file. There is no owner split (F2 supersedes D40's "owner split, never trained
+file; with no saves, an earlier split's copy is removed. It pins the original's
+file too, where it is one (`targets.original_pin`: the sawteeth's table, hashed
+before it is read; the grids are a file per shot), and `prepare` refuses a
+split whose frozen files have changed (`prepare.check_frozen`). There is no
+owner split (F2 supersedes D40's "owner split, never trained
 on"): every eligible shot is split 70/15/15 by shot within each (positive,
 roster) stratum at `frames.SEED` (`split`), and the shots file's `owner` is 1
 where the owner saved the shot. A shot's `positive` is whether its merged
@@ -32,7 +36,10 @@ The meta (`frames.shots_meta_file`) holds D60's `labelled_shots` and
 too, and `legacy_labelled_shots`, the original's alone; `present_s`, the merged
 targets' present bins times `bin_ms`, in s (F4); `owner`, the saved shots, those
 also in the original ("overriding") and those it lacks ("added"); the counts and
-positives by split; the owner's snapshot; the left-out shots by reason; each
+positives by split; the owner's snapshot; `owner_flips`, what the owner's saves
+changed in the owner's shots' targets over their windows (`targets.flips`, by
+split and in all, F14; a meta made before it has none, and nothing needs it);
+`original`, the original's pin; the left-out shots by reason; each
 shot's window and where it came from; and, for the shots whose window is their
 target's hull, how many labelled bins lie outside the plasma's window in the
 catalog's Ip log (`labels_window`). `paper.coverage` counts the frame
@@ -329,6 +336,25 @@ def _labels_window(paths, spec, frame, merged) -> dict:
     return out
 
 
+def owner_flips(spec: EventSpec, frame: pd.DataFrame, found: dict, saved: dict):
+    """What the owner's saves changed in the split's targets (F14,
+    `targets.flips`), over every bin in the window of each of the owner's
+    shots, by split and over "all" of them."""
+    parts: dict[str, list] = {which: [] for which in SPLITS}
+    for row in frame[frame.owner == 1].itertuples(index=False):
+        shot = int(row.shot)
+        k0, k1 = targets.bin_range(
+            (row.window_start_ms, row.window_end_ms), spec.bin_ms
+        )
+        original = targets.on_bins(found.get(shot), k0, k1, spec.bin_ms)
+        label = targets.label_bins(saved[shot], spec.bin_ms)
+        owner = targets.on_bins(label, k0, k1, spec.bin_ms)
+        parts[row.split].append(targets.flips(original, owner))
+    out = {which: targets.flip_total(counts) for which, counts in parts.items()}
+    out["all"] = targets.flip_total(c for counts in parts.values() for c in counts)
+    return out
+
+
 def make(paths: Paths, method: str, *, force: bool = False) -> pd.DataFrame:
     """Write the method's shots file and its meta (module docstring), both
     `frames.VERSION`'s; the shots.
@@ -347,17 +373,20 @@ def make(paths: Paths, method: str, *, force: bool = False) -> pd.DataFrame:
         model = model_dir(paths, method, VERSION) / "model.pt"
         if model.exists():
             raise FileExistsError(f"{model}: a model is trained on the split")
+    original = targets.original_pin(paths, spec)  # before it is read
     found = read_targets(paths, spec)
     source = labels.labels_path(paths.label_tables / spec.event)
     snapshot = {"path": None, "sha256": None, "source": str(source)}
     saved = {}
+    copy = owner_file(paths, method, VERSION)
     if source.is_file():
         data = source.read_bytes()
-        copy = owner_file(paths, method, VERSION)
         with atomic_path(copy) as tmp:
             tmp.write_bytes(data)
         saved = labels.read_labels(copy)
         snapshot |= {"path": str(copy), "sha256": hashlib.sha256(data).hexdigest()}
+    else:
+        copy.unlink(missing_ok=True)  # an earlier split's, not this one's
     merged = merge_targets(found, saved, spec.bin_ms)
     frame, left = eligible(paths, spec, found=found, saved=saved)
     assigned = split(frame)
@@ -388,6 +417,8 @@ def make(paths: Paths, method: str, *, force: bool = False) -> pd.DataFrame:
         "counts": {s: int((shots.split == s).sum()) for s in SPLITS},
         "positive": {s: int(shots.positive[shots.split == s].sum()) for s in SPLITS},
         "owner_snapshot": snapshot,
+        "owner_flips": owner_flips(spec, frame, found, saved),
+        "original": original,
         "left_out": {reason: len(shots_) for reason, shots_ in left.items()},
         "left_out_shots": left,
         "window_from": dict(sorted(Counter(frame.window_from).items())),

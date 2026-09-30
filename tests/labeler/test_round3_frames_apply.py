@@ -189,6 +189,12 @@ def test_merge_writes_the_table_meta_and_summary(elm, capsys):
 
 def test_lmode_frames_gets_its_own_table(hmode, capsys):
     _run_all("hmode_frames")
+    # F15: say the H model is effectively always, calling L on no bin.
+    scored = frames.model_dir(hmode, "hmode_frames") / "evaluation.json"
+    record = json.loads(scored.read_text())
+    record["effectively_always"] = True
+    record["scores"]["lmode_frames"]["cells"] = [0, 0, 3, 7]
+    scored.write_text(json.dumps(record))
     assert apply.main(["--method", "hmode_frames", "--merge"]) == 0
     h = suggestions.table_path(hmode, HMODE, "hmode_frames", frames.VERSION)
     l_ = suggestions.table_path(hmode, LMODE, "lmode_frames", frames.VERSION)
@@ -196,9 +202,12 @@ def test_lmode_frames_gets_its_own_table(hmode, capsys):
     meta = json.loads(l_.with_suffix(".meta.json").read_text())
     assert meta["method"] == "lmode_frames" and meta["event"] == LMODE
     assert meta["derived_from"] == "hmode_frames" and meta["tier"] == "suggestions"
-    scored = frames.model_dir(hmode, "hmode_frames") / "evaluation.json"
-    flag = json.loads(scored.read_text())["effectively_always"]
-    assert meta["effectively_always"] == flag
+    h_meta = json.loads(h.with_suffix(".meta.json").read_text())
+    assert h_meta["effectively_always"] is True and "effectively_never" not in h_meta
+    # L's flags are its own: always H is never L, and L is not always.
+    assert meta["effectively_never"] is True
+    assert meta["effectively_always"] is False
+    assert meta["effectively_from"]["l_agreement"] == 0.0
     assert meta["failed_file"] == str(l_.parent / "failed.jsonl")
     assert (l_.parent / "failed.jsonl").is_file()
     h_rows, l_rows = pd.read_csv(h), pd.read_csv(l_)
@@ -213,6 +222,26 @@ def test_lmode_frames_gets_its_own_table(hmode, capsys):
     assert list(l_sum.shot) == list(h_sum.shot) == sorted([SHOTS[HMODE], SHOTS[ELM]])
     total = h_sum.present_frames + l_sum.present_frames + l_sum.not_observable_frames
     assert list(total) == list(l_sum.frames)
+
+
+def test_lmode_s_flags_are_the_h_model_s_calls_read_as_l():
+    def flags(cells, always):
+        record = {"scores": {"lmode_frames": {"cells": cells}}}
+        return apply.lmode_flags(
+            record | {"effectively_always": always}, "lmode_frames"
+        )
+
+    # L on 995 of the 1000 scored bins: effectively always L, and not never.
+    found = flags([990, 5, 5, 0], False)
+    assert (found["effectively_always"], found["effectively_never"]) == (True, False)
+    assert found["effectively_from"]["l_agreement"] == pytest.approx(0.995)
+    # H's flag is L's "never", whatever L's own agreement.
+    found = flags([400, 100, 100, 400], True)
+    assert (found["effectively_always"], found["effectively_never"]) == (False, True)
+    # No scored bin: no agreement, so not always.
+    found = flags([0, 0, 0, 0], False)
+    assert found["effectively_always"] is False
+    assert found["effectively_from"]["l_agreement"] is None
 
 
 def test_the_gallery_draws_one_picture_a_shot(elm, capsys):

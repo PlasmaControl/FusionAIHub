@@ -258,8 +258,11 @@ def test_without_saves_there_is_no_owner_shot(tmp_path, monkeypatch):
     p = frames_tree.build(tmp_path)
     editor_tree.no_fetch(monkeypatch)
     spec = frames.SPECS["ntm_frames"]
+    frames_shots.make(p, "ntm_frames")
+    assert frames.owner_file(p, "ntm_frames").is_file()
+    # F16: the saves gone, a split made again leaves no stale frozen copy.
     labels.labels_path(p.label_tables / spec.event).unlink()
-    shots = frames_shots.make(p, "ntm_frames")
+    shots = frames_shots.make(p, "ntm_frames", force=True)
     meta = json.loads(frames.shots_meta_file(p, "ntm_frames").read_text())
     assert (meta["owner_snapshot"]["path"], meta["owner_snapshot"]["sha256"]) == (
         None,
@@ -268,6 +271,70 @@ def test_without_saves_there_is_no_owner_shot(tmp_path, monkeypatch):
     assert meta["owner"] == {"saved": 0, "overriding": 0, "added": 0}
     assert not frames.owner_file(p, "ntm_frames").exists()
     assert _rows(shots) == [(SHOTS[spec.store_event], "train", 1, 1, 0)]
+
+
+def test_the_meta_pins_the_original_s_one_file(tree, made):
+    # F16: the sawteeth's table, one file, is pinned by its sha256; a grid
+    # target is a file per shot, and pins nothing.
+    _, meta = made["sawtooth_frames"]
+    table = frames_tree.sawtooth_table(tree)
+    sha = hashlib.sha256(table.read_bytes()).hexdigest()
+    assert meta["original"] == {"path": str(table), "sha256": sha}
+    for method in ("elm_frames", "hmode_frames", "ntm_frames"):
+        pin = made[method][1]["original"]
+        assert (pin["path"], pin["sha256"]) == (None, None)
+        assert pin["grids"] and "no single file" in pin["note"]
+
+
+def test_the_meta_counts_the_owner_s_flips(made):
+    # F14: what the owner's saves changed in the owner's shots' targets, over
+    # their windows. The tree's saves say what the originals say, but for
+    # H-mode's 600 ms bin (H and L, uncertain; the owner says H) and the
+    # sawteeth's 1000-1050 ms (uncertain; the owner says present) and
+    # 1850-1900 ms (not observable; the owner says absent).
+    changed = {
+        "elm_frames": {},
+        "hmode_frames": {"uncertain_to_present": 1},
+        "ntm_frames": {},
+        "sawtooth_frames": {"uncertain_to_present": 5, "unknown_to_absent": 5},
+    }
+    for method, want in changed.items():
+        shots, meta = made[method]
+        found = meta["owner_flips"]
+        assert set(found) == {*SPLITS, "all"}
+        (which,) = shots.split[shots.owner == 1]
+        assert found[which] == found["all"] and found["all"]["shots"] == 1
+        spec = frames.SPECS[method]
+        window = meta["windows"][str(SHOTS[spec.store_event])][:2]
+        k0, k1 = targets.bin_range(window, spec.bin_ms)
+        assert found["all"]["bins"] == found["all"]["owned"] == k1 - k0
+        flips = {k: v for k, v in found["all"].items() if k in targets.FLIP_KEYS}
+        assert {k: v for k, v in flips.items() if v} == want
+
+
+def test_flips_count_the_owner_s_changes_by_class():
+    U, A, P, C = targets.UNKNOWN, targets.ABSENT, targets.PRESENT_T, 2
+    original = [A, A, P, P, P, U, U, C, A, P]
+    owner = [A, P, A, P, C, P, A, P, U, U]
+    found = targets.flips(original, owner)
+    assert (found["bins"], found["owned"]) == (10, 8)
+    nonzero = {k: v for k, v in found.items() if k in targets.FLIP_KEYS and v}
+    assert nonzero == {
+        "absent_to_present": 1,
+        "present_to_absent": 1,
+        "present_to_uncertain": 1,
+        "unknown_to_present": 1,
+        "unknown_to_absent": 1,
+        "uncertain_to_present": 1,
+    }
+    mask = [True] * 5 + [False] * 5
+    masked = targets.flips(original, owner, mask)
+    assert (masked["bins"], masked["owned"], masked["unknown_to_present"]) == (5, 5, 0)
+    total = targets.flip_total([found, masked])
+    assert (total["shots"], total["bins"], total["absent_to_present"]) == (2, 15, 2)
+    assert targets.flip_total([]) == {"shots": 0, "bins": 0, "owned": 0} | {
+        k: 0 for k in targets.FLIP_KEYS
+    }
 
 
 def test_the_split_is_reproducible_and_stratified():

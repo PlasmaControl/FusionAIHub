@@ -51,8 +51,14 @@ and the coverage marks such a model's suggestions.
 **The owner's saves.** There is no owner split (F2 supersedes D40's): the
 owner's saves are laid over the original's target, and the owner's shots in
 test are scored with the rest, by the merged target. `owner` counts them (the
-shots file's `owner` column). For ELMs those saves are spans of ELMy time, not
-onsets, and the md says so.
+shots file's `owner` column) and those whose target is the owner's label alone
+(`added_test_shots`: no original, added, not overriding), and `owner.flips`
+what the owner's saves changed (`owner_flips`, F14), read here from the
+frozen owner file and the original target (after `prepare.check_frozen`), not
+from the features: over the scored test shots' observed bins (`test`), and
+over every bin in the window of each of the owner's shots in the split
+(`all`). For ELMs those saves are spans of ELMy time, not onsets, and the md
+says how that changes E1 and E2 on the owner's shots.
 
 **Output.** `evaluation.json` (the same bytes each time for the same inputs: no
 clock in it) and `evaluation.md`, beside `model.pt` in `frames.model_dir`. The
@@ -84,6 +90,7 @@ from ..config import Paths, atomic_path, git_sha
 from ..events import spans
 from ..events.catalog.population import read_pool
 from ..events.catalog.states import PRESENT
+from ..events.review import labels
 from ..literature.osti import shot_year, year_starts
 from ..scoring import stats
 from . import (
@@ -93,9 +100,11 @@ from . import (
     EventSpec,
     features_dir,
     model_dir,
+    owner_file,
     prepare,
     shots_file,
     shots_meta_file,
+    targets,
 )
 from . import train as frames_train
 from .targets import ABSENT, PRESENT_T
@@ -105,9 +114,14 @@ OPS = {">=": operator.ge, ">": operator.gt}
 #: The method whose model also scores L, and the name L's scores go under.
 LMODE = {"hmode_frames": "lmode_frames"}
 ELM_OWNER_NOTE = (
-    "The owner's ELM saves are spans of ELMy time, not onsets: on the bins they "
-    "cover, a bin is present when it lies in an ELMy span, not when it holds an "
-    "onset, so on those shots the onset model is scored against spans."
+    "On the owner's shots the target is ELMy time, not onsets: the owner's ELM "
+    "saves are spans of ELMy time, so a bin inside one is present though it "
+    "holds no onset, and an onset bin outside one is absent. There E1 reads a "
+    "model that calls onsets alone as missing the spans' onset-free bins (its "
+    "recall and F1 fall) and each onset it calls outside a span as false (its "
+    "precision falls), and E2, the model less elm_onsets, which calls a bin only "
+    "when it holds an onset, favours a model that calls ELMy time. Elsewhere the "
+    "target is Hiro's onsets."
 )
 OWNER_NOTE = (
     "The owner's saves, frozen with the split, are laid over the original's "
@@ -495,6 +509,55 @@ def labels_window(meta: dict) -> dict:
     return found
 
 
+def _original(paths: Paths, spec: EventSpec, shot: int):
+    """The shot's original target, or None where there is none to read."""
+    try:
+        return targets.target_bins(paths, spec, shot)
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def owner_flips(
+    paths: Paths, spec: EventSpec, shots: list[Shot], owned, windows, saved
+) -> tuple[dict, list[int]]:
+    """`({"test": ..., "all": ...}, added)` (F14): what the owner's frozen saves
+    `saved` changed in the targets (`targets.flips`, summed by
+    `targets.flip_total`), each shot's original read again. `test` is over the
+    observed bins of the scored test `shots` (a flip to 0 or 1 there is a
+    scored bin, and one to uncertain left the score), `all` over every bin in
+    the window (`windows`, the shots meta's) of each of the owner's shots in the
+    split (`owned`); `added`, the scored test shots whose target is the owner's
+    label alone."""
+    bin_ms = spec.bin_ms
+
+    def one(shot: int, k0: int, k1: int, mask=None):
+        original = _original(paths, spec, shot)
+        label = targets.label_bins(saved[shot], bin_ms)
+        found = targets.flips(
+            targets.on_bins(original, k0, k1, bin_ms),
+            targets.on_bins(label, k0, k1, bin_ms),
+            mask,
+        )
+        return found, original is None
+
+    test, added = [], []
+    for s in shots:
+        if s.shot not in saved:
+            continue
+        k0 = round(float(s.bins[0]) / bin_ms) if len(s.bins) else 0
+        found, alone = one(s.shot, k0, k0 + len(s.bins), s.observed)
+        test.append(found)
+        if alone:
+            added.append(s.shot)
+    every = []
+    for shot in sorted(int(s) for s in owned):
+        if shot in saved and str(shot) in windows:
+            k0, k1 = targets.bin_range(windows[str(shot)][:2], bin_ms)
+            every.append(one(shot, k0, k1)[0])
+    found = {"test": targets.flip_total(test), "all": targets.flip_total(every)}
+    return found, sorted(added)
+
+
 def _check(blob: dict, spec: EventSpec, split: dict, split_bytes: bytes) -> None:
     sha = hashlib.sha256(split_bytes).hexdigest()
     if blob.get("split_sha256") != sha:
@@ -525,8 +588,10 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
     split = prepare.split_shots(paths, method)
     _check(blob, spec, split, split_bytes)
     meta = json.loads(shots_meta_file(paths, method, VERSION).read_text())
+    prepare.check_frozen(paths, method, meta)
     frame = pd.read_csv(shots_file(paths, method, VERSION))
     saved = {int(s) for s in frame.shot[frame.owner == 1]}
+    frozen = labels.read_labels(owner_file(paths, method, VERSION))
     threshold = float(blob["threshold"])
     shots, left = read_shots(
         paths, method, [s for s, v in split.items() if v == "test"]
@@ -567,11 +632,16 @@ def evaluate(paths: Paths, method: str, *, out: Path | None = None) -> dict:
     record["test"] = {
         k: test[k] for k in ("shots", "left_out", "baseline_left_out", "bins", "years")
     }
+    flips, added = owner_flips(
+        paths, spec, shots, saved, meta.get("windows", {}), frozen
+    )
     record["owner"] = {
         "note": ELM_OWNER_NOTE if spec.method == "elm_frames" else OWNER_NOTE,
         "snapshot": meta.get("owner_snapshot"),
         "saved": meta.get("owner"),
         "test_shots": sorted(s for s in test["shots"][method] if s in saved),
+        "added_test_shots": added,
+        "flips": flips,
     }
     record["split_years"] = split_years(paths, method, years)
     record["population_years"] = year_counts(_population_shots(paths), years)
@@ -618,6 +688,28 @@ def _score_table(method: str, part: dict) -> list[str]:
         cells = " | ".join(_fmt(intervals.get(n)) for n in names)
         lines.append(f"| {name} | {shots} | {cells} |")
     return lines
+
+
+def _flips_said(c: dict) -> str:
+    to_uncertain = c["absent_to_uncertain"] + c["present_to_uncertain"]
+    unknown = c["unknown_to_absent"] + c["unknown_to_present"]
+    return (
+        f"0→1 {c['absent_to_present']}, 1→0 {c['present_to_absent']}, 0 or 1 to "
+        f"uncertain {to_uncertain}, and unknown to 0 or 1 {unknown}, of the "
+        f"{c['owned']} bins its label decides"
+    )
+
+
+def flips_line(flips: dict) -> str:
+    """The md's line on what the owner's saves changed (F14)."""
+    test, every = flips["test"], flips["all"]
+    return (
+        "The owner's flips, the original's state to the merged target's: on the "
+        f"{test['bins']} observed bins of the {test['shots']} owner shots scored in "
+        f"test, {_flips_said(test)}; over every bin in the windows of the owner's "
+        f"{every['shots']} shots in the split, {_flips_said(every)}. A flip to 0 "
+        "or 1 in test is a scored bin; one to uncertain left the score."
+    )
 
 
 def always_line(found: dict) -> str:
@@ -770,8 +862,12 @@ def report_md(spec: EventSpec, record: dict) -> str:
         "",
         (
             f"{len(owner['test_shots'])} of the {len(test['shots'][method])} scored "
-            "test shots carry an owner label. " + owner["note"]
+            "test shots carry an owner label, "
+            f"{len(owner['added_test_shots'])} of them the owner's alone (added, "
+            "not overriding). " + owner["note"]
         ),
+        "",
+        flips_line(owner["flips"]),
         "",
         "## What this test can and cannot show",
         "",

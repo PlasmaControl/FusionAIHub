@@ -246,3 +246,31 @@ def test_an_added_shot_s_states_are_the_owner_s_label(tree):
         bins, states = z["bins"], z["states"]
     during = (bins >= EVENT_MS[0]) & (bins < EVENT_MS[1])
     assert np.all(states[during] == PRESENT_T) and np.all(states[~during] == ABSENT)
+
+
+def test_prepare_refuses_a_split_whose_frozen_files_changed(tree):
+    frames_shots.make(tree, "sawtooth_frames")
+    shot = SHOTS[frames.SPECS["sawtooth_frames"].store_event]
+    copy = frames.owner_file(tree, "sawtooth_frames")
+    table = frames_tree.sawtooth_table(tree)
+    frozen, pinned = copy.read_bytes(), table.read_bytes()
+    # F16: the owner's frozen saves are the split's, byte for byte.
+    copy.write_bytes(frozen + b"\n")
+    with pytest.raises(ValueError, match="owner's frozen saves .* has sha256"):
+        prepare.prepare(tree, "sawtooth_frames", [shot])
+    copy.unlink()
+    with pytest.raises(ValueError, match="owner's frozen saves .* is gone"):
+        prepare.prepare(tree, "sawtooth_frames", [shot])
+    copy.write_bytes(frozen)
+    # F16: the original's table, pinned by the split, is unchanged.
+    table.write_bytes(pinned + b"\n")
+    with pytest.raises(ValueError, match="original target .* changed since"):
+        prepare.prepare(tree, "sawtooth_frames", [shot])
+    table.write_bytes(pinned)
+    assert prepare.prepare(tree, "sawtooth_frames", [shot])["written"] == [shot]
+    # A split that froze no saves refuses a frozen copy found beside it.
+    labels.labels_path(tree.label_tables / NTM).unlink()
+    frames_shots.make(tree, "ntm_frames")
+    frames.owner_file(tree, "ntm_frames").write_bytes(frozen)
+    with pytest.raises(ValueError, match="froze no owner's saves: it is stale"):
+        prepare.prepare(tree, "ntm_frames", [SHOTS[NTM]])

@@ -52,7 +52,10 @@ row a shot in `ae.xpower.extend.SUMMARY_COLUMNS`, the year its campaign's
 failed shots, beside the table, the meta counting them (`sets.<set>.failed`)
 and naming the file (`failed_file`). `hmode_frames`' merge also writes
 `lmode_frames`' table, summary and `failed.jsonl` (D38): L where the model says
-not H, on the same frames.
+not H, on the same frames. Its meta's flags are L's own (`lmode_flags`, F15), not
+H's: `effectively_never` is H's `effectively_always` (always H is never L), and
+`effectively_always` whether the H model's calls read as L are L on at least
+99 % of the scored test bins.
 """
 
 from __future__ import annotations
@@ -454,6 +457,28 @@ def _write(paths, method, event, labelled, threshold, meta, years, derive=False)
     return path
 
 
+def lmode_flags(evaluation: dict, derived: str) -> dict:
+    """`lmode_frames`' own flags for its table's meta, from the H-mode model's
+    calls read as L (F15), never H's `effectively_always`: always H is never
+    L, so H's flag is L's `effectively_never`; L's `effectively_always` is
+    whether the calls are L (not H) on at least `evaluate.ALWAYS_AGREEMENT` of
+    the scored test bins, from `evaluation.json`'s L cells (`scores.<derived>`,
+    H's swapped). There is no always-L baseline, so no interval test."""
+    tp, fp, fn, tn = evaluation["scores"][derived]["cells"]
+    scored = tp + fp + fn + tn
+    agreement = (tp + fp) / scored if scored else None
+    at_least = frames_evaluate.ALWAYS_AGREEMENT
+    return {
+        "effectively_always": agreement is not None and agreement >= at_least,
+        "effectively_never": bool(evaluation["effectively_always"]),
+        "effectively_from": {
+            "l_agreement": agreement,
+            "agreement_at_least": at_least,
+            "never_is": "the H-mode model's effectively_always (always H is never L)",
+        },
+    }
+
+
 def merge(paths: Paths, method: str) -> dict:
     """Write the method's table, meta and summary from its shards (module
     docstring), and `lmode_frames`' for `hmode_frames`."""
@@ -511,13 +536,17 @@ def merge(paths: Paths, method: str) -> dict:
     if method in ALSO:
         derived = ALSO[method]
         event = DERIVED[derived][1]
-        also = meta | {
-            "method": derived,
-            "event": event,
-            "derived_from": method,
-            "note": "L where the H-mode model says not H, on the same frames (D38)",
-            "failed_file": str(_folder(paths, event, derived) / "failed.jsonl"),
-        }
+        also = (
+            meta
+            | lmode_flags(evaluation, derived)
+            | {
+                "method": derived,
+                "event": event,
+                "derived_from": method,
+                "note": "L where the H-mode model says not H, on the same frames (D38)",
+                "failed_file": str(_folder(paths, event, derived) / "failed.jsonl"),
+            }
+        )
         written[derived] = _write(
             paths, derived, event, labelled, threshold, also, years, derive=True
         )
