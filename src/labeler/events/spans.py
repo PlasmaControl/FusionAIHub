@@ -125,6 +125,10 @@ RAMP_FALLBACK_MS = 700.0
 #: What a missing or unreadable input raises: the Ip read and the H-mode gate
 #: fall back on these alone.
 INPUT_MISSING = (NoDataError, KeyError, OSError)
+#: What stops one of v3's sawtooth diagnostics and not the shot: a missing
+#: input, or a broken group - rows short of a fan's (`IndexError`), a time axis
+#: that does not fit its samples (`ValueError`). The other diagnostic runs on.
+CRASH_LEG_FAILED = (*INPUT_MISSING, IndexError, ValueError)
 #: The sawtooth method's crash rule since v3, as its table's meta records it
 #: beside `heuristics.SAWTOOTH_V3_CONSTANTS`: a table drafted by v2's detector
 #: records neither, so `check_rule` refuses to run v3 into it.
@@ -502,34 +506,43 @@ def _crash_rows(shot: int, diag: str, paths: Paths):
     return t_s, y, None, None
 
 
+def _crash_leg(shot: int, diag: str, paths: Paths):
+    """`(crashes, coverage, fan)` of one of v3's diagnostics."""
+    t_s, y, chords, fan = _crash_rows(shot, diag, paths)
+    cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
+    crashes = heuristics.sawtooth_crashes(
+        y,
+        t_s,
+        shot=shot,
+        diag=diag,
+        t_cov=cov.hull,
+        channels=chords,
+        attrs=None if fan is None else {"fan": fan},
+    )
+    return crashes, cov, fan
+
+
 def _sawtooth_crashes(shot: int, paths: Paths):
     """`(crashes, coverages, info)`: `heuristics.sawtooth_crashes` on each of
     v3's diagnostics there is, the intervals each measured, and
-    `detect_sawtooth`'s info; a `NoDataError` naming both when neither is."""
+    `detect_sawtooth`'s info. A diagnostic that fails (`CRASH_LEG_FAILED`) is
+    left out, its error under `not_run`; a `NoDataError` naming both when
+    neither ran."""
     found, measured, fans, not_run = [], [], {}, {}
     for diag in heuristics.CRASH_DIAGS:
         try:
-            t_s, y, chords, fan = _crash_rows(shot, diag, paths)
-        except NoDataError as error:
-            not_run[diag] = str(error)
+            crashes, cov, fan = _crash_leg(shot, diag, paths)
+        except CRASH_LEG_FAILED as error:
+            log.info("shot %d: no v3 crashes on %s: %s", shot, diag, error)
+            not_run[diag] = f"{type(error).__name__}: {error}"
             continue
-        cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
-        found.append(
-            heuristics.sawtooth_crashes(
-                y,
-                t_s,
-                shot=shot,
-                diag=diag,
-                t_cov=cov.hull,
-                channels=chords,
-                attrs=None if fan is None else {"fan": fan},
-            )
-        )
+        found.append(crashes)
         measured.append(cov.intervals)
         if fan is not None:
             fans["sxr_fan"] = fan
     if not found:
-        raise NoDataError("; ".join(not_run.values()))
+        why = "; ".join(f"{diag}: {error}" for diag, error in not_run.items())
+        raise NoDataError(f"shot {shot}: no sawtooth diagnostic ran - {why}")
     collapses = sorted(t for c in found for t in c.collapses_s)
     info = {
         "diagnostics": [c.diag for c in found],
