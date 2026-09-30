@@ -54,6 +54,14 @@ class Snapshot:
     def split(self, key: str, path: Path) -> dict[int, str]:
         return read_split(path, data=self.read(key, path))
 
+    def copy(self, key: str, path: Path) -> Path:
+        """`path`'s bytes, pinned under `key`, as a file of the same name in the
+        scratch directory, for a parser that needs a path."""
+        copy = self.scratch / key / Path(path).name
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(self.read(key, path))
+        return copy
+
     def labels(self, key: str, path: Path) -> dict:
         """A `review/labels.csv`, parsed as the review parses it."""
         event = self.scratch / key

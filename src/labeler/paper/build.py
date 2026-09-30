@@ -2,7 +2,8 @@
 
     PYTHONPATH=src pixi run -e labelmaker \\
         python scripts/labeler/paper/make_figures.py \\
-        [--out DIR] [--shot SHOT] [--examples N] [--version V] [--copy-to DIR]
+        [--out DIR] [--shot SHOT] [--examples N] [--version V] \\
+        [--seg-version V] [--interpreter-seg-version V] [--copy-to DIR]
 
 reads what the round-two runs wrote (`inputs`) and draws what they allow:
 
@@ -26,21 +27,26 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   `effectively_always` mark a model that failed its primary bar or is
   effectively always (F8), never gating anything (D59). Each missing part is a
   `partial` entry naming its `phenomenon`, after AE's;
-- `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
-  (`split.csv`), scored against its own copy of the labels,
-  `<candidate>/review/labels.csv` (D18), over the version's scored window
-  (`shots.scored_ms`: 0-2 s for v1 and v2, the owner's whole window for v3),
-  with the segmentation's mask over the band its blob records (80-250 kHz for
-  v1's, which records none; 0-250 kHz for SegNet v2's), SegNet run over the
-  same stores, where its `model.pt` exists. The copy's sha256 must be the one
-  the AE evaluation names (`labels_sha256`); if it is not, or none is named,
-  both are skipped. The interpreter's other four tracks are worked out here
-  and passed to the figure (`interpreter_tracks`, F9): the shot's suggested
-  states from its frame model's `frames.VERSION` suggestion table, read
-  through the snapshot; else "no <group> data" where it lacks one of the
-  model's required groups on disk (a metadata check, never a fetch); else
-  "coming" without a table, and "not applied to this shot" with one that
-  lacks it. The manifest's `interpreter_tracks` says which, per phenomenon.
+- `fig_examples`: the chosen model run over its test shots (`split.csv`),
+  scored against its own copy of the labels, `<candidate>/review/labels.csv`
+  (D18), over the version's scored window (`shots.scored_ms`: 0-2 s for v1
+  and v2, the owner's whole window for v3), with the segmentation's mask over
+  the band its blob records (80-250 kHz for v1's, which records none; 0-250
+  kHz for SegNet v2's), SegNet run over the same stores, where its `model.pt`
+  exists. The copy's sha256 must be the one the AE evaluation names
+  (`labels_sha256`); if it is not, or none is named, it is skipped;
+- `fig_interpreter`: the roster figure (`paper.roster`), the models'
+  suggestions on one non-blind roster shot of the frozen cohort with corpus
+  CO2 (`roster.candidates`): `--shot`'s, which must be one, else
+  `roster.PICK_RULE`'s. The chosen model (`--version`'s, the one fig_examples
+  reads) and SegNet (`--interpreter-seg-version`'s) run over the shot's corpus
+  CO2; its signal panels are the rows of its review stores the frame models
+  read, and its other four tracks the frame models' `frames.VERSION`
+  suggestion tables. Every track is a suggestion, never reviewed, and it
+  scores nothing, so it needs the chosen model alone, not its evaluation or
+  labels. It is skipped without a candidate, for a `--shot` that is not one
+  and for a shot without corpus CO2; drawn without SegNet's `model.pt`, a
+  table, a store or a store's row, it is `partial`, each part named.
 
 The owner's live labels are read for the coverage alone; every scored product
 uses the labels the model was scored against.
@@ -77,13 +83,18 @@ labels, which have no version.
 `--seg-version` (default `v1`) names the segmentation's, apart: a new frame
 model does not retrain SegNet, so v2's frame figures stand beside SegNet v1.
 fig_segmentation, table_seg_scores, the segmentation's rows of
-table_differences, the shot figures' mask and the interpreter pick's points of
-interest read `models/ae_seg/<seg-version>/` and `poi/.../ae_seg-<seg-version>/`. The
-segmentation's own copy of the labels (`<seg-version>/review/labels.csv`) is
+table_differences and fig_examples' mask read `models/ae_seg/<seg-version>/`.
+The segmentation's own copy of the labels (`<seg-version>/review/labels.csv`) is
 pinned and checked against its record's `labels_sha256` (`seg_labels_match`),
 not against the frame model's; a copy missing or unlike the record makes its
 products `partial`. The manifest names the frame model SegNet was evaluated
 beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
+
+`--interpreter-seg-version` (default `roster.SEG_VERSION`, v3: the SegNet
+trained over 0-250 kHz) names fig_interpreter's SegNet, whose mask is over the
+whole spectrogram, apart from `--seg-version`. It is pinned as
+`interpreter_seg_model`; when it is `--seg-version`'s, it is one SegNet, read
+once, and shares `seg_model`'s pin.
 
 **The second look.** A version whose test shots include an earlier version's
 (`labeler.ae.xpower.evaluate.SUBSET_OF`: v2's include v1's) says so in the AE
@@ -95,21 +106,27 @@ as `ae_earlier_evaluation` and `ae_earlier_split`; without them the tables are
 `partial`. Whether the owner accepts the second look is the ledger's record.
 
 The manifest pins every file the build reads (the chosen `model.pt`, its
-`split.csv`, its labels and each spectrogram store among them) with its
-sha256, and records the full commit and whether the tree was dirty, whether the
-frame model's copy of the labels is the one its evaluation names
-(`labels_match`; the segmentation's own check is `seg_labels_match`), whether
-a cross-validated version's `cv/folds.csv` is the one its `chosen.json` names
-(`folds_match`: None for a version that is not cross-validated, as v1, or when
-either is missing), each sha256 in `labels_sha256` (the live table's too), the
-time, the
-interpreter's shot, its pool and the branch of the rule that fired, the example
-shots, the rules that picked them, and the drawn shots' F1 over 0-2 s
-(`f1_0_2s`) and over the owner's whole window (`f1_window`), both for every
-version. The shots are ranked, the interpreter's pool's off-periods counted and
-the rules said over the version's scored window (`shots.rank_keys`,
-`shots.pick_texts`): 0-2 s for v1 and v2, whose figures mark it with a dashed
+`split.csv`, its labels, each spectrogram store and the cohort among them)
+with its sha256, but the interpreter shot's corpus file, which is GBs and read
+in slices: its path alone is recorded. It records the full commit and whether
+the tree was dirty, whether the frame model's copy of the labels is the one
+its evaluation names (`labels_match`; the segmentation's own check is
+`seg_labels_match`), whether a cross-validated version's `cv/folds.csv` is the
+one its `chosen.json` names (`folds_match`: None for a version that is not
+cross-validated, as v1, or when either is missing), each sha256 in
+`labels_sha256` (the live table's too), the time, the example shots, the rule
+that picked them, and the drawn shots' F1 over 0-2 s (`f1_0_2s`) and over the
+owner's whole window (`f1_window`), both for every version. The examples are
+ranked and their rule said over the version's scored window
+(`shots.pick_texts`): 0-2 s for v1 and v2, whose figures mark it with a dashed
 line at 2 s, and the owner's whole window for v3, whose figures have none.
+
+Under `interpreter` (null when fig_interpreter is not drawn) it records what
+the interpreter figure was drawn from, as the roster CLI's `roster.json` does
+(`roster.record`): the shot, the rule that picked it and the number of
+candidates; each model, table and store by path and sha256, the same pins as
+`inputs`' (null for one that is not there); the band of the mask
+(`seg_band_khz`); the corpus file's path; and `"tier": "suggestions"`.
 
 **The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
 read once, hashed, and parsed from those bytes; a second read of one is refused,
@@ -143,17 +160,20 @@ from .. import frames
 from ..ae import seg as ae_seg
 from ..ae import xpower
 from ..ae.xpower import evaluate as ae_evaluate
-from ..ae.xpower.data import targets
 from ..config import Paths, atomic_path, git_dirty, git_sha
-from ..events import raw, suggestions
+from ..events import suggestions
 from ..events.review import labels
-from . import AE, COMING, coverage, paper_dir, scores, shots
+from ..events.spans import cohort_path
+from ..events.verify import NoDataError
+from . import AE, LOGIN_THREADS, coverage, paper_dir, roster, scores, shots
 from .snapshot import Snapshot
 from .staging import Stranded, discard, staging_dir, swap
 
 VERSION = xpower.VERSION  # the frame model's version; `--version` names another
 SEG_VERSION = ae_seg.VERSION  # the segmentation's; `--seg-version` names another
-LOGIN_THREADS = 2
+#: fig_interpreter's SegNet, v3, apart from `SEG_VERSION`'s; its own flag names
+#: another (`--interpreter-seg-version`).
+INTERPRETER_SEG_VERSION = roster.SEG_VERSION
 COPIED = (".pdf", ".tex")
 MANIFEST = "manifest.json"
 KEPT = "old_output_kept"  # in `build`'s answer and the JSON line
@@ -212,9 +232,6 @@ CV_VAL = (
     "validation, but its split.csv calls these reviewed shots val: they are in "
     "no bar or cell"
 )
-NO_POI = (
-    "no points of interest (poi.csv): the interpreter pick cannot prefer shots with one"
-)
 NO_MASK = "no mask: the segmentation has no model.pt to run over the test shots"
 NO_LABEL = "a test shot with no saved AE label"
 NO_STORE = "a test shot with no spectrogram store"
@@ -223,7 +240,6 @@ NO_F1 = (
     "no test shot has an F1 over 0-2 s: neither the owner nor the model calls "
     "a scored frame there present"
 )
-NO_NAMED = "the named shot has no saved label in the model's copy, or no store"
 AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
 LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
 LABELS_DIFFER = "the model's review/labels.csv is not what its evaluation scored (D18)"
@@ -247,18 +263,37 @@ NO_FRAMES_TABLE_META = (
     "the suggestion table has no meta, so whether the model met its bar or is "
     "effectively always is not marked"
 )
+NO_CANDIDATE = (
+    "no roster candidate: the frozen cohort has no non-blind shot with at least "
+    "2 s of corpus CO2"
+)
+NO_CO2 = "the interpreter's shot has no corpus CO2 to run the models over"
+NO_INTERPRETER_MASK = "no mask: the interpreter's SegNet has no model.pt"
+NO_TRACK_TABLE = (
+    f'the frame model has no suggestion table, so its track says "{roster.NO_TABLE}"'
+)
+NO_PANEL_STORE = 'the shot has no review store for this panel, so it says "{}"'
+NO_PANEL_ROW = (
+    "the shot's review store has none of this panel's rows over the figure's "
+    'time range, so it says "{}"'
+)
 
 
 def inputs(
-    paths: Paths, version: str = VERSION, seg_version: str = SEG_VERSION
+    paths: Paths,
+    version: str = VERSION,
+    seg_version: str = SEG_VERSION,
+    interpreter_seg_version: str = INTERPRETER_SEG_VERSION,
 ) -> dict[str, Path]:
     """Where the round-two runs leave what the paper reads, for the frame
-    model's `version` and the segmentation's `seg_version`; the build adds the
-    chosen model, its split, its copy of the labels (`ae_scored_labels`) and the
-    stores it reads."""
+    model's `version`, the segmentation's `seg_version` and the interpreter's
+    SegNet's `interpreter_seg_version`; the build adds the chosen model, its
+    split, its copy of the labels (`ae_scored_labels`) and the stores it reads,
+    and the interpreter's tables and stores (`roster.table_key`,
+    `roster.store_key`)."""
     models = xpower.model_dir(paths, version)
     seg = ae_seg.model_dir(paths).parent / seg_version
-    poi = ae_seg.poi_dir(paths).parent / f"{ae_seg.METHOD}-{seg_version}"
+    interpreter_seg = ae_seg.model_dir(paths, interpreter_seg_version)
     return {
         "ae_evaluation": models / "evaluation.json",
         "ae_chosen": models / "chosen.json",
@@ -267,8 +302,9 @@ def inputs(
         "seg_evaluation": seg / "evaluation.json",
         "seg_labels": labels.labels_path(seg),
         "seg_model": seg / "model.pt",
+        "interpreter_seg_model": interpreter_seg / "model.pt",
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
-        "poi": poi / "poi.csv",
+        "cohort": cohort_path(paths),  # the roster candidates' (`roster.candidates`)
     }
 
 
@@ -514,6 +550,7 @@ def build(
     examples: int = 3,
     version: str = VERSION,
     seg_version: str = SEG_VERSION,
+    interpreter_seg_version: str = INTERPRETER_SEG_VERSION,
 ) -> dict:
     """Draw every product the inputs allow, and the manifest, into a directory
     beside `out`, then swap it in whole; on a failure `out` is left as it was,
@@ -534,6 +571,7 @@ def build(
                 examples=examples,
                 version=version,
                 seg_version=seg_version,
+                interpreter_seg_version=interpreter_seg_version,
             )
         kept = swap(staged, out, owned=OWNED)
     except Stranded:
@@ -556,8 +594,9 @@ def _draw(
     examples: int,
     version: str,
     seg_version: str,
+    interpreter_seg_version: str = INTERPRETER_SEG_VERSION,
 ) -> dict:
-    found = inputs(paths, version, seg_version)
+    found = inputs(paths, version, seg_version, interpreter_seg_version)
     made: dict[str, list[str]] = {}
     skipped: dict[str, dict] = {}
     partial: dict[str, list[dict]] = {}
@@ -660,37 +699,70 @@ def _draw(
             lacking(counted, extension_reason(ae), missing=[str(found["summary"])])
         for entry in frame_why:  # after AE's own, which keep their order (D62)
             lacking(counted, **entry)
+    loaded: dict = {}
+
+    def model() -> shots.Model:
+        """The chosen model, read once for both shot figures."""
+        if "ae_model" not in loaded:
+            loaded["ae_model"] = snap.model("ae_model", found["ae_model"], split or {})
+        return loaded["ae_model"]
+
+    def segnet(key: str) -> shots.Segmentation | None:
+        """The SegNet at `found[key]`, read once; None without its model.pt."""
+        if key not in loaded:
+            path = found[key]
+            loaded[key] = snap.segmentation(key, path) if path.is_file() else None
+        return loaded[key]
+
     picked: dict = {}
-    figures = ("fig_interpreter", "fig_examples")
+    examples_only = ("fig_examples",)
     scored = None
-    if ready(figures, "ae_evaluation", "ae_chosen") and ready(
-        figures, "ae_model", "ae_split", "ae_scored_labels"
+    if ready(examples_only, "ae_evaluation", "ae_chosen") and ready(
+        examples_only, "ae_model", "ae_split", "ae_scored_labels"
     ):
         saved = read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
         why = scored_refusal(scored, ae)
-        why, picked = (
-            (why, {})
-            if why
-            else _shot_figures(
+        if why is None:
+            why, picked = _examples(
                 paths,
-                found,
                 snap,
                 saved,
-                split,
-                shot,
                 examples,
                 figure,
                 lacking,
+                model=model(),
+                segmentation=segnet("seg_model"),
+                seg_file=found["seg_model"],
                 version=version,
             )
-        )
-        for product in figures if why else ():
-            made.pop(product, None)
-            skipped[product] = {"reason": why, "missing": []}
+        if why:
+            made.pop("fig_examples", None)
+            skipped["fig_examples"] = {"reason": why, "missing": []}
     elif "ae_scored_labels" in found and found["ae_scored_labels"].is_file():
         read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
+    interpreter = None
+    only = ("fig_interpreter",)
+    if ready(only, "ae_chosen") and ready(only, "ae_model", "cohort"):
+        # One version is one SegNet: the interpreter's shares fig_examples' pin.
+        same = found["interpreter_seg_model"] == found["seg_model"]
+        seg_key = "seg_model" if same else "interpreter_seg_model"
+        interpreter, why = _interpreter(
+            paths,
+            found,
+            snap,
+            shot=shot,
+            version=version,
+            seg_version=interpreter_seg_version,
+            seg_key=seg_key,
+            model=model,
+            segmentation=lambda: segnet(seg_key),
+            figure=figure,
+            lacking=lacking,
+        )
+        if why is not None:
+            skipped["fig_interpreter"] = why
     match, shas = labels_check(scored, snap.sha("ae_labels"), ae)
     changed = snap.changed()
     manifest = {
@@ -714,47 +786,11 @@ def _draw(
         "products": made,
         "skipped": skipped,
         "partial": partial,
+        "interpreter": interpreter,
         **picked,
     }
     _write(out / MANIFEST, json.dumps(manifest, indent=1) + "\n")
     return manifest
-
-
-#: The manifest's word for a track drawn from its suggestion table (F9).
-SUGGESTED_TRACK = "suggestions"
-
-
-def interpreter_tracks(paths: Paths, snap: Snapshot, s: shots.AEShot) -> dict:
-    """The interpreter shot's track for each frame-model phenomenon (F9), in
-    `coverage.FRAME_SOURCES`' order: its suggested state per frame of `s` where
-    the shot is in the frame model's `frames.VERSION` suggestion table (read
-    through `snap`, so it is pinned); else `shots.NO_DATA`'s text for the first
-    of the model's required groups not on disk (`raw.record_tier`, metadata
-    only, never a fetch); else `COMING` where there is no table, and
-    `shots.NOT_APPLIED` where the table lacks the shot."""
-    found: dict[str, object] = {}
-    for category, source in coverage.FRAME_SOURCES.items():
-        spec = frames.SPECS[source.method]
-        table = suggestions.table_path(paths, spec.event, spec.method, frames.VERSION)
-        label = None
-        if table.is_file():
-            label = snap.labels(f"frames_table_{spec.method}", table).get(s.shot)
-        if label is not None:
-            found[category] = targets(label, s.first, len(s.prob))
-            continue
-        lacking = next(
-            (
-                group
-                for group in spec.required_groups
-                if raw.record_tier(s.shot, group, paths=paths) is None
-            ),
-            None,
-        )
-        if lacking is not None:
-            found[category] = shots.NO_DATA.format(lacking)
-        else:
-            found[category] = shots.NOT_APPLIED if table.is_file() else COMING
-    return found
 
 
 def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
@@ -769,34 +805,27 @@ def no_f1(until_ms: float | None = shots.SCORED_MS) -> str:
     )
 
 
-def _shot_figures(
+def _examples(
     paths: Paths,
-    found: dict[str, Path],
     snap: Snapshot,
     saved: dict,
-    split: dict[int, str],
-    shot: int | None,
     examples: int,
     figure: Callable,
     lacking: Callable,
+    *,
+    model: shots.Model,
+    segmentation: shots.Segmentation | None,
+    seg_file: Path,
     version: str = VERSION,
 ) -> tuple[str | None, dict]:
     """Score every test shot against the model's copy of the labels (D18) and
-    draw the two shot figures. Why they could not be drawn (None when they
-    were), and the picks for the manifest. The F1, the picks and their rules
-    are over `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2,
-    the owner's whole window for v3); `shot_f1` gives every drawn shot's F1
-    over 0-2 s and over the owner's whole window, whatever the version."""
-    figures = ("fig_interpreter", "fig_examples")
+    draw fig_examples. Why it could not be drawn (None when it was), and the
+    picks for the manifest. The F1, the picks and their rule are over
+    `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2, the
+    owner's whole window for v3); `shot_f1` gives every drawn shot's F1 over
+    0-2 s and over the owner's whole window, whatever the version."""
+    product = ("fig_examples",)
     until = shots.scored_ms(version)
-    texts = shots.pick_texts(until)
-    model = snap.model("ae_model", found["ae_model"], split)
-    segmentation = (
-        snap.segmentation("seg_model", found["seg_model"])
-        if found["seg_model"].is_file()
-        else None
-    )
-    poi = snap.csv("poi", found["poi"]) if found["poi"].is_file() else None
     tested = shots.test_shots(model.split)
     unlabelled = [s for s in tested if s not in saved]
     unstored = [_store(paths, s) for s in tested if not _store(paths, s).is_file()]
@@ -817,58 +846,112 @@ def _shot_figures(
         )
 
     pictures = {s: one(s) for s in usable}
-    ranked = [shots.rank_keys(p) for p in pictures.values()]
-    f1 = {r.shot: r.f1 for r in ranked}
+    f1 = {s: p.f1 for s, p in pictures.items()}
     if all(math.isnan(v) for v in f1.values()):
         return no_f1(until), {}
-    gaps = {r.shot: r.gap for r in ranked}
-    pick = shots.interpreter_pick(f1, poi, gaps, until_ms=until)
     # A whole-window version's examples hold a shot whose window runs past 2 s.
     long = None
     if until is None:
         long = {s for s in f1 if saved[s].window[1] > shots.LONG_MS}
-    picked = {
-        "interpreter_shot": pick["shot"] if shot is None else shot,
-        "interpreter_rule": texts.interpreter if shot is None else "named by --shot",
-        "interpreter_branch": pick["branch"] if shot is None else None,
-        "interpreter_pool": pick["pool"],
-        "example_shots": shots.pick_examples(f1, examples, long=long),
-        "example_rule": texts.examples,
-    }
-    named = picked["interpreter_shot"]
-    if named not in pictures and named in saved and _store(paths, named).is_file():
-        pictures[named] = one(named)
-    drawn = {s: pictures[s] for s in (named, *picked["example_shots"]) if s in pictures}
-    if named not in drawn:
-        return f"{NO_NAMED}: {named}", picked
-    tracks = interpreter_tracks(paths, snap, drawn[named])
-    picked["interpreter_tracks"] = {
-        category: track if isinstance(track, str) else SUGGESTED_TRACK
-        for category, track in tracks.items()
-    }
-    figure(
-        "fig_interpreter",
-        lambda s, stem: shots.draw_interpreter(s, stem, tracks),
-        drawn[named],
-    )
-    figure(
-        "fig_examples",
-        shots.draw_examples,
-        [drawn[s] for s in picked["example_shots"]],
-    )
+    picks = shots.pick_examples(f1, examples, long=long)
+    figure("fig_examples", shots.draw_examples, [pictures[s] for s in picks])
     if segmentation is None:
-        lacking(figures, NO_MASK, missing=[str(found["seg_model"])])
-    if poi is None:  # only the interpreter's pick reads the points of interest
-        lacking(("fig_interpreter",), NO_POI, missing=[str(found["poi"])])
+        lacking(product, NO_MASK, missing=[str(seg_file)])
     if unlabelled:
-        lacking(figures, NO_LABEL, shots=unlabelled)
+        lacking(product, NO_LABEL, shots=unlabelled)
     if unstored:
-        lacking(figures, NO_STORE, missing=[str(p) for p in unstored])
-    picked["shot_f1"] = {
-        str(s): {"f1_0_2s": _number(d.f1_0_2s), "f1_window": _number(d.f1_window)}
-        for s, d in sorted(drawn.items())
+        lacking(product, NO_STORE, missing=[str(p) for p in unstored])
+    return None, {
+        "example_shots": picks,
+        "example_rule": shots.pick_texts(until).examples,
+        "shot_f1": {
+            str(s): {
+                "f1_0_2s": _number(pictures[s].f1_0_2s),
+                "f1_window": _number(pictures[s].f1_window),
+            }
+            for s in sorted(picks)
+        },
     }
-    return None, picked
+
+
+def _interpreter(
+    paths: Paths,
+    found: dict[str, Path],
+    snap: Snapshot,
+    *,
+    shot: int | None,
+    version: str,
+    seg_version: str,
+    seg_key: str,
+    model: Callable[[], shots.Model],
+    segmentation: Callable[[], shots.Segmentation | None],
+    figure: Callable,
+    lacking: Callable,
+) -> tuple[dict | None, dict | None]:
+    """Draw fig_interpreter, the roster figure (`roster.draw`), on `shot`,
+    which must be a roster candidate, else on `roster.PICK_RULE`'s, with the
+    chosen model and the SegNet pinned as `seg_key` (each loaded only once the
+    shot is chosen) and the frame models' `frames.VERSION` tables, every input
+    but the corpus read through `snap`. Its record (`roster.record`) and None;
+    or None and its `skipped` entry: no candidate, a `shot` that is not one, or
+    a shot without corpus CO2. Each part it is drawn without is a `partial`
+    entry: the mask, then each table, then each signal panel with nothing to
+    draw."""
+    listed = roster.candidates(paths, snap)
+    if not listed:
+        return None, {"reason": NO_CANDIDATE, "missing": []}
+    try:
+        chosen = roster.named(listed, shot)
+    except roster.NotACandidate as error:
+        return None, {"reason": str(error), "missing": []}
+    tables = roster.read_tables(paths, frames.VERSION, snap)
+    candidate, rule = roster.choose(listed, tables, chosen)
+    try:
+        s = roster.roster_shot(
+            paths,
+            candidate,
+            model=model(),
+            segmentation=segmentation(),
+            tables=tables,
+            snap=snap,
+        )
+    except NoDataError as error:
+        corpus = paths.corpus_file(candidate.shot)
+        missing = [] if corpus.is_file() else [str(corpus)]
+        return None, {"reason": f"{NO_CO2}: {error}", "missing": missing}
+    figure("fig_interpreter", roster.draw, s)
+    product = ("fig_interpreter",)
+    if s.mask is None:
+        lacking(
+            product, NO_INTERPRETER_MASK, missing=[str(found["interpreter_seg_model"])]
+        )
+    for category, table in tables.items():
+        if table is None:
+            file = roster.table_file(paths, category)
+            lacking(product, NO_TRACK_TABLE, phenomenon=category, missing=[str(file)])
+    for sig in s.signals:
+        if sig.text is None:
+            continue
+        store = s.stores[sig.panel.event]
+        if store is None:
+            file = paths.spectrogram_file(sig.panel.event, s.shot)
+            why = NO_PANEL_STORE.format(sig.text)
+            lacking(product, why, panel=sig.panel.title, missing=[str(file)])
+        else:
+            why = NO_PANEL_ROW.format(sig.text)
+            lacking(product, why, panel=sig.panel.title, store=str(store))
+    record = roster.record(
+        s,
+        snap,
+        paths,
+        rule=rule,
+        candidates=len(listed),
+        ae_version=version,
+        seg_version=seg_version,
+        tables_version=frames.VERSION,
+        seg_key=seg_key,
+    )
+    return record, None
 
 
 def copy_into(out: Path, manifest: dict, dest: Path) -> list[str]:
@@ -889,7 +972,13 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, help="default: $LABELER_ROOT/paper")
     parser.add_argument(
-        "--shot", type=int, help="the interpreter's shot (default: `interpreter_shot`)"
+        "--shot",
+        type=int,
+        help=(
+            "the interpreter's shot, which must be a roster candidate (a non-blind "
+            "cohort shot with at least 2 s of corpus CO2: `roster.candidates`); "
+            f"default: {roster.PICK_RULE}"
+        ),
     )
     parser.add_argument("--examples", type=int, default=3)
     parser.add_argument(
@@ -901,6 +990,14 @@ def main(argv=None) -> int:
         "--seg-version",
         default=SEG_VERSION,
         help=f"the segmentation's version (default {SEG_VERSION})",
+    )
+    parser.add_argument(
+        "--interpreter-seg-version",
+        default=INTERPRETER_SEG_VERSION,
+        help=(
+            "fig_interpreter's segmentation's version, apart from --seg-version "
+            f"(default {INTERPRETER_SEG_VERSION})"
+        ),
     )
     parser.add_argument(
         "--copy-to", type=Path, help="also copy the PDFs and tables here"
@@ -916,6 +1013,7 @@ def main(argv=None) -> int:
         examples=args.examples,
         version=args.version,
         seg_version=args.seg_version,
+        interpreter_seg_version=args.interpreter_seg_version,
     )
     copied = [] if args.copy_to is None else copy_into(out, manifest, args.copy_to)
     print(
