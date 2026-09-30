@@ -578,7 +578,10 @@ def table_ae(ae: dict, second_look: str | None = None) -> str:
     return tabular(header, rows, comment)
 
 
-def table_segmentation(seg: dict) -> str:
+def table_segmentation(seg: dict, reuse: str | None = None) -> str:
+    """The segmentation scores; the comment ends with the reuse note, when its
+    test is a second use of an earlier version's test shots
+    (`labeler.paper.build.seg_reuse`)."""
     rows = [
         [_tex(SEG_NAMES[m]), *(_fmt(seg["methods"][m][k]) for k in SEG_METRICS)]
         for m in SEG_NAMES
@@ -592,6 +595,8 @@ def table_segmentation(seg: dict) -> str:
     )
     if beside := seg.get("meta", {}).get("ae_model"):
         comment += f"; evaluated beside {'/'.join(Path(beside).parts[-4:-1])}"
+    if reuse:
+        comment += f"; {reuse}"
     header = ("Method", "Dice", "Frame P", "Frame R", "Frame F1", "FP (MHD)")
     return tabular(header, rows, comment)
 

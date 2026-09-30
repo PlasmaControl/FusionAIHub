@@ -31,8 +31,8 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   `<candidate>/review/labels.csv` (D18), over the version's scored window
   (`shots.scored_ms`: 0-2 s for v1 and v2, the owner's whole window for v3),
   with the segmentation's mask over the band its blob records (80-250 kHz for
-  v1's, which records none; 0-250 kHz for SegNet v2's), SegNet run over the
-  same stores, where its `model.pt` exists. The copy's sha256 must be the one
+  v1's, which records none; 0-250 kHz for SegNet v2's; 60-250 kHz for v4's),
+  SegNet run over the same stores, where its `model.pt` exists. The copy's sha256 must be the one
   the AE evaluation names (`labels_sha256`); if it is not, or none is named,
   both are skipped. The interpreter's other four tracks are worked out here
   and passed to the figure (`interpreter_tracks`, F9): the shot's suggested
@@ -84,6 +84,8 @@ pinned and checked against its record's `labels_sha256` (`seg_labels_match`),
 not against the frame model's; a copy missing or unlike the record makes its
 products `partial`. The manifest names the frame model SegNet was evaluated
 beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
+A SegNet version whose test reuses an earlier one's test shots (`test_of`: v3
+of v2's, v4 of v1's) ends that comment with its reuse note (`seg_reuse`).
 
 **The second look.** A version whose test shots include an earlier version's
 (`labeler.ae.xpower.evaluate.SUBSET_OF`: v2's include v1's) says so in the AE
@@ -396,6 +398,16 @@ def extension_reason(ae: dict | None) -> str:
     return NO_SUMMARY
 
 
+def seg_reuse(seg: dict) -> str | None:
+    """The segmentation record's reuse note (`labeler.ae.seg.reuse_note`), for
+    the version the record names, with its test shots counted; None when its
+    test is no second use."""
+    version = seg.get("meta", {}).get("version", ae_seg.VERSION)
+    if version not in ae_seg.SEG_VERSIONS:
+        return None
+    return ae_seg.reuse_note(version, seg.get("counts", {}).get("shots"))
+
+
 def second_look(
     paths: Paths,
     found: dict[str, Path],
@@ -606,7 +618,7 @@ def _draw(
     seg_match, seg_shas = None, {}
     if ready(SEG_PRODUCTS, "seg_evaluation"):
         figure("fig_segmentation", scores.draw_segmentation, seg)
-        table("table_seg_scores", scores.table_segmentation(seg))
+        table("table_seg_scores", scores.table_segmentation(seg, seg_reuse(seg)))
         copy = found["seg_labels"]
         if copy.is_file():
             snap.read("seg_labels", copy)
