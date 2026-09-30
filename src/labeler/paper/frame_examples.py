@@ -28,11 +28,13 @@ from pathlib import Path
 import numpy as np
 from matplotlib.figure import Figure
 
+from ..ae.xpower.gallery import STATE_COLOURS
 from ..config import Paths
+from ..events.catalog.states import NOT_OBSERVABLE
 from ..frames import apply as frames_apply
 from ..frames import evaluate as frames_evaluate
 from ..frames import features_dir, gallery, prepare
-from ..frames.targets import PRESENT_T
+from ..frames.targets import ABSENT, PRESENT_T, UNKNOWN
 from ..scoring.frames import FRAME_MS
 from . import PAGE_IN, save, style
 from . import shots as ae_shots
@@ -43,7 +45,9 @@ RULE = (
     "shot number, taken evenly: the best, the median and the worst; a shot with "
     "no present bin or no F1 is left out"
 )
-UNKNOWN_EDGE = ("#999999", 0.4)  # the unknown runs are white: outline them
+#: Blank is absent, as in fig_examples_ae's owner strip; unknown is its
+#: not-observable grey.
+TARGET_COLOURS = {ABSENT: None, UNKNOWN: STATE_COLOURS[NOT_OBSERVABLE]}
 TARGET_LABEL = "target: {}"
 MODEL_LABEL = ae_shots.MODEL_LABEL
 THRESHOLD_LABEL = ae_shots.THRESHOLD_LABEL
@@ -178,7 +182,7 @@ def draw_examples(spec, shots: Sequence[FrameShot], stem: Path) -> Figure:
                 (s.bins, s.states),
                 label=TARGET_LABEL,
                 fontsize=6,
-                unknown_edge=UNKNOWN_EDGE,
+                colours=TARGET_COLOURS,
             )
             gallery.draw_prob(
                 model,
