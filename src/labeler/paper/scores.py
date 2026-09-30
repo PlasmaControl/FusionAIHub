@@ -1,15 +1,21 @@
-r"""fig_scores, the selected models' F1 and ROC, and the score tables.
+r"""fig_scores, the selected models' F1, ROC and precision-recall curve, and
+the score tables.
 
 `draw_scores` is one model per paper phenomenon (`ORDER`), the one selected for
 main inference (`labeler.paper.roc.SELECTED`): ae_xpower for AE, the frame
-models for the other four. Two panels, side by side: each model's test F1
+models for the other four. Three panels, side by side: each model's test F1
 with its 95 % shot-bootstrap interval, from its `evaluation.json`, its value
-written beside it; and each model's ROC on the same test shots, from its
-`roc.json` (`labeler.paper.roc`), its threshold's point marked, its AUROC in
-the key, beside the dashed chance diagonal. A phenomenon with no evaluation
-has no dot and its tick says `NOT_SCORED`; one with no ROC has no curve and
-its key says `NO_ROC`. No other method, no baseline, and no precision or
-recall is drawn: those are the tables'.
+written beside it; each model's ROC on the same test shots, from its
+`roc.json` (`labeler.paper.roc`), its threshold's point marked, beside the
+dashed chance diagonal; and its precision-recall curve, its threshold's point
+marked, with the phenomenon's positive share (the chance level of a PR curve)
+as a short dotted tick in its colour at the right edge. One key below the
+three panels gives each phenomenon's AUROC and AUPRC ("AE: AUROC 0.99, AUPRC
+0.95"), then the chance entries and the threshold's point. A phenomenon with
+no evaluation has no dot and its tick says `NOT_SCORED`; one with no ROC has
+no curve and its key says `NO_ROC`; a `roc.json` with no `auprc` draws its ROC
+but no PR curve, and its key says `NO_PR`. No other method and no baseline is
+drawn: those are the tables'.
 
 `table_ae`, `table_segmentation` and `table_differences` give the AE methods'
 and the segmentation's scores and their paired differences as LaTeX
@@ -73,10 +79,14 @@ PHENOMENON_COLOURS = {
 }
 NOT_SCORED = "not scored"  # a phenomenon's tick, without its evaluation
 NO_ROC = "no ROC"  # its key, without its roc.json
+NO_PR = "no PR"  # its key, with a roc.json that has no auprc
 CHANCE = "chance"
+CHANCE_PR = "chance: positive share"
 AT_THRESHOLD = "at the model's threshold"
 F1_LABEL = "test F1 (95 % shot-bootstrap interval)"
-SCORES_HEIGHT_IN = 2.4
+SHARE_TICK = 0.12  # the positive-share tick's length, in axes units
+KEY_COLUMNS = 3
+SCORES_HEIGHT_IN = 2.8  # 0.4 in over the two-panel figure, for the key
 DECIMALS = 3
 AMSMATH = r"needs amsmath for its \text{}"  # in each table that uses it, once
 INTERVAL_NOTE = (
@@ -192,47 +202,42 @@ def _f1_panel(ax, selected: Sequence[Selected]) -> None:
 
 
 def roc_key(s: Selected) -> str:
-    """The phenomenon's entry in the ROC's key: its AUROC, or `NO_ROC`."""
+    """The phenomenon's entry in the shared key: its AUROC (or `NO_ROC`) and
+    its AUPRC (or `NO_PR`), as "AE: AUROC 0.99, AUPRC 0.95"."""
     if s.roc is None:
-        return f"{title(s.category)} ({NO_ROC})"
-    return f"{title(s.category)} (AUROC {s.roc['auroc']:.2f})"
+        return f"{title(s.category)}: {NO_ROC}"
+    auprc = s.roc.get("auprc")
+    pr = NO_PR if auprc is None else f"AUPRC {auprc:.2f}"
+    return f"{title(s.category)}: AUROC {s.roc['auroc']:.2f}, {pr}"
+
+
+def _mark(ax, x, y, colour) -> None:
+    """A model's threshold point."""
+    ax.plot(
+        [x],
+        [y],
+        "o",
+        ms=3.5,
+        color=colour,
+        mec="white",
+        mew=0.5,
+        zorder=3,
+        clip_on=False,
+    )
 
 
 def _roc_panel(ax, selected: Sequence[Selected]) -> None:
     """A curve per phenomenon with a ROC, its threshold's point marked, and
-    the chance diagonal; the key beside it."""
-    handles = []
+    the chance diagonal."""
     for s in selected:
-        colour = PHENOMENON_COLOURS[s.category]
         if s.roc is None:
-            handles.append(Line2D([], [], color=colour, lw=1.0, ls=":"))
-        else:
-            points = s.roc["curve"]
-            [line] = ax.plot(points["fpr"], points["tpr"], color=colour, lw=1.0)
-            at = s.roc["threshold"]
-            ax.plot(
-                [at["fpr"]],
-                [at["tpr"]],
-                "o",
-                ms=3.5,
-                color=colour,
-                mec="white",
-                mew=0.5,
-                zorder=3,
-                clip_on=False,
-            )
-            handles.append(line)
-        handles[-1].set_label(roc_key(s))
-    [chance] = ax.plot([0, 1], [0, 1], ls="--", color="#999999", lw=0.7)
-    chance.set_label(CHANCE)
-    point = Line2D([], [], ls="none", marker="o", ms=3.5, color="#444444")
-    point.set_label(AT_THRESHOLD)
-    ax.legend(
-        handles=[*handles, chance, point],
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        frameon=False,
-    )
+            continue
+        colour = PHENOMENON_COLOURS[s.category]
+        points = s.roc["curve"]
+        ax.plot(points["fpr"], points["tpr"], color=colour, lw=1.0)
+        at = s.roc["threshold"]
+        _mark(ax, at["fpr"], at["tpr"], colour)
+    ax.plot([0, 1], [0, 1], ls="--", color="#999999", lw=0.7)
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
     ax.set_aspect("equal")
@@ -240,14 +245,59 @@ def _roc_panel(ax, selected: Sequence[Selected]) -> None:
     ax.set_ylabel("true-positive rate")
 
 
+def _pr_panel(ax, selected: Sequence[Selected]) -> None:
+    """A curve per phenomenon whose `roc.json` has a PR curve, its threshold's
+    point marked, and its positive share as a short dotted tick at the right
+    edge."""
+    for s in selected:
+        if s.roc is None or "auprc" not in s.roc:
+            continue
+        colour = PHENOMENON_COLOURS[s.category]
+        points = s.roc["pr"]
+        ax.plot(points["recall"], points["precision"], color=colour, lw=1.0)
+        at = s.roc["threshold"]
+        _mark(ax, at["recall"], at["precision"], colour)
+        share = s.roc["positive_share"]
+        ax.plot([1 - SHARE_TICK, 1], [share, share], ls=":", color=colour, lw=1.2)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
+    ax.set_xlabel("recall")
+    ax.set_ylabel("precision")
+
+
+def _key(selected: Sequence[Selected]) -> list:
+    """The shared key's handles: a coloured line per phenomenon, the ROC's
+    chance diagonal, the PR's chance tick and the threshold's point."""
+    handles = []
+    for s in selected:
+        colour = PHENOMENON_COLOURS[s.category]
+        dead = s.roc is None
+        handles.append(Line2D([], [], color=colour, lw=1.0, ls=":" if dead else "-"))
+        handles[-1].set_label(roc_key(s))
+    chance = Line2D([], [], ls="--", color="#999999", lw=0.7, label=CHANCE)
+    share = Line2D([], [], ls=":", color="#999999", lw=1.2, label=CHANCE_PR)
+    point = Line2D([], [], ls="none", marker="o", ms=3.5, color="#444444")
+    point.set_label(AT_THRESHOLD)
+    return [*handles, chance, share, point]
+
+
 def draw_scores(selected: Sequence[Selected], stem: Path) -> Figure:
-    """The selected models' test F1 and, beside it, their ROC (module
-    docstring), one per phenomenon in the order given."""
+    """The selected models' test F1, ROC and precision-recall curve, side by
+    side, with one key below (module docstring), one per phenomenon in the
+    order given."""
     with style():
         fig = Figure(figsize=(PAGE_IN, SCORES_HEIGHT_IN), layout="constrained")
-        f1, roc = fig.subplots(1, 2, width_ratios=[1.15, 1])
+        f1, roc, pr = fig.subplots(1, 3, width_ratios=[1.3, 1, 1])
         _f1_panel(f1, selected)
         _roc_panel(roc, selected)
+        _pr_panel(pr, selected)
+        fig.legend(
+            handles=_key(selected),
+            loc="outside lower center",
+            ncol=KEY_COLUMNS,
+            frameon=False,
+        )
         save(fig, stem)
     return fig
 

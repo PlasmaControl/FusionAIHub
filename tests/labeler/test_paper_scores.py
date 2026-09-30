@@ -33,8 +33,17 @@ def _roc(auroc: float) -> dict:
     """A `roc.json`'s fields fig_scores reads."""
     return {
         "auroc": auroc,
+        "auprc": round(auroc - 0.1, 2),
+        "positive_share": 0.25,
         "curve": {"fpr": [0.0, 0.1, 0.4, 1.0], "tpr": [0.0, 0.7, 0.9, 1.0]},
-        "threshold": {"value": 0.5, "fpr": 0.1, "tpr": 0.7},
+        "pr": {"recall": [0.0, 0.7, 0.9, 1.0], "precision": [1.0, 0.8, 0.5, 0.25]},
+        "threshold": {
+            "value": 0.5,
+            "fpr": 0.1,
+            "tpr": 0.7,
+            "precision": 0.8,
+            "recall": 0.7,
+        },
     }
 
 
@@ -49,12 +58,18 @@ def _selected() -> list[scores.Selected]:
 
 
 def _panels(fig):
-    f1, curves = fig.axes
-    return f1, curves
+    f1, curves, pr = fig.axes
+    return f1, curves, pr
 
 
-def _key(ax) -> list[str]:
-    return [t.get_text() for t in ax.get_legend().get_texts()]
+def _key(fig) -> list[str]:
+    [legend] = fig.legends
+    return [t.get_text() for t in legend.get_texts()]
+
+
+def _curves(ax) -> list:
+    """The panel's curves: lines with more than two points."""
+    return [ln for ln in ax.get_lines() if len(ln.get_xdata()) > 2]
 
 
 def test_fig_scores_has_one_f1_dot_per_phenomenon(tmp_path):
@@ -62,8 +77,9 @@ def test_fig_scores_has_one_f1_dot_per_phenomenon(tmp_path):
     fig = scores.draw_scores(selected, tmp_path / "fig_scores")
     assert (tmp_path / "fig_scores.pdf").stat().st_size > 0
     assert (tmp_path / "fig_scores.png").stat().st_size > 0
-    assert tuple(fig.get_size_inches()) == pytest.approx((PAGE_IN, 2.4))
-    f1, _ = _panels(fig)
+    assert tuple(fig.get_size_inches()) == pytest.approx((PAGE_IN, 2.8))
+    assert len(fig.axes) == 3, "F1, ROC, PR"
+    f1, _, _ = _panels(fig)
     names = [title(c) for c in ORDER]
     assert [c.get_label() for c in f1.containers] == names
     dots = [float(c.lines[0].get_ydata()[0]) for c in f1.containers]
@@ -76,9 +92,9 @@ def test_fig_scores_has_one_f1_dot_per_phenomenon(tmp_path):
 
 def test_fig_scores_draws_only_the_selected_models(tmp_path):
     fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
-    f1, curves = _panels(fig)
+    f1, curves, pr = _panels(fig)
     drawn = [t.get_text() for t in fig.findobj(Text)]
-    for name in [*scores.AE_NAMES.values(), "precision", "recall", "baseline"]:
+    for name in [*scores.AE_NAMES.values(), "baseline"]:
         assert not [t for t in drawn if name.lower() in t.lower()], name
     assert len(f1.containers) == len(ORDER)
     lines = [ln for ln in curves.get_lines() if len(ln.get_xdata()) > 1]
@@ -86,22 +102,23 @@ def test_fig_scores_draws_only_the_selected_models(tmp_path):
     colours = [c.lines[0].get_color() for c in f1.containers]
     assert [ln.get_color() for ln in lines[: len(ORDER)]] == colours
     assert len(set(colours)) == len(ORDER)
+    assert [ln.get_color() for ln in _curves(pr)] == colours
 
 
-def test_the_roc_key_gives_each_auroc(tmp_path):
+def test_the_key_gives_each_auroc_and_auprc(tmp_path):
     fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
-    _, curves = _panels(fig)
-    assert _key(curves) == [
-        "AE (AUROC 0.95)",
-        "NTM (AUROC 0.90)",
-        "H-mode (AUROC 0.85)",
-        "ELMing (AUROC 0.80)",
-        "sawteeth (AUROC 0.75)",
+    _, curves, _ = _panels(fig)
+    assert _key(fig) == [
+        "AE: AUROC 0.95, AUPRC 0.85",
+        "NTM: AUROC 0.90, AUPRC 0.80",
+        "H-mode: AUROC 0.85, AUPRC 0.75",
+        "ELMing: AUROC 0.80, AUPRC 0.70",
+        "sawteeth: AUROC 0.75, AUPRC 0.65",
         scores.CHANCE,
+        scores.CHANCE_PR,
         scores.AT_THRESHOLD,
     ]
-    [chance] = [ln for ln in curves.get_lines() if ln.get_label() == scores.CHANCE]
-    assert chance.get_linestyle() == "--"
+    [chance] = [ln for ln in curves.get_lines() if ln.get_linestyle() == "--"]
     assert list(chance.get_xydata().ravel()) == [0, 0, 1, 1]
     marks = [ln for ln in curves.get_lines() if ln.get_marker() == "o"]
     assert [tuple(m.get_xydata()[0]) for m in marks] == [(0.1, 0.7)] * len(ORDER)
@@ -111,13 +128,32 @@ def test_the_roc_key_gives_each_auroc(tmp_path):
     assert curves.get_aspect() == 1
 
 
+def test_the_third_panel_is_the_precision_recall_curve(tmp_path):
+    fig = scores.draw_scores(_selected(), tmp_path / "fig_scores")
+    _, _, pr = _panels(fig)
+    assert (pr.get_xlabel(), pr.get_ylabel()) == ("recall", "precision")
+    assert pr.get_xlim() == pr.get_ylim() == (0, 1)
+    [first, *_] = _curves(pr)
+    assert list(first.get_xdata()) == [0.0, 0.7, 0.9, 1.0]
+    assert list(first.get_ydata()) == [1.0, 0.8, 0.5, 0.25]
+    marks = [ln for ln in pr.get_lines() if ln.get_marker() == "o"]
+    assert [tuple(m.get_xydata()[0]) for m in marks] == [(0.7, 0.8)] * len(ORDER)
+    ticks = [ln for ln in pr.get_lines() if ln.get_linestyle() == ":"]
+    assert len(ticks) == len(ORDER), "a positive-share tick each"
+    for tick in ticks:
+        xs, ys = tick.get_xdata(), tick.get_ydata()
+        assert xs[-1] == 1 and xs[0] > 0.5 and list(ys) == [0.25, 0.25]
+    assert [t.get_color() for t in ticks] == [c.get_color() for c in _curves(pr)]
+    assert tree.small_text(fig) == []
+
+
 def test_a_phenomenon_without_its_roc_or_evaluation_says_so(tmp_path):
     selected = _selected()
     selected[1] = selected[1]._replace(roc=None)
     selected[2] = selected[2]._replace(f1=None)
     selected[3] = selected[3]._replace(f1=tree.est(None))
     fig = scores.draw_scores(selected, tmp_path / "fig_scores")
-    f1, curves = _panels(fig)
+    f1, curves, pr = _panels(fig)
     assert [c.get_label() for c in f1.containers] == ["AE", "NTM", "sawteeth"]
     assert [t.get_text() for t in f1.get_xticklabels()] == [
         "AE",
@@ -126,9 +162,25 @@ def test_a_phenomenon_without_its_roc_or_evaluation_says_so(tmp_path):
         f"ELMing\n{scores.NOT_SCORED}",
         "sawteeth",
     ]
-    assert _key(curves)[1] == f"NTM ({scores.NO_ROC})"
+    assert _key(fig)[1] == f"NTM: {scores.NO_ROC}"
     lines = [ln for ln in curves.get_lines() if len(ln.get_xdata()) > 1]
     assert len(lines) == len(ORDER), "four curves and the chance diagonal"
+    assert len(_curves(pr)) == len(ORDER) - 1
+    assert tree.small_text(fig) == []
+
+
+def test_a_roc_without_a_pr_curve_draws_its_roc_and_says_no_pr(tmp_path):
+    selected = _selected()
+    old = {k: v for k, v in selected[2].roc.items() if k not in ("auprc", "pr")}
+    old["threshold"] = {k: v for k, v in old["threshold"].items() if k[0] != "p"}
+    del old["positive_share"]
+    selected[2] = selected[2]._replace(roc=old)
+    fig = scores.draw_scores(selected, tmp_path / "fig_scores")
+    _, curves, pr = _panels(fig)
+    assert _key(fig)[2] == f"H-mode: AUROC 0.85, {scores.NO_PR}"
+    assert len(_curves(curves)) == len(ORDER)
+    assert len(_curves(pr)) == len(ORDER) - 1
+    assert len([ln for ln in pr.get_lines() if ln.get_marker() == "o"]) == 4
     assert tree.small_text(fig) == []
 
 

@@ -1103,8 +1103,17 @@ def _selected_records(paths) -> dict[str, dict]:
             evaluation.write_text(json.dumps(f1))
         record = {
             "auroc": 0.9,
+            "auprc": 0.8,
+            "positive_share": 0.3,
             "curve": {"fpr": [0.0, 0.2, 1.0], "tpr": [0.0, 0.8, 1.0]},
-            "threshold": {"value": 0.5, "fpr": 0.2, "tpr": 0.8},
+            "pr": {"recall": [0.0, 0.8, 1.0], "precision": [1.0, 0.7, 0.3]},
+            "threshold": {
+                "value": 0.5,
+                "fpr": 0.2,
+                "tpr": 0.8,
+                "precision": 0.7,
+                "recall": 0.8,
+            },
             "evaluation": {"sha256": _sha(evaluation.read_text())},
         }
         roc.roc_file(paths, method, build.VERSION).write_text(json.dumps(record))
@@ -1172,6 +1181,30 @@ def test_a_selected_model_without_its_roc_or_evaluation_is_partial(
     [selected] = drawn
     assert [s.roc is None for s in selected] == [False, True, True, True, False]
     assert [s.f1 is None for s in selected] == [False, False, False, True, False]
+
+
+def test_a_roc_without_a_pr_curve_is_partial(runs, tmp_path, monkeypatch):
+    """An old roc.json (no auprc) draws its ROC, and is listed as partial."""
+    _selected_records(runs)
+    found = build.inputs(runs)
+    old = found[build.roc_key("sawtooth_frames")]
+    record = json.loads(old.read_text())
+    for key in ("auprc", "pr", "positive_share"):
+        del record[key]
+    old.write_text(json.dumps(record))
+    drawn = _spy_scores(monkeypatch)
+    manifest = build.build(runs, tmp_path / "paper")
+    assert "fig_scores" in manifest["products"]
+    assert manifest["partial"]["fig_scores"] == [
+        {
+            "reason": build.NO_PR_WHY,
+            "phenomenon": "sawtooth_oscillation",
+            "roc": str(old),
+        }
+    ]
+    [selected] = drawn
+    assert all(s.roc is not None for s in selected)
+    assert "auprc" not in selected[-1].roc
 
 
 def test_the_retired_products_leave_an_older_output(runs, tmp_path):
