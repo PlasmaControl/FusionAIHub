@@ -81,16 +81,20 @@ def test_the_coverage_figure(tmp_path):
     counts = {"alfven_eigenmode": coverage.ae_counts(*_inputs(tmp_path))}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert (tmp_path / "fig_coverage.pdf").is_file()
-    shots, present, split, years = fig.axes
+    shots, present, split = fig.axes  # no suggestions panel
     assert _coming(shots) == 4 and _coming(present) == 4
-    assert [bar.get_width() for bar in shots.patches] == [4, 2], "labelled, positive"
-    legend, key = fig.legends
+    # Shots on a log axis: each bar from 1 to its count, its number beside it.
+    assert shots.get_xscale() == "log" and present.get_xscale() == "linear"
+    spans = [(bar.get_x(), bar.get_x() + bar.get_width()) for bar in shots.patches]
+    assert spans == [(1, 4), (1, 2)], "labelled, positive"
+    assert {"4", "2"} <= set(_texts(shots))
+    assert shots.get_xlim() == pytest.approx((1, 10**coverage.ROOM))
+    [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
         "labelled",
         "with a present span",
     ], "AE's labelled shots are its reviewed ones"
-    assert [t.get_text() for t in key.get_texts()] == list(coverage.SUGGESTED)
-    assert years.get_legend() is None, "the years' entries are in the shared key"
+    assert not [ax for ax in fig.axes if "suggest" in ax.get_title()]
     assert [bar.get_width() for bar in present.patches] == [0.9]
     assert "0.9" in _texts(present)
     assert [bar.get_height() for bar in split.patches] == [1, 1, 1, 1]
@@ -100,9 +104,6 @@ def test_the_coverage_figure(tmp_path):
         "test",
         "no\nsplit",
     ]
-    assert [bar.get_width() for bar in years.patches] == [2, 1, 1, 1, 1, 0]
-    assert [t.get_text() for t in years.get_yticklabels()] == ["2024", "2025", "?"]
-    assert "suggest" in years.get_title()
     assert tree.small_text(fig) == []
 
 
@@ -192,14 +193,13 @@ def test_the_split_ticks_do_not_touch(tmp_path, counts):
     assert min(gaps) >= coverage.FONT_PT - 1, f"at least an em apart (pt): {gaps}"
 
 
-def test_without_the_extension_the_year_panel_says_not_run(tmp_path):
+def test_without_the_extension_the_split_panel_says_not_run(tmp_path):
     saved, _, _ = _inputs(tmp_path)
     counts = {"alfven_eigenmode": coverage.ae_counts(saved, None, None)}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
-    _, _, split, years = fig.axes
-    for ax in (split, years):
-        assert _texts(ax) == [coverage.NOT_RUN]
-        assert ax.get_legend() is None and len(ax.patches) == 0
+    _, _, split = fig.axes
+    assert _texts(split) == [coverage.NOT_RUN]
+    assert split.get_legend() is None and len(split.patches) == 0
     [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
         "labelled",

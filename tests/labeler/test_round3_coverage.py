@@ -200,15 +200,20 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     counts = {AE: AE_COUNTS, ELM: _elm(tmp_path), SAW: _saw()}
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert (tmp_path / "fig_coverage.pdf").is_file()
-    assert len(fig.axes) == 12
+    assert len(fig.axes) == 7, "AE's row of three, the frame splits' row of four"
     shots, present = fig.axes[:2]
     assert sum(t == COMING for t in _texts(shots)) == 2, "NTM and H-mode"
     assert _texts(shots).count(coverage.NOT_RUN) == 1, "sawteeth: no meta read"
     assert coverage.NONE_REVIEWED not in _texts(shots)
-    assert _widths(shots) == [4, 576, 2, 443], "labelled AE, ELM; positive AE, ELM"
+    # On a log axis from 1: labelled AE, ELM; positive AE, ELM, each numbered.
+    assert shots.get_xscale() == "log" and present.get_xscale() == "linear"
+    assert [bar.get_x() for bar in shots.patches] == [1] * 4
+    assert _widths(shots) == [4 - 1, 576 - 1, 2 - 1, 443 - 1]
+    assert {"4", "576", "2", "443"} <= set(_texts(shots))
+    assert shots.get_xlim() == pytest.approx((1, 576**coverage.ROOM))
     assert _ticks(shots)[-2:] == ["ELMing", "sawteeth (detector)"]
     assert _widths(present) == [0.9, 1234.5], "AE's and the meta's present_s"
-    ntm_split, hmode_split, elm_split, saw_split = fig.axes[4:8]
+    ntm_split, hmode_split, elm_split, saw_split = fig.axes[3:7]
     for ax in (ntm_split, hmode_split):
         assert _texts(ax) == [COMING] and not ax.patches
     assert _widths(elm_split) == [4, 1, 2]
@@ -216,25 +221,16 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     assert _widths(saw_split) == [2, 1, 1]
     for ax in (elm_split, saw_split):
         assert _ticks(ax) == ["train", "val", "test"], "no legacy, no owner bar"
-    assert elm_split.get_title() == "ELMing: model split"
-    assert saw_split.get_title() == "sawteeth: model split"
-    ntm_years, _, elm_years, saw_years = fig.axes[8:12]
-    assert _texts(ntm_years) == [COMING]
-    assert _widths(elm_years) == [2, 1, 1, 1, 1, 0]
-    assert _ticks(elm_years) == ["2024", "2025", "?"]
-    assert elm_years.get_title() == "ELMing suggestions\nby year\n(bar not met)"
-    assert elm_years.get_legend() is None, "the frame rows share one key"
-    assert _texts(saw_years) == [coverage.NOT_RUN] and not saw_years.patches
-    assert saw_years.get_title() == "sawteeth suggestions\nby year", "not read"
-    legend, key = fig.legends
+    assert elm_split.get_title() == "ELMing: model split\n(bar not met)", "F8's mark"
+    assert saw_split.get_title() == "sawteeth: model split", "no table meta read"
+    assert not [ax for ax in fig.axes if "suggest" in ax.get_title()], "no years"
+    [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
         "labelled",
         "with a present span",
     ]
-    names = [t.get_text() for t in key.get_texts()]
-    assert names == list(coverage.FRAME_SUGGESTED), "one key, one name a colour"
     assert tree.small_text(fig) == []
-    for ax in (elm_split, saw_split, elm_years):
+    for ax in (shots, elm_split, saw_split):
         assert _apart(fig, ax), ax.get_title()
 
 
@@ -271,9 +267,16 @@ def test_a_frame_phenomenon_says_none_labelled_only_when_counted(tmp_path):
         (_saw(), coverage.NOT_RUN),
     ):
         fig = coverage.draw_coverage({AE: AE_COUNTS, SAW: saw}, tmp_path / "fig")
-        texts = _texts(fig.axes[0])
+        shots = fig.axes[0]
+        texts = _texts(shots)
         assert texts.count(mark) == 1
         assert coverage.NONE_REVIEWED not in texts, "a frame phenomenon's labels"
+        # A count of 0 draws no bar on the log axis, and keeps its number at 1;
+        # a count not read (no meta) draws neither.
+        zeros = [t for t in shots.texts if t.get_text() == "0"]
+        counted = mark == coverage.NONE_LABELLED
+        assert [t.xy[0] for t in zeros] == ([1, 1] if counted else [])
+        assert len(shots.patches) == 2, "AE's two bars alone"
 
 
 def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
@@ -286,23 +289,29 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
         )
     }  # both marks on the widest title, sawteeth's
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
-    assert all(ax.get_legend() is None for ax in fig.axes[4:12])
+    assert len(fig.axes) == 7
+    assert all(ax.get_legend() is None for ax in fig.axes[3:7])
     fig.draw_without_rendering()
     keys = [legend.get_window_extent() for legend in fig.legends]
-    assert len(keys) == 2 and not keys[0].overlaps(keys[1])
+    assert len(keys) == 1, "one key: labelled / with a present span"
     ticks = [t.get_window_extent() for ax in fig.axes for t in _tick_labels(ax)]
     bars = [bar.get_window_extent() for ax in fig.axes for bar in ax.patches]
     panels = [ax.get_window_extent() for ax in fig.axes]
-    assert len(bars) > 60
+    assert len(bars) > 25
     for key in keys:
         assert not any(key.overlaps(box) for box in ticks + bars + panels)
-    for ax in fig.axes[8:12]:
-        assert _ticks(ax) == ["2021", "2022", "2023", "2024", "2025", "?"]
-        assert _apart(fig, ax), ax.get_title()
-    assert _texts(fig.axes[6]) == ["20,400", "4,300", "4,350"]
-    assert fig.axes[11].get_title() == (
-        "sawteeth suggestions\nby year\n(bar not met, ≈ always)"
-    )
+    assert _apart(fig, fig.axes[0]), "the phenomena's names"
+    assert _texts(fig.axes[5]) == ["20,400", "4,300", "4,350"]
+    titles = [ax.get_title() for ax in fig.axes[3:7]]
+    assert titles == [
+        f"{title(NTM)}: model split",
+        f"{title(HMODE)}: model split\n(bar not met, ≈ always)",
+        f"{title(ELM)}: model split\n(bar not met)",
+        f"{title(SAW)}: model split\n(bar not met, ≈ always)",
+    ], "F8's marks on the split headings, both on the widest heading, sawteeth's"
+    headings = [ax.title.get_window_extent() for ax in fig.axes[3:7]]
+    above = [ax.get_tightbbox() for ax in fig.axes[:3]]
+    assert not any(h.overlaps(a) for h in headings for a in above), "below AE's row"
     shown = [
         text
         for ax in fig.axes
@@ -315,36 +324,34 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
     assert tree.small_text(fig) == []
 
 
-def test_ae_s_years_are_in_the_shared_key_and_six_years_stay_apart(tmp_path):
-    """AE's years panel has no legend of its own, alone or above the frame rows:
-    its entries are in the one key the years panels share, which covers none of
-    its bars or ticks, and its six years' ticks do not touch."""
+def test_no_suggestions_by_year_panel_or_key(tmp_path):
+    """The owner, 2026-09-29 23:51: "remove the suggestions by year graphs". No
+    panel of suggestions, AE's or a frame model's, and no key of them, alone or
+    with the frame rows; the years are still counted, for the table."""
     ae = replace(AE_COUNTS, by_year=BY_YEAR)
     framed = {category: _population() for category in coverage.FRAME_SOURCES}
-    for counts in ({AE: ae}, {AE: ae} | framed):
+    for counts, panels in (({AE: ae}, 3), ({AE: ae} | framed, 7)):
         fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
-        years = fig.axes[3]
-        assert years.get_title() == "AE suggestions by year"
-        assert years.get_legend() is None, "AE's entries are in the shared key"
-        names = [[t.get_text() for t in key.get_texts()] for key in fig.legends]
-        [shared] = [n for n in names if "suggested" in n]
-        ae_entries = ["suggested", "suggested with AE"]
-        assert list(coverage.SUGGESTED) == ae_entries
-        alone = ae_entries if counts == {AE: ae} else list(coverage.FRAME_SUGGESTED)
-        assert shared[:2] == alone, "one name a colour once frame rows are drawn"
-        assert _ticks(years) == ["2021", "2022", "2023", "2024", "2025", "?"]
-        assert _apart(fig, years), "the year ticks stay apart"
-        drawn = [bar.get_window_extent() for bar in years.patches] + [
-            t.get_window_extent() for t in _tick_labels(years)
+        assert len(fig.axes) == panels
+        assert not [ax for ax in fig.axes if "suggest" in ax.get_title()]
+        [key] = fig.legends
+        assert [t.get_text() for t in key.get_texts()] == [
+            "labelled",
+            "with a present span",
         ]
-        for key in fig.legends:
-            box = key.get_window_extent()
-            assert not any(box.overlaps(b) for b in drawn), "the key covers nothing"
+        years = {t.get_text() for ax in fig.axes for t in _tick_labels(ax)}
+        assert not years & {"2021", "2025", "?"}, "no year ticks"
+    for gone in ("SUGGESTED", "FRAME_SUGGESTED", "_years_panel", "_years_key"):
+        assert not hasattr(coverage, gone), gone
+    assert not hasattr(coverage, "_frame_years_panel")
+    assert ae.suggested == sum(n for n, _ in BY_YEAR.values()), "for the table"
+    row = coverage.table_datasets({AE: ae}).splitlines()[5].split(" & ")
+    assert row[-2:] == ["5322", "1520 \\\\"], "the table keeps the suggestions"
 
 
 def test_ae_alone_keeps_its_one_row(tmp_path):
     fig = coverage.draw_coverage({AE: AE_COUNTS}, tmp_path / "fig_coverage")
-    assert len(fig.axes) == 4
+    assert len(fig.axes) == 3
     assert tuple(fig.get_size_inches()) == (coverage.PAGE_IN, 2.3)
     assert coverage.NONE_REVIEWED not in _texts(fig.axes[0])
 
@@ -423,8 +430,7 @@ def test_h_mode_names_l_mode_with_its_table(tmp_path):
         "H-mode & 4822 & 0 & 4800 & 12.3 & 1 & 0 & 0 & -- & 4$^\\dagger$ & 2 \\\\"
     )
     fig = coverage.draw_coverage(counts, tmp_path / "fig")
-    assert fig.axes[5].get_title() == "H-mode: model split"
-    assert fig.axes[9].get_title() == "H-mode suggestions\nby year\n(≈ always)"
+    assert fig.axes[4].get_title() == "H-mode: model split\n(≈ always)"
 
 
 def test_an_unmarked_model_has_no_dagger(tmp_path):

@@ -27,24 +27,41 @@ of the frozen cohort with at least 2 s of corpus CO2 (`candidates`: 153 of its
   not in it; the bars are `shots.state_bars`.
 
 **The signals** (F10) lie between the CO2 spectrogram, on top, and the tracks,
-at the bottom: the rows the frame models read (`frames.SPECS[m].roles`), from
-the shot's review stores (`paths.spectrogram_file(spec.store_event, shot)`),
-each matched by its role's title prefix (`frames.features.find_role`), one
-panel each in `PANELS`' order. The NTM's Mirnov spectrogram (`MPI66M322D
-power`) is drawn as the CO2 one is (`shots.show_image`); its n map (`toroidal
-n, MPI66M probes`, `verify.mode_bytes`' codes) in the page's colours
-(`verify.mode_palette`), a colour per n, with a small key of the n in view.
-One D-alpha panel serves ELMs and H-mode: the ELM model's filterscope, the
-channel its spans read (`D-alpha FS01` on shot 199563), labelled by its
-title; neither `D-alpha PCPHD03` nor H-mode's pooled filterscopes row is
-drawn. H-mode's NBI power; the sawteeth's four ECE Te rows in one panel, a
-colour per row with a small key, and its SXR chords in their own. A trace is
-drawn as each column's minimum-to-maximum band, as the store keeps it. Each row
-is read over the figure's time range at a store level with a column for about
-each pixel across the page (`PAGE_COLUMNS`; `rows.read_window`, which pools
-with `rows.pool`), on the one time axis the panels share. A y-label is the
-signal's name with its row's units. A store or row that is not there gives
-a panel that says so (`shots.NO_DATA`, "no SXR data"); nothing is fetched.
+at the bottom: rows the frame models read (`frames.SPECS[m].roles`), from the
+shot's review stores (`paths.spectrogram_file(spec.store_event, shot)`), each
+matched by its role's title prefix (`frames.features.find_role`), one panel
+each in `PANELS`' order. The NTM's Mirnov spectrogram (`MPI66M322D power`) and
+the sawteeth's SXR chords are not drawn (the owner, 2026-09-29 23:51).
+
+- The NTM's n map (`toroidal n, MPI66M probes`, `verify.mode_bytes`' codes)
+  in the page's colours (`verify.mode_palette`), a colour per n, with a small
+  key of the n in view (`KEY_MIN_SHARE`). It is gated by TokEye (F4): a cell
+  keeps its n only where TokEye's coherent mask of the `GATE_TITLE` probe is
+  lit, and every other cell is code 0, black, "no mode" (`gate`, `gated`).
+  TokEye is the event layer's zoom pass, as the mask runs make it
+  (`masks.read_waveform` of corpus `mirnov` row `GATE_ROW`, the first of the
+  NTM panel's `PROBES`; `masks.prep` with `masks.ZOOM_DECIM`, 0.122 kHz per
+  bin; `masks.infer` on the CPU; the pinned `unet.load_unet` checkpoint,
+  sha-checked), over the whole finite record; a cell is lit where the
+  coherent channel is at least `PROB_THRESHOLD`. A map row takes the nearest
+  TokEye row, and a map column is lit in a row where any TokEye column inside
+  it is (`gate_mask`). Without the checkpoint or a readable record the panel
+  says `NO_GATE`, "no TokEye data".
+- One D-alpha panel serves ELMs and H-mode: the ELM model's filterscope, the
+  channel its spans read (`D-alpha FS01` on shot 199563), labelled by its
+  title; neither `D-alpha PCPHD03` nor H-mode's pooled filterscopes row is
+  drawn.
+- H-mode's NBI power.
+- The sawteeth's four ECE Te rows in one panel, a colour per row with a
+  small key.
+
+A trace is drawn as each column's minimum-to-maximum band, as the store keeps
+it. Each row is read over the figure's time range at a store level with a
+column for about each pixel across the page (`PAGE_COLUMNS`;
+`rows.read_window`, which pools with `rows.pool`), on the one time axis the
+panels share. A y-label is the signal's name with its row's units. A store or
+row that is not there gives a panel that says so (`shots.NO_DATA`, "no NBI
+power data"); nothing is fetched.
 
 **What it is not.** Everything on it is a suggestion: the title says so
 (`TITLE`), every track's key is `shots.SUGGESTED`'s (the mask's is
@@ -61,10 +78,13 @@ which must be a candidate (`named`; else `NotACandidate`). Its record
 (`record`: `roster.json` here, the build manifest's `interpreter`) holds it,
 the rule, the number of candidates, each model, table and store it read, by
 path and sha256 (a table or store that does not exist as null), the band the
-mask was drawn over (`seg_band_khz`, null without SegNet), and the corpus
-file by path alone: it is GBs, read in slices, never hashed. Every other file
-is read once, through a `snapshot.Snapshot`, so each sha256 is of the bytes
-drawn.
+mask was drawn over (`seg_band_khz`, null without SegNet), the corpus file by
+path alone (`corpus`: it is GBs, read in slices, never snapshotted), and the
+n map's gate (`n_gate`, null without one): the TokEye checkpoint by path and
+sha256, the corpus file by path and sha256 (hashed once, in place), its row,
+the pass, the kHz per bin, the threshold, and `kept`, the share of the
+ungated map's lit cells the gate keeps. Every other file is read once,
+through a `snapshot.Snapshot`, so each sha256 is of the bytes drawn.
 """
 
 from __future__ import annotations
@@ -75,7 +95,7 @@ import json
 import math
 import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -88,16 +108,18 @@ from matplotlib.patches import Patch
 from .. import frames
 from ..ae import seg as ae_seg
 from ..ae import xpower
+from ..ae.labels import PROB_THRESHOLD
 from ..ae.seg import train as seg_train
 from ..ae.seg.poi import ae_pixels
 from ..ae.xpower.data import raw_rows, targets, window_frames
 from ..ae.xpower.evaluate import chosen_model
 from ..ae.xpower.extend import MIN_CO2_S, frame_states
 from ..ae.xpower.train import probabilities
-from ..config import Paths, atomic_path, git_sha
-from ..events import suggestions
+from ..config import Paths, atomic_path, git_sha, sha256_of
+from ..events import masks, suggestions, unet
 from ..events.catalog.cohort import read_cohort
 from ..events.catalog.states import PRESENT
+from ..events.panels.neoclassical_tearing_mode import PROBES
 from ..events.review import labels
 from ..events.review import rows as store_rows
 from ..events.review.labels import Label
@@ -127,7 +149,6 @@ from .shots import (
     _legend,
     _mask,
     _spectrogram,
-    show_image,
     state_bars,
     text_track,
 )
@@ -166,18 +187,30 @@ TIER = "suggestions"
 #: About a column per pixel across the page, at `paper.save`'s 300 dpi.
 PAGE_COLUMNS = round(PAGE_IN * 300)
 TRACE_LW = 0.3
-#: The n map's key names an n with at least this share of its lit pixels: the
-#: map's scattered noise pixels light every n, and a key of all of them
-#: overflows the panel (shot 199563 lit ten).
+#: The n map's key names an n with at least this share of its lit pixels, those
+#: the TokEye gate keeps: the map's scattered noise pixels light every n, and a
+#: key of all of them overflows the panel (shot 199563 lit ten, ungated).
 KEY_MIN_SHARE = 0.05
-#: A row per colour: the ECE groups', the SXR chords'.
+#: A row per colour: the ECE groups'.
 ROW_COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
+#: The n map's TokEye gate (F4): the probe whose record TokEye segments, the
+#: first of the NTM panel's probes, MPI66M322D (corpus `mirnov` row 15).
+GATE_GROUP = "mirnov"
+GATE_ROW = next(iter(PROBES))
+GATE_TITLE = "MPI66M322D"
+GATE_PASS = "zoom"  # the event layer's zoom pass (`masks.ZOOM_DECIM`)
+#: The TokEye checkpoint's key in a snapshot.
+GATE_KEY = "tokeye_unet"
+#: The n panel's text without a gate, and why there is none.
+NO_GATE = NO_DATA.format("TokEye")
+NO_CHECKPOINT = "no TokEye checkpoint"
+NO_RECORD = f"no readable {GATE_TITLE} record"
 
 
 @dataclass(frozen=True)
 class SignalPanel:
     """A signal panel (F10): the rows of frame model `method`'s roles named
-    `role`, drawn as `kind` ("image", "modes" or "trace"). Its y-label is
+    `role`, drawn as `kind` ("modes" or "trace"). Its y-label is
     `name` with the row's units when `units` (`name` None: the row's title
     before its first comma, as "D-alpha FS01"); `title` names it in
     `NO_DATA`'s "no <title> data"."""
@@ -200,12 +233,10 @@ class SignalPanel:
 
 
 PANELS = (
-    SignalPanel("MPI66M322D power", "ntm_frames", "power", "image", "Mirnov", height=2),
     SignalPanel("toroidal n", "ntm_frames", "modes", "modes", "n", height=1.6),
     SignalPanel("D-alpha FS", "elm_frames", "dalpha", "trace", None, units=False),
     SignalPanel("NBI power", "hmode_frames", "nbi", "trace", "NBI"),
     SignalPanel("ECE Te", "sawtooth_frames", "ece", "trace", "ECE Te", height=1.2),
-    SignalPanel("SXR", "sawtooth_frames", "sxr", "trace", "SXR"),
 )
 
 
@@ -241,6 +272,28 @@ class Signal:
     text: str | None = None
 
 
+@dataclass(frozen=True)
+class Gate:
+    """TokEye's coherent mask of the `GATE_TITLE` probe's record: `lit`,
+    `(512, T)` bool, on rows centred at `freq_khz` and columns centred at
+    `t_ms` (the shot's clock, ms), both increasing; and what it was made from
+    (`record`: the manifest's `n_gate`, less `kept`)."""
+
+    lit: np.ndarray
+    freq_khz: np.ndarray
+    t_ms: np.ndarray
+    record: dict
+
+
+@dataclass(frozen=True)
+class NoGate:
+    """Why the n map could not be gated: `why`, and the file missing, if one
+    is."""
+
+    why: str
+    missing: str | None = None
+
+
 class ScratchOnly(ValueError):
     """The CLI's preview goes into a scratch build, never the paper's own."""
 
@@ -264,7 +317,10 @@ class RosterShot:
     category, the suggested state per frame, or the text `NO_TABLE` or
     `NOT_APPLIED`; `signals` the signal panels (F10), `stores` each store
     event's file, None where there is none, and `seg_band` the band, kHz, the
-    mask is over: the picture's own, every row (None: SegNet not run)."""
+    mask is over: the picture's own, every row (None: SegNet not run).
+    `n_gate` is the n map's TokEye gate's record (None: not gated), and
+    `no_gate` why a map with a row to draw was not gated (None: it was, or
+    there was no map)."""
 
     shot: int
     year: int
@@ -281,6 +337,8 @@ class RosterShot:
     signals: tuple[Signal, ...] = ()
     stores: dict = field(default_factory=dict)
     seg_band: tuple[float, float] | None = None
+    n_gate: dict | None = None
+    no_gate: NoGate | None = None
 
     @property
     def edges(self) -> np.ndarray:
@@ -443,6 +501,133 @@ def signals(
     return tuple(out), stores
 
 
+def tokeye_file(paths: Paths) -> Path:
+    """The pinned TokEye checkpoint, `$LABELER_ROOT/models/tokeye/...`."""
+    return paths.models / unet.CHECKPOINT_SUBDIR / unet.CHECKPOINT_NAME
+
+
+def load_tokeye(file: Path, snap: Snapshot | None = None):
+    """The pinned U-Net (`unet.load_unet`, sha-checked) from `file`, or from the
+    bytes `snap` read of it (`GATE_KEY`)."""
+    return unet.load_unet(file if snap is None else snap.copy(GATE_KEY, file))
+
+
+def coherent(model, y: np.ndarray, fs_hz: float) -> tuple[np.ndarray, dict]:
+    """TokEye's zoom pass over the waveform `y`, as the mask runs make it
+    (`masks.prep` with `masks.ZOOM_DECIM`, then `masks.infer` on the CPU, no
+    autocast): `(512, T)` bool, lit where the coherent channel (0) is at
+    least `PROB_THRESHOLD`; and `prep`'s meta."""
+    spec, meta = masks.prep(y, fs_hz=fs_hz, decim=masks.ZOOM_DECIM)
+    probs = masks.infer(model, spec, "cpu", amp=False)
+    return probs[0] >= PROB_THRESHOLD, meta
+
+
+def gate(paths: Paths, shot: int, snap: Snapshot | None = None) -> Gate | NoGate:
+    """TokEye's coherent mask of `shot`'s `GATE_TITLE` record, the whole finite
+    record (`masks.read_waveform`), with the checkpoint read through `snap`
+    if given; `NoGate` without the checkpoint or a readable record. Never
+    fetches."""
+    checkpoint = tokeye_file(paths)
+    if not checkpoint.is_file():
+        return NoGate(NO_CHECKPOINT, str(checkpoint))
+    corpus = paths.corpus_file(shot)
+    try:
+        y, fs_hz, t0_s, _ = masks.read_waveform(corpus, GATE_GROUP, GATE_ROW)
+    except (OSError, KeyError, IndexError, ValueError) as error:
+        return NoGate(
+            f"{NO_RECORD}: {error}", None if corpus.is_file() else str(corpus)
+        )
+    model = load_tokeye(checkpoint, snap)
+    lit, meta = coherent(model, y, fs_hz)
+    sha = sha256_of(checkpoint) if snap is None else snap.sha(GATE_KEY)
+    record = {
+        "checkpoint": {"path": str(checkpoint), "sha256": sha},
+        "corpus": {"path": str(corpus), "sha256": sha256_of(corpus)},
+        "row": {"group": GATE_GROUP, "row": GATE_ROW, "title": GATE_TITLE},
+        "pass": GATE_PASS,
+        "khz_per_bin": meta["freq_khz_per_bin"],
+        "threshold": PROB_THRESHOLD,
+    }
+    freq_khz = masks.freq_axis_khz(fs_hz, masks.ZOOM_DECIM)
+    t_ms = masks.col_times_s(lit.shape[1], fs_hz, masks.ZOOM_DECIM, t0_s) * 1000
+    return Gate(lit, freq_khz, t_ms, record)
+
+
+def _nearest(values: np.ndarray, targets: np.ndarray) -> np.ndarray:
+    """The index of the nearest of the increasing `values` to each target."""
+    if len(values) == 1:
+        return np.zeros(len(targets), np.int64)
+    i = np.clip(np.searchsorted(values, targets), 1, len(values) - 1)
+    return np.where(targets - values[i - 1] <= values[i] - targets, i - 1, i)
+
+
+def gate_mask(
+    lit: np.ndarray,
+    freq_khz: np.ndarray,
+    t_ms: np.ndarray,
+    rows_khz: np.ndarray,
+    edges_ms: np.ndarray,
+) -> np.ndarray:
+    """TokEye's `lit`, `(F, T)` on rows at `freq_khz` and columns centred at
+    `t_ms` (both increasing), on a map's cells, `(len(rows_khz), K)`: rows
+    centred at `rows_khz`, columns from `edges_ms[i]` to `edges_ms[i + 1]`
+    (K + 1 edges). A map row takes the nearest TokEye row. A map column is lit
+    in a row where any TokEye column centred inside it, [edge, next edge), is
+    lit there: a max-pool, so a thin line survives a wide column. A column
+    with no TokEye column inside takes the nearest to its centre."""
+    lit = np.asarray(lit, bool)
+    t_ms, edges_ms = np.asarray(t_ms, float), np.asarray(edges_ms, float)
+    picked = lit[_nearest(np.asarray(freq_khz, float), np.asarray(rows_khz, float))]
+    starts = np.searchsorted(t_ms, edges_ms[:-1], side="left")
+    stops = np.searchsorted(t_ms, edges_ms[1:], side="left")
+    counts = np.zeros((len(picked), len(t_ms) + 1), np.int32)
+    np.cumsum(picked, axis=1, out=counts[:, 1:])
+    out = counts[:, stops] > counts[:, starts]
+    empty = stops == starts
+    if empty.any():
+        centres = (edges_ms[:-1][empty] + edges_ms[1:][empty]) / 2
+        out[:, empty] = picked[:, _nearest(t_ms, centres)]
+    return out
+
+
+def gated(read: Read, g: Gate) -> tuple[Read, float | None]:
+    """The n map `read` with every cell `g` does not light set to code 0 (no
+    mode, drawn black), and `kept`: the share of its lit cells (a level above
+    0) the gate keeps, None for a map with none lit."""
+    k = read.values.shape[-1]
+    edges = read.t0 + np.arange(k + 1) * (read.t1 - read.t0) / k
+    rows_khz = read.meta["y0"] + np.arange(read.meta["n_y"]) * read.meta["dy"]
+    keep = gate_mask(g.lit, g.freq_khz, g.t_ms, rows_khz, edges)
+    codes = np.where(keep, read.values, 0).astype(read.values.dtype)
+    n = len(read.meta["modes"]["n"])  # codes below it are level 0: no mode
+    before = int((read.values >= n).sum())
+    kept = round(int((codes >= n).sum()) / before, 4) if before else None
+    return replace(read, values=codes), kept
+
+
+def gate_signals(
+    paths: Paths, shot: int, drawn: tuple[Signal, ...], snap: Snapshot | None = None
+) -> tuple[tuple[Signal, ...], dict | None, NoGate | None]:
+    """`drawn` with the n map gated by TokEye (`gate`, `gated`), and its gate's
+    record with `kept`; or with the map's panel saying `NO_GATE`, and why
+    (`NoGate`). A map with no row to draw is left as it is, ungated."""
+    out, record, why = [], None, None
+    for sig in drawn:
+        if sig.panel.kind != "modes" or not sig.rows:
+            out.append(sig)
+            continue
+        found = gate(paths, shot, snap)
+        if isinstance(found, NoGate):
+            why = found
+            out.append(replace(sig, rows=(), text=NO_GATE))
+            continue
+        (read,) = sig.rows
+        read, kept = gated(read, found)
+        record = found.record | {"kept": kept}
+        out.append(replace(sig, rows=(read,)))
+    return tuple(out), record, why
+
+
 def whole_band(y0: float, dy: float, n_y: int) -> tuple[float, float]:
     """The picture's own band, kHz: from its lowest row's lower edge to its
     highest row's upper edge, so every row's centre lies in it."""
@@ -461,7 +646,8 @@ def roster_shot(
     """`candidate` with the frame model `model`, and SegNet `segmentation` if
     given, run over its corpus CO2 rows (read in place: `NoDataError` without
     them), its tracks from `tables` (`read_tables`) and its signal panels from
-    its review stores, read through `snap` if given (`signals`)."""
+    its review stores, read through `snap` if given (`signals`), the n map
+    gated by TokEye (`gate_signals`)."""
     co2 = corpus_signal(candidate.shot, "co2", corpus=paths.corpus)
     rows = raw_rows(co2.x, co2.y)
     first, n = window_frames(candidate.window)
@@ -486,6 +672,7 @@ def roster_shot(
     drawn, stores = signals(
         paths, candidate.shot, edges[0] - MARGIN_MS, edges[1] + MARGIN_MS, snap
     )
+    drawn, n_gate, no_gate = gate_signals(paths, candidate.shot, drawn, snap)
     tracks: dict = {AE: frame_states(prob, observed, threshold)}
     for category in TABLES:
         table = tables.get(category)
@@ -511,6 +698,8 @@ def roster_shot(
         signals=drawn,
         stores=stores,
         seg_band=seg_band,
+        n_gate=n_gate,
+        no_gate=no_gate,
     )
 
 
@@ -532,7 +721,8 @@ def _key(ax, handles, labelcolor=None) -> None:
 
 def _modes(ax, read: Read) -> None:
     """The n map in the page's colours, a colour per n, keyed by the n in view
-    (`KEY_MIN_SHARE` of the lit pixels), in white on the map's black."""
+    (`KEY_MIN_SHARE` of the lit pixels: on a gated map, of those the gate
+    kept), in white on the map's black."""
     modes = read.meta["modes"]
     colours = dict(zip(modes["n"], modes["colours"], strict=True))
     palette = np.array([to_rgb(c) for c in mode_palette(colours)])
@@ -584,22 +774,19 @@ def _signal(ax, sig: Signal) -> None:
         ax.set_yticks([])
         text_track(ax, sig.text)
         return
-    kind = sig.panel.kind
-    if kind == "trace":
+    if sig.panel.kind == "trace":
         _traces(ax, sig)
         return
     (read,) = sig.rows
-    top = read.extent[3]
-    if kind == "image":
-        show_image(ax, read.values, read.extent, top, sig.label)
-    else:
-        _modes(ax, read)
-        ax.set_ylim(0, top)
+    _modes(ax, read)
+    ax.set_ylim(0, read.extent[3])
 
 
 def draw(s: RosterShot, stem: Path) -> Figure:
-    """The spectrogram with SegNet's mask, the signal panels (F10), then one
-    track per phenomenon, each the models' suggestions."""
+    """The spectrogram with SegNet's mask; the signal panels (F10, `PANELS`):
+    the n map gated by TokEye, D-alpha, NBI and ECE Te, with no Mirnov
+    spectrogram and no SXR; then one track per phenomenon, each the models'
+    suggestions."""
     t0, t1 = s.edges[0] - MARGIN_MS, s.edges[-1] + MARGIN_MS
     heights = [4, *(g.panel.height for g in s.signals), *[0.45] * len(ORDER)]
     with style():
@@ -660,8 +847,9 @@ def record(
     """What the figure of `s` was drawn from: its shot and the `rule` that
     picked it among `candidates`, each model, table and store `snap` read for
     it, by path and sha256 (null where one was not there), the band its mask
-    is over, and the corpus file by path alone (never hashed: GBs, read in
-    slices); `roster.json`'s, less its commit, and the build manifest's
+    is over, the n map's TokEye gate (`n_gate`, null without one), and the
+    corpus file by path alone (GBs, read in slices; `n_gate` hashes it);
+    `roster.json`'s, less its commit, and the build manifest's
     `interpreter`."""
     return {
         "shot": s.shot,
@@ -679,6 +867,7 @@ def record(
             method: pinned(snap, table_key(method)) for method in TABLES.values()
         },
         "stores": {event: pinned(snap, store_key(event, s.shot)) for event in s.stores},
+        "n_gate": s.n_gate,
         "corpus": str(paths.corpus_file(s.shot)),
         "tier": TIER,
     }
