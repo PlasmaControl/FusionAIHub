@@ -12,7 +12,7 @@
 
 # One frame model over the roster or the population, as suggestions, one shard a task:
 #   python -m labeler.frames.apply --method $METHOD --roster|--population --index I --count N --workers W
-# writes $LABELER_ROOT/suggestions/<method>/v1/shards/<set>-I-of-N.{npz,failed.jsonl,json}.
+# writes $LABELER_ROOT/suggestions/<method>/v2/shards/<set>-I-of-N.{npz,failed.jsonl,json}.
 # The roster is read from its review stores; the population's non-roster shots with the
 # spec's groups on disk are built in memory, no store written (D48). Task I of an array
 # of N is shard I of N (SLURM_ARRAY_TASK_ID and SLURM_ARRAY_TASK_COUNT, D67). PILOT=1

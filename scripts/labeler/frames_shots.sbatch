@@ -12,9 +12,10 @@
 
 # One frame model's shots and their split (round three, Task 2.7):
 #   python -m labeler.frames.shots --method $METHOD [--force]
-# writes $LABELER_ROOT/frames/shots/<method>.{csv,json} and the owner's frozen saves,
-# <method>.owner.csv. FORCE=1 makes the split again, refused once a model is trained
-# on it. The corpus, the raw cache and the label tables are only read; nothing is
+# writes $LABELER_ROOT/frames/shots/v2/<method>.{csv,json} (frames.VERSION's; v1's
+# stay in frames/shots/) and the owner's frozen saves, <method>.owner.csv, laid over
+# the original labels (F2; no owner split). FORCE=1 makes the split again, refused
+# once a model is trained on it. The corpus, the raw cache and the label tables are only read; nothing is
 # fetched. ELM, H/L and sawteeth take seconds on the login node; the tearing-mode
 # split reads the archive's 28,521 grids and takes 6-9 minutes, so it runs here.
 # METHOD is one of elm_frames, hmode_frames, ntm_frames, sawtooth_frames.
