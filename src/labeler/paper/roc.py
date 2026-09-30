@@ -1,11 +1,12 @@
-"""The ROC of each paper phenomenon's selected model on its test shots, once.
+"""The ROC and PR curve of each paper phenomenon's selected model, once.
 
     python -m labeler.paper.roc [--method M ...] [--ae-version V]
+        [--replace-without-pr]
 
 For each phenomenon (`ORDER`) the model selected for main inference
 (`SELECTED`): AE's `ae_xpower` at `--ae-version` (default `AE_VERSION`, v2),
 and the other four's frame models (`roster.TABLES`) at `frames.VERSION`. Each
-ROC is over exactly the frames or bins its evaluation scored its F1 on:
+curve is over exactly the frames or bins its evaluation scored its F1 on:
 
 - **AE:** the chosen model (`evaluate.chosen_model`), read and checked as the
   test reads it (`evaluate.load_test`), over the split's reviewed test shots;
@@ -18,8 +19,8 @@ ROC is over exactly the frames or bins its evaluation scored its F1 on:
   read with `evaluate.read_shots`; the score is `evaluate.model_probs`; the
   bins are the ones `evaluate.score` counts (`scored_bins`, the rule of
   `frames_train.bin_cells`): ABSENT or PRESENT_T, observed, with a finite P. A
-  bin is positive where it is PRESENT_T. H-mode's ROC is `hmode_frames`' own,
-  for H; its L-mode companion (`evaluate.LMODE`) is not drawn.
+  bin is positive where it is PRESENT_T. H-mode's curves are `hmode_frames`'
+  own, for H; its L-mode companion (`evaluate.LMODE`) is not drawn.
 
 **The check.** The F1 at the model's own threshold (a unit said present where
 its score reaches it) is recomputed from the same scores, `stats.f1` of the
@@ -32,14 +33,23 @@ the one the evaluation names. The check shows the ROC is over the scored set.
 (`roc_file`). It holds `auroc`, exact over every scored unit (the trapezoid
 over the full curve, a point per distinct score: the rank statistic with ties
 counted half); the curve thinned to at most `ROC_POINTS` points evenly spaced
-along it (`thin`), keeping (0, 0) and (1, 1); `n_pos`, `n_neg` and `shots`;
-the threshold's own point; the check; the model's and the evaluation's path
-and sha256; `git_sha`; and `NOTE`. It has no clock: the same inputs give the
-same bytes.
+along it (`thin`), keeping (0, 0) and (1, 1); `auprc`, the average precision
+over the same distinct scores, from the highest down, `sum (R_k - R_{k-1})
+P_k`: a step function with no interpolation, scikit-learn's
+`average_precision_score` rule (`average_precision`); `pr`, the precision-recall
+curve at the thinned ROC's own points, from recall 0 at precision 1 (the empty
+prediction set's convention) to recall 1 at precision `positive_share`;
+`positive_share`, `n_pos / (n_pos + n_neg)`, a PR curve's chance level;
+`n_pos`, `n_neg` and `shots`; the threshold's own point, in ROC and PR terms;
+the check; the model's and the evaluation's path and sha256; `git_sha`; and
+`NOTE`. It has no clock: the same inputs give the same bytes.
 
 **Written once.** An existing `roc.json` is refused, as `evaluate` refuses a
 second test. Every target is checked before any is computed. `--method`
-(repeatable, or `all`, the default) picks which to write.
+(repeatable, or `all`, the default) picks which to write. The one exception is
+`--replace-without-pr`: it replaces an existing `roc.json` only when that file
+has no `auprc` and the new record has the same `auroc`, `n_pos` and `n_neg`
+(`replace_check`); otherwise it refuses, and nothing is written.
 """
 
 from __future__ import annotations
@@ -48,6 +58,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import time
 from pathlib import Path
@@ -78,10 +89,11 @@ ALL = "all"
 ROC_FILE = "roc.json"
 ROC_POINTS = 201
 F1_TOLERANCE = 1e-9
+AUROC_TOLERANCE = 1e-12  # `--replace-without-pr`: the same AUROC
 NOTE = (
-    "The ROC is a threshold-free look at the frozen model on the same test shots "
-    "its evaluation scored once. Nothing is chosen from it: no threshold, model "
-    "or version changes."
+    "The ROC and PR curve are a threshold-free look at the frozen model on the "
+    "same test shots its evaluation scored once. Nothing is chosen from either: "
+    "no threshold, model or version changes."
 )
 
 
@@ -186,11 +198,37 @@ def thin(fpr, tpr, n: int = ROC_POINTS) -> tuple[np.ndarray, np.ndarray]:
     """At most `n` of the curve's points, evenly spaced along it (by FPR + TPR,
     which rises from 0 to 2 at every point), keeping (0, 0) and (1, 1)."""
     fpr, tpr = np.asarray(fpr, dtype=np.float64), np.asarray(tpr, dtype=np.float64)
-    if len(fpr) <= n:
-        return fpr, tpr
-    along = fpr + tpr
-    keep = np.unique(np.searchsorted(along, np.linspace(0, along[-1], n), "left"))
+    keep = thin_index(fpr, tpr, n)
     return fpr[keep], tpr[keep]
+
+
+def thin_index(fpr, tpr, n: int = ROC_POINTS) -> np.ndarray:
+    """The indices `thin` keeps of the ROC's points: at most `n`, evenly spaced
+    along FPR + TPR, with the first and the last."""
+    along = np.asarray(fpr, dtype=np.float64) + np.asarray(tpr, dtype=np.float64)
+    if len(along) <= n:
+        return np.arange(len(along))
+    return np.unique(np.searchsorted(along, np.linspace(0, along[-1], n), "left"))
+
+
+def pr_points(fp, tp, n_pos: int) -> tuple[np.ndarray, np.ndarray]:
+    """`(recall, precision)` at each of the ROC's points (`curve`'s counts): the
+    first, with nothing said present, is recall 0 at precision 1, the
+    convention for an empty prediction set."""
+    fp, tp = np.asarray(fp, dtype=np.float64), np.asarray(tp, dtype=np.float64)
+    said = tp + fp
+    precision = np.divide(tp, said, out=np.ones_like(tp), where=said > 0)
+    return tp / n_pos, precision
+
+
+def average_precision(score, truth) -> float:
+    """The average precision over every scored unit, `sum (R_k - R_{k-1}) P_k`
+    over the distinct scores from the highest down (tied scores are one
+    threshold), R_0 = 0: a step function, no interpolation, as scikit-learn's
+    `average_precision_score`."""
+    fp, tp, _, _ = curve(score, truth)
+    recall, precision = pr_points(fp, tp, int(tp[-1]))
+    return float(np.sum(np.diff(recall) * precision[1:]))
 
 
 def cells(score, truth, threshold: float) -> np.ndarray:
@@ -320,25 +358,34 @@ def record(
     _, _, fpr, tpr = curve(scored.score, scored.truth)
     thin_fpr, thin_tpr = thin(fpr, tpr)
     tp, fp, fn, tn = c
+    full_fp, full_tp, _, _ = curve(scored.score, scored.truth)
+    n_pos, n_neg = int(scored.truth.sum()), int((~scored.truth).sum())
+    recall, precision = pr_points(full_fp, full_tp, n_pos)
+    keep = thin_index(fpr, tpr)
     return {
         "phenomenon": category_of(method),
         "method": method,
         "version": version,
         "unit": scored.unit,
         "shots": scored.shots,
-        "n_pos": int(scored.truth.sum()),
-        "n_neg": int((~scored.truth).sum()),
+        "n_pos": n_pos,
+        "n_neg": n_neg,
+        "positive_share": n_pos / (n_pos + n_neg),
         "auroc": auroc(scored.score, scored.truth),
+        "auprc": average_precision(scored.score, scored.truth),
         "curve": {
             "fpr": thin_fpr.tolist(),
             "tpr": thin_tpr.tolist(),
             "points": len(thin_fpr),
             "full_points": len(fpr),
         },
+        "pr": {"recall": recall[keep].tolist(), "precision": precision[keep].tolist()},
         "threshold": {
             "value": scored.threshold,
             "fpr": fp / (fp + tn),
             "tpr": tp / (tp + fn),
+            "precision": tp / (tp + fp) if tp + fp else 1.0,
+            "recall": tp / (tp + fn),
         },
         "f1_check": {
             "computed": computed,
@@ -373,25 +420,62 @@ def roc(paths: Paths, method: str, ae_version: str = AE_VERSION) -> dict:
     )
 
 
+def replace_check(old: dict, new: dict, where) -> None:
+    """Refuse (`ValueError`) replacing `old`, an existing record, by `new`
+    unless `old` has no `auprc` and `new` has its `auroc` (to
+    `AUROC_TOLERANCE`), `n_pos` and `n_neg`."""
+    if "auprc" in old:
+        raise ValueError(f"{where}: already has an auprc, so it is not replaced")
+    same = (
+        abs(old.get("auroc", math.nan) - new["auroc"]) <= AUROC_TOLERANCE
+        and old.get("n_pos") == new["n_pos"]
+        and old.get("n_neg") == new["n_neg"]
+    )
+    if not same:
+        raise ValueError(
+            f"{where}: the new record's auroc, n_pos or n_neg differ from the "
+            "old one's, so it is not replaced"
+        )
+
+
 def write(
-    paths: Paths, methods, *, ae_version: str = AE_VERSION, done=None
+    paths: Paths,
+    methods,
+    *,
+    ae_version: str = AE_VERSION,
+    done=None,
+    replace_without_pr: bool = False,
 ) -> dict[str, dict]:
     """Write each method's `roc.json`, once: refused, before any is computed,
-    if one exists. `done(method, record, path, seconds)` is called after each."""
+    if one exists. With `replace_without_pr` an existing one that has no
+    `auprc` is replaced instead, if the new record has its `auroc`, `n_pos` and
+    `n_neg` (`replace_check`); every record is computed and checked before any
+    is written. `done(method, record, path, seconds)` is called after each
+    write."""
     targets = {m: roc_file(paths, m, ae_version) for m in methods}
-    there = [str(t) for t in targets.values() if t.exists()]
-    if there:
-        raise FileExistsError(f"{', '.join(there)}: the ROC is recorded once")
-    out = {}
+    there = {m: t for m, t in targets.items() if t.exists()}
+    old = {}
+    if there and not replace_without_pr:
+        raise FileExistsError(
+            f"{', '.join(map(str, there.values()))}: the ROC is recorded once"
+        )
+    for method, target in there.items():
+        old[method] = json.loads(target.read_text())
+        if "auprc" in old[method]:
+            raise FileExistsError(f"{target}: the ROC is recorded once (it has PR)")
+    found, seconds = {}, {}
     for method, target in targets.items():
         start = time.monotonic()
-        found = roc(paths, method, ae_version)
+        found[method] = roc(paths, method, ae_version)
+        seconds[method] = time.monotonic() - start
+        if method in old:
+            replace_check(old[method], found[method], target)
+    for method, target in targets.items():
         with atomic_path(target) as tmp:
-            tmp.write_text(json.dumps(found, indent=1) + "\n")
-        out[method] = found
+            tmp.write_text(json.dumps(found[method], indent=1) + "\n")
         if done is not None:
-            done(method, found, target, time.monotonic() - start)
-    return out
+            done(method, found[method], target, seconds[method])
+    return found
 
 
 def methods_of(named: list[str] | None) -> list[str]:
@@ -414,6 +498,12 @@ def main(argv=None) -> int:
         default=AE_VERSION,
         help=f"ae_xpower's version (default {AE_VERSION})",
     )
+    p.add_argument(
+        "--replace-without-pr",
+        action="store_true",
+        help="replace an existing roc.json that has no auprc, if its auroc, "
+        "n_pos and n_neg are unchanged; refuse anything else that exists",
+    )
     args = p.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", LOGIN_THREADS)))
     paths = Paths.from_env()
@@ -423,6 +513,8 @@ def main(argv=None) -> int:
             "method": method,
             "roc": str(target),
             "auroc": found["auroc"],
+            "auprc": found["auprc"],
+            "positive_share": found["positive_share"],
             "f1": found["f1_check"]["computed"],
             "n_pos": found["n_pos"],
             "n_neg": found["n_neg"],
@@ -431,7 +523,13 @@ def main(argv=None) -> int:
         print(json.dumps(line), flush=True)
 
     try:
-        write(paths, methods_of(args.method), ae_version=args.ae_version, done=done)
+        write(
+            paths,
+            methods_of(args.method),
+            ae_version=args.ae_version,
+            done=done,
+            replace_without_pr=args.replace_without_pr,
+        )
     except (OSError, ValueError) as error:
         p.error(str(error))
     return 0

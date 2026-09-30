@@ -10,9 +10,10 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_scores`: each phenomenon's model selected for main inference
   (`roc.SELECTED`: ae_xpower at `--version`, the frame models at
   `frames.VERSION`), its test F1 from its `evaluation.json` and its ROC from
-  its `roc.json` (`labeler.paper.roc`), drawn only beside the evaluation it
-  names by sha256. A phenomenon with no evaluation or no ROC is drawn without
-  it and is `partial`, naming its `phenomenon`; with no evaluation at all,
+  its `roc.json` (`labeler.paper.roc`: ROC and precision-recall curve), drawn
+  only beside the evaluation it names by sha256. A phenomenon with no
+  evaluation, no ROC or a ROC with no PR curve is drawn without it and is
+  `partial`, naming its `phenomenon`; with no evaluation at all,
   fig_scores is skipped;
 - `table_ae_scores.tex`: the AE evaluation;
 - `table_seg_scores.tex`: the segmentation's evaluation;
@@ -308,6 +309,10 @@ NOT_SCORED_WHY = (
 NO_ROC_WHY = (
     "the selected model has no roc.json (python -m labeler.paper.roc), so it has "
     f'no curve and its key says "{scores.NO_ROC}"'
+)
+NO_PR_WHY = (
+    "the roc.json has no auprc (written before the PR curve), so its ROC is drawn "
+    f'but its PR curve is not and its key says "{scores.NO_PR}"'
 )
 ROC_OTHER = (
     "the roc.json does not name the evaluation.json read (by its sha256), so its "
@@ -871,7 +876,8 @@ def _scores(
     already) and its `roc.json`, each read through `snap`. A ROC is drawn only
     beside the evaluation it names by sha256. Each part missing is a `partial`
     entry naming its `phenomenon`: no evaluation (`NOT_SCORED_WHY`), then no
-    ROC (`NO_ROC_WHY`) or one of another evaluation (`ROC_OTHER`). fig_scores'
+    ROC (`NO_ROC_WHY`), one of another evaluation (`ROC_OTHER`) or one with no
+    PR curve (`NO_PR_WHY`). fig_scores'
     `skipped` entry when no phenomenon is scored, else None."""
     product = ("fig_scores",)
     methods = roc.SELECTED.values()
@@ -895,6 +901,8 @@ def _scores(
         elif record.get("evaluation", {}).get("sha256") != snap.sha(key):
             lacking(product, ROC_OTHER, phenomenon=category, roc=str(found[curve]))
             record = None
+        elif "auprc" not in record:
+            lacking(product, NO_PR_WHY, phenomenon=category, roc=str(found[curve]))
         f1 = None if evaluation is None else roc.f1_estimate(method, evaluation)
         selected.append(scores.Selected(category, method, f1, record))
     figure("fig_scores", scores.draw_scores, selected)
