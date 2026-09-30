@@ -28,8 +28,9 @@ application's `summary.csv`, and whether its model failed its primary bar (the
 first criterion of its spec's bar: E1, H1, N1 or S1) or is effectively the
 `always` baseline (`frames.evaluate`, F6) from the suggestion table's meta: a
 years panel's title says so ("bar not met", "≈ always") and the table puts a
-dagger on its Suggested cell (F8). Sawteeth's labels are the `ece_sawtooth` v2
-detector's (D56), not a person's, so its tick says "(detector)". The frame
+dagger on its Suggested cell (F8). Sawteeth's labels are those of the
+ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended), not a person's,
+so its tick says "(detector)". The frame
 phenomena take two rows of their own below AE's. A phenomenon with none of
 these inputs is still "coming". Disruption is not a paper phenomenon
 (`paper.LEFT_OUT`): it is neither counted nor drawn.
@@ -117,14 +118,16 @@ FRAME_SOURCES = {
     ),
     "edge_localized_mode": FrameSource("elm_frames", "Hiro's table"),
     "sawtooth_oscillation": FrameSource(
-        "sawtooth_frames", "the ece_sawtooth v2 detector's table", detector=True
+        "sawtooth_frames",
+        "the ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended)",
+        detector=True,
     ),
 }
 
 
 def tick(category: str) -> str:
     """A phenomenon's tick in the shots panel: its title, and "(detector)" for
-    one whose labels are a detector's (sawteeth's, D56)."""
+    one whose labels are a detector's (sawteeth's, D56 as amended)."""
     source = FRAME_SOURCES.get(category)
     if source is not None and source.detector:
         return f"{title(category)} (detector)"

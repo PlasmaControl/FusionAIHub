@@ -115,7 +115,7 @@ SPECS = {
             ("ece", "ECE Te, ch 32-35", "trace", False, 1, 4, False),
             ("sxr", "SXR", "trace", True, 1, 4, False),
         ),
-        "ece_sawtooth_v2",
+        "ece_sawtooth_v3",
         2.0,
         10.0,
         "mean",

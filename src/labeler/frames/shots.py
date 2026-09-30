@@ -1,10 +1,11 @@
 """Each frame model's shots, their split and the owner's snapshot (spec §3.3).
 
-A shot's target is its original table's bins (`targets.target_shots`, D56 for
-the sawtooth's) with the owner's saved label over them (`targets.merged`, F2),
-and the shots are the original's with the owner's saved ones added. `eligible`
-takes them through its checks cheapest first, so that the windows, the
-slowest, are only asked for the shots every other check passed:
+A shot's target is its original table's bins (`targets.target_shots`; the
+sawtooth's, the ece_sawtooth v3 detector's table, D56 as amended) with the
+owner's saved label over them (`targets.merged`, F2), and the shots are the
+original's with the owner's saved ones added. `eligible` takes them through its
+checks cheapest first, so that the windows, the slowest, are only asked for the
+shots every other check passed:
 1. not blind (the cohort's blind shots);
 2. a labelled bin: the target is not unknown in every bin (D60);
 3. every required group on disk (`raw.record_tier`, never fetched); a corpus or
