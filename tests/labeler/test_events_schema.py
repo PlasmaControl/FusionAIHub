@@ -443,6 +443,33 @@ def test_a_merge_replaces_one_key_and_keeps_the_others(tmp_path):
     }
 
 
+def test_sources_replaces_every_row_of_the_sources_it_names(tmp_path):
+    # v2's sawtooth wrote one ECE row; v3 writes an SXR row beside it, or
+    # none at all. Owning the source drops its old keys; others stay.
+    path = tmp_path / f"{SHOT}_sources.parquet"
+    write_sources(path, SHOT, [
+        _source(diag="mhr", channel=4, n_events=2),
+        _source(source="ece_sawtooth", diag="ece", channel=-1, pass_name="",
+                n_events=47),
+        _source(source="ece_sawtooth", diag="old", channel=-1, pass_name="",
+                n_events=1),
+    ], run_id="r1")
+    out = write_sources(path, SHOT, [
+        _source(source="ece_sawtooth", diag="sxr", channel=-1, pass_name="",
+                n_events=30),
+    ], run_id="r2", sources=["ece_sawtooth"])
+    got = {
+        (r["source"], r["diag"]): (r["n_events"], r["run_id"])
+        for _, r in out.iterrows()
+    }
+    assert got == {
+        ("tokeye_track", "mhr"): (2, "r1"),
+        ("ece_sawtooth", "sxr"): (30, "r2"),
+    }
+    cleared = write_sources(path, SHOT, [], run_id="r3", sources=["ece_sawtooth"])
+    assert list(cleared["source"]) == ["tokeye_track"]
+
+
 def test_the_same_key_may_not_be_written_twice_in_one_call(tmp_path):
     with pytest.raises(ValueError, match="two records for one"):
         write_sources(tmp_path / "s.parquet", SHOT,

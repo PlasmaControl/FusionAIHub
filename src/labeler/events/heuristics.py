@@ -10,25 +10,28 @@ channel index - the core loses Te, the plasma outside the inversion radius
 gains it - and no single channel's spectrogram can tell it from an ELM,
 because on one channel the two look the same.
 
-The span drafts use v3 (`sawtooth_crashes`, `sawtooth_events_v3`, round
-three). It runs one crash test on the ECE array and on the first lit SXR fan
-(`SXR_FANS`): a step across each 1 ms bin, judged in each channel's own
-running noise, where at least `CRASH_BLOCK` neighbouring channels fall; the
-fall has to be fast, 2-50 % of the level, and hold the hottest channel; on ECE
-a heat pulse has to rise next door. The two diagnostics' crashes are merged,
-and none is kept in the 300 ms after a collapse (a fall of over half the
-level). v2's test, below, is saturated: noisy ECE channels make a candidate
-every 10 ms on every shot, and its inversion thresholds are fractions of the
-profile's own largest step, so noise and drift of the right shape pass while
-real crashes, their steps measured 2-8 ms out after the heat pulse decayed,
-fail. Over 32 shots it finds 2,091 crashes forward and 2,080 on the same ECE
-time-reversed. v3, over round three's 231 evaluation shots in their catalog
-windows, finds 5,527 forward and 375 on the same records time-reversed; 171
-and 26 of the shots have a present span, and the mean present fraction of the
-window is 0.250 and 0.012.
+The span drafts and, since 2026-09-30, the pipeline's events use v3
+(`sawtooth_crashes`, `sawtooth_events_v3`, round three), both reading the two
+diagnostics through `crash_legs`. It runs one crash test on the ECE array and
+on the first lit SXR fan (`SXR_FANS`): a step across each 1 ms bin, judged in
+each channel's own running noise, where at least `CRASH_BLOCK` neighbouring
+channels fall; the fall has to be fast, 2-50 % of the level, and hold the
+hottest channel; on ECE a heat pulse has to rise next door. The two
+diagnostics' crashes are merged, and none is kept in the 300 ms after a
+collapse (a fall of over half the level). v2's test, below, is saturated:
+noisy ECE channels make a candidate every 10 ms on every shot, and its
+inversion thresholds are fractions of the profile's own largest step, so
+noise and drift of the right shape pass while real crashes, their steps
+measured 2-8 ms out after the heat pulse decayed, fail. Over 32 shots it
+finds 2,091 crashes forward and 2,080 on the same ECE time-reversed. v3, over
+round three's 231 evaluation shots in their catalog windows, finds 5,527
+forward and 375 on the same records time-reversed; 171 and 26 of the shots
+have a present span, and the mean present fraction of the window is 0.250 and
+0.012.
 
-`sawtooth_events` (v2) is kept for its table - the v1 and v2 span tables and
-the pipeline's events were made by it - and for the reference check below.
+`sawtooth_events` (v2) is kept for its tables - the v1 and v2 span tables,
+and the pipeline's events until 2026-09-30, were made by it - and for the
+reference check below.
 It is `omnimode.mrms.ece` ported: `inversion_block` and `has_inversion` verbatim
 (their thresholds were calibrated on shot 193273 and this module has no
 better ones), and the crash search RESTRUCTURED. The reference computes the
@@ -83,7 +86,7 @@ from __future__ import annotations
 import bisect
 import itertools
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -94,6 +97,7 @@ from scipy.signal import medfilt
 from .channels import N_ECE_CHANNELS
 from .coverage import (
     UNKNOWN,
+    Coverage,
     clip_point_to_coverage,
     clip_to_coverage,
     clipped_attrs,
@@ -102,6 +106,7 @@ from .coverage import (
 )
 from .schema import Event
 from .tracks import Track
+from .verify import NoDataError
 
 # ---------------------------------------------------------------- constants
 
@@ -181,6 +186,14 @@ COLLAPSE_GUARD_MS = 300.0
 #: The diagnostics v3 reads, and the one of them that has the pulse test.
 CRASH_DIAGS = ("ece", "sxr")
 PULSE_DIAG = "ece"
+#: What every v3 crash's `attrs["detector"]` says. The pipeline's events wrote
+#: v2's crashes under the same source until 2026-09-30, so a row says whose it
+#: is.
+SAWTOOTH_V3 = "v3"
+#: What stops one of v3's diagnostics and not the other (`crash_legs`): a
+#: missing or unreadable input, or a broken group - rows short of a fan's
+#: (`IndexError`), a time axis that does not fit its samples (`ValueError`).
+CRASH_LEG_FAILED = (NoDataError, KeyError, OSError, IndexError, ValueError)
 
 #: The SXR fans tried in order, by their first row in the corpus's 320 `sxr`
 #: rows (`SXR_CHORDS` chords each). The first with `SXR_MIN_CHORDS` chords
@@ -626,7 +639,8 @@ def sawtooth_events(
 
     On 198658 the reference's 47 crashes are not in the data - neither ECE
     nor SXR shows a sawtooth there (round three's look) - which is why v3
-    (`sawtooth_crashes`, `sawtooth_events_v3`) replaced this for the drafts.
+    (`sawtooth_crashes`, `sawtooth_events_v3`) replaced this for the drafts
+    and, since 2026-09-30, for the pipeline's events.
     """
     ece_y = np.atleast_2d(ece_y)
     if ece_y.shape[0] != N_ECE_CHANNELS:
@@ -948,8 +962,9 @@ def sawtooth_crashes(
     and the attrs' channel bounds are in those terms, end-exclusive like
     v2's: `inversion_channel_lo` <= c < `inversion_channel_stop` dropped.
     The attrs also hold the block's `fall` (a fraction of its level) and
-    `z_min`, and on ECE the heat pulse's run (`pulse_channel_lo`, `_stop`);
-    `attrs` is added to every event's (an SXR fan's name).
+    `z_min`, on ECE the heat pulse's run (`pulse_channel_lo`, `_stop`), and
+    `detector` (`SAWTOOTH_V3`); `attrs` is added to every event's (an SXR
+    fan's name).
 
     `confidence` is the fraction of the channels that could vote at the
     crash's bin - a finite step and a nonzero noise - that are in the dropping
@@ -983,6 +998,7 @@ def sawtooth_crashes(
             "inversion_channel_stop": int(index[stop - 1]) + 1,
             "fall": got["fall"],
             "z_min": got["z_min"],
+            "detector": SAWTOOTH_V3,
         }
         took = stop - lo
         if "pulse_lo" in got:
@@ -1067,6 +1083,71 @@ SAWTOOTH_V3_CONSTANTS = {
     "sxr_min_chords": SXR_MIN_CHORDS,
     "sxr_lit_frac": SXR_LIT_FRAC,
 }
+
+#: How v3's diagnostics are read (`crash_legs`): `read(group, rows)` is the
+#: group's `(t_s, y)` - `y` `(C, n)`, in row order - over `rows` of it, or
+#: over all of it when `rows` is None. The span tables read the corpus, else
+#: the raw cache (`spans.read`); the pipeline reads its own corpus file.
+Read = Callable[[str, range | None], tuple[np.ndarray, np.ndarray]]
+
+
+def sxr_fan(read: Read, *, shot: int):
+    """`(name, t_s, y, chords)`: the first of `SXR_FANS` with `SXR_MIN_CHORDS`
+    chords finite over at least `SXR_LIT_FRAC` of the record, read a fan at a
+    time, and its lit chords (`y`, and their indices in the fan) in chord
+    order; `NoDataError` when no fan has that many."""
+    for name, first in SXR_FANS:
+        t_s, y = read("sxr", range(first, first + SXR_CHORDS))
+        lit = np.isfinite(y).mean(axis=1) >= SXR_LIT_FRAC
+        if lit.sum() >= SXR_MIN_CHORDS:
+            return name, t_s, y[lit], np.flatnonzero(lit)
+    raise NoDataError(f"shot {shot}: no SXR fan has {SXR_MIN_CHORDS} finite chords")
+
+
+def crash_leg(
+    read: Read, diag: str, *, shot: int, min_gap_s: float
+) -> tuple[Crashes, Coverage, str | None]:
+    """`(crashes, coverage, fan)` of one of v3's diagnostics: the ECE array, or
+    `sxr_fan`'s lit chords in the fan's own chord numbers and its name (`fan`,
+    None on ECE); the coverage its rows measured at `min_gap_s`, which is also
+    each crash's `t_cov`."""
+    fan, chords = None, None
+    if diag == "sxr":
+        fan, t_s, y, chords = sxr_fan(read, shot=shot)
+    else:
+        t_s, y = read(diag, None)
+    cov = Coverage.measured(t_s, y, min_gap_s=min_gap_s)
+    crashes = sawtooth_crashes(
+        y,
+        t_s,
+        shot=shot,
+        diag=diag,
+        t_cov=cov.hull,
+        channels=chords,
+        attrs=None if fan is None else {"fan": fan},
+    )
+    return crashes, cov, fan
+
+
+def crash_legs(
+    read: Read, *, shot: int, min_gap_s: float
+) -> tuple[list[tuple[Crashes, Coverage, str | None]], dict[str, str]]:
+    """`(legs, not_run)`: `crash_leg` on each of `CRASH_DIAGS` there is, in that
+    order, and why each of the others did not run (`CRASH_LEG_FAILED`, as
+    "Type: message"). `NoDataError` naming both when neither ran.
+
+    `sawtooth_events_v3` of the legs' crashes is v3's answer, over the union of
+    the legs' coverages: either diagnostic may be missing."""
+    legs, not_run = [], {}
+    for diag in CRASH_DIAGS:
+        try:
+            legs.append(crash_leg(read, diag, shot=shot, min_gap_s=min_gap_s))
+        except CRASH_LEG_FAILED as error:
+            not_run[diag] = f"{type(error).__name__}: {error}"
+    if not legs:
+        why = "; ".join(f"{diag}: {error}" for diag, error in not_run.items())
+        raise NoDataError(f"shot {shot}: no sawtooth diagnostic ran - {why}")
+    return legs, not_run
 
 
 # ------------------------------------------------------------ L->H and H->L

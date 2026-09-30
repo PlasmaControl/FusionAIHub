@@ -125,10 +125,6 @@ RAMP_FALLBACK_MS = 700.0
 #: What a missing or unreadable input raises: the Ip read and the H-mode gate
 #: fall back on these alone.
 INPUT_MISSING = (NoDataError, KeyError, OSError)
-#: What stops one of v3's sawtooth diagnostics and not the shot: a missing
-#: input, or a broken group - rows short of a fan's (`IndexError`), a time axis
-#: that does not fit its samples (`ValueError`). The other diagnostic runs on.
-CRASH_LEG_FAILED = (*INPUT_MISSING, IndexError, ValueError)
 #: The sawtooth method's crash rule since v3, as its table's meta records it
 #: beside `heuristics.SAWTOOTH_V3_CONSTANTS`: a table drafted by v2's detector
 #: records neither, so `check_rule` refuses to run v3 into it.
@@ -481,75 +477,39 @@ def detect_hmode(shot: int, paths: Paths, window: Window | None = None) -> Found
     return Found(tuple(hmode_spans(marks, measured)), measured)
 
 
+def _reader(shot: int, paths: Paths) -> heuristics.Read:
+    """`heuristics.Read` over `read`: the shot's groups from the corpus, else
+    the raw cache."""
+    return lambda group, rows: read(shot, group, paths, rows)
+
+
 def sxr_fan(shot: int, paths: Paths):
-    """`(name, t_s, y, chords)`: the first of `heuristics.SXR_FANS` with
-    `SXR_MIN_CHORDS` chords finite over at least `SXR_LIT_FRAC` of the record,
-    read a fan at a time, and its lit chords (`y`, and their indices in the fan)
-    in chord order. The sawtooth review panels draw the same fan."""
-    for name, first in heuristics.SXR_FANS:
-        t_s, y = read(shot, "sxr", paths, range(first, first + heuristics.SXR_CHORDS))
-        lit = np.isfinite(y).mean(axis=1) >= heuristics.SXR_LIT_FRAC
-        if lit.sum() >= heuristics.SXR_MIN_CHORDS:
-            return name, t_s, y[lit], np.flatnonzero(lit)
-    raise NoDataError(
-        f"shot {shot}: no SXR fan has {heuristics.SXR_MIN_CHORDS} finite chords"
-    )
-
-
-def _crash_rows(shot: int, diag: str, paths: Paths):
-    """`(t_s, y, chords, fan)` of one of v3's diagnostics: the ECE array, or
-    `sxr_fan`'s lit chords, their indices in the fan and its name."""
-    if diag == "sxr":
-        fan, t_s, y, chords = sxr_fan(shot, paths)
-        return t_s, y, chords, fan
-    t_s, y = read(shot, diag, paths)
-    return t_s, y, None, None
-
-
-def _crash_leg(shot: int, diag: str, paths: Paths):
-    """`(crashes, coverage, fan)` of one of v3's diagnostics."""
-    t_s, y, chords, fan = _crash_rows(shot, diag, paths)
-    cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
-    crashes = heuristics.sawtooth_crashes(
-        y,
-        t_s,
-        shot=shot,
-        diag=diag,
-        t_cov=cov.hull,
-        channels=chords,
-        attrs=None if fan is None else {"fan": fan},
-    )
-    return crashes, cov, fan
+    """`(name, t_s, y, chords)`: `heuristics.sxr_fan` on the shot, the first lit
+    SXR fan and its lit chords. The sawtooth review panels draw the same fan."""
+    return heuristics.sxr_fan(_reader(shot, paths), shot=shot)
 
 
 def _sawtooth_crashes(shot: int, paths: Paths):
-    """`(crashes, coverages, info)`: `heuristics.sawtooth_crashes` on each of
-    v3's diagnostics there is, the intervals each measured, and
-    `detect_sawtooth`'s info. A diagnostic that fails (`CRASH_LEG_FAILED`) is
-    left out, its error under `not_run`; a `NoDataError` naming both when
-    neither ran."""
-    found, measured, fans, not_run = [], [], {}, {}
-    for diag in heuristics.CRASH_DIAGS:
-        try:
-            crashes, cov, fan = _crash_leg(shot, diag, paths)
-        except CRASH_LEG_FAILED as error:
-            log.info("shot %d: no v3 crashes on %s: %s", shot, diag, error)
-            not_run[diag] = f"{type(error).__name__}: {error}"
-            continue
-        found.append(crashes)
-        measured.append(cov.intervals)
-        if fan is not None:
-            fans["sxr_fan"] = fan
-    if not found:
-        why = "; ".join(f"{diag}: {error}" for diag, error in not_run.items())
-        raise NoDataError(f"shot {shot}: no sawtooth diagnostic ran - {why}")
+    """`(crashes, coverages, info)`: `heuristics.crash_legs` on the shot - the
+    crashes of each of v3's diagnostics there is and the intervals each
+    measured - and `detect_sawtooth`'s info. A diagnostic that fails is left
+    out, its error under `not_run`; a `NoDataError` naming both when neither
+    ran."""
+    legs, not_run = heuristics.crash_legs(
+        _reader(shot, paths), shot=shot, min_gap_s=SAWTOOTH_MIN_GAP_S
+    )
+    for diag, error in not_run.items():
+        log.info("shot %d: no v3 crashes on %s: %s", shot, diag, error)
+    found = [crashes for crashes, _, _ in legs]
+    fans = [fan for _, _, fan in legs if fan is not None]  # SXR's, if it ran
     collapses = sorted(t for c in found for t in c.collapses_s)
     info = {
         "diagnostics": [c.diag for c in found],
-        **fans,
+        **({"sxr_fan": fans[0]} if fans else {}),
         "crashes": {c.diag: len(c.events) for c in found},
         "collapses_ms": [round(t * 1000.0, 1) for t in collapses],
     }
+    measured = [cov.intervals for _, cov, _ in legs]
     return found, measured, info | ({"not_run": not_run} if not_run else {})
 
 
