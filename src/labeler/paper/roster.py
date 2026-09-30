@@ -122,7 +122,13 @@ TABLES = {
 }
 TABLE_VERSION = frames.VERSION
 AE_VERSION = "v3"
-SEG_VERSION = "v2"  # v3 was worse than v2 on MHD lines, so the build keeps v2
+#: The default is v2 (v3 was worse than v2 on MHD lines). The figure's full-band
+#: mask (the owner, 21:05) is drawn with `--seg-version v3`, the SegNet trained
+#: over 0-250 kHz: v1 and v2, trained on the AE band, give nothing usable below
+#: it (on shot 199563 v1 fills 0-42 kHz over the whole shot and v2 misses the
+#: 25 kHz tearing mode), and v3 draws the MHD lines too, as a segmentation of
+#: the full spectrogram, not of AE, should.
+SEG_VERSION = "v2"
 STEM = "fig_roster_interpreter"
 MANIFEST = "roster.json"
 PICK_RULE = (
@@ -137,6 +143,10 @@ TIER = "suggestions"
 #: About a column per pixel across the page, at `paper.save`'s 300 dpi.
 PAGE_COLUMNS = round(PAGE_IN * 300)
 TRACE_LW = 0.3
+#: The n map's key names an n with at least this share of its lit pixels: the
+#: map's scattered noise pixels light every n, and a key of all of them
+#: overflows the panel (shot 199563 lit ten).
+KEY_MIN_SHARE = 0.05
 #: A row per colour: the ECE groups', the SXR chords'.
 ROW_COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
 
@@ -424,7 +434,7 @@ def roster_shot(
     )
 
 
-def _key(ax, handles) -> None:
+def _key(ax, handles, labelcolor=None) -> None:
     """A small key inside a signal panel, kept out of the figure's legend."""
     if handles:
         ax.legend(
@@ -436,11 +446,13 @@ def _key(ax, handles) -> None:
             handlelength=0.8,
             columnspacing=0.8,
             borderaxespad=0.1,
+            labelcolor=labelcolor,
         )
 
 
 def _modes(ax, read: Read) -> None:
-    """The n map in the page's colours, a colour per n, keyed by the n in view."""
+    """The n map in the page's colours, a colour per n, keyed by the n in view
+    (`KEY_MIN_SHARE` of the lit pixels), in white on the map's black."""
     modes = read.meta["modes"]
     colours = dict(zip(modes["n"], modes["colours"], strict=True))
     palette = np.array([to_rgb(c) for c in mode_palette(colours)])
@@ -454,11 +466,12 @@ def _modes(ax, read: Read) -> None:
     )
     k = len(modes["n"])
     lit = codes[codes >= k] % k  # level 0 is black, no mode
-    seen = sorted(set(lit.tolist()))
+    share = np.bincount(lit, minlength=k) / max(lit.size, 1)
+    seen = np.flatnonzero(share >= KEY_MIN_SHARE)
     handles = [
         Patch(color=modes["colours"][i], label=f"n={modes['n'][i]}") for i in seen
     ]
-    _key(ax, handles)
+    _key(ax, handles, labelcolor="white")
 
 
 def _traces(ax, sig: Signal) -> None:

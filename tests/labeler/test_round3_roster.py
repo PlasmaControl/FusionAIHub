@@ -10,6 +10,7 @@ import shutil
 
 import numpy as np
 import pytest
+from matplotlib.colors import to_rgba
 
 from labeler import frames
 from labeler.ae.seg import train as seg_train
@@ -91,6 +92,7 @@ def _stores(paths) -> dict:
     power[10:20, 300:700] = 200  # 20-40 kHz, 200-600 ms
     codes = np.zeros((50, GRID.n), np.uint8)
     codes[10:20, 300:700] = 84 * 3 + 1  # the top level, n=2
+    codes[40, 900:903] = 84 * 3  # three noise pixels of n=1, left out of the key
     image = {"y0": 0.5, "dy": 2.0, "y_units": "kHz", "z_lo": 0.0, "z_hi": 1.0}
     built = {
         NTM: [
@@ -340,6 +342,8 @@ def test_the_signal_panels_are_the_rows_the_frame_models_read(tree, tmp_path):
     assert np.allclose(rgb[15, 400], [0.0, 0xAA / 255, 0.0]), "n=2 at its top level"
     assert np.allclose(rgb[0, 0], 0.0), "no mode is black"
     assert [t.get_text() for t in modes.get_legend().get_texts()] == ["n=2"]
+    white = to_rgba(modes.get_legend().get_texts()[0].get_color())
+    assert white == to_rgba("white"), "the key is white on the black map"
     assert len(panels["D-alpha FS"].collections) == 1
     ece_ax = panels["ECE Te"]
     assert len(ece_ax.collections) == 8, "two groups of four channels"
