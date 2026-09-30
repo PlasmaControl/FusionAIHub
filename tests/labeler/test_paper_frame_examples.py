@@ -9,6 +9,7 @@ import math
 
 import numpy as np
 import pytest
+from matplotlib.colors import to_hex
 from matplotlib.figure import Figure
 
 from labeler import frames
@@ -94,19 +95,19 @@ def test_each_figure_draws_three_shots_with_input_target_and_p(tmp_path):
             == f"shot {190000 + k} (test): F1 (50 ms bins) "
             + (["1.00", "0.50", "0.00"][k])
         )
-        assert len(strip.patches) >= 4, "the target's runs"
+        assert len(strip.patches) >= 3, "the target runs, absent blank"
         assert model.get_ylim() == (0, 1)
         [threshold] = [ln for ln in model.lines if ln.get_linestyle() == ":"]
         assert list(threshold.get_ydata()) == [0.6, 0.6], "the model's threshold"
     strip = axes[1]
     [unknown] = [p for p in strip.patches if p.get_label() == "target: unknown"]
-    assert unknown.get_edgecolor()[:3] == pytest.approx((0.6, 0.6, 0.6))
-    assert unknown.get_linewidth() == 0.4
+    assert to_hex(unknown.get_facecolor()) == "#9a9a9a", "not-observable grey"
+    assert unknown.get_linewidth() == 0, "no outline"
+    assert not [p for p in strip.patches if "absent" in p.get_label()], "blank"
     [legend] = fig.legends
     labels = [t.get_text() for t in legend.get_texts()]
     assert labels == [
         "target: present",
-        "target: absent",
         "target: uncertain",
         "target: unknown",
         frame_examples.MODEL_LABEL,
@@ -128,6 +129,21 @@ def test_an_optional_role_s_flag_channel_is_named():
         for r in spec.roles
         for n in ([r.name, f"{r.name} seen"] if r.optional else [r.name])
     ]
+
+
+def test_roles_of_one_name_share_a_tick():
+    spec = frames.SPECS["sawtooth_frames"]
+    fig = Figure()
+    ax = fig.subplots()
+    width = sum(frames.features._width(r) for r in spec.roles)
+    gallery.draw_rows(ax, spec, np.zeros((width, 10)), 0, 50)
+    names = [t.get_text() for t in ax.get_yticklabels()]
+    assert names.count("ece") == 1 and names[-1].endswith("seen")
+    edges = np.cumsum([0, *[frames.features._width(r) for r in spec.roles]])
+    ece = [i for i, r in enumerate(spec.roles) if r.name == "ece"]
+    centre = (edges[ece[0]] + edges[ece[-1] + 1]) / 2
+    assert centre in list(ax.get_yticks())
+    assert len(ax.lines) == len(spec.roles) - 1, "a white line between blocks"
 
 
 def test_the_gallery_draws_the_same_artists(tmp_path, monkeypatch):
