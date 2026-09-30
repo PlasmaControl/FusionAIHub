@@ -52,6 +52,13 @@ and unless its split, `pseudo.v2_split` as v2's, is SegNet v2's own
 its test is a second use of them, made after v2's breakdown was seen, which
 `training.json` states (`test_reuse`, `reuse_note`). It writes to
 `models/ae_seg/v3` (a pilot to `runs/ae_seg/pilot-v3`).
+
+**SegNet v4** (`--version v4`) is SegNet v1's recipe on pseudo-v4 (60-250 kHz):
+the live labels file and the chosen ae_xpower v1 model's split, as v1's. It
+refuses unless that split is SegNet v1's own (`models/ae_seg/v1/split.csv`),
+shot for shot: its test is a second use of v1's test shots, which
+`training.json` states (`test_reuse`). The blob records the band and version, as
+v2's. It writes to `models/ae_seg/v4` (a pilot to `runs/ae_seg/pilot-v4`).
 """
 
 from __future__ import annotations
@@ -451,7 +458,8 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="v1 (the default): pseudo-v1 and the live labels; v2: pseudo-v2 and "
-        "ae_xpower v3's snapshot; v3: pseudo-v3, the same snapshot and v2's split",
+        "ae_xpower v3's snapshot; v3: pseudo-v3, the same snapshot and v2's split; "
+        "v4: pseudo-v4 (60-250 kHz), v1's labels rule and split",
     )
     p.add_argument(
         "--out", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
@@ -461,7 +469,7 @@ def main(argv=None) -> int:
         type=int,
         default=0,
         help="6-20 shots (4 of them validation), 2 epochs, to runs/ae_seg/pilot "
-        "(v2: pilot-v2; v3: pilot-v3)",
+        "(v2: pilot-v2; v3: pilot-v3; v4: pilot-v4)",
     )
     p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
     args = p.parse_args(argv)
@@ -471,6 +479,9 @@ def main(argv=None) -> int:
     paths = Paths.from_env()
     version, spec = args.version, SEG_VERSIONS[args.version]
     v1 = version == "v1"  # v1 makes every call as it did before v2
+    # v2's recipe (v2, v3): an ae_xpower snapshot and pseudo.v2_split. v1's (v1,
+    # v4): the live labels and the chosen ae_xpower v1 model's split.
+    v2_recipe = spec.labels is not None
     if spec.gated and not pseudo.gate_passed(paths, version):
         p.error(
             f"{pseudo_dir(paths, version) / 'rules.json'}: {spec.pseudo}'s gate "
@@ -485,7 +496,7 @@ def main(argv=None) -> int:
     directory = event_dir(paths)
     # Every version reads the live region decisions (`regions.transfer`).
     masks_file = regions.log_path(directory)
-    if v1:
+    if not v2_recipe:
         labels_file = labels.labels_path(directory)
         labels_bytes = labels_file.read_bytes()
     else:
@@ -520,7 +531,7 @@ def main(argv=None) -> int:
         masks_sha256=masks_hash,
     )
     split = read_split(ae_file.parent / "split.csv")
-    if not v1:
+    if v2_recipe:
         # SegNet v2's own split, with validation shots (v3's has none), refused
         # unless its test shots are the chosen ae_xpower model's.
         masks = tokeye_masks(paths, spec.ae_version)

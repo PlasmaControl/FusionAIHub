@@ -84,6 +84,14 @@ mask is written the gate (`markers.GATE`, on SegNet v2 training shots only) is
 judged on the rule shots' masks, with the 5 % budget at 80-250 kHz; rules.json
 and rules.md are written either way, and on a failed gate nothing else is and
 the exit status is 2. `meta.json` records the NTM table's sha256 too.
+
+**pseudo-v4** (SegNet v4's masks, `SEG_VERSIONS["v4"]`):
+
+    python -m labeler.ae.seg.pseudo --version v4 [--shots S ...]
+
+pseudo-v1's rules, inputs (TokEye's 0-2 s masks, the live labels file) and grid,
+with the band at 60-250 kHz in place of 80-250 kHz (`build`'s `band_khz`): the
+owner's review page draws AE from 60 kHz. `meta.json` records the band.
 """
 
 from __future__ import annotations
@@ -121,7 +129,7 @@ from ..xpower.data import (
     tokeye_clean,
     window_frames,
 )
-from . import EVENT, PSEUDO, SEG_VERSIONS, VERSION, pseudo_dir
+from . import EVENT, SEG_VERSIONS, VERSION, pseudo_dir
 from . import markers as v3markers
 from .mhdlines import (
     TOKEYE_VERSION,
@@ -249,11 +257,22 @@ def column_states(label: labels.Label, grid) -> np.ndarray:
 
 
 def build(
-    shot: int, label: labels.Label, grid, n_y: int, y0: float, dy: float, tokeye
+    shot: int,
+    label: labels.Label,
+    grid,
+    n_y: int,
+    y0: float,
+    dy: float,
+    tokeye,
+    band_khz=BAND_KHZ,
 ) -> PseudoMask:
-    """The pseudo-mask on `grid`; `tokeye` is `tokeye_clean`'s `(t_ms, clean, ann)`."""
+    """The pseudo-mask on `grid`; `tokeye` is `tokeye_clean`'s `(t_ms, clean, ann)`.
+
+    pseudo-v1 is `BAND_KHZ`; pseudo-v4 and the review page's mask pass their own
+    band.
+    """
     t_ms, clean, _ = tokeye
-    band = band_slice(y0, dy, n_y, BAND_KHZ)
+    band = band_slice(y0, dy, n_y, band_khz)
     in_band = np.zeros(n_y, dtype=bool)
     in_band[band] = True
     lit = pool_columns(tokeye_rows(clean), t_ms, grid)[:n_y]
@@ -298,7 +317,12 @@ def summary(pm: PseudoMask, file: str) -> dict:
 
 
 def make(
-    paths: Paths, shot: int, label: labels.Label, *, tokeye_bytes: bytes | None = None
+    paths: Paths,
+    shot: int,
+    label: labels.Label,
+    *,
+    tokeye_bytes: bytes | None = None,
+    band_khz=BAND_KHZ,
 ) -> PseudoMask:
     grid, values, y0, dy = store_rows(paths.spectrogram_file(EVENT, shot), LEVEL)
     tokeye = clean_path(tokeye_masks(paths), shot)
@@ -306,7 +330,14 @@ def make(
         raise FileNotFoundError(f"{shot} has no TokEye mask")
     data = tokeye.read_bytes() if tokeye_bytes is None else tokeye_bytes
     return build(
-        shot, label, grid, values.shape[1], y0, dy, tokeye_clean(BytesIO(data))
+        shot,
+        label,
+        grid,
+        values.shape[1],
+        y0,
+        dy,
+        tokeye_clean(BytesIO(data)),
+        band_khz,
     )
 
 
@@ -691,7 +722,8 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="v1 (the default): pseudo-v1; v2: pseudo-v2 (from v3's snapshot); "
-        "v3: pseudo-v3 (pseudo-v2 with the per-line MHD markers and their gate)",
+        "v3: pseudo-v3 (pseudo-v2 with the per-line MHD markers and their gate); "
+        "v4: pseudo-v4 (pseudo-v1's rules at 60-250 kHz)",
     )
     args = p.parse_args(argv)
     if args.version == "v2":
@@ -702,7 +734,8 @@ def main(argv=None) -> int:
     directory = event_dir(paths)
     saved = labels.read_saved(directory)
     shots = args.shots or sorted(saved)
-    out = pseudo_dir(paths)
+    spec = SEG_VERSIONS[args.version]
+    out = pseudo_dir(paths, args.version)
     out.mkdir(parents=True, exist_ok=True)
     rows, failed, tokeye_hashes = [], [], {}
     for shot in shots:
@@ -711,7 +744,9 @@ def main(argv=None) -> int:
             if tokeye is None:
                 raise FileNotFoundError(f"{shot} has no TokEye mask")
             data = tokeye.read_bytes()
-            pm = make(paths, shot, saved[shot], tokeye_bytes=data)
+            pm = make(
+                paths, shot, saved[shot], tokeye_bytes=data, band_khz=spec.band_khz
+            )
             tokeye_hashes[str(shot)] = hashlib.sha256(data).hexdigest()
         except (KeyError, OSError, ValueError) as error:
             failed.append(shot)
@@ -725,7 +760,9 @@ def main(argv=None) -> int:
         writer.writerows(rows)
     labels_file = labels.labels_path(directory)
     meta = {
-        "pseudo": PSEUDO,
+        "pseudo": spec.pseudo,
+        # v1's record is as it was; a later version on v1's rules names its band.
+        **({} if args.version == VERSION else {"band_khz": list(spec.band_khz)}),
         "shots": len(rows),
         "failed": failed,
         "tokeye_sha256": tokeye_hashes,
