@@ -1,7 +1,7 @@
 """The ROC and PR curve of each paper phenomenon's selected model, once.
 
     python -m labeler.paper.roc [--method M ...] [--ae-version V]
-        [--replace-without-pr]
+        [--replace-without-pr | --replace-for-threshold]
 
 For each phenomenon (`ORDER`) the model selected for main inference
 (`SELECTED`): AE's `ae_xpower` at `--ae-version` (default `AE_VERSION`, v2),
@@ -41,15 +41,23 @@ curve at the thinned ROC's own points, from recall 0 at precision 1 (the empty
 prediction set's convention) to recall 1 at precision `positive_share`;
 `positive_share`, `n_pos / (n_pos + n_neg)`, a PR curve's chance level;
 `n_pos`, `n_neg` and `shots`; the threshold's own point, in ROC and PR terms;
-the check; the model's and the evaluation's path and sha256; `git_sha`; and
-`NOTE`. It has no clock: the same inputs give the same bytes.
+the check; the model's and the evaluation's path and sha256, and for a frame
+model where its threshold came from (`train.load`: `threshold_source` and
+threshold.json's `threshold_sha256`); `git_sha`; and `NOTE`. It has no clock:
+the same inputs give the same bytes.
 
 **Written once.** An existing `roc.json` is refused, as `evaluate` refuses a
 second test. Every target is checked before any is computed. `--method`
-(repeatable, or `all`, the default) picks which to write. The one exception is
-`--replace-without-pr`: it replaces an existing `roc.json` only when that file
-has no `auprc` and the new record has the same `auroc`, `n_pos` and `n_neg`
-(`replace_check`); otherwise it refuses, and nothing is written.
+(repeatable, or `all`, the default) picks which to write. There are two
+exceptions, one at a time. `--replace-without-pr` replaces an existing
+`roc.json` only when that file has no `auprc` and the new record has the same
+`auroc`, `n_pos` and `n_neg` (`replace_check`). `--replace-for-threshold`
+(T1) replaces one only when the `evaluation.json` it names (by sha256) is no
+longer the current one, as after `labeler.frames.evaluate --rethreshold`, and
+the new record has exactly its `auroc` and the same `n_pos` and `n_neg`
+(`threshold_check`): the same model on the same bins at another threshold. The
+old record is moved to `roc.trained-threshold.json` (`TRAINED_ROC_FILE`),
+which is never overwritten. Otherwise each refuses, and nothing is written.
 
 **From committed code only.** A record names the commit it was computed at
 (`git_sha`), so `write` refuses while tracked files differ from it (or git
@@ -92,6 +100,8 @@ AE_VERSION = "v2"
 SELECTED = {c: AE_METHOD if c == AE else roster.TABLES[c] for c in ORDER}
 ALL = "all"
 ROC_FILE = "roc.json"
+#: Where `--replace-for-threshold` moves the record at the trained threshold.
+TRAINED_ROC_FILE = "roc.trained-threshold.json"
 ROC_POINTS = 201
 F1_TOLERANCE = 1e-9
 AUROC_TOLERANCE = 1e-12  # `--replace-without-pr`: the same AUROC
@@ -118,6 +128,8 @@ class Scored(NamedTuple):
     model: Path
     model_sha256: str
     unit: str
+    #: A frame model's `threshold_source` and `threshold_sha256` (`train.load`).
+    threshold_from: dict | None = None
 
 
 def category_of(method: str) -> str:
@@ -278,7 +290,7 @@ def frame_scored(paths: Paths, method: str) -> Scored:
     spec = frames.SPECS[method]
     file = frames.model_dir(paths, method, frames.VERSION) / "model.pt"
     data = file.read_bytes()
-    model, blob = frames_train.load(io.BytesIO(data))
+    model, blob = frames_train.load(io.BytesIO(data), folder=file.parent)
     split = prepare.split_shots(paths, method)
     test = [s for s, v in split.items() if v == "test"]
     shots, _ = frames_evaluate.read_shots(paths, method, test)
@@ -296,6 +308,7 @@ def frame_scored(paths: Paths, method: str) -> Scored:
         file,
         hashlib.sha256(data).hexdigest(),
         f"{spec.bin_ms:g} ms bins",
+        {k: blob[k] for k in ("threshold_source", "threshold_sha256")},
     )
 
 
@@ -399,7 +412,11 @@ def record(
             "tolerance": F1_TOLERANCE,
             "cells": [int(x) for x in c],
         },
-        "model": {"path": str(scored.model), "sha256": scored.model_sha256},
+        "model": {
+            "path": str(scored.model),
+            "sha256": scored.model_sha256,
+            **(scored.threshold_from or {}),
+        },
         "evaluation": {"path": str(evaluation_path), "sha256": evaluation_sha256},
         "git_sha": git_sha(full=True),
         "note": NOTE,
@@ -443,6 +460,38 @@ def replace_check(old: dict, new: dict, where) -> None:
         )
 
 
+def stale_check(paths: Paths, method: str, old: dict, where, ae_version: str):
+    """Refuse (`ValueError`, `FileExistsError`) `--replace-for-threshold`'s
+    replacing `old`, an existing record, unless the `evaluation.json` it names
+    by sha256 is no longer the current one and no `TRAINED_ROC_FILE` is there
+    yet."""
+    kept = Path(where).with_name(TRAINED_ROC_FILE)
+    if kept.exists():
+        raise FileExistsError(f"{kept}: the trained threshold's ROC, never overwritten")
+    current = evaluation_file(paths, method, ae_version).read_bytes()
+    named = old.get("evaluation", {}).get("sha256")
+    if named is None or named == hashlib.sha256(current).hexdigest():
+        raise ValueError(
+            f"{where}: it names the current evaluation.json, so it is not replaced"
+        )
+
+
+def threshold_check(old: dict, new: dict, where) -> None:
+    """Refuse (`ValueError`) `--replace-for-threshold`'s replacing `old` by
+    `new` unless `new` has exactly its `auroc` and the same `n_pos` and
+    `n_neg`: the same scores on the same units."""
+    same = (
+        old.get("auroc") == new["auroc"]
+        and old.get("n_pos") == new["n_pos"]
+        and old.get("n_neg") == new["n_neg"]
+    )
+    if not same:
+        raise ValueError(
+            f"{where}: the new record's auroc, n_pos or n_neg differ from the "
+            "old one's, so it is not replaced"
+        )
+
+
 def write(
     paths: Paths,
     methods,
@@ -450,13 +499,19 @@ def write(
     ae_version: str = AE_VERSION,
     done=None,
     replace_without_pr: bool = False,
+    replace_for_threshold: bool = False,
 ) -> dict[str, dict]:
     """Write each method's `roc.json`, once: refused, before any is computed,
     if one exists. With `replace_without_pr` an existing one that has no
     `auprc` is replaced instead, if the new record has its `auroc`, `n_pos` and
-    `n_neg` (`replace_check`); every record is computed and checked before any
-    is written. `done(method, record, path, seconds)` is called after each
+    `n_neg` (`replace_check`); with `replace_for_threshold` one that names an
+    `evaluation.json` no longer current (`stale_check`), if the new record has
+    exactly its `auroc`, `n_pos` and `n_neg` (`threshold_check`), the old one
+    moved to `TRAINED_ROC_FILE`. Every record is computed and checked before
+    any is written. `done(method, record, path, seconds)` is called after each
     write. Refused (`RuntimeError`) first while the code is not committed."""
+    if replace_without_pr and replace_for_threshold:
+        raise ValueError("one replacement at a time")
     if git_dirty() is not False:
         raise RuntimeError(
             "tracked files differ from the commit (or git cannot say), so no "
@@ -465,13 +520,15 @@ def write(
     targets = {m: roc_file(paths, m, ae_version) for m in methods}
     there = {m: t for m, t in targets.items() if t.exists()}
     old = {}
-    if there and not replace_without_pr:
+    if there and not (replace_without_pr or replace_for_threshold):
         raise FileExistsError(
             f"{', '.join(map(str, there.values()))}: the ROC is recorded once"
         )
     for method, target in there.items():
         old[method] = json.loads(target.read_text())
-        if "auprc" in old[method]:
+        if replace_for_threshold:
+            stale_check(paths, method, old[method], target, ae_version)
+        elif "auprc" in old[method]:
             raise FileExistsError(f"{target}: the ROC is recorded once (it has PR)")
     found, seconds = {}, {}
     for method, target in targets.items():
@@ -479,8 +536,11 @@ def write(
         found[method] = roc(paths, method, ae_version)
         seconds[method] = time.monotonic() - start
         if method in old:
-            replace_check(old[method], found[method], target)
+            check = threshold_check if replace_for_threshold else replace_check
+            check(old[method], found[method], target)
     for method, target in targets.items():
+        if replace_for_threshold and method in old:
+            target.rename(target.with_name(TRAINED_ROC_FILE))
         with atomic_path(target) as tmp:
             tmp.write_text(json.dumps(found[method], indent=1) + "\n")
         if done is not None:
@@ -508,11 +568,19 @@ def main(argv=None) -> int:
         default=AE_VERSION,
         help=f"ae_xpower's version (default {AE_VERSION})",
     )
-    p.add_argument(
+    replace = p.add_mutually_exclusive_group()
+    replace.add_argument(
         "--replace-without-pr",
         action="store_true",
         help="replace an existing roc.json that has no auprc, if its auroc, "
         "n_pos and n_neg are unchanged; refuse anything else that exists",
+    )
+    replace.add_argument(
+        "--replace-for-threshold",
+        action="store_true",
+        help="replace an existing roc.json whose evaluation.json is no longer "
+        "the current one, if its auroc, n_pos and n_neg are unchanged, the old "
+        f"one kept as {TRAINED_ROC_FILE}; refuse anything else that exists",
     )
     args = p.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", LOGIN_THREADS)))
@@ -539,6 +607,7 @@ def main(argv=None) -> int:
             ae_version=args.ae_version,
             done=done,
             replace_without_pr=args.replace_without_pr,
+            replace_for_threshold=args.replace_for_threshold,
         )
     except (OSError, ValueError) as error:
         p.error(str(error))
