@@ -1109,7 +1109,8 @@ def _frame_examples(
     )
     data = snap.read(model_key, found[model_key])
     model, blob = frames_train.load(io.BytesIO(data))
-    split = snap.split(split_key, found[split_key])
+    table = snap.csv(split_key, found[split_key])
+    split = {int(a): str(b) for a, b in zip(table.shot, table.split, strict=True)}
     if found[meta_key].is_file():
         snap.read(meta_key, found[meta_key])
     named = evaluation.get("model", {})
