@@ -34,6 +34,9 @@
 #   first pilot (2944500) ran out of memory; the second (2944515, 3 test shots at 8G) took
 #   1 min 7 s, --test's MaxRSS 4,707,100 KiB (4.49 GiB). The full test (2944534, 60 shots):
 #   15 min 50 s, MaxRSS 4,984,784 KiB (4.75 GiB), CPU 96.5 %, memory 73.3 %.
+#   v4 (an estimate, not measured): v2's 0-2 s test on 60-250 kHz; v2's test on the same 60
+#                   shots (E, 2943080) had MaxRSS 2392 MiB, x 1.11 x 1.15 is about 3100M:
+#                   pass --mem=3100M (the header's 6G is v3's whole windows).
 #   mem=6G          the pilot's 4.49 GiB x 1.3; the test holds one whole shot at a time.
 #   time=01:00:00   the full test's 16 min x 3.75.
 # before v3 (measured 2026-09-26, login node, 1 thread):
