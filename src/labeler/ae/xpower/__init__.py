@@ -4,7 +4,7 @@
 `model` is the network, `train` fits it, `evaluate` scores it against the earlier
 methods on the held-out shots, `gallery` draws one JPEG per shot, and `extend`
 runs it over shots nobody has labelled, as suggestions. `cv` cross-validates the
-candidates of a version chosen that way (v2 and v3).
+candidates of a version chosen that way (v2, v3 and v4).
 
 **Label snapshots.** v1 read the owner's live `review/labels.csv` and copied it
 into each model directory. A version in `LABEL_SNAPSHOTS` reads its labels only
@@ -18,6 +18,14 @@ in `WHOLE_WINDOW_VERSIONS` (v3) reads TokEye's whole-shot masks and SELDNet's
 whole-shot inputs instead (`ae/masks-full`, `ae/dataset-full`: `labeler.ae.full`)
 and is scored over the owner's whole windows. `tokeye_masks`, `seldnet_inputs`
 and `scored_until` give each version's; with no version, v1's.
+
+**v4** is v2 with the band lowered to 60-250 kHz (`data.BAND60_KHZ`; the owner
+lowered the review page's AE band from 80 to 60 kHz on 2026-09-30): v2's label
+snapshot (the same sha256; its models directory's `review/labels.csv` is a copy
+of v2's), so v2's split, folds and test shots, v2's 0-2 s scoring and v2's
+choice and final-training rules, over candidates `band60-mhd{3,10,30}`. Its test
+is a second use of v2's test shots (`TEST_OF`), made after v2's test was scored,
+and its records say so (`reuse_note`).
 
 **Binding.** Every command's `--version` must be its models directory's name and
 the version its checkpoints record (`check_bound`). A full scoring is never made
@@ -45,15 +53,37 @@ LABEL_SNAPSHOTS = {
     "v2": "5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de",
     # Round three's Step 0: 180 shots as of 2026-09-28 22:31 EDT, for v3.
     "v3": "15095cea095b9f78fb117663a234725baacd7cbe4dc66c01878dd082056583ec",
+    # v2's snapshot again (the same bytes, copied into v4's models directory).
+    "v4": "5f52a26831cd9173f3d67b1e540ba23ee4aa1adab9159b1312a663cf88eee1de",
 }
 #: Versions whose candidate and threshold `cv` chooses, not `evaluate --choose`.
-CV_VERSIONS = frozenset({"v2", "v3"})
+CV_VERSIONS = frozenset({"v2", "v3", "v4"})
+#: Versions whose test is a second use of an earlier version's test shots, all
+#: of them, designed after that version's test was scored: the earlier version.
+TEST_OF = {"v4": "v2"}
+#: What each such version changed, for its reuse note.
+DESIGN = {"v4": "the 60-250 kHz band"}
 #: Versions scored over the owner's whole windows, from TokEye's whole-shot masks.
 WHOLE_WINDOW_VERSIONS = frozenset({"v3"})
 #: Where the other versions' scored window ends: 0-2 s, all TokEye's v1 masks cover.
 SCORED_UNTIL_MS = 2000.0
 #: The pilot rule: a pilot is 20 shots or fewer.
 PILOT_MAX = 20
+
+
+def reuse_note(version: str, n_test: int | None = None) -> str | None:
+    """The sentence a version's records carry when its test is a second use of
+    an earlier version's test shots (`TEST_OF`); None when it is not."""
+    earlier = TEST_OF.get(version)
+    if earlier is None:
+        return None
+    shots = "test shots" if n_test is None else f"{n_test} test shots"
+    return (
+        f"ae_xpower {version}'s test is a second use of ae_xpower {earlier}'s "
+        f"{shots}, and its design ({DESIGN[version]}) was made after {earlier}'s "
+        f"test had been scored (models/{METHOD}/{earlier}/evaluation.json): its "
+        "test scores are not an unbiased estimate. Tier: suggestions."
+    )
 
 
 def pilot_area(directory: Path, runs: Path) -> bool:
