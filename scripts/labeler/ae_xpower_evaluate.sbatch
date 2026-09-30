@@ -20,6 +20,9 @@
 # A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT, 20 or fewer,
 # and for v2 only a pilot choice's model (a copy of the final model there is refused).
 # v2 is scored only in models/ae_xpower/v2 or under runs/; a copy elsewhere is refused.
+# v4 (VERSION=v4, v2 on 60-250 kHz) is scored as v2, on v2's 60 test shots (refused
+# otherwise): its record carries test_reuse (a second use of v2's test shots) and the
+# second look at v2's. v2's own evaluation.json is untouched and still refuses a rescoring.
 # Each candidate is scored against the labels it was trained with (its review/labels.csv copy).
 #
 #   after the array:  sbatch --dependency=afterok:<array id> <this>
