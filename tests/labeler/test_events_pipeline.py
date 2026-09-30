@@ -752,6 +752,27 @@ def test_a_missing_group_is_a_skip_and_not_an_error(paths, synth_shot, model):
     assert (row.diag, row.status) == ("ece", "skipped")
 
 
+def test_a_re_run_with_neither_sawtooth_diagnostic_leaves_no_sxr_ok_row(
+    shot_file, paths, synth_shot, model,
+):
+    # The step that ran on neither owns every `ece_sawtooth` row: an earlier
+    # run's SXR "ok" row would otherwise survive the merge beside the one
+    # skipped ECE row and still claim coverage.
+    _add_sxr(shot_file)
+    _run(paths, model)
+    first = _sawtooth_sources(paths)
+    assert {d: r.status for d, r in first.items()} == {"ece": "ok", "sxr": "ok"}
+    others = schema.read_sources(paths.sources_file(SHOT))
+    others = set(others.source[others.source != "ece_sawtooth"])
+    _write_corpus(paths.corpus, SHOT, synth_shot,
+                  groups=("mhr", "co2", "filterscopes", "pinj", "tinj"))
+    res = _run(paths, model)
+    assert "no sawtooth diagnostic ran" in res.skipped["sawtooth"]
+    [row] = _sawtooth_sources(paths).values()
+    assert (row.diag, row.status) == ("ece", "skipped")
+    assert others <= set(schema.read_sources(paths.sources_file(SHOT)).source)
+
+
 def test_a_failing_step_is_recorded_and_the_shot_carries_on(
     shot_file, paths, model, monkeypatch,
 ):

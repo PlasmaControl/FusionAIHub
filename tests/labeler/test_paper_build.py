@@ -653,6 +653,30 @@ def test_the_snapshot_refuses_a_second_read(runs, tmp_path):
     }
 
 
+def test_the_snapshot_pins_bytes_its_caller_read(tmp_path):
+    """`pin` pins bytes read elsewhere as `read` pins its own, under the same
+    second-read guard, and `changed` hashes their file again."""
+    snap = build.Snapshot(tmp_path / "scratch")
+    path = tmp_path / "101.npz"
+    path.write_bytes(b"drawn")
+    data = path.read_bytes()
+    assert snap.pin("features", path, data) is data
+    assert snap.pinned["features"] == (path, hashlib.sha256(b"drawn").hexdigest())
+    for again in (
+        lambda: snap.pin("features", path, b"other"),
+        lambda: snap.read("features", path),
+    ):
+        with pytest.raises(ValueError, match="features: already read"):
+            again()
+    assert snap.sha("features") == hashlib.sha256(b"drawn").hexdigest()
+    snap.read("read", path)
+    with pytest.raises(ValueError, match="read: already read"):
+        snap.pin("read", path, data)
+    assert snap.changed() == {}
+    path.write_bytes(b"rewritten")
+    assert set(snap.changed()) == {"features", "read"}
+
+
 def test_an_input_changed_mid_build_is_recorded(runs, tmp_path, monkeypatch):
     live = build.inputs(runs)["ae_labels"]
     drawn = hashlib.sha256(live.read_bytes()).hexdigest()

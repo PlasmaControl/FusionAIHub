@@ -3,7 +3,8 @@ gallery drawing they share."""
 
 from __future__ import annotations
 
-import io
+import copy
+import hashlib
 import json
 import math
 
@@ -20,7 +21,7 @@ from labeler.paper import build, frame_examples, roc, shots
 from labeler.paper.snapshot import Snapshot
 
 from .test_round3_frames_apply import elm, tree  # noqa: F401  (fixtures)
-from .test_round3_frames_evaluate import TEST
+from .test_round3_frames_evaluate import TEST, rechoose
 
 METHOD = "elm_frames"
 
@@ -48,13 +49,28 @@ def test_the_products_are_named_by_phenomenon_and_owned():
             assert {name + ".pdf", name + ".png"} <= build.OWNED
 
 
-def test_only_shots_with_a_present_bin_are_ranked(scored):
-    data, _ = frame_examples.read_features(scored, METHOD, TEST)
-    found = frame_examples.present_shots(data)
-    for shot, blob in data.items():
-        with np.load(io.BytesIO(blob)) as z:
-            assert (shot in found) == bool((z["states"] == PRESENT_T).any())
-    assert "present bin" in frame_examples.RULE
+def test_only_shots_with_a_present_bin_the_model_scored_are_ranked(scored, monkeypatch):
+    """A present bin counts only among the bins the model scored: observed,
+    with a finite P. A shot whose present bins are all unobserved, or all
+    without a P, is not ranked, though its false alarms give it an F1."""
+    read, data, left = frame_examples.read_features(scored, METHOD, TEST)
+    assert sorted(data) == [s.shot for s in read] and not left
+    base = next(s for s in read if (s.observed & (s.states == PRESENT_T)).any())
+    unobserved, no_p = copy.copy(base), copy.copy(base)
+    unobserved.shot, no_p.shot = 1, 2
+    unobserved.observed = base.observed & (base.states != PRESENT_T)
+
+    def probs(model, spec, shot):
+        prob = np.full(len(shot.states), 0.9)
+        prob[(shot.states == PRESENT_T) & (shot.shot == 2)] = np.nan
+        return prob
+
+    monkeypatch.setattr(evaluate, "model_probs", probs)
+    spec = frames.SPECS[METHOD]
+    f1, present = frame_examples.scores_of(None, spec, 0.5, [base, unobserved, no_p])
+    assert present == {base.shot}
+    assert not math.isnan(f1[1]) and not math.isnan(f1[2]), "false alarms"
+    assert "present bin among the bins the model scored" in frame_examples.RULE
 
 
 def test_the_picks_are_pick_examples_over_the_f1_without_nan():
@@ -217,12 +233,17 @@ def test_the_build_draws_the_frame_figure_and_records_the_picks(
     found, snap, evaluation = _read(scored, METHOD)
     why, record, made, partial = _call(scored, tmp_path, evaluation, snap, found)
     assert why is None and made == {NAME: [NAME + ".pdf", NAME + ".png"]}
-    data, _ = frame_examples.read_features(scored, METHOD, TEST)
-    present = sorted(frame_examples.present_shots(data))
-    assert present and sorted(record["example_shots"]) == present, "with a present bin"
+    read, _, _ = frame_examples.read_features(scored, METHOD, TEST)
+    model, _ = frames_train.load(frames.model_dir(scored, METHOD) / "model.pt")
+    _, present = frame_examples.scores_of(model, frames.SPECS[METHOD], 0.5, read)
+    assert present and sorted(record["example_shots"]) == sorted(present)
     assert record["example_rule"] == frame_examples.RULE
     assert record["test_shots"] == 2 and record["features_missing"] == {}
+    # No threshold.json: training's threshold, and the manifest says so.
     assert record["threshold"] == 0.5
+    assert record["threshold_source"] == "training"
+    assert record["threshold_sha256"] is None
+    assert build.frame_example_key("threshold", METHOD) not in snap.pinned
     assert partial == {
         NAME: [
             {
@@ -233,7 +254,6 @@ def test_the_build_draws_the_frame_figure_and_records_the_picks(
     }, "fewer than 3 shots is partial"
     # each F1 is the evaluation's own over the scored bins
     read, _ = evaluate.read_shots(scored, METHOD, TEST)
-    model, _ = frames_train.load(frames.model_dir(scored, METHOD) / "model.pt")
     for s in (s for s in read if s.shot in record["example_shots"]):
         prob = evaluate.model_probs(model, frames.SPECS[METHOD], s)
         f1 = evaluate.score(prob, s.states, 0.5, s.observed)["f1"]
@@ -253,8 +273,8 @@ def test_the_threshold_is_the_blobs(scored, tmp_path, monkeypatch):
     found, snap, evaluation = _read(scored, METHOD)
     load = frames_train.load
 
-    def loaded(source):
-        model, blob = load(source)
+    def loaded(source, **kw):
+        model, blob = load(source, **kw)
         return model, blob | {"threshold": 0.123}
 
     monkeypatch.setattr(frames_train, "load", loaded)
@@ -262,6 +282,37 @@ def test_the_threshold_is_the_blobs(scored, tmp_path, monkeypatch):
     assert why is None and record["threshold"] == 0.123
     reasons = [e["reason"] for e in partial[NAME]]
     assert build.FRAME_THRESHOLD in reasons, "the evaluation scored another"
+
+
+def test_the_build_applies_threshold_json_s_pinned_bytes(scored, tmp_path, monkeypatch):
+    """threshold.json is pinned beside the model and applied from those bytes:
+    a copy re-chosen on disk after the pin is not the one drawn, the build says
+    it changed, and the record names the pinned file's sha256."""
+    found, snap, evaluation = _read(scored, METHOD)
+    out = frames.model_dir(scored, METHOD)
+    key = build.frame_example_key("threshold", METHOD)
+    path = rechoose(out, 0.4)
+    assert found[key] == path
+    pinned = path.read_bytes()
+    read = snap.read
+
+    def then_changed(k, where):
+        data = read(k, where)
+        if k == key:
+            rechoose(out, 0.7)  # re-chosen again, once the build has pinned it
+        return data
+
+    monkeypatch.setattr(snap, "read", then_changed)
+    why, record, _, partial = _call(scored, tmp_path, evaluation, snap, found)
+    sha = hashlib.sha256(pinned).hexdigest()
+    assert why is None and record["threshold"] == 0.4
+    assert (record["threshold_source"], record["threshold_sha256"]) == (
+        "threshold.json",
+        sha,
+    )
+    assert snap.pinned[key] == (path, sha) and set(snap.changed()) == {key}
+    reasons = [e["reason"] for e in partial[NAME]]
+    assert build.FRAME_THRESHOLD in reasons, "the evaluation scored 0.5"
 
 
 def test_the_figure_is_skipped_without_its_model_or_evaluation(

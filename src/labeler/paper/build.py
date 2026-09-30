@@ -46,11 +46,16 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_examples_ntm`, `fig_examples_hmode`, `fig_examples_elm`,
   `fig_examples_sawtooth`: three test shots of each frame model
   (`roc.SELECTED`, `frames.VERSION`): the best, median and worst F1 over the
-  bins its evaluation scored, over the test shots with a present bin
-  (`paper.frame_examples`), each with the input
+  bins its evaluation scored, over the test shots with a present bin among
+  them (`paper.frame_examples`), each with the input
   rows, the target per bin and P per frame with the model's own threshold
   (`blob["threshold"]`). Drawn from the prepared features. The model, split
-  (and its meta) and evaluation are pinned, and so is every test shot's
+  (and its meta) and evaluation are pinned, and so is the `threshold.json`
+  beside the model where there is one: the model is loaded with its pinned
+  bytes (`frames.train.load`'s `threshold_json`), never the file on disk, and
+  the manifest's `frame_examples` says where the threshold came from
+  (`threshold_source`, "threshold.json" or "training", and `threshold_sha256`,
+  null without one). So is every test shot's
   features file when the manifest's `frame_examples` gives its `features_sha256`
   (one digest of them all) and the three drawn shots' own sha256. Skipped
   without the model, split, evaluation or features, or when the evaluation
@@ -301,7 +306,7 @@ NO_F1 = (
     "a scored frame there present"
 )
 NO_FRAME_EVALUATION = "the model's evaluation.json is missing"
-NO_FRAME_SHOT = "no test shot with a present bin has an F1 over its scored bins"
+NO_FRAME_SHOT = "no test shot has a present bin among the bins the model scored"
 FRAME_OTHER = "the evaluation names another {what} than the one on disk"
 FRAME_FEW = "fewer than {n} test shots can be drawn"
 FRAME_THRESHOLD = "the model's threshold is not the one its evaluation scored"
@@ -417,19 +422,22 @@ def selected_inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
 
 def frame_example_key(what: str, method: str) -> str:
     """A frame model's example input: `frames_examples_<what>_<method>`, `what` being
-    `model`, `split` or `split_meta`."""
+    `model`, `threshold` (its `threshold.json`), `split` or `split_meta`."""
     return f"frames_examples_{what}_{method}"
 
 
 def frame_example_inputs(paths: Paths) -> dict[str, Path]:
-    """Each frame model's model, split and split meta, which the example figures
-    read (`paper.frame_examples`); its evaluation is `selected_inputs`'."""
+    """Each frame model's model, its threshold.json (where there is one), split
+    and split meta, which the example figures read (`paper.frame_examples`); its
+    evaluation is `selected_inputs`'."""
     found = {}
     for method in roc.SELECTED.values():
         if method == roc.AE_METHOD:
             continue
-        found[frame_example_key("model", method)] = (
-            frames.model_dir(paths, method) / "model.pt"
+        folder = frames.model_dir(paths, method)
+        found[frame_example_key("model", method)] = folder / "model.pt"
+        found[frame_example_key("threshold", method)] = (
+            folder / frames_train.THRESHOLD_FILE
         )
         found[frame_example_key("split", method)] = frames.shots_file(paths, method)
         found[frame_example_key("split_meta", method)] = frames.shots_meta_file(
@@ -1088,9 +1096,11 @@ def _frame_examples(
 ) -> tuple[dict | None, dict | None]:
     """Draw one frame model's example figure (`paper.frame_examples`). The
     `skipped` entry when it could not be drawn, else None, and the manifest's
-    record: the picks and their F1, the rule, the threshold and the features'
-    sha256 (`features_sha256`: one digest over every test shot's, and each
-    drawn shot's own under `shot_features_sha256`, pinned as inputs).
+    record: the picks and their F1, the rule, the threshold and where it came
+    from (`threshold_source`, `threshold_sha256`: the model's threshold.json,
+    pinned and loaded from its pinned bytes, or none, training's), and the
+    features' sha256 (`features_sha256`: one digest over every test shot's, and
+    each drawn shot's own under `shot_features_sha256`, pinned as inputs).
 
     It is skipped without the model, split or evaluation, with no test shot
     with features and an F1, and when the evaluation names another model or
@@ -1105,11 +1115,15 @@ def _frame_examples(
         return {"reason": MISSING, "missing": missing}, None
     if evaluation is None:  # the evaluation was not readable
         return {"reason": NO_FRAME_EVALUATION, "missing": []}, None
-    model_key, split_key, meta_key = (
-        frame_example_key(w, method) for w in ("model", "split", "split_meta")
+    model_key, split_key, meta_key, threshold_key = (
+        frame_example_key(w, method)
+        for w in ("model", "split", "split_meta", "threshold")
     )
     data = snap.read(model_key, found[model_key])
-    model, blob = frames_train.load(io.BytesIO(data))
+    pinned = None  # no threshold.json: training's threshold
+    if found[threshold_key].is_file():
+        pinned = snap.read(threshold_key, found[threshold_key])
+    model, blob = frames_train.load(io.BytesIO(data), threshold_json=pinned)
     table = snap.csv(split_key, found[split_key])
     split = {int(a): str(b) for a, b in zip(table.shot, table.split, strict=True)}
     if found[meta_key].is_file():
@@ -1123,9 +1137,8 @@ def _frame_examples(
             return {"reason": FRAME_OTHER.format(what=what), "missing": []}, None
     threshold = float(blob["threshold"])
     test = [s for s, v in split.items() if v == "test"]
-    bytes_, left = frame_examples.read_features(paths, method, test)
-    f1 = frame_examples.scores_of(model, spec, threshold, bytes_)
-    with_present = frame_examples.present_shots(bytes_)
+    read, bytes_, left = frame_examples.read_features(paths, method, test)
+    f1, with_present = frame_examples.scores_of(model, spec, threshold, read)
     ranked = {s: v for s, v in f1.items() if s in with_present}
     if all(math.isnan(v) for v in ranked.values()):
         return {
@@ -1135,10 +1148,8 @@ def _frame_examples(
     picks = frame_examples.pick(ranked, examples)
     shas = {s: frame_examples.sha256(b) for s, b in bytes_.items()}
     for s in picks:  # the drawn shots' features, pinned as inputs
-        snap.pinned[f"frames_features_{method}_{s}"] = (
-            features_dir(paths, method) / f"{s}.npz",
-            shas[s],
-        )
+        path = features_dir(paths, method) / f"{s}.npz"
+        snap.pin(f"frames_features_{method}_{s}", path, bytes_[s])
     drawn = [
         frame_examples.picture(model, spec, threshold, s, bytes_[s], f1[s])
         for s in picks
@@ -1156,6 +1167,8 @@ def _frame_examples(
         "example_shots": picks,
         "example_rule": frame_examples.RULE,
         "threshold": threshold,
+        "threshold_source": blob["threshold_source"],
+        "threshold_sha256": blob["threshold_sha256"],
         "shot_f1": {str(s): _number(f1[s]) for s in sorted(picks)},
         "test_shots": len(test),
         "scored_shots": sum(not math.isnan(v) for v in f1.values()),

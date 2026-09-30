@@ -65,7 +65,9 @@ threads (4 without).
 `threshold.json` (`THRESHOLD_FILE`, `labeler.frames.rethreshold`'s, T1) sits
 beside `model.pt`, the checkpoint's `threshold` is its re-chosen one, and
 `trained_threshold` training's; `threshold_source` says which ("threshold.json"
-or "training") and `threshold_sha256` names the file (`with_threshold`).
+or "training") and `threshold_sha256` names the file (`with_threshold`). A
+reader that pins its inputs (`labeler.paper.build`) gives the file's bytes
+(`threshold_json`), so nothing is read from the folder behind its pin.
 """
 
 from __future__ import annotations
@@ -106,6 +108,9 @@ from .targets import ABSENT, PRESENT_T
 THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
 #: A threshold re-chosen on the val shots after training (T1), beside `model.pt`.
 THRESHOLD_FILE = "threshold.json"
+#: `load`'s and `with_threshold`'s default: threshold.json read from the model's
+#: folder, not bytes a caller pinned.
+FROM_FOLDER = object()
 #: Each crop's length, and how many a train shot gives an epoch.
 CROP_MS = 2560.0
 CROPS_PER_SHOT = 4
@@ -538,40 +543,47 @@ def save(out: Path, model: RowsCNN, record: dict) -> None:
         torch.save({"state_dict": model.state_dict(), **record}, tmp)
 
 
-def load(path, *, folder=None) -> tuple[RowsCNN, dict]:
+def load(path, *, folder=None, threshold_json=FROM_FOLDER) -> tuple[RowsCNN, dict]:
     """A saved model, in eval mode, and its checkpoint, its threshold the one a
     `threshold.json` in the model's folder re-chose, if there is one
-    (`with_threshold`). A model read from a file object names its `folder`."""
+    (`with_threshold`). A model read from a file object names its `folder`, or
+    gives `threshold_json`: that file's bytes as the caller pinned them, None
+    where it pinned none; then no folder is read."""
     if isinstance(path, (str, os.PathLike)):
         data = Path(path).read_bytes()
         folder = Path(path).parent if folder is None else folder
-    elif folder is None:
-        raise TypeError("a model read from a file object needs its folder")
+    elif folder is None and threshold_json is FROM_FOLDER:
+        raise TypeError(
+            "a model read from a file object needs its folder or threshold_json"
+        )
     else:
         data = path.read()
     blob = torch.load(io.BytesIO(data), map_location="cpu", weights_only=False)
     model = RowsCNN(blob["channels"], blob["subs"], blob.get("width", 32))
     model.load_state_dict(blob["state_dict"])
     model.eval()
-    return model, with_threshold(blob, folder, hashlib.sha256(data).hexdigest())
+    sha = hashlib.sha256(data).hexdigest()
+    return model, with_threshold(blob, folder, sha, data=threshold_json)
 
 
-def with_threshold(blob: dict, folder, model_sha256: str) -> dict:
+def with_threshold(blob: dict, folder, model_sha256: str, *, data=FROM_FOLDER) -> dict:
     """The checkpoint with `trained_threshold` (its own `threshold`) and, where
-    `folder` holds a `threshold.json`, that file's `threshold`; else its own.
-    `threshold_source` is "threshold.json" or "training", and
-    `threshold_sha256` the file's (None without one). A threshold.json made
-    for another model (its `model.sha256`) is refused."""
+    there is a `threshold.json`, that file's `threshold`; else its own. The
+    file is `data`, its bytes as a caller pinned them (None: there is none),
+    or by default the one in `folder`. `threshold_source` is "threshold.json"
+    or "training", and `threshold_sha256` the file's (None without one). A
+    threshold.json made for another model (its `model.sha256`) is refused."""
     trained = float(blob["threshold"])
     out = blob | {
         "trained_threshold": trained,
         "threshold_source": "training",
         "threshold_sha256": None,
     }
-    path = Path(folder) / THRESHOLD_FILE
-    if not path.is_file():
+    path = THRESHOLD_FILE if folder is None else Path(folder) / THRESHOLD_FILE
+    if data is FROM_FOLDER:
+        data = path.read_bytes() if path.is_file() else None
+    if data is None:
         return out
-    data = path.read_bytes()
     found = json.loads(data)
     if found["model"]["sha256"] != model_sha256:
         raise ValueError(f"{path}: it was re-chosen for another model")
