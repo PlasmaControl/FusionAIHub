@@ -497,6 +497,7 @@ def test_rethreshold_scores_the_test_again_and_keeps_the_old_record(tree, monkey
     _resplit(tree, method, {shot: "test"})
     out = _save_model(tree, method)
     monkeypatch.setattr(evaluate, "model_probs", _h_below_half)
+    monkeypatch.setattr(evaluate, "git_dirty", lambda: False)  # committed code
     with pytest.raises(ValueError, match="threshold.json"):
         evaluate.evaluate(tree, method, rethreshold=True)
     first = evaluate.evaluate(tree, method)
@@ -541,3 +542,24 @@ def test_rethreshold_scores_the_test_again_and_keeps_the_old_record(tree, monkey
     with pytest.raises(FileExistsError, match="trained-threshold"):
         evaluate.evaluate(tree, method, rethreshold=True)
     assert kept.read_bytes() == old[".json"]
+
+
+@pytest.mark.parametrize("dirty", [True, None])
+def test_rethreshold_refuses_uncommitted_code(tree, monkeypatch, dirty):
+    """`--rethreshold` replaces a record that names its commit, so it is refused
+    first while the tree differs from the commit or git cannot say."""
+    method, shot = "hmode_frames", SHOTS[HMODE]
+    frames_shots.make(tree, method)
+    assert prepare.prepare(tree, method, [shot])["written"] == [shot]
+    _resplit(tree, method, {shot: "test"})
+    out = _save_model(tree, method)
+    monkeypatch.setattr(evaluate, "model_probs", _h_below_half)
+    evaluate.evaluate(tree, method)
+    rechoose(out, 0.3)
+    old = {s: (out / f"evaluation{s}").read_bytes() for s in (".json", ".md")}
+    monkeypatch.setattr(evaluate, "git_dirty", lambda: dirty)
+    monkeypatch.setattr(evaluate, "read_shots", lambda *a, **k: pytest.fail("read"))
+    with pytest.raises(RuntimeError, match="commit first"):
+        evaluate.evaluate(tree, method, rethreshold=True)
+    assert {s: (out / f"evaluation{s}").read_bytes() for s in old} == old
+    assert not list(out.glob(f"{evaluate.TRAINED_STEM}.*"))

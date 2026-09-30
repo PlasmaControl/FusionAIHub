@@ -78,13 +78,16 @@ another threshold, the test is scored again at threshold.json's, by the same
 code (the bar and `effectively_always` with it): the old `evaluation.json` and
 `evaluation.md` are first moved to `evaluation.trained-threshold.json` and
 `.md` (`TRAINED_STEM`), which are never overwritten, and the new record names
-the old one (`previous_evaluation`). Anything else is refused (`rescore_check`).
+the old one (`previous_evaluation`). Anything else is refused (`rescore_check`),
+and first a tree that differs from its commit (or where git cannot say), since
+the record replaced names the commit that scored it.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import operator
 from collections import Counter
@@ -96,7 +99,7 @@ import numpy as np
 import pandas as pd
 
 from ..ae.xpower import pilot_area
-from ..config import Paths, atomic_path, git_sha
+from ..config import Paths, atomic_path, git_dirty, git_sha
 from ..events import spans
 from ..events.catalog.population import read_pool
 from ..events.catalog.states import PRESENT
@@ -210,15 +213,21 @@ class Shot:
         self.window = tuple(int(v) for v in z["window"])
 
 
-def read_shots(paths: Paths, method: str, shots) -> tuple[list[Shot], dict]:
-    """The shots with features, and the others with their reasons."""
+def read_shots(
+    paths: Paths, method: str, shots, *, data: dict | None = None
+) -> tuple[list[Shot], dict]:
+    """The shots with features, and the others with their reasons. `data`, if
+    given, gets each shot's features' bytes by shot, the ones parsed (the
+    paper's example figures hash and draw them)."""
     gone, found, left = prepare.dropped(paths, method), [], {}
     for shot in sorted(int(s) for s in shots):
         path = features_dir(paths, method, VERSION) / f"{shot}.npz"
         if not path.is_file():
             left[str(shot)] = gone.get(shot, "not prepared")
             continue
-        with np.load(path) as z:
+        if data is not None:
+            data[shot] = path.read_bytes()
+        with np.load(path if data is None else io.BytesIO(data[shot])) as z:
             found.append(Shot(shot, z))
     return found, left
 
@@ -617,11 +626,16 @@ def evaluate(
     paths: Paths, method: str, *, out: Path | None = None, rethreshold: bool = False
 ) -> dict:
     """Score the method's model once on its test shots (module docstring), or
-    again at a re-chosen threshold (`rethreshold`); the record written to
-    `evaluation.json`."""
+    again at a re-chosen threshold (`rethreshold`, refused first while the code
+    is not committed); the record written to `evaluation.json`."""
     spec = SPECS[method]
     out = model_dir(paths, method, VERSION) if out is None else Path(out)
     target = out / "evaluation.json"
+    if rethreshold and git_dirty() is not False:
+        raise RuntimeError(
+            "tracked files differ from the commit (or git cannot say), so no "
+            "record could name the code that computed it: commit first"
+        )
     if not rethreshold and target.exists() and not pilot_area(out, paths.runs):
         raise FileExistsError(f"{target}: the test shots are scored once")
     model_path = out / "model.pt"

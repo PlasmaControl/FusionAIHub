@@ -312,7 +312,8 @@ def test_a_shot_that_raises_is_failed_and_counted_not_fatal(elm, monkeypatch):
     assert list(summary.shot) == [SHOTS[ELM]]
 
 
-def test_the_merge_follows_the_re_chosen_threshold(hmode):
+def test_the_merge_follows_the_re_chosen_threshold(hmode, monkeypatch):
+    monkeypatch.setattr(evaluate, "git_dirty", lambda: False)  # committed code
     _run_all("hmode_frames")
     spec = frames.SPECS["hmode_frames"]
     out = frames.model_dir(hmode, "hmode_frames")

@@ -196,7 +196,21 @@ def test_load_gives_the_re_chosen_threshold_and_its_source(tree):
     assert train.load(io.BytesIO(data), folder=out)[1]["threshold"] == 0.37
     with pytest.raises(TypeError, match="folder"):
         train.load(io.BytesIO(data))
-    # A threshold.json made for another model is refused.
-    path.write_text(json.dumps({"threshold": 0.37, "model": {"sha256": "0" * 64}}))
+    # Or it gives threshold.json's bytes as a caller pinned them (the paper
+    # build): those apply, and the file on disk is not read.
+    pinned = path.read_bytes()
+    rechoose(out, 0.61)
+    _, blob = train.load(io.BytesIO(data), threshold_json=pinned)
+    assert (blob["threshold"], blob["trained_threshold"]) == (0.37, trained)
+    assert blob["threshold_source"] == "threshold.json"
+    assert blob["threshold_sha256"] == hashlib.sha256(pinned).hexdigest()
+    _, blob = train.load(model, threshold_json=None)  # pinned as absent
+    assert (blob["threshold"], blob["threshold_source"]) == (trained, "training")
+    assert blob["threshold_sha256"] is None
+    # A threshold.json made for another model is refused, on disk or pinned.
+    other = json.dumps({"threshold": 0.37, "model": {"sha256": "0" * 64}})
+    path.write_text(other)
     with pytest.raises(ValueError, match="another model"):
         train.load(model)
+    with pytest.raises(ValueError, match="another model"):
+        train.load(io.BytesIO(data), threshold_json=other.encode())

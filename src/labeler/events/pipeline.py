@@ -645,7 +645,9 @@ def sawtooth_block(
     their union and an event carries its own diagnostic's. One that could
     not run is `skipped["sawtooth <diag>"]` - an SXR group missing is not a
     failure when the ECE is there - and the step is `skipped["sawtooth"]`
-    only when neither ran or the detector raised.
+    only when neither ran or the detector raised. Then `finish_shot` writes
+    the source's sources rows whole (`write_sources(sources=)`), so that one
+    skipped row replaces an earlier run's ECE and SXR rows.
 
     One function, guarded as a step, because `finish_shot` and
     `refresh_sawtooth` must run the same step: the latter replaces v2's rows
@@ -1380,6 +1382,10 @@ def finish_shot(
                     shot, ran=ran, skipped=res.skipped, events=events,
                 ),
                 run_id=run_id, merge=True,
+                # A sawtooth step that ran on neither diagnostic owns every
+                # `ece_sawtooth` row, so an earlier run's SXR "ok" row cannot
+                # outlive its one skipped row and still claim coverage.
+                sources=None if sawtooth_ran else [heuristics.SAWTOOTH_SOURCE],
             )
             if index:
                 # `index=False` is for a SLURM array: `events_index.parquet`
