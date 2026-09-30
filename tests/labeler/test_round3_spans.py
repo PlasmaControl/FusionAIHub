@@ -169,7 +169,9 @@ def test_crashes_in_the_ramp_up_make_it_uncertain(tmp_path, synth_shot):
     found = spans.detect_sawtooth(SHOT, p, (100, 800))
     ramp, (lo, _, state) = found.spans
     assert ramp == (100.0, start, UNCERTAIN)
-    assert found.info["ramp_events"] == 2, "151.9 and 227.9; 75.9 is outside"
+    # The crashes at 151.9 and 227.9 ms (v3 marks their bins' centres, 151.5
+    # and 227.5); 75.9 is outside the window.
+    assert found.info["ramp_events"] == 2
     assert state == PRESENT
     assert lo == pytest.approx(crashes[crashes >= start][0] - spans.PAD_MS, abs=1.5)
     assert "ramp" in spans.METHODS["sawtooth_oscillation"].rule["start"]
@@ -280,6 +282,35 @@ def test_a_table_drafted_under_other_rules_is_refused(two_shots, capsys):
     with pytest.raises(spans.RuleChanged):  # no meta: no rules to go on
         spans.run(method, spans.queue(p), p, windows="cohort", version="v2")
     assert _bytes(v1) == before
+
+
+def test_v3_is_refused_into_v2s_sawtooth_table_and_goes_to_v3(
+    two_shots, monkeypatch, capsys
+):
+    p = two_shots
+    method = dataclasses.replace(
+        spans.METHODS["sawtooth_oscillation"],
+        detect=lambda shot, paths, window=None: spans.Found(
+            ((100, 200, PRESENT),), ((0.0, 800.0),)
+        ),
+    )
+    monkeypatch.setitem(spans.METHODS, "sawtooth_oscillation", method)
+    v2 = suggestions.table_path(p, "sawtooth_oscillation", "ece_sawtooth", "v2")
+    old = json.loads(json.dumps(method.rule))  # v2's rule: no crash rule
+    del old["crash"], old["crash_constants"]
+    suggestions.write_table(v2, [[2, ABSENT, 0, 1000, ""]], {"rule": old})
+    before = _bytes(v2)
+    with pytest.raises(SystemExit) as refused:
+        spans.main(["--event", "sawtooth_oscillation", "--version", "v2"])
+    assert refused.value.code == 2 and "--version" in capsys.readouterr().err
+    assert _bytes(v2) == before, "v2's table and meta, byte for byte"
+    argv = ["--event", "sawtooth_oscillation", "--version", "v3"]
+    assert spans.main(argv) == 0
+    v3 = suggestions.table_path(p, "sawtooth_oscillation", "ece_sawtooth", "v3")
+    meta = json.loads(v3.with_suffix(".meta.json").read_text())
+    assert meta["rule"]["crash"].startswith("v3")
+    assert meta["rule"]["crash_constants"]["merge_ms"] == 5.0
+    assert sorted(pd.read_csv(v3).shot.unique()) == [2, 3]
 
 
 @pytest.mark.parametrize("version", ["V2", "2", "v", "v2b", "../v2"])
