@@ -27,10 +27,13 @@ reuses SegNet v2's test shots after v2's breakdown was seen (`test_of`,
 
 v4 (`SEG_VERSIONS["v4"]`) is pseudo-v4 and SegNet v4: SegNet v1 with the band
 at 60-250 kHz, the band the owner's review page draws AE from (2026-09-30).
-pseudo-v1's rules, TokEye's 0-2 s masks, the live labels file and the chosen
-ae_xpower v1 model's split, as v1's; the blob records its band. Its test
-reuses SegNet v1's test shots after v1's test was scored (`test_of`,
-`reuse_note`). v1-v3 are unchanged.
+pseudo-v1's rules (80-250 kHz as pseudo-v1's, 60-80 kHz built apart), TokEye's
+0-2 s masks, the live labels file and the chosen ae_xpower v1 model's split,
+as v1's; the blob records its band. The live labels have moved since SegNet
+v1 trained (6 of its 162 split shots, 3 of them test shots), so v4 differs
+from v1 in the band and in the owner's label edits. Its test reuses SegNet
+v1's test shots after v1's test was scored (`test_of`, `reuse_note`). v1-v3
+are unchanged.
 """
 
 from __future__ import annotations
@@ -72,7 +75,14 @@ SEG_VERSIONS = {
 # test had been seen when it was made: (design, seen, record).
 REUSE = {
     "v3": ("pseudo-v3's markers", "test breakdown had been seen", "diagnosis.md"),
-    "v4": ("the 60-250 kHz band", "test had been scored", "evaluation.json"),
+    "v4": (
+        (
+            "the 60-250 kHz band, and the owner's label edits since SegNet v1 on 6 "
+            "of its 162 split shots, 3 of them test shots"
+        ),
+        "test had been scored",
+        "evaluation.json",
+    ),
 }
 
 
