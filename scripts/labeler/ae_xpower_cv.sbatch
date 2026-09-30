@@ -42,10 +42,10 @@
 # sha256 is checked), v2's folds (--folds refuses unless they are v2's cv/folds.csv,
 # byte for byte), 0-2 s scoring:
 #   python -m labeler.ae.xpower.cv --version v4 --folds [--pilot 10]
-#   VERSION=v4 PILOT=10 sbatch <this>, then VERSION=v4 sbatch <this>
+#   VERSION=v4 PILOT=10 sbatch <this>, then VERSION=v4 sbatch --mem=2800M <this>
 #   sizing:     an estimate, not measured: A's rows and 0-2 s frames on 60-250 kHz, about
 #               11 % more pixels than A's 80-250 kHz, so A's 2106 MiB x 1.11 x 1.2 is about
-#               2800M; the header's 3500M holds it.
+#               2800M: pass --mem=2800M (the header's 3500M would read about 67 %).
 #
 # The seed study (post hoc: no decision depends on it). SEED=<S> trains with
 # TrainConfig.seed S instead of the default 20260923, and only the chosen candidate

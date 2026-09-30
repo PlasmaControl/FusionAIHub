@@ -42,6 +42,9 @@
 #   18 epochs: 10 min 1 s, sacct MaxRSS 3,824,656 KiB (3735 MiB), CPU 84.2 %.
 #   mem=4500M      3735 MiB x 1.2 is 4482 MiB; rounded up.
 #   time=01:30:00  kept: 60 epochs, the most a final trains, take about 33 min; x 2.7.
+#   v4 (an estimate, not measured): v2's 120 shots over 0-2 s on 60-250 kHz, about 11 %
+#                  more pixels than v1's 80-250 kHz final (~2530 MB, below): 2530 x 1.11 x 1.2
+#                  is about 3400M: pass --mem=3400M.
 # before v3 (measured 2026-09-26, v1's train header):
 #   The choice reads 15 small npz records: seconds.
 #   v1's full runs: 88 train shots, ~21 s an epoch (band80, 4 threads; 44 batches of 16
