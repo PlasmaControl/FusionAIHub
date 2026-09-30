@@ -34,6 +34,12 @@ What it does:
         -e labelmaker python scripts/labeler/sawtooth_reference_check.py \\
         --shot 198658 --json
 
+It checks v2 (`heuristics.sawtooth_events`) and stays on v2: v2 is the
+omnimode port, and the pipeline's events used it until 2026-09-30, when
+`pipeline.sawtooth_block` moved them to v3 (`sawtooth_crashes`,
+`sawtooth_events_v3`), which has no omnimode reference to be checked
+against.
+
 Re-run it when the port's crash search changes. The acceptance it exists to
 justify is in `heuristics`'s module docstring: 47 +/- 3 crashes with a
 69 +/- 5 ms median period on 198658, which are the REFERENCE's own numbers
@@ -102,7 +108,8 @@ def read_ece(corpus_file: Path, max_seconds: float | None):
     a non-finite bin ratio into no change (`np.where(isfinite, d, 0)` here,
     `np.nan_to_num` there), so a NaN channel or a NaN end votes for nothing
     in either, and stripping them would be a difference between what this
-    script runs and what the pipeline runs.
+    script runs and what the pipeline ran with v2 (and reads, since v3, in
+    `pipeline._read_group`).
     """
     with h5py.File(corpus_file, "r", locking=False) as f:
         t_s = np.asarray(f["ece"]["xdata"][:], dtype=np.float64)
