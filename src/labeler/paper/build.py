@@ -43,6 +43,19 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   kHz for SegNet v2's), SegNet run over the same stores, where its `model.pt`
   exists. The copy's sha256 must be the one the AE evaluation names
   (`labels_sha256`); if it is not, or none is named, it is skipped;
+- `fig_examples_ntm`, `fig_examples_hmode`, `fig_examples_elm`,
+  `fig_examples_sawtooth`: three test shots of each frame model
+  (`roc.SELECTED`, `frames.VERSION`): the best, median and worst F1 over the
+  bins its evaluation scored, over the test shots with a present bin
+  (`paper.frame_examples`), each with the input
+  rows, the target per bin and P per frame with the model's own threshold
+  (`blob["threshold"]`). Drawn from the prepared features. The model, split
+  (and its meta) and evaluation are pinned, and so is every test shot's
+  features file when the manifest's `frame_examples` gives its `features_sha256`
+  (one digest of them all) and the three drawn shots' own sha256. Skipped
+  without the model, split, evaluation or features, or when the evaluation
+  names another model or split; `partial` with fewer than 3 shots or a
+  threshold unlike the evaluation's;
 - `fig_interpreter`: the roster figure (`paper.roster`), the models'
   suggestions on one non-blind roster shot of the frozen cohort with corpus
   CO2 (`roster.candidates`): `--shot`'s, which must be one, else
@@ -184,7 +197,19 @@ from ..events import suggestions
 from ..events.review import labels
 from ..events.spans import cohort_path
 from ..events.verify import NoDataError
-from . import AE, LOGIN_THREADS, coverage, paper_dir, roc, roster, scores, shots
+from ..frames import features_dir
+from ..frames import train as frames_train
+from . import (
+    AE,
+    LOGIN_THREADS,
+    coverage,
+    frame_examples,
+    paper_dir,
+    roc,
+    roster,
+    scores,
+    shots,
+)
 from .snapshot import Snapshot
 from .staging import Stranded, discard, staging_dir, swap
 
@@ -211,6 +236,11 @@ PRODUCTS = {
     "table_datasets": TABLE,
     "fig_interpreter": FIGURE,
     "fig_examples_ae": FIGURE,
+    **{
+        frame_examples.figure_name(m): FIGURE
+        for m in roc.SELECTED.values()
+        if m != roc.AE_METHOD
+    },
 }
 #: Products an older build wrote, and no longer: fig_mhd and fig_segmentation
 #: (removed), fig_roster_interpreter (now fig_interpreter) and fig_examples (now
@@ -270,6 +300,11 @@ NO_F1 = (
     "no test shot has an F1 over 0-2 s: neither the owner nor the model calls "
     "a scored frame there present"
 )
+NO_FRAME_EVALUATION = "the model's evaluation.json is missing"
+NO_FRAME_SHOT = "no test shot with a present bin has an F1 over its scored bins"
+FRAME_OTHER = "the evaluation names another {what} than the one on disk"
+FRAME_FEW = "fewer than {n} test shots can be drawn"
+FRAME_THRESHOLD = "the model's threshold is not the one its evaluation scored"
 AE_LABEL_KEYS = ("labels_sha256", "labels_copy_sha256")  # in the AE record's meta
 LABELS_UNNAMED = "the AE evaluation names no labels_sha256, so D18 cannot be checked"
 LABELS_DIFFER = "the model's review/labels.csv is not what its evaluation scored (D18)"
@@ -354,6 +389,7 @@ def inputs(
         "summary": xpower.suggestions_dir(paths, version) / "summary.csv",
         "cohort": cohort_path(paths),  # the roster candidates' (`roster.candidates`)
         **selected_inputs(paths, version),
+        **frame_example_inputs(paths),
     }
 
 
@@ -376,6 +412,29 @@ def selected_inputs(paths: Paths, version: str = VERSION) -> dict[str, Path]:
     for method in roc.SELECTED.values():
         found[evaluation_key(method)] = roc.evaluation_file(paths, method, version)
         found[roc_key(method)] = roc.roc_file(paths, method, version)
+    return found
+
+
+def frame_example_key(what: str, method: str) -> str:
+    """A frame model's example input: `frames_examples_<what>_<method>`, `what` being
+    `model`, `split` or `split_meta`."""
+    return f"frames_examples_{what}_{method}"
+
+
+def frame_example_inputs(paths: Paths) -> dict[str, Path]:
+    """Each frame model's model, split and split meta, which the example figures
+    read (`paper.frame_examples`); its evaluation is `selected_inputs`'."""
+    found = {}
+    for method in roc.SELECTED.values():
+        if method == roc.AE_METHOD:
+            continue
+        found[frame_example_key("model", method)] = (
+            frames.model_dir(paths, method) / "model.pt"
+        )
+        found[frame_example_key("split", method)] = frames.shots_file(paths, method)
+        found[frame_example_key("split_meta", method)] = frames.shots_meta_file(
+            paths, method
+        )
     return found
 
 
@@ -709,7 +768,8 @@ def _draw(
     if ae is not None:
         look, unlooked = second_look(paths, found, snap, version, chosen, split)
     said = look["said"] if look else None
-    unscored = _scores(found, snap, ae, figure, lacking)
+    frame_evaluations: dict = {}
+    unscored = _scores(found, snap, ae, figure, lacking, frame_evaluations)
     if unscored is not None:
         skipped["fig_scores"] = unscored
     if ready(("table_ae_scores",), "ae_evaluation"):
@@ -813,6 +873,26 @@ def _draw(
     elif "ae_scored_labels" in found and found["ae_scored_labels"].is_file():
         read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
+    frame_picks = {}
+    for method in roc.SELECTED.values():
+        if method == roc.AE_METHOD:
+            continue
+        name = frame_examples.figure_name(method)
+        why, record = _frame_examples(
+            paths,
+            found,
+            snap,
+            method,
+            name,
+            frame_evaluations.get(method),
+            examples,
+            figure,
+            lacking,
+        )
+        if why is not None:
+            skipped[name] = why
+        else:
+            frame_picks[name] = record
     interpreter = None
     only = ("fig_interpreter",)
     if ready(only, "ae_chosen") and ready(only, "ae_model", "cohort"):
@@ -858,6 +938,7 @@ def _draw(
         "skipped": skipped,
         "partial": partial,
         "interpreter": interpreter,
+        "frame_examples": frame_picks,
         **picked,
     }
     _write(out / MANIFEST, json.dumps(manifest, indent=1) + "\n")
@@ -870,6 +951,7 @@ def _scores(
     ae: dict | None,
     figure: Callable,
     lacking: Callable,
+    kept: dict | None = None,
 ) -> dict | None:
     """Draw fig_scores from each phenomenon's selected model (`roc.SELECTED`,
     in `ORDER`): its evaluation's F1 (`roc.f1_estimate`; AE's is `ae`, read
@@ -878,7 +960,8 @@ def _scores(
     entry naming its `phenomenon`: no evaluation (`NOT_SCORED_WHY`), then no
     ROC (`NO_ROC_WHY`), one of another evaluation (`ROC_OTHER`) or one with no
     PR curve (`NO_PR_WHY`). fig_scores'
-    `skipped` entry when no phenomenon is scored, else None."""
+    `skipped` entry when no phenomenon is scored, else None. `kept`, if given,
+    gets each frame model's evaluation, by method, for the example figures."""
     product = ("fig_scores",)
     methods = roc.SELECTED.values()
     evaluations = [found[evaluation_key(m)] for m in methods]
@@ -891,6 +974,8 @@ def _scores(
             evaluation = ae
         else:
             evaluation = snap.json(key, found[key]) if found[key].is_file() else None
+            if kept is not None:
+                kept[method] = evaluation
         record = snap.json(curve, found[curve]) if found[curve].is_file() else None
         if evaluation is None:
             where = [str(found[key])]
@@ -987,6 +1072,97 @@ def _examples(
             }
             for s in sorted(picks)
         },
+    }
+
+
+def _frame_examples(
+    paths: Paths,
+    found: dict[str, Path],
+    snap: Snapshot,
+    method: str,
+    name: str,
+    evaluation: dict | None,
+    examples: int,
+    figure: Callable,
+    lacking: Callable,
+) -> tuple[dict | None, dict | None]:
+    """Draw one frame model's example figure (`paper.frame_examples`). The
+    `skipped` entry when it could not be drawn, else None, and the manifest's
+    record: the picks and their F1, the rule, the threshold and the features'
+    sha256 (`features_sha256`: one digest over every test shot's, and each
+    drawn shot's own under `shot_features_sha256`, pinned as inputs).
+
+    It is skipped without the model, split or evaluation, with no test shot
+    with features and an F1, and when the evaluation names another model or
+    split (sha256); `partial` for fewer than `examples` shots, or a threshold
+    that is not the evaluation's."""
+    product = (name,)
+    spec = frames.SPECS[method]
+    keys = [frame_example_key(w, method) for w in ("model", "split")]
+    keys.append(evaluation_key(method))
+    missing = [str(found[k]) for k in keys if not found[k].is_file()]
+    if missing:
+        return {"reason": MISSING, "missing": missing}, None
+    if evaluation is None:  # the evaluation was not readable
+        return {"reason": NO_FRAME_EVALUATION, "missing": []}, None
+    model_key, split_key, meta_key = (
+        frame_example_key(w, method) for w in ("model", "split", "split_meta")
+    )
+    data = snap.read(model_key, found[model_key])
+    model, blob = frames_train.load(io.BytesIO(data))
+    table = snap.csv(split_key, found[split_key])
+    split = {int(a): str(b) for a, b in zip(table.shot, table.split, strict=True)}
+    if found[meta_key].is_file():
+        snap.read(meta_key, found[meta_key])
+    named = evaluation.get("model", {})
+    for what, digest in (
+        ("model", snap.sha(model_key)),
+        ("split", snap.sha(split_key)),
+    ):
+        if named.get(f"{what}_sha256" if what == "split" else "sha256") != digest:
+            return {"reason": FRAME_OTHER.format(what=what), "missing": []}, None
+    threshold = float(blob["threshold"])
+    test = [s for s, v in split.items() if v == "test"]
+    bytes_, left = frame_examples.read_features(paths, method, test)
+    f1 = frame_examples.scores_of(model, spec, threshold, bytes_)
+    with_present = frame_examples.present_shots(bytes_)
+    ranked = {s: v for s, v in f1.items() if s in with_present}
+    if all(math.isnan(v) for v in ranked.values()):
+        return {
+            "reason": NO_FRAME_SHOT,
+            "missing": [str(features_dir(paths, method))],
+        }, None
+    picks = frame_examples.pick(ranked, examples)
+    shas = {s: frame_examples.sha256(b) for s, b in bytes_.items()}
+    for s in picks:  # the drawn shots' features, pinned as inputs
+        snap.pinned[f"frames_features_{method}_{s}"] = (
+            features_dir(paths, method) / f"{s}.npz",
+            shas[s],
+        )
+    drawn = [
+        frame_examples.picture(model, spec, threshold, s, bytes_[s], f1[s])
+        for s in picks
+    ]
+    figure(name, frame_examples.draw_one(spec), drawn)
+    if len(picks) < examples:
+        lacking(product, FRAME_FEW.format(n=examples), shots=picks)
+    if named.get("threshold") != threshold:
+        lacking(product, FRAME_THRESHOLD, evaluation=named.get("threshold"))
+    digest = frame_examples.sha256(
+        "".join(f"{s}:{shas[s]}\n" for s in sorted(shas)).encode()
+    )
+    return None, {
+        "method": method,
+        "example_shots": picks,
+        "example_rule": frame_examples.RULE,
+        "threshold": threshold,
+        "shot_f1": {str(s): _number(f1[s]) for s in sorted(picks)},
+        "test_shots": len(test),
+        "scored_shots": sum(not math.isnan(v) for v in f1.values()),
+        "ranked_shots": sum(not math.isnan(v) for v in ranked.values()),
+        "features_missing": {str(s): why for s, why in left.items()},
+        "features_sha256": digest,
+        "shot_features_sha256": {str(s): shas[s] for s in sorted(picks)},
     }
 
 
