@@ -219,7 +219,7 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     assert [bar.get_x() for bar in present.patches] == [1]
     [short] = [t for t in present.texts if t.get_text() == "0.9"]
     assert short.xy[0] == 1, "AE's present_s"
-    assert "1234.5" in _texts(present)
+    assert "1,234.5" in _texts(present)
     assert present.get_xlim() == pytest.approx((1, 1234.5**coverage.ROOM))
     ntm_split, hmode_split, elm_split, saw_split = fig.axes[3:7]
     for ax in (ntm_split, hmode_split):

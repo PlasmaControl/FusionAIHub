@@ -446,12 +446,12 @@ def _present_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
             at.append(y)
             values.append(c.present_s)
         else:
-            _at_start(ax, y, f"{c.present_s:.1f}")
+            _at_start(ax, y, f"{c.present_s:,.1f}")
     if values:
         widths = [v - BAR_FROM for v in values]
         bars = ax.barh(at, widths, 0.5, left=BAR_FROM, color=PRESENT_COLOUR)
         ax.bar_label(
-            bars, labels=[f"{v:.1f}" for v in values], padding=1, fontsize=VALUE_PT
+            bars, labels=[f"{v:,.1f}" for v in values], padding=1, fontsize=VALUE_PT
         )
     _coming_rows(ax, rows, counts)
     _room(ax, max(values, default=0), log=True)
