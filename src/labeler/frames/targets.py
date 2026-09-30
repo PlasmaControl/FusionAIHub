@@ -26,10 +26,15 @@ owner's state replaces the original's; elsewhere the original's stands. A shot
 the owner saved that the original lacks is added with the owner's label alone.
 `merged` is the one rule: `shots` splits by it, `prepare` writes its states
 into the features, and `train`, `evaluate` and `gallery` read those states.
+`flips` counts what the owner's label changed, bin by bin (F14: the owner's
+ELM saves are spans of ELMy time over Hiro's onsets), for `shots`' meta and
+`evaluate`'s record; `original_pin` is the original's file and sha256 where it
+is one file, the table, for `shots` to pin and `prepare` to check.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import math
 from pathlib import Path
@@ -179,8 +184,96 @@ def merged(original, label, bin_ms) -> tuple[np.ndarray, np.ndarray] | None:
     return axis * float(bin_ms), out
 
 
+def bin_range(window, bin_ms: float) -> tuple[int, int]:
+    """`(k0, k1)`: the whole bins `k0 .. k1 - 1` of `bin_ms` inside the whole 10 ms
+    frames of `window`."""
+    per = _per(bin_ms, FRAME_MS, "frames")
+    first, n = data.window_frames(window)
+    return -(-first // per), (first + n) // per
+
+
+def on_bins(target, k0: int, k1: int, bin_ms: float) -> np.ndarray:
+    """A target's states, `(bin starts ms, states)` or None, on bins `k0 .. k1 -
+    1`; UNKNOWN where it has none, and everywhere for None."""
+    out = np.full(max(0, k1 - k0), UNKNOWN, dtype=np.int8)
+    if target is None:
+        return out
+    starts, states = target
+    k = np.rint(np.asarray(starts, dtype=np.float64) / bin_ms).astype(np.int64)
+    states = np.asarray(states, dtype=np.int8)
+    inside = (k >= k0) & (k < k1)
+    out[k[inside] - k0] = states[inside]
+    return out
+
+
+STATE_NAMES = {
+    UNKNOWN: "unknown",
+    ABSENT: "absent",
+    PRESENT_T: "present",
+    UNCERTAIN_T: "uncertain",
+}
+_STATE_OF = {name: state for state, name in STATE_NAMES.items()}
+#: Each change the owner's label can make to a bin (`flips`): the original's
+#: state to the owner's, which is never UNKNOWN.
+FLIP_KEYS = tuple(
+    f"{STATE_NAMES[a]}_to_{STATE_NAMES[b]}"
+    for a in STATE_NAMES
+    for b in (ABSENT, PRESENT_T, UNCERTAIN_T)
+    if a != b
+)
+
+
+def flips(original, owner, mask=None) -> dict[str, int]:
+    """What the owner's label did to a shot's target (F14), over the bins in
+    `mask` (default all): `original` and `owner` are states on the same bins
+    (`on_bins`), UNKNOWN where each has none. `bins` counts the bins, `owned`
+    those the owner's label decides (not UNKNOWN: `merged` takes its state), and
+    each of `FLIP_KEYS` the owned bins whose state it changed: "absent_to_present"
+    is 0 to 1, "present_to_absent" 1 to 0, "*_to_uncertain" a bin taken out of
+    the score, "unknown_to_*" one the original had no state for."""
+    original = np.asarray(original, dtype=np.int8)
+    owner = np.asarray(owner, dtype=np.int8)
+    mask = np.ones(len(original), bool) if mask is None else np.asarray(mask, bool)
+    owned = mask & (owner != UNKNOWN)
+    out = {"bins": int(mask.sum()), "owned": int(owned.sum())}
+    for key in FLIP_KEYS:
+        a, b = (_STATE_OF[name] for name in key.split("_to_"))
+        out[key] = int(np.sum(owned & (original == a) & (owner == b)))
+    return out
+
+
+def flip_total(parts) -> dict[str, int]:
+    """`flips`' counts summed, with `shots`, how many were summed."""
+    parts = list(parts)
+    out = {"shots": len(parts), "bins": 0, "owned": 0} | dict.fromkeys(FLIP_KEYS, 0)
+    for part in parts:
+        for key, value in part.items():
+            out[key] += value
+    return out
+
+
 def _table(paths: Paths, spec: EventSpec) -> Path:
     return suggestions.table_path(paths, spec.event, *TABLES[spec.target])
+
+
+def original_pin(paths: Paths, spec: EventSpec) -> dict:
+    """The original target's file and its sha256, where it is one file (an
+    interval table, `TABLES`), for `shots` to pin and `prepare` to check
+    (F16); a legacy target is a grid per shot, so it pins nothing and says
+    so. A table not there has no sha256."""
+    if spec.target not in TABLES:
+        folders = [
+            str(grid_path(paths, event, 0).parent) for event in GRIDS[spec.target]
+        ]
+        return {
+            "path": None,
+            "sha256": None,
+            "grids": folders,
+            "note": "a grid per shot: no single file to pin",
+        }
+    table = _table(paths, spec)
+    sha = hashlib.sha256(table.read_bytes()).hexdigest() if table.is_file() else None
+    return {"path": str(table), "sha256": sha}
 
 
 def target_shots(paths: Paths, spec: EventSpec) -> list[int]:

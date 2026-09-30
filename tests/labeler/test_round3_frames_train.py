@@ -206,6 +206,13 @@ def test_fit_saves_a_model_with_its_threshold(prepared):
     assert set(blob["weights"]) == {"absent", "present"}
     assert blob["weights"]["absent"] == 1.0 and blob["weights"]["present"] > 1.0
     assert blob["balance_crops"] is False
+    # F17: the scored train bins by class the weights came from.
+    shots = [train.read_shot(prepared, "elm_frames", s) for s in blob["shots"]["train"]]
+    bins = train.class_bins([s.states[s.observed] for s in shots])
+    assert blob["weight_bins"] == {"from": "train", "train": bins, "crops": None}
+    assert bins["present"] < bins["absent"]
+    ratio = bins["absent"] / bins["present"]
+    assert blob["weights"]["present"] == pytest.approx(min(ratio, 5.0))
     per_epoch = [h["centres"] for h in blob["history"]]
     assert per_epoch == [{"random": 2 * train.CROPS_PER_SHOT}] * len(per_epoch)
     assert blob["crop_centres"] == {"random": 2 * 4 * len(per_epoch)}
@@ -253,6 +260,13 @@ def test_balanced_crops_weigh_the_crops_drawn(prepared, monkeypatch):
     windows = train.crop_windows(shots, rng, crop_bins, balance=True)
     drawn = train.crop_states(shots, windows, crop_bins)
     assert record["weights"] == train.class_weights(drawn, config.pos_weight_max)
+    # F17: the crops' scored bins by class, beside the whole train shots'.
+    whole = train.class_bins([s.states[s.observed] for s in shots])
+    assert record["weight_bins"] == {
+        "from": "crops",
+        "train": whole,
+        "crops": train.class_bins(drawn),
+    }
     assert record["crop_centres"] == train.centre_counts(windows)
     assert record["history"][0]["centres"] == record["crop_centres"]
     assert sum(record["crop_centres"].values()) == 2 * train.CROPS_PER_SHOT
