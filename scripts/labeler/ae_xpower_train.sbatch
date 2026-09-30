@@ -18,7 +18,7 @@
 # order (VERSION defaults to v1):
 #   0 band80-mhd3    1 band0-mhd3    2 band0-mhd10
 # v2 is chosen by cross-validation instead (ae_xpower_cv.sbatch, then
-# ae_xpower_final.sbatch); `train --version v2 --candidate` is refused.
+# ae_xpower_final.sbatch); `train --version v2 --candidate` is refused, as for v3 and v4.
 # `python -m labeler.ae.xpower.train --candidate <name>` reads the owner's saved AE labels
 # ($LABELER_LABEL_TABLES/alfven_eigenmode/review/labels.csv, copied into the model directory),
 # the review store's AE rows ($LABELER_ROOT/spectrograms/alfven_eigenmode) and TokEye's masks

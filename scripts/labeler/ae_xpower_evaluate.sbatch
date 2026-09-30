@@ -20,6 +20,9 @@
 # A full scoring (no LIMIT) is refused under runs/; a pilot there takes LIMIT, 20 or fewer,
 # and for v2 only a pilot choice's model (a copy of the final model there is refused).
 # v2 is scored only in models/ae_xpower/v2 or under runs/; a copy elsewhere is refused.
+# v4 (VERSION=v4, v2 on 60-250 kHz) is scored as v2, on v2's 60 test shots (refused
+# otherwise): its record carries test_reuse (a second use of v2's test shots) and the
+# second look at v2's. v2's own evaluation.json is untouched and still refuses a rescoring.
 # Each candidate is scored against the labels it was trained with (its review/labels.csv copy).
 #
 #   after the array:  sbatch --dependency=afterok:<array id> <this>
@@ -31,6 +34,9 @@
 #   first pilot (2944500) ran out of memory; the second (2944515, 3 test shots at 8G) took
 #   1 min 7 s, --test's MaxRSS 4,707,100 KiB (4.49 GiB). The full test (2944534, 60 shots):
 #   15 min 50 s, MaxRSS 4,984,784 KiB (4.75 GiB), CPU 96.5 %, memory 73.3 %.
+#   v4 (an estimate, not measured): v2's 0-2 s test on 60-250 kHz; v2's test on the same 60
+#                   shots (E, 2943080) had MaxRSS 2392 MiB, x 1.11 x 1.15 is about 3100M:
+#                   pass --mem=3100M (the header's 6G is v3's whole windows).
 #   mem=6G          the pilot's 4.49 GiB x 1.3; the test holds one whole shot at a time.
 #   time=01:00:00   the full test's 16 min x 3.75.
 # before v3 (measured 2026-09-26, login node, 1 thread):

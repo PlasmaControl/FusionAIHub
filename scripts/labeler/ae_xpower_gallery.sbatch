@@ -20,6 +20,7 @@
 # index.csv. A shot the owner saves later is redrawn by running it again (its row is replaced).
 # v2 is drawn only after its test: it refuses until models/ae_xpower/v2/evaluation.json has
 # scored the chosen model, since the pictures give F1 against the owner on the test shots.
+# v4 likewise (VERSION=v4, after models/ae_xpower/v4/evaluation.json).
 #
 #   pilot:      SHOTS="170659 170813" sbatch <this>
 #   full run:   sbatch <this>

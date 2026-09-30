@@ -24,6 +24,16 @@ below 80 kHz an owner-absent frame IGNORED but for the pixels they take. Its
 masks are written only when the markers' gate passes (`gated`), and its test
 reuses SegNet v2's test shots after v2's breakdown was seen (`test_of`,
 `reuse_note`). v2 is unchanged.
+
+v4 (`SEG_VERSIONS["v4"]`) is pseudo-v4 and SegNet v4: SegNet v1 with the band
+at 60-250 kHz, the band the owner's review page draws AE from (2026-09-30).
+pseudo-v1's rules (80-250 kHz as pseudo-v1's, 60-80 kHz built apart), TokEye's
+0-2 s masks, the live labels file and the chosen ae_xpower v1 model's split,
+as v1's; the blob records its band. The live labels have moved since SegNet
+v1 trained (6 of its 162 split shots, 3 of them test shots), so v4 differs
+from v1 in the band and in the owner's label edits. Its test reuses SegNet
+v1's test shots after v1's test was scored (`test_of`, `reuse_note`). v1-v3
+are unchanged.
 """
 
 from __future__ import annotations
@@ -58,6 +68,21 @@ SEG_VERSIONS = {
     "v3": SegVersion(
         "pseudo-v3", (0.0, 250.0), "v3", "v3", True, gated=True, test_of="v2"
     ),
+    "v4": SegVersion("pseudo-v4", (60.0, 250.0), None, "v1", False, test_of="v1"),
+}
+
+# What each `test_of` version's design is, and what of the earlier version's
+# test had been seen when it was made: (design, seen, record).
+REUSE = {
+    "v3": ("pseudo-v3's markers", "test breakdown had been seen", "diagnosis.md"),
+    "v4": (
+        (
+            "the 60-250 kHz band, and the owner's label edits since SegNet v1 on 6 "
+            "of its 162 split shots, 3 of them test shots"
+        ),
+        "test had been scored",
+        "evaluation.json",
+    ),
 }
 
 
@@ -68,11 +93,12 @@ def reuse_note(version: str, n_test: int | None = None) -> str | None:
     if earlier is None:
         return None
     shots = "test shots" if n_test is None else f"{n_test} test shots"
+    design, seen, record = REUSE[version]
     return (
         f"SegNet {version}'s test is a second use of SegNet {earlier}'s {shots}, "
-        f"and its design (pseudo-{version}'s markers) was made after SegNet "
-        f"{earlier}'s test breakdown had been seen (models/ae_seg/{earlier}/"
-        "diagnosis.md): its test scores are not an unbiased estimate. Tier: "
+        f"and its design ({design}) was made after SegNet "
+        f"{earlier}'s {seen} (models/ae_seg/{earlier}/"
+        f"{record}): its test scores are not an unbiased estimate. Tier: "
         "suggestions."
     )
 

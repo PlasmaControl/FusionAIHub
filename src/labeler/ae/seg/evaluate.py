@@ -56,6 +56,12 @@ markers IGNORE in present frames (the mask's `mhd`), and its AE pixels below
 (`markers.ntm_intervals`), beside TokEye's lit pixels there. Every report says
 that `recipe`'s and `tokeye`'s pixel Dice are high by construction
 (`BY_CONSTRUCTION`).
+
+**SegNet v4** (`--version v4`) is scored as v1, over 0-2 s, on pseudo-v4's
+pixels, over the band its blob records (60-250 kHz): every method and a frame's
+present call are cut to that band, and evaluation.md names it. Its test shots
+are v1's, so evaluation.md states that its test is a second use of them, made
+after v1's test was scored (`reuse_note`).
 """
 
 from __future__ import annotations
@@ -442,6 +448,13 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
         f"{meta['threshold']}. 95 % shot-bootstrap intervals."
     )
     whole = meta.get("frames_window") == "whole"
+    if not whole and meta.get("version", VERSION) != VERSION:
+        # A later 0-2 s version (v4) names its band; v1's report is as it was.
+        lo, hi = meta["band_khz"]
+        summary = summary.replace(
+            f"Threshold {meta['threshold']}.",
+            f"Threshold {meta['threshold']}, band {lo:g}-{hi:g} kHz.",
+        )
     if whole:
         lo, hi = meta["band_khz"]
         summary = (
@@ -478,7 +491,11 @@ def report_md(scores: dict, bar: dict, meta: dict) -> str:
 
 
 def run_test(
-    paths: Paths, models: Path, limit: int = 0, version: str = VERSION
+    paths: Paths,
+    models: Path,
+    limit: int = 0,
+    version: str = VERSION,
+    device: torch.device | None = None,
 ) -> dict:
     spec = SEG_VERSIONS[version]
     check_limit(paths, models, limit)
@@ -490,6 +507,8 @@ def run_test(
     model_file = models / "model.pt"
     model_bytes = model_file.read_bytes()
     seg = train.load(BytesIO(model_bytes))
+    if device is not None:
+        seg[0].to(device)
     found = train.blob_version(seg[1])
     if found != version:
         raise ValueError(
@@ -632,18 +651,30 @@ def main(argv=None) -> int:
         choices=sorted(SEG_VERSIONS),
         default=VERSION,
         help="the SegNet version the model is (default v1); v2 and v3 are scored "
-        "over the owner's whole windows",
+        "over the owner's whole windows; v4 as v1, over 0-2 s at 60-250 kHz",
     )
     p.add_argument(
         "--models", type=Path, help="default $LABELER_ROOT/models/ae_seg/<version>"
     )
     p.add_argument("--limit", type=int, default=0, help="the first N shots (pilots)")
+    p.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="SegNet's device; auto (the default): the GPU when one is visible",
+    )
     args = p.parse_args(argv)
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
+    try:
+        device = train.pick_device(args.device)
+    except ValueError as error:
+        p.error(str(error))
     paths = Paths.from_env()
     models = args.models or model_dir(paths, args.version)
     try:
-        record = run_test(paths, models, args.limit, version=args.version)
+        record = run_test(
+            paths, models, args.limit, version=args.version, device=device
+        )
     except (OSError, ValueError) as error:
         p.error(str(error))
     print(json.dumps({"bar": record["bar"], "counts": record["counts"]}))

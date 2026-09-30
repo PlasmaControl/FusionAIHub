@@ -26,6 +26,8 @@
 # pilot (LIMIT, the first N test shots, 20 or fewer) writes only to
 # runs/ae_xpower/posthoc/$VERSION/. Run it again after the seed study for its (c).
 #
+# v4 (VERSION=v4): the same record for v4, its (d) the second look at v2's test shots.
+#
 #   pilot:      LIMIT=3 sbatch <this>   (exempt from the gate but reported)
 #   full run:   sbatch <this>
 #   after the study:  sbatch --dependency=afterok:<seed array ids> <this>

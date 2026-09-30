@@ -1,7 +1,7 @@
 """Train FrameCNN on the owner's reviewed AE shots.
 
     python -m labeler.ae.xpower.train --candidate NAME [--out DIR] [--pilot N]
-    python -m labeler.ae.xpower.train --from-cv --version v2 [--pilot N]
+    python -m labeler.ae.xpower.train --from-cv --version v2 [--pilot N]  # or v3, v4
 
 The first (v1) reads the owner's labels (`data/events/alfven_eigenmode/review/
 labels.csv`), the review page's AE stores and TokEye's masks, and writes
@@ -26,7 +26,9 @@ the current choice, folds and snapshot made that model, and otherwise refuses;
 it never trains a second one. A whole-window version's final model, its
 `training.json` and `chosen.json` name `ae/masks-full` and `ae/dataset-full` by
 their manifests' sha256 (`inputs`, `labeler.ae.full.inputs_identity`), refused
-unless the choice names the same.
+unless the choice names the same. A version whose test is a second use of an
+earlier version's test shots (`xpower.TEST_OF`, v4) says so in its checkpoint,
+`training.json` and `chosen.json` (`test_reuse`, `xpower.reuse_note`).
 
 The loss is binary cross-entropy on the frames the owner called present or
 absent; an absent frame TokEye marks as MHD (`data.mhd_frames`) weighs the
@@ -68,10 +70,12 @@ from . import (
     model_dir,
     pilot_area,
     read_snapshot,
+    reuse_note,
     snapshot_file,
     tokeye_masks,
 )
 from .data import (
+    BAND60_KHZ,
     BAND_KHZ,
     CONTEXT_FRAMES,
     FULL_BAND_KHZ,
@@ -93,7 +97,8 @@ THRESHOLDS = np.round(np.arange(0.10, 0.91, 0.05), 2)
 #: chosen on the validation shots (`evaluate --choose`); v2's keep v1's band
 #: and vary only the MHD weight, chosen by cross-validation (`cv`, the ledger's
 #: Deviation 11); v3's are v2's weights on the full band, 0-250 kHz, chosen the
-#: same way over the owner's whole windows.
+#: same way over the owner's whole windows; v4's are v2's weights on 60-250 kHz,
+#: chosen as v2's are, over 0-2 s.
 CANDIDATES_BY_VERSION = {
     "v1": {
         "band80-mhd3": {"band": BAND_KHZ, "mhd_weight": 3.0},
@@ -109,6 +114,11 @@ CANDIDATES_BY_VERSION = {
         "band0-mhd3": {"band": FULL_BAND_KHZ, "mhd_weight": 3.0},
         "band0-mhd10": {"band": FULL_BAND_KHZ, "mhd_weight": 10.0},
         "band0-mhd30": {"band": FULL_BAND_KHZ, "mhd_weight": 30.0},
+    },
+    "v4": {
+        "band60-mhd3": {"band": BAND60_KHZ, "mhd_weight": 3.0},
+        "band60-mhd10": {"band": BAND60_KHZ, "mhd_weight": 10.0},
+        "band60-mhd30": {"band": BAND60_KHZ, "mhd_weight": 30.0},
     },
 }
 #: The default version's candidates (v1's), for readers that name no version.
@@ -489,6 +499,8 @@ def train_from_cv(
             f"have {len(pool)}"
         )
     choice_sha = hashlib.sha256(choice_bytes).hexdigest()
+    n_test = sum(v == "test" for v in folds.split.values())
+    note = reuse_note(version, n_test)  # a second use of an earlier test's shots
     extra = {
         "from_cv": True,
         "choice_sha256": choice_sha,
@@ -497,6 +509,7 @@ def train_from_cv(
         "fixed_epochs": epochs,
         "cv_branch": choice["branch"],
         **({"inputs": inputs} if inputs else {}),
+        **({"test_reuse": note} if note else {}),
     }
     if (out / "model.pt").exists() and not pilot:
         # Saved, and the job gone before chosen.json: that model's record, if
@@ -551,6 +564,7 @@ def train_from_cv(
         "labels_sha256": digest,
         "model_sha256": sha256_of(out / "model.pt"),
         **({"inputs": inputs} if inputs else {}),
+        **({"test_reuse": note} if note else {}),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
