@@ -228,13 +228,26 @@ def pos_weight(examples: Sequence[Example], cap: float) -> float:
     return float(np.clip(neg / pos if pos else cap, 1.0, cap))
 
 
+def pick_device(name: str = "auto") -> torch.device:
+    """`name`'s device: "auto" is the GPU when one is visible, else the CPU. A
+    SLURM CPU job sees none, so it trains as before; the head node's GPUs do."""
+    if name == "auto":
+        name = "cuda" if torch.cuda.is_available() else "cpu"
+    if name == "cuda" and not torch.cuda.is_available():
+        raise ValueError("--device cuda: no GPU is visible")
+    return torch.device(name)
+
+
 def masked_loss(logits: torch.Tensor, target: torch.Tensor, weight: float):
     """BCE with AE pixels weighted `weight`, plus soft Dice; IGNORE pixels count
     in neither. `logits` `(B, H, W)`, `target` `(B, H, W)` uint8."""
     valid = (target != IGNORE).float()
     truth = (target == 1).float()
     bce = F.binary_cross_entropy_with_logits(
-        logits, truth, pos_weight=torch.tensor(weight), reduction="none"
+        logits,
+        truth,
+        pos_weight=torch.tensor(weight, device=logits.device),
+        reduction="none",
     )
     bce = (bce * valid).sum() / valid.sum().clamp(min=1.0)
     p = torch.sigmoid(logits) * valid
@@ -244,10 +257,12 @@ def masked_loss(logits: torch.Tensor, target: torch.Tensor, weight: float):
 
 @torch.no_grad()
 def predict(model: SegNet, x: np.ndarray) -> np.ndarray:
-    """P(AE) per pixel of `(3, n_y, n)` uint8 rows, `(n_y, n)` float32."""
+    """P(AE) per pixel of `(3, n_y, n)` uint8 rows, `(n_y, n)` float32, on the
+    model's device."""
     model.eval()
-    batch = torch.from_numpy(x[None].astype(np.float32) / 255.0)
-    return torch.sigmoid(model(batch))[0, 0].numpy()
+    device = next(model.parameters()).device
+    batch = torch.from_numpy(x[None].astype(np.float32) / 255.0).to(device)
+    return torch.sigmoid(model(batch))[0, 0].cpu().numpy()
 
 
 def pixel_cells(prob: np.ndarray, target: np.ndarray, threshold: float) -> np.ndarray:
@@ -286,12 +301,15 @@ def fit(
     val: Sequence[Example],
     config: TrainConfig | None = None,
     log: Callable[[str], None] = print,
+    device: torch.device | None = None,
 ) -> tuple[SegNet, list[dict], float]:
-    """The model at its best validation epoch, the per-epoch history, the threshold."""
+    """The model at its best validation epoch, the per-epoch history, the
+    threshold; trained on `device` (default the CPU)."""
+    device = device or torch.device("cpu")
     config = config or TrainConfig()
     torch.manual_seed(config.seed)
     rng = np.random.default_rng(config.seed)
-    model = SegNet(SegNetConfig(width=config.width))
+    model = SegNet(SegNetConfig(width=config.width)).to(device)
     optimiser = torch.optim.AdamW(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
     )
@@ -306,8 +324,9 @@ def fit(
         losses = []
         for i in range(0, len(order), config.batch):
             pick = order[i : i + config.batch]
-            batch = torch.from_numpy(x[pick].astype(np.float32) / 255.0)
-            loss = masked_loss(model(batch)[:, 0], torch.from_numpy(y[pick]), weight)
+            batch = torch.from_numpy(x[pick].astype(np.float32) / 255.0).to(device)
+            target = torch.from_numpy(y[pick]).to(device)
+            loss = masked_loss(model(batch)[:, 0], target, weight)
             optimiser.zero_grad()
             loss.backward()
             optimiser.step()
@@ -356,13 +375,15 @@ def save(
     band_khz=None,
     version: str | None = None,
     clicks: dict | None = None,
+    device: str | None = None,
 ) -> None:
     """`inputs`: the sha256 of each file trained from (labels, masks, pseudo index).
     Given `band_khz` and `version`, which go together, the blob records both and
     `training.json` both and the version's pseudo-masks; v1's record neither.
     `clicks` goes into `training.json` as it is: `main`'s `clicked_shots` (the
     shots whose decisions on other masks reach the targets) and
-    `left_out_decisions` (why each other one does not)."""
+    `left_out_decisions` (why each other one does not). `device`, when given, is
+    what it trained on; the weights are saved on the CPU either way."""
     if (band_khz is None) != (version is None):
         raise ValueError(f"{out}: a model records its band and version together")
     named, described = {}, {}
@@ -384,7 +405,7 @@ def save(
         with atomic_path(out / name) as tmp:
             tmp.write_bytes(data)
     blob = {
-        "state_dict": model.state_dict(),
+        "state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
         "config": model.config.as_dict(),
         "threshold": threshold,
         "train": asdict(config),
@@ -411,6 +432,7 @@ def save(
             v: sum(x == v for x in split.values()) for v in sorted(set(split.values()))
         },
         **(clicks or {}),
+        **({"device": device} if device else {}),
     }
     with atomic_path(out / "training.json") as tmp:
         tmp.write_text(json.dumps(record, indent=1) + "\n")
@@ -474,10 +496,21 @@ def main(argv=None) -> int:
         "(v2: pilot-v2; v3: pilot-v3; v4: pilot-v4)",
     )
     p.add_argument("--epochs", type=int, default=TrainConfig.epochs)
+    p.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda"),
+        default="auto",
+        help="auto (the default): the GPU when one is visible, else the CPU",
+    )
     args = p.parse_args(argv)
     if args.pilot and not 6 <= args.pilot <= 20:
         p.error("a pilot is 6 to 20 shots")
     torch.set_num_threads(int(os.environ.get("SLURM_CPUS_PER_TASK", "4")))
+    try:
+        device = pick_device(args.device)
+    except ValueError as error:
+        p.error(str(error))
+    print(f"training on {device}")
     paths = Paths.from_env()
     version, spec = args.version, SEG_VERSIONS[args.version]
     v1 = version == "v1"  # v1 makes every call as it did before v2
@@ -612,7 +645,7 @@ def main(argv=None) -> int:
     val = [examples[s] for s, v in sorted(split.items()) if v == "val"]
     config = TrainConfig(epochs=2 if args.pilot else args.epochs)
     model, history, threshold = fit(
-        train, val, config, log=lambda m: print(m, flush=True)
+        train, val, config, log=lambda m: print(m, flush=True), device=device
     )
     for key, path in input_files.items():
         if _sha(path) != initial[key]:
@@ -637,6 +670,7 @@ def main(argv=None) -> int:
             band_khz=None if v1 else spec.band_khz,
             version=None if v1 else version,
             clicks=clicks,
+            device=device.type,
         )
     except (FileExistsError, ValueError) as error:
         p.error(str(error))
