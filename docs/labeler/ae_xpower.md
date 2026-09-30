@@ -24,6 +24,30 @@ Deviation 11). Every command takes `--version`; it must be the models
 directory's name and the version the checkpoint records, or the command
 refuses.
 
+**v4** (2026-09-30, the owner's ask after the review page's AE band was lowered
+to 60 kHz) is v2 with the band at 60-250 kHz: candidates `band60-mhd3`,
+`band60-mhd10`, `band60-mhd30` (`data.BAND60_KHZ`), and everything else v2's:
+v2's label snapshot (the same sha256, `LABEL_SNAPSHOTS["v4"]`), v2's split,
+folds and 60 test shots, 0-2 s scoring, the choice rule and the final-training
+rule. Before its folds, copy the snapshot in (there is no command for it; v2's
+was copied the same way) and check its sha256:
+
+```bash
+mkdir -p $LABELER_ROOT/models/ae_xpower/v4/review
+cp $LABELER_ROOT/models/ae_xpower/v2/review/labels.csv $LABELER_ROOT/models/ae_xpower/v4/review/labels.csv
+sha256sum $LABELER_ROOT/models/ae_xpower/v4/review/labels.csv   # 5f52a268...
+```
+
+`cv --version v4 --folds` refuses unless its folds are v2's `cv/folds.csv`,
+byte for byte, and `evaluate --test --version v4` unless its test shots are
+v2's. Its test is a second use of v2's test shots, after v2's was scored, so
+`training.json`, `chosen.json`, the model and `evaluation.{json,md}` carry
+`test_reuse` (`xpower.reuse_note`), and the second look (`evaluate.SUBSET_OF`)
+names v2's scoring; its `v2_subset` table is its whole test. v2's own records
+are untouched: `evaluate --test --version v2` still refuses a second scoring.
+The jobs are v2's with `VERSION=v4` (each script's header has the v4 lines).
+SegNet v4 (`labeler.ae.seg`, SegNet v1 at 60-250 kHz) is separate.
+
 ## Inputs
 
 - **The owner's labels, frozen.** v2 reads only its label snapshot,

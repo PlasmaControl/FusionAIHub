@@ -32,6 +32,10 @@
 #               shots or fewer comes first; it is exempt from the gate but reported)
 #   full run:   sbatch --dependency=afterok:<cv array id> <this>
 #   gate:       python -m labeler.jobstats --job-id <id> --cpu-only
+#   v4:         VERSION=v4 PILOT=10 sbatch <this>, then VERSION=v4 sbatch
+#               --dependency=afterok:<v4 cv array id> <this>: models/ae_xpower/v4/
+#               {cv/choice.json, <candidate>/, chosen.json}; then
+#               VERSION=v4 sbatch --dependency=afterok:<id> ae_xpower_evaluate.sbatch
 #
 # ------------------------------------------ sizing (measured 2026-09-29, v3's final, job 2944533)
 #   The choice: 5 s, MaxRSS 231,232 KiB. The final model, band0-mhd3 on 120 shots for
