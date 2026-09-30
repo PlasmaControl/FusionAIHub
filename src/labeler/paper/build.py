@@ -236,8 +236,8 @@ PRODUCTS = {
     "fig_interpreter": FIGURE,
     "fig_examples_ae": FIGURE,
     **{
-        frame_examples.figure_name(c): FIGURE
-        for c, m in roc.SELECTED.items()
+        frame_examples.figure_name(m): FIGURE
+        for m in roc.SELECTED.values()
         if m != roc.AE_METHOD
     },
 }
@@ -873,10 +873,10 @@ def _draw(
         read("ae_scored_labels", snap.labels)
         scored = snap.sha("ae_scored_labels")
     frame_picks = {}
-    for category, method in roc.SELECTED.items():
+    for method in roc.SELECTED.values():
         if method == roc.AE_METHOD:
             continue
-        name = frame_examples.figure_name(category)
+        name = frame_examples.figure_name(method)
         why, record = _frame_examples(
             paths,
             found,
