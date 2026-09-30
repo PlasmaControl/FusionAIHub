@@ -19,6 +19,10 @@ phenomenon with none of its inputs yet is marked "coming".
 - `shots`: AE examples from the test shots, and the pieces of a shot figure
   the interpreter figure shares (the spectrogram, the mask, the state bars,
   the legend);
+- `frame_examples`: the frame models' examples (`fig_examples_ntm`,
+  `fig_examples_hmode`, `fig_examples_elm`, `fig_examples_sawtooth`): three test
+  shots each, the best, median and worst F1, drawn as the frames gallery draws
+  a test shot (`labeler.frames.gallery`);
 - `roster`: the interpreter figure, `fig_interpreter`: one roster shot's
   suggestions from the models, every phenomenon on it;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the

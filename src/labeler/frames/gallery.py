@@ -59,6 +59,118 @@ def _runs(flags) -> list[tuple[int, int]]:
     return list(zip(edges[::2], edges[1::2], strict=True))
 
 
+def draw_rows(ax, spec: EventSpec, x, t0: float, t1: float) -> None:
+    """The features `x` `(C, subs * n)` over `t0`-`t1` ms, one labelled block a
+    role, scaled 0-1."""
+    x = np.asarray(x, dtype=np.float32)
+    ax.imshow(
+        x,
+        aspect="auto",
+        extent=(t0, t1, x.shape[0], 0),
+        cmap="viridis",
+        vmin=0,
+        vmax=1,
+        interpolation="nearest",
+    )
+    widths = [_width(role) for role in spec.roles]
+    edges = np.cumsum([0, *widths])
+    ticks, names, merged = [], [], []
+    for role, a, b in zip(spec.roles, edges[:-1], edges[1:], strict=True):
+        # an optional role's last channel is its row-was-present flag
+        data = b - 1 if role.optional else b
+        if merged and merged[-1][0] == role.name and not merged[-1][3]:
+            merged[-1][2] = data  # roles of one name share a tick
+        else:
+            merged.append([role.name, a, data, False])
+        if role.optional:
+            merged[-1][3] = True
+            merged.append([f"{role.name} seen", b - 1, b, True])
+    for name, a, b, _ in merged:
+        ticks.append((a + b) / 2)
+        names.append(name)
+    ax.set_yticks(ticks, names)
+    for edge in edges[1:-1]:
+        ax.axhline(edge, color="white", lw=0.6)
+    ax.set_ylabel("features")
+
+
+def draw_target(
+    ax,
+    spec: EventSpec,
+    target=None,
+    no_target: str = "not in the split",
+    *,
+    label: str = "{}",
+    fontsize: float = 8,
+    colours: dict | None = None,
+) -> None:
+    """The target strip: each state's runs of `target` `(bin starts ms,
+    states)`, the first run of a state labelled `label.format(its name)` for a
+    legend built from the artists; `colours` overrides `TARGET_COLOURS` per state
+    (None: the state is left blank, and has no key); with no target,
+    `no_target` says why."""
+    if target is not None:
+        starts, states = target
+        for state, colour in {**TARGET_COLOURS, **(colours or {})}.items():
+            if colour is None:
+                continue
+            name = label.format(TARGET_NAMES[state])
+            for i, (a, b) in enumerate(_runs(np.asarray(states) == state)):
+                ax.axvspan(
+                    starts[a],
+                    starts[b - 1] + spec.bin_ms,
+                    color=colour,
+                    lw=0,
+                    label=name if i == 0 else "_" + name,
+                )
+        ax.set_ylabel("target", rotation=0, ha="right", va="center")
+    else:
+        ax.text(
+            0.5,
+            0.5,
+            f"no target: {no_target}",
+            transform=ax.transAxes,
+            ha="center",
+            va="center",
+            fontsize=fontsize,
+            color="#666666",
+        )
+    ax.set_yticks([])
+
+
+def draw_prob(
+    ax,
+    prob,
+    first: int,
+    threshold: float,
+    *,
+    colour: str = "black",
+    alpha: float = 0.25,
+    shade: str = "#d62728",
+    lw: tuple[float, float] = (0.8, 0.6),
+    labels: tuple[str, str] = ("_", "_"),
+) -> None:
+    """P per frame from frame `first`, the frames at or above `threshold`
+    shaded, the threshold dotted. `labels` name the first shaded run and the
+    threshold line (a leading `_` hides one from a legend)."""
+    n = len(prob)
+    frame_edges = (first + np.arange(n + 1)) * FRAME_MS
+    said = np.nan_to_num(np.asarray(prob, dtype=np.float64), nan=-1.0) >= threshold
+    for i, (a, b) in enumerate(_runs(said)):
+        ax.axvspan(
+            frame_edges[a],
+            frame_edges[b],
+            color=shade,
+            alpha=alpha,
+            lw=0,
+            label=labels[0] if i == 0 else "_" + labels[0].lstrip("_"),
+        )
+    ax.plot(frame_edges[:-1] + FRAME_MS / 2, prob, color=colour, lw=lw[0], label="_P")
+    ax.axhline(threshold, color=colour, lw=lw[1], ls=":", label=labels[1])
+    ax.set_ylim(0, 1)
+    ax.set_ylabel("P")
+
+
 def draw(
     path,
     *,
@@ -80,50 +192,9 @@ def draw(
     rows, strip, model = fig.subplots(
         3, 1, sharex=True, gridspec_kw={"height_ratios": [4, 0.5, 1.5]}
     )
-    x = np.asarray(x, dtype=np.float32)
-    rows.imshow(
-        x,
-        aspect="auto",
-        extent=(t0, t1, x.shape[0], 0),
-        cmap="viridis",
-        vmin=0,
-        vmax=1,
-        interpolation="nearest",
-    )
-    widths = [_width(role) for role in spec.roles]
-    edges = np.cumsum([0, *widths])
-    rows.set_yticks((edges[:-1] + edges[1:]) / 2, [role.name for role in spec.roles])
-    for edge in edges[1:-1]:
-        rows.axhline(edge, color="white", lw=0.6)
-    rows.set_ylabel("features")
-    if target is not None:
-        starts, states = target
-        for state, colour in TARGET_COLOURS.items():
-            for a, b in _runs(np.asarray(states) == state):
-                strip.axvspan(
-                    starts[a], starts[b - 1] + spec.bin_ms, color=colour, lw=0
-                )
-        strip.set_ylabel("target", rotation=0, ha="right", va="center")
-    else:
-        strip.text(
-            0.5,
-            0.5,
-            f"no target: {no_target}",
-            transform=strip.transAxes,
-            ha="center",
-            va="center",
-            fontsize=8,
-            color="#666666",
-        )
-    strip.set_yticks([])
-    frame_edges = (first + np.arange(n + 1)) * FRAME_MS
-    said = np.nan_to_num(np.asarray(prob, dtype=np.float64), nan=-1.0) >= threshold
-    for a, b in _runs(said):
-        model.axvspan(frame_edges[a], frame_edges[b], color="#d62728", alpha=0.25, lw=0)
-    model.plot(frame_edges[:-1] + FRAME_MS / 2, prob, color="black", lw=0.8)
-    model.axhline(threshold, color="black", lw=0.6, ls=":")
-    model.set_ylim(0, 1)
-    model.set_ylabel("P")
+    draw_rows(rows, spec, x, t0, t1)
+    draw_target(strip, spec, target, no_target)
+    draw_prob(model, prob, first, threshold)
     model.set_xlabel("time (ms)")
     model.set_xlim(t0, t1)
     handles = [
