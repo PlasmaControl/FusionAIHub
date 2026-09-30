@@ -6,8 +6,9 @@
         [--index I --count N] [--workers W]
 
 **Shots.** The method's shots file's (`frames.shots_file`, every split, of
-`frames.VERSION`, as every file here is, F1), or `--shots`. Shard I of N (`shard`) takes every N-th of them in shot order from
-the I-th, and `--limit` the shard's first N. I and N default to
+`frames.VERSION`, as every file here is, F1), or `--shots`. Shard I of N
+(`shard`) takes every N-th of them in shot order from the I-th, and `--limit`
+the shard's first N. I and N default to
 SLURM_ARRAY_TASK_ID and SLURM_ARRAY_TASK_COUNT (D67), so each task of an array
 is its own shard.
 

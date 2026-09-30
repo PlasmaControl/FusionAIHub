@@ -5,11 +5,12 @@ bar (round three, Part B; spec §3.4).
 
 **Bins.** A shot's bins are its features' (`prepare`, of `frames.VERSION`, F1):
 the whole `bin_ms` bins inside its window, and their states the original's
-target with the owner's label over it (`targets.merged`, F2). A bin is scored when its target is ABSENT or PRESENT_T and
-every one of its 10 ms frames is observed (`score`); UNKNOWN and UNCERTAIN_T
-bins are not. The model says present where its P, its frames' logits pooled as
-it was trained (`model.bin_logits`), reaches the threshold chosen on the val
-shots (`train.fit`).
+target with the owner's label over it (`targets.merged`, F2). A bin is scored
+when its target is ABSENT or PRESENT_T and every one of its 10 ms frames is
+observed (`score`); UNKNOWN and UNCERTAIN_T bins are not. The model says
+present where its P, its frames' logits pooled as it was trained
+(`model.bin_logits`), reaches the threshold chosen on the val shots
+(`train.fit`).
 
 **Baselines** (`baselines`, the spec's `baselines`), each a decision per bin:
 - `always`: present everywhere;
