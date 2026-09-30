@@ -767,8 +767,8 @@ def _draw(
     if ae is not None:
         look, unlooked = second_look(paths, found, snap, version, chosen, split)
     said = look["said"] if look else None
-    evaluations: dict = {}
-    unscored = _scores(found, snap, ae, figure, lacking, evaluations)
+    frame_evaluations: dict = {}
+    unscored = _scores(found, snap, ae, figure, lacking, frame_evaluations)
     if unscored is not None:
         skipped["fig_scores"] = unscored
     if ready(("table_ae_scores",), "ae_evaluation"):
@@ -883,7 +883,7 @@ def _draw(
             snap,
             method,
             name,
-            evaluations.get(method),
+            frame_evaluations.get(method),
             examples,
             figure,
             lacking,
