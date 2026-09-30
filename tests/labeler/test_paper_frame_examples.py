@@ -171,7 +171,7 @@ def test_the_build_draws_the_frame_figure_and_records_the_picks(
     found, snap, evaluation = _read(scored, METHOD)
     why, record, made, partial = _call(scored, tmp_path, evaluation, snap, found)
     assert why is None and made == {NAME: [NAME + ".pdf", NAME + ".png"]}
-    assert record["example_shots"] == sorted(TEST), "two test shots in all"
+    assert sorted(record["example_shots"]) == TEST, "two test shots in all"
     assert record["example_rule"] == frame_examples.RULE
     assert record["test_shots"] == 2 and record["features_missing"] == {}
     assert record["threshold"] == 0.5
