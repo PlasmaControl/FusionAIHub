@@ -21,6 +21,7 @@ from scipy.ndimage import uniform_filter1d
 
 from ...config import Paths
 from .. import spans
+from ..heuristics import SXR_CHORDS, SXR_FANS, SXR_LIT_FRAC, SXR_MIN_CHORDS
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
 from ._shared import (
@@ -70,15 +71,11 @@ TE_MARGIN = 0.25
 TE_CLIPPED = ", clipped above its plasma range"
 #: The SXR fans tried in order, by their first row in the corpus's 320 (32
 #: chords each). The first with `MIN_CHORDS` chords finite over at least half
-#: the record is drawn: its `CHOSEN` chords with the most crash-like drops.
-SXR_ARRAYS = (
-    ("SX90RM1F", 192),
-    ("SX90RP1F", 256),
-    ("SX90RM1S", 224),
-    ("SX90RP1S", 288),
-)
-CHORDS = 32
-MIN_CHORDS = 8
+#: the record is drawn: its `CHOSEN` chords with the most crash-like drops. The
+#: rule is `heuristics.SXR_FANS`, which the sawtooth detector's SXR part reads.
+SXR_ARRAYS = SXR_FANS
+CHORDS = SXR_CHORDS
+MIN_CHORDS = SXR_MIN_CHORDS
 CHOSEN = 4
 #: A crash-like drop: a sample where the `SMOOTH_SAMPLES`-sample mean falls by
 #: more than `DROP_SIGMA` standard deviations of its own sample-to-sample
@@ -186,7 +183,7 @@ def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         rows = list(range(first, first + CHORDS))
         array = raw_signal(int(shot), "sxr", channels=rows, paths=paths)
         y = np.asarray(array.y)
-        lit = np.isfinite(y).mean(axis=1) >= 0.5
+        lit = np.isfinite(y).mean(axis=1) >= SXR_LIT_FRAC
         if lit.sum() < MIN_CHORDS:
             continue
         drops = np.full(CHORDS, -1)

@@ -8,8 +8,25 @@ is here for its own reason.
 synchronised fast step across the ECE array whose sign INVERTS along the
 channel index - the core loses Te, the plasma outside the inversion radius
 gains it - and no single channel's spectrogram can tell it from an ELM,
-because on one channel the two look the same. `sawtooth_events` is
-`omnimode.mrms.ece` ported: `inversion_block` and `has_inversion` verbatim
+because on one channel the two look the same.
+
+The span drafts use v3 (`sawtooth_crashes`, `sawtooth_events_v3`, round
+three). It runs one crash test on the ECE array and on the first lit SXR fan
+(`SXR_FANS`): a step across each 1 ms bin, judged in each channel's own
+running noise, where at least `CRASH_BLOCK` neighbouring channels fall; the
+fall has to be fast, 2-50 % of the level, and hold the hottest channel; on ECE
+a heat pulse has to rise next door. The two diagnostics' crashes are merged,
+and none is kept in the 300 ms after a collapse (a fall of over half the
+level). v2's test, below, is saturated: noisy ECE channels make a candidate
+every 10 ms on every shot, and its inversion thresholds are fractions of the
+profile's own largest step, so noise and drift of the right shape pass while
+real crashes, their steps measured 2-8 ms out after the heat pulse decayed,
+fail. Over 32 shots it finds 2,091 crashes forward and 2,080 on the same ECE
+time-reversed; the v3 prototype found 5,247 and 406 over 231 shots.
+
+`sawtooth_events` (v2) is kept for its table - the v1 and v2 span tables and
+the pipeline's events were made by it - and for the reference check below.
+It is `omnimode.mrms.ece` ported: `inversion_block` and `has_inversion` verbatim
 (their thresholds were calibrated on shot 193273 and this module has no
 better ones), and the crash search RESTRUCTURED. The reference computes the
 1 ms envelope inside `crash_times` and then again inside `crash_steps` for
@@ -63,6 +80,7 @@ from __future__ import annotations
 import itertools
 import math
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -105,6 +123,70 @@ REL_POS = 0.3
 MIN_BLOCK = 3
 #: Neutral channels allowed between the dropping block and the rising one.
 MAX_GAP = 2
+
+#: v3's crash test (`sawtooth_crashes`), in 1 ms envelope bins. The step at bin
+#: k is mean(k + 1 .. k + 3) - mean(k - 3 .. k - 1): the crash's own bin is
+#: skipped, and three bins either side are measured before a heat pulse decays
+#: (v2's 2-8 ms windows missed the six crashes of 189324 at 2500-2900 ms).
+CRASH_GAP_BINS = 1
+CRASH_SPAN_BINS = 3
+#: Each channel's noise: 1.4826 x the MAD of its steps over a running 401 bins
+#: (`_running_sigma`), so a step is judged against the channel's own scatter,
+#: not the profile's largest step, which let v2 pass noise and drift of the
+#: right shape.
+NOISE_BINS = 401
+MAD_SIGMA = 1.4826
+#: z below which a channel drops, and above which it takes the heat pulse.
+Z_DROP = 5.0
+Z_PULSE = 3.0
+#: Channels (after the 3-channel median across the array) that have to drop
+#: together at a candidate, and that the dropping block has to span.
+CRASH_BLOCK = 3
+#: Two candidates on one diagnostic are at least this many bins apart.
+CRASH_SEP_BINS = 5
+#: The hottest channel, the argmax of its median over the 10 bins before the
+#: crash, has to lie in the dropping block or this many channels either side:
+#: a sawtooth crashes the core.
+HOT_BINS = 10
+HOT_SLACK = 1
+#: The block's mean fall, as a fraction of its level over the 3 bins before.
+#: Under `MIN_FALL` it is too small to be a crash; over `COLLAPSE_FALL` it is a
+#: collapse (a thermal quench), not a crash.
+MIN_FALL = 0.02
+COLLAPSE_FALL = 0.5
+#: The fall has to be fast: the block's change from bins k-7 .. k-5 to bins
+#: k-3 .. k-1 must not be a fall of more than `FAST_FRAC` of the crash's own
+#: step. A smooth roll-over falls as fast before bin k as across it.
+FAST_FRAC = 0.5
+#: ECE only: a run of `PULSE_BLOCK` channels over `Z_PULSE` has to start within
+#: `PULSE_REACH` channels of the dropping block, on either side. SXR is line-
+#: integrated and its heat pulse is weak, so the SXR part has no pulse test.
+PULSE_BLOCK = 3
+PULSE_REACH = 6
+#: The union: a crash within `MERGE_MS` of the previous one (either diagnostic)
+#: is the same crash, and every crash within `COLLAPSE_GUARD_MS` after a
+#: collapse on either is dropped (186224's disruption drafted a false SXR span
+#: without it). The quench and the recovery after it are not sawteeth.
+MERGE_MS = 5.0
+COLLAPSE_GUARD_MS = 300.0
+#: The diagnostics v3 reads, and the one of them that has the pulse test.
+CRASH_DIAGS = ("ece", "sxr")
+PULSE_DIAG = "ece"
+
+#: The SXR fans tried in order, by their first row in the corpus's 320 `sxr`
+#: rows (`SXR_CHORDS` chords each). The first with `SXR_MIN_CHORDS` chords
+#: finite over at least `SXR_LIT_FRAC` of the record is the one read, its lit
+#: chords in chord order: v3's SXR part and the sawtooth review panels
+#: (`panels/sawtooth_oscillation.py`) both take this rule from here.
+SXR_FANS = (
+    ("SX90RM1F", 192),
+    ("SX90RP1F", 256),
+    ("SX90RM1S", 224),
+    ("SX90RP1S", 288),
+)
+SXR_CHORDS = 32
+SXR_MIN_CHORDS = 8
+SXR_LIT_FRAC = 0.5
 
 #: Filterscope channels that carry real D-alpha (plan V4); 8 and up are NaN
 #: on every shot in the corpus.
@@ -521,6 +603,10 @@ def sawtooth_events(
     `hi` because a reader who takes `hi` for the last dropping channel is
     off by one, and the inversion RADIUS - the thing anyone reads this for -
     sits between `stop - 1` and `stop`.
+
+    On 198658 the reference's 47 crashes are not in the data - neither ECE
+    nor SXR shows a sawtooth there (round three's look) - which is why v3
+    (`sawtooth_crashes`, `sawtooth_events_v3`) replaced this for the drafts.
     """
     ece_y = np.atleast_2d(ece_y)
     if ece_y.shape[0] != N_ECE_CHANNELS:
@@ -601,6 +687,342 @@ def sawtooth_summary(events: Sequence[Event]) -> dict[str, float]:
         "median_period_ms": float(np.median(periods_ms)),
         "mean_period_ms": float(periods_ms.mean()),
     }
+
+
+# ------------------------------------------------------------ sawteeth, v3
+
+#: `crash_test`'s verdicts: a crash, a collapse, or the test that failed.
+CRASH = "crash"
+COLLAPSE = "collapse"
+#: How far apart two times on different 1 ms grids may round and still be
+#: `MERGE_MS` or `COLLAPSE_GUARD_MS` apart, in ms.
+_TIME_TOL_MS = 1e-6
+
+
+def _window_means(env: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+    """`(C, len(lo))` mean of `env[:, lo:hi]` for each pair; NaN where the
+    window leaves the record or holds a non-finite bin."""
+    c, m = env.shape
+    ok = np.isfinite(env)
+    zero = np.zeros((c, 1))
+    total = np.concatenate([zero, np.cumsum(np.where(ok, env, 0.0), axis=1)], axis=1)
+    bad = np.concatenate([zero, np.cumsum(~ok, axis=1, dtype=np.float64)], axis=1)
+    inside = (lo >= 0) & (hi <= m)
+    a, b = np.clip(lo, 0, m), np.clip(hi, 0, m)
+    out = (total[:, b] - total[:, a]) / np.maximum(b - a, 1)
+    out[:, ~inside | (b <= a)] = np.nan
+    out[(bad[:, b] - bad[:, a]) > 0] = np.nan
+    return out
+
+
+def _running_sigma(steps) -> np.ndarray:
+    """`(C, m)`: `MAD_SIGMA` x the running median of |step - running median|
+    over `NOISE_BINS` of each channel's finite steps, mirrored at the ends; 0
+    where the step is not finite.
+
+    The prototype counted a NaN step as 0 and padded with the edge value
+    ("nearest"). The first and last three steps are NaN, so the 200 bins at
+    each end of the record were judged against windows half full of zeros: on
+    `v3_rows`' noise with no crashes that underestimate made candidates at
+    3.5-32.5 ms and 1965.5-1996.5 ms, the only candidates in the record.
+    """
+    steps = np.atleast_2d(np.asarray(steps, dtype=np.float64))
+    sigma = np.zeros_like(steps)
+    for row, step in zip(sigma, steps):
+        ok = np.isfinite(step)
+        if ok.sum() < 2:
+            continue
+        x = step[ok]
+        med = median_filter(x, size=NOISE_BINS, mode="mirror")
+        row[ok] = MAD_SIGMA * median_filter(
+            np.abs(x - med), size=NOISE_BINS, mode="mirror"
+        )
+    return sigma
+
+
+def step_z(env) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(steps, sigma, z)`, each `(C, m)`: every channel's step at every bin, its
+    running noise, and the step in that noise, median-filtered across channels.
+
+    The step at bin k is mean(env[k + 1 .. k + 3]) - mean(env[k - 3 .. k - 1])
+    (`CRASH_GAP_BINS`, `CRASH_SPAN_BINS`): NaN where a window runs off the
+    record or holds a non-finite bin. sigma is `_running_sigma`'s. z is step /
+    sigma, 0 where sigma is 0 or the ratio is not finite, then the median of
+    each channel and its two neighbours (0 beyond the array's ends), so one
+    wild channel cannot make a block.
+    """
+    env = np.atleast_2d(np.asarray(env, dtype=np.float64))
+    k = np.arange(env.shape[1])
+    gap, span = CRASH_GAP_BINS, CRASH_SPAN_BINS
+    before = _window_means(env, k - span, k)
+    after = _window_means(env, k + gap, k + gap + span)
+    steps = after - before
+    sigma = _running_sigma(steps)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        z = np.where(sigma > 0, steps / sigma, 0.0)
+    z = np.where(np.isfinite(z), z, 0.0)
+    z = median_filter(z, size=(3, 1), mode="constant", cval=0.0)
+    return steps, sigma, z
+
+
+def crash_candidates(z) -> list[int]:
+    """The bins where at least `CRASH_BLOCK` channels have z < -`Z_DROP`, thinned
+    greedily - the most negative summed z first - to `CRASH_SEP_BINS` apart,
+    in time order."""
+    z = np.atleast_2d(np.asarray(z, dtype=np.float64))
+    dropping = z < -Z_DROP
+    cand = np.flatnonzero(dropping.sum(axis=0) >= CRASH_BLOCK)
+    score = np.where(dropping, z, 0.0).sum(axis=0)
+    shadow = np.zeros(z.shape[1], dtype=bool)
+    kept: list[int] = []
+    for i in cand[np.argsort(score[cand], kind="stable")].tolist():
+        if not shadow[i]:
+            kept.append(i)
+            shadow[max(0, i - CRASH_SEP_BINS + 1):i + CRASH_SEP_BINS] = True
+    return sorted(kept)
+
+
+def _finite_mean(a) -> float:
+    """The mean of `a`'s finite values; NaN, without a warning, when none is."""
+    a = np.asarray(a, dtype=np.float64)
+    ok = np.isfinite(a)
+    return float(a[ok].mean()) if ok.any() else math.nan
+
+
+def _hottest(env: np.ndarray, k: int) -> int:
+    """The channel with the largest median over the `HOT_BINS` bins before bin
+    k, the medians 3-channel median filtered (0 beyond the array's ends)."""
+    seg = env[:, max(0, k - HOT_BINS):k]
+    seg = np.where(np.isfinite(seg), seg, np.nan)
+    pre = np.full(env.shape[0], -np.inf)
+    rows = np.isfinite(seg).any(axis=1)
+    pre[rows] = np.nanmedian(seg[rows], axis=1)
+    return int(np.argmax(median_filter(pre, size=3, mode="constant", cval=0.0)))
+
+
+def crash_test(env, steps, z, k: int, *, pulse: bool) -> tuple[str, dict]:
+    """`(verdict, measured)` for the candidate at bin `k`: `CRASH`, `COLLAPSE`,
+    or the name of the test it failed, in the order they are made.
+
+    - "block": the run of z < -`Z_DROP` holding the most negative z - the
+      dropping block - spans under `CRASH_BLOCK` channels.
+    - "fast": the block's mean envelope fell from bins k-7 .. k-5 to k-3 .. k-1
+      by more than `FAST_FRAC` of its step at k (or those bins are not all
+      there): a smooth roll-over, not a crash.
+    - "level": the block's mean level over k-3 .. k-1 is not positive, so its
+      fall has no fraction.
+    - "core": the hottest channel (`_hottest`) is more than `HOT_SLACK`
+      channels outside the block.
+    - `COLLAPSE`: the block fell by more than `COLLAPSE_FALL` of that level.
+    - "fall": it fell by less than `MIN_FALL` of it.
+    - "pulse" (with `pulse` only): no run of `PULSE_BLOCK` channels with z >
+      `Z_PULSE` starts within `PULSE_REACH` channels of the block.
+
+    `measured` holds what was measured by the time the verdict was reached:
+    the block (`lo`, `stop`, end-exclusive), its `z_min`, `fall` and `hot`,
+    and the pulse run (`pulse_lo`, `pulse_stop`) that passed.
+
+    A collapse is a candidate that passes every test but the fall's upper
+    bound and the pulse: a quench drops the core with everything else, so
+    there is nowhere for a heat pulse to go. The prototype called a collapse
+    before the core test and on any level, dividing by max(level, 1e-9): on
+    190637 an edge fall at 3359.5 ms (channels 40-44, the hottest 31) then
+    guarded 300 ms of the owner's sawtooth span, and on 198658 channels 41-47
+    below zero before the plasma made one at -0.5 ms.
+    """
+    env = np.atleast_2d(np.asarray(env, dtype=np.float64))
+    col = np.asarray(z, dtype=np.float64)[:, k]
+    got: dict[str, Any] = {}
+    imin = int(np.argmin(col))
+    block = next(
+        ((a, b) for a, b in _runs(col < -Z_DROP) if a <= imin < b), None
+    )
+    if block is None or block[1] - block[0] < CRASH_BLOCK:
+        return "block", got
+    lo, stop = block
+    got.update(lo=lo, stop=stop, z_min=float(col[lo:stop].min()))
+    span = CRASH_SPAN_BINS
+    step = _finite_mean(np.asarray(steps)[lo:stop, k])
+    if k - 2 * span - 1 < 0:
+        return "fast", got
+    trace = env[lo:stop, k - 2 * span - 1:k]
+    ok = np.isfinite(trace)
+    with np.errstate(invalid="ignore"):
+        per_bin = np.where(ok, trace, 0.0).sum(axis=0) / ok.sum(axis=0)
+    pre_step = float(per_bin[-span:].mean() - per_bin[:span].mean())
+    if not pre_step >= FAST_FRAC * step:
+        return "fast", got
+    level = _finite_mean(
+        [_finite_mean(row) for row in env[lo:stop, k - span:k]]
+    )
+    if not level > 0.0:
+        return "level", got
+    fall = -step / level
+    got["fall"] = float(fall)
+    hot = _hottest(env, k)
+    got["hot"] = hot
+    if not lo - HOT_SLACK <= hot <= stop - 1 + HOT_SLACK:
+        return "core", got
+    if fall > COLLAPSE_FALL:
+        return COLLAPSE, got
+    if not fall >= MIN_FALL:
+        return "fall", got
+    if pulse:
+        near = [
+            (a, b)
+            for a, b in _runs(col > Z_PULSE)
+            if b - a >= PULSE_BLOCK
+            and (0 <= a - stop <= PULSE_REACH or 0 <= lo - b <= PULSE_REACH)
+        ]
+        if not near:
+            return "pulse", got
+        a, b = min(near, key=lambda ab: (min(abs(ab[0] - stop), abs(lo - ab[1])),
+                                         ab[0] - ab[1]))
+        got.update(pulse_lo=a, pulse_stop=b)
+    return CRASH, got
+
+
+@dataclass(frozen=True)
+class Crashes:
+    """One diagnostic's v3 crashes (point events, in time order) and the times
+    of its collapses in seconds (`crash_test`)."""
+
+    diag: str
+    events: tuple[Event, ...]
+    collapses_s: tuple[float, ...]
+
+
+def sawtooth_crashes(
+    y,
+    t_s,
+    *,
+    shot: int,
+    diag: str,
+    t_cov: tuple[float, float],
+    channels: Sequence[int] | None = None,
+    attrs: Mapping[str, Any] | None = None,
+) -> Crashes:
+    """One diagnostic's `(C, n)` rows, in channel order -> its v3 crashes.
+
+    The 1 ms `envelope`, `step_z`, `crash_candidates`, and `crash_test` at
+    each; the pulse test only on `PULSE_DIAG` (the ECE array, which has to be
+    the `N_ECE_CHANNELS` of it). The crash time is the centre of the bin the
+    crash falls in.
+
+    `channels` is the index each row stands for - an SXR fan's lit chords -
+    and the attrs' channel bounds are in those terms, end-exclusive like
+    v2's: `inversion_channel_lo` <= c < `inversion_channel_stop` dropped.
+    The attrs also hold the block's `fall` (a fraction of its level) and
+    `z_min`, and on ECE the heat pulse's run (`pulse_channel_lo`, `_stop`);
+    `attrs` is added to every event's (an SXR fan's name).
+
+    `confidence` is the fraction of the channels that could vote at the
+    crash's bin - a finite step and a nonzero noise - that are in the dropping
+    block or, on ECE, the pulse run.
+    """
+    if diag not in CRASH_DIAGS:
+        raise ValueError(f"v3 reads {CRASH_DIAGS}; got {diag!r}")
+    y = np.atleast_2d(y)
+    if diag == PULSE_DIAG and y.shape[0] != N_ECE_CHANNELS:
+        raise ValueError(
+            f"the pulse test is a claim about the {N_ECE_CHANNELS}-channel "
+            f"ECE array; got {y.shape[0]} channels"
+        )
+    index = np.arange(y.shape[0]) if channels is None else np.asarray(channels)
+    if index.shape != (y.shape[0],):
+        raise ValueError(f"{index.size} channel indices for {y.shape[0]} rows")
+    env, t_env_s = envelope(y, t_s)
+    steps, sigma, z = step_z(env)
+    cov = (float(t_cov[0]), float(t_cov[1]))
+    events, collapses = [], []
+    for k in crash_candidates(z):
+        verdict, got = crash_test(env, steps, z, k, pulse=diag == PULSE_DIAG)
+        if verdict == COLLAPSE:
+            collapses.append(float(t_env_s[k]))
+        if verdict != CRASH:
+            continue
+        lo, stop = got["lo"], got["stop"]
+        row = {
+            "inversion_channel_lo": int(index[lo]),
+            "inversion_channel_stop": int(index[stop - 1]) + 1,
+            "fall": got["fall"],
+            "z_min": got["z_min"],
+        }
+        took = stop - lo
+        if "pulse_lo" in got:
+            row["pulse_channel_lo"] = int(index[got["pulse_lo"]])
+            row["pulse_channel_stop"] = int(index[got["pulse_stop"] - 1]) + 1
+            took += got["pulse_stop"] - got["pulse_lo"]
+        voting = int(((sigma[:, k] > 0) & np.isfinite(steps[:, k])).sum())
+        events.append(
+            Event(
+                shot=int(shot),
+                source=SAWTOOTH_SOURCE,
+                evidence_kind="heuristic",
+                phenomenon=SAWTOOTH_PHENOMENON,
+                t0_s=float(t_env_s[k]),
+                t1_s=float(t_env_s[k]),
+                confidence=min(1.0, took / max(voting, 1)),
+                diag=diag,
+                channel=-1,
+                attrs={**row, **(attrs or {})},
+                t_cov0_s=cov[0],
+                t_cov1_s=cov[1],
+            )
+        )
+    return Crashes(diag, tuple(events), tuple(collapses))
+
+
+def sawtooth_events_v3(found: Sequence[Crashes]) -> list[Event]:
+    """The diagnostics' crashes as one list: their union, less the guard.
+
+    In time order, a crash within `MERGE_MS` of the last one kept is the same
+    crash, and the earlier one stays. Then every crash from a collapse on
+    either diagnostic to `COLLAPSE_GUARD_MS` after it is dropped.
+    """
+    events = sorted(
+        (e for crashes in found for e in crashes.events), key=lambda e: e.t0_s
+    )
+    collapses = sorted(t for crashes in found for t in crashes.collapses_s)
+    kept: list[Event] = []
+    for event in events:
+        if kept and (event.t0_s - kept[-1].t0_s) * 1e3 <= MERGE_MS + _TIME_TOL_MS:
+            continue
+        kept.append(event)
+    guard = COLLAPSE_GUARD_MS + _TIME_TOL_MS
+    return [
+        e for e in kept
+        if not any(0.0 <= (e.t0_s - c) * 1e3 <= guard for c in collapses)
+    ]
+
+
+#: v3's constants, as the span table's meta records them.
+SAWTOOTH_V3_CONSTANTS = {
+    "diags": list(CRASH_DIAGS),
+    "env_ms": ENV_MS,
+    "gap_bins": CRASH_GAP_BINS,
+    "span_bins": CRASH_SPAN_BINS,
+    "noise_bins": NOISE_BINS,
+    "mad_sigma": MAD_SIGMA,
+    "z_drop": Z_DROP,
+    "z_pulse": Z_PULSE,
+    "block": CRASH_BLOCK,
+    "sep_bins": CRASH_SEP_BINS,
+    "hot_bins": HOT_BINS,
+    "hot_slack": HOT_SLACK,
+    "min_fall": MIN_FALL,
+    "collapse_fall": COLLAPSE_FALL,
+    "fast_frac": FAST_FRAC,
+    "pulse_block": PULSE_BLOCK,
+    "pulse_reach": PULSE_REACH,
+    "pulse_diag": PULSE_DIAG,
+    "merge_ms": MERGE_MS,
+    "collapse_guard_ms": COLLAPSE_GUARD_MS,
+    "sxr_fans": [name for name, _ in SXR_FANS],
+    "sxr_chords": SXR_CHORDS,
+    "sxr_min_chords": SXR_MIN_CHORDS,
+    "sxr_lit_frac": SXR_LIT_FRAC,
+}
 
 
 # ------------------------------------------------------------ L->H and H->L

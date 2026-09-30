@@ -3,10 +3,10 @@
 v1's detectors find these phenomena as points and transitions:
 `transients.elm_clock_events` the ELMs on a D-alpha filterscope,
 `heuristics.lh_transitions` the L-H and H-L transitions from D-alpha, density
-and beam power, `heuristics.sawtooth_events` the crashes on the ECE array. This
-module turns one shot's into the spans the review page edits, over the shot's
-catalog window, and writes them as a suggestion table (`suggestions`) that the
-page opens unreviewed shots on:
+and beam power, and for sawteeth, since v3, `heuristics.sawtooth_crashes` the
+crashes on the ECE array and on an SXR fan. This module turns one shot's into
+the spans the review page edits, over the shot's catalog window, and writes them
+as a suggestion table (`suggestions`) that the page opens unreviewed shots on:
 
 - H-mode (method `dalpha_lh`): present from each L-H to the next H-L, or to the
   end of the stretch the inputs measured. An H-L with no L-H before it makes the
@@ -22,7 +22,12 @@ page opens unreviewed shots on:
   absent. `elm_onsets` gives the clock's ELMs inside the present spans, which
   the frame models score as a baseline.
 - Sawteeth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
-  most `SAWTOOTH_MAX_GAP_MS`.
+  most `SAWTOOTH_MAX_GAP_MS`. Since v3 the crashes are the union of the ECE
+  array's and the first lit SXR fan's (`sxr_fan`), less those in the 300 ms
+  after a collapse (`heuristics.sawtooth_events_v3`), over the union of what the
+  two measured; either may be missing. v1's and v2's tables were drafted from
+  `heuristics.sawtooth_events` on ECE alone, which calls sawteeth present on
+  4,815 of the 4,822 population shots and over 71 % of their time.
 
 ELM and sawtooth runs form only from the events inside the shot's window and
 after the plasma starts (`plasma_start`): the first time the 25 ms centred mean
@@ -47,7 +52,11 @@ and why) and how many events made the ramp-up uncertain (`ramp_events`), and
 for ELMs the filterscope read (`channel`), whether the H-mode gate ran
 (`hmode_gate`: "ran", or why not) and how much of the window the channel's dead
 stretches take (`dead_ms`); `ramp_events` and `dead_ms` appear only when not
-zero. Inputs come from the corpus, else the raw cache; nothing is fetched.
+zero. For sawteeth it keeps the diagnostics that ran (`diagnostics`), the SXR
+fan (`sxr_fan`), each diagnostic's crashes over its whole record (`crashes`),
+the collapses (`collapses_ms`), and why a diagnostic did not run (`not_run`,
+only when one did not). Inputs come from the corpus, else the raw cache;
+nothing is fetched.
 
     pixi run -e labelmaker python -m labeler.events.spans --event edge_localized_mode
 
@@ -116,6 +125,14 @@ RAMP_FALLBACK_MS = 700.0
 #: What a missing or unreadable input raises: the Ip read and the H-mode gate
 #: fall back on these alone.
 INPUT_MISSING = (NoDataError, KeyError, OSError)
+#: The sawtooth method's crash rule since v3, as its table's meta records it
+#: beside `heuristics.SAWTOOTH_V3_CONSTANTS`: a table drafted by v2's detector
+#: records neither, so `check_rule` refuses to run v3 into it.
+SAWTOOTH_CRASH = (
+    "v3: heuristics.sawtooth_events_v3 - steps in each channel's own noise on "
+    "ECE and the first lit SXR fan, a fast fall at the hottest channel, the ECE "
+    "heat pulse, their union, and no crash in the 300 ms after a collapse"
+)
 START_RULE = {
     "ip_fraction": RAMP_FRACTION,
     "ip_mean_ms": RAMP_MEAN_MS,
@@ -460,18 +477,84 @@ def detect_hmode(shot: int, paths: Paths, window: Window | None = None) -> Found
     return Found(tuple(hmode_spans(marks, measured)), measured)
 
 
+def sxr_fan(shot: int, paths: Paths):
+    """`(name, t_s, y, chords)`: the first of `heuristics.SXR_FANS` with
+    `SXR_MIN_CHORDS` chords finite over at least `SXR_LIT_FRAC` of the record,
+    read a fan at a time, and its lit chords (`y`, and their indices in the fan)
+    in chord order. The sawtooth review panels draw the same fan."""
+    for name, first in heuristics.SXR_FANS:
+        t_s, y = read(shot, "sxr", paths, range(first, first + heuristics.SXR_CHORDS))
+        lit = np.isfinite(y).mean(axis=1) >= heuristics.SXR_LIT_FRAC
+        if lit.sum() >= heuristics.SXR_MIN_CHORDS:
+            return name, t_s, y[lit], np.flatnonzero(lit)
+    raise NoDataError(
+        f"shot {shot}: no SXR fan has {heuristics.SXR_MIN_CHORDS} finite chords"
+    )
+
+
+def _crash_rows(shot: int, diag: str, paths: Paths):
+    """`(t_s, y, chords, fan)` of one of v3's diagnostics: the ECE array, or
+    `sxr_fan`'s lit chords, their indices in the fan and its name."""
+    if diag == "sxr":
+        fan, t_s, y, chords = sxr_fan(shot, paths)
+        return t_s, y, chords, fan
+    t_s, y = read(shot, diag, paths)
+    return t_s, y, None, None
+
+
+def _sawtooth_crashes(shot: int, paths: Paths):
+    """`(crashes, coverages, info)`: `heuristics.sawtooth_crashes` on each of
+    v3's diagnostics there is, the intervals each measured, and
+    `detect_sawtooth`'s info; a `NoDataError` naming both when neither is."""
+    found, measured, fans, not_run = [], [], {}, {}
+    for diag in heuristics.CRASH_DIAGS:
+        try:
+            t_s, y, chords, fan = _crash_rows(shot, diag, paths)
+        except NoDataError as error:
+            not_run[diag] = str(error)
+            continue
+        cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
+        found.append(
+            heuristics.sawtooth_crashes(
+                y,
+                t_s,
+                shot=shot,
+                diag=diag,
+                t_cov=cov.hull,
+                channels=chords,
+                attrs=None if fan is None else {"fan": fan},
+            )
+        )
+        measured.append(cov.intervals)
+        if fan is not None:
+            fans["sxr_fan"] = fan
+    if not found:
+        raise NoDataError("; ".join(not_run.values()))
+    collapses = sorted(t for c in found for t in c.collapses_s)
+    info = {
+        "diagnostics": [c.diag for c in found],
+        **fans,
+        "crashes": {c.diag: len(c.events) for c in found},
+        "collapses_ms": [round(t * 1000.0, 1) for t in collapses],
+    }
+    return found, measured, info | ({"not_run": not_run} if not_run else {})
+
+
 def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Found:
-    """Sawtooth runs; with a `window`, only from the plasma's start, and the
-    ramp-up before it uncertain where the array saw crashes (`ramp_up`)."""
-    t_s, y = read(shot, "ece", paths)
-    cov = coverage.Coverage.measured(t_s, y, min_gap_s=SAWTOOTH_MIN_GAP_S)
-    found = heuristics.sawtooth_events(y, t_s, shot=shot, t_cov=cov.hull)
-    crashes = [
-        e.t0_s * 1000 for e in found if e.phenomenon == heuristics.SAWTOOTH_PHENOMENON
-    ]
-    info, ramp = {}, []
+    """Sawtooth runs from v3's crashes, over the union of what ECE and the SXR
+    fan measured; with a `window`, only from the plasma's start, and the ramp-up
+    before it uncertain where there were crashes (`ramp_up`).
+
+    v3 reads the ECE array and the first lit SXR fan (`sxr_fan`), runs
+    `heuristics.sawtooth_crashes` on each there is and takes their union less
+    the collapse guard (`heuristics.sawtooth_events_v3`). A shot with neither
+    raises `NoDataError`."""
+    found, measured, info = _sawtooth_crashes(shot, paths)
+    cov = coverage.union_intervals(*measured)
+    crashes = [e.t0_s * 1000 for e in heuristics.sawtooth_events_v3(found)]
+    ramp = []
     if window is not None:
-        start, info = started(shot, paths, window)
+        start, info = started(shot, paths, window, info)
         ramp, info = ramp_up(crashes, ramp_pieces(start, window), info)
         crashes = in_plasma(crashes, start, window)
     spans = runs(
@@ -479,7 +562,8 @@ def detect_sawtooth(shot: int, paths: Paths, window: Window | None = None) -> Fo
     )
     if window is not None:
         spans = from_start(spans, start)
-    return Found((*ramp, *((a, b, PRESENT) for a, b in spans)), _ms(cov), info)
+    measured_ms = tuple((lo * 1000.0, hi * 1000.0) for lo, hi in cov)
+    return Found((*ramp, *((a, b, PRESENT) for a, b in spans)), measured_ms, info)
 
 
 def detect_window(shot: int, paths: Paths, window: Window | None = None) -> Found:
@@ -531,13 +615,15 @@ METHODS = {
             "sawtooth_oscillation",
             "ece_sawtooth",
             detect_sawtooth,
-            ("ece", "ip"),
+            ("ece", "sxr", "ip"),
             {
                 "min_run": MIN_RUN,
                 "pad_ms": PAD_MS,
                 "max_gap_ms": SAWTOOTH_MAX_GAP_MS,
                 "min_gap_s": SAWTOOTH_MIN_GAP_S,
                 "start": START_RULE,
+                "crash": SAWTOOTH_CRASH,
+                "crash_constants": heuristics.SAWTOOTH_V3_CONSTANTS,
             },
         ),
         Method("neoclassical_tearing_mode", "window", detect_window, ()),
