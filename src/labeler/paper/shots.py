@@ -1,4 +1,4 @@
-"""One discharge as the interpreter shows it, and AE examples from the test shots.
+"""AE examples from the test shots, and the pieces the interpreter figure shares.
 
 `picture` is what a shot viewer shows for AE: the review store's first
 cross-power row (R0 x V1), 0-250 kHz; the owner's frames; the chosen
@@ -6,25 +6,29 @@ cross-power row (R0 x V1), 0-250 kHz; the owner's frames; the chosen
 runs it; and the segmentation's mask, SegNet run here too. The owner's
 frames are the model's own copy of the labels, `<candidate>/review/labels.csv`,
 the ones it was trained and scored on (D18), never the live table the owner
-keeps saving; `ae_shot` reads them from disk. `draw_interpreter` is the paper's
-one-discharge figure: that spectrogram and its mask over one
-track per catalog phenomenon, AE's holding the owner's frames above the
-model's. `draw_examples` stacks a few test shots (the
-model's `split.csv`), which `pick_examples` takes: the best, the median and the
-worst F1 against the owner; a whole-window version's picks hold at least one
-shot whose owner window runs past 2 s (`LONG_MS`) when a test shot's does.
+keeps saving; `ae_shot` reads them from disk. `draw_examples` stacks a few
+test shots (the model's `split.csv`), which `pick_examples` takes: the best,
+the median and the worst F1 against the owner; a whole-window version's picks
+hold at least one shot whose owner window runs past 2 s (`LONG_MS`) when a
+test shot's does.
+
+**The interpreter figure** is `paper.roster`'s, the paper's `fig_interpreter`:
+the models' suggestions on one roster shot, never reviewed. It is drawn with
+the pieces here: the spectrogram (`show_image`), the mask (`_mask`, keyed
+`ROSTER_MASK_LABEL`), the suggested states (`state_bars`, every key
+`SUGGESTED`'s, never the owner's), a track's or a panel's text (`text_track`:
+`NO_DATA`'s, `NOT_APPLIED`) and the legend (`_legend`).
 
 **The scored window** is the version's (`scored_ms`, from
 `labeler.ae.xpower.scored_until`): 0-2 s for v1 and v2, whose TokEye masks end
-at 2 s, and the owner's whole window for v3 (None). A shot's F1, the
-interpreter's pick, its off-period, the rules' texts (`pick_texts`) and the
-dashed line all use it; the module's constants (`INTERPRETER_RULE` and the rest)
-are the 0-2 s texts, as v1's and v2's manifests have them.
+at 2 s, and the owner's whole window for v3 (None). A shot's F1, the examples'
+rule (`pick_texts`) and the dashed line all use it; `EXAMPLES_RULE` is the
+0-2 s text, as v1's and v2's manifests have it.
 
 **The F1 of a shot** is over the 10 ms frames of the scored window that the
 owner called present or absent (`scored_f1`), the window the paper's headline
 F1 is over. The gallery's `f1_vs_owner` is over the owner's whole window, as
-v3's F1 is; the build ranks by the scored F1 (`rank_keys`), so a 0-2 s
+v3's F1 is; the build ranks by the scored F1 (`AEShot.f1`), so a 0-2 s
 version's picks can differ from a ranking by the gallery's. Every shot also
 keeps its F1 over 0-2 s (`AEShot.f1_0_2s`) and over the owner's whole window
 (`f1_window`), whatever its version. The evaluation's own frames also need
@@ -40,38 +44,10 @@ evaluation scores, there only over the pseudo-mask's scored pixels), a
 translucent fill with a thin outline. It is
 run on the picture's own rows, at the store level it reads (`PICTURE_LEVEL`), so
 it lies on the picture's pixels. Its regions, the points of interest of
-`poi.csv`, are not drawn: they are a table for tools, which the interpreter's
-pick still counts. A dashed line at 2 s marks a 0-2 s version's scored window
-whenever a shot runs past it; a whole-window version's shots have none. No
-picture has a line at 80 kHz: that floor was only the labelling view.
-
-**The interpreter's shot** (`interpreter_pick`, `INTERPRETER_RULE`) shows AE
-turning off and back on. Its pool is the test shots with a point of interest
-(all test shots when none has one) where the owner calls at least
-`MIN_GAP_FRAMES` whole consecutive 10 ms frames absent between the first and
-the last frame they call present, inside the scored window (`longest_off`):
-neither the lead-in before breakdown, absent on every shot, nor AE that turns
-off and does not come back before the window ends (2 s for v1 and v2) counts,
-nor fewer frames, such as one absent frame or
-several short runs. A frame a present span touches is present, so 5 absent
-frames are an off-period of at least 50 ms, but one of 50-59 ms off the 10 ms
-grid can hold only 4 (one of 60 ms or more always holds 5). So the texts give
-the rule in frames (`OFF_FRAMES`), and 50 ms only as what the frames imply
-(`OFF_MS`), never of a shot the rule leaves out. The pick is the best F1 at
-three decimals in the pool, ties to fewer points of interest, then to the lower
-shot number. When that pool is empty the same rule runs over all those test
-shots, and the branch says why: no test shot has that many absent frames
-(`POOL_FALLBACK`), or the ones that do have no point of interest
-(`POOL_UNMARKED`, which names them).
-
-**The other four tracks** (F9) are what `paper.build` found for the shot,
-passed in (`draw_interpreter`'s `tracks`), so the figure reads nothing: the
-suggested states per frame where the shot is in that phenomenon's frame-model
-suggestion table, drawn as `paper.roster` draws its tracks (`state_bars`,
-keyed `SUGGESTED`'s, never the owner's); `NO_DATA` ("no filterscopes data",
-say) where the shot lacks one of the model's required groups on disk;
-`NOT_APPLIED` where the table exists without the shot; and `COMING` where
-there is no table, or nothing was passed.
+`poi.csv`, are not drawn: they are a table for tools. A dashed line at 2 s
+marks a 0-2 s version's scored window whenever a shot runs past it; a
+whole-window version's shots have none. No picture has a line at 80 kHz: that
+floor was only the labelling view.
 
 Every legend lists only what some panel draws: it is built from the drawn
 artists' own labels, so its keys have their style (the mask's, an image's, as a
@@ -88,7 +64,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
@@ -101,12 +76,12 @@ from ..ae.xpower.data import CROSS_ROWS, store_rows, targets, window_frames
 from ..ae.xpower.gallery import STATE_COLOURS
 from ..ae.xpower.train import f1_of, frame_cells, load, probabilities, read_split
 from ..config import Paths
-from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from ..events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ..events.review import labels
 from ..events.review.labels import Label
 from ..events.review.rows import Grid
 from ..scoring.frames import FRAME_MS
-from . import AE, COMING, FONT_PT, ORDER, PAGE_IN, save, style, title
+from . import FONT_PT, PAGE_IN, save, style
 
 MARGIN_MS = 50.0
 PICTURE_LEVEL = SEG_LEVEL  # SegNet reads level 8, so its mask is on these pixels
@@ -126,67 +101,38 @@ def window_name(until_ms: float | None) -> str:
 
 
 SCORED_LABEL = f"scored: {window_name(SCORED_MS)}"
-F1_DECIMALS = 3
 STATE_NAMES = {
     PRESENT: "present",
     UNCERTAIN: "uncertain",
     NOT_OBSERVABLE: "not observable",
 }
 MASK_LABEL = "segmentation: AE"
-#: The roster figure's fill, SegNet over its whole picture (`paper.roster`).
+#: The interpreter figure's fill, SegNet over its whole picture (`paper.roster`).
 ROSTER_MASK_LABEL = "segmentation"
 MASK_LABELS = (MASK_LABEL, ROSTER_MASK_LABEL)
 MODEL_LABEL = "model: present"
 THRESHOLD_LABEL = "model threshold"
 #: A frame-model track's key (F9): what it holds is a suggestion.
 SUGGESTED = "suggested: {}"
-#: A track's text where the shot lacks one of the model's groups on disk.
+#: A signal panel's text where the shot's store lacks its rows (`paper.roster`).
 NO_DATA = "no {} data"
+#: A track's text where the frame model's table exists without the shot.
 NOT_APPLIED = "not applied to this shot"
 TEXT_COLOUR = "#888888"
-MIN_GAP_FRAMES = 5  # whole absent frames: 50 ms or more, but 50-59 ms can be 4
-GAP_MS = MIN_GAP_FRAMES * FRAME_MS
-OFF_MS = f"so an off-period of at least {GAP_MS} ms"  # what those frames imply
 
 
 @dataclass(frozen=True)
 class PickTexts:
-    """The interpreter's and the examples' rules, said over one scored window."""
+    """The examples' rule, said over one scored window."""
 
-    off_frames: str  # what `longest_off` and `interpreter_pick` check
-    interpreter: str
-    gap: str
-    fallback: str
-    unmarked: str  # holds "{shots}", which `interpreter_pick` fills
     examples: str
 
 
 def pick_texts(until_ms: float | None = SCORED_MS) -> PickTexts:
-    """The rules' texts over the scored window ending at `until_ms` (0-2 s by
+    """The rule's text over the scored window ending at `until_ms` (0-2 s by
     default; None, the owner's whole window)."""
     where = "the whole window" if until_ms is None else window_name(until_ms)
-    off = (
-        f"at least {MIN_GAP_FRAMES} whole consecutive absent {FRAME_MS} ms frames "
-        f"between the owner's first and last present frames in {where}"
-    )
     return PickTexts(
-        off_frames=off,
-        interpreter=(
-            "among the test shots with a point of interest (all test shots if none "
-            f"has one), those with {off} (AE turning off and back on, {OFF_MS}); "
-            f"the best F1 over {where} at {F1_DECIMALS} decimals, ties to fewer "
-            "points of interest, then to the lower shot number; if there is none, "
-            "the same over all those test shots"
-        ),
-        gap=f"AE turns off and back on: {off} ({OFF_MS})",
-        fallback=(
-            f"no test shot has {off}, so the pool is every test shot with a point "
-            "of interest (every test shot if none has one)"
-        ),
-        unmarked=(
-            "only test shots with no point of interest ({shots}) have "
-            f"{off}, so the pool is every test shot with one"
-        ),
         examples=(
             f"the reviewed test shots ranked by F1 over {where} (ties by the lower "
             "shot number), taken evenly from the best to the worst"
@@ -201,14 +147,8 @@ def pick_texts(until_ms: float | None = SCORED_MS) -> PickTexts:
     )
 
 
-# The 0-2 s texts, v1's and v2's, each the string it has always been.
-_TEXTS = pick_texts(SCORED_MS)
-OFF_FRAMES = _TEXTS.off_frames
-INTERPRETER_RULE = _TEXTS.interpreter
-POOL_GAP = _TEXTS.gap
-POOL_FALLBACK = _TEXTS.fallback
-POOL_UNMARKED = _TEXTS.unmarked
-EXAMPLES_RULE = _TEXTS.examples
+# The 0-2 s text, v1's and v2's, the string it has always been.
+EXAMPLES_RULE = pick_texts(SCORED_MS).examples
 
 
 def scored_ms(version: str | None = None) -> float | None:
@@ -234,21 +174,6 @@ def scored_f1(
     present or absent."""
     inside = in_scored(first, len(prob), until_ms)
     return f1_of(frame_cells(np.asarray(prob)[inside], owner[inside], threshold))
-
-
-def longest_off(owner, *, first: int, until_ms: float | None = SCORED_MS) -> int:
-    """The owner's longest off-period in the scored window (`in_scored`: 0-2 s
-    by default, the owner's whole window for None), in frames: the longest run
-    of consecutive absent frames between their first and last present frames
-    there, AE turning off and back on. Neither the lead-in before breakdown nor
-    AE that turns off and does not come back before the window ends counts, and
-    an uncertain frame ends a run; 0 without a present frame."""
-    inside = np.asarray(owner)[in_scored(first, len(owner), until_ms)]
-    present = np.flatnonzero(inside == PRESENT)
-    if not len(present):
-        return 0
-    span = inside[present[0] : present[-1]] == ABSENT
-    return max((int(b - a) for a, b in runs(span)), default=0)
 
 
 @dataclass(frozen=True)
@@ -281,17 +206,6 @@ class AEShot:
     def f1_0_2s(self) -> float:
         """The F1 over 0-2 s, whatever the scored window."""
         return scored_f1(self.prob, self.owner, self.threshold, first=self.first)
-
-
-@dataclass(frozen=True)
-class ShotScore:
-    """A test shot's rank keys: F1 over its scored window, and the owner's
-    longest off-period there, in frames (`longest_off`)."""
-
-    shot: int
-    f1: float
-    f1_window: float
-    gap: int
 
 
 def runs(flags: np.ndarray) -> list[tuple[int, int]]:
@@ -390,16 +304,6 @@ def picture(
     )
 
 
-def rank_keys(s: AEShot) -> ShotScore:
-    """A drawn shot's rank keys, over its scored window."""
-    return ShotScore(
-        shot=s.shot,
-        f1=s.f1,
-        f1_window=s.f1_window,
-        gap=longest_off(s.owner, first=s.first, until_ms=s.scored_until_ms),
-    )
-
-
 def ae_shot(
     paths: Paths,
     shot: int,
@@ -456,57 +360,6 @@ def pick_examples(
     at = ranked.index(picks[middle])
     picks[middle] = ranked[min(others, key=lambda i: (abs(i - at), i))]
     return picks
-
-
-def interpreter_pick(
-    f1: Mapping[int, float],
-    poi: pd.DataFrame | None,
-    gaps: Mapping[int, int] | None = None,
-    *,
-    until_ms: float | None = SCORED_MS,
-) -> dict:
-    """The shot the interpreter rule picks (`INTERPRETER_RULE` over 0-2 s,
-    `pick_texts(until_ms).interpreter` otherwise), the branch that fired and its pool:
-    each pool shot's F1, points of interest and longest off-period in frames
-    (`longest_off_frames`). `f1` maps each test shot to its F1 over the scored
-    window ending at `until_ms` (a shot without one is left out), `gaps` to its
-    `longest_off` there; a shot is back on after at least `MIN_GAP_FRAMES` whole
-    absent frames (`OFF_FRAMES`). The branch is said over that window
-    (`pick_texts`)."""
-    ranked = _ranked(f1)
-    if not ranked:
-        raise ValueError("no test shot has an F1")
-    texts = pick_texts(until_ms)
-    gaps = gaps or {}
-    points = (
-        pd.Series(dtype=int) if poi is None else poi.shot.astype(int).value_counts()
-    )
-    marked = [s for s in ranked if s in points.index] or ranked
-    back = sorted(s for s in ranked if gaps.get(s, 0) >= MIN_GAP_FRAMES)
-    pool = [s for s in marked if s in back]
-    if pool:
-        branch = texts.gap
-    elif back:
-        branch = texts.unmarked.format(shots=", ".join(map(str, back)))
-    else:
-        branch = texts.fallback
-    pool = pool or marked
-
-    def key(s: int) -> tuple:
-        return (-round(float(f1[s]), F1_DECIMALS), int(points.get(s, 0)), s)
-
-    return {
-        "shot": min(pool, key=key),
-        "branch": branch,
-        "pool": {
-            str(s): {
-                "f1": round(float(f1[s]), 4),
-                "poi": int(points.get(s, 0)),
-                "longest_off_frames": int(gaps.get(s, 0)),
-            }
-            for s in sorted(pool)
-        },
-    }
 
 
 def _extent(s: AEShot) -> tuple[float, float, float, float]:
@@ -606,15 +459,9 @@ def _owner_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
             )
 
 
-def _model_bars(ax, s: AEShot, y: tuple[float, float]) -> None:
-    edges = s.edges
-    spans = [(edges[a], edges[b] - edges[a]) for a, b in runs(s.prob >= s.threshold)]
-    if spans:
-        ax.broken_barh(spans, y, color=MODEL_COLOUR, lw=0, label=MODEL_LABEL)
-
-
 def text_track(ax, text: str) -> None:
-    """`text` across a track, grey italic: `COMING`, `NO_DATA`'s and the rest."""
+    """`text` across a track or panel, grey italic: `NO_DATA`'s, `NOT_APPLIED`
+    and the rest."""
     ax.text(
         0.5,
         0.5,
@@ -651,8 +498,8 @@ LEGEND_ORDER = (
 def _legend(fig: Figure) -> None:
     """One key per label some panel draws, with that artist's own style; the
     mask, an image, which a legend cannot key, as a patch of its fill and
-    outline (`MASK_LABELS`: the paper's "segmentation: AE" and the roster
-    figure's "segmentation")."""
+    outline (`MASK_LABELS`: fig_examples' "segmentation: AE" and the
+    interpreter figure's "segmentation")."""
     found: dict[str, object] = {}
     for ax in fig.axes:
         for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
@@ -677,49 +524,6 @@ def _legend(fig: Figure) -> None:
             loc="outside lower center",
             ncols=min(len(names), 5),
         )
-
-
-def draw_interpreter(
-    s: AEShot, stem: Path, tracks: Mapping[str, object] | None = None
-) -> Figure:
-    """The spectrogram with AE's mask over a track per phenomenon. `tracks`
-    gives each other phenomenon's track (F9): its suggested state per frame of
-    `s`, or a text (`NO_DATA`'s, `NOT_APPLIED`, `COMING`); one not given is
-    `COMING`."""
-    tracks = tracks or {}
-    t0, t1 = s.edges[0] - MARGIN_MS, s.edges[-1] + MARGIN_MS
-    with style():
-        fig = Figure(figsize=(PAGE_IN, 3.4), layout="constrained")
-        spec, *axes = fig.subplots(
-            1 + len(ORDER),
-            1,
-            sharex=True,
-            gridspec_kw={"height_ratios": [4] + [0.45] * len(ORDER)},
-        )
-        _spectrogram(spec, s)
-        spec.set_xlim(t0, t1)
-        _mask(spec, s)
-        spec.set_title(f"shot {s.shot}: what the interpreter marks")
-        for ax, category in zip(axes, ORDER, strict=True):
-            ax.set_ylim(0, 2)
-            ax.set_yticks([])
-            ax.set_ylabel(title(category), rotation=0, ha="right", va="center")
-            if category == AE:
-                _owner_bars(ax, s, (1.05, 0.9))
-                _model_bars(ax, s, (0.05, 0.9))
-                continue
-            track = tracks.get(category, COMING)
-            if isinstance(track, str):
-                text_track(ax, track)
-            else:
-                state_bars(ax, s, track, (0.2, 1.6))
-        _scored_line([spec, *axes], s, dark={spec})
-        for ax in axes[:-1]:
-            ax.tick_params(bottom=False)
-        axes[-1].set_xlabel("time (ms)")
-        _legend(fig)
-        save(fig, stem)
-    return fig
 
 
 def draw_examples(shots: Sequence[AEShot], stem: Path) -> Figure:

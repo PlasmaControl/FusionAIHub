@@ -14,7 +14,11 @@ inputs yet is marked "coming".
 - `scores`: the AE methods' frame scores (one panel per phenomenon), their
   false-positive rates on MHD frames, the segmentation's scores, and tables;
 - `coverage`: labelled, reviewed, positive and suggested shots per phenomenon;
-- `shots`: one discharge as the interpreter shows it, and AE examples;
+- `shots`: AE examples from the test shots, and the pieces of a shot figure
+  the interpreter figure shares (the spectrogram, the mask, the state bars,
+  the legend);
+- `roster`: the interpreter figure, `fig_interpreter`: one roster shot's
+  suggestions from the models, every phenomenon on it;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
   manuscript's `figures/`;
 - `snapshot`: each file the build reads, read once and pinned by its sha256;
@@ -22,9 +26,10 @@ inputs yet is marked "coming".
   the old output's place.
 
 Nothing here trains or fetches. The score figures and tables read the JSON the
-evaluations wrote; to rank and draw the example and interpreter shots, `build`
-runs the chosen model over its test shots' review stores, against the labels it
-was scored on. `build` records every input it read.
+evaluations wrote; to rank and draw the example shots, `build` runs the chosen
+model over its test shots' review stores, against the labels it was scored on,
+and to draw the interpreter figure, over its roster shot's corpus CO2. `build`
+records every input it read.
 """
 
 from __future__ import annotations
@@ -47,6 +52,9 @@ COLUMN_IN = 3.25  # ICML \columnwidth, inches
 PAGE_IN = 6.75  # ICML \textwidth
 FONT_PT = 7
 COMING = "coming"
+#: torch's threads: the build and the roster CLI run one shot at a time, on the
+#: login node.
+LOGIN_THREADS = 2
 STYLE = {
     "font.size": FONT_PT,
     "axes.titlesize": FONT_PT,
