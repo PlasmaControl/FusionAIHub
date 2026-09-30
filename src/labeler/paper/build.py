@@ -29,12 +29,14 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_interpreter`, `fig_examples`: the chosen model run over its test shots
   (`split.csv`), scored against its own copy of the labels,
   `<candidate>/review/labels.csv` (D18), over the version's scored window
-  (`shots.scored_ms`: 0-2 s for v1 and v2, the owner's whole window for v3),
-  with the segmentation's mask over the band its blob records (80-250 kHz for
-  v1's, which records none; 0-250 kHz for SegNet v2's; 60-250 kHz for v4's),
-  SegNet run over the same stores, where its `model.pt` exists. The copy's sha256 must be the one
-  the AE evaluation names (`labels_sha256`); if it is not, or none is named,
-  both are skipped. The interpreter's other four tracks are worked out here
+  (`shots.scored_ms`: 0-2 s for v1, v2 and v4, the owner's whole window for
+  v3), with the segmentation's mask over the band its blob records (80-250 kHz
+  for v1's, which records none; 0-250 kHz for SegNet v2's; 60-250 kHz for
+  SegNet v4's), SegNet run over the same stores, where its `model.pt` exists.
+  The frame model's P(AE) is over its blob's band too (60-250 kHz for v4);
+  v4's baselines, TokEye's AE call and the MHD-frame rule, stay at v2's bands.
+  The copy's sha256 must be the one the AE evaluation names
+  (`labels_sha256`); if it is not, or none is named, both are skipped. The interpreter's other four tracks are worked out here
   and passed to the figure (`interpreter_tracks`, F9): the shot's suggested
   states from its frame model's `frames.VERSION` suggestion table, read
   through the snapshot; else "no <group> data" where it lacks one of the
@@ -85,7 +87,9 @@ not against the frame model's; a copy missing or unlike the record makes its
 products `partial`. The manifest names the frame model SegNet was evaluated
 beside (`seg_ae_model`, from its record), and so does table_seg_scores' comment.
 A SegNet version whose test reuses an earlier one's test shots (`test_of`: v3
-of v2's, v4 of v1's) ends that comment with its reuse note (`seg_reuse`).
+of v2's, v4 of v1's) ends that comment with its reuse note (`seg_reuse`), and
+table_ae_scores' comment ends with the frame model's own (`test_reuse`, from
+its evaluation record: ae_xpower v4's, of v2's test shots).
 
 **The second look.** A version whose test shots include an earlier version's
 (`labeler.ae.xpower.evaluate.SUBSET_OF`: v2's include v1's) says so in the AE
@@ -110,7 +114,7 @@ shots, the rules that picked them, and the drawn shots' F1 over 0-2 s
 (`f1_0_2s`) and over the owner's whole window (`f1_window`), both for every
 version. The shots are ranked, the interpreter's pool's off-periods counted and
 the rules said over the version's scored window (`shots.rank_keys`,
-`shots.pick_texts`): 0-2 s for v1 and v2, whose figures mark it with a dashed
+`shots.pick_texts`): 0-2 s for v1, v2 and v4, whose figures mark it with a dashed
 line at 2 s, and the owner's whole window for v3, whose figures have none.
 
 **The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
@@ -614,7 +618,8 @@ def _draw(
     if ready(("fig_scores", "fig_mhd", "table_ae_scores"), "ae_evaluation"):
         figure("fig_scores", scores.draw_scores, ae)
         figure("fig_mhd", scores.draw_mhd, ae)
-        table("table_ae_scores", scores.table_ae(ae, said))
+        reuse = ae.get("meta", {}).get("test_reuse")  # ae_xpower v4's
+        table("table_ae_scores", scores.table_ae(ae, said, reuse))
     seg_match, seg_shas = None, {}
     if ready(SEG_PRODUCTS, "seg_evaluation"):
         figure("fig_segmentation", scores.draw_segmentation, seg)
@@ -796,8 +801,8 @@ def _shot_figures(
     """Score every test shot against the model's copy of the labels (D18) and
     draw the two shot figures. Why they could not be drawn (None when they
     were), and the picks for the manifest. The F1, the picks and their rules
-    are over `version`'s scored window (`shots.scored_ms`: 0-2 s for v1 and v2,
-    the owner's whole window for v3); `shot_f1` gives every drawn shot's F1
+    are over `version`'s scored window (`shots.scored_ms`: 0-2 s for v1, v2 and
+    v4, the owner's whole window for v3); `shot_f1` gives every drawn shot's F1
     over 0-2 s and over the owner's whole window, whatever the version."""
     figures = ("fig_interpreter", "fig_examples")
     until = shots.scored_ms(version)

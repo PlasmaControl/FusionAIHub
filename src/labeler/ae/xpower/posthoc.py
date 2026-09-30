@@ -231,7 +231,12 @@ def run(paths: Paths, version: str, limit: int = 0) -> dict:
         },
         "seed_study": seed_summary(paths, version, record),
         "second_look": look(paths, version, test, json.loads(inputs.chosen_bytes)),
-        "test_reuse": record["meta"].get("test_reuse"),
+        # Only a version whose test is a second use (v4) has the key.
+        **(
+            {"test_reuse": record["meta"]["test_reuse"]}
+            if record["meta"].get("test_reuse")
+            else {}
+        ),
         "git_sha": git_sha(),
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
     }

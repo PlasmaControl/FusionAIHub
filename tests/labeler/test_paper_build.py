@@ -997,7 +997,7 @@ def test_the_segmentation_keeps_its_own_version(runs, tmp_path):
 
 def test_version_v4_with_segnet_v4_names_v2s_scoring_and_the_reuse(runs, tmp_path):
     """ae_xpower v4 beside SegNet v4: the second look names v2's scoring, and the
-    segmentation's table carries SegNet v4's reuse note; the build is v2's else."""
+    AE table and the segmentation's carry their reuse notes; the build is v2's else."""
     from labeler.ae import seg as ae_seg
     from labeler.ae.seg import train as seg_train
     from labeler.ae.seg.model import SegNet, SegNetConfig
@@ -1022,6 +1022,10 @@ def test_version_v4_with_segnet_v4_names_v2s_scoring_and_the_reuse(runs, tmp_pat
     )
     tree.as_version(runs, "v2", keep=True)
     models = tree.as_version(runs, "v4", keep=True)
+    scored = json.loads((models / "evaluation.json").read_text())
+    ae_note = xpower.reuse_note("v4", 2)
+    scored.setdefault("meta", {})["test_reuse"] = ae_note
+    (models / "evaluation.json").write_text(json.dumps(scored))
     out = tmp_path / "paper"
     argv = ["--out", str(out), "--version", "v4", "--seg-version", "v4"]
     assert build.main(argv) == 0
@@ -1038,6 +1042,7 @@ def test_version_v4_with_segnet_v4_names_v2s_scoring_and_the_reuse(runs, tmp_pat
     )
     comment = (out / "table_ae_scores.tex").read_text().splitlines()[0]
     assert "2 of the 2 test shots were v2's test shots" in comment
+    assert f"; {ae_note}" in comment, "the frame model's own reuse note"
     note = ae_seg.reuse_note("v4", record["counts"]["shots"])
     comment = (out / "table_seg_scores.tex").read_text().splitlines()[0]
     assert f"; {note}" in comment
