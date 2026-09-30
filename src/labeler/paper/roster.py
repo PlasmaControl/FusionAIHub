@@ -189,8 +189,9 @@ PAGE_COLUMNS = round(PAGE_IN * 300)
 TRACE_LW = 0.3
 #: The n map's key names an n with at least this share of its lit pixels, those
 #: the TokEye gate keeps: the map's scattered noise pixels light every n, and a
-#: key of all of them overflows the panel (shot 199563 lit ten, ungated).
-KEY_MIN_SHARE = 0.05
+#: key of all of them overflows the panel. Shot 199563 lit ten ungated; gated,
+#: n=2 holds 34 % and n=1 18 %, and the noise lights the other n at 5-10 % each.
+KEY_MIN_SHARE = 0.10
 #: A row per colour: the ECE groups'.
 ROW_COLOURS = ("#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b")
 #: The n map's TokEye gate (F4): the probe whose record TokEye segments, the
