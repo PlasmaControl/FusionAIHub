@@ -33,9 +33,10 @@ one not observable, as the AE extension writes them.
 **Shards.** Each writes `<set>-<I>-of-<N>.npz` (each shot's P per frame, NaN
 where not observable), `.failed.jsonl` and, last, `.json` (the shots it was
 given, done, skipped with their reasons, and failed; the model's sha256) under
-`suggestions/<method>/<frames.VERSION>/shards/`. A shot that raises, whatever the error, is
-failed with its error's type and message, and the shard goes on: the failures
-are counted, not fatal, and the merge's tallies say how many there were. A
+`suggestions/<method>/<frames.VERSION>/shards/`. A shot that raises, whatever
+the error, is failed with its error's type and message, and the shard goes on:
+the failures are counted, not fatal, and the merge's tallies say how many there
+were. A
 limited run (`--limit`, `--shots`) is a pilot and writes under `shards/pilot/`,
 which `--merge` never reads.
 

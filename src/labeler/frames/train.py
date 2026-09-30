@@ -8,8 +8,9 @@ shots (round three, Part B; spec §3.1).
 (`frames.features_dir`), both `frames.VERSION`'s (F1): the train shots are
 trained on, and the val shots stop the training and set the threshold; the
 test shots are never read here. Every shot's target is its original's with the
-owner's label over it (`targets.merged`, F2), as `prepare` wrote its states. A train or val shot without features (`prepare.dropped`, or never
-prepared) is left out, and the checkpoint lists it with its reason.
+owner's label over it (`targets.merged`, F2), as `prepare` wrote its states.
+A train or val shot without features (`prepare.dropped`, or never prepared) is
+left out, and the checkpoint lists it with its reason.
 
 **Loss.** Binary cross-entropy on the spec's bins (`model.bin_logits`: the
 frames' maximum for onsets, their mean for states) over the scored bins, ABSENT
