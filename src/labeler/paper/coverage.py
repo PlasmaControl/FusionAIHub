@@ -2,9 +2,11 @@
 
 For each catalog phenomenon: the shots with a label ("labelled"), those with
 any present span and their present time; how the model split them (train,
-val, test); and the shots the extension suggested labels for, with those it
-calls positive, by campaign year. A suggested shot is a suggestion, not a label
-(v1 spec §3).
+val, test); and, in the table alone, the shots the extension suggested labels
+for, with those it calls positive. A suggested shot is a suggestion, not a
+label (v1 spec §3). The figure's shots panel is on a log axis, its bars from
+1; its present-time panel is linear. The figure has no suggestions panel (the
+owner, 2026-09-29 23:51: "remove the suggestions by year graphs").
 
 AE's labels are the owner's live review
 (`data/events/alfven_eigenmode/review/labels.csv`), so its labelled shots are
@@ -26,12 +28,12 @@ on disk; the labelled shots in none of it are those `frames.shots` left out,
 so the table's No split is `--` for it. Its suggestions come from the
 application's `summary.csv`, and whether its model failed its primary bar (the
 first criterion of its spec's bar: E1, H1, N1 or S1) or is effectively the
-`always` baseline (`frames.evaluate`, F6) from the suggestion table's meta: a
-years panel's title says so ("bar not met", "≈ always") and the table puts a
+`always` baseline (`frames.evaluate`, F6) from the suggestion table's meta: its
+split panel's heading says so ("bar not met", "≈ always") and the table puts a
 dagger on its Suggested cell (F8). Sawteeth's labels are those of the
 ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended), not a person's,
 so its tick says "(detector)". The frame
-phenomena take two rows of their own below AE's. A phenomenon with none of
+phenomena's splits take a row of their own below AE's. A phenomenon with none of
 these inputs is still "coming". Disruption is not a paper phenomenon
 (`paper.LEFT_OUT`): it is neither counted nor drawn.
 
@@ -46,9 +48,9 @@ when the build has checked `cv/folds.csv` against `chosen.json`
 were.
 
 A part whose input is missing is not a zero: without its split (no model
-chosen, or a frame model's shots not split yet), its split's meta or
-`summary.csv` (the extension did not run) its panel says "not run" and the
-table prints `--`. Why it did not run goes in the build's manifest (`partial`),
+chosen, or a frame model's shots not split yet) or its split's meta, its panel
+says "not run", and without that or `summary.csv` (the extension did not run)
+the table prints `--`. Why it did not run goes in the build's manifest (`partial`),
 not in the figure. A counted phenomenon with no labelled shot is a true zero:
 its row of the shots panel says "none reviewed" (AE) or "none labelled".
 """
@@ -77,22 +79,23 @@ MISSING = "--"
 SHOT_BARS = {"labelled": "#bbbbbb", "with a present span": "#d62728"}
 PRESENT_COLOUR = "#d62728"
 SPLIT_COLOUR = "#7f7f7f"
-SUGGESTED = {"suggested": "#9ecae1", "suggested with AE": "#1f77b4"}
 UNKNOWN_YEAR = 0
 VALUE_PT = FONT_PT - 1
 ROW_IN = 2.3  # AE's row's height, inches: the whole figure's when it is alone
-ROW_WIDTHS = (1.5, 1.1, 1, 1.3)  # its panels: shots, present time, split, years
+ROW_WIDTHS = (1.5, 1.1, 1)  # its panels: shots, present time, split
 NONE_REVIEWED = "none reviewed"  # AE's, whose labels are its reviews
 NONE_LABELLED = "none labelled"  # a frame phenomenon's
-#: A frame years panel's marks (F8): its model failed its primary bar, or is
+#: A frame split panel's marks (F8): its model failed its primary bar, or is
 #: effectively the `always` baseline.
 BAR_NOT_MET = "bar not met"
 ALWAYS = "≈ always"
 DAGGER = r"$^\dagger$"
-FRAME_ROW_IN = 1.5  # the height of each of the two frame rows, inches
-#: The frame years panels' entries in the years panels' one key (`_years_key`),
-#: in `SUGGESTED`'s colours.
-FRAME_SUGGESTED = ("suggested", "suggested with the phenomenon")
+FRAME_ROW_IN = 1.5  # the frame row's height, inches
+#: The room past the longest bar for its number (`_room`): `ROOM` times it on a
+#: linear axis, and `ROOM` times its decades on the shots panel's log axis.
+ROOM = 1.3
+#: Where the log axis's bars start: 0 has no place on it.
+BAR_FROM = 1
 
 
 @dataclass(frozen=True)
@@ -359,26 +362,53 @@ def _coming_rows(ax, rows: np.ndarray, counts: Mapping[str, Counts]) -> None:
             _row_text(ax, y, COMING)
 
 
-def _room(ax, top: float) -> None:
-    """Room past the longest bar for its value."""
-    ax.set_xlim(0, 1.3 * top if top > 0 else 1)
+def _room(ax, top: float, log: bool = False) -> None:
+    """Room past the longest bar for its value: `ROOM` times it on a linear
+    axis from 0. On a log axis from `BAR_FROM`, multiplicative: `ROOM` times
+    its decades, the right end `top ** ROOM` (top times `top ** (ROOM - 1)`),
+    so the numbers get the same share of the panel; at least a decade's."""
+    if log:
+        ax.set_xlim(BAR_FROM, max(top, 10) ** ROOM)
+    else:
+        ax.set_xlim(0, ROOM * top if top > 0 else 1)
 
 
 def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
+    """The labelled shots and those with a present span, on a log axis: each
+    bar from `BAR_FROM` to its count, its number beside it. A count of 0 draws
+    no bar but keeps its number; a count not read (None) draws neither."""
+    ax.set_xscale("log")
     height = 0.8 / len(SHOT_BARS)
     top = 0.0
     for i, (name, colour) in enumerate(SHOT_BARS.items()):
-        at, values = [], []
+        at, values, zeros = [], [], []
         for y, category in zip(rows, ORDER, strict=True):
             c = counts.get(category)
             v = None if c is None else (c.labelled_shots, c.positive)[i]
-            if v:  # nothing drawn, and no key, for a series without data
-                at.append(y + 0.4 - (i + 0.5) * height)  # labelled on top
+            if v is None:
+                continue
+            y_bar = y + 0.4 - (i + 0.5) * height  # labelled on top
+            if v:
+                at.append(y_bar)
                 values.append(v)
-        if values:
-            bars = ax.barh(at, values, height, color=colour, label=name)
-            ax.bar_label(bars, padding=1, fontsize=VALUE_PT)
+            else:
+                zeros.append(y_bar)
+        if values:  # nothing drawn, and no key, for a series without a bar
+            widths = [v - BAR_FROM for v in values]
+            bars = ax.barh(at, widths, height, left=BAR_FROM, color=colour, label=name)
+            numbers = [f"{v:g}" for v in values]
+            ax.bar_label(bars, labels=numbers, padding=1, fontsize=VALUE_PT)
             top = max(top, *values)
+        for y_bar in zeros:  # where bar_label would put it, at the axis's start
+            ax.annotate(
+                "0",
+                (BAR_FROM, y_bar),
+                xytext=(1, 0),
+                textcoords="offset points",
+                ha="left",
+                va="center",
+                fontsize=VALUE_PT,
+            )
     _coming_rows(ax, rows, counts)
     for y, category in zip(rows, ORDER, strict=True):
         c = counts.get(category)
@@ -388,7 +418,7 @@ def _shots_panel(ax, counts: Mapping[str, Counts], rows: np.ndarray) -> None:
             _row_text(ax, y, NOT_RUN)  # a frame split with no meta
         elif c.labelled_shots == 0:  # counted: a true zero
             _row_text(ax, y, NONE_LABELLED if c.frame else NONE_REVIEWED)
-    _room(ax, top)
+    _room(ax, top, log=True)
     ax.set_yticks(rows, [tick(c) for c in ORDER])
     ax.set_ylim(rows.min() - 0.6, rows.max() + 0.6)
     ax.set_title("shots")
@@ -429,41 +459,13 @@ def _split_panel(ax, ae: Counts | None) -> None:
     ax.set_title(heading)
 
 
-def _in_year_order(by_year: Mapping[int, tuple[int, int]]) -> tuple[list, list]:
-    """The campaign years in order, `UNKNOWN_YEAR` last, and their ticks: "?"
-    for it."""
-    years = sorted(by_year, key=lambda y: (y == UNKNOWN_YEAR, y))
-    return years, ["?" if y == UNKNOWN_YEAR else str(y) for y in years]
-
-
-def _year_bars(ax, by_year: Mapping[int, tuple[int, int]], names) -> None:
-    """The suggested shots and those called positive per campaign year, as bars
-    across, the first year on top: six years' ticks stay apart, where under
-    upright bars they touch. `names` label the two for the shared key
-    (`_years_key`); no panel keeps a legend of its own."""
-    years, ticks = _in_year_order(by_year)
-    at = np.arange(len(years))
-    colours = SUGGESTED.values()
-    for k, (name, colour) in enumerate(zip(names, colours, strict=True)):
-        ax.barh(at, [by_year[y][k] for y in years], color=colour, label=name)
-    ax.set_yticks(at, ticks)
-    ax.invert_yaxis()
-    ax.set_xlabel("shots")
-
-
-def _years_panel(ax, ae: Counts | None) -> None:
-    heading = f"{title(AE)} suggestions by year"
-    if ae is None or ae.by_year is None:
-        placeholder(ax, heading, NOT_RUN)
-        return
-    _year_bars(ax, ae.by_year, SUGGESTED)
-    ax.set_title(heading)
-
-
 def _frame_split_panel(ax, category: str, c: Counts | None) -> None:
     """A frame model's split of its own shots, train, val and test (F2: no
-    owner split), the first bar on top."""
+    owner split), the first bar on top. A model that failed its primary bar,
+    or is effectively always, says so on the heading's second line (F8)."""
     heading = f"{title(category)}: model split"
+    if c is not None and c.marks:
+        heading += f"\n({', '.join(c.marks)})"
     if c is None:
         placeholder(ax, heading)
         return
@@ -481,85 +483,32 @@ def _frame_split_panel(ax, category: str, c: Counts | None) -> None:
     ax.set_title(heading)
 
 
-def _frame_years_panel(ax, category: str, c: Counts | None) -> None:
-    """A frame model's suggestions by campaign year, the first year on top. The
-    heading takes two lines: on one, sawteeth's is wider than its panel, and a
-    constrained layout keeps no room for a title's width. A model that failed
-    its primary bar, or is effectively always, says so on a third line (F8):
-    after "by year", both marks are wider than the panel."""
-    heading = f"{title(category)} suggestions\nby year"
-    if c is not None and c.marks:
-        heading += f"\n({', '.join(c.marks)})"
-    if c is None:
-        placeholder(ax, heading)
-        return
-    if c.by_year is None:
-        placeholder(ax, heading, NOT_RUN)
-        return
-    _year_bars(ax, c.by_year, FRAME_SUGGESTED)
-    ax.set_title(heading)
-
-
-def _years_key(fig: Figure, years) -> None:
-    """One key for every years panel, AE's and the frame rows', beneath the
-    figure: a legend in each would cover its bars and ticks (six years in a
-    1.5 in row; AE's, at "best", sat on its 2022 bar). One entry per colour
-    some panel draws, AE's first; none while no panel has bars. Once a frame
-    row's bars are drawn, AE's dark bars go by the frame rows' name, "with the
-    phenomenon", which AE's panel title names."""
-    found: dict[str, object] = {}
-    for ax in years:
-        if not ax.patches:  # a placeholder, or no year to draw
-            continue
-        for handle, name in zip(*ax.get_legend_handles_labels(), strict=True):
-            found.setdefault(name, handle)
-    if FRAME_SUGGESTED[1] in found:  # the same colour as "suggested with AE"
-        found.pop(list(SUGGESTED)[1], None)
-    if found:
-        fig.legend(
-            list(found.values()),
-            list(found),
-            loc="outside lower right",
-            ncols=len(found),
-        )
-
-
 def draw_coverage(counts: Mapping[str, Counts], stem: Path) -> Figure:
-    """Per phenomenon the shots labelled and positive, and their present time;
-    AE's model split; and AE's suggestions by campaign year. While a frame-model
-    phenomenon is counted, two rows below: each one's model split, then its
-    suggestions by year, marked when its model is (F8)."""
+    """Per phenomenon the shots labelled and positive, on a log axis, and
+    their present time, and AE's model split. While a frame-model phenomenon
+    is counted, a row below: each one's model split, its heading marked when
+    its model is (F8). One key, the shots panel's; no suggestions panel."""
     framed = any(category in counts for category in FRAME_SOURCES)
     with style():
         if framed:
-            fig = Figure(
-                figsize=(PAGE_IN, ROW_IN + 2 * FRAME_ROW_IN), layout="constrained"
-            )
-            outer = fig.add_gridspec(
-                3, 1, height_ratios=[ROW_IN, FRAME_ROW_IN, FRAME_ROW_IN]
-            )
-            axes = outer[0].subgridspec(1, 4, width_ratios=ROW_WIDTHS).subplots()
+            fig = Figure(figsize=(PAGE_IN, ROW_IN + FRAME_ROW_IN), layout="constrained")
+            outer = fig.add_gridspec(2, 1, height_ratios=[ROW_IN, FRAME_ROW_IN])
+            axes = outer[0].subgridspec(1, 3, width_ratios=ROW_WIDTHS).subplots()
         else:
             fig = Figure(figsize=(PAGE_IN, ROW_IN), layout="constrained")
-            axes = fig.subplots(1, 4, width_ratios=ROW_WIDTHS)
+            axes = fig.subplots(1, 3, width_ratios=ROW_WIDTHS)
         rows = np.arange(len(ORDER))[::-1].astype(float)
         _shots_panel(axes[0], counts, rows)
         _present_panel(axes[1], counts, rows)
         axes[1].set_ylim(axes[0].get_ylim())
         _split_panel(axes[2], counts.get(AE))
-        _years_panel(axes[3], counts.get(AE))
         if framed:
-            n = len(FRAME_SOURCES)
-            splits = outer[1].subgridspec(1, n).subplots()
-            years = outer[2].subgridspec(1, n).subplots()
+            splits = outer[1].subgridspec(1, len(FRAME_SOURCES)).subplots()
             for ax, category in zip(splits, FRAME_SOURCES, strict=True):
                 _frame_split_panel(ax, category, counts.get(category))
-            for ax, category in zip(years, FRAME_SOURCES, strict=True):
-                _frame_years_panel(ax, category, counts.get(category))
         handles, names = axes[0].get_legend_handles_labels()
         if handles:  # a key only for a series with data
             fig.legend(handles, names, loc="outside lower left", ncols=len(names))
-        _years_key(fig, [axes[3], *(years if framed else ())])
         save(fig, stem)
     return fig
 

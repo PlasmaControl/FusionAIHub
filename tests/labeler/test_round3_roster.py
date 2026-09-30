@@ -1,8 +1,9 @@
 """The paper's interpreter figure, `fig_interpreter` (`labeler.paper.roster`): one
 non-blind roster shot with corpus CO2, AE from the frame model and SegNet over its
-corpus rows (the mask over the whole picture), the signals the frame models read
-(F10), the other phenomena from the frame models' suggestion tables, drawn as
-suggestions; by the paper build, and by the roster CLI into a scratch build."""
+corpus rows (the mask over the whole picture), signals the frame models read (F10;
+no Mirnov spectrogram and no SXR, and the n map gated by TokEye, F4), the other
+phenomena from the frame models' suggestion tables, drawn as suggestions; by the
+paper build, and by the roster CLI into a scratch build."""
 
 from __future__ import annotations
 
@@ -17,7 +18,9 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+import torch
 from matplotlib.colors import to_rgba
+from matplotlib.figure import Figure
 
 from labeler import frames
 from labeler.ae.seg import train as seg_train
@@ -26,8 +29,9 @@ from labeler.ae.seg.poi import ae_pixels
 from labeler.ae.xpower.data import FULL_BAND_KHZ
 from labeler.ae.xpower.evaluate import chosen_model
 from labeler.config import DEFAULT_LABEL_TABLES, sha256_of
-from labeler.events import suggestions
+from labeler.events import masks, suggestions, unet
 from labeler.events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from labeler.events.panels.neoclassical_tearing_mode import PROBES
 from labeler.events.review import rows
 from labeler.events.review.labels import Label
 from labeler.paper import AE, ORDER, PAGE_IN, build, paper_dir, roster, shots, title
@@ -91,10 +95,10 @@ def _trace(name, title, channels, units="", level=1.0):
     return rows.TraceRow(name, title, values, y_units=units)
 
 
-def _stores(paths) -> dict:
+def _stores(paths, sxr: bool = False) -> dict:
     """SHOT's review stores: the NTM's Mirnov power and n map, the ELM's
-    PCPHD03 and FS01 D-alpha, the sawteeth's first two ECE groups and no SXR;
-    no H-mode store. Each event's path."""
+    PCPHD03 and FS01 D-alpha, the sawteeth's first two ECE groups, and SXR
+    chords if `sxr`; no H-mode store. Each event's path."""
     power = np.zeros((50, GRID.n), np.uint8)
     power[10:20, 300:700] = 200  # 20-40 kHz, 200-600 ms
     codes = np.zeros((50, GRID.n), np.uint8)
@@ -120,6 +124,7 @@ def _stores(paths) -> dict:
         SAW: [
             _trace("ece0", "ECE Te, ch 20-23 (5 ms median)", 4, "keV", 1.0),
             _trace("ece1", "ECE Te, ch 24-27 (5 ms median)", 4, "keV", 2.0),
+            *([_trace("sxr", "SXR, 4 chords", 4)] if sxr else []),
         ],
     }
     out = {}
@@ -129,6 +134,45 @@ def _stores(paths) -> dict:
         rows.write(path, GRID, found)
         out[event] = path
     return out
+
+
+#: The stand-in TokEye's coherent band: the fixture map's n=2 block, 20-40 kHz.
+BAND_KHZ = (20.0, 40.0)
+
+
+def _mirnov(paths, shot=SHOT) -> None:
+    """`shot`'s corpus `mirnov` group: row `roster.GATE_ROW` (MPI66M322D) of noise
+    at 500 kHz over -0.1 to 1.1 s, the other rows never written."""
+    t = np.arange(-0.1, 1.1, 1 / 500_000)
+    rows = roster.GATE_ROW + 1
+    with h5py.File(paths.corpus_file(shot), "a") as f:
+        f.create_dataset("mirnov/xdata", data=t)
+        y = f.create_dataset("mirnov/ydata", (rows, t.size), "f4", chunks=(1, t.size))
+        y[roster.GATE_ROW] = np.random.default_rng(5).normal(0, 1, t.size)
+
+
+def _unet(band_khz=BAND_KHZ):
+    """A stand-in U-Net: coherent (channel 0) on the rows whose zoom-pass
+    frequency lies in `band_khz`, nothing else, whatever the tile."""
+    freq = masks.freq_axis_khz(500_000, masks.ZOOM_DECIM)
+    rows = torch.from_numpy((freq >= band_khz[0]) & (freq < band_khz[1]))
+
+    def model(x):
+        logits = torch.full((len(x), 2, *x.shape[2:]), -10.0)
+        logits[:, 0, rows] = 10.0
+        return (logits,)
+
+    return model
+
+
+def _tokeye(paths, monkeypatch, band_khz=BAND_KHZ) -> Path:
+    """A checkpoint file where the pinned one lives, loaded as `_unet`'s
+    stand-in; its path."""
+    file = roster.tokeye_file(paths)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_bytes(b"a stand-in for the TokEye checkpoint")
+    monkeypatch.setattr(unet, "load_unet", lambda path=None, **kw: _unet(band_khz))
+    return file
 
 
 @pytest.fixture
@@ -304,8 +348,12 @@ def test_the_figure_says_suggestions_and_has_no_band_line(tree, tmp_path):
     assert (tmp_path / "roster.pdf").is_file() and (tmp_path / "roster.png").is_file()
 
 
-def test_the_signal_panels_are_the_rows_the_frame_models_read(tree, tmp_path):
-    stores = _stores(tree)
+def test_the_signal_panels_are_the_rows_the_frame_models_read(
+    tree, tmp_path, monkeypatch
+):
+    stores = _stores(tree, sxr=True)
+    _mirnov(tree)
+    _tokeye(tree, monkeypatch)
     s = _shot(tree)
     assert s.stores == {
         NTM: stores[NTM],
@@ -316,16 +364,8 @@ def test_the_signal_panels_are_the_rows_the_frame_models_read(tree, tmp_path):
     by_title = {g.panel.title: g for g in s.signals}
     assert list(by_title) == [p.title for p in roster.PANELS]
     labels = [g.label for g in s.signals]
-    assert labels == [
-        "Mirnov\n(kHz)",
-        "n\n(kHz)",
-        "D-alpha\nFS01",
-        "NBI",
-        "ECE Te\n(keV)",
-        "SXR",
-    ]
+    assert labels == ["n\n(kHz)", "D-alpha\nFS01", "NBI", "ECE Te\n(keV)"]
     assert by_title["NBI power"].text == "no NBI power data", "no H-mode store"
-    assert by_title["SXR"].text == "no SXR data", "no SXR row"
     # FS01, never PCPHD03, though PCPHD03 comes first in the store.
     [dalpha] = by_title["D-alpha FS"].rows
     assert dalpha.meta["title"].startswith("D-alpha FS01")
@@ -338,16 +378,14 @@ def test_the_signal_panels_are_the_rows_the_frame_models_read(tree, tmp_path):
     for panel in roster.PANELS:
         assert panel.roles and all(r.title.startswith(panel.title) for r in panel.roles)
     # Read over the figure's range, one column a store column here (1 ms).
-    [power] = by_title["MPI66M322D power"].rows
-    assert (power.t0, power.t1) == (-50.0, 1050.0) and power.values.shape == (50, 1100)
+    [modes_read] = by_title["toroidal n"].rows
+    assert (modes_read.t0, modes_read.t1) == (-50.0, 1050.0)
+    assert modes_read.values.shape == (50, 1100)
     fig = roster.draw(s, tmp_path / "roster")
     spec, *rest = fig.axes
+    assert len(rest) == len(roster.PANELS) + len(ORDER)
     panels = dict(zip(by_title, rest[: len(roster.PANELS)], strict=True))
     assert all(ax.get_xlim() == spec.get_xlim() for ax in rest), "one time axis"
-    assert len(panels["MPI66M322D power"].images) == 1
-    mirnov = panels["MPI66M322D power"].images[0]
-    assert mirnov.get_cmap().name == spec.images[0].get_cmap().name == "inferno"
-    assert panels["MPI66M322D power"].get_ylim() == (0.0, 99.5)
     modes = panels["toroidal n"]
     rgb = modes.images[0].get_array()
     assert np.allclose(rgb[15, 400], [0.0, 0xAA / 255, 0.0]), "n=2 at its top level"
@@ -355,16 +393,185 @@ def test_the_signal_panels_are_the_rows_the_frame_models_read(tree, tmp_path):
     assert [t.get_text() for t in modes.get_legend().get_texts()] == ["n=2"]
     white = to_rgba(modes.get_legend().get_texts()[0].get_color())
     assert white == to_rgba("white"), "the key is white on the black map"
+    assert modes.get_ylabel() == "n\n(kHz)", "the y-label stays n"
     assert len(panels["D-alpha FS"].collections) == 1
     ece_ax = panels["ECE Te"]
     assert len(ece_ax.collections) == 8, "two groups of four channels"
     key = [t.get_text() for t in ece_ax.get_legend().get_texts()]
     assert key == ["ch 20-23", "ch 24-27"]
-    assert [t.get_text() for t in panels["SXR"].texts] == ["no SXR data"]
     names = _labels(fig)
     assert not any(n.startswith(("n=", "ch ")) for n in names), "the keys stay"
     width, height = fig.get_size_inches()
     assert width == PAGE_IN and height > 3.4
+
+
+def test_no_mirnov_spectrogram_and_no_sxr_panel(tree, tmp_path, monkeypatch):
+    # The stores hold both, and the frame models still read both; neither is drawn.
+    _stores(tree, sxr=True)
+    _mirnov(tree)
+    _tokeye(tree, monkeypatch)
+    assert [p.title for p in roster.PANELS] == [
+        "toroidal n",
+        "D-alpha FS",
+        "NBI power",
+        "ECE Te",
+    ]
+    assert {p.kind for p in roster.PANELS} == {"modes", "trace"}, "no image panel"
+    assert not hasattr(roster, "show_image")
+    roles = {m: {r.name for r in frames.SPECS[m].roles} for m in frames.SPECS}
+    assert {"power", "modes"} <= roles["ntm_frames"], "the frame models' roles stay"
+    assert "sxr" in roles["sawtooth_frames"]
+    s = _shot(tree)
+    assert [g.panel.role for g in s.signals] == ["modes", "dalpha", "nbi", "ece"]
+    fig = roster.draw(s, tmp_path / "roster")
+    _, *rest = fig.axes
+    panels = rest[: len(roster.PANELS)]
+    drawn = [ax.get_ylabel() for ax in panels]
+    assert not any(label.startswith(("Mirnov", "SXR")) for label in drawn), drawn
+    assert [len(ax.images) for ax in panels] == [1, 0, 0, 0], "the n map alone"
+    shown = {t.get_text() for ax in fig.axes for t in ax.texts}
+    assert not {"no SXR data", "no MPI66M322D power data"} & shown
+
+
+def _read(values, *, y0=1.0, dy=2.0, t0=0.0, t1=20.0) -> roster.Read:
+    """An n map over `t0`-`t1` ms, rows from `y0` kHz every `dy`, in `MODES`."""
+    values = np.asarray(values, np.uint8)
+    meta = {"n_y": values.shape[0], "y0": y0, "dy": dy, "modes": MODES}
+    return roster.Read(meta, values, t0, t1)
+
+
+#: A synthetic TokEye mask: rows at 1-8 kHz, columns centred every 1 ms from
+#: 0.5 ms. Lit: the 3 kHz row everywhere, and at 1 kHz one column, 7.5 ms.
+FREQ = np.arange(1, 9, dtype=float)
+T_MS = np.arange(20) + 0.5
+LIT = np.zeros((8, 20), bool)
+LIT[2, :] = True
+LIT[0, 7] = True
+
+
+def _gate(lit=LIT) -> roster.Gate:
+    return roster.Gate(lit, FREQ, T_MS, {"pass": "zoom"})
+
+
+def test_the_gate_maps_tokeye_onto_the_map_s_cells():
+    # Map rows at 1.1, 2.9 and 5 kHz take TokEye's 1, 3 and 5 kHz rows; four
+    # 5 ms columns, each over five TokEye columns: max-pooled.
+    edges = np.array([0.0, 5.0, 10.0, 15.0, 20.0])
+    got = roster.gate_mask(LIT, FREQ, T_MS, [1.1, 2.9, 5.0], edges)
+    assert got.tolist() == [
+        [False, True, False, False],  # a thin line inside a wide column survives
+        [True, True, True, True],
+        [False, False, False, False],
+    ]
+    # A column with no TokEye column inside it takes the nearest to its centre.
+    narrow = np.array([6.0, 6.2, 7.4, 7.6, 7.8])
+    got = roster.gate_mask(LIT, FREQ, T_MS, [1.0], narrow)
+    assert got.tolist() == [[False, False, True, True]]
+    assert roster.gate_mask(LIT, FREQ, T_MS, [9.9], edges).tolist() == [[False] * 4], (
+        "above TokEye's top row: its nearest, 8 kHz, is unlit"
+    )
+
+
+def test_a_lit_cell_keeps_its_code_and_an_unlit_one_becomes_0():
+    n2, n1, n3 = 84 * 3 + 1, 84 * 3, 50 * 3 + 2
+    values = [
+        [n1, n2, 2, 0],  # 2: level 0, black already
+        [30, 30, 30, 30],  # n=1 at level 10
+        [n3, n3, n3, n3],
+    ]
+    read, kept = roster.gated(_read(values), _gate())
+    assert read.values.tolist() == [[0, n2, 0, 0], [30] * 4, [0] * 4]
+    assert read.values.dtype == np.uint8
+    assert (read.t0, read.t1, read.meta) == (0.0, 20.0, _read(values).meta)
+    assert kept == 0.5, "5 of the 10 lit cells (a level above 0)"
+    _, none = roster.gated(_read(np.zeros((3, 4))), _gate())
+    assert none is None, "no lit cell to keep"
+
+
+def test_the_key_counts_only_the_cells_the_gate_keeps():
+    # The lit 3 kHz row holds a line of n=2; the rows either side, which TokEye
+    # does not light, hold twice as many cells of n=1 noise.
+    values = np.full((3, 4), 1 * 3 + 0, np.uint8)
+    values[1] = 84 * 3 + 1
+    read = _read(values)
+
+    def key(read):
+        ax = Figure().subplots()
+        roster._modes(ax, read)
+        return [t.get_text() for t in ax.get_legend().get_texts()]
+
+    assert key(read) == ["n=1", "n=2"], "ungated, the noise is in the key"
+    line = np.zeros_like(LIT)
+    line[2] = True  # the 3 kHz row alone
+    gated, kept = roster.gated(read, _gate(line))
+    assert key(gated) == ["n=2"]
+    assert kept == pytest.approx(4 / 12, abs=1e-4)
+
+
+def test_the_gate_is_tokeye_s_zoom_pass_over_the_probe(tree, monkeypatch):
+    assert roster.GATE_ROW == next(iter(PROBES)) == 15
+    assert (roster.GATE_GROUP, roster.GATE_TITLE) == ("mirnov", "MPI66M322D")
+    assert roster.tokeye_file(tree) == (
+        tree.root / "models" / "tokeye" / "big_tf_unet_251210.pt"
+    )
+    _mirnov(tree)
+    file = _tokeye(tree, monkeypatch)
+    g = roster.gate(tree, SHOT)
+    y, fs, t0, _ = masks.read_waveform(tree.corpus_file(SHOT), "mirnov", 15)
+    assert g.lit.shape == (512, masks.prep(y, fs_hz=fs, decim=4)[1]["n_cols"])
+    assert np.allclose(g.freq_khz, masks.freq_axis_khz(fs, masks.ZOOM_DECIM))
+    assert g.t_ms[0] == pytest.approx(t0 * 1000 - 3 * 1.024, abs=1e-6)
+    band = (g.freq_khz >= BAND_KHZ[0]) & (g.freq_khz < BAND_KHZ[1])
+    assert g.lit[band].all() and not g.lit[~band].any(), "coherent >= 0.2"
+    assert g.record == {
+        "checkpoint": {"path": str(file), "sha256": sha256_of(file)},
+        "corpus": {
+            "path": str(tree.corpus_file(SHOT)),
+            "sha256": sha256_of(tree.corpus_file(SHOT)),
+        },
+        "row": {"group": "mirnov", "row": 15, "title": "MPI66M322D"},
+        "pass": "zoom",
+        "khz_per_bin": pytest.approx(500 / 4 / 1024),
+        "threshold": 0.2,
+    }
+
+
+def test_the_shot_s_n_map_is_gated(tree, monkeypatch):
+    _stores(tree)
+    _mirnov(tree)
+    _tokeye(tree, monkeypatch)
+    s = _shot(tree)
+    [read] = next(g for g in s.signals if g.panel.kind == "modes").rows
+    codes = read.values
+    assert (codes[10:20, 250:650] == 84 * 3 + 1).all(), "the lit n=2 block stays"
+    assert not codes[40].any(), "the n=1 noise at 80 kHz, which TokEye does not light"
+    assert s.no_gate is None
+    assert s.n_gate["kept"] == round(4000 / 4003, 4)
+    assert s.n_gate["row"] == {"group": "mirnov", "row": 15, "title": "MPI66M322D"}
+
+
+def test_without_a_gate_the_n_panel_says_so(tree, tmp_path, monkeypatch):
+    _stores(tree)
+    s = _shot(tree)  # no checkpoint
+    [modes] = [g for g in s.signals if g.panel.kind == "modes"]
+    assert (modes.text, modes.rows, modes.label) == ("no TokEye data", (), "n\n(kHz)")
+    assert roster.NO_GATE == shots.NO_DATA.format("TokEye")
+    checkpoint = str(roster.tokeye_file(tree))
+    assert s.no_gate == roster.NoGate(roster.NO_CHECKPOINT, checkpoint)
+    assert s.n_gate is None
+    _tokeye(tree, monkeypatch)
+    s = _shot(tree)  # a checkpoint, and no mirnov group in the corpus
+    [modes] = [g for g in s.signals if g.panel.kind == "modes"]
+    assert modes.text == roster.NO_GATE and s.n_gate is None
+    assert s.no_gate.why.startswith(f"{roster.NO_RECORD}: ")
+    assert "no group 'mirnov'" in s.no_gate.why and s.no_gate.missing is None
+    fig = roster.draw(s, tmp_path / "roster")
+    ax = fig.axes[1 + [p.kind for p in roster.PANELS].index("modes")]
+    assert [t.get_text() for t in ax.texts] == ["no TokEye data"]
+    assert ax.get_ylabel() == "n\n(kHz)" and not ax.images
+    out = tmp_path / "preview"
+    assert roster.main(["--out", str(out), "--version", "v2", "--shot", str(SHOT)]) == 0
+    assert json.loads((out / roster.MANIFEST).read_text())["n_gate"] is None
 
 
 def test_main_refuses_the_papers_directory_and_a_shot_off_the_list(tree, tmp_path):
@@ -472,16 +679,17 @@ def test_the_build_draws_the_roster_figure_as_fig_interpreter(tree, tmp_path):
             "missing": [str(roster.table_file(tree, NTM))],
         },
         {
+            "reason": build.NO_PANEL_GATE.format(roster.NO_CHECKPOINT, roster.NO_GATE),
+            "panel": "toroidal n",
+            "missing": [str(roster.tokeye_file(tree))],
+        },
+        {
             "reason": build.NO_PANEL_STORE.format("no NBI power data"),
             "panel": "NBI power",
             "missing": [str(tree.spectrogram_file(HMODE, SHOT))],
         },
-        {
-            "reason": build.NO_PANEL_ROW.format("no SXR data"),
-            "panel": "SXR",
-            "store": str(stores[SAW]),
-        },
     ]
+    assert got["n_gate"] is None and roster.GATE_KEY not in pinned
     assert manifest["consistent"] is True
     # The roster CLI's preview records the same, less its commit.
     preview = tmp_path / "preview"
@@ -537,11 +745,35 @@ def _opened(monkeypatch) -> Counter:
 def test_the_build_pins_every_file_the_figure_reads_but_the_corpus(
     tree, tmp_path, monkeypatch
 ):
+    # With the gate: the checkpoint through the snapshot, the corpus in place.
     _stores(tree)
+    _mirnov(tree)
+    checkpoint = _tokeye(tree, monkeypatch)
+    corpus_file = tree.corpus_file(SHOT)
+    shas = sha256_of(checkpoint), sha256_of(corpus_file)  # before the spy counts
     opened = _opened(monkeypatch)
     out = tmp_path / "paper"
     manifest = build.build(tree, out, shot=SHOT, version="v2")
     assert "fig_interpreter" in manifest["products"]
+    got = manifest["interpreter"]["n_gate"]
+    assert got["checkpoint"] == manifest["inputs"][roster.GATE_KEY]
+    assert got["checkpoint"] == {"path": str(checkpoint), "sha256": shas[0]}
+    assert got["corpus"] == {"path": str(corpus_file), "sha256": shas[1]}
+    assert got["row"] == {"group": "mirnov", "row": 15, "title": "MPI66M322D"}
+    assert (got["pass"], got["threshold"]) == ("zoom", 0.2)
+    assert got["khz_per_bin"] == pytest.approx(500 / 4 / 1024)
+    assert got["kept"] == round(4000 / 4003, 4)
+    assert list(got) == [
+        "checkpoint",
+        "corpus",
+        "row",
+        "pass",
+        "khz_per_bin",
+        "threshold",
+        "kept",
+    ]
+    partial = manifest["partial"]["fig_interpreter"]
+    assert "toroidal n" not in [e.get("panel") for e in partial], "gated: drawn"
     under = str(tmp_path.resolve())
     read = {p for p in opened if p.startswith(under) and not p.startswith(str(out))}
     pinned = {str(Path(v["path"]).resolve()) for v in manifest["inputs"].values()}

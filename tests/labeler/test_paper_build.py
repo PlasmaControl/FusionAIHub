@@ -152,6 +152,7 @@ def test_the_interpreter_is_the_roster_figure(runs, tmp_path, monkeypatch):
     assert got["seg_model"] is None and got["seg_band_khz"] is None
     assert got["tables"] == dict.fromkeys(roster.TABLES.values())
     assert got["stores"] == dict.fromkeys(roster.TABLES), "no store of 102's"
+    assert got["n_gate"] is None, "no n map to gate"
     assert got["tier"] == roster.TIER == "suggestions"
     no_mask = {
         "reason": build.NO_INTERPRETER_MASK,

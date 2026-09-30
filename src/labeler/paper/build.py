@@ -40,13 +40,16 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   CO2 (`roster.candidates`): `--shot`'s, which must be one, else
   `roster.PICK_RULE`'s. The chosen model (`--version`'s, the one fig_examples
   reads) and SegNet (`--interpreter-seg-version`'s) run over the shot's corpus
-  CO2; its signal panels are the rows of its review stores the frame models
-  read, and its other four tracks the frame models' `frames.VERSION`
-  suggestion tables. Every track is a suggestion, never reviewed, and it
-  scores nothing, so it needs the chosen model alone, not its evaluation or
-  labels. It is skipped without a candidate, for a `--shot` that is not one
-  and for a shot without corpus CO2; drawn without SegNet's `model.pt`, a
-  table, a store or a store's row, it is `partial`, each part named.
+  CO2; its signal panels are rows of its review stores the frame models
+  read (the n map gated by TokEye's coherent mask of the MPI66M322D probe:
+  `roster.gate`), and its other four tracks the frame models'
+  `frames.VERSION` suggestion tables. Every track is a suggestion, never
+  reviewed, and it scores nothing, so it needs the chosen model alone, not
+  its evaluation or labels. It is skipped without a candidate, for a `--shot`
+  that is not one and for a shot without corpus CO2; drawn without SegNet's
+  `model.pt`, a table, a store, a store's row or the n map's gate (the TokEye
+  checkpoint, or a readable MPI66M322D record), it is `partial`, each part
+  named.
 
 The owner's live labels are read for the coverage alone; every scored product
 uses the labels the model was scored against.
@@ -106,9 +109,11 @@ as `ae_earlier_evaluation` and `ae_earlier_split`; without them the tables are
 `partial`. Whether the owner accepts the second look is the ledger's record.
 
 The manifest pins every file the build reads (the chosen `model.pt`, its
-`split.csv`, its labels, each spectrogram store and the cohort among them)
-with its sha256, but the interpreter shot's corpus file, which is GBs and read
-in slices: its path alone is recorded. It records the full commit and whether
+`split.csv`, its labels, each spectrogram store, the cohort and the TokEye
+checkpoint among them) with its sha256, but the interpreter shot's corpus file,
+which is GBs and read in slices: `inputs` does not hold it, and the n map's
+gate (`interpreter.n_gate`) records it by path and a sha256 hashed in place,
+once. It records the full commit and whether
 the tree was dirty, whether the frame model's copy of the labels is the one
 its evaluation names (`labels_match`; the segmentation's own check is
 `seg_labels_match`), whether a cross-validated version's `cv/folds.csv` is the
@@ -126,7 +131,11 @@ the interpreter figure was drawn from, as the roster CLI's `roster.json` does
 (`roster.record`): the shot, the rule that picked it and the number of
 candidates; each model, table and store by path and sha256, the same pins as
 `inputs`' (null for one that is not there); the band of the mask
-(`seg_band_khz`); the corpus file's path; and `"tier": "suggestions"`.
+(`seg_band_khz`); the n map's TokEye gate (`n_gate`, null without one: the
+checkpoint, the pin `inputs` holds as `tokeye_unet`; the corpus file by path
+and sha256 and its row; the pass, the kHz per bin, the threshold, and `kept`,
+the share of the ungated map's lit cells the gate keeps); the corpus file's
+path; and `"tier": "suggestions"`.
 
 **The sha256s are of the bytes drawn** (`snapshot.Snapshot`): each input is
 read once, hashed, and parsed from those bytes; a second read of one is refused,
@@ -277,6 +286,7 @@ NO_PANEL_ROW = (
     "the shot's review store has none of this panel's rows over the figure's "
     'time range, so it says "{}"'
 )
+NO_PANEL_GATE = 'TokEye cannot gate the n map ({}), so it says "{}"'
 
 
 def inputs(
@@ -896,7 +906,7 @@ def _interpreter(
     or None and its `skipped` entry: no candidate, a `shot` that is not one, or
     a shot without corpus CO2. Each part it is drawn without is a `partial`
     entry: the mask, then each table, then each signal panel with nothing to
-    draw."""
+    draw (the n map's without its TokEye gate: `NO_PANEL_GATE`)."""
     listed = roster.candidates(paths, snap)
     if not listed:
         return None, {"reason": NO_CANDIDATE, "missing": []}
@@ -933,7 +943,11 @@ def _interpreter(
         if sig.text is None:
             continue
         store = s.stores[sig.panel.event]
-        if store is None:
+        if sig.panel.kind == "modes" and s.no_gate is not None:
+            why = NO_PANEL_GATE.format(s.no_gate.why, sig.text)
+            missing = [] if s.no_gate.missing is None else [s.no_gate.missing]
+            lacking(product, why, panel=sig.panel.title, missing=missing)
+        elif store is None:
             file = paths.spectrogram_file(sig.panel.event, s.shot)
             why = NO_PANEL_STORE.format(sig.text)
             lacking(product, why, panel=sig.panel.title, missing=[str(file)])
