@@ -32,15 +32,18 @@ from ..config import Paths
 from ..frames import apply as frames_apply
 from ..frames import evaluate as frames_evaluate
 from ..frames import features_dir, gallery, prepare
+from ..frames.targets import PRESENT_T
 from ..scoring.frames import FRAME_MS
 from . import PAGE_IN, save, style
 from . import shots as ae_shots
 
 RULE = (
-    "the model's test shots ranked by F1 over the bins it scored (ABSENT or "
-    "present, observed) at its threshold, ties by the lower shot number, taken "
-    "evenly from the best to the worst; a shot with no F1 is left out"
+    "the test shots with a present bin, ranked by F1 over the bins the model "
+    "scored (absent or present, observed) at its threshold, ties by the lower "
+    "shot number, taken evenly: the best, the median and the worst; a shot with "
+    "no present bin or no F1 is left out"
 )
+UNKNOWN_EDGE = ("#999999", 0.4)  # the unknown runs are white: outline them
 TARGET_LABEL = "target: {}"
 MODEL_LABEL = ae_shots.MODEL_LABEL
 THRESHOLD_LABEL = ae_shots.THRESHOLD_LABEL
@@ -105,6 +108,16 @@ def scores_of(model, spec, threshold: float, data: dict[int, bytes]) -> dict:
     return found
 
 
+def present_shots(data: dict[int, bytes]) -> set[int]:
+    """The shots whose target has at least one present bin."""
+    found = set()
+    for shot, blob in data.items():
+        with np.load(io.BytesIO(blob)) as z:
+            if (z["states"] == PRESENT_T).any():
+                found.add(shot)
+    return found
+
+
 def pick(f1: dict[int, float], n: int = 3) -> list[int]:
     """The examples: `shots.pick_examples` over the F1s."""
     return ae_shots.pick_examples(f1, n)
@@ -165,6 +178,7 @@ def draw_examples(spec, shots: Sequence[FrameShot], stem: Path) -> Figure:
                 (s.bins, s.states),
                 label=TARGET_LABEL,
                 fontsize=6,
+                unknown_edge=UNKNOWN_EDGE,
             )
             gallery.draw_prob(
                 model,

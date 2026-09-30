@@ -74,7 +74,16 @@ def draw_rows(ax, spec: EventSpec, x, t0: float, t1: float) -> None:
     )
     widths = [_width(role) for role in spec.roles]
     edges = np.cumsum([0, *widths])
-    ax.set_yticks((edges[:-1] + edges[1:]) / 2, [role.name for role in spec.roles])
+    ticks, names = [], []
+    for role, a, b in zip(spec.roles, edges[:-1], edges[1:], strict=True):
+        # an optional role's last channel is its row-was-present flag
+        data = b - 1 if role.optional else b
+        ticks.append((a + data) / 2)
+        names.append(role.name)
+        if role.optional:
+            ticks.append(b - 0.5)
+            names.append(f"{role.name} seen")
+    ax.set_yticks(ticks, names)
     for edge in edges[1:-1]:
         ax.axhline(edge, color="white", lw=0.6)
     ax.set_ylabel("features")
@@ -88,20 +97,26 @@ def draw_target(
     *,
     label: str = "{}",
     fontsize: float = 8,
+    unknown_edge: tuple[str, float] | None = None,
 ) -> None:
     """The target strip: each state's runs of `target` `(bin starts ms,
     states)`, the first run of a state labelled `label.format(its name)` for a
-    legend built from the artists; with no target, `no_target` says why."""
+    legend built from the artists; `unknown_edge` `(colour, width)` outlines the
+    unknown runs, which are white; with no target, `no_target` says why."""
     if target is not None:
         starts, states = target
         for state, colour in TARGET_COLOURS.items():
             name = label.format(TARGET_NAMES[state])
+            edge = unknown_edge if state == UNKNOWN else None
             for i, (a, b) in enumerate(_runs(np.asarray(states) == state)):
                 ax.axvspan(
                     starts[a],
                     starts[b - 1] + spec.bin_ms,
-                    color=colour,
-                    lw=0,
+                    **(
+                        {"facecolor": colour, "edgecolor": edge[0], "lw": edge[1]}
+                        if edge
+                        else {"color": colour, "lw": 0}
+                    ),
                     label=name if i == 0 else "_" + name,
                 )
         ax.set_ylabel("target", rotation=0, ha="right", va="center")

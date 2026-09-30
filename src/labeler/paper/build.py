@@ -46,7 +46,8 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
 - `fig_examples_ntm`, `fig_examples_hmode`, `fig_examples_elm`,
   `fig_examples_sawtooth`: three test shots of each frame model
   (`roc.SELECTED`, `frames.VERSION`): the best, median and worst F1 over the
-  bins its evaluation scored (`paper.frame_examples`), each with the input
+  bins its evaluation scored, over the test shots with a present bin
+  (`paper.frame_examples`), each with the input
   rows, the target per bin and P per frame with the model's own threshold
   (`blob["threshold"]`). Drawn from the prepared features. The model, split
   (and its meta) and evaluation are pinned, and so is every test shot's
@@ -300,7 +301,7 @@ NO_F1 = (
     "a scored frame there present"
 )
 NO_FRAME_EVALUATION = "the model's evaluation.json is missing"
-NO_FRAME_SHOT = "no test shot has an F1 over its scored bins"
+NO_FRAME_SHOT = "no test shot with a present bin has an F1 over its scored bins"
 FRAME_OTHER = "the evaluation names another {what} than the one on disk"
 FRAME_FEW = "fewer than {n} test shots can be drawn"
 FRAME_THRESHOLD = "the model's threshold is not the one its evaluation scored"
@@ -1124,12 +1125,14 @@ def _frame_examples(
     test = [s for s, v in split.items() if v == "test"]
     bytes_, left = frame_examples.read_features(paths, method, test)
     f1 = frame_examples.scores_of(model, spec, threshold, bytes_)
-    if all(math.isnan(v) for v in f1.values()):
+    with_present = frame_examples.present_shots(bytes_)
+    ranked = {s: v for s, v in f1.items() if s in with_present}
+    if all(math.isnan(v) for v in ranked.values()):
         return {
             "reason": NO_FRAME_SHOT,
             "missing": [str(features_dir(paths, method))],
         }, None
-    picks = frame_examples.pick(f1, examples)
+    picks = frame_examples.pick(ranked, examples)
     shas = {s: frame_examples.sha256(b) for s, b in bytes_.items()}
     for s in picks:  # the drawn shots' features, pinned as inputs
         snap.pinned[f"frames_features_{method}_{s}"] = (
@@ -1156,6 +1159,7 @@ def _frame_examples(
         "shot_f1": {str(s): _number(f1[s]) for s in sorted(picks)},
         "test_shots": len(test),
         "scored_shots": sum(not math.isnan(v) for v in f1.values()),
+        "ranked_shots": sum(not math.isnan(v) for v in ranked.values()),
         "features_missing": {str(s): why for s, why in left.items()},
         "features_sha256": digest,
         "shot_features_sha256": {str(s): shas[s] for s in sorted(picks)},
