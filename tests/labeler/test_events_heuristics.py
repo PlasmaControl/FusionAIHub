@@ -405,6 +405,271 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     assert rerun["dirty"] is False
 
 
+# ------------------------------------------------------------- sawteeth, v3
+#
+# v3 judges each step in its channel's own noise, so its synthetic array has
+# noise: a peaked Te profile over 48 channels, the core (17-23, the hottest 20
+# in the middle) ramping and crashing 20 % every 50 ms, the channels either side
+# of it (13-16, 24-27) taking a 5 % heat pulse, 1 % noise a sample at 10 kHz.
+
+V3_FS_HZ = 1.0e4
+V3_T_MS = (0.0, 2000.0)
+V3_PERIOD_MS = 50.0
+#: Thirty crashes, each 0.3 ms into its 1 ms bin, so the bin is unambiguous.
+V3_CRASHES_MS = 300.3 + V3_PERIOD_MS * np.arange(30)
+V3_CORE = (17, 24)
+V3_PULSE = ((13, 17), (24, 28))
+
+
+def v3_rows(
+    *,
+    n_channels=48,
+    centre=20.0,
+    core=V3_CORE,
+    pulse=V3_PULSE,
+    crashes_ms=V3_CRASHES_MS,
+    drop=0.2,
+    rise=0.05,
+    noise=0.01,
+    t_ms=V3_T_MS,
+    seed=0,
+):
+    """`(t_s, y)`: a sawtooth train on a peaked profile, with noise.
+
+    `core` falls by `drop` at each crash and ramps back over the period, the
+    `pulse` channels jump by `rise` and relax back; before the first period
+    the core is low and flat, and after the last crash it ramps up and holds.
+    """
+    t = np.arange(t_ms[0], t_ms[1], 1e3 / V3_FS_HZ)
+    crashes = np.asarray(crashes_ms, dtype=np.float64)
+    phase = np.zeros_like(t)
+    if crashes.size:
+        last = np.searchsorted(crashes, t, side="right") - 1
+        since = np.where(
+            last >= 0,
+            t - crashes[np.maximum(last, 0)],
+            t - (crashes[0] - V3_PERIOD_MS),
+        )
+        phase = np.clip(since / V3_PERIOD_MS, 0.0, 1.0)
+    level = 0.3 + 2.7 * np.exp(-(((np.arange(n_channels) - centre) / 6.0) ** 2))
+    shape = np.ones((n_channels, t.size))
+    shape[slice(*core)] = 1.0 - drop + drop * phase
+    for lo, hi in pulse:
+        shape[lo:hi] = 1.0 + rise * (1.0 - phase)
+    y = level[:, None] * shape
+    y += noise * level[:, None] * np.random.default_rng(seed).normal(size=y.shape)
+    return t * 1e-3, y.astype(np.float32)
+
+
+def _v3(t_s, y, diag="ece", **kw):
+    got = heuristics.sawtooth_crashes(
+        y, t_s, shot=198658, diag=diag, t_cov=(float(t_s[0]), float(t_s[-1])),
+        **kw,
+    )
+    return got
+
+
+def _times_ms(crashes):
+    return np.array([e.t0_s * 1e3 for e in crashes.events])
+
+
+def _verdicts(t_s, y, pulse=True):
+    env, _ = heuristics.envelope(y, t_s)
+    steps, _, z = heuristics.step_z(env)
+    return [
+        heuristics.crash_test(env, steps, z, k, pulse=pulse)[0]
+        for k in heuristics.crash_candidates(z)
+    ]
+
+
+def test_v3s_constants_are_the_briefs():
+    h = heuristics
+    assert (h.ENV_MS, h.CRASH_GAP_BINS, h.CRASH_SPAN_BINS) == (1.0, 1, 3)
+    assert (h.NOISE_BINS, h.MAD_SIGMA, h.Z_DROP, h.Z_PULSE) == (401, 1.4826, 5, 3)
+    assert (h.CRASH_BLOCK, h.CRASH_SEP_BINS, h.HOT_BINS, h.HOT_SLACK) == (3, 5, 10, 1)
+    assert (h.MIN_FALL, h.COLLAPSE_FALL, h.FAST_FRAC) == (0.02, 0.5, 0.5)
+    assert (h.PULSE_BLOCK, h.PULSE_REACH, h.PULSE_DIAG) == (3, 6, "ece")
+    assert (h.MERGE_MS, h.COLLAPSE_GUARD_MS) == (5.0, 300.0)
+    assert h.SXR_FANS == (
+        ("SX90RM1F", 192), ("SX90RP1F", 256), ("SX90RM1S", 224),
+        ("SX90RP1S", 288),
+    )
+    assert (h.SXR_CHORDS, h.SXR_MIN_CHORDS, h.SXR_LIT_FRAC) == (32, 8, 0.5)
+
+
+def test_the_step_skips_the_crash_bin_and_is_nan_off_the_record():
+    # A crash halfway through bin 30: the bin holds half of each level.
+    env = np.tile(np.r_[np.zeros(30), 0.5, np.ones(29)], (2, 1))
+    env[1, 35] = np.nan
+    steps, sigma, z = heuristics.step_z(env)
+    assert np.isnan(steps[:, :3]).all() and np.isnan(steps[:, -3:]).all()
+    assert steps[0, 30] == 1.0, "bins 31-33 less 27-29: bin 30 is skipped"
+    assert steps[0, 29] == pytest.approx(2.5 / 3) and steps[0, 31] == pytest.approx(
+        2.5 / 3
+    )
+    nan = np.isnan(steps[1, 31:37])
+    assert nan.tolist() == [False, True, True, True, False, True], (
+        "a window with the NaN bin is no step; the step at bin 35 skips it"
+    )
+    # 7 of the 54 steps move: their median absolute deviation is 0.
+    assert (sigma == 0).all() and (z == 0).all(), "no noise: sigma is 0 and z is 0"
+
+
+def test_the_noise_is_not_underestimated_at_the_records_ends():
+    # The prototype padded the steps with the edge value and counted a NaN
+    # step as 0: the windows at each end were half zeros, sigma too small.
+    t_s, y = v3_rows(crashes_ms=[])
+    env, _ = heuristics.envelope(y, t_s)
+    steps, sigma, z = heuristics.step_z(env)
+    finite = np.isfinite(steps)
+    assert (sigma[finite] > 0).all() and (sigma[~finite] == 0).all()
+    ends = sigma[:, 3:200].mean() / sigma[:, 900:1100].mean()
+    assert ends == pytest.approx(1.0, abs=0.1)
+    assert heuristics.crash_candidates(z) == []
+
+
+def test_every_crash_of_a_v3_train_is_found_within_a_bin():
+    t_s, y = v3_rows()
+    got = _v3(t_s, y)
+    times = _times_ms(got)
+    assert len(times) == len(V3_CRASHES_MS)
+    assert np.abs(times - V3_CRASHES_MS).max() <= 1.0
+    assert got.collapses_s == ()
+    one = got.events[0]
+    assert (one.source, one.phenomenon, one.diag) == ("ece_sawtooth", "sawtooth", "ece")
+    assert one.t0_s == one.t1_s and one.channel == -1
+    assert (one.t_cov0_s, one.t_cov1_s) == (t_s[0], t_s[-1])
+    for e in got.events:
+        a = e.attrs
+        assert (a["inversion_channel_lo"], a["inversion_channel_stop"]) == V3_CORE
+        lo, stop = a["pulse_channel_lo"], a["pulse_channel_stop"]
+        # The median across channels lets a noisy neighbour lengthen a run.
+        assert any(abs(lo - b) <= 1 and abs(stop - c) <= 1 for b, c in V3_PULSE)
+        assert a["fall"] == pytest.approx(0.2, abs=0.02)
+        assert a["z_min"] < -heuristics.Z_DROP
+        # The 7 dropping and the pulse's channels of the 48 that could vote.
+        assert e.confidence == pytest.approx((7 + stop - lo) / 48)
+    pulses = [
+        (e.attrs["pulse_channel_lo"], e.attrs["pulse_channel_stop"]) for e in got.events
+    ]
+    assert sum(run in V3_PULSE for run in pulses) >= 25
+
+
+def test_the_same_train_time_reversed_is_no_crash():
+    t_s, y = v3_rows()
+    assert _v3(t_s, y[:, ::-1].copy()).events == ()
+    # The reversed ramps and the reversed pulses are candidates; each fails.
+    verdicts = set(_verdicts(t_s, y[:, ::-1].copy()))
+    assert verdicts and heuristics.CRASH not in verdicts
+
+
+def test_pure_noise_is_no_crash():
+    t_s, y = v3_rows(crashes_ms=[], seed=3)
+    got = _v3(t_s, y)
+    assert got.events == () and got.collapses_s == ()
+
+
+def test_a_smooth_fall_at_the_core_is_no_crash():
+    t_s, y = v3_rows(crashes_ms=[], noise=0.002)
+    t_ms = t_s * 1e3
+    fall = 1.0 - 0.3 * np.clip((t_ms - 1000.0) / 100.0, 0.0, 1.0)  # 30 % in 100 ms
+    y[slice(*V3_CORE)] *= fall.astype(np.float32)
+    assert _v3(t_s, y).events == ()
+    verdicts = _verdicts(t_s, y)
+    assert verdicts, "the fall is a candidate: the test is not vacuous"
+    assert set(verdicts) <= {"fast", "fall"}
+
+
+def test_a_collapse_drops_the_train_in_the_300_ms_after_it():
+    t_s, y = v3_rows()
+    t_ms = t_s * 1e3
+    # Everything falls by 90 % at 220.3 ms and recovers over 30 ms.
+    quench = np.where(
+        t_ms < 220.3, 1.0, 0.1 + 0.9 * np.clip((t_ms - 220.3) / 30.0, 0.0, 1.0)
+    )
+    y = y * quench.astype(np.float32)
+    got = _v3(t_s, y)
+    [collapse] = got.collapses_s
+    assert collapse * 1e3 == pytest.approx(220.5, abs=1.0)
+    assert len(got.events) == len(V3_CRASHES_MS), "each diagnostic keeps its own"
+    kept = np.array([e.t0_s * 1e3 for e in heuristics.sawtooth_events_v3([got])])
+    guarded = V3_CRASHES_MS <= 220.3 + heuristics.COLLAPSE_GUARD_MS
+    assert guarded.sum() == 5
+    assert kept == pytest.approx(V3_CRASHES_MS[~guarded] + 0.2, abs=1.0)
+
+
+def test_a_dropping_block_away_from_the_hottest_channel_is_no_crash():
+    t_s, y = v3_rows(core=(31, 38), pulse=((27, 31), (38, 42)))
+    assert _v3(t_s, y).events == ()
+    assert set(_verdicts(t_s, y)) == {"core"}
+
+
+def test_an_ece_crash_needs_a_heat_pulse_and_an_sxr_crash_does_not():
+    t_s, y = v3_rows(rise=0.0)
+    assert _v3(t_s, y).events == ()
+    assert set(_verdicts(t_s, y)) == {"pulse"}
+    got = _v3(t_s, y, diag="sxr", channels=np.arange(48) + 100, attrs={"fan": "F"})
+    times = _times_ms(got)
+    assert len(times) == len(V3_CRASHES_MS)
+    assert np.abs(times - V3_CRASHES_MS).max() <= 1.0
+    one = got.events[0]
+    assert one.diag == "sxr" and "pulse_channel_lo" not in one.attrs
+    assert one.attrs["fan"] == "F"
+    assert (one.attrs["inversion_channel_lo"], one.attrs["inversion_channel_stop"]) == (
+        117,
+        124,
+    ), "in the channels' own indices, end-exclusive"
+
+
+def test_v3_reads_the_ece_array_or_an_sxr_fan():
+    t_s, y = v3_rows()
+    with pytest.raises(ValueError, match="48"):
+        _v3(t_s, y[:24])
+    with pytest.raises(ValueError, match="v3 reads"):
+        _v3(t_s, y, diag="co2")
+    with pytest.raises(ValueError, match="channel indices"):
+        _v3(t_s, y, channels=[1, 2])
+    # SXR has no pulse test, so any number of chords: 0-23 hold the core.
+    assert len(_v3(t_s, y[:24], diag="sxr", channels=range(24)).events) == 30
+
+
+def _crash(diag, t_ms):
+    return schema.Event(
+        shot=1, source="ece_sawtooth", evidence_kind="heuristic",
+        phenomenon="sawtooth", t0_s=t_ms * 1e-3, t1_s=t_ms * 1e-3,
+        confidence=0.5, diag=diag, channel=-1,
+    )
+
+
+def _found(diag, times_ms, collapses_ms=()):
+    return heuristics.Crashes(
+        diag, tuple(_crash(diag, t) for t in times_ms),
+        tuple(t * 1e-3 for t in collapses_ms),
+    )
+
+
+def test_the_union_merges_crashes_within_5_ms_and_keeps_the_earlier():
+    ece = _found("ece", [100.5, 200.5, 300.5, 400.5, 407.5])
+    sxr = _found("sxr", [104.5, 206.5, 305.5, 403.5])
+    got = heuristics.sawtooth_events_v3([sxr, ece])
+    assert [(e.diag, round(e.t0_s * 1e3, 1)) for e in got] == [
+        ("ece", 100.5),  # 104.5 is 4 ms after it
+        ("ece", 200.5),
+        ("sxr", 206.5),  # 6 ms: another crash
+        ("ece", 300.5),  # 305.5 is 5.0 ms after it: within
+        ("ece", 400.5),  # 403.5 merges into it; 407.5 is 7 ms after
+        ("ece", 407.5),
+    ]
+
+
+def test_the_guard_drops_crashes_from_a_collapse_to_300_ms_after_it():
+    ece = _found("ece", [590.0, 600.0, 750.0, 900.0, 910.0])
+    sxr = _found("sxr", [], collapses_ms=[600.0])
+    got = heuristics.sawtooth_events_v3([ece, sxr])
+    assert [round(e.t0_s * 1e3, 1) for e in got] == [590.0, 910.0], "900 is in it"
+    assert heuristics.sawtooth_events_v3([]) == []
+
+
 # ------------------------------------------------------------- L->H and H->L
 
 def _lh(shot_data, **kw):
