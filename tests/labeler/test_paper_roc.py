@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 from pathlib import Path
@@ -10,12 +11,16 @@ import numpy as np
 import pytest
 import torch
 
+from labeler import frames
 from labeler.frames import evaluate as frames_evaluate
+from labeler.frames import prepare, train
+from labeler.frames.model import RowsCNN
 from labeler.frames.targets import ABSENT, PRESENT_T, UNCERTAIN_T, UNKNOWN
 from labeler.paper import AE, ORDER, roc, roster
 from labeler.scoring import stats
 
 from . import paper_tree as tree
+from .test_round3_frames_evaluate import rechoose
 
 NTM = "ntm_frames"
 
@@ -306,3 +311,92 @@ def test_replace_without_pr_writes_nothing_if_any_is_refused(paths, monkeypatch)
     with pytest.raises(ValueError, match="differ"):
         roc.write(paths, [roc.AE_METHOD, NTM], replace_without_pr=True)
     assert "auprc" not in json.loads(roc.roc_file(paths, NTM).read_text())
+
+
+def _evaluation_on_disk(paths, method: str = NTM) -> str:
+    """An `evaluation.json` for `method`; its sha256."""
+    path = roc.evaluation_file(paths, method)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"scores": {}}\n')
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_replace_for_threshold_replaces_a_record_of_an_older_evaluation(
+    paths, monkeypatch
+):
+    monkeypatch.setattr(torch, "set_num_threads", lambda n: None)
+    scored = _scored()
+    cells = roc.cells(scored.score, scored.truth, scored.threshold)
+    new = _record(scored, _frame_evaluation(float(stats.f1(cells))))
+    _fake_roc(monkeypatch, new)
+    current = _evaluation_on_disk(paths)
+    target = roc.roc_file(paths, NTM)
+    kept = target.with_name(roc.TRAINED_ROC_FILE)
+    assert kept.name == "roc.trained-threshold.json"
+
+    def put(record: dict) -> str:
+        target.write_text(json.dumps(record))
+        return target.read_text()
+
+    at = {**new["threshold"], "value": 0.65}
+    fresh = {**new, "threshold": at, "evaluation": {"path": "e", "sha256": current}}
+    before = put(fresh)
+    with pytest.raises(FileExistsError, match="recorded once"):
+        roc.write(paths, [NTM])
+    # A record of the current evaluation.json stays.
+    with pytest.raises(ValueError, match="current"):
+        roc.write(paths, [NTM], replace_for_threshold=True)
+    assert target.read_text() == before and not kept.exists()
+    stale = {**fresh, "evaluation": {"path": "e", "sha256": "0" * 64}}
+    changes = (
+        {"auroc": float(np.nextafter(new["auroc"], 0.0))},  # == , not a tolerance
+        {"n_pos": 99},
+        {"n_neg": 99},
+    )
+    for change in changes:
+        before = put({**stale, **change})
+        with pytest.raises(ValueError, match="differ"):
+            roc.write(paths, [NTM], replace_for_threshold=True)
+        assert target.read_text() == before and not kept.exists()
+    before = put(stale)
+    assert roc.main(["--method", NTM, "--replace-for-threshold"]) == 0
+    assert kept.read_text() == before
+    assert json.loads(target.read_text()) == new
+    # The trained threshold's record is never overwritten.
+    put(stale)
+    with pytest.raises(FileExistsError, match="trained-threshold"):
+        roc.write(paths, [NTM], replace_for_threshold=True)
+    assert kept.read_text() == before
+    with pytest.raises(ValueError, match="one replacement"):
+        roc.write(paths, [NTM], replace_without_pr=True, replace_for_threshold=True)
+
+
+def test_a_frame_roc_reads_the_threshold_through_load(paths, monkeypatch):
+    out = frames.model_dir(paths, NTM, frames.VERSION)
+    subs = round(10 / frames.SPECS[NTM].sub_ms)
+    blob = {"threshold": 0.65, "channels": 42, "subs": subs, "width": 32}
+    train.save(out, RowsCNN(42, subs).eval(), blob)
+    monkeypatch.setattr(prepare, "split_shots", lambda paths_, method: {})
+    found = roc.frame_scored(paths, NTM)
+    assert found.threshold == 0.65
+    assert found.threshold_from == {
+        "threshold_source": "training",
+        "threshold_sha256": None,
+    }
+    path = rechoose(out, 0.4)
+    found = roc.frame_scored(paths, NTM)
+    assert found.threshold == 0.4
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert found.threshold_from == {
+        "threshold_source": "threshold.json",
+        "threshold_sha256": sha,
+    }
+    # The record names threshold.json beside the model.
+    scored = _scored()._replace(threshold_from=found.threshold_from)
+    cells = roc.cells(scored.score, scored.truth, scored.threshold)
+    record = _record(scored, _frame_evaluation(float(stats.f1(cells))))
+    assert record["model"] == {"path": "m/model.pt", "sha256": "abc"} | (
+        found.threshold_from
+    )
+    plain = _record(_scored(), _frame_evaluation(float(stats.f1(cells))))
+    assert plain["model"] == {"path": "m/model.pt", "sha256": "abc"}, "AE's"

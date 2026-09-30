@@ -42,12 +42,16 @@ which `--merge` never reads.
 
 **Merge.** Whatever the bar (D50), once the test is scored: every shard of both
 sets must be there for the model that `evaluation.json` scored, each given its
-shard's shots. It writes `suggestions.table_path(paths, event, method,
-frames.VERSION)` (`suggestions.write_table`) with a meta holding the bar's
-verdict, whether the model is effectively always (`effectively_always`, from
-`evaluation.json`, F6), the tier `suggestions` and the model's sha256 (D47,
-D49), and `frames.summary_file`, one
-row a shot in `ae.xpower.extend.SUMMARY_COLUMNS`, the year its campaign's
+shard's shots, and `evaluation.json` must have scored the threshold the model
+has now (`train.load`'s, threshold.json's where one was re-chosen: T1). The
+shards hold P, so a re-chosen threshold needs no new shards, only a merge. It
+writes `suggestions.table_path(paths, event, method, frames.VERSION)`
+(`suggestions.write_table`) with a meta holding the bar's verdict, whether the
+model is effectively always (`effectively_always`, from `evaluation.json`,
+F6), the tier `suggestions`, the model's sha256 (D47, D49), and the threshold
+with its source, the trained threshold and threshold.json's sha256; and
+`frames.summary_file`, one row a shot in `ae.xpower.extend.SUMMARY_COLUMNS`,
+the year its campaign's
 (`evaluate.shot_years`), blank where none is known; and `failed.jsonl`, the
 failed shots, beside the table, the meta counting them (`sets.<set>.failed`)
 and naming the file (`failed_file`). `hmode_frames`' merge also writes
@@ -492,6 +496,13 @@ def merge(paths: Paths, method: str) -> dict:
     if evaluation["model"]["sha256"] != model_sha:
         raise ValueError(f"{evaluation_path}: it scored another model")
     _, blob = frames_train.load(model_path)
+    if float(evaluation["model"]["threshold"]) != float(blob["threshold"]):
+        raise ValueError(
+            f"{evaluation_path}: it scored threshold "
+            f"{evaluation['model']['threshold']}, and the model's is now "
+            f"{blob['threshold']} ({blob['threshold_source']}): python -m "
+            f"labeler.frames.evaluate --method {method} --rethreshold first"
+        )
     labelled, sets, failed = {}, {}, []
     for which in SETS:
         manifests, found = _read_shards(paths, spec, which, model_sha)
@@ -519,6 +530,9 @@ def merge(paths: Paths, method: str) -> dict:
         "model": str(model_path),
         "model_sha256": model_sha,
         "threshold": blob["threshold"],
+        "threshold_source": blob["threshold_source"],
+        "trained_threshold": blob["trained_threshold"],
+        "threshold_sha256": blob["threshold_sha256"],
         "split_sha256": blob["split_sha256"],
         "evaluation": str(evaluation_path),
         "evaluation_sha256": hashlib.sha256(evaluation_path.read_bytes()).hexdigest(),
