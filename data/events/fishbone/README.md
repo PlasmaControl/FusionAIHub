@@ -24,17 +24,16 @@ Typically found via the magnetic spectrogram (Mirnov / MHR probes) as a
 repeated downward chirp in the 2-30 kHz band, confirmed as n = 1 from a
 toroidal probe array, with supporting drops in the neutron rate.
 
-## Method
-Use the magnetic spectrogram and look for the n = 1 chirp: bursts in the
-2-30 kHz band that sweep downward in frequency, on the beam-heated part of the
-discharge, with toroidal mode number n = 1.
+## Data Provenance
+### Dataset 1
 
-No detector exists yet. This is the stated method, not a description of one
-that runs.
+**Dataset File(s)**:
 
-## Provenance
-None. No curated table has been obtained, so `raw/` is empty and `format/`
-holds nothing.
+**Author**:
+
+**Description**: None. No curated table has been obtained, so `raw/` is empty and `format/` holds nothing.
+
+**Publications**:
 
 ## Models
 **stable**: none
@@ -43,9 +42,21 @@ holds nothing.
 
 **all**: none
 
+## Inputs
+- none yet (no detector or model)
+
+## Method
+Use the magnetic spectrogram and look for the n = 1 chirp: bursts in the
+2-30 kHz band that sweep downward in frequency, on the beam-heated part of the
+discharge, with toroidal mode number n = 1.
+
+No detector exists yet. This is the stated method, not a description of one
+that runs.
+
 ## Alias
-- fishbone
-- fishbones
+fishbone, fishbones
+
+## Future Implementations
 
 ## Reference
 - K. McGuire et al., "Study of high-beta magnetohydrodynamic modes and
@@ -55,34 +66,3 @@ holds nothing.
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: Fishbone; lexicon id: `fishbone`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-No raw table is registered for this category yet, so nothing appears in
-`../events.yaml` and there is no `formatter.py`.
-
-## Category
-
-The CSV `category` column and grid values use integer IDs.
-
-| ID | Label |
-| --- | --- |
-| 0 | Absent |
-| 1 | Present |
-
-Unknown or unclassified grid cells are stored separately from 0.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots the magnetic spectrogram for
-one shot and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

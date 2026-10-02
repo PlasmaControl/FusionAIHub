@@ -10,6 +10,69 @@ faster and appear near the L-H power threshold. Breakthrough ELMs are large ELMs
 
 These are typically found via filterscope D-alpha bursts, divertor Langmuir probes, magnetics and BES. Each ELM is a burst on the divertor D-alpha signal 2-5 ms wide.
 
+## Data Provenance
+### Dataset 1
+
+**Dataset File(s)**: `elm_labels_dict.pkl`, `elm_labels_dict_wpqh.pkl`, `elm_survival_labels.pkl`, `elm_survival_labels_wpqh.pkl`
+
+**Author**:
+
+**Description**: The original `wpqh_elm_hiro` label pickles are now in `raw/`. The separate D-alpha clock described above remains a producer.
+
+**Publications**:
+
+### Dataset 2
+
+**Dataset File(s)**: `labeled-elm-events.hdf5`, `labeled_elm_events_long_windows_20220921.hdf5` (read in place from `/projects/EKOLEMEN/dsmith/data/`, not copied)
+
+**Author**: David Smith
+
+**Description**: Hand-labelled ELMs on the 64-channel BES at 1 MHz: 481 events on 164 shots, and 2,008 events on 199 shots in longer windows. Each event is a short window holding one ELM (BES `signals`, `time` in ms, a per-sample `labels` flag for the ELM region, shot number). The ELM-O detector was tuned on a hand-labelled set of this kind (972 ELMs); which events are in it is not recorded. These windows (2,316 after dropping 173 repeats, on 211 shots, none of them in the corpus or the review labels) are the truth the ELM-O benchmark is scored on: the re-implementation reproduces the published precision and recall on them (0.997 and 0.980; paper 0.995 and 0.976). Not yet ingested as a label source here.
+
+**Publications**:
+
+### Dataset 3
+
+**Dataset File(s)**:
+
+**Author**:
+
+**Description**: The DSM forecast was fitted by labelmaker on the ELM-survival rows of the `wpqh_elm_hiro` project (629,023 rows, 60 non-BES columns), because upstream's graphs need 64 BES channels the corpus fills on 2 of 24 sampled shots.
+
+**Publications**:
+
+## Models
+**stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (forecast, not a detector)
+
+**latest**: d3d_elm_time_to_event_dsm | 2026_09_06
+
+**all**:
+- d3d_elm_time_to_event_dsm | 2026_09_06 (`no_bes` fit; horizons 5/10/20/50 ms)
+- elm_clock | 2026_09_13 (rule-based detector, `labeler.events.transients`)
+- elmo | 2026_10_01 | F1: 0.842 (rule-based detector, O'Shea et al. 2023, re-implemented)
+
+Scores are for ELM-O as published (eta 0.997, BES threshold 1 V) against the owner-reviewed ELM spans: 50 ms bins of the 73 review shots that have BES in the corpus (precision 0.840, recall 0.844; the other 46 shots have no BES, which ELM-O needs). It finds 85 % of the bins inside crowd spans and 59 of 93 individual spans, and puts ELMs in 96 of 218 spans marked absent, where the D-alpha of the worst shows ELM trains. `elm_clock` scores F1 0.708 on the same bins, but the reviewers started from it. On David Smith's labelled windows the re-implementation reproduces the published scores (precision 0.997, recall 0.980 over 2,316 windows; paper 0.995 and 0.976). Protocol, variants and caveats: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
+
+## Inputs
+**d3d_elm_time_to_event_dsm**:
+- `ip`, `bt`, `gas`, `pinj`, `tinj`, `ech`
+- `co2_density_slow` `r0`, `v1`, `v2`, `v3`
+- `ece_slow` (48 ch)
+- `pcphd02`, `pcphd03` (always mean-filled)
+
+**elm_clock**:
+- `D-alpha FS01..FS08` (first finite channel)
+- `CO2 density R0`, `pinj_total` (L-mode gate, `dalpha_lh`)
+- `Ip` (plasma start)
+
+**elmo**:
+- `interferometer` chords `DENV2F`, `DENV3F` (`\BCI::`, 100 kS/s)
+- `filterscopes` FS02, FS03, FS04 (`\SPECTROSCOPY::`, 50 kS/s)
+- `BES` (64 ch; 500 kS/s in the corpus, 1 MS/s in Smith's windows)
+
+**elm_frames (round three)**:
+- `D-alpha FS` (the ELM spans' channel)
+
 ## Method
 The detector is `elm_clock` over the eight real D-alpha filterscope channels
 (10 kHz): the column activity of the TokEye transient mask is smoothed (0.64 ms) and
@@ -25,112 +88,24 @@ for >= 50 ms) and the ELM rate. Coverage is the D-alpha span actually processed.
 
 Known gap: a narrow ELM riding on a broad D-alpha hump measures wide and is dropped.
 
-## Provenance
-The original `wpqh_elm_hiro` label pickles are now in `raw/`.
-The separate D-alpha clock described above remains a producer. David Smith (BES
-group) is understood to hold a manual ELM label database that has not been
-obtained. The DSM forecast was fitted by labelmaker on the ELM-survival rows of the
-`wpqh_elm_hiro` project (629,023 rows, 60 non-BES columns), because upstream's
-graphs need 64 BES channels the corpus fills on 2 of 24 sampled shots.
-
-## Models
-**stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (forecast, not a detector)
-
-**latest**: d3d_elm_time_to_event_dsm | 2026_09_06
-
-**all**:
-- d3d_elm_time_to_event_dsm | 2026_09_06 (`no_bes` fit; horizons 5/10/20/50 ms)
-- elm_clock | 2026_09_13 (rule-based detector, `labeler.events.transients`)
+Benchmark: the rule-based ELM-O detector (O'Shea et al. 2023: interferometers, filterscopes and BES, no learning) is the benchmark for these labels. It was re-implemented from the paper (the public code has no licence) and scored on David Smith's labelled windows and on the reviewed ELM spans, individual ELMs and crowd spans apart: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md). It needs BES, which 73 of the 119 review shots have in the corpus.
 
 ## Alias
-- edge localized mode
-- edge localised mode
-- elm
-- elms
-- elmy
-- elming
+edge localized mode, edge localised mode, elm, elms, elmy, elming
+
+## Future Implementations
+- Ingest David Smith's labelled ELMs, and David Eldon's ELM dataset when it arrives, as further sources beside the breakthrough ELMs of `wpqh_elm_hiro` (the crowd flag tells isolated ELMs from ELMing periods)
 
 ## Reference
 - H. Zohm, "Edge localized modes (ELMs)", Plasma Phys. Control. Fusion 38, 105
   (1996).
 - A. W. Leonard, "Edge-localized-modes in tokamaks", Phys. Plasmas 21, 090501
   (2014).
+- F. H. O'Shea, S. Joung, D. R. Smith and R. Coffee, "Automatic identification of
+  edge localized modes in the DIII-D tokamak", APL Mach. Learn. 1, 026102 (2023).
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
 - **Semin Joung**:
 - **Hiro Farre Josep Kaga**:
 - **Jalal Butt**:
-
-## Tables
-
-Inventory row: ELM; lexicon id: `elm`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-PYTHONPATH=src python scripts/labeler/labels_format.py
-```
-
-[`formatter.py`](formatter.py) reads the two `elm_labels_dict*.pkl` sources
-registered in `../events.yaml`. Keys are shot IDs or `shot_phase`; times are
-absolute milliseconds. Matching WPQH samples are deduplicated; conflicting
-labels raise an error. Survival targets are not onset labels and are excluded.
-
-Original labels sample onsets every 1 ms, after upstream burst-width
-simplification (`wpqh_elm_hiro/hiro_scripts/data_processing.ipynb`). Count
-positive onset samples in each half-open 50 ms bin; category is 1 when that
-count is nonzero. Consecutive equal bins are compressed into intervals in
-`format/edge_localized_mode_format_2026_v1.csv`. Confidence is unknown.
-The final observed bin extends to its 50 ms boundary; this is an aggregation
-window, not a claim about the physical ELM duration.
-
-`format/shots/<shot>.npz` stores the 50 ms time ×
-20-rho binary grid and an `event_count` array (one count per bin, not per rho).
-Counts describe the supplied onset samples, not a new detector's burst count.
-A bin with observed zeros is absent; bins with no samples remain unknown.
-Rho is broadcast because the source has no radial localization.
-
-[`example.ipynb`](example.ipynb) opens `format/shots/<shot>.npz` directly and plots the stored onset
-counts alongside the binary grid. It can also open available extended labels.
-
-```bash
-pixi run -e labelmaker python data/events/edge_localized_mode/formatter.py
-```
-
-
-## Category
-
-The CSV `category` column and grid values use integer IDs. The same mapping
-is recorded in each JSON sidecar under `categories`.
-
-| ID | Label |
-| --- | --- |
-| 0 | Absent |
-| 1 | Present |
-
-Unknown or unclassified grid cells are stored separately from 0. A dataset
-containing only positive annotations does not establish absence elsewhere.
-Sampled grids use 50 ms bins and 20 rho bins.
-
-Per-shot labels are saved in `format/shots/<shot>.npz`. Each file includes
-time and rho coordinates, sparse integer values, unknown-cell coordinates,
-and the category ID-to-name mapping. The formatted plot reads these saved files. A separate original-label plot
-reads the source annotations; neither plot reruns the formatter.
-
-The notebook's last cell plots the category's original annotations alongside
-the saved 50 ms grid. Original-label plots require the source files; the
-formatted and extended plots continue to read only their selected NPZ files.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

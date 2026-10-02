@@ -70,6 +70,23 @@ def test_manifest_separates_raw_fields_format_path_and_source(table):
     assert spec.attr_cols == ("NTOR", "MODE_TYPE")
 
 
+@pytest.mark.parametrize("abbreviation", ["tm", "ntm"])
+def test_tearing_abbreviations_resolve_to_the_existing_phenomenon(tmp_path, abbreviation):
+    payload = {
+        "version": 1,
+        "raw_datasets": [{"stem": "tm_source", "provenance": "tearing labels"}],
+        "format_datasets": [{
+            "name": "neoclassical_tearing_mode", "raw_path": "tearing.csv",
+            "date": "2026-10-01T00:00:00Z", "abbreviation": abbreviation,
+            "sources": ["tm_source"],
+        }],
+    }
+    (tmp_path / "events.yaml").write_text(yaml.safe_dump(payload))
+    (spec,) = db.load_manifest(tmp_path)
+    assert spec.phenomenon == "tearing"
+    assert spec.dir == "neoclassical_tearing_mode"
+
+
 def test_a_duplicate_stem_is_an_error_naming_the_file(tmp_path):
     _manifest(tmp_path, [_entry(), _entry(dir="elsewhere")])
     with pytest.raises(db.DatabaseError, match="rwm_fixture") as exc:

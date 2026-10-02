@@ -3,9 +3,11 @@
 Each check takes tables and returns findings, one per problem, so a report lists
 every problem at once, and `require` turns a non-empty list into an error.
 
-- `tiling`: each shot's rows, in time order, tile its window: no gap, no overlap,
-  no row without length;
-- `states`: every state is 0-3; NTM and disruption are never not observable;
+- `tiling`: each shot's rows cover its window without gaps or empty rows;
+  crowd spans may overlap individual/unspecified spans, but spans in the same
+  annotation lane cannot overlap, nor can absent spans overlap annotations in
+  the lanes they cover;
+- `states`: every state is 0-3; TM and disruption are never not observable;
 - `attrs`: attribute keys and values are the phenomenon's;
 - `windows`: each shot's window lies inside its allowed window (the default
   assessed window from Ip); shots with no allowed window are not catalog shots
@@ -86,6 +88,30 @@ def tiling(frame: pd.DataFrame, where: str = "labels") -> list[Finding]:
         for a in starts[ends <= starts]:
             detail = f"a row at {_ms(a)} has no length"
             out.append(Finding("tiling", where, int(shot), detail))
+        flags = ([parse_attrs(value).get("iscrowd") for value in rows[ATTRS_COLUMN]]
+                 if ATTRS_COLUMN in rows else [])
+        if any(flag is not None for flag in flags):
+            covered_end = starts[0]
+            lane_ends = [float("-inf"), float("-inf")]
+            for start, end, category, flag in zip(
+                starts, ends, rows.category, flags, strict=True
+            ):
+                if start > covered_end:
+                    detail = f"a gap from {_ms(covered_end)} to {_ms(start)}"
+                    out.append(Finding("tiling", where, int(shot), detail))
+                lanes = ((0, 1) if category == 0 and flag is None
+                         else (int(flag == 1),))
+                occupied_end = max(lane_ends[lane] for lane in lanes)
+                if start < occupied_end and end > start:
+                    detail = (
+                        f"an overlap from {_ms(start)} "
+                        f"to {_ms(min(end, occupied_end))}"
+                    )
+                    out.append(Finding("tiling", where, int(shot), detail))
+                for lane in lanes:
+                    lane_ends[lane] = max(lane_ends[lane], end)
+                covered_end = max(covered_end, end)
+            continue
         for end, start, next_end in zip(ends[:-1], starts[1:], ends[1:]):
             if start > end:
                 detail = f"a gap from {_ms(end)} to {_ms(start)}"

@@ -10,6 +10,9 @@ that is not a name is left in the file and off the list. Until that file exists
 the list is every name already saved in an event's `review/` logs, and the
 first name added writes the file with them. The page shows the names unique
 regardless of case, and sorted the same way.
+
+`shot_reviewers` is the other list: everyone who saved a shot's label or its AE
+mask decisions, read from the same logs, so a save adds its reviewer once.
 """
 
 from __future__ import annotations
@@ -50,19 +53,56 @@ def _clean(names) -> list[str]:
     return found
 
 
+def _log_lines(path: Path):
+    """The log's entries; a line that does not parse is skipped."""
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(entry, dict):
+            yield entry
+
+
 def saved_names(label_tables) -> list[str]:
     """Every name in the events' review logs; a line that does not parse is skipped."""
     found = []
     for log in LOGS:
         for path in sorted(Path(label_tables).glob(f"*/{REVIEW}/{log}")):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                try:
-                    entry = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(entry, dict):
-                    found.append(entry.get("name"))
+            found.extend(entry.get("name") for entry in _log_lines(path))
     return _unique(_clean(found))
+
+
+def shot_reviewers(event_dir, shot: int) -> list[dict]:
+    """Everyone who saved the shot under a name, first contributor first.
+
+    One row per person. A save made without a name credits no one: the server's
+    login keys the checker's integrity rules, it is not a reviewer. A name is the
+    same person regardless of case; its first spelling is kept.
+    """
+    shot = int(shot)
+    kept: dict[str, dict] = {}
+    for log in LOGS:
+        for entry in _log_lines(Path(event_dir) / REVIEW / log):
+            try:
+                if int(entry.get("shot")) != shot:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            who = next(iter(_clean([entry.get("name")])), None)
+            if who is None:
+                continue
+            at = str(entry.get("saved_at") or "")
+            row = kept.setdefault(
+                who.casefold(),
+                {"name": who, "saves": 0, "first": at, "last": at},
+            )
+            row["saves"] += 1
+            row["first"] = min(row["first"], at)
+            row["last"] = max(row["last"], at)
+    return sorted(kept.values(), key=lambda row: row["first"])
 
 
 def read(label_tables) -> list[str]:

@@ -118,6 +118,11 @@ CO2_CHORDS = ("DENR0UF", "DENV1UF", "DENV2UF", "DENV3UF")
 #: silently fall back to `"mds"`.
 FDP_VIA_ROUTES = ("mds", "ptdata")
 
+#: MDSplus errors that say one node holds nothing on this shot (no data, or no
+#: such node) - a dead channel, not an unreachable archive. Matched by class
+#: name so this module still imports without MDSplus.
+MISSING_NODE_ERRORS = ("TreeNODATA", "TreeNNF")
+
 #: The wrapper every live fdp fetch has to run under. PTDATA and MDSplus
 #: both fail outside it - PTDATA with `getservbyname failed for task
 #: 'PTSERVER'`, MDSplus with `TREE-E-FOPENR` - so this is what a reviewer
@@ -134,6 +139,7 @@ def fdp_signal(
     t_range: tuple[float, float] | None = None,
     cache: Path | None = None,
     on_progress=None,
+    missing_ok: bool = False,
 ) -> FeatureArray:
     """One or more MDSplus or PTDATA points, fetched live or from a cache.
 
@@ -157,6 +163,11 @@ def fdp_signal(
     `on_progress(done, total, expr)`, when given, is called once per
     expression just before it is fetched. It is how a live fetch reports
     where it is; nothing here depends on what it does.
+
+    `missing_ok` turns a node that holds nothing on this shot (`MISSING_NODE_ERRORS`)
+    into an all-NaN row, the way the corpus records a dead channel, instead of a
+    failed fetch. Any other error still fails, and so does a call where every
+    point is missing; the rows that did arrive set the time base and length.
     """
     if via not in FDP_VIA_ROUTES:
         legal = " or ".join(repr(route) for route in FDP_VIA_ROUTES)
@@ -197,7 +208,7 @@ def fdp_signal(
         rows = []
         times_ms = None
         expected_length = None
-        first_expr = exprs[0] if exprs else None
+        first_expr = None
         for index, expr in enumerate(exprs):
             # Told BEFORE each point goes over the wire, so whoever is
             # watching sees "3 of 4" while the fourth is still in flight
@@ -207,6 +218,9 @@ def fdp_signal(
             try:
                 record = fetch_one(expr)
             except Exception as error:
+                if missing_ok and type(error).__name__ in MISSING_NODE_ERRORS:
+                    rows.append(None)
+                    continue
                 raise NoDataError(
                     f"shot {int(shot)} {expr!r} failed to fetch over fdp: "
                     f"{error}. If this kernel was not started under "
@@ -222,6 +236,7 @@ def fdp_signal(
             data = np.asarray(record["data"], dtype="float32")
             if expected_length is None:
                 expected_length = len(data)
+                first_expr = expr
                 times_ms = np.asarray(record[time_key], dtype="float64")
             elif len(data) != expected_length:
                 raise NoDataError(
@@ -230,7 +245,14 @@ def fdp_signal(
                     f"for {expr!r}"
                 )
             rows.append(data)
-        values = np.stack(rows).astype("float32")
+        if expected_length is None:
+            raise NoDataError(f"shot {int(shot)}: none of {exprs} holds data")
+        values = np.stack(
+            [
+                row if row is not None else np.full(expected_length, np.nan, "float32")
+                for row in rows
+            ]
+        ).astype("float32")
 
         if cache_path is not None:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -333,6 +355,8 @@ class Panel:
     zmax: float | None = None
     modes: np.ndarray | None = None
     mode_colours: Mapping[int, str] | None = None
+    #: Diagnostic calibration/measurement provenance stored with review rows.
+    metadata: dict | None = None
 
     def __post_init__(self) -> None:
         # `FeatureArray` two modules over validates its own arrays in

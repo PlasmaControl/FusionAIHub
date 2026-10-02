@@ -40,8 +40,15 @@ def test_every_feature_the_phase1_model_needs_exists():
 def test_profiles_and_scalars_are_labelled_correctly():
     for name in ("qpsi", "pres", "ne_zipfit", "te_zipfit", "rot_zipfit"):
         assert ns.by_name(name).kind == "profile"
-    for name in ("ip", "bt", "kappa", "ech_rho"):
+    for name in ("ip", "bt", "kappa", "ech_rho", "wmhd"):
         assert ns.by_name(name).kind == "scalar"
+
+
+def test_wmhd_is_the_efit01_stored_energy_signal():
+    spec = ns.by_name("wmhd")
+    assert spec.units == "J"
+    assert spec.sources == ("fdp",)
+    assert spec.locator_for("fdp") == r"\efit01::top.results.aeqdsk:wmhd"
 
 
 def test_lookup_helpers_and_locators():
@@ -51,7 +58,7 @@ def test_lookup_helpers_and_locators():
     assert all("archive" in f.sources for f in ns.by_source("archive"))
     assert {f.name for f in ns.by_source("corpus")} == {
         "pinj_total", "tinj_total", "ech_power_total", "co2",
-        "gas", "ece", "co2_r0", "co2_v1", "co2_v2", "co2_v3",
+        "gas", "ece", "ece_psi", "co2_r0", "co2_v1", "co2_v2", "co2_v3",
     }
     # The ELM model's inputs: one channel of a multi-valve group, every
     # channel of a 48-channel group, and one chord of the CO2 record.

@@ -1,19 +1,42 @@
 # Vertical Displacement Event
 
-## Status
-
-Not started. No raw dataset, reference labels, formatter, detector, or trained
-model is available here yet. The pending entry in `../events.yaml` is not loaded
-as a formatted dataset. The existing scope-inventory row is `VDE` in
-[`discrete_labels.csv`](../discrete_labels.csv).
-
 ## Description
 
 The intended label identifies an observed vertical displacement event (VDE).
 An estimate of vertical instability or its growth rate is supporting information;
 it does not by itself establish that a VDE occurred.
 
-## Scientist guidance
+### Status
+
+Not started. No raw dataset, reference labels, formatter, detector, or trained
+model is available here yet. The pending entry in `../events.yaml` is not loaded
+as a formatted dataset. The existing scope-inventory row is `VDE` in
+[`discrete_labels.csv`](../discrete_labels.csv).
+
+## Data Provenance
+### Dataset 1
+
+**Dataset File(s)**:
+
+**Author**:
+
+**Description**:
+
+**Publications**:
+
+## Models
+**stable**: none
+
+**latest**: none
+
+**all**:
+- none
+
+## Inputs
+- none yet (no detector or model)
+
+## Method
+### Scientist guidance
 
 Source: Jayson's response to Nathan, supplied in the project conversation.
 The message did not include a date, example shots, signal units, or thresholds.
@@ -31,7 +54,11 @@ not yet been checked.
 Jayson offered to meet and explain how he identifies VDEs shot by shot in the
 control room.
 
-## Follow-up tasks
+## Alias
+vertical displacement event, vde
+
+## Future Implementations
+### Follow-up tasks
 
 - [ ] Arrange a walkthrough with Jayson. Ask for confirmed VDE and non-VDE
   example shots, the event timings he uses, and examples that are hard to classify.
@@ -55,7 +82,7 @@ control room.
   reviewed labels, and the output grid. Register the event ID with the loaders
   when a usable dataset or producer exists.
 
-## Planned format
+### Planned format
 
 Follow the shared [event storage conventions](../README.md):
 
@@ -69,30 +96,9 @@ Follow the shared [event storage conventions](../README.md):
 - Put source provenance, signal interpretation, aggregation rules, and category
   names in the JSON sidecar when outputs are generated.
 
-## Category
-
-Planned binary IDs for the CSV, grids, and future JSON `categories` mapping:
-
-| ID | Label |
-| --- | --- |
-| 0 | VDE absent within a reviewed or validated observation interval |
-| 1 | VDE present |
-
-No data or no label does not mean category 0. No output files have been generated.
-
-## Alias
-
-- vertical displacement event
-- vde
+## Reference
 
 ## Contact
 
 - **Jayson**: offered a control-room identification walkthrough in the supplied response.
 - **Nathaniel Chen**: follow up on the signals, example shots, and annotation criteria.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

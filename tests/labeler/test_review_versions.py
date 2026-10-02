@@ -139,7 +139,7 @@ def test_a_history_line_written_before_names_existed_reads_as_unnamed(event_dir)
 
 
 def test_the_server_reports_its_api_version(client):
-    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 5}
+    assert client.get("/api/version").json() == {"api": API_VERSION} == {"api": 8}
 
 
 def test_the_history_route_is_behind_the_gate(client):
@@ -259,3 +259,29 @@ def test_the_names_are_behind_the_gate(client):
     ungated = TestClient(client.app)
     assert ungated.get("/api/names").status_code == 401
     assert ungated.post("/api/names", json={"name": "Ada"}).status_code == 401
+
+
+def test_every_reviewer_of_a_shot_is_listed_once_in_the_order_they_came(
+    client, event_dir
+):
+    for name in ["Ada Lovelace", "Grace Hopper", "ada lovelace", None]:
+        response = client.post("/api/label", json=_label(name=name))
+        assert response.status_code == 200
+    masks = event_dir / labels.REVIEW / "masks.jsonl"
+    other = {"shot": 178642, "name": "Alan Turing", "saved_at": "2026-09-01T00:00:00"}
+    mine = {"shot": 170815, "name": "Emmy Noether", "saved_at": "2099-01-01T00:00:00"}
+    masks.write_text(f"{json.dumps(other)}\nnot json\n{json.dumps(mine)}\n")
+    listed = reviewers.shot_reviewers(event_dir, 170815)
+    # The save made without a name credits no one, and the server's login is not shown.
+    assert [(r["name"], r["saves"]) for r in listed] == [
+        ("Ada Lovelace", 2),
+        ("Grace Hopper", 1),
+        ("Emmy Noether", 1),
+    ]
+    assert all(set(r) == {"name", "saves", "first", "last"} for r in listed)
+    assert response.json()["reviewers"] == listed[:2]
+    assert reviewers.shot_reviewers(event_dir, 178642)[0]["name"] == "Alan Turing"
+
+
+def test_a_shot_never_saved_has_no_reviewers(event_dir):
+    assert reviewers.shot_reviewers(event_dir, 170815) == []

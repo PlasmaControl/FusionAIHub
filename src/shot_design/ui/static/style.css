@@ -165,6 +165,7 @@ dt { color: var(--muted); overflow-wrap: anywhere; } dd { margin: 0; overflow-wr
 .assistant-stage[data-state="complete"] { border-color: var(--accent); }
 .assistant-stage[data-state="failed"], #assistant-error, .assistant-error { color: #9b3023; }
 .assistant-stage[data-state="failed"] { border-color: #9b3023; }
+.assistant-stage[data-state="cancelled"] { color: var(--muted); }
 .assistant-result { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 20px; }
 .assistant-warning { color: #785b16; }
 .assistant-ok { color: var(--accent); }

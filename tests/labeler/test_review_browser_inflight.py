@@ -51,6 +51,8 @@ def test_save_keeps_later_change(served, tmp_path, case):  # noqa: F811
     )
     saved = labels.read_saved(event)[170815]
     assert history[-1]["intervals"] == [list(span) for span in saved.intervals]
+    assert saved.iscrowd == (None, 0)
+    assert history[-1]["iscrowd"] == [None, 0]
     first, (start, stop, category) = saved.intervals
     assert first == (100, 300, 1)
     assert abs(start - 500) <= 2 and abs(stop - 800) <= 2 and category == 1

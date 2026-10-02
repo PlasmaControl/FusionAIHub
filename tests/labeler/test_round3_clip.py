@@ -149,7 +149,10 @@ def test_an_ece_burst_wider_than_the_median_is_kept_and_not_called_clipped(
     tree.cohort(p, [tree.queue_row(SHOT, 0, window=(20.0, 80.0))])
     rows = saw.ece_panels(SHOT, paths=p)
     first = rows[0]
-    assert first.title == "ECE Te, ch 20-23 (0.05 ms median)"
+    assert first.title == (
+        "ECE Te, inversion side A, ch 20-23 "
+        "(0.05 ms median; q=1 mapping unavailable)"
+    )
     assert not any(row.title.endswith(_shared.CLIPPED) for row in rows)
     ceiling = _shared.robust_limits(first.x, first.y, (20.0, 80.0))[1]
     assert ceiling[1] < 2, "a robust clip would have cut the burst to this"

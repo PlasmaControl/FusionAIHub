@@ -9,8 +9,9 @@ record. From them this module builds two things per shot, on the review store's
 level-8 grid:
 
 - **the review mask**, `pseudo-v1-full`: pseudo-v1's rules (`pseudo.build`:
-  TokEye's lines inside the owner's AE frames, 80-250 kHz) over the owner's whole
-  window. The page draws its regions and saves the reviewer's decisions on it.
+  TokEye's lines inside the owner's AE frames) over the owner's whole window,
+  over `REVIEW_BAND_KHZ` (60-250 kHz since 2026-09-30; pseudo-v1 keeps 80-250).
+  The page draws its regions and saves the reviewer's decisions on it.
   pseudo-v1 is unchanged and SegNet v1 still trains on it; a decision made here
   reaches every version's targets as the pixels it rejects
   (`regions.transfer`). A decision is keyed on the file's sha256, so a rerun
@@ -52,6 +53,8 @@ from .pseudo import build as build_mask
 
 LAYER = "tokeye-full"
 REVIEW = "pseudo-v1-full"
+#: The review mask's band: the owner lowered it from 80 to 60 kHz on 2026-09-30.
+REVIEW_BAND_KHZ = (60.0, 250.0)
 
 
 def masks_full(paths: Paths) -> Path:
@@ -146,7 +149,7 @@ def make(
     tokeye = tokeye_clean(BytesIO(tokeye_bytes))
     mask = None
     if label is not None:
-        mask = build_mask(shot, label, grid, n_y, y0, dy, tokeye)
+        mask = build_mask(shot, label, grid, n_y, y0, dy, tokeye, REVIEW_BAND_KHZ)
     return build(grid, n_y, tokeye), grid, y0, dy, mask
 
 
@@ -206,6 +209,7 @@ def main(argv=None) -> int:
         {
             "pseudo": REVIEW,
             "rules": "pseudo-v1",
+            "band_khz": list(REVIEW_BAND_KHZ),
             **origin,
             "labels": str(labels_file),
             "labels_sha256": sha256_of(labels_file) if labels_file.is_file() else None,

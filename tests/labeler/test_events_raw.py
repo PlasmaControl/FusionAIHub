@@ -240,7 +240,9 @@ def test_a_live_fetch_reports_progress_only_while_it_runs(roots, monkeypatch):
     write, and is None before the fetch, and None again after it."""
     snapshots = []
 
-    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, on_progress=None):
+    def fake_fdp_signal(
+        shot, exprs, *, tree, via, t_range=None, on_progress=None, missing_ok=False
+    ):
         snapshots.append(raw.progress_for(shot))
         for index, expr in enumerate(exprs):
             on_progress(index, len(exprs), expr)
@@ -403,3 +405,40 @@ def test_ip_fetches_the_ptdata_point(roots, monkeypatch):
     got = raw.raw_signal(190000, "ip", paths=roots)
     assert seen == {"via": "ptdata", "exprs": ["ip"]}
     assert got.attrs["tier"] == "fetch" and np.allclose(got.y, 1.2e6)
+
+
+def test_filterscopes_fetch_fs01_to_fs08_tolerating_a_dead_channel(roots, monkeypatch):
+    seen = {}
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        seen.update(via=via, tree=tree, exprs=list(exprs), **kwargs)
+        return FeatureArray(
+            x=np.arange(10.0),
+            y=np.zeros((len(exprs), 10), dtype="float32"),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    got = raw.raw_signal(150000, "filterscopes", channels=list(range(8)), paths=roots)
+    assert (seen["via"], seen["tree"], seen["missing_ok"]) == ("mds", "SPECTROSCOPY", True)
+    assert seen["exprs"] == [rf"\SPECTROSCOPY::FS{i:02d}" for i in range(1, 9)]
+    assert got.y.shape[0] == 8 and got.attrs["tier"] == "fetch"
+
+
+def test_pinj_fetches_the_eight_beams_in_the_corpus_row_order(roots, monkeypatch):
+    seen = {}
+
+    def fake_fdp_signal(shot, exprs, *, tree, via, t_range=None, **kwargs):
+        seen.update(via=via, tree=tree, exprs=list(exprs), **kwargs)
+        return FeatureArray(
+            x=np.arange(10.0),
+            y=np.full((len(exprs), 10), 1.0e6, dtype="float32"),
+            attrs={"units": "ms"},
+        )
+
+    monkeypatch.setattr(raw, "fdp_signal", fake_fdp_signal)
+    raw.raw_signal(150000, "pinj", paths=roots)
+    assert (seen["via"], seen["tree"], seen["missing_ok"]) == ("mds", "D3D", True)
+    assert [e.rsplit(":", 1)[1] for e in seen["exprs"]] == [
+        f"PINJ_{beam}" for beam in ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
+    ]

@@ -17,6 +17,11 @@ def lex():
     return lx.load_lexicon()
 
 
+@pytest.mark.parametrize("text", ["classical TM at 2 s", "an NTM at 2 s"])
+def test_tearing_mode_and_legacy_ntm_aliases_match(text, lex):
+    assert "tearing" in lx.hits(text, lex)
+
+
 def _lexicon(tmp_path, body: str, name: str = "lex.yaml"):
     path = tmp_path / name
     path.write_text(body, encoding="utf-8")

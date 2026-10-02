@@ -50,6 +50,8 @@ def test_later_label(pending_events, tmp_path, action, route):  # noqa: F811
     assert [entry["shot"] for entry in history] == [170815, 170816, 170815]
     saved = labels.read_saved(event_a)[170815]
     assert history[-1]["intervals"] == [list(span) for span in saved.intervals]
+    assert saved.iscrowd == (None, 0)
+    assert history[-1]["iscrowd"] == [None, 0]
     first, (start, stop, category) = saved.intervals
     assert first == (100, 300, 1)
     assert abs(start - 500) <= 2 and abs(stop - 800) <= 2 and category == 1
@@ -70,6 +72,8 @@ def test_pending_queue(pending_events, tmp_path, case):  # noqa: F811
         ((start, stop, category),) = saved.intervals
         assert abs(start - 500) <= 2 and abs(stop - 800) <= 2 and category == 1
         assert history[-1]["intervals"] == [list(span) for span in saved.intervals]
+        assert saved.iscrowd == (0,)
+        assert history[-1]["iscrowd"] == [0]
     assert [entry["shot"] for entry in history] == expected
     assert len(labels.read_history(event_b)) == 1
 
@@ -80,6 +84,7 @@ def test_next_later_edit(pending_events, tmp_path):  # noqa: F811
     history = labels.read_history(event_a)
     assert [entry["shot"] for entry in history] == [170815, 170816, 170815]
     assert len(history[-1]["intervals"]) == 2
+    assert history[-1]["iscrowd"] == [None, 0]
     assert len(labels.read_history(event_b)) == 1
 
 

@@ -28,7 +28,9 @@ HOP = 128
 CROSS_COLUMNS = 8
 QUIET_MS = (0.0, 6000.0)
 Z_DB = (-3.0, 27.0)
-BAND_KHZ = (80.0, 250.0)
+#: The band the review page shows; 80-250 kHz until 2026-09-30. Stores built
+#: before then say 80 in their rows, and the server shows them at this one.
+BAND_KHZ = (60.0, 250.0)
 CHORDS = ("R0", "V1", "V2", "V3")
 # Stores built before 2026-09-23 also hold each chord's own power, named by chord.
 DROPPED = frozenset(CHORDS)

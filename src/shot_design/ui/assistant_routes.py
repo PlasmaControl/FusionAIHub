@@ -21,12 +21,23 @@ from ..mcp import tools
 
 router = APIRouter(prefix="/api/design-assistant")
 _INIT_LOCK = threading.Lock()
+# The form's model choice: (llm.yaml alias, provider override). Gemma is the local
+# Ollama server's quality model whatever llm.yaml's provider is.
+MODELS = {
+    "quality": ("quality", None),
+    "fast": ("fast", None),
+    "gemma": ("quality", "ollama"),
+}
+
+
+class Cancelled(Exception):
+    """Raised at the next stage boundary of a job the user cancelled."""
 
 
 class DesignRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     prompt: str = Field(min_length=1, max_length=4000)
-    model: Literal["quality", "fast"] = "quality"
+    model: Literal["quality", "fast", "gemma"] = "quality"
 
     @field_validator("prompt")
     @classmethod
@@ -84,10 +95,14 @@ class Jobs:
 
     def _run(self, ident, body):
         with self.lock:
+            if self.jobs[ident]["status"] == "cancelled":
+                return
             self.jobs[ident]["status"] = "running"
 
         def progress(key, status, detail):
             with self.lock:
+                if self.jobs[ident]["status"] == "cancelled":
+                    raise Cancelled
                 stage = next(
                     stage for stage in self.jobs[ident]["stages"] if stage["key"] == key
                 )
@@ -99,16 +114,25 @@ class Jobs:
                 db, error = tools._db()
                 if error:
                     raise ValueError(error["error"])
+                model, provider = MODELS[body.model]
+                client = None
+                if provider:
+                    cfg = {**config.load_yaml("llm.yaml"), "provider": provider}
+                    client = assistant.LLMClient(cfg=cfg, paths=self.paths)
                 result = assistant.run_design(
                     body.prompt,
                     self.paths,
                     db,
-                    model=body.model,
+                    client=client,
+                    model=model,
                     progress=progress,
                 )
             result["hdf5_url"] = f"/api/design-assistant/{ident}/hdf5"
             with self.lock:
-                self.jobs[ident].update(status="complete", result=result)
+                if self.jobs[ident]["status"] != "cancelled":
+                    self.jobs[ident].update(status="complete", result=result)
+        except Cancelled:
+            pass
         except Exception as exc:  # noqa: BLE001 - jobs require a terminal state
             if isinstance(exc, (ValueError, LLMUnavailable)):
                 detail = str(exc)[:1200]
@@ -118,6 +142,8 @@ class Jobs:
                 detail = f"The design stopped with {type(exc).__name__}. Retry after checking the server configuration."
             with self.lock:
                 job = self.jobs[ident]
+                if job["status"] == "cancelled":
+                    return
                 job.update(status="failed", error=detail)
                 active = next(
                     (stage for stage in job["stages"] if stage["status"] == "running"),
@@ -135,6 +161,23 @@ class Jobs:
                 if active:
                     active.update(status="failed", detail=detail)
 
+    def cancel(self, ident):
+        """Stop a queued or running job; its thread quits at the next stage.
+
+        A model call already in flight runs to its end first, and its answer is
+        dropped. Nothing is saved unless the save stage had already started.
+        """
+        self.snapshot(ident)
+        with self.lock:
+            job = self.jobs[ident]
+            if job["status"] not in {"queued", "running"}:
+                raise HTTPException(409, f"This design is already {job['status']}")
+            job["status"] = "cancelled"
+            for stage in job["stages"]:
+                if stage["status"] == "running":
+                    stage.update(status="cancelled", detail="Cancelled")
+        return self.snapshot(ident)
+
 
 def _jobs(request):
     with _INIT_LOCK:
@@ -146,6 +189,11 @@ def _jobs(request):
 @router.post("", status_code=202)
 def submit(body: DesignRequest, request: Request):
     return _jobs(request).submit(body)
+
+
+@router.post("/{ident}/cancel")
+def cancel(ident: str, request: Request):
+    return _jobs(request).cancel(ident)
 
 
 @router.get("/{ident}")

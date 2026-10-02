@@ -1,0 +1,115 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present",
+    "2": "uncertain",
+    "3": "not_observable"
+  },
+  "category": "alfven_eigenmode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "label_mapping": "1 where any TAE/RSAE/BAE/EAE box of any ECE channel covers the time; LFM boxes ignored; nothing is marked 0",
+  "made_at": "2026-10-01T00:00:00Z",
+  "made_by": "alfven_eigenmode/formatter.py",
+  "made_from": [
+    {
+      "files": {
+        "labels_132240.txt": "110e9744404967040fe683968e9f05f41b1d0233b2d5f999616d5ee6557d6937",
+        "labels_132710.txt": "c5941c10933b101b8ab8e9cf8b9bf00df25be66fd51e23eaf8db52d042dde0c9",
+        "labels_138388.txt": "9413121b88298ee6f5f077593aff2b9a8162317712494f954294046eda8ea4cf",
+        "labels_142111.txt": "f71195dd9baf1c5715d144a68b7592c0c1a6cb9e59f5d95d1967da86b5ed0421",
+        "labels_153068.txt": "6d66f2e1552d789caba30ef849048600347e6f9ab67eedafd971b380c9204234",
+        "labels_153592.txt": "7bb08c7e32c5cb54405e715e610fcb6dbdcd8b590ac5cac3a77a5757df50a727",
+        "labels_159242.txt": "e06b12e027f5ef9c96f3e66992431ed17ac130a3057658fba3dd5fdc0feff8c7",
+        "labels_159243.txt": "9a5ee9d52155626fecc52673b4cf4d82e9d7eb8469ed1528b167cc4596838e0e",
+        "labels_159245.txt": "78b6171e3b766209f55b8ebf6bb0b171eb0871ae38662daadce38d4f31d1e96b",
+        "labels_159246.txt": "a75344ab5e43d71057fb6a14eea3b3a743d8e225d98ea0e6c6189cc2c99717a2",
+        "labels_159247.txt": "9aae9eb0cedfe3fd8778ca20b568e6ed663823be2a2fd557474eb825b13b0df9",
+        "labels_163147.txt": "d8d4c0b85c36249b9cec9daf2931cca6f370e1f167cbeee48d093ac3ea1de021",
+        "labels_170660.txt": "2df3fb1b27236fcb3f382a3551c099a08b749d98cff5a36971f75b8c5bdd30b1",
+        "labels_170670.txt": "29c0d77636fde228a765be1f53369fab2558331b624a7aa7f1ff38dfc6b4877a",
+        "labels_170672.txt": "070643bb50a4457ad710a8ea973dcd05d25ad34a875286f2ea4883c20e809559",
+        "labels_170677.txt": "3e5c8c18f82918662c5aced1af8e72a8a4bf356e2ad01110f4baf42ddf3e21c9",
+        "labels_170679.txt": "8152f71d1807cf0252614d129b8fcf575976584cd9183e06be0f80f5952043cf",
+        "labels_175987.txt": "9fe11bbef7404467602774ea9bb0130eac4919e4b25b5bf2797d221fb5a728af",
+        "labels_176053.txt": "12c852537ac3e172d4a37a8a6024165c5b2c7dd9f17995fe8dc0a8eb041dc928",
+        "labels_178631.txt": "3822cc6e28c8a3119ab9e7379ba141c0b1fe834f93fc4170bbbe058034a87677",
+        "labels_178633.txt": "fd9e7a6e461b5c69bec9f37b046ba319edceebd4ba01c82036d7839a8c1a945a",
+        "labels_178636.txt": "fae48194bf6045ec3463333ab82bfc0d7891dcb2af8bf9d708a5a36685dbbea3",
+        "labels_178637.txt": "1471f29387f1c2e07fa6affe30c3a112c4a2092111ca67963e4b63e636e3eaf6",
+        "labels_178640.txt": "eb9e5e7d23a05b9b0871c2c0c1943a6a0478a08170aaf9562428597deaf54348",
+        "labels_178641.txt": "68c4ad2bf9c834d8a356cdafb49e3819aac31ee161e674ae6412e89eaef4a0ef",
+        "labels_178872.txt": "03b48bd9c9eac3b39b09d6032ba30767eb27c19507ab820db2f0723d3ef35cdd"
+      },
+      "provenance": "Copied unchanged from /projects/EKOLEMEN/ece_cnn/all_labels/: 26 per-shot files of hand-drawn time-frequency boxes (TAE, RSAE, BAE, EAE, LFM) on ECE spectrograms, dated 2022-01-24; the annotator is not recorded in them",
+      "raw_file": "alfven_eigenmode/raw/ece_all_labels",
+      "sha256": "c73b3e4aab52c4742cb7768c0c50b581e78840b52a29de194d4894bfd919a8ac",
+      "source": "ece_labels_2022"
+    }
+  ],
+  "n_rows": 44,
+  "n_shots": 26,
+  "per_shot_files": {
+    "classes": {
+      "0": "absent",
+      "1": "present",
+      "2": "uncertain",
+      "3": "not_observable"
+    },
+    "label_origin": "Formatted binary intervals; positive overlap wins; unannotated bins unknown",
+    "n_shots": 26,
+    "path": "ece_shots/<shot>.npz",
+    "radial_mapping": "broadcast scalar label across all rho bins",
+    "rho_bins": 20,
+    "sample_interval_ms": 50.0,
+    "time_coordinate": "left edge of half-open bin"
+  },
+  "schema_version": 6,
+  "source_audit": {
+    "ae_boxes": 1187,
+    "ae_boxes_starting_at_0.30_s": 259,
+    "boxes_by_type": {
+      "BAE": 329,
+      "EAE": 2,
+      "LFM": 143,
+      "RSAE": 415,
+      "TAE": 441
+    },
+    "channel_range": [
+      1,
+      40
+    ],
+    "duplicate_boxes": 1,
+    "f_range_khz": [
+      0.0,
+      250.0
+    ],
+    "n_boxes": 1330,
+    "n_shots": 26,
+    "shots_without_ae_boxes": [],
+    "t_range_s": [
+      0.21,
+      1.9
+    ]
+  },
+  "time_mapping": {
+    "excluded_class": "lfm",
+    "grid": "50 ms bins that a span overlaps are 1; all other bins unknown",
+    "ignored_columns": [
+      "f1",
+      "f2",
+      "channel"
+    ],
+    "interval_bounds": "the spans as drawn, converted to ms",
+    "limitation": "Boxes are drawn on spectrograms plotted from 0 to about 2 s and most start at 0.30 s, so a mode already present before 0.30 s is cut at 0.30 s; ECE channel and frequency are not carried over",
+    "method": "union_of_box_time_spans",
+    "raw_time_units": "s",
+    "unknown": "every time outside a span: the files do not say which stretch of the shot was inspected"
+  },
+  "time_units": "ms"
+}

@@ -168,7 +168,9 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     _sawtooth(p)
     built = panels.build("sawtooth_oscillation", SHOT, paths=p)
     assert [x.title for x in built][:4] == [
-        f"ECE Te, ch {a}-{a + 3} (0.05 ms median)" for a in (20, 24, 28, 32)
+        f"ECE Te, inversion side {side}, ch {a}-{a + 3} (0.05 ms median; "
+        "q=1 mapping unavailable)"
+        for side, a in zip(("A", "A", "B", "B"), (20, 24, 28, 32), strict=True)
     ]
     ece = built[0]
     assert ece.y.shape == (4, 50_000), "every 500 kHz sample, at its own time"
@@ -176,6 +178,19 @@ def test_sawteeth_draw_ece_and_the_sxr_chords_that_crash(tmp_path, monkeypatch):
     sxr = built[4]
     assert sxr.title == "SXR SX90RP1F, the 4 chords with the most crash-like drops"
     assert sxr.legend == [f"SX90RP1F{c}" for c in ("04", "06", "21", "26")]
+
+
+def test_ece_rows_identify_fallback_inversion_sides_without_q1_geometry(
+    tmp_path, monkeypatch
+):
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    _sawtooth(p, sxr=False)
+    rows = saw.ece_panels(SHOT, paths=p)
+    assert len(rows) == 4
+    assert all("q=1 mapping unavailable" in row.title for row in rows)
+    assert rows[0].title.startswith("ECE Te, inversion side A")
+    assert rows[-1].title.startswith("ECE Te, inversion side B")
 
 
 def test_the_te_row_is_thomsons_hottest_core_chords_in_kev(tmp_path, monkeypatch):
@@ -292,7 +307,9 @@ def test_a_shot_without_ece_or_sxr_draws_the_other(tmp_path, monkeypatch):
     assert only.title.startswith("SXR")
     other = tree.paths(tmp_path / "other")
     _sawtooth(other, sxr=False)
-    assert len(panels.build("sawtooth_oscillation", SHOT, paths=other)) == 4
+    built = panels.build("sawtooth_oscillation", SHOT, paths=other)
+    assert len(built) == 5
+    assert built[-1].title.startswith("ECE inversion side comparison")
     none = tree.paths(tmp_path / "none")
     tree.write(none.corpus_file(SHOT), {"ip": ([0.0, 1.0], [[1.0, 1.0]])})
     with pytest.raises(NoDataError, match="no panels"):

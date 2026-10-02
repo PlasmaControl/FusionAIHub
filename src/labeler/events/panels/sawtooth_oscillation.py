@@ -1,5 +1,8 @@
-"""Sawteeth, as the inversion of adjacent ECE channels across the q = 1 surface,
-the core electron temperature, and the soft X-ray chords that drop at each crash.
+"""Sawteeth in ECE inversion groups, core Te, and crash-sensitive SXR chords.
+
+Calibrated channel geometry separates the core from outside q = 1; without it,
+adjacent channel groups and their baseline-subtracted comparison show inversion
+without assigning a physical radius.
 
 The ECE rows draw each 500 kHz sample as the median of its `ECE_BIN_MS`, so
 the radiometer's spikes do not set the rows' range (`ece_panels`). The Te row
@@ -11,19 +14,23 @@ about 25 shots the brightest sit near 4.6 V and barely move (189061's chords 10
 and 12, against 9 and 11 that crash). Its chords are clipped to their robust
 range over the plasma window (`_shared.robust_clip`), as the ELM D-alpha rows
 are, so a spike after the plasma does not set the row's scale. A shot without
-ECE, Thomson or SXR gets the others' rows alone.
+ECE, Thomson or SXR gets the others' rows alone. An optional n1rms row shows
+the n=1 magnetic RMS amplitude in gauss below the SXR row.
 """
 
 from __future__ import annotations
+
+from dataclasses import replace
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
 
 from ...config import Paths
-from .. import spans
+from .. import equilibrium, spans
 from ..heuristics import SXR_CHORDS, SXR_FANS, SXR_LIT_FRAC, SXR_MIN_CHORDS
 from ..raw import raw_signal
 from ..verify import NoDataError, Panel
+from . import ece_geometry
 from ._shared import (
     CLIPPED,
     despike,
@@ -43,6 +50,11 @@ CHANNEL_ROWS = (
     (28, 29, 30, 31),
     (32, 33, 34, 35),
 )
+# The corpus stores channel numbers only. No calibrated ECE channel radius,
+# equilibrium time base, or q=1 crossing is stored alongside it, so these are
+# inversion sides rather than claims about core or outside-q=1 locations.
+ECE_INVERSION_SIDES = ("A", "A", "B", "B")
+ECE_GEOMETRY_NOTE = "q=1 mapping unavailable"
 #: Each ECE sample as the median of its 0.05 ms (25 samples), the review grid's
 #: finest column (`panel_rows.FINEST_DT_MS`), so the page loses no time it
 #: could show. The radiometer's spikes are 1-4 samples wide and reach 22 keV
@@ -126,7 +138,11 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
         )
         built.append(
             Panel(
-                title=f"ECE Te, ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median)",
+                title=(
+                    f"ECE Te, inversion side {ECE_INVERSION_SIDES[len(built)]}, "
+                    f"ch {row[0]}-{row[-1]} ({ECE_BIN_MS:g} ms median; "
+                    f"{ECE_GEOMETRY_NOTE})"
+                ),
                 x=array.x,
                 y=despike(array.x, array.y, ECE_BIN_MS),
                 ylabel="keV",
@@ -134,6 +150,83 @@ def ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
             )
         )
     return built
+
+
+def _mapped_ece_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
+    geometry = ece_geometry.load_geometry(int(shot), paths)
+    q_x, q_values = geometry.time_ms, geometry.q
+    array = raw_signal(
+        int(shot), "ece", channels=list(range(q_values.shape[0])),
+        t_range=t_range, paths=paths
+    )
+    if geometry.psi is None:
+        core_geometry, outside_geometry = ece_geometry.classify_q1(q_values)
+    else:
+        core_geometry, outside_geometry = ece_geometry.surface_membership(
+            geometry.psi, geometry.q1_psi
+        )
+    core = ece_geometry.align_mask(array.x, q_x, core_geometry)
+    outside = ece_geometry.align_mask(array.x, q_x, outside_geometry)
+    values = despike(array.x, array.y, ECE_BIN_MS)
+    panels = []
+    names = (
+        ("q<1 inversion group", core),
+        ("q>1 inversion group", outside),
+    )
+    if geometry.psi is not None:
+        names = (("core q<1", core), ("outside q=1", outside))
+    for name, mask in names:
+        selected = np.arange(min(values.shape[0], mask.shape[0]))
+        visible = mask[selected].any(axis=1)
+        if not visible.any():
+            continue
+        y = np.where(mask[selected[visible]], values[selected[visible]], np.nan)
+        panels.append(
+            Panel(
+                title=f"ECE Te, {name} (measured q geometry)",
+                x=array.x,
+                y=y,
+                ylabel="keV",
+                legend=[f"ch {c}" for c in selected[visible]],
+            )
+        )
+    if not panels:
+        raise NoDataError("ECE q geometry has no valid q<1 or q>1 samples")
+    return panels
+
+
+def ece_inversion_panel(shot, *, t_range=None, paths=None) -> list[Panel]:
+    array = raw_signal(
+        int(shot), "ece", channels=list(range(36)), paths=paths
+    )
+    x, y = ece_inversion_from_arrays(
+        array.x, despike(array.x, array.y, ECE_BIN_MS), t_range=t_range
+    )
+    return _inversion_panel(x, y)
+
+
+def ece_inversion_from_arrays(x, values, *, t_range=None):
+    channels = tuple(range(16)) if np.asarray(values).shape[0] < 36 else None
+    if channels is None:
+        x, y = ece_geometry.inversion_difference(x, values)
+    else:
+        x, y = ece_geometry.inversion_difference(x, values, channels=channels)
+    if t_range is not None:
+        keep = (x >= t_range[0]) & (x <= t_range[1])
+        x, y = x[keep], y[:, keep]
+    return x, y
+
+
+def _inversion_panel(x, y):
+    return [
+        Panel(
+            title="ECE inversion side comparison (q=1 mapping unavailable)",
+            x=x,
+            y=y,
+            ylabel="ΔTe, baseline-subtracted (keV)",
+            legend=["side A: ch 20-27", "side B: ch 28-35"],
+        )
+    ]
 
 
 def te_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
@@ -210,8 +303,39 @@ def sxr_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
 
 def panels(shot, *, t_range=None, paths=None):
     kwargs = {"t_range": t_range, "paths": paths}
+    ece = optional("ECE", shot, lambda: _mapped_ece_panels(shot, **kwargs))
+    inversion = []
+    if not ece:
+        ece = optional("ECE", shot, lambda: ece_panels(shot, paths=paths))
+        if len(ece) >= 4:
+            inversion = _inversion_panel(
+                *ece_inversion_from_arrays(
+                    ece[0].x,
+                    np.concatenate([panel.y for panel in ece[:4]], axis=0),
+                    t_range=t_range,
+                )
+            )
+        if t_range is not None:
+            viewed = []
+            for panel in ece:
+                keep = (panel.x >= t_range[0]) & (panel.x <= t_range[1])
+                viewed.append(replace(panel, x=panel.x[keep], y=panel.y[:, keep]))
+            ece = viewed
     return (
-        optional("ECE", shot, lambda: ece_panels(shot, **kwargs))
+        ece
         + optional("Te", shot, lambda: te_panels(shot, **kwargs))
         + optional("SXR", shot, lambda: sxr_panels(shot, **kwargs))
+        + optional(
+            "n1rms",
+            shot,
+            lambda: equilibrium.line_panel(
+                shot,
+                "n1rms",
+                "n1rms (n=1 magnetic RMS)",
+                ylabel="G",
+                t_range=t_range,
+                paths=Paths.from_env() if paths is None else paths,
+            ),
+        )
+        + inversion
     )

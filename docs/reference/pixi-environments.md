@@ -100,6 +100,14 @@ fails to open a read-only file the way it does on GPFS.
 
 ## feature.fdp
 
+`FDP_NO_AUTO_LOGIN=1` disables automatic Pelican OAuth prompts. FDP uses an
+existing `BEARER_TOKEN`, a valid device token in `~/.fdp/cache/`, or
+`~/.fdp/token`. Use `pixi run --frozen -e labelmaker fdp run <command>` for
+data access with those credentials. Explicit `fdp login` always requests a
+fresh token through Pelican, even when existing credentials are valid; it
+is unnecessary when you already have access. This setting disables token
+acquisition, not the data transport configured by FDP.
+
 MEASURED 2026-09-04 (Task 16b): `import torch` binds the SYSTEM
 `/lib64/libstdc++.so.6`, which lacks `GLIBCXX_3.4.29`. Every compiled extension
 in this feature that needs that symbol then fails to import after torch does -

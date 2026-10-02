@@ -84,7 +84,7 @@ five-column tables stay valid). A blank cell means no attributes.
 The table lists every allowed attribute key, including the shared `reason`.
 Attributes are optional. Numbers must be finite; booleans are not numeric values.
 Units are given for physical quantities; other attributes have no physical units.
-NTM is always observable because magnetics are an inclusion rule; disruption is
+TM is always observable because magnetics are an inclusion rule; disruption is
 always observable because Ip always exists.
 
 <table id="catalog-phenomena">
@@ -96,7 +96,8 @@ always observable because Ip always exists.
 <tr>
 <td><code>alfven_eigenmode</code></td>
 <td><code>type</code>: string, RSAE / TAE / other;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td>None</td><td>Yes</td>
 </tr>
 <tr>
@@ -110,19 +111,22 @@ always observable because Ip always exists.
 <code>override</code>: string, island_not_resolved / q_unreliable /
 classical_tm / not_tearing_mode;<br />
 <code>other_mhd</code>: string, m1 / classical_tm / fishbone / eho / kink;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td>None</td><td>No</td>
 </tr>
 <tr>
 <td><code>high_confinement_mode</code></td>
 <td><code>variant</code>: string, standard / QH / other;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td>None</td><td>Yes</td>
 </tr>
 <tr>
 <td><code>edge_localized_mode</code></td>
 <td><code>frequency_hz</code>: number > 0, Hz;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td><code>elm</code></td><td>Yes</td>
 </tr>
 <tr>
@@ -133,18 +137,25 @@ classical_tm / not_tearing_mode;<br />
 and heuristic inversion_channel_lo/_stop use 0-based rows. The owner must
 define which side of the inversion it names before anyone records it.</span><br />
 <code>inversion_radius_m</code>: number > 0, m;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td><code>crash</code></td><td>Yes</td>
 </tr>
 <tr>
 <td><code>disruption</code></td>
 <td><code>intentional</code>: boolean, true / false;<br />
 <code>phase</code>: string, flattop / rampdown;<br />
-<code>reason</code>: nonblank string</td>
+<code>reason</code>: nonblank string;<br />
+<code>iscrowd</code>: integer</td>
 <td><code>t_D</code>, <code>t80</code>, <code>t20</code></td><td>No</td>
 </tr>
 </tbody>
 </table>
+
+`iscrowd` is optional: 0 marks an individual annotation and 1 a crowd envelope.
+Equivalent false/true flags are accepted. Missing flags remain unspecified.
+Individual/unspecified and crowd spans use separate lanes and may overlap;
+category-0 absent spans cover only gaps outside their combined coverage.
 
 `inversion_radius_m` is the sawtooth inversion radius as a minor radius:
 the distance from the magnetic axis along the ECE's midplane line of sight,
@@ -170,9 +181,12 @@ It exits 1 on any finding and 2 on bad arguments.
 
 ### What the checker certifies
 
-- Each shot's rows have positive length and tile their labelled window without
-  gaps or overlaps. States are 0 absent, 1 present, 2 uncertain or 3 not observable;
-  NTM and disruption cannot use state 3. Unlabelled time remains unassessed.
+- Each shot's rows have positive length and cover their labelled window without
+  gaps. Crowd spans can overlap individual/unspecified spans. Within either lane,
+  annotations cannot overlap. Unscoped absent spans cover only gaps outside
+  both lanes; an absent span explicitly marked individual covers that lane only.
+  States are 0 absent, 1 present, 2 uncertain or 3 not observable;
+  TM and disruption cannot use state 3. Unlabelled time remains unassessed.
 - Label boundaries are whole milliseconds; writers use half-up `whole_ms`.
   Point times retain the signal's fractional millisecond resolution.
 - Attributes use only the keys, types, allowed words and bounds in the table

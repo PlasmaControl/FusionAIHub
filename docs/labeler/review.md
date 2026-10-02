@@ -17,7 +17,7 @@ and `tests/labeler/test_events_ui.py`.
 ## Opening it
 
 ```bash
-pixi run -e labelmaker labeler-verify
+pixi run --frozen -e labelmaker labeler-verify
 ```
 
 This prints a link carrying a fresh token and an `ssh -L 8811:localhost:8811 <node>`
@@ -53,7 +53,10 @@ after the newest save.
   does not. The name, at the top right (click it to change), goes with every
   save and is shown beside it (`saved Sep 26, 14:02 by Ada Lovelace`). It is an
   attribution, not a login: the history also records the login that runs the
-  server. The list is `data/events/reviewers.txt`, one name per line, which you
+  server, but the page never shows it. The credit under the queue (`170815
+  reviewed by Ada Lovelace`) and the history list show names only, and a save
+  made without a name credits no one. The list is
+  `data/events/reviewers.txt`, one name per line, which you
   may edit (Add Name only appends a line); until a name is added it is the
   names already saved in the review logs.
 - **History** (`H`) lists the shot's saved versions, newest first: who saved
@@ -63,7 +66,8 @@ after the newest save.
   version and never rewrites one, but a crash between writing the label and
   its history line can leave the current label without its version line.
 - **Mask** (Alfvén eigenmode shots with a pseudo-mask): TokEye's coherent lines
-  inside the label's AE frames, 80-250 kHz, over the label's whole window, drawn
+  inside the label's AE frames, 60-250 kHz (80-250 until 2026-09-30), over the
+  label's whole window, drawn
   in cyan over the rows: `pseudo-v1-full`, pseudo-v1's rules
   (`labeler.ae.seg.pseudo`) over TokEye's whole-shot masks, built by
   `python -m labeler.ae.seg.whole` from the labels saved when it ran; a rerun
@@ -73,7 +77,7 @@ after the newest save.
   these, and each rejection reaches it (`labeler.ae.seg.regions.transfer`): the
   region's pixels are background in that version's mask where it scores them
   (never scored where it does not, as pseudo-v1 after 2 s), and the rest of that
-  mask's line the region touches, outside the regions drawn here (below 80 kHz
+  mask's line the region touches, outside the regions drawn here (below 60 kHz
   in pseudo-v2 and v3), is left unscored. Each click is saved at once, with your
   name. `M` hides and shows the mask, and the browser remembers which. The
   header counts the regions kept.
@@ -117,9 +121,48 @@ that edit back. Restoring the current label leaves it alone.
 | `[` `]` | contrast |
 | `?` | this list |
 
+### Individual events and groups
+
+The **Resolution** selector applies to the selected span and to new spans.
+Choose **Individual** for one resolved event, **Group (crowd)** for an envelope
+whose constituent events have not been individually delineated, or
+**Unspecified** when that distinction has not been reviewed. Resolution is
+independent of the event category: the uncertain category still describes the
+evidence, while a group describes annotation granularity.
+The **Individual** and **Crowd** bars are separate editable lanes. Drag in the
+Individual bar to delineate an event inside a crowd envelope; the crowd stays
+intact. Drag in the Crowd bar to annotate a group over existing individuals.
+Clicking, moving, resizing or deleting a span affects its own lane. Switching
+the selected span's resolution moves it to the other lane. Each wide span
+shows its category and resolution; crowd spans are also hatched. Touching
+individual spans retain their separate boundaries, even when categories match.
+Within a lane, a newly drawn or moved span replaces the coverage it crosses.
+
+New ELM and sawtooth spans default to Group because their draft workflow
+identifies event trains; this sets the type for Shift-drag on diagnostic rows.
+Dragging directly in a label lane uses that lane's type. Other events default
+to Individual. Existing labels
+without resolution metadata remain Unspecified; opening or saving them does
+not invent individual events. Unspecified spans appear in the Individual bar
+with an Unspecified caption. Changing resolution, moving or resizing a span,
+undo, drafts and history restore preserve the distinction. To delineate two
+touching events, Shift-drag on the diagnostic rows; dragging an existing
+span's edge resizes it.
+
+Annotation boundaries still snap to whole milliseconds. A group may contain
+bursts finer than this grid; resolving sub-millisecond ELM boundaries would
+require a separate precision change. The selector records annotation facts;
+it does not change a trained model. Model options and proposed loss/evaluation
+semantics are in [Group versus individual event annotations](crowd_models.md).
+
 ## The cohort editors
 
-The ELM (`edge_localized_mode`), H-mode (`high_confinement_mode`), sawtooth
+Poloidal beta, minimum safety factor and resistive wall mode also have
+signal-specific rows and drafts; their class mappings, scientific limits and
+preparation commands are in [Equilibrium and RWM review](equilibrium_review.md).
+
+The ELM (`edge_localized_mode`), H-mode (`high_confinement_mode`, which the page
+offers as `confinement`), sawtooth
 (`sawtooth_oscillation`) and tearing-mode (`neoclassical_tearing_mode`) editors
 review the frozen cohort's 450 non-blind shots in its queue order
 (`queue_rank`). Any prefix of the queue is therefore a random subsample of
@@ -137,6 +180,12 @@ are these:
   includes an ELM filterscope that stopped reading (below). A shot the method
   could not run on is not observable throughout, and the table's `.meta.json`
   records why under `skipped`.
+
+The page offers *present* and *uncertain* only (q_min and confinement add their
+regimes): whatever the reviewer leaves unmarked is not observable. A draft's or a
+saved label's not-observable stretch therefore opens as a gap, and does not make
+a saved label differ from its source. The tables keep the state: the frame models
+and scoring read it as masked.
 
 **Versions.** `spans --version` names the table a run writes,
 `$LABELER_ROOT/suggestions/<method>/<version>/`. The pages open on v1's: the
@@ -197,7 +246,20 @@ mark the sawteeth or ELMs you see there by hand.
   frequency's floor over the plasma window, from -3 to 27 dB. Then two traces:
   the PCPHD03 photodiode, and the filterscope the ELM spans were found on
   (FS01, or FS02 where FS01 is dark). The filterscope row's title names its
-  channel.
+  channel. Optional energy rows show the **diamagnetic loop**, corrected for
+  linear drift and scaled to EFIT WMHD, then provisional **ELM energy loss**
+  in kJ and as a percentage of the pre-ELM energy. Drops are detected on the
+  loop and matched one-to-one against D-alpha peaks before a size is assigned.
+- EFIT WMHD is the calibration reference. Linear drift is fitted only over
+  explicit quiet baseline windows. Noise estimation and loss sizing stay
+  inside the calibration interval; all energy rows are unavailable outside it.
+  Each accepted drop and D-alpha peak must have a unique admissible counterpart;
+  competing matches remain unsized. Native loop times and gaps are retained;
+  missing or overlapping pre/post windows leave the event unsized. Drift fit,
+  gain, calibration residual, detector settings and measured losses are saved
+  with the diagnostic row store. Without a calibrated loop the other rows
+  remain available. The local signal contract, defaults and scientific limits
+  are in [Diamagnetic ELM energy](elm_energy.md).
 - PCPHD03 is left out where it cannot be read, or where it is flat over the
   plasma: its 0.5-99.5 percentile range under 0.011 V, on 33 of the 450
   shots. The filterscope row's title then says "(PCPHD03 not found)" or
@@ -237,12 +299,48 @@ mark the sawteeth or ELMs you see there by hand.
 - 33 queue shots have no beam power (`pinj`) in the corpus or the raw cache.
   Nothing fetches it for them, so their drafts are not observable throughout.
 - H-mode has no Ip start: the transitions set their own.
+- The page offers this editor as `confinement`, and not `high_confinement_mode`,
+  `low_confinement_mode`, `quiescent_high_confinement_mode` or
+  `wide_pedestal_quiescent_high_confinement_mode`: a span is 1 high, 2 low, 3 qh,
+  4 wpqh or 5 uncertain, and unmarked time is a gap. It shares these rows. Its
+  draft is this one renumbered (present is high, uncertain is 5, absent and not
+  observable are left unmarked), except on the shots that have curated regime
+  intervals (Gill's and Butt's: H, L, QH, WP), which open on those. Its roster is
+  the 450 queue shots and then the 389 curated shots that have a D-alpha record
+  (corpus or raw cache); the other 45 curated shots have none yet, and nothing
+  fetches it for them while the page runs.
+  See `data/events/confinement/README.md`.
 
 **Sawteeth** (`ece_sawtooth`).
 
-- Rows: the ECE Te of channels 20-35, as four rows of four adjacent channels
-  in keV, so the inversion (inner channels drop as outer ones rise) reads from
-  row to row. Each sample is the median of its 0.05 ms, the page's finest
+- ECE rows use calibrated per-channel normalized poloidal flux (`ece_psi`)
+  and local EFIT `qpsi`, when available, to separate **core q<1** and
+  **outside q=1**. These let the reviewer compare a core temperature drop
+  with an outer temperature rise. The surface is the innermost q=1 crossing
+  connected to an axis with q<1; reverse-shear profiles with axis q>=1,
+  missing profiles, and profiles without that crossing leave membership
+  unknown. Membership is retained between geometry samples only when both
+  neighboring samples agree, without extrapolation across missing data.
+- Without flux calibration, explicit local `ece_q` supports rows named
+  **q<1 inversion group** and **q>1 inversion group**, which do not assert
+  spatial core membership. With neither calibration, channels 20-35 remain
+  as four rows of adjacent channels labeled **inversion side A/B** and
+  **q=1 mapping unavailable**. An additional comparison subtracts each
+  channel's full-record mean and averages channels 20-27 versus 28-35 on one
+  axis; opposite changes are visible and the baseline is stable on zoom.
+  Channel number alone does not establish which side of q=1 a channel sees.
+- Live source checks on 189061 retrieved the 48 channel frequencies and
+  validity flags, viewing height/angle, and EFIT01 flux grid and q profile.
+  EFIT established an axis-connected q=1 surface at 69 of 294 native times
+  (25 of 172 times in the trial 1.8–5.3 s interval). A separate research plot
+  estimates positions from cold second-harmonic resonance using the full
+  magnetic-field magnitude. It does not supply the editor's calibrated
+  `ece_psi`: relativistic shifts, radiation transport, cutoff/optical depth,
+  fast-channel validity and q-profile uncertainty remain unvalidated.
+  OMFIT's [sawtooth channel selection](https://omfit.io/_modules/omfit_classes/omfit_elm.html#OMFITelm.select_sawtooth_signal)
+  documents the frequency/validity sources and a cold-resonance mapping; its
+  approximate detector selection does not validate a channel's q=1 membership.
+- Each ECE sample is the median of its 0.05 ms, the page's finest
   column: the radiometer's 1-4-sample spikes (to 44 keV over a 3 keV core)
   otherwise set the row's range and flatten the crashes. Then one Te row from
   Thomson scattering (`ts_core_temp`, every 10 ms), in keV: of the chords with
@@ -266,6 +364,15 @@ mark the sawteeth or ELMs you see there by hand.
 - A shot without ECE, Thomson or SXR gets the others' rows alone.
 - Draft: the runs of crashes, starting in the plasma as above. In v2 the
   ramp-up is uncertain once the array saw a crash in it (above).
+
+The calibrated view expects an `ece_psi` feature group in the features store,
+corpus, or raw cache: `x` is seconds, `y` has shape `(ECE channels, times)`
+in normalized poloidal flux, with the same channel order as `ece`. This is
+neither channel radius nor normalized toroidal flux. Local canonical EFIT
+`qpsi` has the uniform normalized-poloidal-flux grid from 0 to 1. An optional
+`ece_q` group uses the same shape/clock and contains the safety factor at each
+channel's location. The current corpus's ECE channel numbers alone do not
+provide this calibration, so those shots use the labeled fallback comparison.
 
 **Tearing modes** (`window`).
 
@@ -336,13 +443,22 @@ Saves go under the event's directory in the label tables
 
 - `review/labels.csv` holds the current label of every reviewed shot, in the
   format-table schema (`shot, category, t_start, t_end, confidence`, whole ms).
-  A shot's rows tile its window, and the gaps are category 0. Each save replaces
+  Explicit resolution adds the optional `attrs` JSON column, with
+  `{"iscrowd":0}` for an individual and `{"iscrowd":1}` for a group. Blank
+  attrs remain unspecified. Category 0 gaps carry no crowd flag. Other shots'
+  attrs are preserved; editing a shot with additional unsupported attrs is
+  refused so the editor cannot discard its metadata.
+  Individual/unspecified spans may overlap crowd spans. Shared category-0 gaps
+  cover only time outside both lanes. Each save replaces
   that shot's rows and rewrites the file atomically. The result validates like
   any other format table.
 - `review/history.jsonl` gets one line per save: shot, `reviewer` (the login
   running the server), `name` (the reviewer's name, or null), time, the
   window and spans saved, the source file they were compared with and that
   file's sha256 (`source_sha256`; absent when the event has no source table).
+  Explicit resolution is stored as a parallel `iscrowd` array aligned with
+  the intervals, also returned by the label/history API; null entries mean
+  unspecified. Older history entries without it remain unspecified.
   It is only ever appended to: a shot's versions are its lines in order,
   numbered from 1, and `GET /api/history?event=&shot=` lists them. Lines
   written before names existed have no `name` and read as unnamed; lines
@@ -367,6 +483,14 @@ A page newer than its server asks `/api/version` first. From an older server it
 saves without a name, hides the name box and history, and says to restart the
 server, so a page reload before a restart never breaks a save. From a server
 older than the list of names the page keeps the typed name box.
+Crowd controls require API version 7; overlapping lanes require version 8.
+An older client cannot overwrite
+crowd-bearing labels without supplying the resolution array, and a newer
+page refuses to send a crowd-bearing draft to an older server. Version-8 saves
+send `overlap_edit: true`; clients without this marker cannot overwrite a shot
+whose saved or source annotations overlap. This prevents a cached older page
+from silently flattening the lanes. Restart an older server and reload the page
+to use overlapping annotations.
 
 ## The row store
 
@@ -386,6 +510,16 @@ The AE recipe resamples the four chords to 500 kHz and applies a Hann STFT of
 The cross-power rows average R0 × conj(chord) over 8 columns before taking the
 magnitude. Other events build their file the first time a shot is opened, which
 takes a few seconds. The page says so while it waits.
+
+ELM and sawtooth row stores carry a panel version. Opening an older store
+rebuilds it once to include the diamagnetic energy rows and revised ECE view.
+If calibration or previously missing diagnostic data are added later,
+rebuild the affected shots explicitly:
+
+```bash
+pixi run --frozen -e labelmaker python -m labeler.events.review.build \
+    --event sawtooth_oscillation --shots 192238 --force
+```
 
 A shot's CO2 comes from the corpus if the corpus has it, else from the fetch
 cache `$LABELER_ROOT/raw`. Failing both, it is fetched live, which needs the

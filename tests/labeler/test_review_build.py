@@ -8,6 +8,7 @@ from datetime import datetime
 
 import h5py
 import numpy as np
+import pytest
 
 from labeler.config import Paths
 from labeler.events.review import build as review_build
@@ -82,6 +83,31 @@ def test_an_existing_file_is_rebuilt_only_when_forced(tmp_path, monkeypatch):
     assert calls == [1]
     review_build.build("detachment", 1, paths, force=True)
     assert calls == [1, 1]
+
+
+@pytest.mark.parametrize("event,previous_version", [
+    ("edge_localized_mode", None),
+    ("edge_localized_mode", 2),
+    ("sawtooth_oscillation", None),
+])
+def test_updated_diagnostic_views_rebuild_old_rows_once(
+    tmp_path, monkeypatch, event, previous_version,
+):
+    paths = Paths(root=tmp_path)
+    path = paths.spectrogram_file(event, 1)
+    grid, built, _info = fake(event, 1, paths)
+    attrs = {} if previous_version is None else {"panel_version": previous_version}
+    rows.write(path, grid, built, event=event, **attrs)
+    calls = []
+
+    def updated(event, shot, paths):
+        calls.append(shot)
+        return fake(event, shot, paths)
+
+    monkeypatch.setitem(review_build.BUILDERS, event, updated)
+    review_build.build(event, 1, paths)
+    review_build.build(event, 1, paths)
+    assert calls == [1], "the new diagnostic recipe replaces a stale store once"
 
 
 def test_the_command_builds_what_is_missing_and_reports_failures(

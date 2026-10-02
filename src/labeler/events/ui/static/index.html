@@ -18,10 +18,12 @@
   <span id="masks" hidden title="AE pseudo-mask: click a region on the rows to reject it, M hides it and the faint TokEye layer"></span>
   <span id="status" role="status" aria-live="polite"></span>
   <span id="stale" hidden>Restart the server for names and history</span>
+  <span id="bar-end">
   <input id="reviewer-name" placeholder="Your name" maxlength="64" autocomplete="name" spellcheck="false"
          aria-label="Your name, recorded with each save" title="Recorded with each save" hidden>
   <button id="reviewer" type="button" title="Recorded with each save: click to change" hidden></button>
   <button id="help" type="button" aria-label="Keys">?</button>
+  </span>
 </header>
 <main id="top">
   <div id="rows"></div>
@@ -29,19 +31,32 @@
 </main>
 <footer id="bottom">
   <div class="track"><span class="name">Source</span><canvas id="source-track"></canvas></div>
-  <div class="track"><span class="name">Label</span><canvas id="label-track"></canvas></div>
+  <div class="track"><span class="name" id="individual-lane-name" title="Legacy unspecified spans also appear here">Label</span><canvas id="label-track" data-lane="0" aria-label="Individual and unspecified annotations"></canvas></div>
+  <div class="track" id="crowd-lane" hidden><span class="name">Crowd</span><canvas id="crowd-track" data-lane="1" aria-label="Crowd annotations"></canvas></div>
   <div id="controls">
     <div id="swatches"></div>
-    <button id="save-next" class="primary" type="button">Save and next <span id="next-shot"></span> <kbd>Enter</kbd></button>
+    <label id="resolution-control" hidden>
+      <span id="resolution-label">New spans</span>
+      <select id="resolution" aria-label="Annotation resolution"
+              title="Individual: one resolved event. Group: activity whose individual events have not been separated.">
+        <option value="unspecified">Unspecified</option>
+        <option value="0">Individual</option>
+        <option value="1">Group (crowd)</option>
+      </select>
+    </label>
+    <button id="save" class="primary" type="button">Save <kbd>S</kbd></button>
+    <button id="next" type="button">Next <span id="next-shot"></span> <kbd>K</kbd></button>
     <button id="revert" type="button">Revert <kbd>R</kbd></button>
     <button id="show-versions" type="button" hidden>History <kbd>H</kbd></button>
   </div>
   <nav id="queue" aria-label="Shots"></nav>
+  <p id="contributors" aria-live="polite"></p>
+  <p id="onsets" hidden></p>
 </footer>
 <div id="cursor" hidden><span id="cursor-time"></span></div>
 <dialog id="keys">
   <table>
-    <tr><td><kbd>Enter</kbd></td><td>Save, then open the next shot in the queue</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Save, then open the next shot in the queue (Save and Next in one)</td></tr>
     <tr><td><kbd>S</kbd></td><td>Save</td></tr>
     <tr><td><kbd>R</kbd></td><td>Revert to source</td></tr>
     <tr><td><kbd>←</kbd> <kbd>→</kbd> or <kbd>J</kbd> <kbd>K</kbd></td><td>Previous, next shot; an edit stays as a draft</td></tr>
@@ -49,7 +64,7 @@
     <tr><td><kbd>H</kbd></td><td>Saved versions: who saved what, and restore one</td></tr>
     <tr><td><kbd>M</kbd></td><td>AE: show or hide the pseudo-mask, TokEye's lines inside the label's AE frames, and, faint, all of TokEye's lines over the whole shot</td></tr>
     <tr><td>Click a mask region</td><td>Reject it, or take that back; saved at once, with your name</td></tr>
-    <tr><td>Drag on the label</td><td>Add, move or resize a span; the foot moves the window</td></tr>
+    <tr><td>Drag on a label lane</td><td>Add, move or resize a span in that lane; either foot moves the shared window. Individual and Crowd spans can overlap.</td></tr>
     <tr><td>Shift-drag on the rows</td><td>Add a span</td></tr>
     <tr><td>Drag on the rows</td><td>Pan</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> wheel</td><td>Zoom</td></tr>
@@ -57,6 +72,7 @@
     <tr><td><kbd>Shift</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Pan</td></tr>
     <tr><td><kbd>-</kbd> <kbd>=</kbd> <kbd>0</kbd></td><td>Zoom out, in, fit</td></tr>
     <tr><td><kbd>1</kbd>-<kbd>9</kbd></td><td>Category</td></tr>
+    <tr><td>Annotation resolution</td><td>Moves the selected span between Individual and Crowd, or sets the type for Shift-drag on the rows. Hatched spans are crowds. Existing labels stay unspecified until classified.</td></tr>
     <tr><td><kbd>Delete</kbd></td><td>Remove the span</td></tr>
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Contrast</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd></td><td>Undo</td></tr>

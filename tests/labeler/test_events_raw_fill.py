@@ -65,3 +65,34 @@ def test_main_fills_the_roster_and_counts(tmp_path, monkeypatch, capsys):
     assert raw.main(["--event", "high_confinement_mode", "--limit", "1"]) == 0
     assert capsys.readouterr().out.splitlines()[-1] == '{"shots": 1, "cache": 1}'
     assert len(calls) == 2
+
+
+def test_main_fills_the_alfven_roster_with_co2_and_honours_shots(
+    tmp_path, monkeypatch, capsys
+):
+    p = tree.paths(tmp_path)
+    tree.use_env(monkeypatch, p)
+    calls = []
+    monkeypatch.setattr(raw, "fdp_signal", _fake_fdp(calls))
+    assert raw.main(["--event", "alfven_eigenmode", "--shots", "9", "--pace", "0"]) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[0]) == {
+        "shot": 9,
+        "co2": "fetched",
+    }
+    assert [shot for shot, _ in calls] == [9]
+
+
+def test_main_groups_overrides_the_events_default(tmp_path, monkeypatch, capsys):
+    p = tree.paths(tmp_path)
+    tree.use_env(monkeypatch, p)
+    calls = []
+    monkeypatch.setattr(raw, "fdp_signal", _fake_fdp(calls))
+    roster = p.label_tables / "confinement" / "shots.csv"
+    roster.parent.mkdir(parents=True)
+    roster.write_text("shot,tier,holdout,reviewers,verified_on,notes\n7,unverified,false,,,\n")
+    assert raw.main(["--event", "confinement", "--groups", "pinj", "--pace", "0"]) == 0
+    assert json.loads(capsys.readouterr().out.splitlines()[0]) == {
+        "shot": 7,
+        "pinj": "fetched",
+    }
+    assert calls == [(7, r"\D3D::TOP.NB.NB15L:PINJ_15L")]

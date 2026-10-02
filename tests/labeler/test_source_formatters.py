@@ -45,6 +45,127 @@ def test_ae_excludes_lfm_and_combines_overlapping_classes(tmp_path):
     assert frame.confidence.isna().all()
 
 
+def _write_ece(folder, shot, body):
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"labels_{shot}.txt").write_text(
+        "t1, t2, f1, f2, channel, type\n" + body
+    )
+
+
+def test_ae_ece_unions_boxes_across_channels_and_ignores_lfm(tmp_path):
+    from labeler.events.interval_tables import project_intervals
+    from labeler.events.source_formatters import format_ae_ece, read_ae_ece
+
+    _write_ece(
+        tmp_path,
+        170660,
+        "0.30, 0.50, 60, 120, 5, TAE\n"
+        "0.45, 0.70, 70, 130, 6, rsae\n"
+        "0.70, 0.80, 90, 150, 7, BAE\n"
+        "1.00, 1.20, 20, 90, 7, LFM\n"
+        "1.40, 1.50, 100, 150, 8, EAE\n\n",
+    )
+    assert [shot for shot, _ in read_ae_ece(tmp_path)] == [170660]
+    table = project_intervals(format_ae_ece(tmp_path))
+    assert table[["category", "t_start", "t_end"]].values.tolist() == [
+        [1, 300.0, 800.0],
+        [1, 1400.0, 1500.0],
+    ]
+    assert table.confidence.isna().all()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "0.30, 0.50, 60, 120, 5, XYZ\n",
+        "0.50, 0.30, 60, 120, 5, TAE\n",
+        "0.30, 0.50, 120, 60, 5, TAE\n",
+        "0.30, 0.50, 60, 120, 0, TAE\n",
+        "0.30, nan, 60, 120, 5, TAE\n",
+    ],
+)
+def test_ae_ece_rejects_invalid_boxes(tmp_path, body):
+    from labeler.events.source_formatters import read_ae_ece
+
+    _write_ece(tmp_path, 1, body)
+    with pytest.raises(ValueError):
+        read_ae_ece(tmp_path)
+
+
+def test_ae_ece_rejects_a_wrong_header_or_file_name(tmp_path):
+    from labeler.events.source_formatters import read_ae_ece
+
+    (tmp_path / "labels_1.txt").write_text("t1, t2, f1, f2, type\n0.3, 0.5, 60, 120, TAE\n")
+    with pytest.raises(ValueError, match="columns"):
+        read_ae_ece(tmp_path)
+    (tmp_path / "labels_1.txt").unlink()
+    _write_ece(tmp_path, "x", "0.30, 0.50, 60, 120, 5, TAE\n")
+    with pytest.raises(ValueError, match="columns"):
+        read_ae_ece(tmp_path)
+
+
+def test_ae_ece_dataset_is_formatted_beside_the_pinned_co2_outputs(tmp_path):
+    import yaml
+
+    from labeler.events.interval_tables import read_label_grid
+    from labeler.events.source_formatters import convert_category
+
+    _write_ece(
+        tmp_path / "alfven_eigenmode/raw/ece_all_labels",
+        170660,
+        "0.30, 0.50, 60, 120, 5, TAE\n1.00, 1.10, 20, 90, 7, LFM\n",
+    )
+    pinned = tmp_path / "alfven_eigenmode/format/shots"
+    pinned.mkdir(parents=True)
+    (pinned / "170660.npz").write_bytes(b"pinned co2 grid")
+    (tmp_path / "events.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "format_datasets": [
+                    {
+                        "name": "alfven_eigenmode",
+                        "raw_path": "alfven_eigenmode_format_2026_v1.csv",
+                        "date": "2026-09-14T00:00:00Z",
+                        "sources": ["co2_detector_2021"],
+                    },
+                    {
+                        "name": "alfven_eigenmode",
+                        "raw_path": "alfven_eigenmode_ece_format_2026_v1.csv",
+                        "date": "2026-10-01T00:00:00Z",
+                        "sources": ["ece_labels_2022"],
+                    },
+                ],
+                "raw_datasets": [
+                    {
+                        "stem": "co2_detector_2021",
+                        "path": "alfven_eigenmode/raw/co2_250_detector.pkl",
+                        "provenance": "fixture",
+                    },
+                    {
+                        "stem": "ece_labels_2022",
+                        "path": "alfven_eigenmode/raw/ece_all_labels",
+                        "provenance": "fixture",
+                    },
+                ],
+            }
+        )
+    )
+    out = convert_category(
+        "alfven_eigenmode", tmp_path, dataset="alfven_eigenmode_ece_format_2026_v1"
+    )
+    assert out == tmp_path / "alfven_eigenmode/format/alfven_eigenmode_ece_format_2026_v1.csv"
+    meta = json.loads(out.with_suffix(".meta.json").read_text())
+    assert meta["per_shot_files"]["path"] == "ece_shots/<shot>.npz"
+    assert set(meta["made_from"][0]["files"]) == {"labels_170660.txt"}
+    assert meta["source_audit"]["boxes_by_type"]["LFM"] == 1
+    assert (pinned / "170660.npz").read_bytes() == b"pinned co2 grid"
+    grid = read_label_grid(out.parent / "ece_shots/170660.npz")
+    np.testing.assert_equal(grid["label"][:, 0], [np.nan] * 6 + [1, 1, 1, 1])
+    with pytest.raises(ValueError, match="No format dataset"):
+        convert_category("alfven_eigenmode", tmp_path, dataset="nope")
+
+
 def test_tm_preserves_separate_sources_and_uses_last_sample_boundary(tmp_path):
     h5path = tmp_path / "tm_labels.h5"
     with h5py.File(h5path, "w") as f:

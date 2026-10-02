@@ -110,6 +110,20 @@ def test_elm_rows_are_an_image_and_two_traces(tmp_path, monkeypatch):
     assert grid.dt_ms == panel_rows.FINEST_DT_MS and info["params"]
 
 
+def test_elm_keeps_existing_rows_when_only_efit_energy_is_available(tmp_path, monkeypatch):
+    p = tree.paths(tmp_path)
+    tree.no_fetch(monkeypatch)
+    _elm_shot(p)
+    t = np.arange(0.0, 200.0, 20.0)
+    wmhd = np.full_like(t, 1.0e6)
+    wmhd[t >= 100.0] = 0.7e6
+    tree.write(p.corpus_file(SHOT), {"wmhd": (t, wmhd[None])})
+    panels_for_shot = panels.build("edge_localized_mode", SHOT, paths=p)
+    assert [p.title for p in panels_for_shot] == [
+        "CO2 R0 power", "D-alpha PCPHD03", "D-alpha FS01, the ELM spans' channel",
+    ]
+
+
 def test_a_late_spike_does_not_set_the_traces_range(tmp_path, monkeypatch):
     """PCPHD03's ELMs at 0.25 on 0.05, a 0.4 ms spike of 5 at the end."""
     p = tree.paths(tmp_path)

@@ -21,7 +21,7 @@ version's own mask, on the same store grid (`transfer`), as long as the file
 clicked is still the one there (`clicked_mask`, by its sha256): the pixels of
 the regions it rejects on the mask clicked are background where the version's
 mask scores them, and stay unscored where it does not; the rest of each of the
-version's regions they touch, outside the regions the page drew (below 80 kHz
+version's regions they touch, outside the regions the page drew (below 60 kHz
 in pseudo-v2 and v3), is unscored too.
 """
 
@@ -203,7 +203,7 @@ def transfer(
     IGNORE where it does not (pseudo-v1 after 2 s). Each of `target`'s own
     regions (`label_regions`) holding a rejected pixel is a line the reviewer
     said is not the mode: its pixels outside every region of `clicked` (the
-    page never drew them, say below 80 kHz) are IGNORE, and those under a page
+    page never drew them, say below 60 kHz) are IGNORE, and those under a page
     region the reviewer kept stay as they are. Regions no rejection touches
     stay as they are."""
     grid = ("t0_ms", "dt_ms", "y0_khz", "dy_khz")

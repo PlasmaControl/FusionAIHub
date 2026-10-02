@@ -131,6 +131,13 @@ def test_spectrograms_live_under_the_root(tmp_path):
     )
 
 
+def test_confinement_reuses_the_h_mode_stores(tmp_path):
+    paths = Paths(root=tmp_path)
+    assert paths.spectrogram_file("confinement", 186636) == (
+        paths.spectrogram_file("high_confinement_mode", 186636)
+    )
+
+
 def test_raw_cache_honours_the_environment(monkeypatch, tmp_path):
     monkeypatch.setenv("LABELER_RAW_CACHE", str(tmp_path / "elsewhere"))
     assert Paths.from_env().raw_cache == tmp_path / "elsewhere"

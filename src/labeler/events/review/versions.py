@@ -65,6 +65,7 @@ def shot_versions(event_dir, shot: int) -> list[dict]:
                 "name": entry.get("name"),
                 "window": list(entry["window"]),
                 "intervals": [list(span) for span in entry["intervals"]],
+                **({"iscrowd": list(entry["iscrowd"])} if "iscrowd" in entry else {}),
                 "source": entry.get("source"),
             }
         )

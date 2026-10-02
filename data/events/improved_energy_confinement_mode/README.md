@@ -18,13 +18,16 @@ Typically found via the temperature-only pedestal in edge Thomson profiles, the
 absence of the density rise at the transition, the WCM in reflectometry / BES /
 magnetics, and unfavourable-drift shape files.
 
-## Method
-Not started. No detector, model or table writes this label. The inventory notes it
-may be identifiable in dFL (fast-ion loss) data; a defensible rule would need the
-grad-B drift direction (shape) plus a T_e pedestal without an n_e pedestal.
+## Data Provenance
+### Dataset 1
 
-## Provenance
-None yet. `raw/` is empty.
+**Dataset File(s)**:
+
+**Author**:
+
+**Description**: None yet. `raw/` is empty.
+
+**Publications**:
 
 ## Models
 **stable**: none
@@ -34,11 +37,17 @@ None yet. `raw/` is empty.
 **all**:
 - none
 
+## Inputs
+- none yet (no detector or model)
+
+## Method
+
 ## Alias
-- i-mode
-- imode
-- improved energy confinement mode
-- improved l-mode
+i-mode, imode, improved energy confinement mode, improved l-mode
+
+## Future Implementations
+- Not started. No detector, model or table writes this label.
+- The inventory notes it may be identifiable in dFL (fast-ion loss) data; a defensible rule would need the grad-B drift direction (shape) plus a T_e pedestal without an n_e pedestal.
 
 ## Reference
 - D. G. Whyte et al., "I-mode: an H-mode energy confinement regime with L-mode
@@ -48,28 +57,3 @@ None yet. `raw/` is empty.
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: I-Mode; lexicon id pending producer task.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-PYTHONPATH=src python scripts/labeler/labels_format.py
-```
-
-No raw table is registered for this category yet.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

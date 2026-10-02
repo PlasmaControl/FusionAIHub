@@ -9,21 +9,16 @@ the route to tolerable divertor heat loads.
 Typically found via divertor Langmuir probes (j_sat roll-over), divertor Thomson
 scattering (T_e), bolometry (radiation front) and, visible divertor cameras.
 
-## Method
-Multi-Input Detachment Probability
-Combine LP, Bolometer, TangTV
+## Data Provenance
+### Dataset 1
 
-Should be between 0 to 1
+**Dataset File(s)**:
 
-Not started. No detector writes `detachment`; the only route today is the operator
-logbook (`text_mentions`, which is a word somebody wrote and never an observation).
-Candidate methods from the inventory: a Langmuir-probe j_sat roll-over rule, or the
-tangential TV route from the adjacent plasma-TV project. Several existing algorithms
-are restricted and may have to be re-created.
+**Author**:
 
-## Provenance
-No reference dataset yet. Cheolsik Byun (contact) has worked on detachment
-algorithms; `raw/` is empty until a table arrives.
+**Description**: No reference dataset yet. Cheolsik Byun (contact) has worked on detachment algorithms; `raw/` is empty until a table arrives.
+
+**Publications**:
 
 ## Models
 **stable**: none
@@ -33,11 +28,22 @@ algorithms; `raw/` is empty until a table arrives.
 **all**:
 - none
 
+## Inputs
+- none yet (no detector or model)
+
+## Method
+Multi-Input Detachment Probability
+Combine LP, Bolometer, TangTV
+
+Should be between 0 to 1
+
 ## Alias
-- detachment
-- detach
-- detached
-- divertor detachment
+detachment, detach, detached, divertor detachment
+
+## Future Implementations
+- Not started. No detector writes `detachment`; the only route today is the operator logbook (`text_mentions`, which is a word somebody wrote and never an observation).
+- Candidate methods from the inventory: a Langmuir-probe j_sat roll-over rule, or the tangential TV route from the adjacent plasma-TV project.
+- Several existing algorithms are restricted and may have to be re-created.
 
 ## Reference
 - S. I. Krasheninnikov and A. S. Kukushkin, "Physics of ultimate detachment of a
@@ -48,10 +54,3 @@ algorithms; `raw/` is empty until a table arrives.
 ## Contact
 - **Cheolsik Byun**: csbyun [at] princeton [dot] edu
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

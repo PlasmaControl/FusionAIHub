@@ -108,7 +108,9 @@ const pixel = (t, f) =>
     const rgb = [...canvas.getContext("2d").getImageData(Math.round(x * scale), Math.round(y * scale), 1, 1).data];
     done(rgb.slice(0, 3));
   })))`);
-const cyan = ([r, g, b]) => g > r + 60 && b > r + 60;
+// The mask is cyan at 0.6 alpha: over a red pixel of the rows green leads red by
+// less than 60, so green is asked a smaller lead than blue.
+const cyan = ([r, g, b]) => g > r + 40 && b > r + 60;
 /** `shown` is `hidden` with cyan laid over it: green and blue gain on red. */
 const tinted = ([r, g, b], [r0, g0, b0]) => g - r - (g0 - r0) > 30 && b - r - (b0 - r0) > 30;
 const grey = ([r, g, b]) => Math.max(r, g, b) - Math.min(r, g, b) < 40 && r > 60;
