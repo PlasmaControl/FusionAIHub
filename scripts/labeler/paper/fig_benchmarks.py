@@ -246,9 +246,8 @@ def draw_ae(ax, ae: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
                 SOURCES["ae"],
                 f"results.{truth}.{key}.{metric}",
             )
-        share = round(100 * block["seldnet"]["truth_fraction"])
         centres.append(float(np.mean(xs)))
-        labels.append(f"{setting}\n{truth_name}, {share}% present")
+        labels.append(setting)
     finish_groups(ax, ticks, names, centres, labels)
     ax.set_ylabel(METRICS[metric], labelpad=2)
 
@@ -295,7 +294,7 @@ def draw_confinement(
         [0, 1.7],
         ["confine-cnn"] * 2,
         [0, 1.7],
-        ["legacy\nas published", "Tokamak-SI\nretrained"],
+        ["legacy", "Tokamak-SI"],
     )
     ax.set_ylabel(name, labelpad=2)
 
@@ -334,10 +333,7 @@ def draw_elm(ax, elm: dict, rows: Rows, panel: str, metric: str = "f1") -> None:
         [0, 1.7],
         ["elm-elmo"] * 2,
         [0, 1.7],
-        [
-            "legacy\nSmith's windows",
-            "Tokamak-SI\nreviewed spans",
-        ],
+        ["legacy", "Tokamak-SI"],
     )
     ax.set_ylabel(name, labelpad=2)
 
