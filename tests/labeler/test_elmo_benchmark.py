@@ -142,6 +142,32 @@ def test_absent_span_elms_are_counted_by_distance_to_a_present_span(elmo):
     }
 
 
+def test_a_nested_sweep_scores_as_its_strictest_hit(elmo):
+    """With nested settings a bin's score is the strictest setting that hits it (-1:
+    none does); the sweep's areas are that score's rank AUROC and average precision."""
+    from scipy.stats import rankdata
+
+    rng = np.random.default_rng(3)
+    truth = rng.random(400) < 0.4
+    score = rng.integers(0, 5, 400) + 2 * truth
+    score[rng.random(400) < 0.1] = -1
+    hits = [score >= s for s in range(score.max(), -1, -1)]  # strictest first
+    counts = [
+        (h[truth].sum(), h[~truth].sum(), (~h)[truth].sum(), (~h)[~truth].sum())
+        for h in hits
+    ]
+    auroc, auprc = elmo.sweep_areas(np.array(counts))
+    pos, neg = truth.sum(), (~truth).sum()
+    rank = (rankdata(score)[truth].sum() - pos * (pos + 1) / 2) / (pos * neg)
+    called = [score >= s for s in range(score.max(), -2, -1)]
+    tp = np.array([c[truth].sum() for c in called])
+    precision = tp / np.array([max(c.sum(), 1) for c in called])
+    average = np.sum(np.diff(np.r_[0, tp]) / pos * precision)
+    assert auroc == pytest.approx(rank)
+    assert auprc == pytest.approx(average)
+    assert 0.5 < auroc < 1 and 0.4 < auprc < 1
+
+
 def test_a_shot_without_bes_is_told_from_one_with(elmo, tmp_path, monkeypatch):
     import h5py
 

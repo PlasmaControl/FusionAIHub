@@ -20,6 +20,9 @@ kind of truth, and on our review labels.
   (387 s analysed); the other 46 hold only a one-sample BES stub, and ELM-O needs BES. It
   finds dense ELMing best (85 % of the bins inside crowd spans) and single marked ELMs
   worse (59 of 93 individual spans; 82 of 93 without its BES vote).
+- **Swept over eta, it has AUROC 0.918 [0.878, 0.951] and AUPRC 0.833 [0.754, 0.894]**
+  on the same bins (2026-10-02). ELM-O makes hard calls, so these come from a sweep of its
+  detection threshold, not from a probability; see "Threshold sweep" below.
 - **Some of its false alarms are label gaps.** 96 of 218 spans marked absent hold an
   ELM-O ELM, 927 ELMs against 6,631 in present spans (precision 0.877). 416 of those 927
   peak within 500 ms of a present span, where the edges are fuzzy; the others sit in long
@@ -37,7 +40,7 @@ kind of truth, and on our review labels.
   F1 0.856 (precision 0.818, recall 0.898), inside the intervals of the published setting.
 
 Reproduce: `python scripts/labeler/elmo_benchmark.py smith`, then `review`, then
-`evaluate` (environment `labelmaker`; the inputs come from
+`sweep`, then `evaluate` (environment `labelmaker`; the inputs come from
 `scripts/labeler/elmo_fetch.py`). The record is `outputs/labeler/elm/elmo/evaluation.json`; the
 per-window and per-ELM tables are under `$LABELER_ROOT/benchmarks/elm/elmo/`.
 
@@ -216,6 +219,31 @@ Bin precision, recall and F1 count 50 ms bins (2,750 present, 4,093 absent
 for ELM-O as published). Near and far split the absent bins by their distance to the
 nearest present span (500 ms). The last row is the suggestion the reviewers began
 from, so its agreement with the labels is not an independent score.
+
+**Threshold sweep** (`sweep`, then `evaluate`; `review.eta_sweep` in the record, spans
+in `$LABELER_ROOT/benchmarks/elm/elmo/review_sweep.csv.gz`). ELM-O makes hard calls, so
+for AUROC and AUPRC the review stage is re-run on the same 73 shots and chunks at 68
+values of eta (0; the Smith scan's 0.20-0.95 by 0.05 and 0.960-0.999 by 0.001; 0.9991-0.9999
+by 0.0001, 0.99995 and 0.99999), BES vote kept at 1 V, and every setting is scored in
+the same 2,750 present and 4,093 absent bins. A bin hit at one eta is hit at every lower
+one (checked in every shot), so the strictest eta that hits a bin acts as its score: the
+curves are that score's ROC and precision-recall curves, closed to (0, 0) and (1, 1)
+and summed as for the other benchmarks (trapezoid AUROC, average-precision AUPRC). The
+eta 0.997 point reproduces the published-setting counts exactly. Intervals use the same
+1,000 shot draws as the table above.
+
+| | AUROC [95 % CI] | AUPRC [95 % CI] | Best F1 over eta (optimistic) |
+|---|---|---|---|
+| ELM-O, BES at 1 V, eta swept | 0.918 [0.878, 0.951] | 0.833 [0.754, 0.894] | 0.858 at eta 0.994 |
+
+The curve runs from (FPR 0.007, TPR 0.033) at eta 0.99999 to (0.333, 0.964) at eta 0
+and changes little below eta 0.9. At eta 0 the interferometers and filterscopes vote
+everywhere, so only the BES vote, fixed at 1 V, is left: it keeps 67 % of the absent
+bins and 4 % of the present ones unhit at any eta, and the stretch from (0.333, 0.964)
+to (1, 1) is a straight line. Any monotone curve through the swept points has AUROC in
+[0.901, 0.936]. The per-window quantile means even the strictest eta calls the largest
+spikes of every chunk, so precision peaks at 0.874 (eta 0.9995) and falls to 0.771 at
+eta 0.99999.
 
 **Absent spans with ELMs.** ELM-O finds ELMs in 95 of the 218 absent spans, 46 of them with five
 or more (917 ELMs in all, 36 shots; the detection count of 927 below also takes in the absent spans of these shots with under half their length analysed). The worst are listed in

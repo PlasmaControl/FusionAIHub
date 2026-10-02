@@ -115,6 +115,7 @@ TRACK_HEIGHT = 0.45
 #: The layout's side pad, in: a little over the default 3 pt, so the tiers at
 #: the tracks' right keep clear of the page's edge.
 W_PAD_IN = 8 / 72
+PAIR_WIDTH_IN = 1.7 * PAGE_IN  # two shots across the page
 
 
 @dataclass(frozen=True)
@@ -574,10 +575,9 @@ def legend(fig: Figure, drawn: set[str]) -> list[str]:
     return names
 
 
-def draw(s: LabelShot, stem: Path | None = None) -> Figure:
-    """The CO2 spectrogram; the signal panels (the n map, D-alpha, NBI, ECE
-    Te); then one track per phenomenon, each the catalog's label with its tier.
-    Saved as `stem`.pdf and .png when `stem` is given."""
+def _fill(fig: Figure, s: LabelShot) -> set[str]:
+    """One shot's panels and tracks on `fig` (a figure or a subfigure); returns
+    the legend names its tracks drew."""
     t0, t1 = s.span
     heights = [
         4,
@@ -585,34 +585,60 @@ def draw(s: LabelShot, stem: Path | None = None) -> Figure:
         *[TRACK_HEIGHT] * len(s.tracks),
     ]
     n_signals = len(s.signals)
+    spec, *axes = fig.subplots(
+        len(heights), 1, sharex=True, gridspec_kw={"height_ratios": heights}
+    )
+    panels, tracks = axes[:n_signals], axes[n_signals:]
+    if s.spec is None:
+        spec.set_ylabel(CO2_YLABEL)
+        spec.set_yticks([])
+        text_track(spec, NO_DATA.format("CO2"))
+    else:
+        show_image(spec, s.spec.values, s.spec.extent, CO2_TOP_KHZ, CO2_YLABEL)
+    spec.set_xlim(t0, t1)
+    spec.set_title(TITLE.format(shot=s.shot, year=s.year))
+    for ax, sig in zip(panels, s.signals, strict=True):
+        _signal(ax, sig)
+    drawn: set[str] = set()
+    for ax, track in zip(tracks, s.tracks, strict=True):
+        drawn |= draw_track(ax, track)
+    for ax in (spec, *panels, *tracks[:-1]):
+        ax.tick_params(labelbottom=False)
+    for ax in tracks[:-1]:
+        ax.tick_params(bottom=False)
+    tracks[-1].set_xlabel("time (ms)")
+    return drawn
+
+
+def _height_in(s: LabelShot) -> float:
+    return 3.4 + 0.45 * math.fsum(g.panel.height for g in s.signals)
+
+
+def draw(s: LabelShot, stem: Path | None = None) -> Figure:
+    """The CO2 spectrogram; the signal panels (the n map, D-alpha, NBI, ECE
+    Te); then one track per phenomenon, each the catalog's label with its tier.
+    Saved as `stem`.pdf and .png when `stem` is given."""
+    with style():
+        fig = Figure(figsize=(PAGE_IN, _height_in(s)), layout="constrained")
+        fig.get_layout_engine().set(w_pad=W_PAD_IN)
+        legend(fig, _fill(fig, s))
+        if stem is not None:
+            save(fig, stem)
+    return fig
+
+
+def draw_pair(left: LabelShot, right: LabelShot, stem: Path | None = None) -> Figure:
+    """Two shots side by side, each as `draw` makes it, under one legend that
+    holds what either drew."""
     with style():
         fig = Figure(
-            figsize=(PAGE_IN, 3.4 + 0.45 * math.fsum(heights[1 : 1 + n_signals])),
+            figsize=(PAIR_WIDTH_IN, max(_height_in(left), _height_in(right))),
             layout="constrained",
         )
         fig.get_layout_engine().set(w_pad=W_PAD_IN)
-        spec, *axes = fig.subplots(
-            len(heights), 1, sharex=True, gridspec_kw={"height_ratios": heights}
-        )
-        panels, tracks = axes[:n_signals], axes[n_signals:]
-        if s.spec is None:
-            spec.set_ylabel(CO2_YLABEL)
-            spec.set_yticks([])
-            text_track(spec, NO_DATA.format("CO2"))
-        else:
-            show_image(spec, s.spec.values, s.spec.extent, CO2_TOP_KHZ, CO2_YLABEL)
-        spec.set_xlim(t0, t1)
-        spec.set_title(TITLE.format(shot=s.shot, year=s.year))
-        for ax, sig in zip(panels, s.signals, strict=True):
-            _signal(ax, sig)
         drawn: set[str] = set()
-        for ax, track in zip(tracks, s.tracks, strict=True):
-            drawn |= draw_track(ax, track)
-        for ax in (spec, *panels, *tracks[:-1]):
-            ax.tick_params(labelbottom=False)
-        for ax in tracks[:-1]:
-            ax.tick_params(bottom=False)
-        tracks[-1].set_xlabel("time (ms)")
+        for sub, s in zip(fig.subfigures(1, 2), (left, right), strict=True):
+            drawn |= _fill(sub, s)
         legend(fig, drawn)
         if stem is not None:
             save(fig, stem)
@@ -658,30 +684,51 @@ def record(s: LabelShot, paths: Paths, *, rule: str, n_candidates: int) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, required=True, help="a scratch build")
-    parser.add_argument("--shot", type=int, help=f"default: {PICK_RULE}")
+    parser.add_argument(
+        "--shot",
+        type=int,
+        nargs="+",
+        help=f"one shot, or two for a pair side by side; default: {PICK_RULE}",
+    )
     parser.add_argument(
         "--no-gate", action="store_true", help="draw the n map without TokEye's gate"
     )
     args = parser.parse_args(argv)
+    if args.shot is not None and len(args.shot) > 2:
+        raise SystemExit("--shot takes one shot or two")
     paths = Paths.from_env()
     found = candidates(paths)
     read = read_sources(paths)
     if args.shot is None:
-        chosen, rule = pick(found, read), PICK_RULE
+        chosen, rule = [pick(found, read)], PICK_RULE
     else:
-        named = [c for c in found if c.shot == args.shot]
-        if not named:
-            raise SystemExit(f"{args.shot}: not a non-blind cohort shot")
-        chosen, rule = named[0], NAMED
+        chosen, rule = [], NAMED
+        for shot in args.shot:
+            named = [c for c in found if c.shot == shot]
+            if not named:
+                raise SystemExit(f"{shot}: not a non-blind cohort shot")
+            chosen.append(named[0])
     torch.set_num_threads(LOGIN_THREADS)  # TokEye's gate: one shot, on the login node
-    s = label_shot(paths, chosen, read, gate=not args.no_gate)
+    shots = [label_shot(paths, c, read, gate=not args.no_gate) for c in chosen]
     args.out.mkdir(parents=True, exist_ok=True)
-    draw(s, args.out / STEM)
-    drawn_from = record(s, paths, rule=rule, n_candidates=len(found))
+    if len(shots) == 1:
+        draw(shots[0], args.out / STEM)
+    else:
+        draw_pair(*shots, args.out / STEM)
+    records = [record(s, paths, rule=rule, n_candidates=len(found)) for s in shots]
     manifest = args.out / MANIFEST
     with atomic_path(manifest) as tmp:
-        tmp.write_text(json.dumps(drawn_from | {"git": git_sha()}, indent=1) + "\n")
-    print(json.dumps({"out": str(args.out), "shot": s.shot, "score": score(s.tracks)}))
+        out = records[0] if len(records) == 1 else {"shots": records}
+        tmp.write_text(json.dumps(out | {"git": git_sha()}, indent=1) + "\n")
+    print(
+        json.dumps(
+            {
+                "out": str(args.out),
+                "shot": [s.shot for s in shots],
+                "score": [score(s.tracks) for s in shots],
+            }
+        )
+    )
     return 0
 
 

@@ -19,9 +19,11 @@ nothing else.
   on 119 shots (`results.all_shots`), beside the prior paper's own per-class F1
   (`paper`) as a marker; its macro marker is the mean of those four, as the
   paper's "Average" row (0.94). F1 only: the published scores have no AUROC.
-- (d) ELMs: ELM-O's bin F1 on the reviewed spans (`review.paper`), then its
-  precision and recall on D. Smith's windows (`smith.published_setting`)
-  beside the published ones at the same setting (`paper.table`).
+- (d) ELMs: ELM-O's bin F1 on the reviewed spans (`review.paper`) and its AUROC
+  there, from a sweep of its detection threshold over the same bins
+  (`review.eta_sweep`; not a probability), then its precision and recall on
+  D. Smith's windows (`smith.published_setting`) beside the published ones at
+  the same setting (`paper.table`).
 - (e) Tearing modes, sawteeth and RWM onsets have no score yet: two empty
   hatched slots each (benchmark, best model), the benchmark named where one is
   chosen (`PENDING`). Disruptions have no labels yet.
@@ -381,8 +383,9 @@ def draw_confinement(ax, conf: dict, rows: Rows, panel: str) -> None:
 
 
 def draw_elm(ax, elm: dict, rows: Rows, panel: str) -> None:
-    """ELM-O's F1 on the reviewed spans, the best model pending; then its precision and
-    recall on D. Smith's windows beside the published ones."""
+    """ELM-O's F1 and threshold-sweep AUROC on the reviewed spans, the best model
+    pending; then its precision and recall on D. Smith's windows beside the
+    published ones."""
     review = elm["review"]["paper"]
     scored_bar(ax, 0, review["f1"], review["ci95"]["f1"], BENCHMARK)
     rows.add(
@@ -395,12 +398,24 @@ def draw_elm(ax, elm: dict, rows: Rows, panel: str) -> None:
         SOURCES["elm"],
         "review.paper.f1",
     )
-    pending_slot(ax, 1.0, 0.8, OURS, "best model: pending")
+    sweep = elm["review"]["eta_sweep"]
+    scored_bar(ax, 1.0, sweep["auroc"], sweep["ci95"]["auroc"], BENCHMARK)
+    rows.add(
+        panel,
+        "ELM-O",
+        "reviewed spans",
+        "AUROC",
+        sweep["auroc"],
+        sweep["ci95"]["auroc"],
+        SOURCES["elm"],
+        "review.eta_sweep.auroc",
+    )
+    pending_slot(ax, 2.0, 0.8, OURS, "best model: pending")
     smith = elm["smith"]["published_setting"]
     paper = elm["paper"]["table"][f"{smith['threshold']:.1f}"]
     offset = 0.42
-    ticks, ticklabels = [0, 1.0], ["ELM-O\nF1", "best\nF1"]
-    for x, metric, label in ((2.45, "precision", "P"), (3.65, "recall", "R")):
+    ticks, ticklabels = [0, 1.0, 2.0], ["ELM-O\nF1", "ELM-O\nAUROC", "best\nF1"]
+    for x, metric, label in ((3.45, "precision", "P"), (4.65, "recall", "R")):
         scored_bar(ax, x, smith[metric], smith["ci95"][metric], BENCHMARK)
         published_mark(ax, x + offset, paper[metric])
         ticks.append(x + offset / 2)
@@ -425,13 +440,13 @@ def draw_elm(ax, elm: dict, rows: Rows, panel: str) -> None:
             SOURCES["elm"],
             f"paper.table.{smith['threshold']:.1f}.{metric}",
         )
-    ax.axvline(1.72, color="#bbbbbb", lw=0.6, ls=":", zorder=0)
+    ax.axvline(2.72, color="#bbbbbb", lw=0.6, ls=":", zorder=0)
     ax.set_xticks(ticks, ticklabels)
-    ax.set_xlim(-0.55, 4.6)
+    ax.set_xlim(-0.55, 5.6)
     axes_style(ax, "score")
     group_labels(
         ax,
-        [0.5, 3.05 + offset / 2],
+        [1.0, 4.05 + offset / 2],
         [
             f"reviewed spans\n({elm['review']['shots']} shots)",
             f"D. Smith's windows\n({elm['smith']['shots']} shots)",
