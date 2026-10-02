@@ -41,8 +41,8 @@
 #
 # ------------------------------------------ sizing (measured 2026-09-26, login node)
 #   one shot (202713), one worker, fetching off: tearing modes 5.1 s and 1.12 GB max
-#   RSS, sawteeth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB.
-#   Sawteeth since the ECE medians (2026-09-28, pilot job 2943760, 20 shots): 12
+#   RSS, sawtooth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and 0.32 GB.
+#   Sawtooth since the ECE medians (2026-09-28, pilot job 2943760, 20 shots): 12
 #   workers on 4 CPUs, 30 s, 69 % CPU with start-up, 4.92 GB MaxRSS (0.41 GB a
 #   worker), so --mem=6G; 8 workers on 4 CPUs reached 55 %. With the Thomson Te row
 #   (pilot job 2943818): 26 s, 83 % CPU by sacct, 5.23 GB MaxRSS, still --mem=6G;
@@ -56,13 +56,13 @@
 #   Since the robust clip (2026-09-29): H-mode pilot job 2944567 (20 shots, 6 workers
 #   on 2 CPUs) 39 s and 3.0 GiB MaxRSS, 99.9 % of 3G; the full rebuild (job 2944580)
 #   5 min 25 s, 64.2 % CPU on cold reads, 3.70 GiB of 3800M, so --mem=4600M. The
-#   sawteeth's full rebuild (job 2944568) 9 min 15 s, 93.7 % CPU, 5.74 GiB of 6G
+#   sawtooth's full rebuild (job 2944568) 9 min 15 s, 93.7 % CPU, 5.74 GiB of 6G
 #   (sacct 6,014,096K, 95.6 %), so --mem=7G (x 1.2).
 #   Two 2024 cohort shots read cold: tearing modes 86-90 % CPU and ELMs 99 %, but
-#   sawteeth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
+#   sawtooth 56 % and H-mode 43-48 %, waiting on GPFS: two or three workers a CPU.
 #   roster: 450 cohort shots (plus the 10 gold sawtooth shots, outside the corpus).
 #   cpus-per-task=8   450 x 5.1 s / 8 workers = 4.8 min; the others 1-2 min on 2-4 CPUs.
-#   mem=8G            tearing modes' 5.7 GiB by jobstats x 1.4; sawteeth 12 x 0.41 x 1.2,
+#   mem=8G            tearing modes' 5.7 GiB by jobstats x 1.4; sawtooth 12 x 0.41 x 1.2,
 #                     H-mode 3.70 GiB x 1.2 and ELMs 4 x 0.35 x 1.2, rounded up.
 #   time=00:30:00     4.8 min x 6 for cold GPFS reads.
 set -euo pipefail

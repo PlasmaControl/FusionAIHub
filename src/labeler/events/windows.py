@@ -188,7 +188,7 @@ COVERAGE_MIN_FRAC = 0.5
 #: would make an ELM-free shot's feature scale with the shot length.
 ELM_AGE_CAP_S = 1.0
 
-#: Sawteeth this far either side of the window centre are what
+#: Sawtooth this far either side of the window centre are what
 #: `sawtooth_period_ms` takes the median interval of - a crash train is a
 #: property of the phase, not of the 0.34 s window, and two crashes 76 ms
 #: apart may straddle the window edge.

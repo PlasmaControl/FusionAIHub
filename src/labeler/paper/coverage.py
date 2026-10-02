@@ -17,7 +17,7 @@ trained), so AE's labelled = train + val + test + no split; its suggestions are
 the extension's `summary.csv`.
 
 Each frame-model phenomenon (`FRAME_SOURCES`: NTM, H-mode with L-mode, ELMing
-and sawteeth) is counted from whichever of its inputs exist (D59). Its labels
+and sawtooth) is counted from whichever of its inputs exist (D59). Its labels
 are its original table's with the owner's reviews over them (F2): the labelled
 and positive shots and the present time are its split's meta's
 (`labelled_shots`, `positive_shots`, `present_s`, `frames.shots_meta_file`),
@@ -31,7 +31,7 @@ application's `summary.csv`, and whether its model failed its primary bar (the
 first criterion of its spec's bar: E1, H1, N1 or S1) or is effectively the
 `always` baseline (`frames.evaluate`, F6) from the suggestion table's meta: its
 split panel's heading says so ("bar not met", "≈ always") and the table puts a
-dagger on its Suggested cell (F8). Sawteeth's labels are those of the
+dagger on its Suggested cell (F8). Sawtooth's labels are those of the
 ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended), not a person's,
 so its tick says "(detector)". The frame
 phenomena's splits take a row of their own below AE's. A phenomenon with none of
@@ -131,7 +131,7 @@ FRAME_SOURCES = {
 
 def tick(category: str) -> str:
     """A phenomenon's tick in the shots panel: its title, and "(detector)" for
-    one whose labels are a detector's (sawteeth's, D56 as amended)."""
+    one whose labels are a detector's (sawtooth's, D56 as amended)."""
     source = FRAME_SOURCES.get(category)
     if source is not None and source.detector:
         return f"{title(category)} (detector)"

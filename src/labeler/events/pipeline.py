@@ -1210,7 +1210,7 @@ def finish_shot(
     except Exception as exc:  # noqa: BLE001 - per-step isolation
         res.skipped["elm_clock"] = _cause(exc)
 
-    # ------------------------------------------------------- the sawteeth
+    # ------------------------------------------------------- the sawtooth
     found, sawtooth_ran, sawtooth_skipped = sawtooth_block(shot, corpus_file)
     events.extend(found)
     res.n_sawteeth = len(found)

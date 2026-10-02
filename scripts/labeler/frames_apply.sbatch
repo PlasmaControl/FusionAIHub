@@ -32,7 +32,7 @@
 #
 # ------------------------------------------ sizing (measured 2026-09-26 for the rows' builds; the rest estimates)
 #   a shot's rows, built as a store is (review_build.sbatch): tearing modes 5.1 s and
-#   1.12 GB, sawteeth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and
+#   1.12 GB, sawtooth 2.6 s and 0.51 GB, ELMs 1.2 s and 0.35 GB, H-mode 0.5 s and
 #   0.32 GB; the model's pass is estimated well under a second a shot.
 #   population: 4,872 shots less the blind and the roster, about 4,400 before the
 #   group check (estimate).

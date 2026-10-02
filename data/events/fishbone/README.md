@@ -14,7 +14,7 @@ fishbones under near-perpendicular neutral beams, and diamagnetic-frequency
 fishbones (f ~ omega\*i) under tangential beams.
 
 They expel fast ions, which shows up as neutron-rate drops and beam-ion losses,
-and they can seed sawteeth and NTMs. A fishbone is close kin to a sawtooth
+and they can seed sawtooth and NTMs. A fishbone is close kin to a sawtooth
 precursor - both are the 1/1 kink - and the two are easy to confuse on
 magnetics alone.
 

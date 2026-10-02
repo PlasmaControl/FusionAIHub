@@ -1,4 +1,4 @@
-"""What the mask never sees: sawteeth, L->H, actuator state, the QH proxy.
+"""What the mask never sees: sawtooth, L->H, actuator state, the QH proxy.
 
 `tracks.py` and `transients.py` read a U-Net's opinion of a spectrogram.
 Four phenomena this pipeline needs are not in that picture at all, and each
@@ -48,7 +48,7 @@ median period on shot 198658, in under a second**. Those are the
 REFERENCE's own numbers, checked crash-for-crash by
 `scripts/labeler/sawtooth_reference_check.py` (its 198658 output is
 committed at `tests/labeler/data/sawtooth_198658_reference.json`); the
-plan's "45 sawteeth, 76 ms" was a different measurement of the same shot
+plan's "45 sawtooth, 76 ms" was a different measurement of the same shot
 and is not what this detector - or the reference it is a port of -
 produces. The median is not a stable statistic here in any case: the
 inter-crash intervals on 198658 run 11 ms to 897 ms.
@@ -179,7 +179,7 @@ PULSE_BLOCK = 3
 PULSE_REACH = 6
 #: The union: every crash within `COLLAPSE_GUARD_MS` after a collapse on
 #: either diagnostic is dropped (186224's disruption drafted a false SXR span
-#: without it) - the quench and the recovery after it are not sawteeth - and
+#: without it) - the quench and the recovery after it are not sawtooth - and
 #: then two crashes within `MERGE_MS` (either diagnostic) are one crash.
 MERGE_MS = 5.0
 COLLAPSE_GUARD_MS = 300.0
@@ -482,7 +482,7 @@ def has_inversion(steps, **kw) -> bool:
     return inversion_block(steps, **kw) is not None
 
 
-# ----------------------------------------------------------------- sawteeth
+# ----------------------------------------------------------------- sawtooth
 
 def _bin_drops(env: np.ndarray) -> np.ndarray:
     """`(C, m - 1)` fractional DROP from each envelope bin to the next.
@@ -723,7 +723,7 @@ def sawtooth_summary(events: Sequence[Event]) -> dict[str, float]:
     }
 
 
-# ------------------------------------------------------------ sawteeth, v3
+# ------------------------------------------------------------ sawtooth, v3
 
 #: `crash_test`'s verdicts: a crash, a collapse, or the test that failed.
 CRASH = "crash"

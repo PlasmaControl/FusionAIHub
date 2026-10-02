@@ -14,7 +14,7 @@ reach:
   present class's F1 ("f1"), or the mean of both classes' F1 ("macro_f1",
   H-mode's, whose H1 asks for F1(H) and F1(L));
 - `balance_crops`: whether training centres half of each shot's crops on
-  absent time and half on present (F11): the sawteeth's, whose shots nearly all
+  absent time and half on present (F11): the sawtooth's, whose shots nearly all
   hold some (`labeler.frames.train.crop_windows`).
 
 v2 (F1): the split, its meta, the owner's frozen saves and the features are

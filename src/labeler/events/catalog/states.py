@@ -87,7 +87,7 @@ PHENOMENA = {
         ),
         Phenomenon(
             "sawtooth_oscillation",
-            "sawteeth",
+            "sawtooth",
             {"period_ms": float, "inversion_channel": int, "inversion_radius_m": float},
             points=("crash",),
             lower_bounds={

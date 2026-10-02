@@ -411,7 +411,7 @@ def test_the_sawtooth_rule_records_v3():
     assert constants["sxr_fans"][0] == "SX90RM1F"
 
 
-# ------------------------------------------------ sawteeth, v3's diagnostics
+# ------------------------------------------------ sawtooth, v3's diagnostics
 #
 # `read` stands in for the corpus: the ECE array of `v3_rows`, whose crashes
 # are `V3_CRASHES_MS` (300.3-1750.3 ms), and a 320-row SXR array over

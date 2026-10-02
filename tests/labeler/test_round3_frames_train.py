@@ -243,7 +243,7 @@ def test_a_pilot_writes_under_runs_and_may_be_replaced(prepared):
 
 def test_balanced_crops_weigh_the_crops_drawn(prepared, monkeypatch):
     balanced = [m for m, s in frames.SPECS.items() if s.balance_crops]
-    assert balanced == ["sawtooth_frames"], "the sawteeth's alone (F11)"
+    assert balanced == ["sawtooth_frames"], "the sawtooth's alone (F11)"
     spec = dataclasses.replace(frames.SPECS["elm_frames"], balance_crops=True)
     monkeypatch.setitem(frames.SPECS, "elm_frames", spec)
     out = prepared.runs / "frames" / "pilot" / "elm_frames"

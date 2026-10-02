@@ -15,7 +15,7 @@ curve is over exactly the frames or bins its evaluation scored its F1 on:
   positive where the owner says present, and the frames are `scored`'s. A
   whole-window version (`WHOLE_WINDOW_VERSIONS`, v3) scores other frames, so
   it is refused.
-- **NTM, H-mode, ELMing, sawteeth:** the test shots of `prepare.split_shots`,
+- **NTM, H-mode, ELMing, sawtooth:** the test shots of `prepare.split_shots`,
   read with `evaluate.read_shots`; the score is `evaluate.model_probs`; the
   bins are the ones `evaluate.score` counts (`scored_bins`, the rule of
   `frames_train.bin_cells`): ABSENT or PRESENT_T, observed, with a finite P. A

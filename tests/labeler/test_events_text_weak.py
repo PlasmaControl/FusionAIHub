@@ -113,7 +113,7 @@ def corpus(paths):
     """Three logbook records and the bundles that go with two of them."""
     _write_logs(paths, [
         {"shot": 10, "run": "20240517", "log_text": LOG_TEXT,
-         "run_log_text": "session leader: sawteeth all afternoon",
+         "run_log_text": "session leader: sawtooth all afternoon",
          "topics": ["PCS", "PHYSICS_OPERATOR"], "keywords": []},
         {"shot": 11, "run": "20240517",
          "log_text": _entry("SESSION_LEADER", "leadr", "no elms at all")},
@@ -503,7 +503,7 @@ def test_a_text_event_says_where_it_came_from(corpus, paths, lex):
 def test_the_confidence_is_a_quarter_a_mention_up_to_one(paths, lex):
     _write_logs(paths, [
         {"shot": 20, "log_text": _entry("PHYSICS_OPERATOR", "a",
-                                        "sawtooth. sawteeth. sawtooth crash")},
+                                        "sawtooth. sawtooth. sawtooth crash")},
         {"shot": 21, "log_text": _entry("PHYSICS_OPERATOR", "a",
                                         ". ".join(["sawtooth"] * 9))},
     ])

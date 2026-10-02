@@ -8,7 +8,7 @@ $$q(r) \approx \frac{r B_{\phi}}{R B_{\theta}}$$
 
 and q_min is its minimum over the profile, set by the current-density profile
 (on-axis for a monotonic profile, off-axis for reversed shear). q_min < 1 allows
-the q=1 surface and can support sawteeth. Raising q_min above 1.5 excludes the
+the q=1 surface and can support sawtooth. Raising q_min above 1.5 excludes the
 q=3/2 surface; raising it above 2 excludes q=2. A minimum between 1.5 and 2
 can still leave a q=2 surface. The labels below are bands of the reconstructed
 scalar: q_min alone does not establish a hybrid scenario, reversed shear,

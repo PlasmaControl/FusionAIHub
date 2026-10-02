@@ -2,7 +2,7 @@
 
 The shared tables of the DIII-D event catalog (v1): 500 shots from 2021-2025,
 selected to be assessed for six phenomena - Alfvén eigenmodes, neoclassical tearing
-modes, H-mode, ELMs, sawteeth and disruptions. Labels come in later parts, in each
+modes, H-mode, ELMs, sawtooth and disruptions. Labels come in later parts, in each
 phenomenon's category directory (`../<category>/review/`); what belongs to the
 catalog as a whole is here. The population passes five inclusion rules; the cohort
 applies rule 5 from `runaway.csv` after the population module's rules 1-4.

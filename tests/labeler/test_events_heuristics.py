@@ -1,4 +1,4 @@
-"""The non-TokEye heuristics: sawteeth, L->H, actuators, the QH proxy.
+"""The non-TokEye heuristics: sawtooth, L->H, actuators, the QH proxy.
 
 Everything is measured against the `synth_shot` fixture, which DRAWS ten
 sawtooth crashes 76 ms apart with the inversion between channels 20 and 21,
@@ -167,7 +167,7 @@ def test_the_envelope_grid_is_bin_centres_in_seconds():
     assert t_env_s == pytest.approx([0.001, 0.003, 0.005, 0.007, 0.009])
 
 
-# ----------------------------------------------------------------- sawteeth
+# ----------------------------------------------------------------- sawtooth
 
 def _sawteeth(shot_data, **kw):
     return heuristics.sawtooth_events(
@@ -405,7 +405,7 @@ def test_the_committed_reference_comparison_pins_the_sawtooth_acceptance():
     assert rerun["dirty"] is False
 
 
-# ------------------------------------------------------------- sawteeth, v3
+# ------------------------------------------------------------- sawtooth, v3
 #
 # v3 judges each step in its channel's own noise, so its synthetic array has
 # noise: a peaked Te profile over 48 channels, the core (17-23, the hottest 20
