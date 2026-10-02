@@ -3,10 +3,8 @@
     PYTHONPATH=src pixi run --frozen -e labelmaker \\
         python -m labeler.paper.label_figure --out DIR [--shot SHOT] [--no-gate]
 
-It replaces the suggestions figure `paper.roster` drew, whose tracks came from
-models the paper no longer keeps (AE-XP, SegNet, the frame models' tables).
-Here every track is a label: nothing on it is a model's output, and no model is
-run to make one.
+It replaces the suggestions figure `paper.roster` drew, whose tracks were
+suggestions. Here every track is a label of the catalog, from its best tier.
 
 **The rows** are the review page's, read from the shot's review stores, never
 fetched: the CO2 R0 power spectrogram to 125 kHz (the ELM event's row
@@ -28,14 +26,19 @@ sources (`Source`) that has the shot:
   tables, `labeler.confinement`'s `merged_intervals.csv`, regimes by letter:
   `REGIME_CODES`) and the ELM onset table's format table.
 
-AE and sawteeth have no imported source: the AE format table is a CO2
-detector's output, and the sawtooth targets a crash detector's. A shot that no
-source holds says `NO_LABEL`. A row is drawn as its file has it: category 0 is
+- else a generated label, the paper's automated tier (`GENERATED`): the
+  automated labeler's output on the shot, the frame models' tables for the
+  tearing mode, the ELMs and the sawtooth, the H-mode table's present spans
+  as H-mode (the rest absent: the table is binary, it has no regimes), and
+  the AE frame model (`AE_VERSION`) run here over the shot's corpus CO2
+  (`roster.ae_frames`; `generate`). Nothing is fetched. A real label always
+  wins: a generated one fills only a track no real source holds, and a shot
+  that no source holds is left blank. A row is drawn as its file has it: category 0 is
 absent; a span is present, uncertain or not observable, or for confinement a
 regime (high, low, QH, WPQH) or uncertain; an ELM crowd span (an ELMing period
 whose single ELMs are not separated, `iscrowd` 1) is hatched. Time with no row
-was not assessed and is left blank: it is never drawn as absent. Each track
-names its tier at its right.
+was not assessed and is left blank: it is never drawn as absent. The figure
+carries no tier text; `record` holds each track's tier and source.
 
 **The shot** is `PICK_RULE`'s among the non-blind cohort shots, whose review
 stores hold the rows (`candidates`), or the one `--shot` names. Its record
@@ -61,25 +64,32 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 from .. import confinement
+from ..ae import xpower
+from ..ae.xpower.evaluate import chosen_model
+from ..ae.xpower.extend import frame_states
 from ..ae.xpower.gallery import STATE_COLOURS
 from ..config import Paths, atomic_path, git_sha, sha256_of
+from ..events import suggestions
 from ..events.catalog.cohort import read_cohort
 from ..events.catalog.points import validate_csv_fields
-from ..events.catalog.states import NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from ..events.catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
 from ..events.interval_tables import parse_attrs, validate_intervals
 from ..events.review import labels
 from ..events.review import rows as store_rows
 from ..events.spans import cohort_path
-from . import FONT_PT, LOGIN_THREADS, PAGE_IN, roster, save, style
+from ..events.verify import NoDataError
+from . import LOGIN_THREADS, PAGE_IN, roster, save, style
 from .roster import ROW_COLOURS, TRACE_LW, Read, Signal, read_row
-from .shots import MARGIN_MS, NO_DATA, TEXT_COLOUR, show_image, text_track
+from .shots import MARGIN_MS, NO_DATA, Model, show_image, text_track
 
 STEM = "fig_interpreter"
 MANIFEST = "label_figure.json"
 SILVER = "silver: expert review"
 LEGACY = "legacy: imported table"
-NO_LABEL = "no label on this shot"
-TITLE = "shot {shot} ({year}): the catalog's labels, no model output"
+GENERATED = "generated: automated labeler"
+TITLE = "shot {shot} ({year}): the catalog's labels"
+#: The AE frame model whose run makes a shot's generated AE track.
+AE_VERSION = roster.AE_VERSION
 PICK_RULE = (
     "the non-blind cohort shot on which the most phenomena carry a label "
     "(expert-reviewed or imported), then the most expert-reviewed, then the most "
@@ -112,8 +122,7 @@ CROWD_HATCH = "//////"
 UNLABELLED = "blank: not labelled"
 BAR = (0.1, 0.8)
 TRACK_HEIGHT = 0.45
-#: The layout's side pad, in: a little over the default 3 pt, so the tiers at
-#: the tracks' right keep clear of the page's edge.
+#: The layout's side pad, in: a little over the default 3 pt.
 W_PAD_IN = 8 / 72
 PAIR_WIDTH_IN = 1.7 * PAGE_IN  # two shots across the page
 
@@ -131,12 +140,18 @@ class Row:
 @dataclass(frozen=True)
 class Source:
     """A label file of one tier: `locate(paths)` is it; `regimes` reads the
-    merged confinement table (regime letters) rather than a format table."""
+    merged confinement table (regime letters) rather than a format table;
+    `recode` maps its categories to the track's (a category it leaves out is
+    dropped); `run`, for a source that makes its rows on the shot instead of
+    reading them, is `(paths, candidate) -> rows`, and `locate` then names what
+    it ran (`generate`)."""
 
     tier: str
     what: str
     locate: Callable[[Paths], Path]
     regimes: bool = False
+    recode: Mapping[int, int] | None = None
+    run: Callable[[Paths, Candidate], tuple[Row, ...]] | None = None
 
 
 @dataclass(frozen=True)
@@ -167,8 +182,48 @@ def _expert(event: str) -> Source:
     return Source(SILVER, "the expert's review", _review(event))
 
 
+def _generated(category: str, what: str, recode=None) -> Source:
+    """The automated labeler's table for `category` (`roster.TABLES`' frame
+    model), `roster.table_file`'s."""
+    return Source(
+        GENERATED,
+        what,
+        lambda paths: roster.table_file(paths, category),
+        recode=recode,
+    )
+
+
+def ae_model_file(paths: Paths) -> Path:
+    """The AE frame model's checkpoint (`AE_VERSION`, the chosen candidate)."""
+    return chosen_model(xpower.model_dir(paths, AE_VERSION))
+
+
+def ae_rows(paths: Paths, candidate: Candidate) -> tuple[Row, ...]:
+    """The AE frame model run over `candidate`'s corpus CO2 (`roster.ae_frames`),
+    its per-frame states as rows (`suggestions.frame_rows`); time the rows do
+    not cover is not observable."""
+    model = Model.load(ae_model_file(paths), {})
+    _, first, _, prob, observed = roster.ae_frames(paths, candidate, model)
+    states = frame_states(prob, observed, model.threshold)
+    table = suggestions.frame_rows(candidate.shot, first, states)
+    return tuple(Row(float(a), float(b), int(c)) for _, c, a, b, _ in table)
+
+
 TRACKS = (
-    TrackSpec("alfven_eigenmode", "AE", BINARY, (_expert("alfven_eigenmode"),)),
+    TrackSpec(
+        "alfven_eigenmode",
+        "AE",
+        BINARY,
+        (
+            _expert("alfven_eigenmode"),
+            Source(
+                GENERATED,
+                f"the AE frame model ({AE_VERSION}) run on the shot's CO2",
+                ae_model_file,
+                run=ae_rows,
+            ),
+        ),
+    ),
     TrackSpec(
         "neoclassical_tearing_mode",
         "NTM",
@@ -183,6 +238,7 @@ TRACKS = (
                     "neoclassical_tearing_mode_format_2026_v1.csv"
                 ),
             ),
+            _generated("neoclassical_tearing_mode", "the tearing-mode frame model"),
         ),
     ),
     TrackSpec(
@@ -196,6 +252,11 @@ TRACKS = (
                 "Gill's and Butt's merged regime tables",
                 merged_confinement,
                 regimes=True,
+            ),
+            _generated(
+                "high_confinement_mode",
+                "the H-mode frame model, its present spans as H-mode",
+                recode={ABSENT: ABSENT, PRESENT: REGIME_CODES["H"]},
             ),
         ),
     ),
@@ -212,10 +273,17 @@ TRACKS = (
                     "edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv"
                 ),
             ),
+            _generated("edge_localized_mode", "the ELM frame model"),
         ),
     ),
     TrackSpec(
-        "sawtooth_oscillation", "sawteeth", BINARY, (_expert("sawtooth_oscillation"),)
+        "sawtooth_oscillation",
+        "sawtooth",
+        BINARY,
+        (
+            _expert("sawtooth_oscillation"),
+            _generated("sawtooth_oscillation", "the sawtooth frame model"),
+        ),
     ),
 )
 
@@ -246,11 +314,14 @@ def union_ms(spans) -> float:
     return total
 
 
-def read_rows(path: Path, regimes: bool = False) -> dict[int, tuple[Row, ...]]:
+def read_rows(
+    path: Path, regimes: bool = False, recode: Mapping[int, int] | None = None
+) -> dict[int, tuple[Row, ...]]:
     """A label file's rows by shot, in file order; none if it does not exist.
     A format table (or a review's `labels.csv`) is validated as one; `regimes`
-    reads the merged confinement table's letters (`REGIME_CODES`). A row with
-    no length (a point) is dropped: it has no span to draw."""
+    reads the merged confinement table's letters (`REGIME_CODES`); `recode`
+    maps a format table's categories, dropping the rows of any it omits. A row
+    with no length (a point) is dropped: it has no span to draw."""
     path = Path(path)
     if not path.is_file():
         return {}
@@ -264,6 +335,9 @@ def read_rows(path: Path, regimes: bool = False) -> dict[int, tuple[Row, ...]]:
         crowd = [None] * len(frame)
     else:
         frame = validate_intervals(frame)
+        if recode is not None:
+            frame = frame[frame["category"].isin(list(recode))]
+            frame = frame.assign(category=frame["category"].map(recode))
         cells = frame["attrs"] if "attrs" in frame else [None] * len(frame)
         crowd = [parse_attrs(cell).get("iscrowd") for cell in cells]
     found: dict[int, list[Row]] = {}
@@ -285,12 +359,46 @@ def read_rows(path: Path, regimes: bool = False) -> dict[int, tuple[Row, ...]]:
 def read_sources(
     paths: Paths, specs: tuple[TrackSpec, ...] = TRACKS
 ) -> dict[tuple[str, int], tuple[Path, dict[int, tuple[Row, ...]]]]:
-    """Every source's file and rows, keyed by (track key, source index)."""
+    """Every source's file and rows, keyed by (track key, source index); a
+    source that runs on a shot (`Source.run`) has none until `generate`."""
     out = {}
     for spec in specs:
         for i, source in enumerate(spec.sources):
             file = source.locate(paths)
-            out[spec.key, i] = (file, read_rows(file, source.regimes))
+            if source.run is not None:
+                out[spec.key, i] = (file, {})
+            else:
+                rows = read_rows(file, source.regimes, source.recode)
+                out[spec.key, i] = (file, rows)
+    return out
+
+
+def generate(
+    paths: Paths,
+    chosen: list[Candidate],
+    read: Mapping[tuple[str, int], tuple[Path, dict]],
+    specs: tuple[TrackSpec, ...] = TRACKS,
+) -> dict[tuple[str, int], tuple[Path, dict]]:
+    """`read` with each running source's rows for the `chosen` shots, made only
+    for a shot whose earlier sources do not hold it: a real label is never
+    run over. A shot with no corpus record to run over stays blank. Nothing is
+    fetched (`ae_rows` reads the corpus in place)."""
+    out = dict(read)
+    for spec in specs:
+        for i, source in enumerate(spec.sources):
+            if source.run is None:
+                continue
+            file, rows = out[spec.key, i]
+            made = dict(rows)
+            for c in chosen:
+                held = any(c.shot in out[spec.key, j][1] for j in range(i))
+                if held:
+                    continue
+                try:
+                    made[c.shot] = source.run(paths, c)
+                except NoDataError:  # no corpus record to run over: left blank
+                    pass
+            out[spec.key, i] = (file, made)
     return out
 
 
@@ -333,9 +441,9 @@ def candidates(paths: Paths) -> list[Candidate]:
 
 
 def score(tracks: tuple[Track, ...]) -> tuple[int, int, float]:
-    """`PICK_RULE`'s measures: phenomena labelled, of them expert-reviewed, and
-    the labelled time, ms."""
-    held = [t for t in tracks if t.source is not None]
+    """`PICK_RULE`'s measures: phenomena with a real label (not a generated
+    one), of them expert-reviewed, and the labelled time, ms."""
+    held = [t for t in tracks if t.source is not None and t.source.tier != GENERATED]
     expert = sum(t.source.tier == SILVER for t in held)
     return len(held), expert, sum(t.labelled_ms for t in held)
 
@@ -506,18 +614,6 @@ def draw_track(ax, track: Track) -> set[str]:
     ax.set_ylim(0, 1)
     ax.set_yticks([])
     ax.set_ylabel(track.spec.title, rotation=0, ha="right", va="center")
-    # The tier as a right-hand axis label, so the layout keeps room for it.
-    right = ax.secondary_yaxis("right")
-    right.set_yticks([])
-    right.spines["right"].set_visible(False)
-    right.set_ylabel(
-        NO_LABEL if track.source is None else track.source.tier,
-        rotation=0,
-        ha="left",
-        va="center",
-        color=TEXT_COLOUR,
-        fontsize=FONT_PT - 1,
-    )
     if track.source is None:
         return set()
     drawn = set()
@@ -709,6 +805,7 @@ def main(argv=None) -> int:
                 raise SystemExit(f"{shot}: not a non-blind cohort shot")
             chosen.append(named[0])
     torch.set_num_threads(LOGIN_THREADS)  # TokEye's gate: one shot, on the login node
+    read = generate(paths, chosen, read)
     shots = [label_shot(paths, c, read, gate=not args.no_gate) for c in chosen]
     args.out.mkdir(parents=True, exist_ok=True)
     if len(shots) == 1:
