@@ -21,7 +21,7 @@ of the frozen cohort with at least 2 s of corpus CO2 (`candidates`: 153 of its
   blob's AE band (the owner, 2026-09-29 21:05: "segmentation on on the full
   spectrogram instead of ae"), so its key is `shots.ROSTER_MASK_LABEL`,
   "segmentation"; the paper's own figures keep "segmentation: AE";
-- NTM, H-mode, ELMing and sawteeth from their frame models' suggestion tables
+- NTM, H-mode, ELMing and sawtooth from their frame models' suggestion tables
   (`TABLES`, `TABLE_VERSION`, which is `frames.VERSION`, F1): a track says
   `NO_TABLE` where a table does not exist and `NOT_APPLIED` where the shot is
   not in it; the bars are `shots.state_bars`.
@@ -31,7 +31,7 @@ at the bottom: rows the frame models read (`frames.SPECS[m].roles`), from the
 shot's review stores (`paths.spectrogram_file(spec.store_event, shot)`), each
 matched by its role's title prefix (`frames.features.find_role`), one panel
 each in `PANELS`' order. The NTM's Mirnov spectrogram (`MPI66M322D power`) and
-the sawteeth's SXR chords are not drawn (the owner, 2026-09-29 23:51).
+the sawtooth's SXR chords are not drawn (the owner, 2026-09-29 23:51).
 
 - The NTM's n map (`toroidal n, MPI66M probes`, `verify.mode_bytes`' codes)
   in the page's colours (`verify.mode_palette`), a colour per n, with a small
@@ -52,7 +52,7 @@ the sawteeth's SXR chords are not drawn (the owner, 2026-09-29 23:51).
   title; neither `D-alpha PCPHD03` nor H-mode's pooled filterscopes row is
   drawn.
 - H-mode's NBI power.
-- The sawteeth's four ECE Te rows in one panel, a colour per row with a
+- The sawtooth's four ECE Te rows in one panel, a colour per row with a
   small key.
 
 A trace is drawn as each column's minimum-to-maximum band, as the store keeps
@@ -639,6 +639,22 @@ def whole_band(y0: float, dy: float, n_y: int) -> tuple[float, float]:
     return (float(y0 - dy / 2), float(y0 + (n_y - 0.5) * dy))
 
 
+def ae_frames(
+    paths: Paths, candidate: Candidate, model: shots.Model
+) -> tuple[tuple, int, int, np.ndarray, np.ndarray]:
+    """The frame model `model` over `candidate`'s corpus CO2 rows (read in
+    place: `NoDataError` without them): the rows (`raw_rows`), the first frame
+    and the number of whole frames in its window, P(AE) per frame and whether
+    the rows cover it."""
+    co2 = corpus_signal(candidate.shot, "co2", corpus=paths.corpus)
+    rows = raw_rows(co2.x, co2.y)
+    first, n = window_frames(candidate.window)
+    prob, observed = probabilities(
+        model.net, rows, first, n, band=model.blob["band_khz"]
+    )
+    return rows, first, n, prob, observed
+
+
 def roster_shot(
     paths: Paths,
     candidate: Candidate,
@@ -653,12 +669,7 @@ def roster_shot(
     them), its tracks from `tables` (`read_tables`) and its signal panels from
     its review stores, read through `snap` if given (`signals`), the n map
     gated by TokEye (`gate_signals`)."""
-    co2 = corpus_signal(candidate.shot, "co2", corpus=paths.corpus)
-    rows = raw_rows(co2.x, co2.y)
-    first, n = window_frames(candidate.window)
-    prob, observed = probabilities(
-        model.net, rows, first, n, band=model.blob["band_khz"]
-    )
+    rows, first, n, prob, observed = ae_frames(paths, candidate, model)
     threshold = model.threshold
     grid, values, y0, dy = rows
     pooled = pool(values, PICTURE_LEVEL, "image")

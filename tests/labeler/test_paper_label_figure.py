@@ -46,6 +46,14 @@ def test_the_merged_confinement_table_reads_as_the_review_regimes(tmp_path):
         lf.read_rows(bad, regimes=True)
 
 
+def test_a_recode_maps_categories_and_drops_the_rest(tmp_path):
+    table = _write(
+        tmp_path / "t.csv", HEADER + "1,0,0,10,,\n1,1,10,20,,\n1,3,20,30,,\n"
+    )
+    rows = lf.read_rows(table, recode={0: 0, 1: 1})  # the H-mode table's
+    assert rows[1] == (lf.Row(0, 10, 0), lf.Row(10, 20, 1))
+
+
 def _specs(tmp_path):
     review = _write(tmp_path / "review.csv", HEADER + "1,0,0,10,,\n1,1,10,20,,\n")
     imported = _write(tmp_path / "format.csv", HEADER + "1,1,0,5,,\n2,1,0,40,,\n")
@@ -125,7 +133,7 @@ def _shot() -> lf.LabelShot:
     return lf.LabelShot(7, 2021, (0, 100), image, signals, tracks, {})
 
 
-def test_the_figure_draws_labels_with_their_tiers_and_no_suggestion(tmp_path):
+def test_the_figure_draws_labels_without_tier_text_or_suggestion(tmp_path):
     fig = lf.draw(_shot(), tmp_path / lf.STEM)
     assert (tmp_path / f"{lf.STEM}.pdf").stat().st_size > 0
     (key,) = fig.legends
@@ -139,9 +147,43 @@ def test_the_figure_draws_labels_with_their_tiers_and_no_suggestion(tmp_path):
         lf.UNLABELLED,
     ]
     texts = {t.get_text() for ax in fig.axes for t in ax.texts}
-    tiers = {c.yaxis.label.get_text() for ax in fig.axes for c in ax.child_axes}
-    assert tiers == {lf.NO_LABEL, lf.SILVER, lf.LEGACY}
-    words = " ".join([*names, *texts, *tiers, fig.axes[0].get_title()])
+    assert not [c for ax in fig.axes for c in ax.child_axes]  # no tier text
+    words = " ".join([*names, *texts, fig.axes[0].get_title()])
     assert "suggest" not in words and "model:" not in words
     hatched = [p for ax in fig.axes for p in ax.collections if p.get_hatch()]
     assert len(hatched) == 1  # the one crowd span
+
+
+def test_a_generated_track_fills_only_where_no_real_label_holds_the_shot(tmp_path):
+    real = _write(tmp_path / "real.csv", HEADER + "1,1,0,5,,\n")
+    auto = _write(tmp_path / "auto.csv", HEADER + "1,1,0,50,,\n2,1,0,40,,\n")
+    ran = []
+
+    def run(paths, candidate):
+        ran.append(candidate.shot)
+        return (lf.Row(0, 9, 1),)
+
+    sources = (
+        lf.Source(lf.SILVER, "review", lambda paths: real),
+        lf.Source(lf.GENERATED, "run", lambda paths: auto, run=run),
+    )
+    specs = (
+        lf.TrackSpec("a", "A", lf.BINARY, sources),
+        lf.TrackSpec("b", "B", lf.BINARY, sources[1:]),
+    )
+    read = lf.read_sources(None, specs)
+    assert read["b", 0][1] == {}  # nothing runs before `generate`
+    found = [lf.Candidate(s, 2021, (0, 100)) for s in (1, 2)]
+    read = lf.generate(None, found, read, specs)
+    assert ran == [2, 1, 2]  # track a: the review holds shot 1, so no run there
+    one, two = lf.tracks_of(1, read, specs), lf.tracks_of(2, read, specs)
+    assert [t.source.tier for t in one] == [lf.SILVER, lf.GENERATED]
+    assert [t.source.tier for t in two] == [lf.GENERATED, lf.GENERATED]
+    assert lf.score(one) == (1, 1, 5)  # a generated track is not a real label
+    assert lf.score(two) == (0, 0, 0)
+
+
+def test_the_generated_tier_is_a_source_of_every_track():
+    for spec in lf.TRACKS:
+        assert spec.sources[-1].tier == lf.GENERATED
+    assert "no model output" not in lf.TITLE
