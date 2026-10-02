@@ -43,7 +43,7 @@ against.
 Re-run it when the port's crash search changes. The acceptance it exists to
 justify is in `heuristics`'s module docstring: 47 +/- 3 crashes with a
 69 +/- 5 ms median period on 198658, which are the REFERENCE's own numbers
-on that shot rather than the plan's remembered "45 sawteeth, 76 ms".
+on that shot rather than the plan's remembered "45 sawtooth, 76 ms".
 
 The reference side costs about eight minutes, so a change to the port that
 plainly cannot move the reference does not need it re-run - but it does need

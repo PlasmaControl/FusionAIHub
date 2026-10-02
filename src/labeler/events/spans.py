@@ -3,7 +3,7 @@
 v1's detectors find these phenomena as points and transitions:
 `transients.elm_clock_events` the ELMs on a D-alpha filterscope,
 `heuristics.lh_transitions` the L-H and H-L transitions from D-alpha, density
-and beam power, and for sawteeth, since v3, `heuristics.sawtooth_crashes` the
+and beam power, and for sawtooth, since v3, `heuristics.sawtooth_crashes` the
 crashes on the ECE array and on an SXR fan. This module turns one shot's into
 the spans the review page edits, over the shot's catalog window, and writes them
 as a suggestion table (`suggestions`) that the page opens unreviewed shots on:
@@ -21,12 +21,12 @@ as a suggestion table (`suggestions`) that the page opens unreviewed shots on:
   (`dead_stretches`) is a channel that stopped reading: not observable, not
   absent. `elm_onsets` gives the clock's ELMs inside the present spans, which
   the frame models score as a baseline.
-- Sawteeth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
+- Sawtooth (`ece_sawtooth`): the same rule over the crashes, with gaps of at
   most `SAWTOOTH_MAX_GAP_MS`. Since v3 the crashes are the union of the ECE
   array's and the first lit SXR fan's (`sxr_fan`), less those in the 300 ms
   after a collapse (`heuristics.sawtooth_events_v3`), over the union of what the
   two measured; either may be missing. v1's and v2's tables were drafted from
-  `heuristics.sawtooth_events` on ECE alone, which calls sawteeth present on
+  `heuristics.sawtooth_events` on ECE alone, which calls sawtooth present on
   4,815 of the 4,822 population shots and over 71 % of their time.
 
 ELM and sawtooth runs form only from the events inside the shot's window and
@@ -37,7 +37,7 @@ shot with no Ip starts `RAMP_FALLBACK_MS` into its window. Events before the
 start are dropped before the runs are grouped, so the ramp-up's crash-like
 steps and spikes neither make a run nor join one. The ramp-up itself, from the
 window's start to the plasma's, is uncertain where the detector saw events there
-(`ramp_up`): for sawteeth all of it once the array saw a crash in it, for ELMs
+(`ramp_up`): for sawtooth all of it once the array saw a crash in it, for ELMs
 each piece of it outside the H-mode method's L-mode that holds an ELM, so its
 L-mode time stays absent.
 - Tearing modes (`window`): no method yet, so the window alone, all absent. It
@@ -52,7 +52,7 @@ and why) and how many events made the ramp-up uncertain (`ramp_events`), and
 for ELMs the filterscope read (`channel`), whether the H-mode gate ran
 (`hmode_gate`: "ran", or why not) and how much of the window the channel's dead
 stretches take (`dead_ms`); `ramp_events` and `dead_ms` appear only when not
-zero. For sawteeth it keeps the diagnostics that ran (`diagnostics`), the SXR
+zero. For sawtooth it keeps the diagnostics that ran (`diagnostics`), the SXR
 fan (`sxr_fan`), each diagnostic's crashes over its whole record (`crashes`),
 the collapses (`collapses_ms`), and why a diagnostic did not run (`not_run`,
 only when one did not). Inputs come from the corpus, else the raw cache;

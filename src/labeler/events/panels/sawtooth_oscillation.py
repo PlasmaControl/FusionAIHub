@@ -1,4 +1,4 @@
-"""Sawteeth in ECE inversion groups, core Te, and crash-sensitive SXR chords.
+"""Sawtooth in ECE inversion groups, core Te, and crash-sensitive SXR chords.
 
 Calibrated channel geometry separates the core from outside q = 1; without it,
 adjacent channel groups and their baseline-subtracted comparison show inversion

@@ -66,7 +66,7 @@ LABELLED = {
 #: Each method's merged present time, s (F4): its present bins times bin_ms.
 #: ELM: 16 50 ms bins on each of four grids; NTM: 16 on each of two. H-mode:
 #: BLIND's 15 H-only bins (the 600 ms bin is H and L, uncertain) and the saved
-#: shot's 16, the owner's present over the uncertain bin; sawteeth: BLIND's 75
+#: shot's 16, the owner's present over the uncertain bin; sawtooth: BLIND's 75
 #: 10 ms bins (1000-1050 ms uncertain) and the saved shot's 80, likewise.
 PRESENT_S = {
     "elm_frames": 3.2,
@@ -274,7 +274,7 @@ def test_without_saves_there_is_no_owner_shot(tmp_path, monkeypatch):
 
 
 def test_the_meta_pins_the_original_s_one_file(tree, made):
-    # F16: the sawteeth's table, one file, is pinned by its sha256; a grid
+    # F16: the sawtooth's table, one file, is pinned by its sha256; a grid
     # target is a file per shot, and pins nothing.
     _, meta = made["sawtooth_frames"]
     table = frames_tree.sawtooth_table(tree)
@@ -290,7 +290,7 @@ def test_the_meta_counts_the_owner_s_flips(made):
     # F14: what the owner's saves changed in the owner's shots' targets, over
     # their windows. The tree's saves say what the originals say, but for
     # H-mode's 600 ms bin (H and L, uncertain; the owner says H) and the
-    # sawteeth's 1000-1050 ms (uncertain; the owner says present) and
+    # sawtooth's 1000-1050 ms (uncertain; the owner says present) and
     # 1850-1900 ms (not observable; the owner says absent).
     changed = {
         "elm_frames": {},

@@ -25,7 +25,7 @@ def gap_chain(shot_design_db, tmp_path, monkeypatch):
     paths.labels.mkdir(parents=True)
     result = pipeline.process_shot(198658, paths, model=None, passes=("wide",))
     assert not result.error
-    records = [shot_record(s, "run", 1e6, 5e6, "ELMs and sawteeth")
+    records = [shot_record(s, "run", 1e6, 5e6, "ELMs and sawtooth")
                for s in (198658, 101, 200, 201)]
     # Named segments give evidence/locate/describe the SAME windows as MCP.
     from shot_design.schema import Segment

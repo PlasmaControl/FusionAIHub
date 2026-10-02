@@ -19,7 +19,7 @@
 # records/. Task I of an array of N is shard I of N (SLURM_ARRAY_TASK_ID and
 # SLURM_ARRAY_TASK_COUNT, D67); without an array, one shard. PILOT=1 takes each shard's
 # first 20 shots (LIMIT, 20 unless set); SHOTS names shots; FORCE=1 rebuilds built stores.
-# Nothing is fetched. Exits 1 when a store could not be built. Sawteeth's v2 shots
+# Nothing is fetched. Exits 1 when a store could not be built. Sawtooth's v2 shots
 # (the ece_sawtooth v3 detector's population table) are mostly outside the roster,
 # so they need --stores first, as the other methods' legacy shots do.
 #

@@ -26,7 +26,7 @@
 #
 # ------------------------------------------ sizing (measured 2026-09-29, synthetic tree only; the rest estimates)
 #   measured: 2 epochs over the test tree's 3 ELM shots, 6.8 s on the login node.
-#   The features in memory, float16: NTM about 5,077 shots x 100 kB = 0.5 GB, sawteeth
+#   The features in memory, float16: NTM about 5,077 shots x 100 kB = 0.5 GB, sawtooth
 #   448 x 250 kB = 0.1 GB, ELM and H/L less (estimates from the widths and windows).
 #   cpus-per-task=8   torch's threads; the pilot's CPU use resets it.
 #   mem=8G            estimate: the features twice over plus torch; reset from the

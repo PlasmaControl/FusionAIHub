@@ -165,11 +165,11 @@ def test_the_frame_sources_are_the_four_paper_phenomena():
     primaries = [s.primary for s in coverage.FRAME_SOURCES.values()]
     assert primaries == ["N1", "H1", "E1", "S1"]
     detectors = [c for c, s in coverage.FRAME_SOURCES.items() if s.detector]
-    assert detectors == [SAW], "sawteeth's labels are the detector's (D56)"
+    assert detectors == [SAW], "sawtooth's labels are the detector's (D56)"
     assert coverage.FRAME_SOURCES[SAW].origin == (
         "the ece_sawtooth v3 detector (ECE and SXR crashes; D56 as amended)"
     ), "v3, not v2, which over-called"
-    assert coverage.tick(SAW) == "sawteeth (detector)"
+    assert coverage.tick(SAW) == "sawtooth (detector)"
     assert [coverage.tick(c) for c in (AE, ELM)] == [title(AE), "ELMing"]
     assert "Jalalvand" not in json.dumps(
         {k: [s.origin, s.also] for k, s in coverage.FRAME_SOURCES.items()}
@@ -204,7 +204,7 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     assert len(fig.axes) == 7, "AE's row of three, the frame splits' row of four"
     shots, present = fig.axes[:2]
     assert sum(t == COMING for t in _texts(shots)) == 2, "NTM and H-mode"
-    assert _texts(shots).count(coverage.NOT_RUN) == 1, "sawteeth: no meta read"
+    assert _texts(shots).count(coverage.NOT_RUN) == 1, "sawtooth: no meta read"
     assert coverage.NONE_REVIEWED not in _texts(shots)
     # On a log axis from 1: labelled AE, ELM; positive AE, ELM, each numbered.
     assert shots.get_xscale() == "log" and present.get_xscale() == "log"
@@ -212,7 +212,7 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     assert _widths(shots) == [4 - 1, 576 - 1, 2 - 1, 443 - 1]
     assert {"4", "576", "2", "443"} <= set(_texts(shots))
     assert shots.get_xlim() == pytest.approx((1, 576**coverage.ROOM))
-    assert _ticks(shots)[-2:] == ["ELMing", "sawteeth (detector)"]
+    assert _ticks(shots)[-2:] == ["ELMing", "sawtooth (detector)"]
     # The present time on a log axis from 1 s too: the meta's 1234.5 s a bar,
     # AE's 0.9 s no bar but its number at the axis's start.
     assert _widths(present) == [1234.5 - 1], "the meta's present_s"
@@ -230,7 +230,7 @@ def test_the_figure_with_the_frame_phenomena(tmp_path):
     for ax in (elm_split, saw_split):
         assert _ticks(ax) == ["train", "val", "test"], "no legacy, no owner bar"
     assert elm_split.get_title() == "ELMing: model split\n(bar not met)", "F8's mark"
-    assert saw_split.get_title() == "sawteeth: model split", "no table meta read"
+    assert saw_split.get_title() == "sawtooth: model split", "no table meta read"
     assert not [ax for ax in fig.axes if "suggest" in ax.get_title()], "no years"
     [legend] = fig.legends
     assert [t.get_text() for t in legend.get_texts()] == [
@@ -295,7 +295,7 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
         for category, n, (bar, always) in zip(
             coverage.FRAME_SOURCES, labelled, marks, strict=True
         )
-    }  # both marks on the widest title, sawteeth's
+    }  # both marks on the widest title, sawtooth's
     fig = coverage.draw_coverage(counts, tmp_path / "fig_coverage")
     assert len(fig.axes) == 7
     assert all(ax.get_legend() is None for ax in fig.axes[3:7])
@@ -316,7 +316,7 @@ def test_at_population_sizes_the_keys_cover_no_bar_and_no_tick(tmp_path):
         f"{title(HMODE)}: model split\n(bar not met, ≈ always)",
         f"{title(ELM)}: model split\n(bar not met)",
         f"{title(SAW)}: model split\n(bar not met, ≈ always)",
-    ], "F8's marks on the split headings, both on the widest heading, sawteeth's"
+    ], "F8's marks on the split headings, both on the widest heading, sawtooth's"
     headings = [ax.title.get_window_extent() for ax in fig.axes[3:7]]
     above = [ax.get_tightbbox() for ax in fig.axes[:3]]
     assert not any(h.overlaps(a) for h in headings for a in above), "below AE's row"
@@ -388,9 +388,9 @@ def test_the_table_with_the_frame_phenomena(tmp_path):
         "extension's suggestions (not labels); -- where that run has not happened; "
         "AE's labels are the owner's reviews, so its Labelled = Reviewed = Train + "
         "Val + Test + No split (the reviewed shots saved after the model was "
-        "trained); for ELMing and sawteeth, "
+        "trained); for ELMing and sawtooth, "
         + FRAME_CLAUSE
-        + "ELMing: Hiro's table, sawteeth: the ece_sawtooth v3 detector (ECE and "
+        + "ELMing: Hiro's table, sawtooth: the ece_sawtooth v3 detector (ECE and "
         + "SXR crashes; D56 as amended)"
         + DAGGER_CLAUSE
         + "ELMing (bar not met)"
@@ -405,7 +405,7 @@ def test_the_table_with_the_frame_phenomena(tmp_path):
         "TM & \\multicolumn{10}{c}{coming} \\\\",
         "H-mode & \\multicolumn{10}{c}{coming} \\\\",
         "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
-        "sawteeth & -- & 0 & -- & -- & 2 & 1 & 1 & -- & -- & -- \\\\",
+        "sawtooth & -- & 0 & -- & -- & 2 & 1 & 1 & -- & -- & -- \\\\",
     ]
     ae = lines[5].removesuffix(" \\\\").split(" & ")
     labelled, reviewed, train_val_test, unsplit = ae[1], ae[2], ae[5:8], ae[8]
@@ -451,7 +451,7 @@ def test_an_unmarked_model_has_no_dagger(tmp_path):
 
 @pytest.fixture
 def runs(tmp_path, monkeypatch):
-    """test_paper_build's tree, with ELM's four inputs and sawteeth's split."""
+    """test_paper_build's tree, with ELM's four inputs and sawtooth's split."""
     paths = ae_tree.build(tmp_path, {101: "train", 102: "valid", 103: "valid"})
     models = ae_tree.chosen(paths, {101: "train", 102: "test", 103: "test"})
     (models / "evaluation.json").write_text(json.dumps(tree.ae_evaluation()))
@@ -494,7 +494,7 @@ def test_the_build_counts_the_frame_phenomena(runs, tmp_path):
         "TM & \\multicolumn{10}{c}{coming} \\\\",
         "H-mode & \\multicolumn{10}{c}{coming} \\\\",
         "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
-        "sawteeth & 4 & 0 & 3 & 2.5 & 2 & 1 & 1 & -- & -- & -- \\\\",
+        "sawtooth & 4 & 0 & 3 & 2.5 & 2 & 1 & 1 & -- & -- & -- \\\\",
     ]
     assert "ELMing (bar not met)" in lines[0]
 
@@ -610,7 +610,7 @@ def test_labels_alone_count_the_owners_review(runs, tmp_path):
     manifest = build.build(runs, tmp_path / "paper")
     lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
     assert lines[8] == "ELMing & -- & 3 & -- & -- & -- & -- & -- & -- & -- & -- \\\\"
-    assert lines[9] == "sawteeth & \\multicolumn{10}{c}{coming} \\\\"
+    assert lines[9] == "sawtooth & \\multicolumn{10}{c}{coming} \\\\"
     entries = _theirs(manifest["partial"]["table_datasets"])
     reasons = [(e["phenomenon"], e["reason"]) for e in entries]
     assert reasons == [

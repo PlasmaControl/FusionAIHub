@@ -1,7 +1,7 @@
 # Sawtooth Oscillation
 
 ## Description
-Sawteeth are periodic relaxations of the plasma core when the central safety factor
+Sawtooth are periodic relaxations of the plasma core when the central safety factor
 falls below one: the m/n = 1/1 internal kink grows, magnetic reconnection
 (Kadomtsev) flattens the core temperature and density inside the mixing radius, and
 the profile then re-peaks over a few tens of ms - a slow ramp and a fast crash,
@@ -56,10 +56,10 @@ candidate bins where >= 2 channels lose > 2% of their level in one bin, at least
 next to rising ones. Each crash is a point event with `confidence` = the fraction of
 finite channels that took part, and `attrs["inversion_channel_lo"]`,
 `attrs["inversion_channel_stop"]` bound the dropping block (end-exclusive).
-On shot 198658 it finds 45 sawteeth with a median period of 76 ms.
+On shot 198658 it finds 45 sawtooth with a median period of 76 ms.
 
 ## Alias
-sawtooth, sawteeth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
+sawtooth, sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
 
 ## Future Implementations
 

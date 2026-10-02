@@ -43,7 +43,7 @@ longest Ip flat-top. Short excursions are uncertain; finite values <= 1 are
 absent. Gaps and time outside the gate are not observable. This threshold is a
 review convention, not a validated advanced-tokamak scenario definition.
 The beta_p and Ip rows can be reviewed and saved in the same page as ELMs and
-sawteeth. See [the editor guide](../../../docs/labeler/equilibrium_review.md).
+sawtooth. See [the editor guide](../../../docs/labeler/equilibrium_review.md).
 
 ## Alias
 poloidal beta, beta_p, betap, beta poloidal

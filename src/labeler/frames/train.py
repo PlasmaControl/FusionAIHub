@@ -23,7 +23,7 @@ v1's present-only weight left at 1.
 **Crops.** Each epoch draws `CROPS_PER_SHOT` crops of `CROP_MS` from each
 train shot with a scored bin, on its bins' edges (a shorter shot whole, padded
 with unscored zeros; `crop_windows`). They start at random, unless the spec's
-`balance_crops` is set (F11, the sawteeth's: 4,815 of the 4,822 shots of the
+`balance_crops` is set (F11, the sawtooth's: 4,815 of the 4,822 shots of the
 ece_sawtooth v2 detector's table, which v3's has replaced as the target, held a
 sawtooth, so the owner's "as many shots that dont have sawtooth as shots that
 do" could not be had in whole shots, and is had in crops): then half of a
@@ -31,7 +31,7 @@ shot's crops are centred on a random scored ABSENT bin and half on a random
 scored PRESENT_T bin, all on one class when the shot has
 only that one, and a crop whose centre is too near an edge is moved inside the
 shot. Across the train shots the crops centred on sawtooth-free time then equal
-those centred on sawteeth. With balancing the class weights are taken from the
+those centred on sawtooth. With balancing the class weights are taken from the
 scored bins of the first epoch's crops (`crop_states`), not of the whole train
 shots, so the two corrections do not compound, and held for the run, so the
 val losses the stopping compares are on one weighting; every epoch's crops are

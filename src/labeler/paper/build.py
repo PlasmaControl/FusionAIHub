@@ -27,7 +27,7 @@ reads what the round-two runs wrote (`inputs`) and draws what they allow:
   is there, has a `fold` column and is the one `chosen.json` names
   (`folds_check`, D18's check applied to the folds); otherwise both products
   are `partial`, saying why. The frame-model phenomena (NTM, H-mode, ELMing,
-  sawteeth) are counted from their own inputs, all `frames.VERSION`'s
+  sawtooth) are counted from their own inputs, all `frames.VERSION`'s
   (`frame_coverage`, F1): the owner's review; the frame model's split with its
   meta's `labelled_shots`, `positive_shots` and `present_s`, over the original
   labels with the owner's over them (F2, F4); the application's

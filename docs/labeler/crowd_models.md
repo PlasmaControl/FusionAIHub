@@ -160,7 +160,7 @@ and group tracks separately.
 ## Limitations and research risks
 
 The cited architectures assume their task's annotation semantics; none
-establish that ELMs or sawteeth have separable visual instances in every
+establish that ELMs or sawtooth have separable visual instances in every
 diagnostic. TokEye's transient mask is evidence, not ground truth. Group
 envelopes can include overlapping bursts, diagnostic saturation, or unrelated
 transients. Evaluation must preserve shot-level splits and annotation

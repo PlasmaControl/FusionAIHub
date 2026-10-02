@@ -221,10 +221,10 @@ the median on the 450 shots.
 
 **The ramp-up**, from the window's start to the plasma's, is where v1 and v2
 differ. In v1 it is absent, and the events in it are left out with it: 189061's
-sawteeth at 227-530 ms, for one. In v2 it is uncertain where the detector saw
+sawtooth at 227-530 ms, for one. In v2 it is uncertain where the detector saw
 any event there, one is enough, and absent where it saw none (`ramp_up`):
 
-- Sawteeth: the whole ramp-up, once the ECE array saw a crash in it. 189061's
+- Sawtooth: the whole ramp-up, once the ECE array saw a crash in it. 189061's
   is uncertain from 6 to 557 ms, on 7 crashes. 443 of the queue's 450 v2
   drafts open this way, 43 of them on one or two crashes.
 - ELMs: the ramp-up less the time the H-mode draft calls absent (L-mode),
@@ -238,7 +238,7 @@ any event there, one is enough, and absent where it saw none (`ramp_up`):
 
 Like any span, the uncertain time is clipped to what the inputs measured. The
 ramp-up's events still neither make a run nor join one, so in either version
-mark the sawteeth or ELMs you see there by hand.
+mark the sawtooth or ELMs you see there by hand.
 
 **ELMs** (`elm_clock`).
 
@@ -311,7 +311,7 @@ mark the sawteeth or ELMs you see there by hand.
   fetches it for them while the page runs.
   See `data/events/confinement/README.md`.
 
-**Sawteeth** (`ece_sawtooth`).
+**Sawtooth** (`ece_sawtooth`).
 
 - ECE rows use calibrated per-channel normalized poloidal flux (`ece_psi`)
   and local EFIT `qpsi`, when available, to separate **core q<1** and

@@ -58,16 +58,16 @@
 #   elm_clock 3.0 s and 0.96 GB (0.95 GB without the Ip read: the shot's own inputs).
 #   cpus-per-task=8   450 x 6 s / 8 workers = 5.6 min; the other two on 4 CPUs,
 #                     450 x 1 s / 4 = 1.9 min, so start-up stays a small part of it.
-#   mem=22G           8 x 2.24 GB x 1.2 for the sawteeth; 3G for H-mode (4 x 0.5 x 1.2),
+#   mem=22G           8 x 2.24 GB x 1.2 for the sawtooth; 3G for H-mode (4 x 0.5 x 1.2),
 #                     5G for ELMs (4 x 0.96 x 1.2 on 189061).
 #   time=00:30:00     5.6 min x 5 for cold GPFS reads of 600 MB of ECE a shot.
 #   2026-09-29, v2 (round three), 4 workers on 4 CPUs. Pilots (LIMIT=20): ELM job
-#   2944528 47 s, 2.42 GB MaxRSS; H-mode 2944529 47 s, 2.39 GB; sawteeth 2944530 19 s,
+#   2944528 47 s, 2.42 GB MaxRSS; H-mode 2944529 47 s, 2.39 GB; sawtooth 2944530 19 s,
 #   7.91 GB at 11G (4 x 2.24 GB does not fit 5G). Full runs, 450 shots: ELM 2944539
 #   8 min 43 s, 85 % CPU, 2.70 GiB of 3G; H-mode 2944541 8 min 43 s, 85 %, 2.67 GiB of
-#   3G; sawteeth 2944540 6 min 9 s, 80 %, 7.45 GiB of 10G. sacct's MaxRSS x 1.2,
+#   3G; sawtooth 2944540 6 min 9 s, 80 %, 7.45 GiB of 10G. sacct's MaxRSS x 1.2,
 #   rounded up, gives the sizes above: ELMs 3400M (2944539, 2,831,572K x 1.2 =
-#   3318 MiB), H-mode 3300M (2944541, 2,800,852K x 1.2 = 3282 MiB), sawteeth 9G
+#   3318 MiB), H-mode 3300M (2944541, 2,800,852K x 1.2 = 3282 MiB), sawtooth 9G
 #   (2944540, 7,807,552K x 1.2 = 8.93 GiB). jobstats, which samples every 30 s,
 #   read 46-57 % of these peaks.
 set -euo pipefail

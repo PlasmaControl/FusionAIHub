@@ -22,7 +22,7 @@ shots every other check passed:
 `make` freezes the owner's saves (`labels.labels_path`) as `frames.owner_file`,
 with their sha256, and every target is merged with that copy, never the live
 file; with no saves, an earlier split's copy is removed. It pins the original's
-file too, where it is one (`targets.original_pin`: the sawteeth's table, hashed
+file too, where it is one (`targets.original_pin`: the sawtooth's table, hashed
 before it is read; the grids are a file per shot), and `prepare` refuses a
 split whose frozen files have changed (`prepare.check_frozen`). There is no
 owner split (F2 supersedes D40's "owner split, never trained

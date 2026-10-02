@@ -36,7 +36,7 @@ inside its window (the split's, `frames.shots_meta_file`'s `windows`) go to
 Before any, `check_frozen` refuses a split whose frozen files have changed: the
 owner's saves as the split froze them (their sha256 in the meta's
 `owner_snapshot`; no file when it froze none), and the original's table where
-the meta pins it (`original`, the sawteeth's; the grids are a file per shot).
+the meta pins it (`original`, the sawtooth's; the grids are a file per shot).
 
 A shot whose features cannot be made is dropped: its npz is removed and its
 reason written to `features_dir/<shot>.dropped.json` (`dropped` reads them all).

@@ -97,7 +97,7 @@ def _trace(name, title, channels, units="", level=1.0):
 
 def _stores(paths, sxr: bool = False) -> dict:
     """SHOT's review stores: the NTM's Mirnov power and n map, the ELM's
-    PCPHD03 and FS01 D-alpha, the sawteeth's first two ECE groups, and SXR
+    PCPHD03 and FS01 D-alpha, the sawtooth's first two ECE groups, and SXR
     chords if `sxr`; no H-mode store. Each event's path."""
     power = np.zeros((50, GRID.n), np.uint8)
     power[10:20, 300:700] = 200  # 20-40 kHz, 200-600 ms
@@ -586,7 +586,7 @@ def test_main_refuses_the_papers_directory_and_a_shot_off_the_list(tree, tmp_pat
 
 
 def test_main_picks_draws_and_records(tree, tmp_path, monkeypatch, capsys):
-    # OTHER suggests H-mode alone, 1000 ms; SHOT suggests ELMs and sawteeth
+    # OTHER suggests H-mode alone, 1000 ms; SHOT suggests ELMs and sawtooth
     found = [roster.Candidate(s, 2024, WINDOW) for s in (OTHER, SHOT)]
     monkeypatch.setattr(roster, "candidates", lambda paths, snap=None: found)
     out = tmp_path / "scratch" / "paper-round-three-b"
@@ -710,7 +710,7 @@ def test_the_build_picks_the_roster_shot_or_skips_one_off_the_list(tree, tmp_pat
     manifest = build.build(tree, tmp_path / "a", version="v2")
     got = manifest["interpreter"]
     assert (got["shot"], got["pick_rule"]) == (SHOT, roster.PICK_RULE), (
-        "ELMs and sawteeth beat OTHER's H-mode alone"
+        "ELMs and sawtooth beat OTHER's H-mode alone"
     )
     assert "fig_interpreter" in manifest["products"]
     for shot in (BLIND, NO_CO2):
