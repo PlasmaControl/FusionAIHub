@@ -49,9 +49,9 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 **all**:
 - d3d_elm_time_to_event_dsm | 2026_09_06 (`no_bes` fit; horizons 5/10/20/50 ms)
 - elm_clock | 2026_09_13 (rule-based detector, `labeler.events.transients`)
-- elmo | 2026_10_01 | F1: 0.842 (rule-based detector, O'Shea et al. 2023, re-implemented)
+- elmo | 2026_10_01 | AUROC: 0.918 | AUPRC: 0.833 | F1: 0.842 (rule-based detector, O'Shea et al. 2023, re-implemented)
 
-Scores are for ELM-O as published (eta 0.997, BES threshold 1 V) against the owner-reviewed ELM spans: 50 ms bins of the 73 review shots that have BES in the corpus (precision 0.840, recall 0.844; the other 46 shots have no BES, which ELM-O needs). It finds 85 % of the bins inside crowd spans and 59 of 93 individual spans, and puts ELMs in 96 of 218 spans marked absent, where the D-alpha of the worst shows ELM trains. `elm_clock` scores F1 0.708 on the same bins, but the reviewers started from it. On David Smith's labelled windows the re-implementation reproduces the published scores (precision 0.997, recall 0.980 over 2,316 windows; paper 0.995 and 0.976). Protocol, variants and caveats: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
+Scores are for ELM-O as published (eta 0.997, BES threshold 1 V) against the owner-reviewed ELM spans: 50 ms bins of the 73 review shots that have BES in the corpus (precision 0.840, recall 0.844; the other 46 shots have no BES, which ELM-O needs). ELM-O makes hard calls, so its AUROC and AUPRC come from sweeping its detection threshold eta over the same bins, not from a probability. It finds 85 % of the bins inside crowd spans and 59 of 93 individual spans, and puts ELMs in 96 of 218 spans marked absent, where the D-alpha of the worst shows ELM trains. `elm_clock` scores F1 0.708 on the same bins, but the reviewers started from it. On David Smith's labelled windows the re-implementation reproduces the published scores (precision 0.997, recall 0.980 over 2,316 windows; paper 0.995 and 0.976). Protocol, variants and caveats: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
 
 ## Inputs
 **d3d_elm_time_to_event_dsm**:

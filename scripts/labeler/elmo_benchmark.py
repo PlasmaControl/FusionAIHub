@@ -36,8 +36,19 @@ category 1 is present, category 0 absent; uncertain and not-observable time is l
 out), per detected ELM (precision), per individual span (hit) and per crowd span
 (coverage), against the ``elm_clock`` suggestion the reviewers started from.
 
+**Threshold sweep** (``sweep``). ELM-O makes hard calls, so for AUROC and AUPRC the
+review stage is run again on the same chunks at every ``eta`` of ``SWEEP_ETAS`` (0, the
+0.2-0.999 grid of Smith's scan and a finer tail to 0.99999; BES vote kept at 1 V), and
+each setting's spans are scored in the same 50 ms bins. A bin hit at one ``eta`` is hit
+at every lower one, so the strictest setting that hits a bin acts as its score, and the
+curves through the settings are that score's ROC and precision-recall curves
+(``sweep_areas``: (0, 0) and (1, 1) closed by straight lines, average precision; the
+conventions of the other benchmarks). It is a threshold sweep, not a probability. The
+intervals use the same shot draws as the bin scores.
+
     python scripts/labeler/elmo_benchmark.py smith
     python scripts/labeler/elmo_benchmark.py review
+    python scripts/labeler/elmo_benchmark.py sweep
     python scripts/labeler/elmo_benchmark.py evaluate
 
 Needs numpy, scipy, pandas and h5py (``-e labelmaker``).
@@ -78,6 +89,10 @@ GAP_US = 100.0
 CHUNK_MS = 200.0
 THRESHOLDS = (0.5, 1.0, 2.0, 5.0)
 ETAS = np.round(np.concatenate((np.arange(0.2, 0.951, 0.05), np.arange(0.96, 0.9995, 0.001))), 4)
+#: The review sweep: the Smith grid, eta 0 (every first difference above the window's
+#: minimum votes) and a finer tail toward eta 1, where no sample votes.
+SWEEP_ETAS = np.unique(np.round(np.concatenate(
+    ([0.0], ETAS, np.arange(0.9991, 0.99995, 0.0001), [0.99995, 0.99999])), 5))
 #: The paper's Table II: t -> (eta, precision, recall, "AUC").
 PAPER = {
     0.5: (0.998, 0.996, 0.974, 0.970),
@@ -346,10 +361,15 @@ def bes_samples(shot: int) -> int:
 
 
 def review_shot(job: tuple) -> dict:
-    """ELM-O over the reviewed time of one shot, in 200 ms chunks, for each variant."""
-    shot, window, signals_dir = job
+    """ELM-O over the reviewed time of one shot, in 200 ms chunks, for each variant.
+
+    With a fourth item, an array of ``eta``, ``sweep`` also holds the spans at each of
+    them, BES vote kept (``(shot, eta, start ms, stop ms)``).
+    """
+    shot, window, signals_dir, *rest = job
+    etas = np.asarray(rest[0], dtype=float) if rest else None
     data = dict(np.load(signals_dir / f"{shot}.npz"))
-    rows, cover, lags = [], [], []
+    rows, cover, lags, sweep = [], [], [], []
     skipped = 0
     with h5py.File(CORPUS / f"{shot}_processed.h5", "r") as f:
         x = f["bes/xdata"]
@@ -379,8 +399,14 @@ def review_shot(job: tuple) -> dict:
                     rows.append((shot, name, c0 + s * dt_ms, c0 + e * dt_ms, c0 + p * dt_ms))
                     if name == "paper":
                         lags.append((p - (s + int(np.argmax(trace.bes[s:e])))) * dt_ms * 1000.0)
+            if etas is not None:
+                bes = trace.bes > THRESHOLD
+                for eta, q in zip(etas, np.quantile(trace.diff, etas, axis=1)):
+                    starts, stops = spans_of(trace, *votes(trace, q), bes)
+                    sweep += [(shot, float(eta), c0 + s * dt_ms, c0 + e * dt_ms)
+                              for s, e in zip(starts, stops)]
     return {"shot": shot, "elms": rows, "cover": cover, "skipped": skipped, "dt_ms": dt_ms,
-            "lag_us": float(np.median(lags)) if lags else float("nan")}
+            "lag_us": float(np.median(lags)) if lags else float("nan"), "sweep": sweep}
 
 
 def review_labels() -> pd.DataFrame:
@@ -421,6 +447,33 @@ def run_review(args: argparse.Namespace) -> None:
         work / "review_elms.csv", index=False)
     pd.DataFrame(cover, columns=["shot", "t_start_ms", "t_end_ms"]).to_csv(work / "review_coverage.csv", index=False)
     pd.DataFrame(summary).to_csv(work / "review_shots.csv", index=False)
+
+
+def run_sweep(args: argparse.Namespace) -> None:
+    """The review stage again at every ``SWEEP_ETAS``, on its shots and chunks."""
+    work = args.work
+    cover = pd.read_csv(work / "review_coverage.csv")
+    shots = sorted(int(s) for s in cover.shot.unique())
+    if args.shots:
+        shots = [s for s in shots if s in set(args.shots)]
+    windows = review_labels().groupby("shot").agg(
+        lo=("t_start", "min"), hi=("t_end", "max"))
+    signals = args.signals or work / "signals"
+    jobs = [(s, (float(windows.lo[s]), float(windows.hi[s])), signals, SWEEP_ETAS)
+            for s in shots]
+    rows = []
+    started = time.time()
+    with ProcessPoolExecutor(max_workers=args.workers) as pool:
+        for job, out in zip(jobs, pool.map(review_shot, jobs)):
+            mine = cover[cover.shot == job[0]][["t_start_ms", "t_end_ms"]].to_numpy()
+            got = np.array(out["cover"], dtype=float).reshape(-1, 2)
+            if got.shape != mine.shape or not np.allclose(got, mine):
+                raise SystemExit(f"{job[0]}: chunks differ from the review stage's")
+            rows += out["sweep"]
+            print(f"{job[0]} {len(out['sweep'])} spans over {len(SWEEP_ETAS)} settings "
+                  f"{time.time() - started:.0f}s", flush=True)
+    pd.DataFrame(rows, columns=["shot", "eta", "t_start_ms", "t_end_ms"]).to_csv(
+        work / "review_sweep.csv.gz", index=False)
 
 
 # ---------------------------------------------------------------- scoring
@@ -622,6 +675,83 @@ def sum_counts(rows: list[dict], keys: tuple[str, ...]) -> dict:
     return {k: sum(r[k] for r in rows) for k in keys}
 
 
+def sweep_areas(counts: np.ndarray) -> tuple[float, float]:
+    """AUROC and AUPRC of a threshold sweep: ``counts`` is (tp, fp, fn, tn) per setting,
+    strictest first, each setting's hits containing the stricter ones'.
+
+    The curve runs from (0, 0) through the settings to (1, 1), where every bin is
+    called (the bins no setting hits tie below them all), so the AUROC is the
+    trapezoid sum, the rank AUROC with ties averaged. The AUPRC is the average
+    precision, its last step at recall 1 with the precision of calling every bin.
+    """
+    tp, fp, fn, tn = np.asarray(counts, dtype=float).T
+    pos, neg = tp[0] + fn[0], fp[0] + tn[0]
+    tpr, fpr = np.r_[0.0, tp / pos, 1.0], np.r_[0.0, fp / neg, 1.0]
+    auroc = float(np.sum(np.diff(fpr) * (tpr[1:] + tpr[:-1]) / 2))
+    called = tp + fp
+    precision = np.divide(tp, called, out=np.zeros_like(tp), where=called > 0)
+    precision = np.r_[precision, pos / (pos + neg)]
+    recall = np.r_[0.0, tp / pos, 1.0]
+    return auroc, float(np.sum(np.diff(recall) * precision))
+
+
+def sweep_results(counts: np.ndarray, draws: list[np.ndarray]) -> dict:
+    """The eta sweep scored: ``counts`` is (shots, settings, 4), tp/fp/fn/tn per shot
+    at each ``SWEEP_ETAS``; ``draws`` are the shot draws of the bin scores'
+    intervals."""
+    strict = counts[:, ::-1]
+    total = strict.sum(axis=0)
+    auroc, auprc = sweep_areas(total)
+    boot = np.array([sweep_areas(strict[d].sum(axis=0)) for d in draws])
+    tp, fp, fn, tn = (total[:, k].astype(float) for k in range(4))
+    tpr, fpr = tp / (tp + fn), fp / (fp + tn)
+    precision = np.divide(tp, tp + fp, out=np.full_like(tp, np.nan), where=tp + fp > 0)
+    f1 = 2 * tp / (2 * tp + fp + fn)
+    etas = SWEEP_ETAS[::-1]
+    best = int(np.argmax(f1))
+    # The AUROC of any monotone curve through the settings lies within this of
+    # ``auroc``; the straight closing line to (1, 1) is most of it.
+    spread = np.sum(np.diff(np.r_[0.0, fpr, 1.0]) * np.diff(np.r_[0.0, tpr, 1.0])) / 2
+    curve = [
+        {"eta": float(etas[i]), **{k: int(total[i, n]) for n, k in enumerate(
+            ("tp", "fp", "fn", "tn"))}, "tpr": float(tpr[i]), "fpr": float(fpr[i]),
+         "precision": float(precision[i]), "f1": float(f1[i])}
+        for i in range(len(etas))]
+    return {
+        "etas": [float(e) for e in SWEEP_ETAS],
+        "positive_bins": int(tp[0] + fn[0]), "negative_bins": int(fp[0] + tn[0]),
+        "auroc": auroc, "auprc": auprc,
+        "ci95": {"auroc": ci(boot[:, 0]), "auprc": ci(boot[:, 1])},
+        # hits only grow as eta falls, in every shot: the curve is a score's curve
+        "nested": bool((np.diff(strict[:, :, :2], axis=1) >= 0).all()),
+        "reach": {"strictest": {k: curve[0][k] for k in ("eta", "tpr", "fpr")},
+                  "loosest": {k: curve[-1][k] for k in ("eta", "tpr", "fpr")},
+                  "auroc_any_monotone_curve": [auroc - spread, auroc + spread]},
+        "best_f1": {"eta": float(etas[best]), "f1": float(f1[best]),
+                    "note": "eta chosen on these bins, so optimistic"},
+        "curve": curve[::-1],
+    }
+
+
+def sweep_counts(sweep: pd.DataFrame, labels: pd.DataFrame, cover: pd.DataFrame,
+                 shots: list[int]) -> np.ndarray:
+    """(shots, settings, 4): bin counts tp/fp/fn/tn at each ``SWEEP_ETAS``."""
+    keys = np.round(SWEEP_ETAS, 6)
+    extra = set(np.round(sweep.eta.unique(), 6)) - set(keys)
+    if extra:
+        raise ValueError(f"sweep settings outside SWEEP_ETAS: {sorted(extra)[:5]}")
+    counts = np.zeros((len(shots), len(keys), 4), dtype=np.int64)
+    for i, shot in enumerate(shots):
+        sl, cv = labels[labels.shot == shot], cover[cover.shot == shot]
+        mine = sweep[sweep.shot == shot]
+        by_eta = dict(tuple(mine.groupby(mine.eta.round(6))))
+        for j, key in enumerate(keys):
+            spans = by_eta.get(key, mine.iloc[:0]).sort_values("t_start_ms")
+            c = bin_table(spans, cv, sl)
+            counts[i, j] = [c[k] for k in ("tp", "fp", "fn", "tn")]
+    return counts
+
+
 def review_results(work: Path) -> dict:
     labels = review_labels()
     elms = pd.read_csv(work / "review_elms.csv")
@@ -695,6 +825,13 @@ def review_results(work: Path) -> dict:
                 boots.append(dd["present"] / max(dd["present"] + dd["absent"], 1))
             res["detections"]["precision_ci95"] = ci(np.array(boots))
         out[variant] = res
+    if (work / "review_sweep.csv.gz").exists():
+        sweep = pd.read_csv(work / "review_sweep.csv.gz")
+        counts = sweep_counts(sweep, labels, cover, shots)
+        out["eta_sweep"] = sweep_results(counts, draws)
+        published = counts[:, int(np.argmin(np.abs(SWEEP_ETAS - ETA)))].sum(axis=0)
+        paper = [out["paper"]["counts"][k] for k in ("tp", "fp", "fn", "tn")]
+        out["eta_sweep"]["matches_published_setting"] = published.tolist() == paper
     return out
 
 
@@ -719,12 +856,17 @@ def run_evaluate(args: argparse.Namespace) -> None:
             r = record["review"][variant]
             print(variant, {k: round(r[k], 3) for k in ("precision", "recall", "f1", "false_alarm_bin_rate",
                                                        "crowd_bin_recall", "individual_span_recall")})
+        if "eta_sweep" in record["review"]:
+            s = record["review"]["eta_sweep"]
+            keys = ("auroc", "auprc", "ci95", "nested", "matches_published_setting")
+            print("eta sweep:", json.dumps({k: s[k] for k in (*keys, "reach")}))
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="command", required=True)
-    for name, fn in (("smith", run_smith), ("review", run_review), ("evaluate", run_evaluate)):
+    for name, fn in (("smith", run_smith), ("review", run_review), ("sweep", run_sweep),
+                     ("evaluate", run_evaluate)):
         p = sub.add_parser(name)
         p.add_argument("--work", type=Path, default=DEFAULT_WORK)
         p.add_argument("--out", type=Path, default=DEFAULT_OUT)
