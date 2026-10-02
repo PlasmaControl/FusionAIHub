@@ -25,6 +25,9 @@ phenomenon with none of its inputs yet is marked "coming".
   a test shot (`labeler.frames.gallery`);
 - `roster`: the interpreter figure, `fig_interpreter`: one roster shot's
   suggestions from the models, every phenomenon on it;
+- `label_figure`: the manuscript's `fig_interpreter` now: one cohort shot's
+  review-page rows with the catalog's labels (expert reviews and imported
+  tables, each with its tier), no model's output; its own CLI, not `build`;
 - `build`: every product into `$LABELER_ROOT/paper/`, and the copy into the
   manuscript's `figures/`;
 - `snapshot`: each file the build reads, read once and pinned by its sha256;
