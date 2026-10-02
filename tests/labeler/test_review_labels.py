@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from labeler.events.catalog.check import states
-from labeler.events.catalog.states import PHENOMENA, STATE_NAMES
+from labeler.events.catalog.states import NOT_OBSERVABLE, PHENOMENA, STATE_NAMES
 from labeler.events.interval_tables import validate_intervals
 from labeler.events.review import labels
 from labeler.events.review.labels import Label, normalise
@@ -217,19 +217,45 @@ def test_shot_labels_carries_source_saved_state_and_last_save(event_dir):
     assert view["last_save"] == entry
 
 
-def test_categories_leave_out_absent():
-    assert labels.categories("resistive_wall_mode") == {1: "present"}
-    assert labels.categories("alfven_eigenmode") == {
-        1: "present",
-        2: "uncertain",
-        3: "not_observable",
+def test_categories_leave_out_absent_and_not_observable():
+    assert labels.categories("resistive_wall_mode") == {
+        1: "present", 2: "uncertain", 4: "unassessed",
     }
+    assert labels.categories("alfven_eigenmode") == {1: "present", 2: "uncertain"}
     assert labels.categories("minimum_safety_factor") == {
         1: "low",
         2: "hybrid",
         3: "elevated",
         4: "high",
+        5: "uncertain",
     }
+    assert labels.categories("confinement") == {
+        1: "high", 2: "low", 3: "qh", 4: "wpqh", 5: "uncertain",
+    }
+
+
+def test_a_span_in_a_category_the_page_does_not_offer_is_a_gap(event_dir):
+    label = normalise(
+        (0, 2000), [(100, 250, 3), (400, 500, 1), (600, 700, 2)], iscrowd=[1, 0, 1]
+    )
+    shown = labels.offered("alfven_eigenmode", label)
+    assert shown.window == (0, 2000)
+    assert shown.intervals == ((400, 500, 1), (600, 700, 2))
+    assert shown.iscrowd == (0, 1)
+    assert labels.offered("alfven_eigenmode", shown) is shown
+    assert labels.offered("alfven_eigenmode", None) is None
+    labels.save(event_dir, 170815, label, source=None)
+    saved = labels.shot_labels(event_dir, 170815)["saved"]
+    assert saved["intervals"] == [[400, 500, 1], [600, 700, 2]]
+    assert saved["iscrowd"] == [0, 1]
+
+
+def test_a_not_observable_stretch_does_not_make_a_saved_label_differ(event_dir):
+    roster = pd.DataFrame({"shot": [170815], "tier": ["gold"]})
+    label = normalise((0, 2000), [(100, 300, 1), (1000, 1100, 3)])
+    labels.save(event_dir, 170815, label, source=None)
+    assert labels.queue(event_dir, roster)["shots"][0]["state"] == "confirmed"
+    assert labels.shot_labels(event_dir, 170815)["state"] == "confirmed"
 
 
 def test_saving_another_shot_preserves_existing_attributes(tmp_path):
@@ -263,19 +289,17 @@ def test_saving_another_shot_preserves_existing_attributes(tmp_path):
 
 
 @pytest.mark.parametrize("event", PHENOMENA)
-def test_review_menu_and_checker_accept_the_same_span_states(event):
+def test_review_menu_is_the_checkers_span_states_less_not_observable(event):
     accepted = set()
     for state in STATE_NAMES:
         frame = pd.DataFrame({"shot": [190001], "category": [state], "t_start": [0]})
         if not states(frame, category=event):
             accepted.add(state)
-    assert set(labels.categories(event)) == accepted - {0}
+    assert set(labels.categories(event)) == accepted - {0, NOT_OBSERVABLE}
 
 
-@pytest.mark.parametrize(
-    "event", [key for key, spec in PHENOMENA.items() if spec.observable_always]
-)
-def test_review_refuses_states_that_its_checker_always_rejects(tmp_path, event):
+@pytest.mark.parametrize("event", [e for e in PHENOMENA if e not in labels.FOLDED])
+def test_review_refuses_a_not_observable_span(tmp_path, event):
     from fastapi.testclient import TestClient
 
     from labeler.config import Paths

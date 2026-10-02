@@ -21,15 +21,20 @@ from . import (
     high_confinement_mode,
     minimum_safety_factor,
     neoclassical_tearing_mode,
+    poloidal_beta,
+    resistive_wall_mode,
     sawtooth_oscillation,
 )
 
 BUILDERS = {
+    "confinement": high_confinement_mode,
     "edge_localized_mode": edge_localized_mode,
     "fishbone": fishbone,
     "high_confinement_mode": high_confinement_mode,
     "minimum_safety_factor": minimum_safety_factor,
     "neoclassical_tearing_mode": neoclassical_tearing_mode,
+    "poloidal_beta": poloidal_beta,
+    "resistive_wall_mode": resistive_wall_mode,
     "sawtooth_oscillation": sawtooth_oscillation,
 }
 

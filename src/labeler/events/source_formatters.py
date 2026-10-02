@@ -167,6 +167,96 @@ def format_ae(path: Path, *, start_s=0.0, stop_s=2.0) -> pd.DataFrame:
     return format_ae_records(read_ae(path), start_s=start_s, stop_s=stop_s)
 
 
+AE_ECE_STEM = "ece_labels_2022"
+AE_ECE_COLUMNS = ["t1", "t2", "f1", "f2", "channel", "type"]
+AE_ECE_TYPES = ("TAE", "RSAE", "BAE", "EAE", "LFM")
+
+
+def read_ae_ece(folder: Path) -> list[tuple[int, pd.DataFrame]]:
+    """Read the per-shot ECE box files `labels_<shot>.txt`, one box per line.
+
+    A box is a time-frequency rectangle drawn on one ECE channel's spectrogram:
+    `t1, t2` in seconds, `f1, f2` in kHz, the radiometer `channel` and the mode
+    `type`. The files carry no author and no record of which stretch of the shot
+    was inspected.
+    """
+    records = []
+    for path in sorted(Path(folder).glob("labels_*.txt")):
+        match = re.fullmatch(r"labels_(\d+)\.txt", path.name)
+        boxes = pd.read_csv(path, skipinitialspace=True)
+        if match is None or list(boxes.columns) != AE_ECE_COLUMNS:
+            raise ValueError(f"{path}: expected columns {AE_ECE_COLUMNS}")
+        boxes["type"] = boxes["type"].astype(str).str.strip().str.upper()
+        unknown = sorted(set(boxes["type"]) - set(AE_ECE_TYPES))
+        if unknown:
+            raise ValueError(f"{path}: unknown mode types {unknown}")
+        numbers = boxes.drop(columns="type").apply(pd.to_numeric, errors="coerce")
+        valid = (
+            np.isfinite(numbers).all().all()
+            and (numbers.t2 > numbers.t1).all()
+            and (numbers.f2 > numbers.f1).all()
+            and (numbers.channel % 1 == 0).all()
+            and (numbers.channel >= 1).all()
+        )
+        if not valid:
+            raise ValueError(f"{path}: boxes need finite t1 < t2, f1 < f2, channel >= 1")
+        boxes = pd.concat([numbers, boxes["type"]], axis=1)
+        boxes["channel"] = boxes["channel"].astype(int)
+        records.append((int(match.group(1)), boxes))
+    if not records:
+        raise ValueError(f"{folder}: no labels_<shot>.txt files")
+    return records
+
+
+def format_ae_ece_records(records) -> pd.DataFrame:
+    """AE time spans of the ECE boxes: category 1 where any box but LFM covers.
+
+    The union runs over every ECE channel and every frequency; overlapping or
+    touching spans merge. LFM boxes are ignored, as in the CO2 labels. The
+    files do not say which stretch of the shot was inspected, so no stretch is
+    marked absent: everything outside a span stays unknown.
+    """
+    rows = []
+    for shot, boxes in records:
+        spans: list[list] = []
+        for box in boxes[boxes["type"] != "LFM"].sort_values(["t1", "t2"]).itertuples():
+            if spans and box.t1 <= spans[-1][1]:
+                span = spans[-1]
+                span[1] = max(span[1], box.t2)
+                span[2].add(box.type)
+                span[3] += 1
+            else:
+                spans.append([box.t1, box.t2, {box.type}, 1])
+        for start, stop, types, count in spans:
+            attrs = {"category": 1, "types": sorted(types), "n_boxes": count}
+            rows.append(_row(shot, start, stop, "ae", AE_ECE_STEM, attrs))
+    return _frame(rows)
+
+
+def format_ae_ece(folder: Path) -> pd.DataFrame:
+    return format_ae_ece_records(read_ae_ece(folder))
+
+
+def ae_ece_audit(records) -> dict:
+    """Counts that bound what the boxes can say, for the sidecar and the README."""
+    boxes = pd.concat([b.assign(shot=s) for s, b in records], ignore_index=True)
+    ae = boxes[boxes["type"] != "LFM"]
+    return {
+        "n_shots": len(records),
+        "n_boxes": len(boxes),
+        "boxes_by_type": {t: int((boxes["type"] == t).sum()) for t in AE_ECE_TYPES},
+        "duplicate_boxes": int(boxes.duplicated().sum()),
+        "t_range_s": [float(boxes.t1.min()), float(boxes.t2.max())],
+        "f_range_khz": [float(boxes.f1.min()), float(boxes.f2.max())],
+        "channel_range": [int(boxes.channel.min()), int(boxes.channel.max())],
+        "ae_boxes": len(ae),
+        "ae_boxes_starting_at_0.30_s": int((ae.t1 == 0.3).sum()),
+        "shots_without_ae_boxes": sorted(
+            {int(s) for s in boxes.shot} - {int(s) for s in ae.shot}
+        ),
+    }
+
+
 def read_elm(*paths: Path):
     """Merge original millisecond label traces, checking overlapping WPQH slices.
 
@@ -476,6 +566,15 @@ def tm_label_grids(h5_path=None, tar_path=None):
 
 
 def sha256(path: Path) -> str:
+    """A file's digest; a folder's is the digest of its `<digest>  <name>` lines."""
+    path = Path(path)
+    if path.is_dir():
+        listing = "".join(
+            f"{sha256(file)}  {file.name}\n"
+            for file in sorted(path.iterdir())
+            if file.is_file()
+        )
+        return hashlib.sha256(listing.encode()).hexdigest()
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(8 * 1024 * 1024), b""):
@@ -483,15 +582,50 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _made_from(stem: str, path: Path, entry: dict) -> dict:
+    record = {
+        "raw_file": entry["path"],
+        "sha256": sha256(path),
+        "source": stem,
+        "provenance": entry["provenance"],
+    }
+    if path.is_dir():
+        record["files"] = {
+            file.name: sha256(file) for file in sorted(path.iterdir()) if file.is_file()
+        }
+    return record
+
+
 def convert_category(
-    category: str, root: Path, *, output=None, ae_start_s=0.0, ae_stop_s=2.0
+    category: str,
+    root: Path,
+    *,
+    output=None,
+    ae_start_s=0.0,
+    ae_stop_s=2.0,
+    dataset=None,
 ) -> Path:
-    """Use events.yaml names and source paths; emit CSV and checksum metadata."""
+    """Use events.yaml names and source paths; emit CSV and checksum metadata.
+
+    A category may list several format datasets; `dataset` (an output stem or
+    file name) picks one, and None picks the first.
+    """
     root = Path(root).resolve()
     manifest = yaml.safe_load((root / "events.yaml").read_text())
-    spec = next(row for row in manifest["format_datasets"] if row["name"] == category)
+    spec = next(
+        (
+            row
+            for row in manifest["format_datasets"]
+            if row["name"] == category
+            and dataset in (None, Path(row["raw_path"]).stem, row["raw_path"])
+        ),
+        None,
+    )
+    if spec is None:
+        raise ValueError(f"No format dataset {dataset!r} listed for {category}")
     raw = {row["stem"]: row for row in manifest["raw_datasets"]}
     paths = {stem: root / raw[stem]["path"] for stem in spec["sources"]}
+    ae_ece = category == "alfven_eigenmode" and AE_ECE_STEM in paths
     confinement = None
     if category in {"high_confinement_mode", "low_confinement_mode"}:
         frame, grids, report = format_confinement(
@@ -504,6 +638,11 @@ def convert_category(
         frame = pd.concat(
             [format_rwm(path) for path in paths.values()], ignore_index=True
         )
+    elif category == "alfven_eigenmode" and ae_ece:
+        if len(paths) != 1:
+            raise ValueError("The ECE boxes are formatted on their own")
+        ece_records = read_ae_ece(paths[AE_ECE_STEM])
+        frame = format_ae_ece_records(ece_records)
     elif category == "alfven_eigenmode":
         frame = format_ae(
             paths["co2_detector_2021"], start_s=ae_start_s, stop_s=ae_stop_s
@@ -527,13 +666,7 @@ def convert_category(
     meta = {
         "schema_version": FORMAT_SCHEMA_VERSION,
         "made_from": [
-            {
-                "raw_file": raw[stem]["path"],
-                "sha256": sha256(path),
-                "source": stem,
-                "provenance": raw[stem]["provenance"],
-            }
-            for stem, path in paths.items()
+            _made_from(stem, path, raw[stem]) for stem, path in paths.items()
         ],
         "category": category,
         "categories": category_labels(category),
@@ -551,7 +684,26 @@ def convert_category(
             "source_reference": "wpqh_elm_hiro/hiro_scripts/data_processing.ipynb",
             "limitation": "Original labels simplify burst width to onset samples",
         }
-    if category == "alfven_eigenmode":
+    if ae_ece:
+        meta["label_mapping"] = (
+            "1 where any TAE/RSAE/BAE/EAE box of any ECE channel covers the time; "
+            "LFM boxes ignored; nothing is marked 0"
+        )
+        meta["time_mapping"] = {
+            "method": "union_of_box_time_spans",
+            "raw_time_units": "s",
+            "interval_bounds": "the spans as drawn, converted to ms",
+            "grid": "50 ms bins that a span overlaps are 1; all other bins unknown",
+            "unknown": "every time outside a span: the files do not say which "
+            "stretch of the shot was inspected",
+            "ignored_columns": ["f1", "f2", "channel"],
+            "excluded_class": "lfm",
+            "limitation": "Boxes are drawn on spectrograms plotted from 0 to about "
+            "2 s and most start at 0.30 s, so a mode already present before 0.30 s "
+            "is cut at 0.30 s; ECE channel and frequency are not carried over",
+        }
+        meta["source_audit"] = ae_ece_audit(ece_records)
+    elif category == "alfven_eigenmode":
         meta["label_mapping"] = (
             "1 if any BAE/EAE/RSAE/TAE is active; otherwise 0; LFM excluded"
         )
@@ -638,7 +790,9 @@ def convert_category(
                 )
             )
             origin = "Formatted binary intervals; positive overlap wins; unannotated bins unknown"
-        folder = out.parent / "shots"
+        # The ECE boxes' grids stay out of `shots/`, which holds the pinned CO2 grids.
+        shots_dir = "ece_shots" if ae_ece else "shots"
+        folder = out.parent / shots_dir
         folder.mkdir(parents=True, exist_ok=True)
         for shot, grid in grids.items():
             write_label_grid(
@@ -648,7 +802,7 @@ def convert_category(
                 categories=category_labels(category),
             )
         meta["per_shot_files"] = {
-            "path": "shots/<shot>.npz",
+            "path": f"{shots_dir}/<shot>.npz",
             "n_shots": len(grids),
             "sample_interval_ms": SAMPLE_MS,
             "time_coordinate": "left edge of half-open bin",
@@ -670,6 +824,11 @@ def main(category: str, default_root: Path, argv=None) -> int:
         help="Events directory containing events.yaml",
     )
     parser.add_argument("--output", type=Path, help="Override the output CSV path")
+    parser.add_argument(
+        "--dataset",
+        help="Format dataset (output stem or file name) when events.yaml lists "
+        "several for the category; default: the first",
+    )
     if category == "alfven_eigenmode":
         parser.add_argument("--start-s", type=float, default=0.0)
         parser.add_argument("--stop-s", type=float, default=2.0)
@@ -679,6 +838,7 @@ def main(category: str, default_root: Path, argv=None) -> int:
             category,
             args.root,
             output=args.output,
+            dataset=args.dataset,
             ae_start_s=getattr(args, "start_s", 0.0),
             ae_stop_s=getattr(args, "stop_s", 2.0),
         )

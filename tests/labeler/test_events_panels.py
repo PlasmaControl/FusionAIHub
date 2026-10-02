@@ -99,13 +99,18 @@ def test_an_unregistered_event_falls_back_to_the_generic_builder(monkeypatch):
 
 def test_the_registry_covers_the_events_with_bespoke_panels():
     assert set(registry.BUILDERS) == {
+        "confinement",
         "edge_localized_mode",
         "fishbone",
         "high_confinement_mode",
         "minimum_safety_factor",
         "neoclassical_tearing_mode",
+        "poloidal_beta",
+        "resistive_wall_mode",
         "sawtooth_oscillation",
     }
+    # The confinement review draws the H-mode panels, and shares its stores.
+    assert registry.BUILDERS["confinement"] is registry.BUILDERS["high_confinement_mode"]
 
 
 def test_fishbone_draws_b1_power_and_the_b1_x_b5_cross_phase(monkeypatch):
@@ -211,37 +216,42 @@ def test_sawtooth_draws_four_rows_of_four_adjacent_ece_channels(monkeypatch):
     built = registry.build("sawtooth_oscillation", 192238, t_range=window)
 
     assert [panel.title for panel in built] == [
-        "ECE Te, ch 20-23 (0.05 ms median)",
-        "ECE Te, ch 24-27 (0.05 ms median)",
-        "ECE Te, ch 28-31 (0.05 ms median)",
-        "ECE Te, ch 32-35 (0.05 ms median)",
+        "ECE Te, inversion side A, ch 20-23 (0.05 ms median; q=1 mapping unavailable)",
+        "ECE Te, inversion side A, ch 24-27 (0.05 ms median; q=1 mapping unavailable)",
+        "ECE Te, inversion side B, ch 28-31 (0.05 ms median; q=1 mapping unavailable)",
+        "ECE Te, inversion side B, ch 32-35 (0.05 ms median; q=1 mapping unavailable)",
         "Te, Thomson core: the 4 hottest chords",
         "SXR SX90RM1F, the 4 chords with the most crash-like drops",
+        "ECE inversion side comparison (q=1 mapping unavailable)",
     ]
     # Adjacency is the point - the crash shows as inner channels dropping
     # while outer ones rise, which only reads if the four overplotted
     # channels actually neighbour each other.
-    assert [row[2] for row in seen if row[1] == "ece"] == [
+    ece_calls = [row[2] for row in seen if row[1] == "ece"]
+    assert [channels for channels in ece_calls if len(channels) == 4] == [
         [20, 21, 22, 23],
         [24, 25, 26, 27],
         [28, 29, 30, 31],
         [32, 33, 34, 35],
     ]
-    assert [row[:2] for row in seen] == [(192238, "ece")] * 4 + [
+    assert [row[:2] for row in seen].count((192238, "ece")) == 4
+    assert [row[:2] for row in seen if row[1] != "ece"] == [
         (192238, "ts_core_temp"),
         (192238, "sxr"),
     ]
-    # The Te and SXR chords are chosen over the whole record, then cut to the view.
-    assert [row[3] for row in seen] == [window] * 4 + [None, None]
+    # The inversion baseline and Te/SXR selection use the whole record before
+    # cutting the rows to the view.
+    assert [row[3] for row in seen] == [None] * 6
     assert all(row[4] is None for row in seen)
-    assert all(panel.y.shape == (4, 500) for panel in built[:4])
+    assert all(panel.y.shape == (4, 301) for panel in built[:4])
+    assert all((panel.x[0], panel.x[-1]) == window for panel in built[:4])
     assert built[4].y.shape == built[5].y.shape == (4, 301)
     assert built[4].ylabel == "keV" and np.nanmax(built[4].y) == pytest.approx(0.001)
     assert all(panel.ylabel == "keV" for panel in built[:4])
     assert built[0].legend == ["ch 20", "ch 21", "ch 22", "ch 23"]
     # `raw_signal` is already in milliseconds; a second conversion here
     # would put the traces a thousand shots downstream of the shot.
-    np.testing.assert_allclose(built[0].x, 2000.0 + np.arange(500.0))
+    np.testing.assert_allclose(built[0].x, 2100.0 + np.arange(301.0))
 
 
 def test_minimum_safety_factor_draws_its_three_class_thresholds(monkeypatch, tmp_path):
@@ -258,7 +268,7 @@ def test_minimum_safety_factor_draws_its_three_class_thresholds(monkeypatch, tmp
         calls.append((path, name))
         return features[name]
 
-    monkeypatch.setattr(msf, "read_feature", fake_read_feature)
+    monkeypatch.setattr(msf.equilibrium, "read_feature", fake_read_feature)
     paths = _tmp_paths(tmp_path)
     built = registry.build("minimum_safety_factor", 1, paths=paths)
 

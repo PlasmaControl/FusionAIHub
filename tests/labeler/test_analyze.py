@@ -51,7 +51,7 @@ def test_load_config_rejects_an_unknown_model_and_a_malformed_label(tmp_path):
 
 def test_load_config_rejects_a_context_name_that_is_not_a_canonical_feature(wired, tmp_path):
     with pytest.raises(analyze.ConfigError, match="not a canonical feature"):
-        analyze.load_config(_cfg(tmp_path, context=["n1rms"]))
+        analyze.load_config(_cfg(tmp_path, context=["not_a_canonical_signal"]))
 
 
 def test_default_config_names_labels_the_roster_produces():

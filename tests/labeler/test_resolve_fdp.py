@@ -54,6 +54,41 @@ def _time_record(n=6, first=100.0, step=20.0):
     return {"data": t, "times": t, "units": {"data": "ms", "times": "ms"}}
 
 
+@pytest.mark.parametrize("source_units, factor", [("MVSE", 1e-3), ("mWb", 1e-3),
+                                               ("Wb", 1.0)])
+def test_diamagnetic_flux_keeps_native_clock_polarity_and_weber_units(
+    monkeypatch, source_units, factor,
+):
+    record = {
+        "data": np.array([0, -10, -9, -8, 0], dtype=float),
+        "times": np.array([-1, 0, 0.125, 0.25, 1]),
+        "units": {"data": source_units, "times": "ms"},
+    }
+    monkeypatch.setattr(rf, "_import_diagnosis", lambda: None)
+    calls = []
+
+    def fetch(point, shot):
+        calls.append((point, shot))
+        return record
+
+    monkeypatch.setattr(rf, "_fetch_ptdata", fetch)
+    arrays, missing = rf.resolve(11, ["diamagnetic_loop"], retries=0)
+    assert missing == {}
+    assert calls == [("DIAMAG3", 11)]
+    array = arrays["diamagnetic_loop"]
+    np.testing.assert_array_equal(array.x, record["times"] / 1000)
+    np.testing.assert_allclose(array.y[0], record["data"] * factor)
+    assert array.attrs["units_from_source"] == source_units
+    assert array.attrs["locator"] == "DIAMAG3"
+
+
+def test_diamagnetic_flux_rejects_voltage_instead_of_treating_it_as_flux(monkeypatch):
+    monkeypatch.setattr(rf, "_import_diagnosis", lambda: None)
+    monkeypatch.setattr(rf, "_fetch_ptdata", lambda *_: _scalar_record(units="V"))
+    arrays, missing = rf.resolve(11, ["diamagnetic_loop"], retries=0)
+    assert arrays == {} and missing == {"diamagnetic_loop": "ValueError"}
+
+
 # --- _to_rho_grid ----------------------------------------------------------
 
 

@@ -79,7 +79,13 @@ class FetchSpec:
     exprs: tuple[str, ...]
     via: str
     tree: str = ECE_TREE
+    #: A point that holds nothing on this shot is a NaN row, as in the corpus,
+    #: not a failed fetch (`fdp_signal`'s `missing_ok`).
+    missing_ok: bool = False
 
+
+#: The eight neutral beams, in the corpus `pinj` group's row order.
+NBI_BEAMS = ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
 
 #: Only groups listed here can be fetched. An unlisted group missing from
 #: both tiers raises rather than guessing at a point name: a wrong guess
@@ -96,6 +102,27 @@ FETCH_SPECS: dict[str, FetchSpec] = {
     # The divertor D-alpha photodiode the ELM review draws. Not a corpus group,
     # so every shot's comes from here; the point name is PTDATA's, like DENR0UF.
     "pcphd03": FetchSpec(exprs=("PCPHD03",), via="ptdata"),
+    # D-alpha FS01-FS08: the corpus `filterscopes` rows 0-7, all the review panels
+    # and `spans` read. MEASURED on corpus shot 187018 (2026-10-01): FS02-FS04 agree
+    # with the corpus after linear interpolation onto its 0.1 ms grid (median
+    # relative error 3e-4 to 1e-3), in ph/(sr cm2 s). This keeps the native 20 us
+    # sampling; the corpus group is its 10 kHz resampling. FS01 has no data on that
+    # shot and is a NaN row in both.
+    "filterscopes": FetchSpec(
+        exprs=tuple(rf"\SPECTROSCOPY::FS{i:02d}" for i in range(1, 9)),
+        via="mds",
+        tree="SPECTROSCOPY",
+        missing_ok=True,
+    ),
+    # Injected power per beam, in watts, rows in the corpus' beam order. MEASURED on
+    # shot 187018: every beam's maximum equals the corpus' to float32 rounding. The
+    # PTDATA `PINJ` total is not in the archive the fdp wrapper reaches.
+    "pinj": FetchSpec(
+        exprs=tuple(rf"\D3D::TOP.NB.NB{beam}:PINJ_{beam}" for beam in NBI_BEAMS),
+        via="mds",
+        tree="D3D",
+        missing_ok=True,
+    ),
 }
 
 #: One lock per resolved path, so two `write_group` calls for different
@@ -335,6 +362,7 @@ def _fetch_with_one_retry(shot, spec: FetchSpec, total: int) -> FeatureArray:
                 list(spec.exprs),
                 tree=spec.tree,
                 via=spec.via,
+                missing_ok=spec.missing_ok,
                 on_progress=lambda done, _n, expr: _report(
                     shot, done, total, f"fetching {expr}"
                 ),
@@ -395,9 +423,14 @@ def _fetch(shot, group, *, channels, t_range, paths) -> FeatureArray:
 
 
 #: The groups each review editor draws that the corpus lacks on some shots: CO2
-#: before about 197545, and PCPHD03 on every shot. Fetching needs fdp, so the
+#: before about 197545, and PCPHD03 on every shot. The `confinement` roster also
+#: holds curated shots with no corpus file at all, which need D-alpha and the
+#: beams too. The `alfven_eigenmode` roster holds ECE-labelled shots from before
+#: the corpus, so the page's CO2 comes from here too. Fetching needs fdp, so the
 #: login node fills the cache ahead of a review (`main`).
 EDITOR_FETCHES = {
+    "alfven_eigenmode": ("co2",),
+    "confinement": ("filterscopes", "pinj", "co2"),
     "edge_localized_mode": ("co2", "pcphd03"),
     "high_confinement_mode": ("co2",),
 }
@@ -437,6 +470,12 @@ def main(argv=None) -> int:
     parser.add_argument("--shots", type=int, nargs="+", help="default: the roster")
     parser.add_argument("--limit", type=int, default=0, help="only the first N")
     parser.add_argument(
+        "--groups",
+        nargs="+",
+        choices=sorted(FETCH_SPECS),
+        help="default: the groups the event's editor draws",
+    )
+    parser.add_argument(
         "--pace", type=float, default=1.0, help="seconds to wait after a fetch"
     )
     args = parser.parse_args(argv)
@@ -447,9 +486,10 @@ def main(argv=None) -> int:
     shots = args.shots or [int(shot) for shot in read_roster(roster).shot]
     if args.limit:
         shots = shots[: args.limit]
+    groups = tuple(args.groups) if args.groups else EDITOR_FETCHES[args.event]
     counts: Counter[str] = Counter()
     for shot in shots:
-        where = fill_cache(shot, EDITOR_FETCHES[args.event], paths)
+        where = fill_cache(shot, groups, paths)
         print(json.dumps({"shot": shot, **where}), flush=True)
         counts.update(value.split(":")[0] for value in where.values())
         if "fetched" in where.values():

@@ -11,6 +11,10 @@ PCPHD03 is left out where it cannot be read, or where it is flat over the
 plasma (`flat`); the filterscope row's title says which. Both traces are
 clipped to their robust range over the plasma window (`_shared.robust_clip`),
 so a spike at the end of the discharge does not set the row's scale.
+
+The optional energy rows use the diamagnetic loop after a quiet-window drift
+fit and EFIT WMHD scale calibration. D-alpha-matched loop drops give provisional
+ELM losses in kJ and percent of pre-ELM energy, with full calibration provenance.
 """
 
 from __future__ import annotations
@@ -19,7 +23,9 @@ import logging
 
 import numpy as np
 
-from .. import spans
+from ...config import Paths
+from ...features.store import FeatureArray
+from .. import elm_energy, equilibrium, spans
 from ..raw import FetchDisabledError, raw_signal
 from ..verify import Panel
 from ._shared import (
@@ -134,8 +140,44 @@ def dalpha_panels(shot, *, t_range=None, paths=None) -> list[Panel]:
     return pcphd03 + fs
 
 
+def energy_panels(shot, *, t_range=None, paths=None):
+    """Calibrated native loop energy and provisional D-alpha-matched loss sizes."""
+    paths = Paths.from_env() if paths is None else paths
+
+    def build():
+        analysis = elm_energy.load(int(shot), paths)
+        x = analysis.time_ms
+        start, end = analysis.calibration.calibration_window_ms
+        measured = (x >= start) & (x <= end) & np.isfinite(analysis.energy_j)
+        energy = np.where(measured, analysis.energy_j, np.nan)
+        loss = np.where(measured, 0.0, np.nan)
+        fraction = loss.copy()
+        for event in analysis.losses:
+            index = np.searchsorted(x, event.loop_time_ms)
+            loss[index], fraction[index] = event.loss_j / 1000, event.fraction * 100
+        specs = (
+            ("Stored energy, diamagnetic loop (drift-corrected; EFIT-scaled)",
+             energy, "J"),
+            ("ELM energy loss, D-alpha matched (provisional)", loss, "kJ"),
+            ("ELM energy loss / pre-ELM energy (provisional)", fraction, "%"),
+        )
+        built = []
+        for title, values, units in specs:
+            time, y = equilibrium.plot_arrays(FeatureArray(x / 1000, values[None]))
+            if t_range is not None:
+                keep = (time >= t_range[0]) & (time <= t_range[1])
+                time, y = time[keep], y[:, keep]
+            built.append(Panel(title=title, x=time, y=y, ylabel=units,
+                               metadata=analysis.metadata() if not built else None))
+        return built
+
+    return optional("diamagnetic energy", shot, build)
+
+
 def panels(shot, *, t_range=None, paths=None):
     kwargs = {"t_range": t_range, "paths": paths}
-    return optional("CO2", shot, lambda: co2_panel(shot, **kwargs)) + dalpha_panels(
-        shot, **kwargs
+    return (
+        optional("CO2", shot, lambda: co2_panel(shot, **kwargs))
+        + dalpha_panels(shot, **kwargs)
+        + energy_panels(shot, **kwargs)
     )

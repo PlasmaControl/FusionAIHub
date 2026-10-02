@@ -17,6 +17,7 @@ from labeler.events.catalog.states import (
 
 
 def test_four_states_and_six_phenomena():
+    assert PHENOMENA["neoclassical_tearing_mode"].name == "TM"
     assert STATE_NAMES == {
         0: "absent",
         1: "present",

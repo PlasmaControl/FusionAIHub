@@ -1,51 +1,85 @@
 # Alfven Eigenmode
 
 ## Description
-Alfvén eigenmodes (AEs) are weakly damped shear-Alfvén waves and are driven unstable by fast ions (beam ions, fusion alphas, ICRF tails) whose velocity resonates with the wave. The Alfvén speed is
+Alfvén eigenmodes (AEs) are driven unstable by fast ions (beam ions, fusion alphas, ICRF tails) whose velocity resonates with the wave. The Alfvén speed is
 
 $$v_A = \frac{B}{\sqrt{\mu_0 \rho}}$$
 
-and the toroidicity-induced gap mode (TAE) sits near
-
-$$f_{TAE} = \frac{v_A}{4\pi qR}$$
-
-which on DIII-D is roughly 80-250 kHz. Sub-families are named by the gap or the profile feature that hosts them: TAE (toroidicity), EAE (ellipticity), BAE (beta-induced, tens of kHz), RSAE (reversed-shear, chirps up as q_min falls). AEs redistribute and eject fast ions, so they show up as neutron-rate deficits and beam-ion losses.
+Sub-families are named by the gap or the profile feature that hosts them: TAE (toroidicity), EAE (ellipticity), BAE (beta-induced, tens of kHz), RSAE (reversed-shear, chirps up as q_min falls). AEs redistribute and eject fast ions, so they show up as neutron-rate deficits and beam-ion losses.
 
 First predicted from ideal MHD gap theory (Cheng, Chen and Chance 1985) and observed on TFTR and DIII-D in 1991.
 
 Typically found via magnetics (Mirnov / MHR probes), CO2 interferometer chords, and ECE as coherent clusters around the 80-250 kHz band of a spectrogram.
 
-## Method
-1. Raw (`raw/co2_250_detector.pkl`) are collpased (`rase`,`tae`,`bae`,`eae`) into (`raw/co2_250_detector_combine.pkl`).
-2. Adjusted labels for proper coverage (`raw/co2_250_detector_adjust.pkl`).
-3. CO2 spectrograms for `r0`,`v0`,`v1`,`v2` made with decimation to 500kHz, stft `window=512,hop=128,taper=hann`.
-4. Train classifier and create labels
-6. If label appears on any channel, mark positive for AE.
+## Data Provenance
+### Dataset 1
 
-## Provenance
-Obtained using reference dataset from William W Heidbrink: 180 hand-annotated DIII-D shots (170659-178879) with five classes (`lfm`, `bae`, `eae`, `rsae`, `tae`) in `raw/co2_250_detector.pkl`.
+**Dataset File(s)**: `co2_250_detector.pkl`
+
+**Author**: William W Heidbrink
+
+**Description**: 180 hand-annotated event detection DIII-D shots (170659-178879) with five classes (`lfm`, `bae`, `eae`, `rsae`, `tae`)
+
+**Publications**:
+
+### Dataset 2
+
+**Dataset File(s)**: `ece_all_labels/labels_<shot>.txt` (26 files)
+
+**Author**:
+
+**Description**: 26 hand-annotated DIII-D shots (132240-178872) on ECE spectrograms, not CO2: 1,330 time-frequency boxes (`tae` 441, `rsae` 415, `bae` 329, `lfm` 143, `eae` 2) on ECE channels 1-40, 0-250 kHz, 0.21-1.9 s. Copied unchanged from `/projects/EKOLEMEN/ece_cnn/all_labels/` (files dated 2022-01-24; the annotator is not recorded in them). 13 of the 26 shots are also in Dataset 1. Boxes only: a time with no box is unknown, not absent.
+
+**Publications**:
 
 ## Models
-**stable**: d3d_ae_activity_seldnet | 2026_09_06
+**stable**: d3d_ae_activity_seldnet
 
-**latest**: d3d_ae_activity_seldnet | 2026_09_06
+**latest**: d3d_ae_activity_seldnet
 
 **all**:
-- d3d_ae_activity_seldnet | 2026_09_06 (ours; `threeway_sce` run, SLURM 2924037)
+- d3d_ae_activity_seldnet | 2026_09_06 | AUROC: 0.982 | AUPRC: 0.992 | F1: 0.944
+- d3d_ae_co2_rcn | 2022_10_05 | AUROC: 0.836 | AUPRC: 0.918 | F1: 0.774
+- d3d_ae_co2_lstm | 2022_10_04 | AUROC: 0.714 | AUPRC: 0.842 | F1: 0.715
+- d3d_ae_co2_rcn_xpow | 2023_03_03 | AUROC: 0.767 | AUPRC: 0.886 | F1: 0.725
+- d3d_ae_co2_lstm_xpow | 2022_11_21 | AUROC: 0.699 | AUPRC: 0.825 | F1: 0.700
+
+Scores are against the owner-reviewed labels, on 10 ms frames of the 19 validation shots the older detectors did not train on (SELDnet at 0.5, RCN at 0.10, LSTM at 0.15; each chord or chord pair a sample). On all 60 validation shots the SELDnet scores AUROC 0.980, AUPRC 0.992, F1 0.951. Against the raw Heidbrink annotation, which under-counts, the order reverses: AUROC 0.68 for the SELDnet and 0.86 to 0.90 for the older detectors. Protocol, caveats and the older detectors' files: [ae_baselines_benchmark.md](../../../docs/labeler/ae_baselines_benchmark.md).
+
+## Inputs
+**d3d_ae_activity_seldnet**:
+- `CO2` interferometer chords `R0`, `V1`, `V2`, `V3` (4 ch) 
+
+**d3d_ae_co2_lstm**, **d3d_ae_co2_rcn** (Alvin Garcia, UCI):
+- `CO2` interferometer chord `R0`, `V1`, `V2` or `V3`, one at a time, 20-250 kHz spectrogram
+
+**d3d_ae_co2_lstm_xpow**, **d3d_ae_co2_rcn_xpow**:
+- `CO2` cross-power of a chord pair (10 pairs of `R0`, `V1`, `V2`, `V3`), 20-250 kHz
+
+**ae_xpower (round three)**:
+- `CO2 R0×V1`, `CO2 R0×V2`, `CO2 R0×V3` cross-power (from CO2 chords `R0`, `V1`, `V2`, `V3`)
+
+**ae_seg (round three)**:
+- `CO2 R0×V1`, `CO2 R0×V2`, `CO2 R0×V3` cross-power (from CO2 chords `R0`, `V1`, `V2`, `V3`)
+
+## Method
+1. Raw labels are obtained from `raw/co2_250_detector.pkl`
+1. The labels `rase`,`tae`,`bae`,`eae` are collapsed into a single `ae` label and saved to `raw/co2_250_detector_combine.pkl`
+1. Labels are adjusted for proper coverage and saved to `raw/co2_250_detector_adjust.pkl`
+1. CO2 spectrograms for `r0`,`v0`,`v1`,`v2` made with decimation to 500kHz, stft `window=512,hop=128,taper=hann`.
+1. Train classifier and create downstream labels
+1. Human supervision re-adjusts labels
+
+Dataset 2 (ECE boxes): the `tae`, `rsae`, `bae` and `eae` boxes of every ECE channel are collapsed into one `ae` span per shot, the union of their time spans (`lfm` ignored), written to `format/alfven_eigenmode_ece_format_2026_v1.csv` with 50 ms grids in `format/ece_shots/`. Nothing is marked absent, and ECE channel and frequency are not kept. Most boxes start at exactly 0.30 s, so a mode already present earlier is cut there. It is a second table beside Dataset 1's; the pinned CO2 table `format/alfven_eigenmode_format_2026_v1.csv` is unchanged.
+
+Benchmark: the older CO2 detectors, Alvin Garcia's LSTM and echo-state network (RCN), are scored beside the SELDnet from their saved predictions, on the 19 validation shots none of them trained on, against both the reviewed labels and the raw annotation (`scripts/labeler/ae_baselines_evaluate.py`; protocol and caveats in [ae_baselines_benchmark.md](../../../docs/labeler/ae_baselines_benchmark.md)).
 
 ## Alias
-- alfven eigenmode
-- alfvén eigenmode
-- ae
-- ae mode
-- tae
-- rsae
-- bae
-- eae
+alfven eigenmode, alfvén eigenmode, ae, ae mode, tae, rsae, bae, eae
 
 ## Future Implementations
 - Seperate RSAE, TAE, BAE, EAE, LFM
-- Include rho (location) using ECE
+- Include radial location
 
 ## Reference
 - W. W. Heidbrink, "Basic physics of Alfvén instabilities driven by energetic
@@ -56,72 +90,3 @@ Obtained using reference dataset from William W Heidbrink: 180 hand-annotated DI
 ## Contact
 - **Alvin Garcia**: alvin [dot] garcia [at] uci [dot] edu
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: AE Mode; lexicon id: `ae`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-pixi run -e labelmaker python data/events/alfven_eigenmode/formatter.py
-```
-
-Raw sources and the combined output are registered in `../events.yaml`.
-
-## Local formatter and example
-
-[`formatter.py`](formatter.py) reads `../events.yaml` and writes a CSV containing
-only `shot,category,t_start,t_end,confidence` under `format/`. Source provenance and
-conversion assumptions are stored in its `.meta.json` sidecar. Raw files stay
-unchanged. The shared conversion implementation is in
-`src/labeler/events/source_formatters.py`.
-
-[`example.ipynb`](example.ipynb) opens the saved per-shot sparse labels and plots the rho–time grid.
-It also plots the original annotations through a shared helper and supports
-available `extend_*` datasets. For these sources
-without radial localization, each time label is broadcast across 20 rho bins.
-Use the labelmaker Python environment to rerun it. See the [storage guide](../README.md)
-for the sparse per-shot grid format used by extensions.
-
-The original pickle has no timestamps. Its time mapping is explicitly reconstructed
-as uniform bins over the upstream reader's 0–2 s window, configurable with
-`--start-s` and `--stop-s`. The four AE classes are combined into binary presence/absence, excluding LFM.
-Any positive sample makes its 50 ms bin category 1; other annotated bins are 0. This is not a recovered STFT time axis.
-
-
-## Category
-
-The CSV `category` column and grid values use integer IDs. The same mapping
-is recorded in each JSON sidecar under `categories`.
-
-| ID | Label |
-| --- | --- |
-| 0 | Absent |
-| 1 | Present |
-
-Unknown or unclassified grid cells are stored separately from 0. A dataset
-containing only positive annotations does not establish absence elsewhere.
-Sampled grids use 50 ms bins and 20 rho bins.
-
-Per-shot labels are saved in `format/shots/<shot>.npz`. Each file includes
-time and rho coordinates, sparse integer values, unknown-cell coordinates,
-and the category ID-to-name mapping. The formatted plot reads these saved files. A separate original-label plot
-reads the source annotations; neither plot reruns the formatter.
-
-The notebook's last cell plots the category's original annotations alongside
-the saved 50 ms grid. Original-label plots require the source files; the
-formatted and extended plots continue to read only their selected NPZ files.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

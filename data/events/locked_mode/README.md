@@ -1,12 +1,39 @@
 # Locked Mode
 
+## Description
 No description, method, provenance or table has been written for this
 category yet. The scope inventory row is in
 [`discrete_labels.csv`](../discrete_labels.csv).
 
-## Verification
+## Data Provenance
+### Dataset 1
 
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.
+**Dataset File(s)**:
+
+**Author**:
+
+**Description**:
+
+**Publications**:
+
+## Models
+**stable**: none
+
+**latest**: none
+
+**all**:
+- none
+
+## Inputs
+- none yet (no detector or model)
+
+## Method
+
+## Alias
+
+## Future Implementations
+
+## Reference
+
+## Contact
+- **Nathaniel Chen**: nathaniel [at] princeton [dot] edu

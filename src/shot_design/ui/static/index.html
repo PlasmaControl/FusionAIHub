@@ -31,7 +31,8 @@
         <textarea id="assistant-prompt" rows="4" maxlength="4000" required placeholder="Design a shot for tearing mode control using ECH, with a steady plasma and moderate NBI heating."></textarea>
         <div class="assistant-form-actions">
           <span class="small muted">Enter to design · Shift+Enter for a new line</span>
-          <label>Model<select id="assistant-model"><option value="quality">Quality</option><option value="fast">Fast</option></select></label>
+          <label>Model<select id="assistant-model"><option value="quality">Quality</option><option value="fast">Fast</option><option value="gemma">Gemma (local)</option></select></label>
+          <button id="assistant-cancel" type="button" hidden>Cancel</button>
           <button id="assistant-submit" class="primary" type="submit">Design shot</button>
         </div>
       </form>

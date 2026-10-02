@@ -89,6 +89,8 @@ platforms = ["linux-64"]
 # torch binds the system libstdc++, which lacks GLIBCXX_3.4.29; the env's own copy goes first.
 [tool.pixi.feature.fdp.target.unix.activation.env]
 LD_LIBRARY_PATH = "$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+# Use existing FDP credentials; never start Pelican OAuth from a data fetch.
+FDP_NO_AUTO_LOGIN = "1"
 
 [tool.pixi.feature.fdp.dependencies]
 # The working fetch env's versions; `fdp` is required, toksearch_d3d imports it.
@@ -103,7 +105,9 @@ platforms = ["linux-64"]
 label = { cmd = "bash scripts/labeler/label_shot.sh", description = "Every labeler model on the given shots: labels, a summary and a figure per shot" }
 labeler-verify = { cmd = "fdp run python -m labeler.events.ui", description = "The label review page, under the fdp wrapper so any shot can be fetched" }
 labeler-spectrograms = { cmd = "python -m labeler.events.review.build", description = "Build the review page's row store: --event EVENT [--shots ...] [--force]" }
-labeler-test = { cmd = "python -m pytest tests/labeler -q -W error", description = "The labeler suite, in the checkout that holds this manifest" }
+# pytest's temporary files go to GPFS scratch, not the head node's shared /tmp, and each
+# test's folder is removed when the test ends.
+labeler-test = { cmd = "python -m pytest tests/labeler -q -W error -o tmp_path_retention_policy=none", env = { PYTEST_DEBUG_TEMPROOT = "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/pytest" }, description = "The labeler suite, in the checkout that holds this manifest" }
 
 [tool.pixi.feature.labelmaker.dependencies]
 # pandas 3 writes parquet only through pyarrow.

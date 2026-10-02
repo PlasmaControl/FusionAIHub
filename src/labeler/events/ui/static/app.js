@@ -42,21 +42,45 @@ function runs(cells) {
   return out;
 }
 
-/** The server's `normalise`: snap to whole ms, grow the window over every span, merge
- * and clip; later spans paint over earlier ones. Null where the server would refuse. */
-function normalise(window, intervals, known) {
+/** The server's `normalise`: snap and clip, with later annotations painting only
+ * their own lane. Individual/unspecified spans overlap crowds. */
+function normalise(window, intervals, known, iscrowd) {
   let lo = ms(window[0]);
   let hi = ms(window[1]);
+  if (iscrowd != null && (iscrowd.length !== intervals.length ||
+    iscrowd.some((flag) => flag != null && ![0, 1, false, true].includes(flag)))) return null;
   const spans = [];
-  for (const [a0, b0, c0] of intervals) {
+  const flags = [];
+  for (let i = 0; i < intervals.length; i++) {
+    const [a0, b0, c0] = intervals[i];
     const [a, b, c] = [ms(a0), ms(b0), Math.trunc(c0)];
     if (b < a || (known && c && !known.includes(c))) return null;
-    if (b > a) spans.push([a, b, c]);
+    if (b > a) {
+      spans.push([a, b, c]);
+      flags.push(iscrowd?.[i] == null ? null : Number(iscrowd[i]));
+    }
   }
   for (const [a, b, c] of spans) {
     if (c) [lo, hi] = [Math.min(lo, a), Math.max(hi, b)];
   }
   if (!(hi - lo > 0 && hi - lo <= LONGEST_WINDOW_MS)) return null;
+  if (flags.some((flag) => flag != null)) {
+    const annotated = [false, true].flatMap((crowd) => {
+      const ids = spans.flatMap(([a, b, c], i) =>
+        (c || flags[i] != null) && (flags[i] === 1) !== crowd
+          ? [] : [[a, b, c ? i + 1 : 0]]);
+      return runs(paint([lo, hi], ids)).filter(([, , id]) => id);
+    }).sort((a, b) => a[0] - b[0] || a[1] - b[1] ||
+      Number(flags[a[2] - 1] === 1) - Number(flags[b[2] - 1] === 1));
+    const keptFlags = annotated.map(([, , id]) => flags[id - 1]);
+    const keptSpans = annotated.map(([a, b, id]) => [lo + a, lo + b, spans[id - 1][2]]);
+    if (keptFlags.some((flag) => flag != null)) return {
+      window: [lo, hi],
+      intervals: keptSpans,
+      iscrowd: keptFlags,
+    };
+    spans.splice(0, spans.length, ...keptSpans);
+  }
   const painted = runs(paint([lo, hi], spans)).filter(([, , c]) => c);
   return { window: [lo, hi], intervals: painted.map(([a, b, c]) => [lo + a, lo + b, c]) };
 }
@@ -66,13 +90,19 @@ function diffRuns(a, b) {
   const lo = Math.min(a.window[0], b.window[0]);
   const hi = Math.max(a.window[1], b.window[1]);
   const cells = (label) => {
-    const out = new Int32Array(hi - lo).fill(-1);
-    out.fill(0, label.window[0] - lo, label.window[1] - lo);
-    for (const [s, e, c] of label.intervals) out.fill(c, s - lo, e - lo);
+    const out = [0, 1].map(() => {
+      const lane = new Int32Array(hi - lo).fill(-1);
+      lane.fill(0, label.window[0] - lo, label.window[1] - lo);
+      return lane;
+    });
+    label.intervals.forEach(([s, e, c], i) => {
+      const flag = label.iscrowd?.[i];
+      out[flag === 1 ? 1 : 0].fill(c * 2 + (flag === 0 ? 1 : 0), s - lo, e - lo);
+    });
     return out;
   };
   const [x, y] = [cells(a), cells(b)];
-  return runs(x.map((v, i) => (v === y[i] ? 0 : 1)))
+  return runs(x[0].map((v, i) => (v === y[0][i] && x[1][i] === y[1][i] ? 0 : 1)))
     .filter(([, , differs]) => differs)
     .map(([s, e]) => [lo + s, lo + e]);
 }
@@ -95,22 +125,37 @@ function niceStep(span, n) {
 
 /** What a press at (x, y) on the label track grabs: a window edge (only in the foot
  * strip), a span edge, a span, or nothing. `px` maps ms to the track's px. */
-function hitTest(label, x, y, height, px) {
+function hitTest(label, x, y, height, px, lane) {
   if (y >= height - HANDLE_BAND) {
     for (const edge of [0, 1]) {
       if (Math.abs(x - px(label.window[edge])) <= GRAB) return { kind: "window", edge };
     }
   }
   const spans = label.intervals;
+  const matches = (i) => lane == null || (label.iscrowd?.[i] === 1 ? 1 : 0) === lane;
   for (let index = spans.length - 1; index >= 0; index--) {
+    if (!matches(index)) continue;
     for (const edge of [0, 1]) {
       if (Math.abs(x - px(spans[index][edge])) <= GRAB) return { kind: "edge", index, edge };
     }
   }
   for (let index = spans.length - 1; index >= 0; index--) {
+    if (!matches(index)) continue;
     if (x > px(spans[index][0]) && x < px(spans[index][1])) return { kind: "move", index };
   }
   return { kind: "new" };
+}
+
+
+/** A client using one timeline would silently remove the overlap. */
+function hasOverlaps(label) {
+  if (!label) return false;
+  let end = label.window[0];
+  for (const [a, b] of [...label.intervals].sort((a, b) => a[0] - b[0] || a[1] - b[1])) {
+    if (a < end) return true;
+    end = Math.max(end, b);
+  }
+  return false;
 }
 
 /** The pseudo-mask region with a pixel nearest bin `j`, column `k`, at most `tj` bins
@@ -164,7 +209,9 @@ const GUTTER = 96; // px left of every plot: a row's title and units, then its y
 const RIGHT = 12;
 const IMAGE_H = 150;
 const TRACE_H = 110;
-const CATEGORY_COLOURS = { 2: "#e69f00", 3: "#cc79a7", 4: "#56b4e9" }; // 1 is --label
+const CATEGORY_COLOURS = {
+  2: "#e69f00", 3: "#cc79a7", 4: "#56b4e9", 5: "#d55e00",
+}; // 1 is --label; q_min and confinement keep 1-4 as their bands, 5 is uncertain.
 const TRACE_COLOURS = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#e69f00", "#56b4e9"];
 const FONT = "11px system-ui, sans-serif";
 const GUTTER_LINE = 14; // px between the lines of a row's title and units
@@ -174,6 +221,7 @@ const S = {
   event: null,
   categories: {},
   category: 1,
+  crowd: 0, // resolution for new annotations: 0 individual, 1 group, null unspecified
   queue: [],
   queueEvent: null, // whose queue has arrived; null while loading
   saveCount: 0,
@@ -307,7 +355,7 @@ const dirty = () => Boolean(S.meta) && !same(S.label, baseline());
 function draft(shot) {
   try {
     const label = JSON.parse(stored(draftKey(shot)));
-    return label && normalise(label.window, label.intervals, known());
+    return label && normalise(label.window, label.intervals, known(), label.iscrowd);
   } catch {
     return null;
   }
@@ -319,10 +367,10 @@ function keepForUndo(label) {
 }
 
 /** Take a new label if the server would accept it. */
-function edit(window, intervals) {
+function edit(window, intervals, iscrowd) {
   if (stillOpening()) return;
   if (!S.meta) return;
-  const next = normalise(window, intervals, known());
+  const next = normalise(window, intervals, known(), iscrowd);
   if (!next) return;
   keepForUndo(S.label);
   S.label = next;
@@ -341,8 +389,9 @@ function touch() {
 }
 
 /** Select the span holding `t`, if any. */
-function selectAt(t) {
-  S.selected = S.label.intervals.findIndex(([a, b]) => a <= t && t <= b);
+function selectAt(t, flag) {
+  S.selected = S.label.intervals.findIndex(([a, b], i) => a <= t && t <= b &&
+    (flag === undefined || (S.label.iscrowd?.[i] ?? null) === flag));
 }
 
 function undo() {
@@ -358,15 +407,16 @@ function revert() {
   if (!S.meta) return;
   const source = S.meta.source || emptyLabel();
   S.selected = -1;
-  edit(source.window, source.intervals);
+  edit(source.window, source.intervals, source.iscrowd);
 }
 
 function removeSelected() {
   if (stillOpening()) return;
   if (S.selected < 0) return;
   const kept = S.label.intervals.filter((_, i) => i !== S.selected);
+  const flags = S.label.iscrowd?.filter((_, i) => i !== S.selected);
   S.selected = -1;
-  edit(S.label.window, kept);
+  edit(S.label.window, kept, flags);
 }
 
 function setCategory(c) {
@@ -376,8 +426,38 @@ function setCategory(c) {
   renderSwatches();
   if (S.selected < 0) return;
   const [a, b] = S.label.intervals[S.selected];
-  edit(S.label.window, S.label.intervals.map((s, i) => (i === S.selected ? [a, b, c] : s)));
-  selectAt((a + b) / 2);
+  const flag = S.label.iscrowd?.[S.selected] ?? null;
+  edit(S.label.window, S.label.intervals.map((s, i) => (i === S.selected ? [a, b, c] : s)),
+    S.label.iscrowd);
+  selectAt((a + b) / 2, flag);
+}
+
+/** Resolution is independent of the event category. Legacy labels stay unspecified. */
+function setCrowd(value) {
+  if (stillOpening() || S.api < 7 || !S.meta) return;
+  const flag = value === "unspecified" ? null : Number(value);
+  if (flag != null && ![0, 1].includes(flag)) return;
+  S.crowd = flag;
+  if (S.selected < 0) return renderResolution();
+  const spans = S.label.intervals.filter((_, i) => i !== S.selected);
+  const flags = S.label.intervals.flatMap((_, i) => i === S.selected ? [] : [S.label.iscrowd?.[i] ?? null]);
+  const moved = S.label.intervals[S.selected];
+  spans.push(moved);
+  flags.push(flag);
+  edit(S.label.window, spans, flags);
+  selectAt((moved[0] + moved[1]) / 2, flag);
+  render();
+}
+
+function renderResolution() {
+  $("resolution-control").hidden = S.api < 7;
+  $("crowd-lane").hidden = S.api < 8;
+  $("individual-lane-name").textContent = S.api >= 8 ? "Individual" : "Label";
+  const selected = S.selected >= 0 && S.label?.intervals[S.selected];
+  $("resolution-label").textContent = selected ? "Selected span" : "New spans";
+  const flag = selected ? S.label.iscrowd?.[S.selected] ?? null : S.crowd;
+  $("resolution").value = flag == null ? "unspecified" : String(flag);
+  $("resolution").disabled = !S.meta || pendingNavigation();
 }
 
 function contrast(delta) {
@@ -412,10 +492,11 @@ async function boot() {
   $("show-versions").hidden = S.api < 2;
   $("reviewer-name").hidden = S.api < 2 || S.api >= 5;
   $("reviewer").hidden = S.api < 5;
-  $("stale").hidden = S.api >= 5;
+  $("stale").hidden = S.api >= 7;
   $("stale").textContent = S.api < 2
     ? "Restart the server for names and history"
-    : "Restart the server for the list of names";
+    : S.api < 5 ? "Restart the server for the list of names"
+    : "Restart the server for individual/group annotations";
   if (S.api >= 5) {
     showName();
     if (!S.picked) chooseName(); // not awaited: the shot loads behind the list
@@ -424,7 +505,8 @@ async function boot() {
     S.events = (await (await api("/api/events")).json()).events;
     $("event").replaceChildren(
       ...S.events.map((row) => {
-        const option = new Option(row.error ? `${row.event} (broken)` : row.event, row.event);
+        const name = row.display_name || row.event;
+        const option = new Option(row.error ? `${name} (broken)` : name, row.event);
         option.disabled = Boolean(row.error);
         option.title = row.error || "";
         return option;
@@ -483,6 +565,7 @@ async function openEvent(event, shot) {
   S.event = event;
   S.categories = S.events.find((row) => row.event === event).categories;
   S.category = known()[0] || 1;
+  S.crowd = ["edge_localized_mode", "sawtooth_oscillation"].includes(event) ? 1 : 0;
   $("event").value = event;
   store("labeler:event", event);
   renderSwatches();
@@ -566,7 +649,7 @@ function arrive() {
   S.opened = { ticket: S.ticket, event: S.event, shot: S.shot };
   busy(null);
   $("cursor").hidden ||= !S.meta;
-  for (const id of ["save-next", "revert", "show-versions"]) $(id).disabled = !S.meta;
+  for (const id of ["save", "revert", "show-versions"]) $(id).disabled = !S.meta;
   history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
@@ -663,14 +746,23 @@ function unpack(buffer, n) {
 async function save(next) {
   if (stillOpening()) return;
   if (!S.meta || S.saving) return;
+  if (S.api < 7 && S.label.iscrowd) {
+    return say("Restart the server before saving individual/group annotations", true);
+  }
+  if (S.api < 8 && [S.label, S.meta.source, S.meta.saved].some(hasOverlaps)) {
+    return say("Restart the server before saving overlapping annotations", true);
+  }
   const [event, shot, key, ticket, label] = [S.event, S.shot, draftKey(S.shot), S.ticket, S.label];
   S.saving = { event, shot, label };
   const name = S.api >= 2 ? { name: S.name || null } : {};
+  const resolution = S.api >= 7
+    ? { iscrowd: label.iscrowd || label.intervals.map(() => null) } : {};
+  const overlap = S.api >= 8 ? { overlap_edit: true } : {};
   try {
     const response = await api("/api/label", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ event, shot, ...label, ...name }),
+      body: JSON.stringify({ event, shot, ...label, ...resolution, ...overlap, ...name }),
     });
     const body = await response.json();
     const saved = S.savedRows.get(event) || new Map();
@@ -682,7 +774,7 @@ async function save(next) {
       // A malformed draft does not prevent the completed save from being shown.
     }
     if (!pendingNavigation() && S.opened?.event === event && S.opened.shot === shot && S.meta) {
-      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save });
+      Object.assign(S.meta, { saved: body.saved, last_save: body.last_save, reviewers: body.reviewers });
       if (same(S.label, label)) {
         S.label = body.saved;
         render();
@@ -740,13 +832,15 @@ function context(canvas) {
 }
 
 function render() {
+  renderResolution();
   if (S.frame || !S.meta) return;
   S.frame = requestAnimationFrame(() => {
     S.frame = 0;
     drawRows();
     drawAxis();
     drawTrack($("source-track"), S.meta.source, false);
-    drawTrack($("label-track"), S.label, true);
+    drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
+    if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
   });
 }
 
@@ -959,7 +1053,7 @@ function drawOverlay(g, w, h) {
   S.label.intervals.forEach(([a, b, c], i) => {
     const width = i === S.selected ? 2 : 1;
     g.fillStyle = categoryColour(c);
-    g.fillRect(px(a), 0, px(b) - px(a), 3);
+    g.fillRect(px(a), S.api >= 8 && S.label.iscrowd?.[i] === 1 ? 4 : 0, px(b) - px(a), 3);
     g.fillRect(px(a) - width / 2, 0, width, h);
     g.fillRect(px(b) - width / 2, 0, width, h);
   });
@@ -1068,10 +1162,13 @@ function drawAxis() {
 
 /** A label as a track: its window lit, its spans filled; the editable one also shows
  * the window's edges in its foot strip and, along its top, where it leaves the source. */
-function drawTrack(canvas, label, editable) {
+function drawTrack(canvas, label, editable, lane) {
   const g = context(canvas);
   const [w, h] = [canvas.clientWidth, canvas.clientHeight];
-  if (!label) return;
+  if (!label) {
+    if (editable || !S.meta.onsets?.length) return;
+    label = { window: S.meta.t_range, intervals: [] };
+  }
   g.save();
   g.beginPath();
   g.rect(GUTTER, 0, w - GUTTER - RIGHT, h);
@@ -1080,15 +1177,42 @@ function drawTrack(canvas, label, editable) {
   const [top, foot] = editable ? [5, HANDLE_BAND + 2] : [4, 4];
   g.fillStyle = T.panel;
   g.fillRect(px(lo), 0, px(hi) - px(lo), h);
+  const split = !editable && hasOverlaps(label);
   label.intervals.forEach(([a, b, c], i) => {
+    const flag = label.iscrowd?.[i];
+    if (lane != null && (flag === 1 ? 1 : 0) !== lane) return;
+    const spanHeight = (h - top - foot) / (split ? 2 : 1);
+    const spanTop = top + (split && flag === 1 ? spanHeight : 0);
     g.globalAlpha = editable ? 1 : 0.55;
     g.fillStyle = categoryColour(c);
-    g.fillRect(px(a), top, Math.max(1, px(b) - px(a)), h - top - foot);
+    g.fillRect(px(a), spanTop, Math.max(1, px(b) - px(a)), spanHeight);
     g.globalAlpha = 1;
+    if (flag === 1) hatch(g, px(a), spanTop, px(b) - px(a), spanHeight);
+    if (flag != null) {
+      g.fillStyle = T.ink;
+      g.globalAlpha = 0.5;
+      g.fillRect(px(a), spanTop, 1, spanHeight);
+      g.globalAlpha = 1;
+    }
     if (editable && i === S.selected) {
       g.strokeStyle = T.ink;
       g.lineWidth = 2;
-      g.strokeRect(px(a), top, px(b) - px(a), h - top - foot);
+      g.strokeRect(px(a), spanTop, px(b) - px(a), spanHeight);
+    }
+    if (editable && px(b) - px(a) > 45) {
+      const width = px(b) - px(a) - 8;
+      const text = `${S.categories[c]} · ${flag === 1 ? "Crowd" : flag === 0 ? "Individual" : "Unspecified"}`;
+      g.save();
+      g.font = FONT;
+      const title = capped(g, wrapped(g, text, width), width, 1)[0];
+      const x = px(a) + 4, y = spanTop + (spanHeight - 14) / 2;
+      g.fillStyle = T.panel;
+      g.globalAlpha = 0.9;
+      g.fillRect(x - 1, y, g.measureText(title).width + 2, 14);
+      g.globalAlpha = 1;
+      g.fillStyle = T.ink;
+      g.fillText(title, x, y + 11);
+      g.restore();
     }
   });
   if (editable) {
@@ -1098,11 +1222,41 @@ function drawTrack(canvas, label, editable) {
     const source = S.meta.source || { window: label.window, intervals: [] };
     g.fillStyle = T.changed;
     for (const [a, b] of diffRuns(source, label)) g.fillRect(px(a), 0, Math.max(1, px(b) - px(a)), 3);
+  } else {
+    g.strokeStyle = T.ink;
+    g.lineWidth = 1;
+    for (const point of S.meta.onsets || []) {
+      g.beginPath();
+      g.moveTo(px(point.t_ms), 0);
+      g.lineTo(px(point.t_ms), h);
+      g.stroke();
+    }
   }
   g.restore();
 }
 
+/** Diagonal marks keep unresolved groups recognizable at every zoom. */
+function hatch(g, x, y, width, height) {
+  const left = Math.max(GUTTER, x), right = Math.min(px(S.view[1]), x + width);
+  if (right <= left) return;
+  g.save();
+  g.beginPath();
+  g.rect(left, y, right - left, height);
+  g.clip();
+  g.strokeStyle = T.ink;
+  g.globalAlpha = 0.35;
+  g.lineWidth = 1;
+  g.beginPath();
+  for (let t = left - height; t < right; t += 7) {
+    g.moveTo(t, y + height);
+    g.lineTo(t + height, y);
+  }
+  g.stroke();
+  g.restore();
+}
+
 function showHeader() {
+  renderResolution();
   const next = neighbour(1);
   $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   const row = S.queue.find((r) => r.shot === S.shot) || {};
@@ -1112,8 +1266,46 @@ function showHeader() {
   $("state").className = `pill ${row.state || ""}`;
   $("saved").textContent = last ? `saved ${when(last.saved_at)}${last.name ? ` by ${last.name}` : ""}` : "";
   $("dirty").hidden = !dirty();
+  showContributors();
+  showOnsets();
   const reviewed = S.queue.filter((row) => row.state !== "unreviewed").length;
   $("count").textContent = `${reviewed}/${S.queue.length}`;
+}
+
+/** Exact database times remain available even when two ticks share a pixel. */
+function showOnsets() {
+  const line = $("onsets");
+  const points = S.meta?.onsets || [];
+  line.hidden = !points.length;
+  line.replaceChildren();
+  if (!points.length) return;
+  line.append("Curated onsets (times only): ");
+  for (const point of points) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `${point.t_ms} ms` +
+      (point.ntor == null ? "" : ` · n=${point.ntor}`) +
+      (point.mode_type ? ` · ${point.mode_type}` : "");
+    button.title = point.raw_source || point.source;
+    button.addEventListener("click", () => setView(point.t_ms - 100, point.t_ms + 100));
+    line.append(button, " ");
+  }
+}
+
+/** Everyone who has saved the open shot under a name, under the queue; nothing from a server without the list. */
+function showContributors() {
+  const line = $("contributors");
+  const people = S.meta?.reviewers;
+  if (!people) return line.replaceChildren();
+  if (!people.length) return (line.textContent = S.meta.saved ? "" : `${S.shot}: no reviewers yet`);
+  line.replaceChildren(
+    `${S.shot} reviewed by `,
+    ...people.flatMap((p, i) => {
+      const who = Object.assign(document.createElement("b"), { textContent: p.name });
+      who.title = `${p.saves} save${p.saves === 1 ? "" : "s"}, first ${when(p.first)}, last ${when(p.last)}`;
+      return i ? [", ", who] : [who];
+    })
+  );
 }
 
 function renderQueue() {
@@ -1170,18 +1362,27 @@ function onRowsDown(event) {
 function onLabelDown(event) {
   if (event.button !== 0 || !S.meta) return;
   const rect = event.currentTarget.getBoundingClientRect();
-  const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px);
+  const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
+  const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
   S.selected = hit.kind === "edge" || hit.kind === "move" ? hit.index : -1;
-  startDrag(event, { ...hit, from: timeAt(event.clientX) });
+  const crowd = lane == null ? S.crowd : lane === 0 && S.crowd == null ? null : lane;
+  if (hit.kind === "new") S.crowd = crowd;
+  startDrag(event, { ...hit, crowd, from: timeAt(event.clientX) });
   render();
 }
 
 function onLabelHover(event) {
   if (S.drag || !S.meta) return;
   const rect = event.currentTarget.getBoundingClientRect();
-  const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px);
+  const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
+  const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
   const cursors = { edge: "ew-resize", window: "ew-resize", move: "grab", new: "crosshair" };
   event.currentTarget.style.cursor = cursors[hit.kind];
+  const span = S.label.intervals[hit.index];
+  const flag = S.label.iscrowd?.[hit.index];
+  event.currentTarget.title = span
+    ? `${span[0]}–${span[1]} ms · ${S.categories[span[2]]} · ${flag === 1 ? "group" : flag === 0 ? "individual" : "resolution unspecified"}`
+    : `Drag to add ${lane === 1 ? "a crowd" : lane === 0 ? "an individual" : "a span"}`;
 }
 
 function dragTo(clientX) {
@@ -1195,15 +1396,22 @@ function dragTo(clientX) {
   if (stillOpening()) return;
   const edges = [...d.base.window];
   const spans = d.base.intervals.map((span) => [...span]);
+  const flags = spans.map((_, i) => d.base.iscrowd?.[i] ?? null);
   let moved = null;
-  if (d.kind === "new") moved = [Math.min(d.from, t), Math.max(d.from, t), S.category];
+  let flag = null;
+  if (d.kind === "new") {
+    moved = [Math.min(d.from, t), Math.max(d.from, t), S.category];
+    flag = S.api >= 7 ? ("crowd" in d ? d.crowd : S.crowd) : null;
+  }
   if (d.kind === "edge") {
     const span = spans.splice(d.index, 1)[0];
+    flag = flags.splice(d.index, 1)[0];
     span[d.edge] = t;
     moved = [Math.min(span[0], span[1]), Math.max(span[0], span[1]), span[2]];
   }
   if (d.kind === "move") {
     const [a, b, c] = spans.splice(d.index, 1)[0];
+    flag = flags.splice(d.index, 1)[0];
     moved = [a + t - d.from, b + t - d.from, c];
   }
   if (d.kind === "window") {
@@ -1214,11 +1422,14 @@ function dragTo(clientX) {
     // The window is the edge of what was looked at: spans are cut back to it.
     for (const span of spans) [span[0], span[1]] = [0, 1].map((k) => clamp(span[k], ...edges));
   }
-  if (moved) spans.push(moved); // last, so it paints over what it crosses
-  const next = normalise(edges, spans, known());
+  if (moved) {
+    spans.push(moved); // last, so it paints over its own lane
+    flags.push(flag);
+  }
+  const next = normalise(edges, spans, known(), flags);
   if (!next) return;
   S.label = next;
-  if (moved) selectAt((moved[0] + moved[1]) / 2);
+  if (moved) selectAt((moved[0] + moved[1]) / 2, flag);
   render();
 }
 
@@ -1355,6 +1566,10 @@ async function persistMasks(m, rejected, event) {
     Object.assign(m, saved);
     maskErrors.delete(m.shot);
     if (current()) Object.assign(S.masks, saved);
+    if (current() && S.meta && body.reviewers) {
+      S.meta.reviewers = body.reviewers;
+      showHeader();
+    }
     const n = body.rejected.length;
     if (current()) say(`mask saved: ${n} region${n === 1 ? "" : "s"} rejected`);
   } catch (error) {
@@ -1403,7 +1618,7 @@ function showCursor(clientX) {
   cursor.hidden = !S.meta || x < GUTTER || x > axis.width - RIGHT;
   if (cursor.hidden) return;
   const top = $("top").getBoundingClientRect().top;
-  const bottom = $("label-track").getBoundingClientRect().bottom;
+  const bottom = $(S.api >= 8 ? "crowd-track" : "label-track").getBoundingClientRect().bottom;
   Object.assign(cursor.style, { left: `${clientX}px`, top: `${top}px`, height: `${bottom - top}px` });
   $("cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
 }
@@ -1542,7 +1757,7 @@ function renderVersions() {
   const changes = versionChanges(S.versions, S.meta.source);
   const items = S.versions.map((version, i) => {
     const item = document.createElement("li");
-    const who = version.name ? `${version.name} (${version.reviewer})` : version.reviewer || "unknown";
+    const who = version.name || "no name";
     const n = version.intervals.length;
     const moved = changes[i] == null ? "first label" : `${changes[i]} ms changed`;
     const text = document.createElement("span");
@@ -1568,12 +1783,12 @@ function restoreVersion(number) {
   const found = S.versions.find((version) => version.version === number);
   if (!found || !S.meta) return;
   closeDialog($("versions"));
-  const label = normalise(found.window, found.intervals, known());
+  const label = normalise(found.window, found.intervals, known(), found.iscrowd);
   if (!label) return say(`version ${number} does not fit this event's categories`, true);
   if (same(label, S.label)) return say(`version ${number} is already the current label`);
   const replaced = dirty() ? "; replaced an unsaved edit; Ctrl+Z brings it back" : "";
   S.selected = -1;
-  edit(label.window, label.intervals);
+  edit(label.window, label.intervals, label.iscrowd);
   say(`version ${number} restored as a draft: Enter or S saves it as a new version${replaced}`);
 }
 
@@ -1640,7 +1855,7 @@ function onKey(event) {
 
 function wire() {
   const top = $("top");
-  const tracks = [$("source-track"), $("label-track")];
+  const tracks = [$("source-track"), $("label-track"), $("crowd-track")];
   top.addEventListener("pointerdown", onRowsDown);
   top.addEventListener("wheel", (event) => onWheel(event, event.target.id === "axis-row"), {
     passive: false,
@@ -1652,8 +1867,10 @@ function wire() {
   tracks[0].addEventListener("pointerdown", (event) => {
     if (event.button === 0 && S.meta) startDrag(event, { kind: "pan", x: event.clientX, view: S.view });
   });
-  tracks[1].addEventListener("pointerdown", onLabelDown);
-  tracks[1].addEventListener("pointermove", onLabelHover);
+  for (const track of tracks.slice(1)) {
+    track.addEventListener("pointerdown", onLabelDown);
+    track.addEventListener("pointermove", onLabelHover);
+  }
   window.addEventListener("pointermove", (event) => {
     if (S.drag) dragTo(event.clientX);
     if (S.drag || event.target.closest?.("#top, .track")) showCursor(event.clientX);
@@ -1675,9 +1892,11 @@ function wire() {
     const chip = event.target.closest(".chip");
     if (chip) openShot(Number(chip.dataset.shot));
   });
-  $("save-next").addEventListener("click", () => save(true));
+  $("save").addEventListener("click", () => save(false));
+  $("next").addEventListener("click", () => go(1));
   $("revert").addEventListener("click", () => S.meta && revert());
   $("show-versions").addEventListener("click", toggleVersions);
+  $("resolution").addEventListener("change", (event) => setCrowd(event.target.value));
   $("help").addEventListener("click", toggleKeys);
   wireNames();
   for (const dialog of document.querySelectorAll("dialog")) {
@@ -1713,7 +1932,7 @@ function wire() {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, regionAt, lut, modeLut };
+  module.exports = { ms, paint, runs, normalise, diffRuns, versionChanges, niceStep, hitTest, hasOverlaps, regionAt, lut, modeLut };
 } else {
   boot();
 }

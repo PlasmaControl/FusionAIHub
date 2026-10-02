@@ -119,6 +119,54 @@ def _label(**change):
     return {**label, **change}
 
 
+def test_crowd_metadata_is_saved_served_and_versioned_for_every_event(client, paths):
+    for event in ("alfven_eigenmode", "detachment"):
+        _built(paths, event=event)
+        response = client.post("/api/label", json=_label(
+            event=event, intervals=[[10, 20, 1], [20, 30, 1], [40, 80, 1]],
+            iscrowd=[0, 0, 1],
+        ))
+        assert response.status_code == 200, response.text
+        assert response.json()["saved"]["iscrowd"] == [0, 0, 1]
+        opened = client.get(f"/api/shot?event={event}&shot=170815").json()
+        assert opened["saved"]["iscrowd"] == [0, 0, 1]
+        history = client.get(f"/api/history?event={event}&shot=170815").json()
+        assert history["versions"][0]["iscrowd"] == [0, 0, 1]
+
+
+def test_overlapping_individual_and_crowd_spans_are_saved_and_reopened(client, paths):
+    _built(paths)
+    response = client.post("/api/label", json=_label(
+        intervals=[[100, 800, 1], [200, 300, 1]], iscrowd=[1, 0],
+        overlap_edit=True,
+    ))
+    assert response.status_code == 200, response.text
+    expected = {
+        "window": [0, 2000], "intervals": [[100, 800, 1], [200, 300, 1]],
+        "iscrowd": [1, 0],
+    }
+    assert response.json()["saved"] == expected
+    opened = client.get("/api/shot?event=alfven_eigenmode&shot=170815").json()
+    assert opened["saved"] == expected
+    history = client.get("/api/history?event=alfven_eigenmode&shot=170815").json()
+    assert history["versions"][0]["intervals"] == expected["intervals"]
+    assert history["versions"][0]["iscrowd"] == [1, 0]
+
+
+def test_a_client_without_overlap_support_cannot_flatten_a_saved_label(client, paths):
+    directory = paths.label_tables / "alfven_eigenmode"
+    labels.save(directory, 170815, labels.Label(
+        (0, 2000), ((100, 800, 1), (200, 300, 1)), (1, 0),
+    ), source=None)
+    before = labels.labels_path(directory).read_bytes()
+    response = client.post("/api/label", json=_label(
+        intervals=[[100, 200, 1], [200, 300, 1], [300, 800, 1]],
+        iscrowd=[1, 0, 1],
+    ))
+    assert response.status_code == 409, response.text
+    assert labels.labels_path(directory).read_bytes() == before
+
+
 def test_no_cookie_and_no_token_is_refused(app):
     response = TestClient(app).get("/api/events")
     assert response.status_code == 401
@@ -212,7 +260,7 @@ def test_an_authorized_response_is_not_cached(client):
 
 def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source):
     # "scratch" has no roster, so it is not an event. AE is a catalog phenomenon.
-    states = {"1": "present", "2": "uncertain", "3": "not_observable"}
+    states = {"1": "present", "2": "uncertain"}
     assert client.get("/api/events").json() == {
         "events": [
             {"event": "alfven_eigenmode", "n_shots": 2, "n_reviewed": 0,
@@ -221,6 +269,31 @@ def test_events_lists_each_roster_and_how_much_of_it_is_reviewed(client, source)
              "categories": {"1": "present"}},
         ]
     }
+
+
+def test_the_confinement_regimes_are_one_event_not_four(client, tables):
+    for name in ("confinement", "high_confinement_mode", "low_confinement_mode"):
+        (tables / name).mkdir()
+        (tables / name / "shots.csv").write_text(OTHER_ROSTER)
+    events = {row["event"]: row for row in client.get("/api/events").json()["events"]}
+    assert "high_confinement_mode" not in events
+    assert "low_confinement_mode" not in events
+    assert events["confinement"]["categories"] == {
+        "1": "high", "2": "low", "3": "qh", "4": "wpqh", "5": "uncertain",
+    }
+    refused = client.get("/api/queue?event=high_confinement_mode")
+    assert refused.status_code == 404
+    assert "reviewed as confinement" in refused.json()["error"]
+
+
+def test_tearing_menu_has_tm_display_name_and_preserves_saved_category(client, tables):
+    directory = tables / "neoclassical_tearing_mode"
+    directory.mkdir()
+    (directory / "shots.csv").write_text(OTHER_ROSTER)
+    row = next(r for r in client.get("/api/events").json()["events"]
+               if r["event"] == directory.name)
+    assert row["display_name"] == "Tearing mode (TM)"
+    assert row["event"] == "neoclassical_tearing_mode"
 
 
 def test_the_queue_is_the_roster_in_order_with_where_to_resume(client, source):
@@ -244,7 +317,8 @@ def test_a_built_shot_opens_with_its_grid_its_rows_and_its_labels(
     assert body["grid"] == {"t0": 0.0, "dt": 1.0, "n": 2000}
     assert body["t_range"] == [0.0, 2000.0]
     assert [row["name"] for row in body["rows"]] == ["R0xV1", "p1"]
-    assert body["rows"][0]["band"] == [80.0, 250.0]
+    # Opening an older row store applies the current review band's limits.
+    assert body["rows"][0]["band"] == list(review_build.BANDS["alfven_eigenmode"])
     assert body["source"] == {"window": [0, 2000], "intervals": [[100, 300, 1]]}
     assert (body["saved"], body["last_save"], body["state"]) == (
         None, None, "unreviewed"
@@ -266,6 +340,22 @@ def test_a_shot_with_no_rows_is_built_on_first_open(client, app, monkeypatch):
     body = client.get("/api/shot?event=detachment&shot=170815").json()
     assert body["grid"] == {"t0": 0.0, "dt": 1.0, "n": 10}
     assert body["source"] is None and body["state"] == "unreviewed"
+
+
+def test_opening_an_old_elm_store_builds_the_new_diagnostics(
+    client, app, paths, tables, monkeypatch,
+):
+    directory = tables / "edge_localized_mode"
+    directory.mkdir()
+    (directory / "shots.csv").write_text(OTHER_ROSTER)
+    _built(paths, event="edge_localized_mode")
+    monkeypatch.setitem(review_build.BUILDERS, "edge_localized_mode", _one_trace)
+    url = "/api/shot?event=edge_localized_mode&shot=170815"
+    assert client.get(url).status_code == 202
+    app.state.builds.running[("edge_localized_mode", 170815)].result()
+    opened = client.get(url)
+    assert opened.status_code == 200
+    assert len(opened.json()["rows"]) == 1
 
 
 def test_a_shot_that_cannot_be_built_says_why_and_is_retried(

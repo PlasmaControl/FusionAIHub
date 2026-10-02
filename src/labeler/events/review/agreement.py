@@ -89,6 +89,7 @@ def _opened_here(
 
 
 def agreement(event_dir: Path) -> dict:
+    require_binary(Path(event_dir).name)
     saved, source = labels.read_saved(event_dir), labels.read_source(event_dir)
     table = labels.source_path(event_dir)
     name = None if table is None else table.name
@@ -101,7 +102,8 @@ def agreement(event_dir: Path) -> dict:
             elsewhere[shot] = then[0]
     shots = sorted(set(saved) & set(source) - set(elsewhere))
     scores = pooled(
-        (Assessment.from_label(saved[shot]), Assessment.from_label(source[shot]))
+        (assessment(saved[shot], Path(event_dir).name),
+         assessment(source[shot], Path(event_dir).name))
         for shot in shots
     )
     precision, recall = scores["precision"], scores["recall"]
@@ -121,12 +123,33 @@ def agreement(event_dir: Path) -> dict:
     }
 
 
+def require_binary(event: str):
+    if event == "minimum_safety_factor":
+        raise ValueError("minimum_safety_factor has multiclass regime labels; "
+                         "binary present/absent scoring is undefined")
+
+
+def binary_state(event: str, state: int) -> int:
+    require_binary(event)
+    return 2 if event == "resistive_wall_mode" and state == 4 else state
+
+
+def assessment(label, event: str) -> Assessment:
+    return Assessment(label.window, tuple(
+        (a, b, binary_state(event, state)) for a, b, state in label.intervals
+    ))
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--event", required=True)
     args = parser.parse_args(argv)
     event_dir = Paths.from_env().label_tables / args.event
-    print(json.dumps(agreement(event_dir)))
+    try:
+        result = agreement(event_dir)
+    except ValueError as error:
+        parser.error(str(error))
+    print(json.dumps(result))
     return 0
 
 

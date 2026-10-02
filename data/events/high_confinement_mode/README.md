@@ -15,6 +15,41 @@ First discovered on ASDEX in 1982 (Wagner et al.).
 Typically found via the D-alpha drop at the transition, the pedestal in edge
 Thomson profiles, the density rise and the confinement factor.
 
+## Data Provenance
+### Dataset 1
+
+**Dataset File(s)**: `Jalal_28042024_confinement_regime_shotlist.csv`
+
+**Author**: Jalal Butt
+
+**Description**: Original labels from Jalal Butt, created in 28 April 2024. Both H and L raw folders contain the same source table. Explicitly labelled `Test only` rows are used for the gold verification dataset.
+
+**Publications**:
+
+## Models
+**stable**: none
+
+**latest**: none
+
+**all**:
+- dalpha_lh | 2026_09_12 (rule-based L-H / H-L transition detector, not a regime label)
+- d3d_confinement_bes_cnn | 2026_10_01 | AUROC: 0.948 | AUPRC: 0.979 | F1: 0.943
+
+Scores are for H-mode as one class of the four-class BES benchmark classifier (L, H, QH, WP QH), on 2 ms windows of the 119 labelled shots that have BES in the corpus, held out by shot (47,373 H-mode windows from 75 shots; precision 0.946, recall 0.939; the paper's H-mode F1 is 0.97). Retrained here from the paper's description, because the original is not on disk. Protocol, caveats and the full table: [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
+
+## Inputs
+**dalpha_lh**:
+- `D-alpha FS01..FS08`
+- `CO2 density R0` (co2 ch 0)
+- `pinj_total`
+
+**hmode_frames (round three)**:
+- `D-alpha filterscopes` (channels pooled)
+- `NBI power` (optional)
+
+**d3d_confinement_bes_cnn**:
+- `BES` inner 6 x 8 block of the 8 x 8 array (channels 8-55 of 64), 2.5-150 kHz, 1,024-sample windows (2 ms at 500 kHz)
+
 ## Method
 
 The local formatter reads the explicit confinement intervals supplied in
@@ -29,25 +64,12 @@ a bin 1. A bin spanning a transition can therefore be positive in both H and L
 outputs; it means each regime occurred within that bin. Consecutive equal known
 bins are compressed into CSV intervals. Exact original bounds remain in raw/.
 
-## Provenance
-
-Original labels from Jalal Butt, created in 28 April 2024. Both H and L
-raw folders contain the same source table. Explicitly labelled `Test only` rows are used for the gold verification dataset.
-
-## Models
-**stable**: none
-
-**latest**: none
-
-**all**:
-- dalpha_lh | 2026_09_12 (rule-based L-H / H-L transition detector, not a regime label)
+Benchmark: the BES classifier of the published confinement-regime paper, rebuilt from its description, is scored against the merged confinement intervals (L, H, QH and WP QH; [shared confinement labels](../confinement/README.md)) with `scripts/labeler/confinement_bes_benchmark.py`; its results and the paper's per-class scores are in [confinement_bes_benchmark.md](../../../docs/labeler/confinement_bes_benchmark.md).
 
 ## Alias
-- h-mode
-- hmode
-- high confinement mode
-- l-h transition
-- h-mode transition
+h-mode, hmode, high confinement mode, l-h transition, h-mode transition
+
+## Future Implementations
 
 ## Reference
 - F. Wagner et al., "Regime of improved confinement and high beta in neutral-beam-
@@ -61,66 +83,3 @@ raw folders contain the same source table. Explicitly labelled `Test only` rows 
 - **Jalal Butt**
 - **Kouroche Bouchiat**
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: H-Mode; interval lexicon id: `hmode`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-PYTHONPATH=src python scripts/labeler/labels_format.py
-```
-
-[`formatter.py`](formatter.py) writes:
-
-- `format/high_confinement_mode_format_2026_v1.csv`
-- its `.meta.json` sidecar
-- `format/shots/<shot>.npz`
-
-The CSV columns are `shot,category,t_start,t_end,confidence`; `events.yaml`
-declares milliseconds. Blank confidence means unknown. Each per-shot sparse
-file stores a time × 20-rho grid, with scalar labels broadcast across rho.
-The time axis starts at 0 and ends at 6000 ms, extended for later annotations.
-Shots without usable annotations receive all-unknown grids and no CSV rows.
-
-[`example.ipynb`](example.ipynb) opens `format/shots/<shot>.npz` directly and plots the saved 50 ms grid.
-Change `source` to an existing extended folder to view extended labels.
-
-```bash
-pixi run -e labelmaker python data/events/high_confinement_mode/formatter.py
-```
-
-## Category
-
-| ID | Label |
-| --- | --- |
-| 0 | High confinement mode absent within another explicitly labelled regime |
-| 1 | High confinement mode present (H, QH, or WP) |
-
-The JSON sidecar's `categories` mapping defines the same binary IDs;
-`label_mapping.positive_raw_regimes` identifies the corresponding source flags.
-Unknown cells are stored separately from category 0.
-
-
-Per-shot labels are saved in `format/shots/<shot>.npz`. Each file includes
-time and rho coordinates, sparse integer values, unknown-cell coordinates,
-and the category ID-to-name mapping. The formatted plot reads these saved files. A separate original-label plot
-reads the source annotations; neither plot reruns the formatter.
-
-The notebook's last cell plots the category's original annotations alongside
-the saved 50 ms grid. Original-label plots require the source files; the
-formatted and extended plots continue to read only their selected NPZ files.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

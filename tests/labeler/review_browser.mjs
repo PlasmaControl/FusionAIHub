@@ -1,9 +1,9 @@
 // The review page in headless Chromium, driven over the DevTools protocol.
-//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty|inflight|pending] [case]
+//   node review_browser.mjs <base-url> <token> <headless-shell> <profile-dir> [api1|race|moves|empty|inflight|pending|equilibrium] [case]
 // Prints one JSON line: every check made, [{name, ok, detail}].
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 
 const [BASE, TOKEN, SHELL, PROFILE, SCENARIO, CASE] = process.argv.slice(2);
@@ -115,6 +115,11 @@ async function press(key, modifiers = 0) {
 const checks = [];
 const check = (name, ok, detail) => checks.push({ name, ok: Boolean(ok), detail });
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const labelContent = (label) => ({
+  window: label.window,
+  intervals: label.intervals,
+  ...(Object.hasOwn(label, "iscrowd") ? { iscrowd: label.iscrowd } : {}),
+});
 
 async function currentServer() {
   const source = await js("S.meta.source");
@@ -193,6 +198,12 @@ async function currentServer() {
     await js(`$("state").textContent === "changed" && /^saved .* by Ada Lovelace$/.test($("saved").textContent)`),
     await js(`[$("state").textContent, $("saved").textContent]`)
   );
+  check(
+    "the reviewers are listed under the queue",
+    await js(`$("contributors").textContent === "170815 reviewed by Ada Lovelace" &&
+      $("contributors").getBoundingClientRect().top >= $("queue").getBoundingClientRect().bottom`),
+    await js(`$("contributors").textContent`)
+  );
 
   await send("Page.reload");
   await opened(170815);
@@ -251,6 +262,9 @@ async function currentServer() {
   );
   await press("Escape");
   await until(`!$("versions").open`);
+  check("a second save by the same reviewer lists them once",
+    await js(`$("contributors").textContent === "170815 reviewed by Ada Lovelace"`),
+    await js(`$("contributors").textContent`));
   check("escape shuts the list and gives the keys back", await js(`document.activeElement === document.body`),
     await js(`document.activeElement.outerHTML`));
   await press("h");
@@ -270,6 +284,24 @@ async function currentServer() {
   await press("ArrowRight");
   await opened(170817);
   check("→ opens the next shot", true);
+
+  await js(`$("next").click()`);
+  await opened(170815);
+  const unsaved = await js(`fetch("/api/history?event=alfven_eigenmode&shot=170817").then((r) => r.json())`);
+  check("Next opens the next shot without saving the one it leaves", unsaved.versions.length === 0, unsaved);
+
+  await send("Emulation.setDeviceMetricsOverride", { width: 900, height: 900, deviceScaleFactor: 1, mobile: false });
+  await until(`window.innerWidth === 900`);
+  check("a narrow window keeps the reviewer's name on screen",
+    await js(`(() => { const r = $("reviewer").getBoundingClientRect();
+      return r.width > 0 && r.right <= window.innerWidth && r.left >= 0; })()`),
+    await js(`[$("reviewer").getBoundingClientRect().toJSON(), window.innerWidth]`));
+  await send("Emulation.clearDeviceMetricsOverride");
+  await until(`window.innerWidth === 1400`);
+  await js(`$("next").click()`);
+  await opened(170816);
+  await js(`$("next").click()`);
+  await opened(170817);
   await press("ArrowLeft");
   await opened(170816);
   check("← opens the previous shot", true);
@@ -374,7 +406,7 @@ async function navigationRace() {
   await sleep(100);
   check("S during opening posts nothing", (await js("window.saves.length")) === 0);
   await press("Enter");
-  await js(`$("save-next").click(); document.activeElement.blur()`);
+  await js(`$("save").click(); document.activeElement.blur()`);
   check("Enter and Save during opening post nothing", (await js("window.saves.length")) === 0);
   await press("r");
   await js(`$("revert").click()`);
@@ -502,7 +534,7 @@ async function inflight() {
   const versions = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
   const saved = versions.versions.at(-1);
   check("the server saved the submitted label, without any later edit or Restore",
-    same({ window: saved.window, intervals: saved.intervals }, sent), saved);
+    same(labelContent(saved), labelContent(sent)), saved);
 
   if (["move", "next"].includes(CASE)) {
     check("moving during a save never reports that shot as not saved",
@@ -624,7 +656,7 @@ async function pendingResponses() {
   const history = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
   const saved = history.versions.at(-1);
   check("navigation does not change the label actually saved by the server",
-    same({ window: saved.window, intervals: saved.intervals }, sent));
+    same(labelContent(saved), labelContent(sent)));
   check("save completion on another shot or event keeps the later draft",
     same(await js(`JSON.parse(localStorage.getItem("${key}"))`), original));
   if (CASE.endsWith("_switch")) {
@@ -688,7 +720,7 @@ async function pendingQueue() {
   const history = await js(`fetch("/api/history?event=${a}&shot=170817").then((r) => r.json())`);
   const saved = history.versions.at(-1);
   check("saving before the queue arrives writes the drawn label to the server",
-    same({ window: saved.window, intervals: saved.intervals }, sent));
+    same(labelContent(saved), labelContent(sent)));
   check("saving before the queue arrives stays on the typed shot", await js(`
     S.shot === 170817 && S.ticket === ${ticket} && S.meta?.shot === 170817 && !pendingNavigation()`));
   check("Enter explains why it stays; plain S does not invent an empty queue", await js(CASE === "queue_next"
@@ -742,7 +774,7 @@ async function pendingSaveMessage() {
     const history = await js(`fetch("/api/history?event=${a}&shot=170815").then((r) => r.json())`);
     const saved = history.versions.at(-1);
     check("Save-and-next saves only what it sent",
-      same({ window: saved.window, intervals: saved.intervals }, sent));
+      same(labelContent(saved), labelContent(sent)));
   } else {
     check("a failed save names its shot after the reviewer moved", await js(`
       $("status").textContent === "170815 not saved: [Errno 122] Disk quota exceeded" &&
@@ -779,7 +811,7 @@ async function pendingQueueFailure() {
     location.hash === "#${b}" && $("shot").value === ""`));
   check("a failed queue clears the header and disables shot actions", await js(`
     $("count").textContent === "0/0" && ["tier", "state", "saved", "next-shot"].every((id) => $(id).textContent === "") &&
-    ["save-next", "revert", "show-versions"].every((id) => $(id).disabled)`));
+    ["save", "revert", "show-versions"].every((id) => $(id).disabled)`));
   await js("document.activeElement.blur(); edit([0, 2000], [[500, 800, 1]])");
   await press("s");
   check("a failed queue refuses no edit as still opening and cannot save", await js(`
@@ -925,7 +957,7 @@ async function emptyEvent() {
     ["tier", "state", "saved", "next-shot"].every((id) => $(id).textContent === "") &&
     $("dirty").hidden && $("cursor").hidden`));
   check("empty navigation disables Save, Revert and History", await js(`
-    ["save-next", "revert", "show-versions"].every((id) => $(id).disabled)`));
+    ["save", "revert", "show-versions"].every((id) => $(id).disabled)`));
 
   const requests = await js("window.requests.length");
   await js("document.activeElement.blur()");
@@ -939,7 +971,7 @@ async function emptyEvent() {
   assert.equal(await js(`$("status").textContent`), "no shots to review",
     "U on an empty queue says there are no shots to review");
   await press("z", 2);
-  await js(`$("save-next").click(); $("revert").click(); $("show-versions").click()`);
+  await js(`$("save").click(); $("revert").click(); $("show-versions").click()`);
   // Exercise the entry points too: disabled controls and key filtering must not hide a null dereference.
   const actionErrors = await js(`(async () => {
     const errors = [];
@@ -1057,6 +1089,221 @@ async function olderServer() {
   );
 }
 
+async function equilibriumEditors() {
+  await visit("resistive_wall_mode", 170815);
+  const points = await js("S.meta.onsets");
+  check("RWM points keep exact times and toroidal modes", same(
+    points.map(p => [p.t_ms, p.ntor, p.mode_type]),
+    [[900.1234, 1, "rwm"], [900.6789, 2, "n2rwm"]]), points);
+  const buttons = await js(`Array.from($("onsets").querySelectorAll("button"))
+    .map(b => [b.textContent, b.title])`);
+  check("neighboring onsets have separate exact clickable annotations", same(buttons,
+    [["900.1234 ms · n=1 · rwm", "curated"],
+     ["900.6789 ms · n=2 · n2rwm", "curated"]]), buttons);
+  check("point annotations do not create a duration label", await js("S.meta.source === null"));
+  const ticks = await js(`(() => {
+    const canvas = $("source-track"), g = canvas.getContext("2d");
+    const original = g.stroke, strokes = [];
+    g.stroke = () => strokes.push(true);
+    try { drawTrack(canvas, null, false); } finally { g.stroke = original; }
+    return strokes.length;
+  })()`);
+  check("a source without intervals still draws both exact onset ticks", ticks === 2, ticks);
+  await js(`$("onsets").querySelectorAll("button")[1].click()`);
+  check("an onset button zooms to the exact time", same(await js("S.view"), [800.6789, 1000.6789]));
+  await visit("minimum_safety_factor", 170815);
+  check("RWM annotations clear when changing events", await js(`$("onsets").hidden &&
+    $("onsets").children.length === 0`));
+  check("all five qmin categories have different track colors, and not observable is not offered", await js(`
+    new Set(known().map(categoryColour)).size === 5 &&
+    S.categories[5] === "uncertain" && !(6 in S.categories)`));
+  await press("5");
+  const [x0, x1, y] = await js(`(() => {
+    const r = $("rows").querySelector("canvas").getBoundingClientRect();
+    return [r.left + px(500), r.left + px(800), r.top + r.height / 2];
+  })()`);
+  await drag(x0, x1, y, 8); // Shift draws over the existing regime.
+  await press("s");
+  await until("!S.saving && !dirty()");
+  check("saving qmin uncertainty preserves its multiclass category", await js(`
+    S.meta.saved.intervals.some(([a,b,c]) => c === 5 && Math.abs(a-500) <= 25 && Math.abs(b-800) <= 25)`),
+    await js("S.meta.saved"));
+  await visit("poloidal_beta", 170815);
+  check("beta_p opens its signal and threshold with the source draft", await js(`
+    S.meta.rows[0].title === "beta_p (EFIT01 aeqdsk)" &&
+    same(S.meta.rows[0].hlines, [1]) && S.label.intervals[0][2] === 1`));
+}
+
+async function crowdAnnotations() {
+  check("legacy labels stay unspecified", await js(`
+    !S.label.iscrowd && !$("resolution-control").hidden`));
+  const select = async (t) => {
+    const [x, y] = await js(`(() => {
+      const i = S.label.intervals.findIndex(([a,b]) => a <= ${t} && ${t} <= b);
+      const r = $(S.label.iscrowd?.[i] === 1 ? "crowd-track" : "label-track").getBoundingClientRect();
+      return [r.left + px(${t}), r.top + 15];
+    })()`);
+    await mouse("mousePressed", x, y, { buttons: 1 });
+    await mouse("mouseReleased", x, y, { buttons: 0 });
+  };
+  const resolution = async (value) => js(`
+    $("resolution").value = "${value}";
+    $("resolution").dispatchEvent(new Event("change", {bubbles: true}));
+  `);
+  await select(200);
+  await resolution("1");
+  check("the selected source span becomes a group", same(await js("S.label.iscrowd"), [1]));
+  await press("z", 2);
+  check("undo restores unspecified metadata", await js("!S.label.iscrowd && !dirty()"));
+  await select(200);
+  await resolution("1");
+  await press("s");
+  await until("!S.saving && !dirty()");
+  await send("Page.reload");
+  await opened(170815);
+  check("groups survive saving and reloading", same(await js("S.label.iscrowd"), [1]));
+  await select(200);
+  await press("2");
+  check("changing category preserves group resolution", await js(`
+    S.label.intervals[0][2] === 2 && S.label.iscrowd[0] === 1`));
+  const [x0, x1, y] = await js(`(() => {
+    const r = $("crowd-track").getBoundingClientRect();
+    return [r.left + px(200), r.left + px(1200), r.top + 15];
+  })()`);
+  await drag(x0, x1, y);
+  check("moving an annotation keeps its group flag", await js(`
+    Math.abs(S.label.intervals[0][0] - 1100) <= 2 && S.label.iscrowd[0] === 1`));
+  await press("z", 2);
+  await press("1");
+  await press("Escape");
+  await resolution("0");
+  const drawAdjacent = async (a, b) => {
+    const [x0, x1, y] = await js(`(() => {
+      const r = $("rows").children[0].getBoundingClientRect();
+      return [r.left + px(${a}), r.left + px(${b}), r.top + 40];
+    })()`);
+    await drag(x0, x1, y, 8);
+  };
+  await drawAdjacent(500, 600);
+  await drawAdjacent(600, 700);
+  check("touching individuals remain separate annotations", await js(`
+    S.label.intervals.length === 3 && same(S.label.iscrowd, [1,0,0]) &&
+    S.label.intervals[1][1] === S.label.intervals[2][0]`), await js("S.label"));
+  await press("Delete");
+  check("deleting an individual keeps the other resolutions aligned", same(
+    await js("S.label.iscrowd"), [1, 0]));
+  await press("z", 2);
+  await press("s");
+  await until("!S.saving && !dirty()");
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector('[data-version="1"]').click()`);
+  check("history restore brings back group metadata", await js(`
+    S.label.intervals.length === 1 && same(S.label.iscrowd, [1]) && dirty()`));
+  await press("z", 2);
+  check("undo restores the individual boundaries after history restore", await js(`
+    S.label.intervals.length === 3 && same(S.label.iscrowd, [1,0,0])`));
+  await press("Escape");
+  await resolution("1");
+  await drawAdjacent(900, 1000);
+  await press("k");
+  await opened(170816);
+  await press("j");
+  await opened(170815);
+  check("navigation restores the draft with its group metadata", same(
+    await js("S.label.iscrowd"), [1, 0, 0, 1]));
+  await press("r");
+  check("revert restores the unspecified source", await js(`
+    S.label.intervals.length === 1 && !S.label.iscrowd`));
+  await press("z", 2);
+  check("undo restores all draft annotation flags", same(
+    await js("S.label.iscrowd"), [1, 0, 0, 1]));
+}
+
+async function overlappingAnnotations() {
+  const select = async (t, lane) => {
+    const [x, y] = await js(`(() => {
+      const r = $("${lane === 1 ? "crowd-track" : "label-track"}").getBoundingClientRect();
+      return [r.left + px(${t}), r.top + 15];
+    })()`);
+    await mouse("mousePressed", x, y, { buttons: 1 });
+    await mouse("mouseReleased", x, y, { buttons: 0 });
+  };
+  const resolution = async (value) => js(`
+    $("resolution").value = "${value}";
+    $("resolution").dispatchEvent(new Event("change", {bubbles: true}));
+  `);
+  check("the editor shows named individual and crowd lanes", await js(`
+    $("individual-lane-name").textContent === "Individual" && !$("crowd-lane").hidden`));
+  await select(200, 0);
+  await resolution("1");
+  check("switching resolution moves the selected span into the crowd lane", await js(`
+    S.label.iscrowd[S.selected] === 1 && $("resolution").value === "1"`));
+  await press("Escape");
+  await draw(150, 200);
+  check("drawing an individual over a crowd keeps its complete envelope", await js(`
+    same(S.label.intervals[0], [100,300,1]) && S.label.intervals.length === 2 &&
+    same(S.label.iscrowd, [1,0]) && Math.abs(S.label.intervals[1][0]-150) <= 2 &&
+    Math.abs(S.label.intervals[1][1]-200) <= 2`), await js("S.label"));
+  check("the newly drawn individual is selected instead of the underlying crowd", await js(`
+    S.label.iscrowd[S.selected] === 0 && $("resolution").value === "0"`));
+  await press("s");
+  await until("!S.saving && !dirty()");
+  await send("Page.reload");
+  await opened(170815);
+  check("save and reload retain both overlapping annotations", await js(`
+    same(S.label.intervals[0], [100,300,1]) && S.label.intervals.length === 2 &&
+    same(S.label.iscrowd, [1,0])`));
+  const [x0, x1, y] = await js(`(() => {
+    const r = $("label-track").getBoundingClientRect();
+    return [r.left+px(175), r.left+px(225), r.top+15];
+  })()`);
+  await drag(x0, x1, y);
+  check("moving an overlapping individual preserves the crowd", await js(`
+    same(S.label.intervals[0], [100,300,1]) && S.label.iscrowd[S.selected] === 0 &&
+    Math.abs(S.label.intervals[1][0]-200) <= 2 && Math.abs(S.label.intervals[1][1]-250) <= 2`));
+  const [edge0, edge1, edgeY] = await js(`(() => {
+    const r = $("label-track").getBoundingClientRect();
+    return [r.left+px(S.label.intervals[1][1]), r.left+px(280), r.top+15];
+  })()`);
+  await drag(edge0, edge1, edgeY);
+  check("resizing an individual keeps the overlapping crowd unchanged", await js(`
+    same(S.label.intervals[0], [100,300,1]) && Math.abs(S.label.intervals[1][1]-280) <= 2`));
+  await select(230, 1);
+  check("clicking the crowd lane selects the crowd under the individual", await js(`
+    S.label.iscrowd[S.selected] === 1`));
+  await press("Delete");
+  check("deleting a crowd preserves the individual inside it", await js(`
+    S.label.intervals.length === 1 && same(S.label.iscrowd, [0])`));
+  await press("z", 2);
+  check("undo restores the overlapping crowd and individual", await js(`
+    same(S.label.intervals[0], [100,300,1]) && same(S.label.iscrowd, [1,0])`));
+  await press("s");
+  await until("!S.saving && !dirty()");
+  await press("h");
+  await until(`$("versions").open`);
+  await js(`$("version-list").querySelector('[data-version="1"]').click()`);
+  check("history restore retains the overlap and original individual boundary", await js(`
+    same(S.label.intervals[0], [100,300,1]) && same(S.label.iscrowd, [1,0]) &&
+    Math.abs(S.label.intervals[1][0]-150) <= 2 && Math.abs(S.label.intervals[1][1]-200) <= 2`));
+  await press("z", 2);
+  await draw(350, 400);
+  await press("k");
+  await opened(170816);
+  await press("j");
+  await opened(170815);
+  check("navigation restores overlapping annotations in the draft", await js(`
+    same(S.label.intervals[0], [100,300,1]) && same(S.label.iscrowd, [1,0,0]) &&
+    Math.abs(S.label.intervals[1][1]-280) <= 2`));
+  await select(375, 0);
+  await press("Delete");
+  await until("!dirty()");
+  if (CASE) {
+    const screenshot = await send("Page.captureScreenshot", { format: "png" });
+    writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
+  }
+}
+
 try {
   await within(send("Runtime.enable"), "first page command (Runtime.enable)");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1099,6 +1346,9 @@ try {
   else if (SCENARIO === "moves") await moves();
   else if (SCENARIO === "empty") await emptyEvent();
   else if (SCENARIO === "api1") await olderServer();
+  else if (SCENARIO === "equilibrium") await equilibriumEditors();
+  else if (SCENARIO === "crowds") await crowdAnnotations();
+  else if (SCENARIO === "overlaps") await overlappingAnnotations();
   else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));

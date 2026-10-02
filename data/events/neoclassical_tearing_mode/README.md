@@ -1,6 +1,10 @@
-# Neoclassical Tearing Mode
+# Tearing Mode (TM)
 
 ## Description
+These labels include classical and neoclassical tearing modes. The abbreviation
+is `tm`; the historical directory name and `ntm` alias remain readable by
+existing annotations and models.
+
 Tearing modes are resistive MHD instabilities that connect the field at the rational surface q = m/n. This creates a magnetic island, flattening the pressure across it and degrading confinement. The neoclassical tearing mode (NTM), governed by the
 modified Rutherford equation
 
@@ -18,6 +22,54 @@ Typically found via Mirnov / MHR magnetics as a coherent line below ~30 kHz with
 its toroidal mode number from the probe array, on ECE as a flattened island
 signature, and on the radial saddle loops once locked.
 
+## Data Provenance
+### Dataset 1
+
+**Dataset File(s)**:
+
+**Author**: Jaemin Seo
+
+**Description**: Jaemin Seo tearing archive (`tm_label`, 8,505 shots 147000-190997 for the CNN's training; 1,503 overlap shots with the FAITH corpus for evaluation). Models are upstream PlasmaControl artefacts, re-served by labeler with pinned preprocessing.
+
+**Publications**:
+
+### Dataset 2
+
+**Dataset File(s)**: `tm_labels.tar`, `tm_labels.h5`
+
+**Author**:
+
+**Description**: `raw/tm_labels.tar` and `raw/tm_labels.h5` now contain original sampled labels from `/projects/EKOLEMEN/survival_tm_2/`.
+
+**Publications**:
+
+## Models
+**stable**: d3d_tearing_onset_cnn1d | 2022_12_01
+
+**latest**: d3d_tearing_time_to_event_dsm | 2026_09_05
+
+**all**:
+- d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
+- d3d_tearing_time_to_event_dsm | 2026_09_05 (survival forecast; 250 ms / 500 ms / 1 s)
+- d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
+
+## Inputs
+**d3d_tearing_onset_cnn1d**:
+- at t+25 ms: `bt`, `ip`, `pinj_total`, `tinj_total`, `R0_EFITRT1`, `kappa_EFITRT1`, `tritop_EFIT01`, `tribot_EFIT01`, `gapin_EFIT01`, `ech_pwr_total`, `EC.RHO_ECH`
+- profiles at t: `thomson_density_mtanh_1d`, `thomson_temp_mtanh_1d`, `1/qpsi_EFITRT1`, `pres_EFIT01`, `cer_rot_csaps_1d`
+
+**d3d_tearing_time_to_event_dsm**:
+- `bmspinj`, `bmstinj`, `betan_EFITRT2`, `qmin_EFITRT2`, `ech_pwr_total`, `ip`, `PCBCOIL`, `li_EFITRT2`, `aminor_EFITRT2`, `rmaxis_EFITRT2`, `tribot_EFITRT2`, `tritop_EFITRT2`, `kappa_EFITRT2`, `volume_EFITRT2`
+- profiles: `thomson_temp_mtanh_1d`, `cer_temp_csaps_1d`, `thomson_density_mtanh_1d`, `cer_rot_csaps_1d`, `qpsi_EFITRT2`, `pres_EFITRT2`
+
+**d3d_tearing_time_to_event_dsm_continued**:
+- `bmspinj`, `bmstinj`, `betan_EFITRT2`, `qmin_EFITRT2`, `ech_pwr_total`, `ip`, `PCBCOIL`, `li_EFITRT2`, `aminor_EFITRT2`, `rmaxis_EFITRT2`, `tribot_EFITRT2`, `tritop_EFITRT2`, `kappa_EFITRT2`, `volume_EFITRT2`
+- profiles: `thomson_temp_mtanh_1d`, `cer_temp_csaps_1d`, `thomson_density_mtanh_1d`, `cer_rot_csaps_1d`, `qpsi_EFITRT2`, `pres_EFITRT2`
+
+**ntm_frames (historical model ID, round three)**:
+- `MPI66M322D power` (image, 32 frequency groups)
+- `toroidal n, MPI66M probes` (modes row, 10 n)
+
 ## Method
 Three claims:
 
@@ -34,29 +86,10 @@ Three claims:
 `validate.alarm_quality` scores the published labels against archived onsets
 (`tm_label` on the 1,503 shots shared with the tearing archive).
 
-## Provenance
-Jaemin Seo tearing archive (`tm_label`, 8,505 shots 147000-190997 for the CNN's training; 1,503 overlap shots with the FAITH corpus for
-evaluation). Models are upstream PlasmaControl artefacts, re-served by labeler with pinned preprocessing. `raw/tm_labels.tar` and `raw/tm_labels.h5` now contain original sampled labels from `/projects/EKOLEMEN/survival_tm_2/`.
-
-## Models
-**stable**: d3d_tearing_onset_cnn1d | 2022_12_01
-
-**latest**: d3d_tearing_time_to_event_dsm | 2026_09_05
-
-**all**:
-- d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
-- d3d_tearing_time_to_event_dsm | 2026_09_05 (survival forecast; 250 ms / 500 ms / 1 s)
-- d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
-
 ## Alias
-- tearing mode
-- tearing
-- ntm
-- neoclassical tearing mode
-- 2/1
-- 3/2
-- locked mode
-- magnetic island
+tearing mode, tearing, tm, ntm, neoclassical tearing mode, 2/1, 3/2, locked mode, magnetic island
+
+## Future Implementations
 
 ## Reference
 - R. J. La Haye, "Neoclassical tearing modes and their control", Phys. Plasmas 13,
@@ -66,72 +99,3 @@ evaluation). Models are upstream PlasmaControl artefacts, re-served by labeler w
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: Tearing Mode; lexicon id: `tearing`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-pixi run -e labelmaker python data/events/neoclassical_tearing_mode/formatter.py
-```
-
-Raw sources and the combined output are registered in `../events.yaml`.
-
-## Local formatter and example
-
-[`formatter.py`](formatter.py) reads `../events.yaml` and writes a CSV containing
-only `shot,category,t_start,t_end,confidence` under `format/`. Source provenance and
-conversion assumptions are stored in its `.meta.json` sidecar. Raw files stay
-unchanged. The shared conversion implementation is in
-`src/labeler/events/source_formatters.py`.
-
-[`example.ipynb`](example.ipynb) opens the saved per-shot sparse labels and plots the rho–time grid.
-It also plots the original annotations through a shared helper and supports
-available `extend_*` datasets. For these sources
-without radial localization, each time label is broadcast across 20 rho bins.
-Use the labelmaker Python environment to rerun it. See the [storage guide](../README.md)
-for the sparse per-shot grid format used by extensions.
-
-
-## Category
-
-The CSV `category` column and grid values use integer IDs. The same mapping
-is recorded in each JSON sidecar under `categories`.
-
-| ID | Label |
-| --- | --- |
-| 0 | Absent |
-| 1 | Present |
-
-Unknown or unclassified grid cells are stored separately from 0. A dataset
-containing only positive annotations does not establish absence elsewhere.
-Sampled grids use 50 ms bins and 20 rho bins.
-
-Per-shot labels are saved in `format/shots/<shot>.npz`. Each file includes
-time and rho coordinates, sparse integer values, unknown-cell coordinates,
-and the category ID-to-name mapping. The formatted plot reads these saved files. A separate original-label plot
-reads the source annotations; neither plot reruns the formatter.
-
-The per-shot grids include all shots with sampled source labels, including
-negative-only shots absent from the positive-interval CSV. Samples from HDF5
-and the archive are aggregated into 50 ms bins; any positive sample wins.
-Bins with supplied zeros remain 0, and unsampled bins remain unknown.
-
-The notebook's last cell plots the category's original annotations alongside
-the saved 50 ms grid. Original-label plots require the source files; the
-formatted and extended plots continue to read only their selected NPZ files.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

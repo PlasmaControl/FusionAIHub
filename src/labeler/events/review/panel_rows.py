@@ -37,6 +37,9 @@ def build(event: str, shot: int, paths: Paths) -> tuple[Grid, list, dict]:
         for i, (p, x) in enumerate(zip(built, xs))
     ]
     params = {"finest_dt_ms": FINEST_DT_MS, "percentiles": list(PERCENTILES)}
+    metadata = {f"p{i}": p.metadata for i, p in enumerate(built) if p.metadata}
+    if metadata:
+        params["panel_metadata"] = metadata
     return grid, rows, {"params": params}
 
 

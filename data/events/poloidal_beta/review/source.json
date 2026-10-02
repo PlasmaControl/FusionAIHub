@@ -1,0 +1,7 @@
+{
+ "table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/betap_rule/v1/poloidal_beta_suggest_betap_rule_v1.csv",
+ "method": "betap_rule",
+ "version": "v1",
+ "set_at": "2026-09-30T16:25:08+00:00",
+ "set_by": "nc1514"
+}

@@ -45,6 +45,7 @@ const ids = [
   'assistant-status', 'assistant-stages', 'assistant-error', 'assistant-retry',
   'assistant-result', 'assistant-summary', 'assistant-explanation',
   'assistant-checks', 'assistant-edit', 'assistant-download', 'assistant-examples',
+  'assistant-cancel',
 ];
 const targets = Object.fromEntries(ids.map(id => [id, new Element('div', id)]));
 const node = id => targets[id];
@@ -349,4 +350,59 @@ assert.equal(node('assistant-download').getAttribute('href'), null);
 assert.equal(node('assistant-submit').disabled, false);
 assert(text(node('assistant-error')).length > 0);
 assert.equal(timers.size, 0);
+""")
+
+
+def test_cancel_stops_a_running_design_and_frees_the_form():
+    run_assistant(r"""
+const calls = [];
+context.ShotDesignAssistant.init({api: async (path, options = {}) => {
+  calls.push([path, options]);
+  if (path.endsWith('/cancel')) return {data: snapshot('cancelled', {
+    stages: snapshot().stages.map(stage => stage.status === 'running' ?
+      {...stage, status: 'cancelled', detail: 'Cancelled'} : stage)})};
+  return {data: snapshot()};
+}});
+assert.equal(node('assistant-cancel').hidden, true);
+node('assistant-prompt').value = 'Control tearing modes.';
+await node('assistant-form').fire('submit');
+assert.equal(node('assistant-cancel').hidden, false);
+assert.equal(node('assistant-cancel').disabled, false);
+assert.equal(timers.size, 1);
+await node('assistant-cancel').fire('click');
+assert.equal(calls[1][0], '/api/design-assistant/job-17/cancel');
+assert.equal(calls[1][1].method, 'POST');
+assert.equal(timers.size, 0);
+assert(text(node('assistant-status')).includes('cancelled'));
+assert.equal(node('assistant-cancel').hidden, true);
+assert.equal(node('assistant-submit').disabled, false);
+assert.equal(node('assistant-result').hidden, true);
+""")
+
+
+def test_a_cancel_that_loses_the_race_shows_the_finished_design():
+    run_assistant(r"""
+context.ShotDesignAssistant.init({api: async (path) => {
+  if (path.endsWith('/cancel')) throw Object.assign(Error('already complete'), {status: 409});
+  return {data: path === '/api/design-assistant' ? snapshot() : complete()};
+}});
+node('assistant-prompt').value = 'Control tearing modes.';
+await node('assistant-form').fire('submit');
+await node('assistant-cancel').fire('click');
+assert.equal(node('assistant-result').hidden, false);
+assert.equal(text(node('assistant-error')), '');
+""")
+
+
+def test_gemma_is_sent_as_the_model():
+    run_assistant(r"""
+const calls = [];
+context.ShotDesignAssistant.init({api: async (path, options) => {
+  calls.push(options);
+  return {data: complete()};
+}});
+node('assistant-model').value = 'gemma';
+node('assistant-prompt').value = 'Control tearing modes.';
+await node('assistant-form').fire('submit');
+assert.equal(JSON.parse(calls[0].body).model, 'gemma');
 """)

@@ -24,6 +24,23 @@ from . import alfven, panel_rows, rows
 BUILDERS = {"alfven_eigenmode": alfven.build}
 # Rows an older build wrote that the review no longer shows, until it is rebuilt.
 HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
+# The band an event's image rows show, whatever band the stored rows were built with.
+BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
+# Changes to these diagnostic recipes replace earlier cached review rows.
+PANEL_VERSIONS = {"edge_localized_mode": 3, "sawtooth_oscillation": 1}
+
+
+def current(path: Path, event: str) -> bool:
+    """Whether a review store exists and has the event's current panel recipe."""
+    if not path.is_file():
+        return False
+    version = PANEL_VERSIONS.get(event)
+    if version is None:
+        return True
+    import h5py
+
+    with h5py.File(path, "r") as store:
+        return store.attrs.get("panel_version") == version
 
 
 def build(
@@ -31,7 +48,7 @@ def build(
     out: Path | None = None,
 ) -> Path:
     """Build one shot's rows file and return its path; a file already there is
-    kept unless `force`.
+    kept unless `force` or its diagnostic recipe has changed.
 
     The file is the review's (`spectrogram_file`), or `out/<shot>.h5` with `out`,
     which the review page never serves, so `out` may not be under `spectrograms/`.
@@ -44,13 +61,15 @@ def build(
         if where == served or served in where.parents:
             raise ValueError(f"{out}: a store built with out= is never under {served}")
         path = Path(out) / f"{int(shot)}.h5"
-    if path.is_file() and not force:
+    if not force and (path.is_file() if out is not None else current(path, event)):
         return path
     builder = BUILDERS.get(event, panel_rows.build)
     grid, built, info = builder(event, int(shot), paths)
     rows.write(
         path, grid, built, event=event, shot=int(shot),
         builder=builder.__module__.rsplit(".", 1)[-1], **info,
+        **({"panel_version": PANEL_VERSIONS[event]}
+           if event in PANEL_VERSIONS and out is None else {}),
         made_at=datetime.now(UTC).isoformat(timespec="seconds"), git_sha=git_sha(),
     )
     return path
@@ -80,7 +99,7 @@ def main(argv=None) -> int:
     shots = args.shots or list(rosters.read_roster(roster).shot)
     todo = [
         int(shot) for shot in shots
-        if args.force or not paths.spectrogram_file(args.event, shot).is_file()
+        if args.force or not current(paths.spectrogram_file(args.event, shot), args.event)
     ]
     print(f"{args.event}: {len(todo)} of {len(shots)} shots to build", flush=True)
     failed = 0

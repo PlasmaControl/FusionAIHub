@@ -17,6 +17,35 @@ Typically found via ECE radiometer channels (the 48-channel array here), soft
 X-rays and core Thomson scattering as simultaneous drops in the core channels and
 rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 
+## Data Provenance
+### Dataset 1
+
+**Dataset File(s)**:
+
+**Author**:
+
+**Description**: Rule-based; no curated table, so `raw/` is empty. The inventory notes OMFIT's ECE-based sawtooth tool and Hiro's detector as possible references.
+
+**Publications**:
+
+## Models
+**stable**: none
+
+**latest**: none
+
+**all**:
+- ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
+
+## Inputs
+**ece_sawtooth**:
+- `ECE` (48 ch)
+- `SXR` (first lit fan of `SX90RM1F`, `SX90RP1F`, `SX90RM1S`, `SX90RP1S`)
+- `Ip` (plasma start)
+
+**sawtooth_frames (round three)**:
+- `ECE Te, ch 20-23`, `ECE Te, ch 24-27`, `ECE Te, ch 28-31`, `ECE Te, ch 32-35`
+- `SXR` (optional)
+
 ## Method
 `ece_sawtooth` (`labeler.events.heuristics.sawtooth_events`), a port of the
 omnimode `mrms.ece` inversion test with the envelope computed ONCE per shot
@@ -29,25 +58,10 @@ finite channels that took part, and `attrs["inversion_channel_lo"]`,
 `attrs["inversion_channel_stop"]` bound the dropping block (end-exclusive).
 On shot 198658 it finds 45 sawteeth with a median period of 76 ms.
 
-## Provenance
-Rule-based; no curated table, so `raw/` is empty. The inventory notes OMFIT's
-ECE-based sawtooth tool and Hiro's detector as possible references.
-
-## Models
-**stable**: none
-
-**latest**: none
-
-**all**:
-- ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
-
 ## Alias
-- sawtooth
-- sawteeth
-- sawtooth oscillation
-- sawtooth crash
-- st crash
-- sawtooth-free
+sawtooth, sawteeth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
+
+## Future Implementations
 
 ## Reference
 - S. von Goeler, W. Stodiek and N. Sauthoff, "Studies of internal disruptions and
@@ -58,28 +72,3 @@ ECE-based sawtooth tool and Hiro's detector as possible references.
 
 ## Contact
 - **Nathaniel Chen**: nathaniel [at] princeton [dot] edu
-
-## Tables
-
-Inventory row: Sawtooth; lexicon id: `sawtooth`.
-
-The scope inventory is [`discrete_labels.csv`](../discrete_labels.csv).
-`raw/` holds the untouched provided lists; `format/` holds their
-common-schema CSVs and metadata. Each `extend_<model>/` holds one
-producing source's output on the project shot list. Categories without
-a producer have no `extend_*` directory. See the [table guide](../README.md).
-
-Regenerate registered raw tables from the repository root:
-
-```bash
-PYTHONPATH=src python scripts/labeler/labels_format.py
-```
-
-No raw table is registered for this category yet.
-
-## Verification
-
-[`verification.ipynb`](verification.ipynb) plots one shot's signals against its
-saved labels and takes back corrections. The review roster is
-[`shots.csv`](shots.csv). See the [table guide](../README.md) for the roster
-schema.

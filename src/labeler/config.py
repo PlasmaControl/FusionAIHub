@@ -44,6 +44,8 @@ DEFAULT_LOGS_JSONL = Path(
 #: package and `LABELER_LABEL_TABLES` is the answer. Overridable anyway,
 #: because a table too large or too restricted to commit lives on /scratch.
 DEFAULT_LABEL_TABLES = Path(__file__).resolve().parents[2] / "data" / "events"
+#: Review events whose rows are another event's: the same panels, built once.
+STORE_EVENTS = {"confinement": "high_confinement_mode"}
 
 
 @dataclass(frozen=True)
@@ -191,7 +193,7 @@ class Paths:
         return self.root / "catalog"
 
     def spectrogram_file(self, event: str, shot: int) -> Path:
-        return self.spectrograms / event / f"{int(shot)}.h5"
+        return self.spectrograms / STORE_EVENTS.get(event, event) / f"{int(shot)}.h5"
 
     def mkdirs(self) -> None:
         for d in (

@@ -402,7 +402,7 @@ def test_the_table_with_the_frame_phenomena(tmp_path):
     )
     assert lines[5:10] == [
         "AE & 4 & 4 & 2 & 0.9 & 1 & 1 & 1 & 1 & 4 & 2 \\\\",
-        "NTM & \\multicolumn{10}{c}{coming} \\\\",
+        "TM & \\multicolumn{10}{c}{coming} \\\\",
         "H-mode & \\multicolumn{10}{c}{coming} \\\\",
         "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
         "sawteeth & -- & 0 & -- & -- & 2 & 1 & 1 & -- & -- & -- \\\\",
@@ -491,7 +491,7 @@ def test_the_build_counts_the_frame_phenomena(runs, tmp_path):
     lines = (tmp_path / "paper" / "table_datasets.tex").read_text().splitlines()
     assert lines[5] == "AE & 3 & 3 & 3 & 1.8 & 1 & 0 & 2 & 0 & -- & -- \\\\"
     assert lines[6:10] == [
-        "NTM & \\multicolumn{10}{c}{coming} \\\\",
+        "TM & \\multicolumn{10}{c}{coming} \\\\",
         "H-mode & \\multicolumn{10}{c}{coming} \\\\",
         "ELMing & 576 & 3 & 443 & 1234.5 & 4 & 1 & 2 & -- & 4$^\\dagger$ & 2 \\\\",
         "sawteeth & 4 & 0 & 3 & 2.5 & 2 & 1 & 1 & -- & -- & -- \\\\",

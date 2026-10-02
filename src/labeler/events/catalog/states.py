@@ -45,7 +45,7 @@ def _words(*words: str) -> frozenset:
 
 
 #: Any span may say why a stretch was not observable, in the reader's words.
-COMMON_ATTRS = {"reason": str}
+COMMON_ATTRS = {"reason": str, "iscrowd": int}
 
 PHENOMENA = {
     p.category: p
@@ -53,7 +53,7 @@ PHENOMENA = {
         Phenomenon("alfven_eigenmode", "AE", {"type": _words("RSAE", "TAE", "other")}),
         Phenomenon(
             "neoclassical_tearing_mode",
-            "NTM",
+            "TM",
             {
                 "m": int,
                 "n": int,
@@ -118,6 +118,10 @@ def attr_problems(category: str, attrs: Mapping) -> list[str]:
     allowed = {**COMMON_ATTRS, **phenomenon.attrs}
     problems = []
     for key, value in attrs.items():
+        if key == "iscrowd":
+            if not isinstance(value, int) or value not in (0, 1):
+                problems.append(f"iscrowd={value!r} must be 0 (individual) or 1 (group)")
+            continue
         rule = allowed.get(key)
         if rule is None:
             problems.append(f"{key!r} is not an attribute of {category}")

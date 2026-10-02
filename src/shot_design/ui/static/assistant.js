@@ -15,6 +15,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
   "use strict";
 
   const MAX_PROMPT_LENGTH = 4000;
+  const MODELS = ["quality", "fast", "gemma"];
   const EXAMPLES = [
     ["Tearing mode control", "Design a shot to study tearing mode control. Find suitable reference shots and propose actuator waveforms."],
     ["Alfvén eigenmode control", "Design a shot to study Alfvén eigenmode control. Find suitable reference shots and propose actuator waveforms."],
@@ -46,6 +47,8 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     node("submit").disabled = busy;
     node("model").disabled = busy;
     node("retry").disabled = busy;
+    node("cancel").hidden = !busy;
+    node("cancel").disabled = !(busy && state.jobId);
     for (const button of state.examples) button.disabled = busy;
   }
 
@@ -101,7 +104,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
   function receive(snapshot, generation) {
     if (generation !== state.generation) return;
     if (!snapshot || typeof snapshot.id !== "string" || !snapshot.id ||
-      !["queued", "running", "complete", "failed"].includes(snapshot.status) ||
+      !["queued", "running", "complete", "failed", "cancelled"].includes(snapshot.status) ||
       !Array.isArray(snapshot.stages) || (state.jobId && snapshot.id !== state.jobId)) {
       throw new Error("The server returned an invalid design status. Retry to check the workflow.");
     }
@@ -109,6 +112,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
       state.jobId = snapshot.id;
       state.onJobId?.(snapshot.id);
     }
+    node("cancel").disabled = !state.busy;
     if (state.restoring && snapshot.prompt) node("prompt").value = snapshot.prompt;
     state.restoring = false;
     renderStages(snapshot.stages);
@@ -122,6 +126,11 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
       }
       renderResult(snapshot.result);
       node("status").textContent = "Your shot design is ready. Review the waveforms or download the HDF5 file.";
+      setBusy(false);
+      return;
+    }
+    if (snapshot.status === "cancelled") {
+      node("status").textContent = "Design cancelled. Edit your request and design again.";
       setBusy(false);
       return;
     }
@@ -214,7 +223,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     try {
       const { data } = await state.api("/api/design-assistant", {
         method: "POST", signal: state.controller.signal,
-        body: JSON.stringify({ prompt, model: node("model").value === "fast" ? "fast" : "quality" }),
+        body: JSON.stringify({ prompt, model: MODELS.includes(node("model").value) ? node("model").value : "quality" }),
       });
       receive(data, generation);
     } catch (error) {
@@ -232,6 +241,24 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
     node("status").textContent = "Reconnecting to your design…";
     setBusy(true);
     return poll(generation);
+  }
+
+  // The server stops the job at its next stage; a model call in flight finishes first.
+  async function cancel(event) {
+    event?.preventDefault();
+    if (!state.busy || !state.jobId) return;
+    const generation = newRequest();
+    node("cancel").disabled = true;
+    node("status").textContent = "Cancelling your design…";
+    try {
+      const { data } = await state.api(`/api/design-assistant/${encodeURIComponent(state.jobId)}/cancel`,
+        { method: "POST", signal: state.controller.signal });
+      receive(data, generation);
+    } catch (error) {
+      if (generation !== state.generation) return;
+      if (error.status === 409) return poll(generation); // it finished first: show how
+      fail(error.message || String(error), generation, "poll");
+    }
   }
 
   function canSimulate() {
@@ -297,6 +324,7 @@ globalThis.ShotDesignDOM = function (tag, attrs = {}, ...children) {
       if (event.key === "Enter" && !event.shiftKey && !event.isComposing) return submit(event);
     });
     node("retry").addEventListener("click", retry);
+    node("cancel").addEventListener("click", cancel);
     node("edit").addEventListener("click", openDesign);
   }
 

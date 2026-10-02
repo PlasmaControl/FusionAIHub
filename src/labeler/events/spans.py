@@ -89,9 +89,10 @@ import pandas as pd
 
 from ..config import DEFAULT_LABEL_TABLES, Paths, git_sha
 from ..scoring.frames import Assessment
-from . import coverage, heuristics, suggestions, transients
+from . import coverage, equilibrium, heuristics, rwm, suggestions, transients
 from .catalog.cohort import read_cohort
 from .catalog.states import ABSENT, NOT_OBSERVABLE, PRESENT, UNCERTAIN
+from .interval_tables import category_labels
 from .catalog.window import FLATTOP_FRACTION, FLATTOP_MEAN_MS, _centred_mean
 from .review import agreement, labels
 from .verify import NoDataError, corpus_signal
@@ -227,13 +228,16 @@ def _within(t: float, intervals: Iterable[Interval]) -> bool:
     return any(a <= t <= b for a, b in intervals)
 
 
-def shot_rows(shot: int, window: Window, found: Found | None) -> list[list]:
+def shot_rows(
+    shot: int, window: Window, found: Found | None, *,
+    not_observable=NOT_OBSERVABLE, unclassified=ABSENT,
+) -> list[list]:
     """The shot's rows tiling `window`: not observable where the method could not
     see, absent where it could, and its spans."""
     lo, hi = window
-    painted = [(lo, hi, NOT_OBSERVABLE)]
+    painted = [(lo, hi, not_observable)]
     if found is not None:
-        seen = clip([(a, b, ABSENT) for a, b in found.measured], [(lo, hi)])
+        seen = clip([(a, b, unclassified) for a, b in found.measured], [(lo, hi)])
         painted += seen
         painted += clip(found.spans, [(a, b) for a, b, _ in seen])
     return suggestions.span_rows(shot, window, painted)
@@ -554,6 +558,8 @@ class Method:
     detect: Callable[[int, Paths, Window | None], Found]
     inputs: tuple[str, ...]
     rule: dict = field(default_factory=dict)
+    not_observable: int = NOT_OBSERVABLE
+    unclassified: int = ABSENT
 
 
 METHODS = {
@@ -600,6 +606,22 @@ METHODS = {
             },
         ),
         Method("neoclassical_tearing_mode", "window", detect_window, ()),
+        Method(
+            "minimum_safety_factor", "qmin_bands", equilibrium.qmin, ("qmin", "ip"),
+            {**equilibrium.RULE, "thresholds": list(equilibrium.QMIN_THRESHOLDS)},
+            not_observable=equilibrium.QMIN_NOT_OBSERVABLE,
+            unclassified=equilibrium.QMIN_UNCERTAIN,
+        ),
+        Method(
+            "poloidal_beta", "betap_rule", equilibrium.betap, ("betap", "ip"),
+            {**equilibrium.RULE, "threshold": equilibrium.BETAP_THRESHOLD},
+            unclassified=UNCERTAIN,
+        ),
+        Method(
+            "resistive_wall_mode", "rwm_candidates", rwm.detect,
+            ("n1rms", "betan", "li", "ip"), rwm.RULE,
+            unclassified=rwm.UNASSESSED,
+        ),
     )
 }
 
@@ -630,6 +652,21 @@ def population(paths: Paths) -> pd.DataFrame:
     return frame[["shot", "window_start_ms", "window_end_ms"]].reset_index(drop=True)
 
 
+def targets(event: str, paths: Paths, windows: str) -> pd.DataFrame:
+    """The review queue or population, plus RWM's curated reference shots.
+
+    Curated shots outside the corpus need display windows of their own. Blind
+    shots remain excluded even if a database happens to name one.
+    """
+    frame = queue(paths) if windows == "cohort" else population(paths)
+    if event == "resistive_wall_mode":
+        extra = rwm.database_windows(paths)
+        blind = set(read_cohort(cohort_path(paths)).query("blind").shot)
+        extra = extra[~extra.shot.isin(set(frame.shot) | blind)]
+        frame = pd.concat([frame, extra], ignore_index=True)
+    return frame
+
+
 def suggest(method: Method, shot: int, window: Window, paths: Paths):
     """`(rows, reason, info)`: the shot's rows, why the method could not run (or
     None), and what it recorded of how (`Found.info`)."""
@@ -639,7 +676,9 @@ def suggest(method: Method, shot: int, window: Window, paths: Paths):
         log.warning("shot %d: %s could not run: %s", shot, method.name, error)
         found, reason = None, f"{type(error).__name__}: {error}"
     info = {} if found is None else dict(found.info)
-    return shot_rows(int(shot), window, found), reason, info
+    rows = shot_rows(int(shot), window, found, not_observable=method.not_observable,
+                     unclassified=method.unclassified)
+    return rows, reason, info
 
 
 def _suggest(args):
@@ -657,6 +696,7 @@ def gold(method: Method, paths: Paths, reference=None) -> dict:
     is listed under `missing`; one the method could not run on is scored as
     drafted (not observable throughout) and listed under `could_not_run`.
     """
+    agreement.require_binary(method.event)
     event_dir = paths.label_tables / method.event
     reference = labels.labels_path(event_dir) if reference is None else reference
     roster = pd.read_csv(event_dir / "shots.csv", dtype={"tier": str})
@@ -669,8 +709,11 @@ def gold(method: Method, paths: Paths, reference=None) -> dict:
         rows, reason, _ = suggest(method, shot, label.window, paths)
         if reason:
             failed[str(shot)] = reason
-        estimate = Assessment.from_rows([(a, b, state) for _, state, a, b, _ in rows])
-        pairs.append((Assessment.from_label(label), estimate))
+        estimate = Assessment.from_rows([
+            (a, b, agreement.binary_state(method.event, state))
+            for _, state, a, b, _ in rows
+        ])
+        pairs.append((agreement.assessment(label, method.event), estimate))
     return {
         "reference": str(reference),
         "git_sha": git_sha(),
@@ -752,6 +795,7 @@ def run(
         "git_sha": git_sha(),
         "inputs": list(method.inputs),
         "rule": method.rule,
+        "categories": category_labels(method.event),
         "windows": windows,
         "skipped": dict(sorted({**kept, **skipped}.items())),
         "per_shot": dict(
@@ -802,14 +846,14 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     paths = Paths.from_env()
-    targets = queue(paths) if args.windows == "cohort" else population(paths)
+    targets_ = targets(args.event, paths, args.windows)
     if args.shots:
-        unknown = sorted(set(args.shots) - set(targets.shot))
+        unknown = sorted(set(args.shots) - set(targets_.shot))
         if unknown:
             parser.error(f"not in the {args.windows} (or blind): {unknown}")
-        targets = targets[targets.shot.isin(args.shots)]
+        targets_ = targets_[targets_.shot.isin(args.shots)]
     if args.limit:
-        targets = targets.head(args.limit)
+        targets_ = targets_.head(args.limit)
     method = METHODS[args.event]
     table = suggestions.table_path(paths, args.event, method.name, args.version)
     try:
@@ -818,10 +862,13 @@ def main(argv=None) -> int:
         parser.error(str(error))
     scored = None
     if args.gold is not None:
-        scored = gold(method, paths, Path(args.gold) if args.gold else None)
+        try:
+            scored = gold(method, paths, Path(args.gold) if args.gold else None)
+        except ValueError as error:
+            parser.error(str(error))
     summary = run(
         method,
-        targets,
+        targets_,
         paths,
         windows=args.windows,
         version=args.version,

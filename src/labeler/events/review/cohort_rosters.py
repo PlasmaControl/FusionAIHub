@@ -48,14 +48,16 @@ def cohort_roster(queue_shots: Iterable[int], existing: pd.DataFrame) -> pd.Data
     return rosters.validate_roster(frame)
 
 
-def build(event: str, paths: Paths, *, point: bool = False) -> dict:
+def build(
+    event: str, paths: Paths, *, point: bool = False, version: str = spans.VERSION,
+) -> dict:
     """Write the event's roster and, with `point`, its page's source pointer."""
     method = spans.METHODS[event]
-    table = suggestions.table_path(paths, event, method.name, spans.VERSION)
+    table = suggestions.table_path(paths, event, method.name, version)
     if point and not table.is_file():
         raise FileNotFoundError(
             f"no suggestion table at {table}; run `python -m labeler.events.spans "
-            f"--event {event}` first"
+            f"--event {event} --version {version}` first"
         )
     path = rosters.roster_path(event, root=paths.label_tables)
     existing = (
@@ -63,7 +65,7 @@ def build(event: str, paths: Paths, *, point: bool = False) -> dict:
         if path.is_file()
         else pd.DataFrame(columns=list(rosters.ROSTER_COLUMNS))
     )
-    queue = spans.queue(paths)
+    queue = spans.targets(event, paths, "cohort")
     roster = cohort_roster(queue.shot, existing)
     rosters.write_roster(roster, path, keep_order=True)
     summary = {
@@ -74,7 +76,7 @@ def build(event: str, paths: Paths, *, point: bool = False) -> dict:
     }
     if point:
         summary["pointer"] = labels.write_pointer(
-            path.parent, table, method=method.name, version=spans.VERSION
+            path.parent, table, method=method.name, version=version
         )
     return summary
 
@@ -82,12 +84,14 @@ def build(event: str, paths: Paths, *, point: bool = False) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--event", required=True, choices=EVENTS)
+    parser.add_argument("--version", type=spans._version, default=spans.VERSION)
     parser.add_argument(
         "--point", action="store_true", help="open the page on the spans table"
     )
     args = parser.parse_args(argv)
     try:
-        summary = build(args.event, Paths.from_env(), point=args.point)
+        summary = build(args.event, Paths.from_env(), point=args.point,
+                        version=args.version)
     except FileNotFoundError as error:
         parser.error(str(error))
     print(json.dumps(summary))

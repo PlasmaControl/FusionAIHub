@@ -104,6 +104,7 @@ phenomena:
     title: Tearing mode
     aliases:
       - tearing
+      - tm
       - ntm
       - 2/1
       - 3/2

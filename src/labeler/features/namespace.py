@@ -253,6 +253,31 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "relative difference, ratio 1.000000, 120 shots",
     ),
     FeatureSpec(
+        name="betap", kind="scalar", units="",
+        sources=("archive", "fdp"),
+        locators=("betap_EFIT01", r"\efit01::top.results.aeqdsk:betap"),
+        notes="poloidal beta from EFIT01, distinct from normalized beta_N",
+    ),
+    FeatureSpec(
+        name="wmhd", kind="scalar", units="J",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:wmhd",),
+        notes="EFIT01 stored plasma energy (WMHD), in joules. Native EFIT "
+              "sample cadence and gaps are retained. Calibration reference "
+              "for the drift-corrected diamagnetic-loop ELM energy view; "
+              "individual losses are measured on the loop, not synthesized "
+              "between EFIT samples",
+    ),
+    FeatureSpec(
+        name="diamagnetic_loop", kind="waveform", units="Wb",
+        sources=("fdp",), locators=("DIAMAG3",), step=0.0,
+        notes="DIII-D diamagnetic flux: the OMAS and imas_composer magnetics "
+              "mappings use PTDATA DIAMAG3, converting mV s (mWb) to Wb. "
+              "Preserve native cadence and polarity. Energy calibration "
+              "requires per-shot drift and EFIT reference windows; the source "
+              "mapping does not establish a fast wall-response correction",
+    ),
+    FeatureSpec(
         name="qpsi", kind="profile", units="",
         sources=("archive", "fdp"),
         locators=("qpsi_EFIT01", r"\efit01::top.results.geqdsk:qpsi"),
@@ -322,6 +347,16 @@ FEATURES: tuple[FeatureSpec, ...] = (
     # tearing CNN's archive, so each is fdp-only; every node was fetched live
     # on shot 186563 before being listed (aeqdsk scalars: 390 slices, all
     # finite; itempfit (304, 121) in keV; pcbcoil 162,497 samples, 'raw').
+    FeatureSpec(
+        name="n1rms", kind="scalar", units="G",
+        sources=("fdp",), locators=(r"\MHD::N1RMS",),
+        notes="n=1 magnetic RMS amplitude; not specific to resistive wall modes",
+    ),
+    FeatureSpec(
+        name="n2rms", kind="scalar", units="G",
+        sources=("fdp",), locators=(r"\MHD::N2RMS",),
+        notes="n=2 magnetic RMS amplitude; not specific to resistive wall modes",
+    ),
     FeatureSpec(
         name="qmin", kind="scalar", units="",
         sources=("fdp",),
@@ -427,6 +462,14 @@ FEATURES: tuple[FeatureSpec, ...] = (
               "channels in the same order and the same units, agreeing to "
               "0.3-7% (the corpus record is ~3 MHz where the staged one is "
               "65 kHz, so the two averages are not the same average)",
+    ),
+    FeatureSpec(
+        name="ece_psi", kind="waveform", units="normalized psi",
+        sources=("corpus",), locators=("ece_psi",), step=0.0,
+        notes="optional measured ECE channel localization on the 48-channel "
+              "axis; this is per-channel normalized psi metadata, not the "
+              "canonical 33-point qpsi profile or rho. Used only to map "
+              "against local EFIT qpsi review data; missing samples remain gaps",
     ),
     *(
         FeatureSpec(

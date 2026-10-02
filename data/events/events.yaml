@@ -44,6 +44,9 @@ label_grid:
 # Directories here that are not event categories; category scans skip them.
 non_category_dirs:
   - catalog
+  # Shared raw confinement sources and their reconciliation notebook; also the
+  # review page's `confinement` event (its roster and source pointer).
+  - confinement
 
 format_datasets:
   - name: resistive_wall_mode
@@ -60,6 +63,13 @@ format_datasets:
     abbreviation: ae
     sources:
       - co2_detector_2021
+
+  - name: alfven_eigenmode
+    raw_path: alfven_eigenmode_ece_format_2026_v1.csv
+    date: "2026-10-01T00:00:00Z"
+    abbreviation: ae
+    sources:
+      - ece_labels_2022
 
   - name: edge_localized_mode
     raw_path: edge_localized_mode_format_2026_v1.csv
@@ -80,7 +90,7 @@ format_datasets:
   - name: neoclassical_tearing_mode
     raw_path: neoclassical_tearing_mode_format_2026_v1.csv
     date: "2026-09-14T00:00:00Z"
-    abbreviation: ntm
+    abbreviation: tm
     sources:
       - tm_labels_archive
       - tm_labels_h5
@@ -122,6 +132,12 @@ raw_datasets:
     path: alfven_eigenmode/raw/co2_250_detector.pkl
     formatter: alfven_eigenmode/formatter.py
     provenance: "Azarakhsh Jalalvand, CO2 alfven eigenmode detector data from 2021"
+    citation:
+
+  - stem: ece_labels_2022
+    path: alfven_eigenmode/raw/ece_all_labels
+    formatter: alfven_eigenmode/formatter.py
+    provenance: "Copied unchanged from /projects/EKOLEMEN/ece_cnn/all_labels/: 26 per-shot files of hand-drawn time-frequency boxes (TAE, RSAE, BAE, EAE, LFM) on ECE spectrograms, dated 2022-01-24; the annotator is not recorded in them"
     citation:
 
   - stem: elm_labels

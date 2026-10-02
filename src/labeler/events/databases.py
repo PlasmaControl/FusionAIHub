@@ -301,7 +301,9 @@ def _load_events_manifest(path: Path) -> tuple[TableSpec, ...]:
         if stem in seen:
             raise DatabaseError(f"{path}: duplicate output stem {stem}")
         seen.add(stem)
-        phenomenon = {"ntm": "tearing"}.get(row["abbreviation"], row["abbreviation"])
+        phenomenon = {"tm": "tearing", "ntm": "tearing"}.get(
+            row["abbreviation"], row["abbreviation"]
+        )
         if phenomenon not in ids:
             raise DatabaseError(f"{path}: unregistered phenomenon {phenomenon}")
         if not row.get("sources") or not set(row["sources"]) <= sources.keys():

@@ -292,6 +292,49 @@ def test_fdp_signal_rejects_unequal_lengths(monkeypatch):
         fdp_signal(178640, ["b", "a"])
 
 
+class TreeNODATA(Exception):
+    """Stands in for MDSplus' error of that name, which is what `fdp_signal` matches."""
+
+
+def test_fdp_signal_missing_ok_turns_a_dead_node_into_a_nan_row(monkeypatch):
+    n = 10
+    good = {
+        "data": np.arange(n, dtype="float32"),
+        "dim0": np.linspace(0.0, 20.0, n),
+        "units": {"data": "keV", "dim0": "ms"},
+    }
+
+    def fetch(expr, tree, shot, dims=()):
+        if expr == "dead":
+            raise TreeNODATA("%TREE-E-NODATA, No data available for this node")
+        return good
+
+    monkeypatch.setattr("labeler.features.resolve_fdp._fetch_mds", fetch)
+    got = fdp_signal(178640, ["dead", "a"], missing_ok=True)
+    assert got.y.shape == (2, n) and np.isnan(got.y[0]).all()
+    assert got.y[1] == pytest.approx(good["data"])
+    assert got.x[-1] == pytest.approx(20.0)
+    # The flag is opt-in: the same dead node is still a failed fetch without it.
+    with pytest.raises(NoDataError, match="'dead'"):
+        fdp_signal(178640, ["dead", "a"])
+
+
+def test_fdp_signal_missing_ok_still_fails_on_other_errors_and_all_missing(monkeypatch):
+    def unreachable(expr, tree, shot, dims=()):
+        raise RuntimeError("TREE-E-FOPENR")
+
+    monkeypatch.setattr("labeler.features.resolve_fdp._fetch_mds", unreachable)
+    with pytest.raises(NoDataError, match="fdp run"):
+        fdp_signal(178640, ["a"], missing_ok=True)
+
+    def dead(expr, tree, shot, dims=()):
+        raise TreeNODATA("%TREE-E-NODATA, No data available for this node")
+
+    monkeypatch.setattr("labeler.features.resolve_fdp._fetch_mds", dead)
+    with pytest.raises(NoDataError, match="holds data"):
+        fdp_signal(178640, ["a", "b"], missing_ok=True)
+
+
 def test_fdp_signal_cache_is_not_refetched(tmp_path, monkeypatch):
     n = 10
     ms = np.linspace(0.0, 20.0, n)

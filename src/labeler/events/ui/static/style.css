@@ -74,13 +74,16 @@ kbd { font: inherit; font-size: 11px; opacity: 0.7; }
   background: var(--panel);
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
-  overflow: hidden;
+  /* A narrow window wraps the bar onto a second line, the name kept on screen. */
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 #shot { width: 7em; margin-left: 4px; }
 #count, #tier, #saved, #masks { color: var(--muted); }
 #dirty { color: var(--unsaved); font-size: 16px; line-height: 1; }
-#status { margin-left: auto; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+#status { flex: 1 1 8em; min-width: 0; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+#bar-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
 #status.error { color: var(--error); }
 #help { width: 28px; padding: 3px 0; }
 #reviewer-name { width: 11em; }
@@ -133,10 +136,18 @@ body.busy #rows, body.busy .track canvas { opacity: 0.35; pointer-events: none; 
   pointer-events: none;
 }
 #source-track { height: 22px; }
-#label-track { height: 40px; cursor: crosshair; touch-action: none; }
+#label-track, #crowd-track { height: 40px; cursor: crosshair; touch-action: none; }
 
-#controls, #queue { padding: 0 12px 0 var(--gutter); }
-#controls { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+#controls, #queue, #contributors { padding: 0 12px 0 var(--gutter); }
+/* One line always held, so the rows keep their height as it fills and empties. */
+#contributors { margin: 8px 0 0; min-height: 1.35em; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+#contributors b { color: var(--ink); font-weight: 600; }
+#onsets { margin: 8px 12px 0 var(--gutter); line-height: 2; }
+#onsets button { margin-right: 4px; }
+#controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+#resolution-control { align-items: center; gap: 6px; color: var(--muted); }
+#resolution-control:not([hidden]) { display: inline-flex; }
 #swatches { display: flex; gap: 6px; margin-right: auto; }
 .swatch { display: inline-flex; align-items: center; gap: 6px; }
 .swatch::before { content: ""; width: 11px; height: 11px; border-radius: 2px; background: var(--c); }

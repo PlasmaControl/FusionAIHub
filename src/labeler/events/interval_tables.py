@@ -38,7 +38,16 @@ def category_labels(category: str) -> dict[str, str]:
     if category in PHENOMENA:
         return {str(k): v for k, v in STATE_NAMES.items()}
     if category == "minimum_safety_factor":
-        return {"0": "absent", "1": "low", "2": "hybrid", "3": "elevated", "4": "high"}
+        return {"0": "absent", "1": "low", "2": "hybrid", "3": "elevated",
+                "4": "high", "5": "uncertain", "6": "not_observable"}
+    if category == "confinement":
+        # The four regimes and uncertain; time marked none of them is category 0.
+        return {"0": "absent", "1": "high", "2": "low", "3": "qh", "4": "wpqh",
+                "5": "uncertain"}
+    if category == "poloidal_beta":
+        return {str(k): v for k, v in STATE_NAMES.items()}
+    if category == "resistive_wall_mode":
+        return {**{str(k): v for k, v in STATE_NAMES.items()}, "4": "unassessed"}
     return {"0": "absent", "1": "present"}
 
 
@@ -73,6 +82,12 @@ def validate_intervals(frame: pd.DataFrame) -> pd.DataFrame:
         raise DatabaseError("t_end must not precede t_start")
     if ATTRS_COLUMN in result:
         result[ATTRS_COLUMN] = result[ATTRS_COLUMN].map(attrs_text)
+        for category, cell in zip(result.category, result[ATTRS_COLUMN], strict=True):
+            attrs = parse_attrs(cell)
+            if "iscrowd" in attrs:
+                flag = crowd_flag(attrs["iscrowd"])
+                if category == 0 and flag:
+                    raise DatabaseError("iscrowd cannot mark an absent interval")
     return result
 
 
@@ -110,10 +125,17 @@ def attrs_text(value) -> str:
         raise DatabaseError(f"attrs is not plain JSON: {parsed!r}") from error
 
 
+def crowd_flag(value) -> int:
+    """A COCO-style annotation flag, without coercing strings or fractions."""
+    if type(value) not in (int, bool) or value not in (0, 1):
+        raise DatabaseError("iscrowd must be 0 (individual) or 1 (group)")
+    return int(value)
+
+
 def project_intervals(events: pd.DataFrame) -> pd.DataFrame:
     """Select only shot, interval bounds and confidence from second-based events."""
     events = events.rename(columns={"t_start_ms": "t_start", "t_end_ms": "t_end"})
-    if tuple(events.columns) == INTERVAL_COLUMNS:
+    if tuple(events.columns) in (INTERVAL_COLUMNS, WITH_ATTRS):
         return validate_intervals(events)
     if tuple(events.columns) == LEGACY_INTERVAL_COLUMNS:
         return validate_intervals(events.assign(category=1)[list(INTERVAL_COLUMNS)])
@@ -129,18 +151,24 @@ def project_intervals(events: pd.DataFrame) -> pd.DataFrame:
     )
     for column in ("t_start", "t_end"):
         frame[column] = pd.to_numeric(frame[column], errors="raise") * 1000
-    names = []
+    names, resolution = [], []
     for row in events.to_dict("records"):
-        attrs = row.get("attrs", "{}")
-        attrs = json.loads(attrs) if isinstance(attrs, str) else attrs
+        attrs = parse_attrs(row.get("attrs", "{}"))
         # Explicit numeric labels include zero; do not treat it as missing.
         explicit = row.get("category", attrs.get("category"))
         if explicit is not None:
             names.append(explicit)
         else:
             names.append(QMIN_CATEGORY_IDS.get(row.get("phenomenon"), 1))
+        resolution.append(
+            attrs_text({"iscrowd": attrs["iscrowd"]}) if "iscrowd" in attrs else ""
+        )
     frame["category"] = names
-    return validate_intervals(frame[list(INTERVAL_COLUMNS)])
+    columns = INTERVAL_COLUMNS
+    if any(resolution):
+        frame[ATTRS_COLUMN] = resolution
+        columns = WITH_ATTRS
+    return validate_intervals(frame[list(columns)])
 
 
 def write_interval_table(frame: pd.DataFrame, path: Path, meta: dict) -> None:

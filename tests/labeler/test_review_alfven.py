@@ -45,7 +45,7 @@ def test_the_grid_is_the_heidbrink_stft(made):
     for row in rows:
         assert row.values.shape == (257, grid.n) and row.values.dtype == np.uint8
         assert row.y0 == 0 and row.dy == pytest.approx(500 / 512)
-        assert row.band == (80.0, 250.0) and (row.z_lo, row.z_hi) == (-3.0, 27.0)
+        assert row.band == (60.0, 250.0) and (row.z_lo, row.z_hi) == (-3.0, 27.0)
 
 
 def test_a_mode_on_every_chord_shows_on_every_row(made):

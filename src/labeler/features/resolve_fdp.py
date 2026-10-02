@@ -639,7 +639,16 @@ def _resolve_one(spec, locator: str, shot: int, cached) -> FeatureArray:
 
 
 def _actuator_units(data: np.ndarray, spec, units: str) -> np.ndarray:
-    """Apply only the LC2 conversions established by source unit metadata."""
+    """Apply conversions established by source mappings and unit metadata."""
+    if spec.name == "diamagnetic_loop":
+        # The DIII-D OMAS/IMAS mapping reads DIAMAG3 as mV s (= mWb).
+        # Keep its sign: the diamagnetic polarity depends on Bt direction.
+        unit = units.lower().replace(" ", "").replace("*", "")
+        if unit in ("mvse", "mvs", "mwb"):
+            return data * 1e-3
+        if unit in ("wb", "vs", "vse"):
+            return data
+        raise ValueError(f"{spec.name}: expected integrated flux units, got {units!r}")
     if spec.name == "lh_power":
         if units.lower() != "kw":
             raise ValueError(f"{spec.name}: expected kW, got {units!r}")

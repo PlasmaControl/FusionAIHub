@@ -6,8 +6,10 @@ its writes are `POST /api/label` and `POST /api/masks`, both into the event's
 `review/` directory, and `POST /api/names`, which adds a reviewer's name to
 `reviewers.txt` beside the events (`GET /api/names` lists them; see
 `review.reviewers`). `GET /api/history` lists a shot's saved versions (see
-`review.versions`); `GET /api/masks` gives an AE shot's pseudo-mask regions
-(pseudo-v1-full: pseudo-v1's rules over the whole window) and the reviewer's last
+`review.versions`), and `GET /api/shot` and both saves name everyone who has
+saved the shot (see `review.reviewers.shot_reviewers`); `GET /api/masks` gives
+an AE shot's pseudo-mask regions (pseudo-v1-full: pseudo-v1's rules over the
+whole window, 60-250 kHz) and the reviewer's last
 word on them (see `labeler.ae.seg.regions`); `GET /api/tokeye` gives TokEye's
 lines over the whole shot, drawn under them (see `labeler.ae.seg.whole`).
 """
@@ -35,7 +37,7 @@ from ...ae import seg
 from ...ae.seg import regions, whole
 from ...ae.seg.pseudo import PseudoMask
 from ...config import Paths, sha256_of
-from .. import raw, rosters
+from .. import raw, rosters, rwm
 from ..review import build as review_build
 from ..review import labels, reviewers, rows, versions
 
@@ -50,8 +52,10 @@ BAD_TOKEN = "bad token"
 #: Bumped when the server gains a route or a field the page depends on. The
 #: page asks `/api/version` first and, from an older server, saves without a
 #: name and hides the history instead of failing every save. 3 added the masks,
-#: 4 the whole-shot TokEye layer, 5 the list of names the page asks from.
-API_VERSION = 5
+#: 4 the whole-shot TokEye layer, 5 the list of names the page asks from,
+#: 6 the exact RWM onset annotations, 7 individual/group annotation resolution,
+#: 8 independent, overlapping individual and crowd annotation lanes.
+API_VERSION = 8
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +67,8 @@ class LabelIn(BaseModel):
     shot: int
     window: tuple[float, float]
     intervals: list[tuple[float, float, int]] = Field(max_length=1000)
+    iscrowd: list[object] | None = Field(default=None, max_length=1000)
+    overlap_edit: bool = False
     name: str | None = Field(default=None, max_length=versions.NAME_MAX)
 
 
@@ -105,7 +111,7 @@ class Builds:
             if future is not None and future.exception() is not None:
                 error = future.exception()
                 return None, f"{type(error).__name__}: {error}"
-            if path.is_file():
+            if review_build.current(path, event):
                 return path, None
             self.running[key] = self.pool.submit(
                 review_build.build, event, shot, self.paths
@@ -117,6 +123,8 @@ def require_event(event: str, paths: Paths) -> Path:
     """The event's directory, else 404; decided on the name before any join."""
     if event != Path(event).name or event in {"", ".", ".."} or "\0" in event:
         raise HTTPException(404, f"unknown event {event!r}")
+    if event in labels.FOLDED:
+        raise HTTPException(404, f"{event} is reviewed as {labels.FOLDED[event]}")
     directory = paths.label_tables / event
     try:
         found = (directory / rosters.ROSTER_NAME).is_file()
@@ -225,7 +233,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             directories = sorted(
                 p
                 for p in paths.label_tables.iterdir()
-                if (p / rosters.ROSTER_NAME).is_file()
+                if p.name not in labels.FOLDED and (p / rosters.ROSTER_NAME).is_file()
             )
         except OSError:
             return {"events": []}
@@ -239,6 +247,8 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 found.append(
                     {
                         "event": event,
+                        **({"display_name": "Tearing mode (TM)"}
+                           if event == "neoclassical_tearing_mode" else {}),
                         "n_shots": len(roster),
                         "n_reviewed": int(roster.shot.isin(list(saved)).sum()),
                         "categories": {str(k): v for k, v in categories.items()},
@@ -265,12 +275,20 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         if path is None:
             body = {"building": True, "progress": raw.progress_for(shot)}
             return JSONResponse(body, status_code=202)
+        described = rows.meta(path, review_build.HIDDEN.get(event, frozenset()))
+        band = review_build.BANDS.get(event)
+        for row in described["rows"]:
+            if band is not None and "band" in row:
+                row["band"] = list(band)
         return {
             "event": event,
             "shot": shot,
             "tier": tier,
-            **rows.meta(path, review_build.HIDDEN.get(event, frozenset())),
+            **described,
             **labels.shot_labels(directory, shot),
+            "reviewers": reviewers.shot_reviewers(directory, shot),
+            **({"onsets": rwm.onsets(shot, paths)}
+               if event == "resistive_wall_mode" else {}),
         }
 
     @app.get("/api/rows")
@@ -302,11 +320,21 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
         tier = roster_tier(_roster(directory), body.shot)
         known = set(labels.categories(body.event))
         try:
-            label = labels.normalise(body.window, body.intervals, known=known)
+            label = labels.normalise(
+                body.window, body.intervals, known=known, iscrowd=body.iscrowd
+            )
             name = versions.clean_name(body.name)
         except ValueError as error:
             raise HTTPException(400, str(error)) from None
         table = labels.source_path(directory)
+        if not body.overlap_edit and any(labels.has_overlaps(value) for value in (
+            label,
+            labels.read_saved(directory).get(body.shot),
+            labels.read_source(directory).get(body.shot),
+        )):
+            raise HTTPException(
+                409, "Reload the review page before editing overlapping annotations"
+            )
         try:
             entry = labels.save(
                 directory,
@@ -315,17 +343,25 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
                 source=table.name if table else None,
                 name=name,
                 source_sha256=sha256_of(table) if table else None,
+                crowd_edit=body.iscrowd is not None,
             )
         except labels.SaveRefused as error:
             raise HTTPException(409, str(error)) from None
-        source = labels.read_source(directory).get(body.shot)
+        source = labels.offered(
+            body.event, labels.read_source(directory).get(body.shot)
+        )
         row = {
             "shot": body.shot,
             "tier": tier,
             "state": labels.state(label, source),
             "saved_at": entry["saved_at"],
         }
-        return {"row": row, "saved": label.as_json(), "last_save": entry}
+        return {
+            "row": row,
+            "saved": label.as_json(),
+            "last_save": entry,
+            "reviewers": reviewers.shot_reviewers(directory, body.shot),
+        }
 
     @app.get("/api/history")
     def history_view(event: str, shot: int):
@@ -398,6 +434,7 @@ def create_app(paths: Paths | None = None, token: str | None = None) -> FastAPI:
             "rejected": entry["rejected"],
             "last_save": entry,
             "revision": revision + 1,
+            "reviewers": reviewers.shot_reviewers(directory, body.shot),
         }
 
     mask_lock = threading.Lock()

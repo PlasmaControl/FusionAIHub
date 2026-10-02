@@ -1,0 +1,7 @@
+{
+ "table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/qmin_bands/v1/minimum_safety_factor_suggest_qmin_bands_v1.csv",
+ "method": "qmin_bands",
+ "version": "v1",
+ "set_at": "2026-09-30T16:40:18+00:00",
+ "set_by": "nc1514"
+}

@@ -121,7 +121,7 @@ def test_a_drawn_label_is_saved_found_again_and_left_behind(served, tmp_path):
     assert result.returncode == 0, result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert [c for c in checks if not c["ok"]] == []
-    assert len(checks) == 24
+    assert len(checks) == 28
     assert (event.parent / "reviewers.txt").read_text() == "Ada Lovelace\n"
     saved = labels.read_saved(event)
     assert sorted(saved) == [170815, 170816]
@@ -133,3 +133,92 @@ def test_a_drawn_label_is_saved_found_again_and_left_behind(served, tmp_path):
     first, second, restored = history[1:]
     assert len(second["intervals"]) == 3, "the second save added a span"
     assert restored["intervals"] == first["intervals"], "the restored version was saved"
+
+
+def test_equilibrium_classes_and_exact_rwm_onsets_in_the_browser(
+    served, tmp_path, monkeypatch,
+):
+    from labeler.events.review import build
+    from labeler.features.store import FeatureArray, write_features
+
+    monkeypatch.setenv("LABELER_NO_FETCH", "1")
+    base, existing = served
+    paths = Paths(
+        root=tmp_path / "root", corpus=tmp_path / "corpus",
+        text_root=tmp_path / "text", logs_jsonl=tmp_path / "logs.jsonl",
+        label_tables=existing.parent, raw_cache=tmp_path / "raw",
+    )
+    t = np.arange(0, 2001, 25) / 1000
+    write_features(paths.features_file(170815), 170815, {
+        name: FeatureArray(t, np.full((1, len(t)), value))
+        for name, value in (("qmin", 1.7), ("betap", 1.4), ("ip", 1e6))
+    }, {})
+    for event, source in (
+        ("minimum_safety_factor", "170815,3,0,2000,\n"),
+        ("poloidal_beta", "170815,1,0,2000,\n"),
+        ("resistive_wall_mode",
+         "170815,1,900.1234,900.1234,\n170815,1,900.6789,900.6789,\n"),
+    ):
+        directory = paths.label_tables / event
+        (directory / "format").mkdir(parents=True)
+        (directory / "shots.csv").write_text(
+            "shot,tier,holdout,reviewers,verified_on,notes\n"
+            "170815,unverified,false,,,\n")
+        (directory / "format" / f"{event}_format_test.csv").write_text(
+            "shot,category,t_start,t_end,confidence\n" + source)
+        build.build(event, 170815, paths)
+    directory = paths.label_tables / "resistive_wall_mode"
+    (directory / "raw").mkdir()
+    (directory / "raw/onsets.csv").write_text(
+        "SHOT,ONSET_TIME,NTOR,MODE_TYPE\n"
+        "170815,900.1234,1,rwm\n170815,900.6789,2,n2rwm\n")
+    (directory / "format/resistive_wall_mode_format_test.meta.json").write_text(
+        json.dumps({"made_from": [{
+            "raw_file": "resistive_wall_mode/raw/onsets.csv", "source": "curated",
+        }]}))
+    result = subprocess.run(
+        [NODE, str(DRIVER), base, TOKEN, str(SHELLS[-1]),
+         str(tmp_path / "profile"), "equilibrium"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    checks = json.loads(result.stdout.splitlines()[-1])
+    assert [c for c in checks if not c["ok"]] == [], checks
+    saved = labels.read_saved(paths.label_tables / "minimum_safety_factor")[170815]
+    assert any(state == 5 for _, _, state in saved.intervals)
+
+
+def test_individual_and_group_annotations_through_the_browser(served, tmp_path):
+    base, event = served
+    result = subprocess.run(
+        [NODE, str(DRIVER), base, TOKEN, str(SHELLS[-1]),
+         str(tmp_path / "crowd-profile"), "crowds"],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:] + result.stdout[-4000:]
+    checks = json.loads(result.stdout.splitlines()[-1])
+    assert not [check for check in checks if not check["ok"]], checks
+    saved = labels.read_saved(event)[170815]
+    assert saved.iscrowd == (1, 0, 0)
+    assert len(saved.intervals) == 3
+    assert saved.intervals[1][1] == saved.intervals[2][0]
+    assert labels.read_history(event)[-1]["iscrowd"] == [1, 0, 0]
+
+
+def test_overlapping_individuals_and_crowds_through_the_browser(served, tmp_path):
+    base, event = served
+    result = subprocess.run(
+        [NODE, str(DRIVER), base, TOKEN, str(SHELLS[-1]),
+         str(tmp_path / "overlap-profile"), "overlaps", str(tmp_path / "overlap.png")],
+        capture_output=True, text=True, timeout=180, check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:] + result.stdout[-4000:]
+    checks = json.loads(result.stdout.splitlines()[-1])
+    assert not [check for check in checks if not check["ok"]], checks
+    saved = labels.read_saved(event)[170815]
+    assert saved.intervals[0] == (100, 300, 1)
+    assert len(saved.intervals) == 2
+    assert saved.iscrowd == (1, 0)
+    assert abs(saved.intervals[1][0] - 200) <= 2
+    assert abs(saved.intervals[1][1] - 280) <= 2
+    assert labels.read_history(event)[-1]["iscrowd"] == [1, 0]
