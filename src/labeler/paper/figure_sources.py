@@ -7,9 +7,11 @@ when needed; a missing file never silently substitutes the H-mode frame model.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import replace
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
@@ -29,7 +31,44 @@ SAWTOOTH_THRESHOLD = 0.6
 ELM_VETO_MS = 5.0
 ECE_MATCH_MS = 3.0
 SAWTOOTH_DISPLAY_MIN_MS = 10.0
-LATE_LINE_MIN_MS = 150.0
+
+
+def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
+    """Identity of the actual model waveform and its preprocessing/inference.
+
+    Hash the trimmed float32 samples that enter prep, with their timing and
+    channel identity. Pin local transform code, runtime versions and the
+    caller's inference code; presentation changes need not invalidate arrays.
+    """
+    from ..ae import labels, transform
+    from ..events import masks, unet
+
+    y, fs, t0, t1 = masks.read_waveform(paths.corpus_file(shot), group, row)
+    waveform = {
+        "group": group,
+        "row": row,
+        "samples": len(y),
+        "dtype": str(y.dtype),
+        "sample_sha256": hashlib.sha256(y.tobytes()).hexdigest(),
+        "fs_hz": fs,
+        "start_s": t0,
+        "end_s": t1,
+    }
+    preprocessing = {
+        "code_sha256": {
+            str(Path(m.__file__).relative_to(Path(__file__).parents[2])): sha256_of(
+                Path(m.__file__)
+            )
+            for m in (masks, unet, transform, labels)
+        },
+        "runtime_versions": {
+            name: version(name) for name in ("numpy", "scipy", "torch")
+        },
+        "inference_sha256": hashlib.sha256(inference_code.encode()).hexdigest(),
+        "zoom_decimation": masks.ZOOM_DECIM,
+        "row_lit_threshold": mt.PROB_THRESHOLD,
+    }
+    return {"waveform": waveform, "preprocessing": preprocessing}
 
 
 def state_intervals(track: lf.Track, window: tuple[float, float]) -> list[dict]:
@@ -115,33 +154,21 @@ def sawtooth_display(track: lf.Track, window: tuple[float, float]):
 
 
 def late_untagged_lines(mask, t_ms, f_khz, late_absent) -> dict | None:
-    """Data-derived frequency bounds of ≥150 ms late, untagged components."""
-    from scipy import ndimage
-
+    """Frequency bounds from every late untagged pixel in the AE input band."""
     t, f = np.asarray(t_ms), np.asarray(f_khz)
     eligible = mask & np.asarray(late_absent)[None, :]
     eligible &= (f >= mt.BANDS[mt.AE][0])[:, None]
-    labels, _ = ndimage.label(eligible, structure=np.ones((3, 3)))
-    kept = np.zeros_like(mask, dtype=bool)
-    for label, bounds in enumerate(ndimage.find_objects(labels), 1):
-        if bounds is None:
-            continue
-        _, cols = bounds
-        if t[cols.stop - 1] - t[cols.start] >= LATE_LINE_MIN_MS:
-            kept[bounds] |= labels[bounds] == label
-    if not kept.any():
+    if not eligible.any():
         return None
-    rr, cc = np.nonzero(kept)
+    rr, cc = np.nonzero(eligible)
     return {
         "band_khz": [float(f[rr].min()), float(f[rr].max())],
-        "pixels": int(kept.sum()),
-        "columns": int(kept.any(0).sum()),
+        "pixels": int(eligible.sum()),
+        "columns": int(eligible.any(0).sum()),
         "first_time_ms": float(t[cc].min()),
         "last_time_ms": float(t[cc].max()),
-        "minimum_duration_ms": LATE_LINE_MIN_MS,
-        "rule": "8-connected coherent components in the AE detector band; "
-        "late ABSENT times after the last PRESENT AE interval; "
-        "continuous component duration >=150 ms",
+        "rule": "all coherent pixels in the AE detector band during late ABSENT "
+        "times after the last PRESENT AE interval; no duration cutoff",
         "reason": "AE detector absent; time coincidence is required",
     }
 
@@ -448,12 +475,19 @@ def crash_times(
     }
 
 
-def sawtooth_track(paths: Paths, shot: int, source: Path, verified_times):
-    """Keep physics interval categories; verified crash ticks are separate."""
+def sawtooth_track(paths: Paths, shot: int, source: Path | None, verified_times):
+    """Expert review first, then physics states; crash candidates are separate."""
+    spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
+    expert = spec.sources[0]
+    review = expert.locate(paths)
+    rows = lf.read_rows(review).get(shot)
+    if rows:
+        return lf.Track(spec, expert, review, rows)
+    if source is None:
+        return lf.Track(spec)
     file, _, rows, _ = saw_source(source, shot)
     times = np.asarray(verified_times)
-    spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
-    name = "physics sawtooth states; independently ECE-verified crash ticks"
+    name = "physics sawtooth states; separate ECE-supported crash candidates"
     selected = lf.Source(lf.GENERATED, name, lambda p: file)
     if not rows:
         rows = tuple(lf.Row(float(t - 0.5), float(t + 0.5), PRESENT) for t in times)
@@ -490,6 +524,10 @@ def harmonic_support(n_map, mask, times, frequencies):
         "caption_frequency_step_khz": 1.0,
         "ridge_rule": "per-column pixel-weighted frequency of each measured n",
         "support_ms": 0.0,
+        "joint_support_ms": 0.0,
+        "joint_columns": 0,
+        "passing_columns": 0,
+        "passing_fraction": None,
     }
     if n_map is None:
         return result
@@ -502,9 +540,14 @@ def harmonic_support(n_map, mask, times, frequencies):
     f1, f2 = means
     common = (counts[0] > 0) & (counts[1] > 0) & (f1 > 0)
     ratio = np.divide(f2, f1, out=np.zeros_like(f1), where=common)
+    result["joint_columns"] = int(common.sum())
     common &= np.abs(ratio - 2) <= 0.1
     dt = float(np.median(np.diff(t))) if len(t) > 1 else 0
     result["support_ms"] = float(common.sum() * dt)
+    result["joint_support_ms"] = result["joint_columns"] * dt
+    result["passing_columns"] = int(common.sum())
+    if result["joint_columns"]:
+        result["passing_fraction"] = result["passing_columns"] / result["joint_columns"]
     if common.any():
         result.update(
             n1_median_khz=float(np.median(f1[common])),
@@ -515,6 +558,8 @@ def harmonic_support(n_map, mask, times, frequencies):
 
 def sawtooth_caption(record: dict) -> str:
     """Summarise displayed physics states without equating a proxy to cutoff."""
+    if record.get("tier") == lf.SILVER:
+        return "Sawtooth: expert intervals."
     rows = record.get("display_intervals_ms", record.get("state_intervals_ms", []))
     if not rows:
         return "Sawtooth unassessed."
@@ -609,27 +654,30 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         if bin_ms is not None and ae.get("tier") == lf.GENERATED:
             text += f"; tint follows the detector's {bin_ms:g} ms bins"
         sentences.append(text + ".")
-    sentences.append("n measured ≤30 kHz.")
+    sentences.append("Toroidal mode number n is measured ≤30 kHz.")
     if tagged is None or tagged.get(mt.NTM):
-        sentences.append("NTM outlines require dominant and pixel n=1/2.")
-    harmonic = drawn.get("harmonic_support", {})
-    if harmonic.get("support_ms", 0) >= harmonic.get("minimum_support_ms", 50):
-        step = harmonic.get("caption_frequency_step_khz", 1.0)
-        frequency = round(harmonic["n2_median_khz"] / step) * step
         sentences.append(
-            f"The n=2 ridge near {frequency:.0f} kHz is consistent with a second "
-            "harmonic of n=1."
+            "Dashed outlines mark NTM time overlap on measured n=1 or 2 ridges "
+            "whose dominant n is 1 or 2."
         )
-    if records.get(mt.SAWTOOTH) and drawn.get("sawtooth_track_shown", True):
-        sentences.append(sawtooth_caption(records[mt.SAWTOOTH]))
+    if mt.SAWTOOTH in records:
+        if drawn.get("sawtooth_track_shown", True):
+            sentences.append(sawtooth_caption(records[mt.SAWTOOTH]))
+        else:
+            sentences.append("Sawtooth: no present time in this window.")
     late = drawn.get("late_untagged_high_frequency")
     if late:
         lo, hi = late["band_khz"]
         sentences.append(
-            f"Late {lo:.0f}–{hi:.0f} kHz lines stay untagged where AE detector is absent."
+            f"Late {lo:.0f}–{hi:.0f} kHz mask pixels stay untagged where AE is absent."
         )
     if drawn.get("sawtooth_strip_shown"):
-        sentences.append("Ticks exclude crashes within 5 ms of D-alpha peaks.")
+        sentences.append(
+            "ECE-supported crash candidates use channel-order geometry only; "
+            "ticks exclude ±5 ms D-alpha coincidences."
+        )
+    if drawn.get("first_large_peak_before_expert_ms") is not None:
+        sentences.append("The first large spike precedes the expert interval.")
     keys = []
     states = drawn.get("display_state_keys")
     if states is None or "uncertain" in states:
@@ -638,9 +686,9 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         keys.append("blank: unassessed/unobservable")
     elm = records.get("edge_localized_mode", {})
     if elm.get("tier") == lf.SILVER and drawn.get("elm_crowd_spans_ms", True):
-        keys.append("circles: expert ELM interval (one span for many ELMs)")
+        keys.append("Circles mark expert intervals spanning many ELMs")
     if drawn.get("elm_peaks_in_label", True):
-        keys.append("triangles: threshold D-alpha peaks (not annotated)")
+        keys.append("triangles mark threshold D-alpha peaks (not annotations)")
     if keys:
         sentences.append("; ".join(keys) + ".")
     text = " ".join(sentences)

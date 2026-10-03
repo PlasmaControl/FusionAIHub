@@ -14,7 +14,10 @@ import re
 import subprocess
 from pathlib import Path
 
-from labeler.config import sha256_of
+import fig_interpreter_tokeye as renderer
+import numpy as np
+
+from labeler.config import Paths, sha256_of
 from labeler.paper import figure_sources as fs
 from labeler.paper import label_figure as lf
 from labeler.paper import mode_tags as mt
@@ -27,7 +30,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit5-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit6-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -114,8 +117,19 @@ def main():
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
-        assert saw["sha256"] == crashes["files"][0]["sha256"]
-        assert snapshot_hashes[saw["path"]] == saw["sha256"]
+        for source in crashes["files"]:
+            assert snapshot_hashes[source["path"]] == source["sha256"]
+        spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
+        review = spec.sources[0].locate(Paths.from_env())
+        reviewed = lf.read_rows(review).get(shot)
+        if reviewed:
+            assert saw["path"] == str(review) and saw["tier"] == lf.SILVER
+            expected = fs.state_intervals(
+                lf.Track(spec, rows=reviewed), record["window_ms"]
+            )
+            assert saw["state_intervals_ms"] == expected
+        else:
+            assert snapshot_hashes[saw["path"]] == saw["sha256"]
         if Path(saw["path"]).suffix == ".json":
             physics = json.loads(Path(saw["path"]).read_text())
             expected = []
@@ -179,14 +193,21 @@ def main():
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
         assert ("AE (detector band ≥80 kHz)" in legend) == bool(tags[mt.AE])
-        assert ("NTM (n=1/2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        assert ("NTM (n=1 or 2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        if confine["title"] == "regime":
+            assert set(drawn["regimes_shown"]) <= set(legend)
         elm_expert = record["tracks"]["edge_localized_mode"]["tier"] == lf.SILVER
         crowd = bool(drawn["elm_crowd_spans_ms"])
         assert any("expert ELM" in name for name in legend) == (elm_expert and crowd)
         late = drawn["late_untagged_high_frequency"]
         if late:
-            assert late["minimum_duration_ms"] == 150
-            assert late["last_time_ms"] - late["first_time_ms"] >= 150
+            assert late["pixels"] > 0
+            assert "no duration cutoff" in late["rule"]
+        harmonic = drawn["harmonic_support"]
+        if harmonic["joint_columns"]:
+            assert harmonic["passing_fraction"] == (
+                harmonic["passing_columns"] / harmonic["joint_columns"]
+            )
         for t in drawn["elm_peak_times_ms"]:
             assert not any(a <= t < b for a, b in drawn["elm_uncertain_spans_ms"])
         caption_file = args.records / f"{shot}.caption.tex"
@@ -204,8 +225,20 @@ def main():
                 "MPI66M",
                 "PRESENT",
                 "cand.",
+                "n=1/2",
+                "second harmonic",
+                "ECE-verified",
             )
         )
+        if not present_saw:
+            assert "sawtooth: no present time in this window" in caption.lower()
+        if shown:
+            assert "ECE-supported crash candidates" in caption
+            assert "channel-order geometry" in caption
+        if drawn["first_large_peak_before_expert_ms"] is not None:
+            assert (
+                "the first large spike precedes the expert interval" in caption.lower()
+            )
         label = re.search(r"\\label\{([^}]+)\}", caption)[1]
         assert label not in labels
         assert label == f"fig:interpreter-{shot}"
@@ -235,6 +268,19 @@ def main():
             "path": sources[-1]["checkpoint"],
             "sha256": sources[-1]["sha256"],
         }
+        tokeye = record["tokeye"]
+        sources.append({"path": tokeye["cache"], "sha256": tokeye["cache_sha256"]})
+        fingerprints = fs.tokeye_fingerprints(
+            Paths.from_env(),
+            shot,
+            renderer.roster.GATE_GROUP,
+            renderer.roster.GATE_ROW,
+            renderer.inspect.getsource(renderer.run_tokeye),
+        )
+        assert tokeye["fingerprints"] == fingerprints
+        with np.load(tokeye["cache"]) as cache:
+            assert json.loads(str(cache["fingerprints"])) == fingerprints
+            assert str(cache["checkpoint_sha256"]) == tokeye["sha256"]
         for source in sources:
             if not source or not source.get("sha256"):
                 continue
@@ -266,8 +312,23 @@ def main():
                 "layout": geometry,
                 "regimes_shown": drawn["regimes_shown"],
                 "harmonic_support": drawn["harmonic_support"],
+                "tokeye_cache": {
+                    "path": tokeye["cache"],
+                    "sha256": tokeye["cache_sha256"],
+                    "fingerprints": fingerprints,
+                },
+                "first_large_peak_before_expert_ms": drawn[
+                    "first_large_peak_before_expert_ms"
+                ],
+                "largest_dalpha_peak_ms": drawn["largest_dalpha_peak_ms"],
+                "elm_hmode_conflicts_ms": drawn["elm_hmode_conflicts_ms"],
                 "render_source_commit": record["git"],
                 "sawtooth_source": crashes["files"],
+                "sawtooth_interval_source": {
+                    "path": saw["path"],
+                    "sha256": saw["sha256"],
+                    "tier": saw["tier"],
+                },
                 "sawtooth_states": saw["state_intervals_ms"],
                 "sawtooth_track_shown": present_saw,
                 "sawtooth_display_intervals_ms": saw["display_intervals_ms"],

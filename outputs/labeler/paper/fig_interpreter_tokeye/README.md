@@ -1,143 +1,97 @@
-# TokEye Figure 1 — fix round 5
+# TokEye Figure 1 — fix round 6
 
-Primary: shot **201978**, **1500–3300 ms**. Raw Mirnov, D-alpha and NBI lead to
-TokEye's coherent mask, a dedicated **0–30 kHz** measured-n panel and four aligned
-label rows: AE, NTM, H-mode and ELMs. The sawtooth row is conditional on positive
-source PRESENT duration in the view; only 201973 currently qualifies. Hidden
-rows retain their exact source states in JSON. The catalog's generated sawtooth
-frame model remains excluded. Keys and callouts occupy the empty right margin;
-the processed 30–55 kHz band is omitted to enlarge the n view. The raw band remains.
+Primary: **201978, 1500–3300 ms**. Raw Mirnov magnetics, D-alpha (a.u.) and
+NBI lead to TokEye's coherent mask, a **0–30 kHz** measured-n panel and aligned
+labels. Include at **textwidth**: **6.75 × 5.5 inches**, fonts **≥7 pt**.
+Vector PDFs and native **150-dpi** PNGs are under `$LABELER_ROOT/round4/fig1/`,
+with five `alt_<shot>/` directories. The six records/captions here,
+`fix_round6_audit.json` and `fix_round6.md` are current; earlier rounds are history.
 
-Include the PDF at **\textwidth**: **6.75 × 5.5 inches**, fonts **≥7 pt**.
-PDFs and 150-dpi PNGs live under `$LABELER_ROOT/round4/fig1/`, with five
-`alt_<shot>/` directories. The six records and exact caption copies here are
-current; `fix_round5_audit.json` and `fix_round5.md` are the current audit and
-report. Earlier audits/reports are historical. The `git` in each render is the
-committed renderer's source revision, before the records were committed;
-`render_code_sha256` is checked against that revision and the current code.
+## Sources and display
 
-## Reproduce from local read-only inputs
+Expert sawtooth review now precedes physics states, following `lf.TRACKS`.
+186636 therefore displays the expert row. Rows require positive source PRESENT
+time in the window; hidden rows remain recorded and are explained in captions.
+ECE-supported crash candidates remain separate physics evidence, with only
+channel-order geometry and an inclusive ±5 ms D-alpha veto. The catalog's
+sawtooth frame model is excluded. No rotating-mode precursor or seeding is inferred.
+The immutable physics evidence snapshot is pinned by
+`sawtooth_source_manifest.json`; labels and production stores remain read-only.
 
-Run from this worktree. Set `SAWTOOTH_SOURCE` to the completed physics export
-recorded in `drawn.sawtooth_crashes.files`; it is a parameter, not a shot-specific
-caption override. All consumed source files have SHA-256 digests in the records.
+AE tint intersects PRESENT times at **≥80 kHz**, with recorded **25 ms**
+(paper ae-ours) or **10 ms** (earlier frame detector) cadence. AE training targets
+used TokEye's mask; overlap is not independent confirmation. Expert AE review
+precedes supplied/stored predictions and the earlier frame fallback.
+
+NTM requires both a component's unique dominant measured **n=1 or 2** and
+individual measured **n=1 or 2** pixels at **≤30 kHz**. Its visible **white dashed
+contour is opaque, 1.2 pt (2.5 print pixels)**, with a thin black halo and a
+matching key. Contours border measured support; support-pixel audits do not
+count the stroke as a new n measurement. The magnetic detector remains
+unverified and shares the displayed inputs. Constant full-colour n hues remain.
+
+The harmonic caption sentence is removed. The audit retains the ratio test
+**|f2/f1 − 2| ≤ 0.1**, its **50 ms** floor, and the passing fraction among all
+columns with both measured ridges. Late untagged frequency bounds now use
+**all** eligible coherent pixels after the last PRESENT AE interval during
+ABSENT AE time in the detector band; no component-duration cutoff truncates them.
+
+Expert ELM categories remain unchanged; circles mark crowd intervals and
+triangles mark threshold D-alpha peaks within PRESENT intervals. The primary
+caption flags the first large spike before the expert interval. The audit
+records its timing and the alternate 201973 H-mode/ELM contradiction for the owner.
+Curated L-mode has a darker bar and regime key, distinct from absent grey.
+Raw bands are normalised separately; the 55 kHz fold changes resolution.
+Processed 30–55 kHz is omitted to enlarge the n panel.
+
+Cached arrays carry the checkpoint hash, actual trimmed waveform sample/timing
+fingerprint, preprocessing/inference code hashes and runtime versions. Missing
+or mismatched identity triggers regeneration, including for superset caches.
+Each record and audit includes the cache SHA-256 digest.
+
+## Reproduce and audit
+
+Run from this worktree with local read-only inputs:
 
 ```bash
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" MPLBACKEND=Agg
-# Use the pinned, completed export named in the current report.
-export SAWTOOTH_SOURCE="/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots"
+export SAWTOOTH_SOURCE="$LABELER_ROOT/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots"
 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python scripts/labeler/paper/fig_interpreter_tokeye.py --shot 201978 \
-  --tmin 1500 --tmax 3300 \
-  --ae-labels "$LABELER_ROOT/round4/fig1/ae_ours.csv" \
+  --tmin 1500 --tmax 3300 --ae-labels "$LABELER_ROOT/round4/fig1/ae_ours.csv" \
   --sawtooth-source "$SAWTOOTH_SOURCE"
 ```
 
-Generate all six externally while HEAD is clean, then copy their JSONs/captions
-here. `--record` is supported, but writing tracked records between renders makes
-later HEADs dirty. The current clean renderer revision is **21e72826**.
+Render all six externally from a clean committed HEAD, then copy JSONs/captions
+here together. `--record` is available but would dirty HEAD between renders.
+All captions use `fig:interpreter-<shot>`.
 
-The sawtooth stream is still regenerating. This snapshot is the newest completed
-source available during this round, with live completion/shot hashes matching
-`sawtooth_source_manifest.json`. For the later rerender, pin its new complete
-source, update the manifest, pass **--sawtooth-source**, regenerate all six,
-inspect their PNGs, and rerun the audit. No renderer change is needed.
+| Shot | Split | Window (ms) | Supplied AE CSV |
+|---|---|---|---|
+| 201978 | train | 1500–3300 | yes |
+| 201973 | val | 1600–3350 | yes |
+| 203187 | train | 1700–3150 | yes |
+| 186636 | val | 1300–3900 | no |
+| 191376 | train | 1500–2900 | no |
+| 191782 | train | 1800–3700 | no |
 
-The supplied AE predictions use the existing isolated adapter inference and
-its fixed paper operating point **p≥0.5**. The three other shots retain the
-earlier interferometer frame model's checkpoint threshold, recorded per track.
-Expert review takes precedence over supplied or stored paper predictions,
-then the earlier frame model. AE training targets used TokEye's coherent mask;
-their overlap with the displayed mask is not independent evidence.
-
-## Source and display conventions
-
-- Raw frequency bands are normalised separately (3rd/99.8th percentiles).
-  The 55 kHz fold changes frequency resolution, not an event-band threshold.
-- AE tint intersects PRESENT times and **≥80 kHz**, the model's input band.
-  There are no AE boxes. The caption discloses **25 ms** bins for `ae-ours` and
-  **10 ms** bins for the earlier frame fallback. Late untagged frequency bounds
-  come from coherent components of **≥150 ms continuous duration**, after the
-  last PRESENT AE interval during ABSENT time, within the detector input band.
-  Descriptions are conditional; there is no fixed 170–250 kHz scientific band.
-- NTM outlines here require a component's unique dominant measured **n=1 or 2**,
-  PRESENT times and individually measured **n=1/2 pixels ≤30 kHz**. Its
-  one-print-pixel inner edge has **alpha 0.45** and is intersected with those
-  pixels again after pooling. No n=3 pixels are marked. The source reads
-  **detector (unverified)**; it shares the shown magnetic inputs and has not
-  met its validation criteria. A coincidence does not establish an island.
-- Measured n uses constant full colour: blue (1), bluish-green (2), yellow (3),
-  purple (other). Brightness does not encode n. Unmeasured mask pixels are white.
-  Sawtooth uses vermillion **#D55E00**. Structure labels sit in the empty right
-  margin with neutral grey leaders.
-- Harmonic support compares simultaneous pixel-weighted n=1 and n=2 ridge
-  frequencies: **|f2/f1 − 2| ≤ 0.1**, at least **50 ms** sampled support.
-  Caption frequencies round to **1 kHz**. This describes harmonic consistency.
-- Expert ELM intervals preserve categories: uncertain intervals are hatched.
-  Circles appear only for expert crowd intervals (one span for many ELMs).
-  Triangles are D-alpha peaks from a threshold, **not annotations**, restricted
-  to PRESENT ELM intervals. The peak finder uses a 25-sample running median,
-  4 MADs and 3-sample spacing; it cannot mark a spike before the expert span.
-- Hatching means uncertain; blank means unassessed/unobservable. A D-alpha
-  L-H transition supplies the pre-transition **L-mode** cue; the binary label
-  row remains **H-mode**. JSON preserves numeric categories with the track's
-  own regime/binary mapping: curated category 2 is L-mode, category 5 uncertain.
-- Supplying `--sawtooth-source` reads the physics states automatically. It
-  accepts JSONs, a JSON directory or cohort CSVs. `--sawtooth-evidence` pairs
-  reduced CSVs with full physics evidence. The caption uses the window's
-  states and `density_guard` metadata, explicitly identifying a conservative
-  density proxy and **“Bt not in the local corpus”** when needed. It never
-  infers confirmed cutoff.
-  Independently ECE-verified ticks reject inclusive ±5 ms D-alpha coincidence.
-  The row requires positive source PRESENT duration in the displayed window.
-  For display only, **<10 ms** state slivers merge into the longer touching
-  neighbour, shortest first, with earlier-neighbour ties; gaps are preserved.
-  `display_intervals_ms` and `display_merge` retain the rule and every change;
-  raw source intervals and exact crash ticks remain untouched.
-- Sawtooth crashes are point events, never rotating-mode tags. Overlap with n=1
-  does not identify a precursor or establish NTM seeding. The report's
-  **Deviations from the brief** explicitly explains this scientific departure
-  from the owner's original projection request. Event/crowd keys and captions
-  follow actual drawn content and source tiers.
-
-## Alternates and audit
-
-Use explicit **--tmin/--tmax** for all reproductions. The two comparison shots
-otherwise default to their full cohort windows. Use the generator with
-`--out "$LABELER_ROOT/round4/fig1/alt_<shot>"`, the same
-physics source parameter, and `--record .../<shot>.json`:
-
-| Shot | Window (ms) | Supplied AE CSV |
-|---|---|---|
-| 201973 | 1600–3350 | yes |
-| 203187 | 1700–3150 | yes |
-| 186636 | 1300–3900 | no |
-| 191376 | 1500–2900 | no |
-| 191782 | 1800–3700 | no |
-
-Omit `--ae-labels` for the last three. 201973 is the strongest visual alternate;
-191376/191782 are diagnostic/regime comparisons with detector ELMs and no AE/NTM
-coincidences in these windows. The report includes the primary draft caption.
-
-All captions use `fig:interpreter-<shot>`; use `fig:interpreter-201978` for the
-primary. Caption text has no shot-specific scientific branches. The report
-records the shot-selection criteria, candidates and ranking from the round-two
-selection audit. To validate the current artifacts:
+Alternates use `--out "$LABELER_ROOT/round4/fig1/alt_<shot>"` and explicit windows.
+No blind test shots are used. For the current verification:
 
 ```bash
 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python scripts/labeler/paper/fig1_audit.py --rebuild-primary \
-  --out "$LABELER_ROOT/round4/fig1/fix_round5_audit.json"
+  --out "$LABELER_ROOT/round4/fig1/fix_round6_audit.json"
 ```
 
-The audit checks committed renderer hashes, actual figure hashes, physics
-state rows and source hashes, display smoothing/visibility, numeric confinement
-categories, conditional keys, zero n=3 outlines, text bounds/fonts, pixel
-clipping, caption length and unique labels,
-external/committed identity before and after a scratch rebuild, PDF size, non-blind splits,
-and byte-identical primary PDF/PNG rebuilding.
+The audit checks cache identity/digests, source priority/hashes, exact source
+states, display smoothing/visibility, regime keys/categories, measured NTM
+support and clipping, code/figure hashes, fonts/text bounds, caption length,
+external/committed copies, PDF dimensions and byte-identical primary rebuilding.
+Inspect every native PNG before use. 201973 is the strongest visual alternate;
+191376/191782 are diagnostic/regime comparisons without AE/NTM coincidences.

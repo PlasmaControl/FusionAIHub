@@ -209,8 +209,8 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     assert "regime:" in text
     assert "Ticks" not in text
     assert ("unverified" in text) == (tier == fs.lf.GENERATED)
-    assert "consistent with a second harmonic" in text
-    assert "near 15 kHz" in text
+    assert "harmonic" not in text
+    assert "n=1/2" not in text
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
         assert internal not in text
 
@@ -312,8 +312,7 @@ def test_harmonic_support_follows_ridges_outside_the_primary_shots_bands():
     assert got["n1_median_khz"] == 11
     assert got["n2_median_khz"] == 22
     text = fs.caption(42, {}, {"harmonic_support": got, "sawtooth_strip_shown": False})
-    assert "near 22 kHz" in text
-    assert "near 15 kHz" not in text
+    assert "harmonic" not in text
 
 
 @pytest.mark.parametrize(
@@ -323,6 +322,66 @@ def test_harmonic_support_uses_relative_ratio_error(frequencies, expected_ms):
     n = np.array([[1, 1], [2, 2]])
     got = fs.harmonic_support(n, np.ones((2, 2), bool), [0, 100], frequencies)
     assert got["support_ms"] == expected_ms
+
+
+def test_harmonic_fraction_uses_all_columns_with_both_measured_ridges():
+    n = np.array([[1, 1, 1, 1], [2, 0, 0, 0], [0, 2, 2, 0]])
+    got = fs.harmonic_support(n, n > 0, [0, 100, 200, 300], [8, 16, 14])
+    assert got["joint_columns"] == 3
+    assert got["passing_columns"] == 1
+    assert got["joint_support_ms"] == 300
+    assert got["passing_fraction"] == pytest.approx(1 / 3)
+
+
+def test_sawtooth_expert_review_precedes_physics_states(tmp_path):
+    import json
+
+    p = Paths(root=tmp_path, label_tables=tmp_path / "data/events")
+    review = p.label_tables / "sawtooth_oscillation/review/labels.csv"
+    review.parent.mkdir(parents=True)
+    review.write_text("shot,category,t_start,t_end,confidence\n42,1,100,500,\n")
+    physics = tmp_path / "42.json"
+    physics.write_text(
+        json.dumps(
+            {
+                "shot": 42,
+                "crashes": [],
+                "states": [{"start_s": 0.1, "end_s": 0.5, "state": "uncertain"}],
+            }
+        )
+    )
+    track = fs.sawtooth_track(p, 42, physics, [])
+    assert track.file == review
+    assert track.source.tier == fs.lf.SILVER
+    assert [(r.t_start, r.t_end, r.category) for r in track.rows] == [(100, 500, 1)]
+
+
+def test_tokeye_fingerprints_change_with_waveform_or_inference_code(tmp_path):
+    p = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    p.corpus_file(42).parent.mkdir(parents=True)
+    with h5py.File(p.corpus_file(42), "w") as h:
+        g = h.create_group("mirnov")
+        g.create_dataset("xdata", data=[0, 0.001, 0.002])
+        g.create_dataset("ydata", data=[[1, 2, 3]])
+    first = fs.tokeye_fingerprints(p, 42, "mirnov", 0, "inference code")
+    assert first == fs.tokeye_fingerprints(p, 42, "mirnov", 0, "inference code")
+    with h5py.File(p.corpus_file(42), "r+") as h:
+        h["mirnov/ydata"][0, 1] = 9
+    changed = fs.tokeye_fingerprints(p, 42, "mirnov", 0, "inference code")
+    assert first["waveform"] != changed["waveform"]
+    assert first["preprocessing"] == changed["preprocessing"]
+    code = fs.tokeye_fingerprints(p, 42, "mirnov", 0, "changed inference")
+    assert code["preprocessing"] != changed["preprocessing"]
+
+
+def test_hidden_sawtooth_and_preinterval_spike_are_disclosed():
+    text = fs.caption(
+        42,
+        {fs.mt.SAWTOOTH: {}},
+        {"sawtooth_track_shown": False, "first_large_peak_before_expert_ms": 11.5},
+    )
+    assert "sawtooth: no present time in this window" in text.lower()
+    assert "the first large spike precedes the expert interval" in text.lower()
 
 
 def test_harmonic_caption_requires_minimum_sampled_support():
@@ -432,18 +491,18 @@ def test_sawtooth_display_does_not_bridge_unassessed_gaps():
     assert changes == []
 
 
-def test_late_line_band_is_measured_and_requires_continuous_duration():
+def test_late_line_band_includes_all_late_untagged_pixels():
     t = np.arange(0, 501, 10)
     f = np.array([90.0, 100.0, 110.0, 120.0])
     mask = np.zeros((4, len(t)), bool)
     mask[1:3, 10:31] = True  # 200 ms at 100–110 kHz
-    mask[3, 45:] = True  # 50 ms at the edge, should not change the band
+    mask[3, 45:] = True  # shorter late line must also enter the reported band
     got = fs.late_untagged_lines(mask, t, f, t >= 100)
-    assert got["band_khz"] == [100, 110]
-    assert got["minimum_duration_ms"] == 150
+    assert got["band_khz"] == [100, 120]
     assert got["first_time_ms"] == 100
-    assert got["last_time_ms"] == 300
-    assert fs.late_untagged_lines(mask, t, f, t >= 450) is None
+    assert got["last_time_ms"] == 500
+    assert fs.late_untagged_lines(mask, t, f, t >= 450)["band_khz"] == [120, 120]
+    assert fs.late_untagged_lines(mask, t, f, t > 500) is None
 
 
 def test_caption_omits_absent_highlights_and_expert_elm_claims():
