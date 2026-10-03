@@ -7,6 +7,27 @@ import numpy as np
 from labeler.rwm import labels as lab
 
 
+def test_interval_sources_preserve_merged_mode_identity_and_original_times():
+    sources = [
+        {"ntor": 1, "mode_type": "RWM", "t_ms": 100.0, "raw_source": "2017"},
+        {"ntor": 1, "mode_type": "RFA", "t_ms": 100.4, "raw_source": "2017"},
+        {"ntor": 2, "mode_type": "RWM", "t_ms": 105.0, "raw_source": "2024"},
+        {"ntor": 1, "mode_type": "RWM", "t_ms": 300.0, "raw_source": "2017"},
+    ]
+    found = lab.interval_onset_sources(lab.PRESENT, 100, 115, sources)
+    assert [(r["NTOR"], r["MODE_TYPE"], r["ONSET_TIME"]) for r in found] == [
+        (1, "RWM", 100.0),
+        (1, "RFA", 100.4),
+        (2, "RWM", 105.0),
+    ]
+    assert found[0]["source"] == "2017"
+    # Subtraction can split an uncertain window; keep every contributor to it.
+    found = lab.interval_onset_sources(lab.UNCERTAIN, 80, 100, sources)
+    assert len(found) == 3
+    assert lab.interval_onset_sources(lab.UNASSESSED, 115, 280, sources) == []
+    assert lab.interval_onset_sources(lab.PRESENT, 115, 120, sources) == []
+
+
 def test_slice_labels_follow_the_papers_horizon():
     t = np.arange(0.0, 400.0, 10.0)
     out = lab.slice_labels(t, [200.0], horizon_ms=100.0, post_ms=50.0)

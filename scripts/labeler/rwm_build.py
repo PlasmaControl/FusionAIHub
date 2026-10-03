@@ -193,9 +193,16 @@ def main() -> None:
     tiers.loc[
         windows.shot.isin(hanson_shots) & (windows.category == labels.UNCERTAIN)
     ] = "onset_window_uncertain"
-    windows["attrs"] = tiers.map(
-        lambda tier: json.dumps({"evidence_tier": tier, "coverage_verified": False})
-    )
+    sources = {int(s): group.to_dict("records") for s, group in table.groupby("shot")}
+    attributes = []
+    for row, tier in zip(windows.itertuples(), tiers):
+        attrs = {"evidence_tier": tier, "coverage_verified": False}
+        if tier in ("onset_point_minimal", "onset_window_uncertain"):
+            attrs["source_onsets"] = labels.interval_onset_sources(
+                row.category, row.t_start, row.t_end, sources[int(row.shot)]
+            )
+        attributes.append(json.dumps(attrs))
+    windows["attrs"] = attributes
     windows = windows.sort_values(["shot", "t_start", "t_end"], ignore_index=True)
     validate_intervals(windows)
     LABEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -468,6 +475,10 @@ def main() -> None:
         },
         "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
         "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
+        "onset_interval_attributes": (
+            "attrs.source_onsets preserves every contributing original NTOR, "
+            "MODE_TYPE, ONSET_TIME (ms) and source, including merged duplicates"
+        ),
         "summary": "outputs/labeler/rwm/shots.json",
     }
     (LABEL_DIR / f"{STEM}.meta.json").write_text(json.dumps(meta, indent=2) + "\n")

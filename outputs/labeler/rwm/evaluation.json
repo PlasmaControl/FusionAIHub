@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_evaluate.py",
-  "made_at": "2026-10-03T20:19:27+00:00",
+  "made_at": "2026-10-03T21:37:04+00:00",
   "protocol": {
     "outer_folds": 5,
     "inner_folds": 3,
@@ -28,7 +28,10 @@
     "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
     "within_shot_auroc": "primary and broad Hanson masks, fixed score orientation; equal-shot mean/median over shots with both classes; per-shot class counts include excluded one-class shots",
     "paired_within_shot_auroc": "forest minus each continuous scalar, primary and broad masks; equal-shot mean of per-shot AUROCs over shared two-class Hanson shots; 95% basic paired shot-bootstrap intervals, seed 0",
-    "phase_controlled_auroc": "primary Hanson slices; positive-negative pairs restricted to campaign x floor(elapsed_ms/200), bins [200*k,200*(k+1)); pair-count-weighted cell AUROC; omit one-class cells and missing time; 1000 campaign-stratified shot resamples, seed 0; individual percentile and forest-minus-scalar basic paired intervals",
+    "phase_controlled_auroc": "primary Hanson slices; positive-negative pairs restricted to campaign x floor(elapsed_ms/100), bins [100*k,100*(k+1)); pair-count-weighted cell AUROC; omit cells with fewer than 5 slices or one class and missing time; 1000 campaign-stratified shot resamples, seed 0; individual percentile and forest-minus-scalar basic paired intervals",
+    "phase_bin_ms": 100.0,
+    "phase_min_slices": 5,
+    "phase_bin_width_sensitivity": "50/100/200/400/800 ms and no time-bin control; primary Hanson mask, campaign control retained, same minimum cell size; point estimates only, no tuning or selection",
     "primary_mask_mechanism": "primary negatives end at last n=1 onset; final labelled slices are positive, giving increasing elapsed time nearly perfect within-shot ranking",
     "broad_sensitivity": "same predictions; post-last-onset and n=2-only negatives added",
     "high_beta": "beta_N >= 0.8 times each shot's whole-window p95 (evaluation only)",
@@ -140,9 +143,17 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": 0.5441252317428455,
-        "low": 0.4534909213385078,
-        "high": 0.6288685755799931
+        "estimate": 0.5337573804158704,
+        "low": 0.43832175011536373,
+        "high": 0.6236245643079941
+      },
+      "phase_bin_width_sensitivity": {
+        "50": 0.5360326680853511,
+        "100": 0.5337573804158704,
+        "200": 0.5441252317428455,
+        "400": 0.5574791181515206,
+        "800": 0.5381139095070486,
+        "no_time_control": 0.7419108693887491
       },
       "rules_by_fold": [
         {
@@ -833,9 +844,17 @@
           }
         },
         "phase_controlled_auroc": {
-          "estimate": 0.5441252317428455,
-          "low": 0.4534909213385078,
-          "high": 0.6288685755799931
+          "estimate": 0.5337573804158704,
+          "low": 0.43832175011536373,
+          "high": 0.6236245643079941
+        },
+        "phase_bin_width_sensitivity": {
+          "50": 0.5360326680853511,
+          "100": 0.5337573804158704,
+          "200": 0.5441252317428455,
+          "400": 0.5574791181515206,
+          "800": 0.5381139095070486,
+          "no_time_control": 0.7419108693887491
         },
         "rules_by_fold": [
           {
@@ -1555,9 +1574,17 @@
             }
           },
           "phase_controlled_auroc": {
-            "estimate": 0.6019180640934498,
-            "low": 0.5219713783579554,
-            "high": 0.6825093843466595
+            "estimate": 0.5922302404518098,
+            "low": 0.507715802422647,
+            "high": 0.6788838604475894
+          },
+          "phase_bin_width_sensitivity": {
+            "50": 0.5957324437798355,
+            "100": 0.5922302404518098,
+            "200": 0.6019180640934498,
+            "400": 0.6106842552954137,
+            "800": 0.6059307351412471,
+            "no_time_control": 0.7740295478529101
           },
           "rules_by_fold": [
             {
@@ -2275,9 +2302,17 @@
             }
           },
           "phase_controlled_auroc": {
-            "estimate": 0.583957122346283,
-            "low": 0.5003419486997724,
-            "high": 0.666524542778413
+            "estimate": 0.5796371830343136,
+            "low": 0.49631464050682966,
+            "high": 0.6639430543468902
+          },
+          "phase_bin_width_sensitivity": {
+            "50": 0.5810087996779203,
+            "100": 0.5796371830343136,
+            "200": 0.583957122346283,
+            "400": 0.5881953062903518,
+            "800": 0.570855141976547,
+            "no_time_control": 0.7615760207809076
           },
           "rules_by_fold": [
             {
@@ -2995,9 +3030,17 @@
             }
           },
           "phase_controlled_auroc": {
-            "estimate": 0.6409902563459207,
-            "low": 0.570099769347031,
-            "high": 0.7106611210576202
+            "estimate": 0.6290538806012721,
+            "low": 0.5484163810092441,
+            "high": 0.705318196143478
+          },
+          "phase_bin_width_sensitivity": {
+            "50": 0.6328866394432622,
+            "100": 0.6290538806012721,
+            "200": 0.6409902563459207,
+            "400": 0.6412296236386709,
+            "800": 0.6230755202159284,
+            "no_time_control": 0.792017615066158
           },
           "rules_by_fold": [
             {
@@ -3715,9 +3758,17 @@
             }
           },
           "phase_controlled_auroc": {
-            "estimate": 0.605737464977209,
-            "low": 0.5206384261441612,
-            "high": 0.6927259877318657
+            "estimate": 0.5977637696454549,
+            "low": 0.5049982596086692,
+            "high": 0.6899216793725853
+          },
+          "phase_bin_width_sensitivity": {
+            "50": 0.5973428423534825,
+            "100": 0.5977637696454549,
+            "200": 0.605737464977209,
+            "400": 0.6134243442611521,
+            "800": 0.6000072948771725,
+            "no_time_control": 0.7770975728549395
           },
           "rules_by_fold": [
             {
@@ -4421,9 +4472,17 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": 0.5816013604873221,
-        "low": 0.5519475509028573,
-        "high": 0.6496287629716558
+        "estimate": 0.521991500042785,
+        "low": 0.520015148266446,
+        "high": 0.5489396110602781
+      },
+      "phase_bin_width_sensitivity": {
+        "50": 0.518347040892621,
+        "100": 0.521991500042785,
+        "200": 0.5816013604873221,
+        "400": 0.5611081672778994,
+        "800": 0.5515383072237521,
+        "no_time_control": 0.7776934004383472
       },
       "rules_by_fold": [
         {
@@ -5117,9 +5176,17 @@
           }
         },
         "phase_controlled_auroc": {
-          "estimate": 0.5816013604873221,
-          "low": 0.5519475509028573,
-          "high": 0.6496287629716558
+          "estimate": 0.521991500042785,
+          "low": 0.520015148266446,
+          "high": 0.5489396110602781
+        },
+        "phase_bin_width_sensitivity": {
+          "50": 0.518347040892621,
+          "100": 0.521991500042785,
+          "200": 0.5816013604873221,
+          "400": 0.5611081672778994,
+          "800": 0.5515383072237521,
+          "no_time_control": 0.7776934004383472
         },
         "rules_by_fold": [
           {
@@ -5823,9 +5890,17 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": 0.5405776495351203,
-        "low": 0.4394491783838339,
-        "high": 0.6427899899636456
+        "estimate": 0.5287515331298668,
+        "low": 0.41720693889290306,
+        "high": 0.634488570270699
+      },
+      "phase_bin_width_sensitivity": {
+        "50": 0.5286133317996204,
+        "100": 0.5287515331298668,
+        "200": 0.5405776495351203,
+        "400": 0.5582181752262491,
+        "800": 0.5584100815202524,
+        "no_time_control": 0.704603863949996
       },
       "rules_by_fold": [
         {
@@ -6516,9 +6591,17 @@
           }
         },
         "phase_controlled_auroc": {
-          "estimate": 0.5405776495351203,
-          "low": 0.4394491783838339,
-          "high": 0.6427899899636456
+          "estimate": 0.5287515331298668,
+          "low": 0.41720693889290306,
+          "high": 0.634488570270699
+        },
+        "phase_bin_width_sensitivity": {
+          "50": 0.5286133317996204,
+          "100": 0.5287515331298668,
+          "200": 0.5405776495351203,
+          "400": 0.5582181752262491,
+          "800": 0.5584100815202524,
+          "no_time_control": 0.704603863949996
         },
         "rules_by_fold": [
           {
@@ -7222,9 +7305,17 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": 0.5946625963562358,
-        "low": 0.4939690191534765,
-        "high": 0.6956327521842156
+        "estimate": 0.5879089534784221,
+        "low": 0.4762407853780383,
+        "high": 0.6910579613427574
+      },
+      "phase_bin_width_sensitivity": {
+        "50": 0.588428135963651,
+        "100": 0.5879089534784221,
+        "200": 0.5946625963562358,
+        "400": 0.5920753559326761,
+        "800": 0.588891725785567,
+        "no_time_control": 0.7342872798116731
       },
       "rules_by_fold": [
         {
@@ -7915,9 +8006,17 @@
           }
         },
         "phase_controlled_auroc": {
-          "estimate": 0.5946625963562358,
-          "low": 0.4939690191534765,
-          "high": 0.6956327521842156
+          "estimate": 0.5879089534784221,
+          "low": 0.4762407853780383,
+          "high": 0.6910579613427574
+        },
+        "phase_bin_width_sensitivity": {
+          "50": 0.588428135963651,
+          "100": 0.5879089534784221,
+          "200": 0.5946625963562358,
+          "400": 0.5920753559326761,
+          "800": 0.588891725785567,
+          "no_time_control": 0.7342872798116731
         },
         "rules_by_fold": [
           {
@@ -8626,6 +8725,14 @@
         "low": 0.5,
         "high": 0.5
       },
+      "phase_bin_width_sensitivity": {
+        "50": 0.5,
+        "100": 0.5,
+        "200": 0.5,
+        "400": 0.5,
+        "800": 0.5,
+        "no_time_control": 0.5
+      },
       "rules_by_fold": [
         {
           "fold": 0,
@@ -9282,6 +9389,14 @@
           "estimate": 0.5,
           "low": 0.5,
           "high": 0.5
+        },
+        "phase_bin_width_sensitivity": {
+          "50": 0.5,
+          "100": 0.5,
+          "200": 0.5,
+          "400": 0.5,
+          "800": 0.5,
+          "no_time_control": 0.5
         },
         "rules_by_fold": [
           {
@@ -10064,9 +10179,9 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": -0.03747612874447659,
-        "low": -0.12450675806146302,
-        "high": 0.09122205862995181
+        "estimate": 0.011765880373085347,
+        "low": -0.06924226650639081,
+        "high": 0.12217107707534618
       }
     },
     "rwm-brf - rwm-rule-betan": {
@@ -10240,9 +10355,9 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": 0.0035475822077252195,
-        "low": -0.11209051487950976,
-        "high": 0.13417312841722806
+        "estimate": 0.005005847286003617,
+        "low": -0.11478871880319125,
+        "high": 0.1309557352325516
       }
     },
     "rwm-brf - rwm-rule-betan-over-li": {
@@ -10416,9 +10531,9 @@
         }
       },
       "phase_controlled_auroc": {
-        "estimate": -0.0505373646133902,
-        "low": -0.16685823212246848,
-        "high": 0.07225576089990518
+        "estimate": -0.054151573062551694,
+        "low": -0.16922257008732436,
+        "high": 0.062374992869305756
       }
     }
   },
@@ -10471,9 +10586,17 @@
       }
     },
     "phase_controlled_auroc": {
-      "estimate": 0.5966698727331019,
-      "low": 0.5239777022891853,
-      "high": 0.6768188412319017
+      "estimate": 0.5927721840326307,
+      "low": 0.5172325009320239,
+      "high": 0.6754871495344622
+    },
+    "phase_bin_width_sensitivity": {
+      "50": 0.5954161154885834,
+      "100": 0.5927721840326307,
+      "200": 0.5966698727331019,
+      "400": 0.5981934935088478,
+      "800": 0.5789743402695458,
+      "no_time_control": 0.7610516275671727
     },
     "rules_by_fold": [
       {
@@ -13284,8 +13407,8 @@
   },
   "external_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
-    "sha256": "1a726d4de3539219a6e57a5b4738d5ca326f22d9ae4b154cca1a2ea1cdd829b6",
-    "bytes": 1857510,
+    "sha256": "051ac0d92df523087c82cfc1aa31529ed86afb97e66b543bc4ec14964531a329",
+    "bytes": 1861814,
     "omitted_keys": [
       "per_shot",
       "shots",

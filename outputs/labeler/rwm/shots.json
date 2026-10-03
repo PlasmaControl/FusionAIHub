@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_build.py",
-  "made_at": "2026-10-03T19:27:17+00:00",
+  "made_at": "2026-10-03T21:34:48+00:00",
   "pool": {
     "shots": 208,
     "usable": 207,

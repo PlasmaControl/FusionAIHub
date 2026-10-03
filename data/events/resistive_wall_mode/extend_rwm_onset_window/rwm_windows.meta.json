@@ -16,7 +16,7 @@
     "attrs"
   ],
   "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Hanson category 1 is one minimal 10 ms post-onset slice, not a measured duration. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Reviewed negative coverage is unknown.",
-  "made_at": "2026-10-03T19:27:17+00:00",
+  "made_at": "2026-10-03T21:34:48+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
   "n_rows": 612,
   "n_shots": 165,
@@ -53,5 +53,6 @@
   },
   "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
   "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
+  "onset_interval_attributes": "attrs.source_onsets preserves every contributing original NTOR, MODE_TYPE, ONSET_TIME (ms) and source, including merged duplicates",
   "summary": "outputs/labeler/rwm/shots.json"
 }

@@ -125,6 +125,12 @@ def summarise(oof, alarms, target, rules):
         "phase_controlled_auroc": ev.phase_controlled_bootstrap(
             groups, replicates=_STATE["replicates"], seed=SEED
         ),
+        "phase_bin_width_sensitivity": {
+            str(width)
+            if width is not None
+            else "no_time_control": ev.phase_controlled_auroc(groups, bin_ms=width)
+            for width in (50, 100, 200, 400, 800, None)
+        },
         "rules_by_fold": rules,
         "metrics": metrics.shot_bootstrap(
             groups, ev.statistic, replicates=_STATE["replicates"], seed=SEED
@@ -632,10 +638,19 @@ def main() -> None:
             ),
             "phase_controlled_auroc": (
                 "primary Hanson slices; positive-negative pairs restricted to "
-                "campaign x floor(elapsed_ms/200), bins [200*k,200*(k+1)); "
-                "pair-count-weighted cell AUROC; omit one-class cells and missing "
+                f"campaign x floor(elapsed_ms/{ev.PHASE_BIN_MS:g}), "
+                f"bins [{ev.PHASE_BIN_MS:g}*k,{ev.PHASE_BIN_MS:g}*(k+1)); "
+                "pair-count-weighted cell AUROC; omit cells with fewer than "
+                f"{ev.PHASE_MIN_SLICES} slices or one class and missing "
                 "time; 1000 campaign-stratified shot resamples, seed 0; individual "
                 "percentile and forest-minus-scalar basic paired intervals"
+            ),
+            "phase_bin_ms": ev.PHASE_BIN_MS,
+            "phase_min_slices": ev.PHASE_MIN_SLICES,
+            "phase_bin_width_sensitivity": (
+                "50/100/200/400/800 ms and no time-bin control; primary Hanson "
+                "mask, campaign control retained, same minimum cell size; "
+                "point estimates only, no tuning or selection"
             ),
             "primary_mask_mechanism": (
                 "primary negatives end at last n=1 onset; final labelled slices "

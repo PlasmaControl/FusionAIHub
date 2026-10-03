@@ -96,12 +96,53 @@ def test_phase_controlled_auroc_excludes_cross_bin_and_campaign_pairs():
         ],
     }
     # Bin 0 has two tied pairs; bin 1 has three concordant pairs: (1+3)/5.
-    assert ev.phase_controlled_auroc(groups) == 0.8
+    assert ev.phase_controlled_auroc(groups, bin_ms=200, min_slices=1) == 0.8
     assert np.isnan(ev.phase_controlled_auroc({"hanson": groups["hanson"][1:]}))
-    interval = ev.phase_controlled_bootstrap(groups, replicates=20)
+    interval = ev.phase_controlled_bootstrap(
+        groups, bin_ms=200, min_slices=1, replicates=20
+    )
     assert interval["estimate"] == interval["low"] == interval["high"] == 0.8
-    paired = ev.phase_controlled_bootstrap(groups, groups, replicates=20)
+    paired = ev.phase_controlled_bootstrap(
+        groups, groups, bin_ms=200, min_slices=1, replicates=20
+    )
     assert paired == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+
+
+def test_phase_default_uses_100_ms_and_bootstrap_keeps_the_same_bins():
+    groups = {
+        "hanson": [
+            {
+                "shot": 1,
+                "campaign": 2014,
+                "score": list(range(10)),
+                "label": [1, 0, 0, 0, 0] * 2,
+                "elapsed_time_ms": [0, 10, 20, 30, 40, 100, 110, 120, 130, 140],
+            }
+        ]
+    }
+    assert ev.phase_controlled_auroc(groups) == 0.0
+    assert ev.phase_controlled_auroc(groups, bin_ms=200) == 0.25
+    assert ev.phase_controlled_auroc(groups, bin_ms=None) == 0.25
+    for bin_ms, expected in ((100, 0.0), (200, 0.25)):
+        result = ev.phase_controlled_bootstrap(groups, bin_ms=bin_ms, replicates=20)
+        assert result == {"estimate": expected, "low": expected, "high": expected}
+
+
+def test_phase_control_drops_bins_with_fewer_than_five_eligible_slices():
+    groups = {
+        "hanson": [
+            {
+                "shot": 1,
+                "campaign": 2014,
+                "score": [0, 1, 2, 3, 4, 5],
+                "label": [1, 0, 0, 0, -1, 0],
+                "elapsed_time_ms": [0, 10, 20, 30, 40, np.nan],
+            }
+        ]
+    }
+    assert np.isnan(ev.phase_controlled_auroc(groups))
+    groups["hanson"][0]["label"][4] = 0
+    assert ev.phase_controlled_auroc(groups) == 0.0
 
 
 def test_phase_paired_bootstrap_rejects_misaligned_shots_and_bins():

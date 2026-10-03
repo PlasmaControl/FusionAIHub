@@ -744,12 +744,18 @@ def within_shot_auroc(oof):
     return result
 
 
-def phase_controlled_auroc(groups, *, bin_ms=200.0):
+PHASE_BIN_MS = 100.0
+PHASE_MIN_SLICES = 5
+
+
+def phase_controlled_auroc(groups, *, bin_ms=PHASE_BIN_MS, min_slices=PHASE_MIN_SLICES):
     """Primary Hanson AUROC using only within-campaign, within-time-bin pairs.
 
-    Bins are [200*k, 200*(k+1)) ms since the fixed high-current crossing. Weight
+    Bins are [bin_ms*k, bin_ms*(k+1)) since the fixed high-current crossing. Weight
     each cell's AUROC by its positive-times-negative pair count, omitting cells
-    with one class and slices with missing elapsed time. Ties get half credit.
+    with one class or fewer than five eligible slices by default, and slices with
+    missing elapsed time. Ties get half credit. With bin_ms=None only campaign
+    control remains. Elapsed-time AUROC measures the residual-phase floor.
     """
     records = groups.get("hanson", [])
     if not records:
@@ -762,20 +768,28 @@ def phase_controlled_auroc(groups, *, bin_ms=200.0):
     )
     keep = np.isin(label, [labels.NEGATIVE, labels.POSITIVE]) & np.isfinite(elapsed)
     score, label, campaign = score[keep], label[keep], campaign[keep]
-    bins = np.floor(elapsed[keep] / bin_ms)
+    bins = np.zeros(keep.sum()) if bin_ms is None else np.floor(elapsed[keep] / bin_ms)
     concordant, pairs = 0.0, 0
     for year in np.unique(campaign):
         for time_bin in np.unique(bins[campaign == year]):
             cell = (campaign == year) & (bins == time_bin)
             y = label[cell] == labels.POSITIVE
             weight = int(y.sum()) * int((~y).sum())
-            if weight:
+            if weight and cell.sum() >= min_slices:
                 concordant += weight * metrics.auroc(score[cell], y)
                 pairs += weight
     return concordant / pairs if pairs else float("nan")
 
 
-def phase_controlled_bootstrap(first, second=None, *, replicates=1000, seed=0):
+def phase_controlled_bootstrap(
+    first,
+    second=None,
+    *,
+    bin_ms=PHASE_BIN_MS,
+    min_slices=PHASE_MIN_SLICES,
+    replicates=1000,
+    seed=0,
+):
     """Campaign-stratified shot CI, or a basic paired CI when second is supplied.
 
     Both models must use identical ordered Hanson shots, primary masks and time
@@ -801,7 +815,9 @@ def phase_controlled_bootstrap(first, second=None, *, replicates=1000, seed=0):
 
     def statistic(draws):
         return phase_controlled_auroc(
-            {"hanson": [r for rows in draws.values() for r in rows]}
+            {"hanson": [r for rows in draws.values() for r in rows]},
+            bin_ms=bin_ms,
+            min_slices=min_slices,
         )
 
     if second is None:

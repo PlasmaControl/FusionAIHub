@@ -126,6 +126,38 @@ def uncertain_onset_windows(onsets_ms, *, window_ms=ONSET_WINDOW_MS):
     return [(a, b) for a, b in merged]
 
 
+def interval_onset_sources(category, start_ms, end_ms, source_onsets):
+    """Original mode/time records contributing to an onset-derived interval.
+
+    Merge within each NTOR exactly as the export does, retaining every original
+    row of a merged event. Match the retained event's window by overlap, including
+    uncertain pieces split by present-time precedence. ONSET_TIME is in ms.
+    """
+    if category not in (PRESENT, UNCERTAIN):
+        return []
+    anchors, found = {}, []
+    for row in sorted(source_onsets, key=lambda r: (r["ntor"], r["t_ms"])):
+        ntor, onset = int(row["ntor"]), float(row["t_ms"])
+        if ntor not in anchors or onset - anchors[ntor] > MERGE_MS:
+            anchors[ntor] = onset
+        anchor = anchors[ntor]
+        lo, hi = (
+            (anchor, anchor + PRESENT_MS)
+            if category == PRESENT
+            else (anchor - ONSET_WINDOW_MS, anchor)
+        )
+        if max(start_ms, lo) < min(end_ms, hi):
+            found.append(
+                {
+                    "NTOR": ntor,
+                    "MODE_TYPE": str(row["mode_type"]),
+                    "ONSET_TIME": onset,
+                    "source": row["raw_source"],
+                }
+            )
+    return sorted(found, key=lambda r: (r["ONSET_TIME"], r["NTOR"]))
+
+
 def _subtract(span, holes):
     """`span` minus the union of `holes`, as a list of non-empty `(a, b)` pieces."""
     pieces = [list(span)]
