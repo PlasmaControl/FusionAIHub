@@ -38,7 +38,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.config import Paths
 from labeler.events import rwm
 from labeler.events.interval_tables import validate_intervals
-from labeler.rwm import data, features, labels
+from labeler.rwm import data, features, labels, shots
 
 LABEL_DIR = REPO / "data" / "events" / "resistive_wall_mode" / "extend_rwm_growth"
 STEM = "rwm_windows"
@@ -73,59 +73,23 @@ def measure(shot: int, paths: Paths) -> dict:
     }
 
 
-def match(stats: pd.DataFrame, per_hanson: int) -> pd.DataFrame:
-    """The chosen comparison shots, each tagged with the Hanson shot it was matched to.
+def cohort_overlap(shots_used, paths: Paths) -> dict:
+    """How many of the shots used are in the frozen cohort, by its split.
 
-    Within a campaign every comparison shot is described by its standardised flat-top
-    beta_N and beta_N / l_i (95th percentiles, the standard deviation taken over the
-    campaign's pool). The Hanson shots, highest beta_N first, each take the
-    `per_hanson` nearest comparison shots not yet taken.
+    The blind test split must never train or tune anything; none of these shots is in it
+    if the counts are zero.
     """
-    chosen = []
-    for year, group in stats[stats.usable].groupby("campaign"):
-        hanson = group[group.role == "hanson"].sort_values("betan_p95", ascending=False)
-        pool = group[group.role != "hanson"].copy()
-        columns = ["betan_p95", "betan_over_li_p95"]
-        scale = group[columns].std().replace(0, 1.0)
-        taken: set[int] = set()
-        for row in hanson.itertuples():
-            free = pool[~pool.shot.isin(taken)]
-            distance = (
-                (
-                    (free[columns] - np.array([row.betan_p95, row.betan_over_li_p95]))
-                    / scale
-                )
-                ** 2
-            ).sum(axis=1)
-            for shot in free.loc[distance.nsmallest(per_hanson).index, "shot"]:
-                taken.add(int(shot))
-                chosen.append({"shot": int(shot), "matched_to": int(row.shot)})
-    return pd.DataFrame(chosen, columns=["shot", "matched_to"])
-
-
-def balance(stats: pd.DataFrame, chosen_shots) -> dict:
-    """Mean flat-top beta_N of the Hanson, matched and unmatched pool shots, by campaign."""
-    out = {}
-    for year, group in stats[stats.usable].groupby("campaign"):
-        hanson = group[group.role == "hanson"]
-        rest = group[group.role != "hanson"]
-        picked = rest[rest.shot.isin(chosen_shots)]
-        left = rest[~rest.shot.isin(chosen_shots)]
-        out[str(year)] = {
-            name: {
-                "shots": len(frame),
-                "betan_p95_mean": float(frame.betan_p95.mean()) if len(frame) else None,
-                "betan_over_li_p95_mean": (
-                    float(frame.betan_over_li_p95.mean()) if len(frame) else None
-                ),
-            }
-            for name, frame in (
-                ("hanson", hanson),
-                ("matched", picked),
-                ("pool_not_chosen", left),
-            )
-        }
-    return out
+    path = paths.label_tables / "catalog" / "cohort.csv"
+    if not path.is_file():
+        return {"checked": False}
+    cohort = pd.read_csv(path)
+    hit = cohort[cohort.shot.isin({int(s) for s in shots_used})]
+    return {
+        "checked": True,
+        "cohort_shots": len(cohort),
+        "in_cohort": len(hit),
+        "by_split": {str(k): int(v) for k, v in hit.split.value_counts().items()},
+    }
 
 
 def main() -> None:
@@ -153,7 +117,7 @@ def main() -> None:
     stats = pd.concat([stats.reset_index(drop=True), measured], axis=1)
     missing_hanson = sorted(set(hanson_shots) - set(stats.shot[stats.usable]))
 
-    matched = match(stats, args.per_hanson)
+    matched = shots.match_comparison(stats, args.per_hanson)
     stats = stats.merge(matched, on="shot", how="left")
     stats["selected"] = (stats.role == "hanson") | stats.matched_to.notna()
     stats["matched_to"] = stats.matched_to.astype("Int64")
@@ -203,6 +167,7 @@ def main() -> None:
                 for a, b in spans_by_shot.get(shot, [])
             ]
     windows = pd.DataFrame(rows, columns=["shot", "category", "t_start", "t_end"])
+    windows[["t_start", "t_end"]] = windows[["t_start", "t_end"]].round(3)
     windows["confidence"] = ""
     windows = windows.sort_values(["shot", "t_start", "t_end"], ignore_index=True)
     validate_intervals(windows)
@@ -225,7 +190,7 @@ def main() -> None:
         "betan_p95",
         "betan_over_li_p95",
     ]
-    stats[keep].to_csv(LABEL_DIR / "shots.csv", index=False)
+    stats[keep].to_csv(LABEL_DIR / f"{STEM}.shots.csv", index=False)
     stats[keep].to_csv(out_dir / "shots.csv", index=False)
 
     hanson_rows = windows[windows.shot.isin(hanson_shots)]
@@ -256,7 +221,22 @@ def main() -> None:
                 .campaign.value_counts()
                 .items()
             },
-            "balance": balance(stats, set(matched.shot)),
+            "balance": shots.balance(stats, set(matched.shot)),
+        },
+        "cohort_overlap": cohort_overlap(selected.shot, paths),
+        "feature_coverage": {
+            f"{role}_{year}": {
+                name: {
+                    "shots_with_any": int(
+                        group.groupby("shot")[name]
+                        .apply(lambda v: v.notna().any())
+                        .sum()
+                    ),
+                    "slice_fraction": float(group[name].notna().mean()),
+                }
+                for name in features.FEATURES
+            }
+            for (role, year), group in slices.groupby(["role", "campaign"])
         },
         "slices": {
             "rows": len(slices),

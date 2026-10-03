@@ -23,6 +23,7 @@ import json
 import re
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 #: The shot ranges read from the logbook. They cover the two Hanson campaigns.
@@ -117,3 +118,58 @@ def choose(runs: pd.DataFrame, hanson_shots) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows, columns=["shot", "role", "run", "run_title", "mpid"])
+
+
+def match_comparison(stats: pd.DataFrame, per_hanson: int) -> pd.DataFrame:
+    """The chosen comparison shots, each tagged with the Hanson shot it was matched to.
+
+    Within a campaign every comparison shot is described by its standardised flat-top
+    beta_N and beta_N / l_i (95th percentiles, the standard deviation taken over the
+    campaign's pool). The Hanson shots, highest beta_N first, each take the
+    `per_hanson` nearest comparison shots not yet taken.
+    """
+    chosen = []
+    for year, group in stats[stats.usable].groupby("campaign"):
+        hanson = group[group.role == "hanson"].sort_values("betan_p95", ascending=False)
+        pool = group[group.role != "hanson"].copy()
+        columns = ["betan_p95", "betan_over_li_p95"]
+        scale = group[columns].std().replace(0, 1.0)
+        taken: set[int] = set()
+        for row in hanson.itertuples():
+            free = pool[~pool.shot.isin(taken)]
+            distance = (
+                (
+                    (free[columns] - np.array([row.betan_p95, row.betan_over_li_p95]))
+                    / scale
+                )
+                ** 2
+            ).sum(axis=1)
+            for shot in free.loc[distance.nsmallest(per_hanson).index, "shot"]:
+                taken.add(int(shot))
+                chosen.append({"shot": int(shot), "matched_to": int(row.shot)})
+    return pd.DataFrame(chosen, columns=["shot", "matched_to"])
+
+
+def balance(stats: pd.DataFrame, chosen_shots) -> dict:
+    """Mean flat-top beta_N of the Hanson, matched and unmatched pool shots, by campaign."""
+    out = {}
+    for year, group in stats[stats.usable].groupby("campaign"):
+        hanson = group[group.role == "hanson"]
+        rest = group[group.role != "hanson"]
+        picked = rest[rest.shot.isin(chosen_shots)]
+        left = rest[~rest.shot.isin(chosen_shots)]
+        out[str(year)] = {
+            name: {
+                "shots": len(frame),
+                "betan_p95_mean": float(frame.betan_p95.mean()) if len(frame) else None,
+                "betan_over_li_p95_mean": (
+                    float(frame.betan_over_li_p95.mean()) if len(frame) else None
+                ),
+            }
+            for name, frame in (
+                ("hanson", hanson),
+                ("matched", picked),
+                ("pool_not_chosen", left),
+            )
+        }
+    return out

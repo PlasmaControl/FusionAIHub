@@ -137,3 +137,29 @@ def test_match_alarms_applies_the_papers_400_and_10_ms_limits():
     assert per_onset == [None] and unmatched == [500.0]  # 500 ms early: too early
     per_onset, _ = alarm.match_alarms([], [1000.0, 2000.0])
     assert per_onset == [None, None]
+
+
+def test_tied_infinite_scores_are_one_level_in_the_curves():
+    score = np.array([-np.inf, -np.inf, -np.inf, 1.0, 2.0])
+    label = np.array([1, 0, 0, 0, 1])
+    # Ranked: 2 (pos), 1 (neg), then the three -inf together (1 pos, 2 neg).
+    assert metrics.auprc(score, label) == pytest.approx(0.5 * 1.0 + 0.5 * 2 / 5)
+    assert metrics.roc_cutoff(score, label) == 2.0
+
+
+def test_nnpu_logistic_loss_trains_at_a_tiny_prior():
+    # A prior of 0.005 needs a thousand steps before the ranking is the right way up.
+    rng = np.random.default_rng(1)
+    pos = rng.normal(2.5, 1.0, (60, 3))
+    unlabelled = np.vstack(
+        [rng.normal(0.0, 1.0, (5000, 3)), rng.normal(2.5, 1.0, (30, 3))]
+    )
+    x = np.vstack([pos, unlabelled])
+    labelled = np.r_[np.ones(len(pos)), np.zeros(len(unlabelled))]
+    model = NnPU(prior=0.005, hidden=(16,), epochs=120, loss="logistic", seed=0)
+    model.fit(x, labelled)
+    xt = np.vstack([rng.normal(2.5, 1.0, (300, 3)), rng.normal(0.0, 1.0, (300, 3))])
+    yt = np.r_[np.ones(300), np.zeros(300)]
+    assert metrics.auroc(model.predict_proba(xt), yt) > 0.85
+    with pytest.raises(ValueError):
+        NnPU(prior=0.1, loss="hinge")

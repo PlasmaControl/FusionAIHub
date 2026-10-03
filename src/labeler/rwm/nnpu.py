@@ -18,8 +18,15 @@ import torch
 from torch import nn
 
 
-def _loss(z, y):
+def _sigmoid_loss(z, y):
     return torch.sigmoid(-y * z)
+
+
+def _logistic_loss(z, y):
+    return nn.functional.softplus(-y * z)
+
+
+LOSSES = {"sigmoid": _sigmoid_loss, "logistic": _logistic_loss}
 
 
 class NnPU:
@@ -36,10 +43,14 @@ class NnPU:
         weight_decay=1e-4,
         beta=0.0,
         gamma=1.0,
+        loss="sigmoid",
         seed=0,
     ):
         if not 0.0 < prior < 1.0:
             raise ValueError("the class prior must be in (0, 1)")
+        if loss not in LOSSES:
+            raise ValueError(f"loss must be one of {sorted(LOSSES)}")
+        self.loss = LOSSES[loss]
         self.prior, self.hidden, self.epochs = prior, tuple(hidden), epochs
         self.batch_p, self.batch_u, self.lr = batch_p, batch_u, lr
         self.weight_decay, self.beta, self.gamma, self.seed = (
@@ -82,9 +93,9 @@ class NnPU:
                 p = torch.from_numpy(rng.choice(positive, self.batch_p))
                 u = torch.from_numpy(rng.choice(unlabelled, self.batch_u))
                 zp, zu = self.net(data[p]).squeeze(1), self.net(data[u]).squeeze(1)
-                positive_risk = self.prior * _loss(zp, 1.0).mean()
+                positive_risk = self.prior * self.loss(zp, 1.0).mean()
                 negative_risk = (
-                    _loss(zu, -1.0).mean() - self.prior * _loss(zp, -1.0).mean()
+                    self.loss(zu, -1.0).mean() - self.prior * self.loss(zp, -1.0).mean()
                 )
                 optimiser.zero_grad()
                 if negative_risk.item() >= -self.beta:

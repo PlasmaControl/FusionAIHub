@@ -6,6 +6,12 @@ import numpy as np
 from scipy.stats import rankdata
 
 
+def _level_ends(sorted_scores):
+    """Indices of the last row of each distinct score in a sorted array (inf ties too)."""
+    s = np.asarray(sorted_scores)
+    return np.flatnonzero(np.concatenate([s[1:] != s[:-1], [True]]))
+
+
 def auroc(score, label):
     """Area under the ROC curve (ties get half credit); NaN with one class only."""
     score, label = np.asarray(score, dtype=float), np.asarray(label).astype(bool)
@@ -24,7 +30,7 @@ def auprc(score, label):
         return float("nan")
     order = np.argsort(-score, kind="stable")
     s, y = score[order], label[order]
-    last = np.flatnonzero(np.diff(s, append=-np.inf) != 0)
+    last = _level_ends(s)
     true_pos = np.cumsum(y)[last]
     seen = last + 1
     recall = true_pos / n_pos
@@ -43,7 +49,7 @@ def roc_cutoff(score, label):
         return float("nan")
     order = np.argsort(-score, kind="stable")
     s, y = score[order], label[order]
-    last = np.flatnonzero(np.diff(s, append=-np.inf) != 0)
+    last = _level_ends(s)
     tpr = np.cumsum(y)[last] / n_pos
     fpr = np.cumsum(~y)[last] / n_neg
     return float(s[last][np.argmin(fpr**2 + (1 - tpr) ** 2)])

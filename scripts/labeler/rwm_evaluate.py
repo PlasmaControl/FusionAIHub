@@ -33,7 +33,10 @@ from labeler.events import rwm
 from labeler.rwm import evaluate as ev
 from labeler.rwm import features, labels, metrics
 
-ALL = tuple(features.FEATURES)
+#: The locked-mode detector (DUSBRADIAL) is exactly zero on every 2014 shot and nonzero on
+#: the 2018 ones, so as an input it tags the campaign; it is fetched and stored but kept
+#: out of the model, and `rwm-brf-with-locked-mode` shows what it does when it is let in.
+ALL = tuple(f for f in features.FEATURES if f != "lock_v")
 EQUILIBRIUM = (
     "betan",
     "li",
@@ -45,7 +48,17 @@ EQUILIBRIUM = (
     "ip_ma",
 )
 MAGNETICS = ("n1rms_g", "n1rms_max_g", "n1rms_growth_per_s", "n2rms_g")
-NETWORK = {"hidden": (64, 64), "epochs": 60, "batch_p": 64, "batch_u": 512}
+#: Small and regularised: a few hundred positive slices from 48 events overfit a wide
+#: network (train AUROC 0.98 against 0.7 held out in a trial fold). The logistic loss
+#: replaces Kiryo et al.'s sigmoid loss, which saturates at a class prior of 0.006.
+NETWORK = {
+    "hidden": (32, 32),
+    "epochs": 15,
+    "batch_p": 64,
+    "batch_u": 512,
+    "weight_decay": 1e-3,
+    "loss": "logistic",
+}
 FOREST = {"n_estimators": 300, "max_depth": 8, "min_leaf": 5}
 SEED = 0
 
@@ -67,6 +80,18 @@ CONFIGS = {
     "rwm-brf-magnetics-only": {
         "kind": "brf",
         "columns": MAGNETICS,
+        "comparison": True,
+        "horizon": 100.0,
+    },
+    "rwm-brf-no-rotation": {
+        "kind": "brf",
+        "columns": tuple(c for c in ALL if not c.startswith("rot_")),
+        "comparison": True,
+        "horizon": 100.0,
+    },
+    "rwm-brf-with-locked-mode": {
+        "kind": "brf",
+        "columns": tuple(features.FEATURES),
         "comparison": True,
         "horizon": 100.0,
     },
@@ -227,6 +252,8 @@ def main() -> None:
     ) as pool:
         done = pool.map(run_config, jobs, chunksize=1)
     results: dict = {}
+    if args.only and args.out.is_file():
+        results = json.loads(args.out.read_text()).get("configs", {})
     for name, seed, result in done:
         if seed == SEED:
             results[name] = result
@@ -251,7 +278,7 @@ def main() -> None:
                 "hold_ms": ev.HOLD_MS,
             },
             "step_ms": features.STEP_MS,
-            "split": "shot-grouped; no cohort test-split shot is used (the Hanson and comparison shots are outside the cohort)",
+            "split": "shot-grouped; shots.json cohort_overlap counts the shots in the frozen cohort",
         },
         "configs": results,
         "single_feature_auroc": ev.single_feature_auroc(

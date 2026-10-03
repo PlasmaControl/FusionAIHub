@@ -113,3 +113,43 @@ def test_shot_table_labels_an_examined_shot_and_leaves_the_rest_unlabelled(tmp_p
     other = data.shot_table(7, p, [600.0], examined=False)
     assert (other.label == labels.UNLABELLED).all()
     assert len(other) == len(examined)
+
+
+def _stats():
+    rows = []
+    # 2014: two Hanson shots (high and low beta), eight candidates on a beta ladder.
+    for shot, role, beta in [(1, "hanson", 4.0), (2, "hanson", 2.0)]:
+        rows.append((shot, role, 2014, beta, 2.0 * beta))
+    for i, beta in enumerate([1.8, 1.9, 2.1, 2.2, 3.8, 3.9, 4.1, 4.2]):
+        rows.append((10 + i, "same_experiment", 2014, beta, 2.0 * beta))
+    # 2018: one Hanson shot and two candidates; one candidate is unusable.
+    rows += [(50, "hanson", 2018, 3.0, 6.0), (60, "same_day", 2018, 3.1, 6.2)]
+    rows += [(61, "same_day", 2018, 3.0, 6.0)]
+    frame = pd.DataFrame(
+        rows, columns=["shot", "role", "campaign", "betan_p95", "betan_over_li_p95"]
+    )
+    frame["usable"] = frame.shot != 61
+    return frame
+
+
+def test_match_comparison_takes_the_nearest_shots_of_the_same_campaign_once():
+    chosen = shots.match_comparison(_stats(), per_hanson=2)
+    by_hanson = chosen.groupby("matched_to").shot.apply(sorted).to_dict()
+    assert by_hanson[1] == [15, 16]  # beta 3.9 and 4.1, nearest to 4.0
+    assert chosen.shot.is_unique
+    assert set(chosen.shot).isdisjoint({61, 1, 2, 50})  # unusable and Hanson shots
+    assert by_hanson[50] == [60]  # only one usable 2018 candidate
+    assert by_hanson[2] == [11, 12]  # beta 1.9 and 2.1, nearest to 2.0
+    # Nothing crosses campaigns.
+    assert all(s < 50 for s in chosen[chosen.matched_to < 50].shot)
+
+
+def test_balance_compares_hanson_matched_and_leftover_pool_shots():
+    stats = _stats()
+    chosen = shots.match_comparison(stats, per_hanson=2)
+    out = shots.balance(stats, set(chosen.shot))
+    assert out["2014"]["hanson"]["betan_p95_mean"] == pytest.approx(3.0)
+    assert out["2014"]["matched"]["shots"] == 4
+    assert out["2014"]["pool_not_chosen"]["shots"] == 4
+    assert out["2018"]["pool_not_chosen"]["shots"] == 0
+    assert out["2018"]["pool_not_chosen"]["betan_p95_mean"] is None
