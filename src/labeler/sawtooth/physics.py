@@ -7,8 +7,10 @@ an inversion boundary but does not establish its physical radius or q=1 proximit
 
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
 from itertools import pairwise
+from pathlib import Path
 
 import numpy as np
 from scipy.ndimage import gaussian_filter1d, maximum_filter1d
@@ -33,9 +35,15 @@ class Rule:
     maximum_period_ms: float = 250.0
     period_ratio: float = 2.5
     minimum_train: int = 3
-    qmin_margin: float = 0.05
+    qmin_margin: float = 0.4
+    qmin_absence: float = 1.5
+    qmin_sustain_ms: float = 50.0
+    relaxation_minimum_period_ms: float = 10.0
+    relaxation_minimum_edges: int = 6
+    periodicity_null_replicates: int = 199
+    periodicity_null_alpha: float = 0.05
     radius_tolerance: float = 0.15
-    central_relative_drop: float = 0.1
+    central_relative_drop: float = 0.05
     te_floor_kev: float = 0.5
     inversion_spread_channels: float = 2.0
     minimum_ip_ma: float = 0.3
@@ -47,7 +55,9 @@ class Rule:
     dalpha_burst_z: float = 6.0
 
 
-DEFAULT_RULE = Rule()
+DEFAULT_RULE = Rule(
+    **json.loads(Path(__file__).with_name("freeze.json").read_text())["rule"]
+)
 
 
 @dataclass
@@ -113,6 +123,7 @@ def inversion_profile(step, level, rule=DEFAULT_RULE, *, core_level=None):
     """
     step, level = np.asarray(step), np.asarray(level)
     valid = np.isfinite(step) & np.isfinite(level) & (level > 0)
+    valid[40:] = False
     if core_level is not None and np.isfinite(core_level) and core_level > 0:
         valid &= level <= rule.maximum_channel_to_core * core_level
     if valid.sum() < 4:
@@ -196,16 +207,109 @@ def trains(times_s, rule=DEFAULT_RULE):
     return groups
 
 
-def core_relaxation_phases(edge_times, observable_spans, rule=DEFAULT_RULE):
-    """JSON-ready uncertain phase spans, without positive-train period bounds.
+def periodicity_null(edge_times, rule=DEFAULT_RULE):
+    """Conditional shuffled-time null, preserving count, span and peak holdoff.
 
-    ``edge_times`` are significant ambiguous negative core edges in seconds;
-    ``observable_spans`` are disjoint half-open ``(start_s, end_s)`` pairs.
-    At least ``minimum_train`` edges must have agreeing adjacent periods. The
-    complete first-to-last phase plus the usual absence horizon is protected,
-    even when its period lies outside the positive sawtooth train range.
-    Nothing groups or expands across an unobserved span. Recorded edge times
-    suffice to apply this guard to existing records without rereading ECE.
+    Interior event times are shuffled uniformly between fixed first/last edges.
+    A 5.15 ms refractory offset matches find_peaks, so its imposed minimum
+    spacing cannot itself establish physical periodicity. The statistic is
+    gap coefficient of variation; smaller values indicate greater regularity.
+    This is a phase-level diagnostic, not an independent label validation.
+    """
+    times = np.asarray(edge_times, dtype=float)
+    gaps = np.diff(times)
+    if len(times) < rule.relaxation_minimum_edges or (gaps <= 0).any():
+        return {"p_value": 1.0, "gap_cv": None, "replicates": 0}
+    cv = float(gaps.std() / gaps.mean())
+    holdoff = min(rule.frame_ms / 2000, float(gaps.min()))
+    free_span = max(0.0, times[-1] - times[0] - len(gaps) * holdoff)
+    rng = np.random.default_rng(20261003)
+    interior = np.sort(
+        rng.uniform(0, free_span, (rule.periodicity_null_replicates, len(times) - 2)),
+        axis=1,
+    )
+    shuffled = (
+        np.diff(
+            np.column_stack(
+                (np.zeros(len(interior)), interior, np.full(len(interior), free_span))
+            ),
+            axis=1,
+        )
+        + holdoff
+    )
+    null_cv = shuffled.std(axis=1) / shuffled.mean(axis=1)
+    return {
+        "p_value": float((1 + np.sum(null_cv <= cv)) / (len(null_cv) + 1)),
+        "gap_cv": cv,
+        "replicates": len(null_cv),
+        "holdoff_ms": holdoff * 1000,
+        "method": "fixed_count_span_refractory_uniform_time_shuffle",
+    }
+
+
+def _relaxation_groups(edges, rule):
+    """Physical-gap grouping, shared exactly by data and shuffled replicates."""
+    groups, start, previous = [], 0, None
+    for index, gap in enumerate(np.diff(edges)):
+        physical = gap * 1000 >= rule.relaxation_minimum_period_ms
+        agrees = physical and (
+            previous is None
+            or (max(gap, previous) <= rule.period_ratio * min(gap, previous))
+        )
+        if not agrees:
+            if index + 1 - start >= rule.relaxation_minimum_edges:
+                groups.append((start, index + 1))
+            start = index + 1 if not physical else index
+        previous = gap if physical else None
+    if len(edges) - start >= rule.relaxation_minimum_edges:
+        groups.append((start, len(edges)))
+    return groups
+
+
+def _selected_phase_null(edges, groups, rule):
+    """Minimum CV over all selected groups: selection and multiplicity included."""
+    gaps = np.diff(edges)
+    holdoff = min(rule.frame_ms / 2000, float(gaps.min()))
+    free_span = max(0.0, edges[-1] - edges[0] - len(gaps) * holdoff)
+    rng = np.random.default_rng(20261003)
+    interior = np.sort(
+        rng.uniform(0, free_span, (rule.periodicity_null_replicates, len(edges) - 2)),
+        axis=1,
+    )
+    null_times = np.column_stack(
+        (np.zeros(len(interior)), interior, np.full(len(interior), free_span))
+    )
+    null_times += np.arange(len(edges))[None] * holdoff
+    null_min_cv = np.full(len(interior), np.inf)
+    for index, shuffled in enumerate(null_times):
+        selected = _relaxation_groups(shuffled, rule)
+        for a, b in selected:
+            periods = np.diff(shuffled[a:b])
+            null_min_cv[index] = min(null_min_cv[index], periods.std() / periods.mean())
+    results = []
+    for a, b in groups:
+        periods = np.diff(edges[a:b])
+        cv = float(periods.std() / periods.mean())
+        results.append(
+            {
+                "p_value": float((1 + np.sum(null_min_cv <= cv)) / (len(interior) + 1)),
+                "gap_cv": cv,
+                "replicates": len(interior),
+                "method": (
+                    "fixed_count_span_refractory_shuffle_same_grouping_minimum_CV"
+                ),
+            }
+        )
+    return results
+
+
+def core_relaxation_phases(edge_times, observable_spans, rule=DEFAULT_RULE):
+    """Protect only POSR-qualified, physically spaced, non-noise-like phases.
+
+    Callers supply POSR-qualified negative edges. At least six edges and a
+    shuffled-time p<=0.05 are needed to expand first-to-last support. Isolated
+    qualified edges still have their individual uncertainty context. Phases
+    never cross an unobserved interval.
     """
     times = np.unique(np.asarray(edge_times, dtype=float))
     if times.ndim != 1 or not np.isfinite(times).all():
@@ -217,23 +321,16 @@ def core_relaxation_phases(edge_times, observable_spans, rule=DEFAULT_RULE):
             raise ValueError("observable spans must have finite increasing bounds")
         left, right = np.searchsorted(times, [lo, hi])
         edges = times[left:right]
-        if len(edges) < rule.minimum_train:
+        if len(edges) < rule.relaxation_minimum_edges:
             continue
-        groups, start, previous = [], 0, None
-        for index, gap in enumerate(np.diff(edges)):
-            agrees = previous is None or (
-                max(gap, previous) <= rule.period_ratio * min(gap, previous)
-            )
-            if not agrees:
-                if index + 1 - start >= rule.minimum_train:
-                    groups.append((start, index + 1))
-                # The boundary edge can end one phase and start another.
-                start = index
-            previous = gap
-        if len(edges) - start >= rule.minimum_train:
-            groups.append((start, len(edges)))
-        for a, b in groups:
+        groups = _relaxation_groups(edges, rule)
+        if not groups:
+            continue
+        nulls = _selected_phase_null(edges, groups, rule)
+        for (a, b), null in zip(groups, nulls, strict=True):
             periods = np.diff(edges[a:b]) * 1000
+            if null["p_value"] > rule.periodicity_null_alpha:
+                continue
             phases.append(
                 {
                     "start_s": float(max(lo, edges[a] - horizon)),
@@ -244,6 +341,10 @@ def core_relaxation_phases(edge_times, observable_spans, rule=DEFAULT_RULE):
                     "period_ms": float(np.median(periods)),
                     "minimum_gap_ms": float(periods.min()),
                     "maximum_gap_ms": float(periods.max()),
+                    "null_p_value": null["p_value"],
+                    "gap_cv": null["gap_cv"],
+                    "null_method": null["method"],
+                    "null_replicates": null["replicates"],
                 }
             )
     return phases
@@ -355,13 +456,12 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         relative = -core_edge[k] * np.sqrt(2 * np.pi) * sigma / core_level[k]
         if not np.isfinite(relative) or relative < rule.significance:
             continue
-        # Even an isolated, irregular, or sub-period-floor core drop is
-        # unresolved evidence. Failure of POSR/period grouping cannot prove
-        # absence around an observed significant negative edge.
-        ambiguous_core_times.append(float(t[k]))
         if posr(core_edge[k - half : k + half + 1], core_edge[k], remove) >= (
             rule.posr_threshold
         ):
+            # Fractional noise extrema do not supply phase/absence vetoes.
+            # Noise-limited support is separately marked unresolved below.
+            ambiguous_core_times.append(float(t[k]))
             core_times.append(float(t[k]))
     periodic = []
     core_times = np.asarray(core_times)
@@ -427,7 +527,7 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         (float(t[lo]), float(t[hi]) if hi < len(t) else float(t[-1] + dt))
         for lo, hi in _runs(observable)
     ]
-    phase_spans = core_relaxation_phases(ambiguous_core_times, observable_spans, rule)
+    phase_spans = core_relaxation_phases(core_times, observable_spans, rule)
     phase_support = np.zeros(len(t), dtype=bool)
     for phase in phase_spans:
         lo, hi = np.searchsorted(t, [phase["start_s"], phase["end_s"]])
@@ -461,12 +561,15 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
             "periodic_edge_times_s": list(map(float, periodic)),
             "phase_spans": phase_spans,
             "phase_grouping": {
-                "edge_source": "ambiguous_edge_times_s",
-                "minimum_train": rule.minimum_train,
+                "edge_source": "POSR_qualified_edge_times_s",
+                "posr_threshold": rule.posr_threshold,
+                "minimum_train": rule.relaxation_minimum_edges,
                 "period_ratio": rule.period_ratio,
-                "minimum_period_ms": None,
+                "minimum_period_ms": rule.relaxation_minimum_period_ms,
                 "maximum_period_ms": None,
                 "context_radius_ms": horizon * 1000,
+                "null_alpha": rule.periodicity_null_alpha,
+                "null_replicates": rule.periodicity_null_replicates,
             },
             "positive_train_period_bounds": {
                 "minimum_period_ms": rule.minimum_period_ms,
@@ -545,18 +648,21 @@ def detect(
     mirnov=None,
     nbi=None,
     q_source="EFIT01",
+    radius_geometry=None,
+    spatially_verified=None,
 ):
     """ECE (channels,time) -> point crashes and train spans; all times seconds.
 
-    Optional scalar diagnostics are (seconds, values). Equilibrium conflicts flag
-    uncertainty; they never assert absence. Calibrated psi must show loss inside
+    Optional scalar diagnostics are (seconds, values). EFIT01 conflicts above
+    1.4 flag uncertainty; sustained q>=1.5 supplies absence unless ECE conflicts.
+    Calibrated psi must show loss inside
     and gain outside q=1. Uncalibrated SXR has no corroboration claim. Observability
     can supply a density/cutoff mask in addition to finite core ECE and its Te floor.
     Neutron evidence needs known NBI power in watts and a measured-noise drop;
     missing auxiliary evidence never downgrades an ECE crash.
     """
     t = np.asarray(t_s, dtype=float)
-    values = np.asarray(y, dtype=np.float32)
+    values = np.array(y, dtype=np.float32, copy=True)
     if t.ndim != 1 or len(t) < 32 or values.ndim != 2 or values.shape[1] != len(t):
         raise ValueError("ECE needs (channels,time) and at least 32 times")
     dt = float(np.median(np.diff(t)))
@@ -567,6 +673,9 @@ def detect(
     sigma = rule.sigma_ms / 1000 / dt
     if sigma < 2:
         raise ValueError("at least two samples per Gaussian sigma are required")
+    # Terminal channels have no verified radial ordering, even when their
+    # apparent temperature looks plausible. They cannot supply an inversion.
+    values[40:] = np.nan
     finite = np.isfinite(values)
     proxy = np.asarray(
         np.arange(len(values)) if core_channels is None else core_channels, dtype=int
@@ -677,6 +786,8 @@ def detect(
             continue
         profile_candidates.append(float(t[k]))
         attrs["uncertainty_reasons"] = []
+        if spatially_verified is False:
+            attrs["uncertainty_reasons"].append("unverified_spatial_adjacency")
         if core_channels is not None and (geometry is None or geometry.psi is None):
             loss = np.isfinite(profile[proxy]) & (
                 profile[proxy] < -0.005 * level[proxy]
@@ -702,8 +813,33 @@ def detect(
             q = align_q([t[k]], qmin[0], np.atleast_2d(qmin[1]))[0, 0]
             if np.isfinite(q) and q > 0:
                 attrs["qmin"] = float(q)
-                if q > 1 + rule.qmin_margin:
+                conflict = (
+                    1.05
+                    if str(q_source).startswith("MSE-constrained")
+                    else 1 + rule.qmin_margin
+                )
+                attrs["qmin_conflict_threshold"] = conflict
+                if q > conflict:
                     attrs["uncertainty_reasons"].append("qmin_conflict")
+        if radius_geometry is not None:
+            from .geometry import radius_evidence
+
+            nominal = radius_evidence(radius_geometry, t[k], attrs["inversion_channel"])
+            attrs.update(nominal)
+            attrs["geometry_status"] = "nominal_second_harmonic_R"
+            if nominal["inversion_R_m"] is None:
+                attrs["uncertainty_reasons"].append("unverified_spatial_adjacency")
+            delta = nominal["q1_radius_difference_m"]
+            if delta is not None:
+                # This is a major-radius tolerance in metres, retained separately
+                # from the calibrated sqrt(psi) tolerance below.
+                attrs["q1_R_tolerance_m"] = 0.15
+                if abs(delta) > 0.15:
+                    attrs["uncertainty_reasons"].append("nominal_q1_radius_mismatch")
+            elif attrs.get("qmin") is not None and attrs["qmin"] <= 1:
+                attrs["q1_comparison_status"] = "EFIT_q1_mapping_unavailable"
+            else:
+                attrs["q1_comparison_status"] = "no_EFIT01_q1_or_missing_slice"
         if geometry is not None and geometry.psi is not None:
             psi = align_q([t[k] * 1000], geometry.time_ms, geometry.psi)[:, 0]
             surface = align_q(
@@ -934,6 +1070,49 @@ def detect(
         t, observable, core_edge, np.ones(len(t)), profile_candidates, rule, sigma
     )
     absence_diagnostics["profile_passing_candidate_times_s"] = profile_candidates
+    high_q = np.zeros(len(t), dtype=bool)
+    if qmin is not None:
+        qvalues = align_q(t, qmin[0], np.atleast_2d(qmin[1]))[0]
+        evidence = observable & np.isfinite(qvalues) & (qvalues >= rule.qmin_absence)
+        for lo, hi in _runs(evidence):
+            if (hi - lo) * dt >= rule.qmin_sustain_ms / 1000:
+                high_q[lo:hi] = True
+        # Contradictory core/profile drops remain uncertain. Use accepted
+        # physical candidates rather than profile-only noisy coincidences.
+        conflicts = [times[index] for index in train_members]
+        horizon = 1.5 * rule.maximum_period_ms / 1000
+        for time in conflicts:
+            lo, hi = np.searchsorted(t, [time - horizon, time + horizon])
+            high_q[lo : hi + 1] = False
+        # Significant isolated core edges contradict a crash-free bin even
+        # without a complete inversion. They protect their finite edge support,
+        # rather than invalidating an entire high-q phase. Magnetics-only EFIT
+        # provides absence evidence here, not independently established truth.
+        for time in absence_diagnostics["core_relaxation_test"][
+            "ambiguous_edge_times_s"
+        ]:
+            lo, hi = np.searchsorted(
+                t, [time - rule.frame_ms / 2000, time + rule.frame_ms / 2000]
+            )
+            high_q[lo : hi + 1] = False
+        for event in uncertain_intervals + intervals:
+            lo, hi = np.searchsorted(t, [event.t0_s, event.t1_s])
+            high_q[lo:hi] = False
+        absent_mask |= high_q
+    absence_diagnostics["qmin_absence_test"] = {
+        "threshold": rule.qmin_absence,
+        "sustain_ms": rule.qmin_sustain_ms,
+        "q_source": q_source if qmin is not None else None,
+        "conflicts_preserved": (
+            "inversion_qualified_trains_full_context; "
+            "isolated_POSR_core_edges_finite_support"
+        ),
+        "validation_status": "physics_rule_evidence_not_expert_validated",
+    }
+    absence_diagnostics["reason_samples"].update(
+        sustained_high_q_absence=int(high_q.sum()),
+        tested_absence=int(absent_mask.sum()),
+    )
     return Detection(
         crashes,
         intervals,

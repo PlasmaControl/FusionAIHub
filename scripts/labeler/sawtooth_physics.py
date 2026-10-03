@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import errno
 import json
 import os
+import shutil
+import tempfile
 import time
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -25,6 +28,7 @@ from scipy.signal import resample_poly
 from labeler.config import Paths
 from labeler.events import equilibrium
 from labeler.events.panels import ece_geometry
+from labeler.events.schema import Event
 from labeler.events.verify import NoDataError
 from labeler.sawtooth.geometry import (
     load_radius_geometry,
@@ -36,14 +40,14 @@ from labeler.sawtooth.physics import Rule, detect, noise_calibration
 from labeler.sawtooth.preprocessing import mask_spans, sample_native, state_spans
 
 REPO = Path(__file__).resolve().parents[2]
-WORK = Paths.from_env().root / "round4/saw/fix2"
-OUTPUT = REPO / "outputs/labeler/sawtooth/fix2"
+WORK = Paths.from_env().root / "round4/saw/fix3"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix3"
 READER_POLICY = (
-    "native_FIR_positive_absence_dynamic_core_perchannel_relaxation_phase_guard"
+    "native_FIR_fixed_grid_harmonic_mask_axis_core_bias_aware_q_POSR_phase_null_q_veto"
 )
-ECE_GEOMETRY_ARCHIVE = Path(os.environ.get(
-    "LABELER_ECE_GEOMETRY_ROOT", str(REPO.parent / "omnimode/data")
-))
+ECE_GEOMETRY_ARCHIVE = Path(
+    os.environ.get("LABELER_ECE_GEOMETRY_ROOT", str(REPO.parent / "omnimode/data"))
+)
 SEED = 20261003
 FS = 10000
 REVIEW = Paths.from_env().label_tables / "sawtooth_oscillation/review/labels.csv"
@@ -52,9 +56,22 @@ REVIEW = Paths.from_env().label_tables / "sawtooth_oscillation/review/labels.csv
 def save_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix(path.suffix + ".partial")
-    temp.write_text(json.dumps(value, indent=2, allow_nan=False) + "\n")
-    temp.replace(path)
+    with tempfile.NamedTemporaryFile(
+        mode="w", dir=os.environ["TMPDIR"], delete=False
+    ) as handle:
+        handle.write(json.dumps(value, indent=2, allow_nan=False) + "\n")
+        temporary = Path(handle.name)
+    try:
+        try:
+            temporary.replace(path)
+        except OSError as error:
+            if error.errno != errno.EXDEV:
+                raise
+            # The mandated scratch directory and repository can be on
+            # different devices. Output readers tolerate progress rewrites.
+            shutil.copyfile(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def legacy_sampled(group, *, rows=None, fs=FS):
@@ -200,21 +217,112 @@ def local_q(shot, paths):
 
 def enrich_radius_evidence(detected, radius, flux):
     """Retain nominal R metadata without turning it into calibrated rho."""
-    for event in (
-        detected.crashes + detected.intervals + detected.uncertain_intervals
-    ):
+    for event in detected.crashes + detected.intervals + detected.uncertain_intervals:
         channel = event.attrs.get("inversion_channel")
         if channel is None:
             continue
-        event.attrs.update(radius_evidence(
-            radius, (event.t0_s + event.t1_s) / 2, channel, flux
-        ))
+        event.attrs.update(
+            radius_evidence(radius, (event.t0_s + event.t1_s) / 2, channel, flux)
+        )
+
+
+def preserve_unverified_candidates(detected, t, prior_path, rule, shot):
+    """Retain old terminal-dependent candidates as uncertainty, never truth."""
+    if not prior_path.exists():
+        return 0
+    previous = json.loads(prior_path.read_text())
+    qualified = np.asarray([event.t0_s for event in detected.crashes])
+    count = 0
+    for point in previous.get("crashes", []):
+        attrs = point["attrs"]
+        terminal = (
+            any(attrs.get(key, 0) > 40 for key in ("drop_stop", "rise_stop"))
+            or attrs.get("inversion_channel", 0) > 39
+        )
+        if not terminal:
+            continue
+        time = point["time_s"]
+        if (
+            len(qualified)
+            and np.min(abs(qualified - time)) <= rule.coincidence_ms / 1000
+        ):
+            continue  # New spatially screened evidence independently passes.
+        half = rule.frame_ms / 2000
+        a, b = np.searchsorted(t, [time - half, time + half])
+        mask = np.zeros(len(t), dtype=bool)
+        mask[a:b] = detected.observable[a:b]
+        for lo, hi in mask_spans(t, mask):
+            detected.uncertain_intervals.append(
+                Event(
+                    shot=int(shot),
+                    source="saw_physics",
+                    phenomenon="sawtooth_oscillation",
+                    diag="ece",
+                    evidence_kind="heuristic",
+                    t0_s=lo,
+                    t1_s=hi,
+                    t_cov0_s=float(t[0]),
+                    t_cov1_s=float(t[-1]),
+                    confidence=0.5,
+                    attrs={
+                        "state": "uncertain",
+                        "crowd": True,
+                        "uncertainty_reasons": ["prior_unverified_spatial_adjacency"],
+                        "candidate_time_s": time,
+                        "prior_record": str(prior_path),
+                    },
+                )
+            )
+        detected.absent_mask[mask] = False
+        count += 1
+    detected.absence_diagnostics["reason_samples"]["tested_absence"] = int(
+        detected.absent_mask.sum()
+    )
+    return count
 
 
 def process_shot(job):
     shot, work, keep_signal, window, *options = job
     work, paths = Path(work), Paths.from_env()
     rule = frozen_rule(work)
+    prior = paths.root / "round4/saw/fix2/shots" / f"{shot}.json"
+    prior_failed = prior.exists() and bool(json.loads(prior.read_text()).get("error"))
+    if "wait_geometry" in options and not prior_failed:
+        # Fetch workers and label workers share an ordered shot queue. A node
+        # inventory is written only after the per-shot HDF5 writer closes.
+        deadline = time.monotonic() + 3600
+        metadata = work / "geometry" / f"{shot}.h5"
+        while time.monotonic() < deadline:
+            try:
+                with h5py.File(metadata, "r", locking=False) as eqfile:
+                    if "fetch_missing_json" in eqfile.attrs:
+                        break
+            except OSError:
+                pass
+            stopped = False
+            for ledger_name in ("geometry_fetch.json", "geometry_minimal_fetch.json"):
+                ledger = work / ledger_name
+                if not ledger.exists():
+                    continue
+                try:
+                    progress = json.loads(ledger.read_text())
+                    if progress.get("authentication_failed"):
+                        stopped = True
+                        break
+                    attempted = next(
+                        (r for r in progress.get("records", []) if r["shot"] == shot),
+                        None,
+                    )
+                    if attempted and attempted.get("status") == "worker_failed":
+                        stopped = True
+                        break
+                except json.JSONDecodeError:
+                    pass  # Writer progress is informational, never label truth.
+            if stopped:
+                break
+            time.sleep(5)
+        else:
+            raise TimeoutError(f"geometry fetch did not complete for shot {shot}")
     record = work / "shots" / f"{shot}.json"
     signal = work / "signals" / f"{shot}.npz"
     if record.exists() and (not keep_signal or signal.exists()):
@@ -223,8 +331,13 @@ def process_shot(job):
             raise ValueError(f"cached rule differs from freeze for shot {shot}")
         if previous.get("reader_policy") != READER_POLICY:
             raise ValueError(f"cached reader policy differs for shot {shot}")
-        if "error" not in previous:
+        if "error" not in previous and "refresh" not in options:
             return previous
+        if "refresh" in options:
+            archive = work / "refreshed_records" / record.name
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            if not archive.exists():
+                shutil.copyfile(record, archive)
     started = time.monotonic()
     result = {
         "shot": int(shot),
@@ -262,8 +375,19 @@ def process_shot(job):
             )
             sxr, dalpha, neutron, mirnov, nbi = None, None, None, None, None
             radius, result["radius_geometry"] = load_radius_geometry(
-                shot, t, len(y), paths, archive_root=ECE_GEOMETRY_ARCHIVE
+                shot,
+                t,
+                len(y),
+                paths,
+                archive_root=ECE_GEOMETRY_ARCHIVE,
+                metadata_root=work / "geometry",
             )
+            if radius is not None and radius.lcfs_outer_R_m is not None:
+                overlap = radius.R_m < 2 / 3 * radius.lcfs_outer_R_m[None]
+                y[overlap] = np.nan
+                result["radius_geometry"]["harmonic_overlap_channel_samples"] = int(
+                    overlap.sum()
+                )
             core = select_core(
                 y,
                 radius=radius,
@@ -355,6 +479,15 @@ def process_shot(job):
             except (NoDataError, ValueError):
                 pass
         qmin, q_source = local_q(shot, paths)
+        if qmin is None and (work / "geometry" / f"{shot}.h5").exists():
+            with h5py.File(work / "geometry" / f"{shot}.h5", "r") as eqfile:
+                if "eq/qpsi" in eqfile and "eq/gtime" in eqfile:
+                    profiles = np.asarray(eqfile["eq/qpsi"], dtype=float)
+                    valid = np.isfinite(profiles) & (profiles > 0)
+                    minimum = np.min(np.where(valid, profiles, np.inf), axis=1)
+                    minimum[~np.isfinite(minimum)] = np.nan
+                    qmin = np.asarray(eqfile["eq/gtime"]) / 1000, minimum
+                    q_source = "EFIT01"
         if ip is not None:
             baseline[3] = np.interp(t, ip[0], ip[1], left=np.nan, right=np.nan) / 1e6
         result["ip_available"] = ip is not None
@@ -375,6 +508,8 @@ def process_shot(job):
             rule=rule,
             qmin=qmin,
             q_source=q_source,
+            radius_geometry=radius,
+            spatially_verified=radius is not None,
             geometry=geometry,
             dalpha=dalpha,
             sxr=sxr,
@@ -386,6 +521,24 @@ def process_shot(job):
             nbi=nbi,
         )
         enrich_radius_evidence(detected, radius, geometry)
+        if radius is None and (geometry is None or geometry.psi is None):
+            # A hottest-channel fallback is diagnostic support, not verified
+            # magnetic-core coverage. Its quietness cannot teach absence.
+            suppressed = int(detected.absent_mask.sum())
+            detected.absent_mask[:] = False
+            detected.absence_diagnostics["reason_samples"].update(
+                geometry_missing_absence_suppressed=suppressed,
+                tested_absence=0,
+            )
+        result["prior_unverified_candidates_preserved"] = (
+            preserve_unverified_candidates(
+                detected,
+                t,
+                paths.root / "round4/saw/fix2/shots" / f"{shot}.json",
+                rule,
+                shot,
+            )
+        )
         result.update(
             candidates=detected.candidates,
             rejected=detected.rejected,
@@ -433,6 +586,7 @@ def process_shot(job):
                 absent_evidence=detected.absent_mask,
                 core_channels=core.core_channels,
                 outer_channels=core.outer_channels,
+                central_channel=core.info["central_channel"],
             )
     except (OSError, KeyError, ValueError) as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
@@ -474,7 +628,10 @@ def export_rows(record):
         for span in states:
             if span["state"] != "present":
                 yield (
-                    span["start_s"], span["end_s"], True, 1.0,
+                    span["start_s"],
+                    span["end_s"],
+                    True,
+                    1.0,
                     {"state": span["state"]},
                 )
                 continue
@@ -515,6 +672,13 @@ def export_csv(records, destination, *, compact=False, prefix="labels"):
                             "q1_R_m",
                             "q1_rho",
                             "q1_radius_difference_m",
+                            "inversion_nominal_rho",
+                            "q1_nominal_rho",
+                            "nominal_rho_difference",
+                            "q1_comparison_status",
+                            "qmin",
+                            "q_source",
+                            "geometry_status",
                             "inversion_channel",
                             "train_id",
                             "train_ids",
@@ -588,7 +752,14 @@ def labels(args):
     if args.population and args.skip_cohort:
         shots = [s for s in shots if s not in windows and s not in set(reviewed.shot)]
     jobs = [
-        (s, str(args.work), s in windows or s in set(reviewed.shot), windows.get(s))
+        (
+            s,
+            str(args.work),
+            s in windows or s in set(reviewed.shot),
+            windows.get(s),
+            *(("wait_geometry",) if getattr(args, "wait_geometry", False) else ()),
+            *(("refresh",) if getattr(args, "refresh", False) else ()),
+        )
         for s in shots
     ]
     begun = time.monotonic()
@@ -659,7 +830,8 @@ def labels(args):
         ),
         "physical_channel_exclusions": dict(
             Counter(
-                str(channel) for r in records
+                str(channel)
+                for r in records
                 for channel in r.get("core_geometry", {}).get(
                     "implausible_channels", []
                 )
@@ -673,13 +845,18 @@ def labels(args):
         "split_counts": cohort.split.value_counts().to_dict(),
         "rule": asdict(frozen_rule(args.work)),
         "adaptations": {
-            "core_proxy_channels": "per-shot hottest physically screened neighborhood",
-            "terminal_channels_40_47": "excluded from uncalibrated core selection",
+            "core_proxy_channels": "per-shot EFIT magnetic axis when field supported",
+            "terminal_channels_40_47": (
+                "excluded from core and inversion/redistribution"
+            ),
             "minimum_ip_ma_when_measured": 0.3,
             "ece_valid_range_kev": [0, 100],
             "model_and_detector_sample_rate_hz": FS,
             "native_rate_antialiasing": "FIR polyphase, chunks with full halos",
-            "radius_units": "sqrt(normalized poloidal flux), only if calibrated",
+            "radius_units": (
+                "nominal geometric rho=abs(R-axis)/(LCFS_out-axis); "
+                "sqrt(normalized poloidal flux) only if calibrated"
+            ),
             "sxr_use": "coverage recorded only; no corroboration claim",
         },
         "seconds": round(time.monotonic() - begun, 1),
@@ -701,16 +878,20 @@ def labels(args):
     )
     radius_comparisons = [
         point["attrs"]["q1_radius_difference_m"]
-        for record in records for point in record["crashes"]
+        for record in records
+        for point in record["crashes"]
         if point["attrs"].get("q1_radius_difference_m") is not None
     ]
     summary["q1_major_radius_comparison"] = {
         "validation_status": "unvalidated_nominal_second_harmonic_EFIT_comparison",
         "comparable_crashes": len(radius_comparisons),
         "shots": [
-            record["shot"] for record in records
-            if any(point["attrs"].get("q1_radius_difference_m") is not None
-                   for point in record["crashes"])
+            record["shot"]
+            for record in records
+            if any(
+                point["attrs"].get("q1_radius_difference_m") is not None
+                for point in record["crashes"]
+            )
         ],
         "difference_definition": "nominal inversion R minus same-branch EFIT q=1 R",
         "median_difference_m": (
@@ -767,9 +948,22 @@ def records_at(work, shots):
 def geometry_file_metadata(path):
     """One independent metadata-only read for the bounded audit workers."""
     candidates = {
-        "ece_psi", "ece_q", "ece_frequency", "ece_frequencies", "ece_freq",
-        "ece_frequency_hz", "ece_frequency_ghz", "qpsi", "psirz",
-        "rgrid", "zgrid", "bcentr", "rcentr", "rmaxis", "r0", "bt",
+        "ece_psi",
+        "ece_q",
+        "ece_frequency",
+        "ece_frequencies",
+        "ece_freq",
+        "ece_frequency_hz",
+        "ece_frequency_ghz",
+        "qpsi",
+        "psirz",
+        "rgrid",
+        "zgrid",
+        "bcentr",
+        "rcentr",
+        "rmaxis",
+        "r0",
+        "bt",
     }
     result = {"file": str(path), "opened": False}
     try:
@@ -781,19 +975,24 @@ def geometry_file_metadata(path):
             n = group["ydata"].shape[0]
             frequency, source = nominal_frequencies(file, n)
             result.update(
-                ece=True, keys=list(group), attr_keys=list(group.attrs),
+                ece=True,
+                keys=list(group),
+                attr_keys=list(group.attrs),
                 geometry=sorted((set(file) & candidates) - {"bt", "r0"}),
                 frequency=(
                     {"source": source, "frequency_hz": frequency.tolist()}
-                    if frequency is not None else None
+                    if frequency is not None
+                    else None
                 ),
                 example={
-                    "file": str(path), "channel_count": int(n),
+                    "file": str(path),
+                    "channel_count": int(n),
                     "ece_datasets": list(group),
                     "ece_attrs": {k: str(v) for k, v in group.attrs.items()},
                     "dataset_attrs": {
                         k: {a: str(v) for a, v in group[k].attrs.items()}
-                        for k in group if isinstance(group[k], h5py.Dataset)
+                        for k in group
+                        if isinstance(group[k], h5py.Dataset)
                     },
                 },
             )
@@ -814,15 +1013,19 @@ def geometry_audit(args):
         "method": "read-only HDF5 group/dataset names and attributes; no waveforms",
         "workers": args.workers,
         "validation_status": "calibration_inventory_only_owner_away",
-        "stores": {}, "frequency_sources": [], "geometry_sources": [],
-        "example_ece_metadata": [], "errors": {},
+        "stores": {},
+        "frequency_sources": [],
+        "geometry_sources": [],
+        "example_ece_metadata": [],
+        "errors": {},
     }
     if args.records_only:
         report = json.loads((args.work / "geometry_metadata_audit.json").read_text())
         report["metadata_records_reused"] = True
     for label, (root, pattern) in stores.items():
         files = sorted(
-            p for p in root.glob(pattern)
+            p
+            for p in root.glob(pattern)
             if p.is_file() and p.name.split("_")[0].isdigit()
         )
         if args.shots:
@@ -850,9 +1053,12 @@ def geometry_audit(args):
                     if item["frequency"] is not None:
                         report["frequency_sources"].append(item["frequency"])
                     if item["geometry"]:
-                        report["geometry_sources"].append({
-                            "file": item["file"], "groups": item["geometry"],
-                        })
+                        report["geometry_sources"].append(
+                            {
+                                "file": item["file"],
+                                "groups": item["geometry"],
+                            }
+                        )
                     if len(report["example_ece_metadata"]) < 6:
                         report["example_ece_metadata"].append(item["example"])
                 if counts["files_requested"] % 2000 == 0:
@@ -860,9 +1066,12 @@ def geometry_audit(args):
                         f"{label}: {counts['files_requested']}/{len(files)}", flush=True
                     )
         report["stores"][label] = {
-            "root": str(root), "glob": pattern, **dict(counts),
+            "root": str(root),
+            "glob": pattern,
+            **dict(counts),
             "shots": [int(p.name.split("_")[0]) for p in files],
-            "ece_dataset_keys": dict(keys), "ece_attribute_keys": dict(attrs),
+            "ece_dataset_keys": dict(keys),
+            "ece_attribute_keys": dict(attrs),
             "potential_geometry_groups": dict(available),
         }
     report["frequency_metadata_count"] = len(report["frequency_sources"])
@@ -876,16 +1085,18 @@ def geometry_audit(args):
                 expected = {f"ECEVS{i + 1:02d}" for i in range(len(frequency))}
                 identities = expected <= set(file.get("ece", {}))
                 frequency_vectors.append(frequency)
-                archive_sources.append({
-                    "shot": int(path.stem),
-                    "source": f"{path}:/ecegeom/FREQ",
-                    "file_mtime_unix_s": path.stat().st_mtime,
-                    "frequency_ghz": frequency.tolist(),
-                    "stored_units": str(file["ecegeom/FREQ"].attrs.get("units")),
-                    "source_tree": str(file["ecegeom"].attrs.get("source")),
-                    "ecevs_identifiers_match_channel_order": identities,
-                    "efit_groups": list(file.get("eq", {})),
-                })
+                archive_sources.append(
+                    {
+                        "shot": int(path.stem),
+                        "source": f"{path}:/ecegeom/FREQ",
+                        "file_mtime_unix_s": path.stat().st_mtime,
+                        "frequency_ghz": frequency.tolist(),
+                        "stored_units": str(file["ecegeom/FREQ"].attrs.get("units")),
+                        "source_tree": str(file["ecegeom"].attrs.get("source")),
+                        "ecevs_identifiers_match_channel_order": identities,
+                        "efit_groups": list(file.get("eq", {})),
+                    }
+                )
         except (OSError, KeyError, ValueError) as error:
             report["errors"][str(path)] = f"{type(error).__name__}: {error}"
     report["external_archive"] = {
@@ -901,7 +1112,8 @@ def geometry_audit(args):
         "scope": "same-shot configuration only; no transfer across shots",
     }
     report["external_archive"]["ece_node_provenance"] = {
-        "tree": "ELECTRONS", "frequency_node": r"\ECE::TOP.SETUP.FREQ",
+        "tree": "ELECTRONS",
+        "frequency_node": r"\ECE::TOP.SETUP.FREQ",
         "sightline_height_node": r"\ECE::TOP.SETUP.ECEZH",
         "reference_source_script": str(REPO.parent / "fdp/scripts/omnimode.py"),
         "corpus_order_source": str(
@@ -915,11 +1127,17 @@ def geometry_audit(args):
         cohort_source=str(REPO / "data/events/catalog/cohort.csv"),
         cohort_overlap=sorted(archive_shots & set(cohort.shot)),
         corpus_overlap=sorted(
-            archive_shots & set(report["stores"]["corpus"].get("shots", [
-                int(p.name.split("_")[0])
-                for p in paths.corpus.glob("*_processed.h5")
-                if p.name.split("_")[0].isdigit()
-            ]))
+            archive_shots
+            & set(
+                report["stores"]["corpus"].get(
+                    "shots",
+                    [
+                        int(p.name.split("_")[0])
+                        for p in paths.corpus.glob("*_processed.h5")
+                        if p.name.split("_")[0].isdigit()
+                    ],
+                )
+            )
         ),
     )
     if frequency_vectors and len({len(v) for v in frequency_vectors}) == 1:
@@ -939,16 +1157,20 @@ def geometry_audit(args):
         "major radii and q=1 major-radius comparisons unavailable"
         if not report["frequency_sources"]
         else (
-            "RF-frequency sources present; field reference and EFIT axis "
-            "still required"
+            "RF-frequency sources present; field reference and EFIT axis still required"
         )
     )
     save_json(OUTPUT / "geometry_metadata_audit.json", report)
     save_json(args.work / "geometry_metadata_audit.json", report)
-    print(json.dumps({
-        label: {key: value for key, value in store.items() if key != "shots"}
-        for label, store in report["stores"].items()
-    }), flush=True)
+    print(
+        json.dumps(
+            {
+                label: {key: value for key, value in store.items() if key != "shots"}
+                for label, store in report["stores"].items()
+            }
+        ),
+        flush=True,
+    )
 
 
 def validate(args):
@@ -992,12 +1214,16 @@ def main():
     parser.add_argument("--population", action="store_true")
     parser.add_argument("--skip-cohort", action="store_true")
     parser.add_argument("--records-only", action="store_true")
+    parser.add_argument("--wait-geometry", action="store_true")
+    parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--shots", nargs="+", type=int)
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
     args = parser.parse_args()
     if not 1 <= args.workers <= 8:
         parser.error("workers must be 1..8")
+    if args.refresh and args.records_only:
+        parser.error("refresh and records-only are mutually exclusive")
     if not 0 <= args.shard < args.shards or args.shards > 1 and not args.population:
         parser.error("shard must lie in 0..shards-1; sharding is population-only")
     if args.stage == "labels":

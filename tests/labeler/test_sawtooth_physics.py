@@ -44,7 +44,7 @@ def test_crashes_and_train_with_point_and_span_attrs():
 
 def test_qmin_conflict_and_missing_geometry_do_not_fabricate_radius():
     t, y = synthetic()
-    qmin = (np.array([0.0, 0.4]), np.array([1.2, 1.2]))
+    qmin = (np.array([0.0, 0.4]), np.array([1.6, 1.6]))
     found = detect(t, y, shot=1, qmin=qmin)
     assert len(found.crashes) == 4
     assert not found.intervals
@@ -117,16 +117,16 @@ def test_subset_core_drops_cannot_be_hidden_by_proxy_averaging(opposing_rises):
 
 
 def test_slow_core_relaxation_phase_cannot_have_absent_islands():
-    t = np.arange(0, 4.5, 0.0001)
+    t = np.arange(0, 6.0, 0.0001)
     y = np.full((8, len(t)), 2.0)
-    for crash in (0.6, 1.5, 2.4, 3.3):
+    for crash in np.arange(0.6, 5.2, 0.9):
         transient = np.where(t >= crash, np.exp(-(t - crash) / 0.08), 0)
         y[2:4] -= 0.2 * transient
     y += np.random.default_rng(59).normal(0, 0.0005, y.shape)
     found = detect(t, y, shot=1, core_channels=range(7))
     assert not found.intervals
     assert found.absence_diagnostics["profile_passing_candidates"] == 0
-    assert not found.absent_mask[(t > 0.6) & (t < 3.3)].any()
+    assert not found.absent_mask[(t > 0.6) & (t < 5.1)].any()
     phases = found.absence_diagnostics["core_relaxation_test"]["phase_spans"]
     assert len(phases) == 1
     assert phases[0]["period_ms"] == pytest.approx(900, abs=1)
@@ -135,21 +135,15 @@ def test_slow_core_relaxation_phase_cannot_have_absent_islands():
 def test_core_relaxation_phases_do_not_cross_unobserved_support():
     from labeler.sawtooth.physics import core_relaxation_phases
 
-    edges = [0.6, 1.5, 2.4, 3.3]
-    assert core_relaxation_phases(edges, [(0, 2), (2.1, 4.5)]) == []
-    phases = core_relaxation_phases(edges, [(0, 4.5)])
-    assert phases == [
-        {
-            "start_s": pytest.approx(0.225),
-            "end_s": pytest.approx(3.675),
-            "first_edge_s": 0.6,
-            "last_edge_s": 3.3,
-            "edges": 4,
-            "period_ms": pytest.approx(900),
-            "minimum_gap_ms": pytest.approx(900),
-            "maximum_gap_ms": pytest.approx(900),
-        }
-    ]
+    edges = np.arange(0.6, 5.2, 0.9)
+    assert core_relaxation_phases(edges, [(0, 2.5), (2.6, 6)]) == []
+    phases = core_relaxation_phases(edges, [(0, 6)])
+    assert len(phases) == 1
+    assert phases[0]["start_s"] == pytest.approx(0.225)
+    assert phases[0]["end_s"] == pytest.approx(5.475)
+    assert phases[0]["period_ms"] == pytest.approx(900)
+    assert phases[0]["edges"] == 6
+    assert phases[0]["null_p_value"] <= 0.05
 
 
 def test_profile_candidate_below_central_amplitude_prevents_absence():
@@ -197,7 +191,7 @@ def test_significant_nonprofile_core_edges_are_not_absence(crashes):
 def test_equilibrium_uncertainty_is_decided_per_crash():
     t, y = synthetic()
     q = np.full(len(t), 0.8)
-    q[np.abs(t - 0.16) < 0.001] = 1.2
+    q[np.abs(t - 0.16) < 0.001] = 1.6
     found = detect(t, y, shot=1, qmin=(t, q))
     assert [event.attrs["state"] for event in found.crashes] == [
         "present",

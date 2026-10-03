@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from functools import lru_cache
 from itertools import pairwise
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -31,6 +33,85 @@ class RadiusGeometry:
     axis_R_m: np.ndarray
     q1_low_R_m: np.ndarray | None = None
     q1_high_R_m: np.ndarray | None = None
+    lcfs_outer_R_m: np.ndarray | None = None
+    nominal_rho: np.ndarray | None = None
+
+
+def audit_frequency_grid(archive_root, *, minimum_shots=25, tolerance_ghz=0.001):
+    """Verify the modal RF setup on independently identified archived shots.
+
+    At least 95% of shots must agree on each channel 0..39. Deviations are
+    recorded and same-shot metadata retains precedence over the modal grid.
+    The verified scope is the archive's shot range, not all DIII-D history.
+    """
+    records, invalid = [], []
+    for path in sorted((Path(archive_root) / "raw").glob("*.h5")):
+        try:
+            with h5py.File(path, "r", locking=False) as file:
+                shot = int(path.stem)
+                if int(file.attrs.get("shot", -1)) != shot:
+                    raise ValueError("shot identifier mismatch")
+                group = file["ecegeom"]
+                if group.attrs.get("source") != "ELECTRONS":
+                    raise ValueError("unverified RF source")
+                count = len(group["FREQ"])
+                expected = {f"ECEVS{i + 1:02d}" for i in range(count)}
+                if not expected <= set(file["ece"]):
+                    raise ValueError("unverified ECE channel join")
+                frequency = _frequency_vector(group["FREQ"][...], "GHz", count)
+                if frequency is None or count < FALLBACK_PHYSICAL_STOP:
+                    raise ValueError("invalid RF vector")
+                records.append((shot, frequency / 1e9))
+        except (OSError, KeyError, ValueError) as error:
+            invalid.append({"path": str(path), "error": str(error)})
+    result = {
+        "verified": False,
+        "root": str(archive_root),
+        "shots_audited": len(records),
+        "shots": [shot for shot, _ in records],
+        "minimum_shots": minimum_shots,
+        "tolerance_ghz": tolerance_ghz,
+        "terminal_channels_excluded": list(range(40, 48)),
+        "invalid_files": invalid,
+        "exceptions": [],
+        "frequency_hz": None,
+    }
+    if not records:
+        return result
+    grid = np.stack([frequency[:40] for _, frequency in records])
+    consensus = np.median(grid, axis=0)
+    agrees = np.abs(grid - consensus) <= tolerance_ghz
+    result.update(
+        frequency_hz=(consensus * 1e9).tolist(),
+        channel_agreement_fraction=agrees.mean(axis=0).tolist(),
+        verified=bool(
+            len(records) >= minimum_shots
+            and (agrees.mean(axis=0) >= 0.95).all()
+            and (np.diff(consensus) > 0).all()
+        ),
+    )
+    for index, (shot, frequency) in enumerate(records):
+        channels = np.flatnonzero(~agrees[index])
+        if len(channels):
+            result["exceptions"].append({
+                "shot": shot, "channels": channels.tolist(),
+                "frequency_ghz": frequency[channels].tolist(),
+                "consensus_ghz": consensus[channels].tolist(),
+                "maximum_difference_ghz": float(
+                    np.max(np.abs(frequency[:40] - consensus))
+                ),
+            })
+    result["limitations"] = (
+        "modal archive grid transferred to other shots; historical RF changes "
+        "outside the audited shot range are not excluded; same-shot metadata "
+        "overrides it; channel 0 joins TECEF01/ECEVS01"
+    )
+    return result
+
+
+@lru_cache(maxsize=8)
+def _verified_archive_grid(root):
+    return audit_frequency_grid(root)
 
 
 @dataclass(frozen=True)
@@ -180,88 +261,176 @@ def _q1_major_radii(r, z, psirz, axis, axis_z, psi_axis, psi_edge, qpsi, height)
     return low, high
 
 
-def _archived_radius(shot, t_s, channels, archive_root):
-    """Same-shot local FREQ/EFIT cache from the documented FDP acquisition."""
-    path = archive_root / "raw" / f"{int(shot)}.h5"
+def _equilibrium_radius(shot, t_s, channels, path, fixed_grid=None):
+    """Read archive-layout per-shot EFIT, with independently audited RF fallback."""
+    path = Path(path)
     if not path.exists():
         return None, None
     try:
         with h5py.File(path, "r", locking=False) as file:
             if int(file.attrs.get("shot", -1)) != shot:
                 raise ValueError("archive shot metadata does not agree")
-            setup, eq = file["ecegeom"], file["eq"]
-            expected = {f"ECEVS{i + 1:02d}" for i in range(channels)}
-            if not expected <= set(file["ece"]):
-                raise ValueError(
-                    "archive ECE identifiers do not establish channel order"
-                )
-            frequency = _frequency_vector(setup["FREQ"][...], "GHz", channels)
-            if frequency is None or setup.attrs.get("source") != "ELECTRONS":
-                raise ValueError("malformed or unverified ELECTRONS setup FREQ")
+            setup, eq = file.get("ecegeom"), file["eq"]
+            frequency, frequency_source = None, None
+            scope = "same_shot"
+            if (
+                setup is not None
+                and setup.attrs.get("source") == "ELECTRONS"
+                and "FREQ" in setup
+            ):
+                native = np.asarray(setup["FREQ"]).ravel()
+                native = _frequency_vector(native, "GHz", len(native))
+                if native is not None and len(native) >= min(channels, 40):
+                    frequency = np.full(channels, np.nan)
+                    stop = min(channels, 40)
+                    frequency[:stop] = native[:stop]
+                    frequency_source = f"{path}:/ecegeom/FREQ"
+            if frequency is None and fixed_grid and fixed_grid["verified"]:
+                frequency = np.full(channels, np.nan)
+                stop = min(channels, 40)
+                frequency[:stop] = np.asarray(fixed_grid["frequency_hz"])[:stop]
+                frequency_source = f"{fixed_grid['root']}:/raw verified_modal_grid"
+                scope = "audited_archive_modal_channels_0_to_39"
+            if frequency is None:
+                raise ValueError("RF metadata or verified fixed-grid audit unavailable")
+            if "ece" in file:
+                expected = {f"ECEVS{i + 1:02d}" for i in range(min(channels, 40))}
+                if not expected <= set(file["ece"]):
+                    raise ValueError("archive ECE identifiers do not establish order")
             clock = np.asarray(eq["gtime"], dtype=float) / 1000
             product = np.asarray(eq["fpol"], dtype=float)[:, -1]
             axis = np.asarray(eq["rmaxis"], dtype=float)
-            axis_z = np.asarray(eq["zmaxis"], dtype=float)
-            r, z = np.asarray(eq["r"]), np.asarray(eq["z"])
-            psirz, qpsi = np.asarray(eq["psirz"]), np.asarray(eq["qpsi"])
-            height = float(setup["ECEZH"][()])
+            height = (
+                float(setup["ECEZH"][()])
+                if setup is not None and "ECEZH" in setup else np.nan
+            )
+            measured_height = bool(np.isfinite(height))
+            if not measured_height:
+                # Muscatello describes the verified first-40 ECE array as
+                # midplane. This is an explicit nominal sightline assumption.
+                height = 0.0
             if (
                 eq.attrs.get("source") != "efit01"
                 or product.shape != clock.shape
                 or axis.shape != clock.shape
-                or psirz.shape
-                not in ((len(clock), len(z), len(r)), (len(clock), len(r), len(z)))
-                or qpsi.ndim != 2
-                or qpsi.shape[0] != len(clock)
-                or not (np.diff(r) > 0).all()
-                or not (np.diff(z) > 0).all()
             ):
                 raise ValueError("archive EFIT array axes or source do not agree")
-            low, high = _q1_major_radii(
-                r,
-                z,
-                psirz,
-                axis,
-                axis_z,
-                np.asarray(eq["ssimag"]),
-                np.asarray(eq["ssibry"]),
-                qpsi,
-                height,
-            )
+            q1_checked = {
+                "zmaxis", "r", "z", "psirz", "qpsi", "ssimag", "ssibry"
+            } <= set(eq)
+            low, high, no_surface = None, None, None
+            if q1_checked:
+                axis_z = np.asarray(eq["zmaxis"], dtype=float)
+                r, z = np.asarray(eq["r"]), np.asarray(eq["z"])
+                psirz, qpsi = np.asarray(eq["psirz"]), np.asarray(eq["qpsi"])
+                if (
+                    psirz.shape
+                    not in ((len(clock), len(z), len(r)), (len(clock), len(r), len(z)))
+                    or qpsi.ndim != 2
+                    or qpsi.shape[0] != len(clock)
+                    or not (np.diff(r) > 0).all()
+                    or not (np.diff(z) > 0).all()
+                ):
+                    raise ValueError("archive EFIT q/flux array axes do not agree")
+                low, high = _q1_major_radii(
+                    r, z, psirz, axis, axis_z,
+                    np.asarray(eq["ssimag"]), np.asarray(eq["ssibry"]),
+                    qpsi, height,
+                )
+                no_surface = int(
+                    np.isnan(q1_surface(np.linspace(0, 1, qpsi.shape[1]), qpsi)).sum()
+                )
+            lcfs = np.full(len(clock), np.nan)
+            if "bdry" in eq and "nbdry" in eq:
+                boundary, counts = np.asarray(eq["bdry"]), np.asarray(eq["nbdry"])
+                if (
+                    boundary.ndim == 3
+                    and boundary.shape[0] == len(clock)
+                    and boundary.shape[-1] == 2
+                    and counts.shape == clock.shape
+                ):
+                    for k, count in enumerate(counts):
+                        if (
+                            not np.isfinite(count) or count < 3
+                            or count > boundary.shape[1]
+                        ):
+                            continue
+                        points = boundary[k, :int(count), 0]
+                        if len(points) > 2 and np.isfinite(points).all():
+                            lcfs[k] = float(np.max(points))
         # EFIT's F(psi=1)=R*Bphi is the boundary/vacuum B0R0 product.
         # It avoids silently treating rmaxis as the Bt reference radius.
-        radius = second_harmonic_R(t_s, frequency, (clock, product), 1.0)
+        radius = np.full((channels, len(t_s)), np.nan)
+        valid_frequency = np.isfinite(frequency)
+        radius[valid_frequency] = second_harmonic_R(
+            t_s, frequency[valid_frequency], (clock, product), 1.0
+        )
+        axis_R = align_q(t_s, clock, axis[None])[0]
+        lcfs_R = align_q(t_s, clock, lcfs[None])[0]
+        minor = lcfs_R - axis_R
+        minor[minor <= 0] = np.nan
+        rho = np.abs(radius - axis_R[None]) / minor[None]
         mapped = RadiusGeometry(
             np.asarray(t_s),
             radius,
-            align_q(t_s, clock, axis[None])[0],
-            align_q(t_s, clock, low[None])[0],
-            align_q(t_s, clock, high[None])[0],
+            axis_R,
+            align_q(t_s, clock, low[None])[0] if q1_checked else None,
+            align_q(t_s, clock, high[None])[0] if q1_checked else None,
+            lcfs_R,
+            rho,
         )
+        steps = np.diff(frequency[:min(channels, 40)])
         info = {
             "status": "nominal_second_harmonic_R_from_archived_EFIT_F",
-            "frequency_source": f"{path}:/ecegeom/FREQ",
-            "frequency_hz": frequency.tolist(),
-            "frequency_scope": "same_shot",
+            "frequency_source": frequency_source,
+            "frequency_hz": [float(v) if np.isfinite(v) else None for v in frequency],
+            "frequency_scope": scope,
+            "frequency_order_supported": bool((steps >= 0).all()),
+            "frequency_order_break_channels": np.flatnonzero(steps < 0).tolist(),
+            "near_duplicate_frequency_pairs": np.flatnonzero(
+                np.abs(steps) <= 1e6
+            ).tolist(),
             "frequency_units": (
                 "GHz: documented omnimode ece_fwd reader contract; "
                 "stored FREQ units are blank"
             ),
-            "channel_order_source": f"{path}:/ece/ECEVS01..{channels:02d}",
+            "channel_order_source": "corpus row i joins TECEF(i+1)/ECEVS(i+1)",
             "field_product_source": f"{path}:/eq/fpol[:, -1] (F=R*Bphi)",
             "axis_source": f"{path}:/eq/rmaxis",
-            "q1_source": f"{path}:/eq/qpsi and /eq/psirz at ECEZH={height}m",
-            "q1_low_supported_samples": int(np.isfinite(mapped.q1_low_R_m).sum()),
-            "q1_high_supported_samples": int(np.isfinite(mapped.q1_high_R_m).sum()),
+            "q1_source": (
+                f"{path}:/eq/qpsi and /eq/psirz at ECEZH={height}m"
+                if q1_checked else None
+            ),
+            "q1_checked": q1_checked,
+            "q1_status": (
+                "EFIT_psirz_and_qpsi_unavailable" if not q1_checked
+                else "checked_EFIT01_sightline_intersections"
+                if measured_height else "checked_EFIT01_nominal_midplane_intersections"
+            ),
+            "sightline_height_source": (
+                f"{path}:/ecegeom/ECEZH" if measured_height
+                else "Muscatello 2012 first-40 midplane ECE array; assumed z=0m"
+            ),
+            "q1_no_axis_connected_surface_slices": no_surface,
+            "q1_low_supported_samples": (
+                int(np.isfinite(mapped.q1_low_R_m).sum()) if q1_checked else 0
+            ),
+            "q1_high_supported_samples": (
+                int(np.isfinite(mapped.q1_high_R_m).sum()) if q1_checked else 0
+            ),
+            "lcfs_outer_source": f"{path}:/eq/bdry[:nbdry,0] maximum R",
+            "lcfs_outer_supported_samples": int(np.isfinite(lcfs_R).sum()),
+            "nominal_rho_definition": "abs(R-axis_R)/(LCFS_outer_R-axis_R)",
             "formula": "R_m=2*27.992e9*abs(EFIT_F_boundary_Tm)/f_Hz",
             "calibrated_flux": False,
             "limitations": (
                 "same-shot nominal second-harmonic vacuum-field mapping; "
-                "no relativistic, optical-depth or harmonic-overlap calibration"
+                "no relativistic or optical-depth correction; geometric nominal "
+                "rho is not normalized flux or the paper's measured rho"
             ),
         }
         return mapped, info
-    except (OSError, KeyError, ValueError) as error:
+    except (OSError, KeyError, ValueError, IndexError) as error:
         return None, {
             "status": "same_shot_archive_geometry_invalid",
             "archive_source": str(path),
@@ -269,13 +438,27 @@ def _archived_radius(shot, t_s, channels, archive_root):
         }
 
 
-def load_radius_geometry(shot, t_s, channels, paths, *, archive_root=None):
+def load_radius_geometry(
+    shot, t_s, channels, paths, *, archive_root=None, metadata_root=None
+):
     """Read local frequency/Bt/EFIT-axis metadata; never invoke a resolver."""
-    archive_info = None
+    archive_info, fixed_grid = None, None
     if archive_root is not None:
-        archived, archive_info = _archived_radius(shot, t_s, channels, archive_root)
+        fixed_grid = _verified_archive_grid(str(archive_root))
+        archived, archive_info = _equilibrium_radius(
+            shot, t_s, channels, Path(archive_root) / "raw" / f"{int(shot)}.h5",
+            fixed_grid,
+        )
         if archived is not None:
             return archived, archive_info
+    if metadata_root is not None:
+        mapped, metadata_info = _equilibrium_radius(
+            shot, t_s, channels, Path(metadata_root) / f"{int(shot)}.h5", fixed_grid
+        )
+        if mapped is not None:
+            return mapped, metadata_info
+        if metadata_info is not None:
+            archive_info = metadata_info
     frequency, source = None, None
     stores = (
         paths.features_file(shot),
@@ -290,6 +473,11 @@ def load_radius_geometry(shot, t_s, channels, paths, *, archive_root=None):
             continue
         if frequency is not None:
             break
+    if frequency is None and fixed_grid and fixed_grid["verified"]:
+        frequency = np.full(channels, np.nan)
+        stop = min(channels, 40)
+        frequency[:stop] = np.asarray(fixed_grid["frequency_hz"])[:stop]
+        source = f"{archive_root}:/raw verified_modal_grid"
     info = {
         "status": "frequency_metadata_unavailable",
         "frequency_source": source,
@@ -298,6 +486,9 @@ def load_radius_geometry(shot, t_s, channels, paths, *, archive_root=None):
         "calibrated_flux": False,
         "formula": "R_m=2*27.992e9*abs(Bt_T)*Rref_m/f_Hz",
         "limitations": "nominal, no relativistic or optical-depth correction",
+        "q1_checked": False,
+        "q1_status": "EFIT_psirz_and_qpsi_unavailable",
+        "frequency_grid_audit_verified": bool(fixed_grid and fixed_grid["verified"]),
     }
     if archive_info is not None:
         info["same_shot_archive"] = archive_info
@@ -326,18 +517,24 @@ def load_radius_geometry(shot, t_s, channels, paths, *, archive_root=None):
     if reference is None:
         info["status"] = "bt_reference_radius_unavailable"
         return None, info
-    radius = second_harmonic_R(t_s, frequency, (field.x, field.y[0]), reference)
+    radius = np.full((channels, len(t_s)), np.nan)
+    valid_frequency = np.isfinite(frequency)
+    valid_frequency[40:] = False
+    radius[valid_frequency] = second_harmonic_R(
+        t_s, frequency[valid_frequency], (field.x, field.y[0]), reference
+    )
     axis_R = align_q(t_s, axis.x, axis.y)[0]
     info.update(
         status="nominal_second_harmonic_R",
         reference_radius_m=reference,
-        frequency_hz=frequency.tolist(),
+        frequency_hz=[float(v) if np.isfinite(v) else None for v in frequency],
         field_source={
             "store": field.attrs.get("store"),
             "locator": field.attrs.get("locator"),
         },
         supported_samples=int(
-            (np.isfinite(radius).all(axis=0) & np.isfinite(axis_R)).sum()
+            (np.isfinite(radius[:min(channels, 40)]).all(axis=0)
+             & np.isfinite(axis_R)).sum()
         ),
     )
     return RadiusGeometry(np.asarray(t_s), radius, axis_R), info
@@ -354,6 +551,9 @@ def radius_evidence(radius, time_s, inversion_channel, flux=None):
         "inversion_R_m": None,
         "q1_R_m": None,
         "q1_radius_difference_m": None,
+        "inversion_nominal_rho": None,
+        "q1_nominal_rho": None,
+        "nominal_rho_difference": None,
     }
     if radius is None:
         return result
@@ -367,6 +567,14 @@ def radius_evidence(radius, time_s, inversion_channel, flux=None):
         return result
     inversion = float(np.interp(channel, np.arange(len(R)), R))
     result["inversion_R_m"] = inversion
+    minor = np.nan
+    if radius.lcfs_outer_R_m is not None:
+        lcfs = align_q(
+            [time_s], radius.time_s, radius.lcfs_outer_R_m[None]
+        )[0, 0]
+        minor = lcfs - axis
+        if np.isfinite(minor) and minor > 0:
+            result["inversion_nominal_rho"] = abs(inversion - axis) / minor
     if radius.q1_low_R_m is not None and np.isfinite(axis):
         surface = radius.q1_high_R_m if inversion >= axis else radius.q1_low_R_m
         q1 = align_q([time_s], radius.time_s, surface[None])[0, 0]
@@ -374,6 +582,11 @@ def radius_evidence(radius, time_s, inversion_channel, flux=None):
             result.update(
                 q1_R_m=float(q1), q1_radius_difference_m=inversion - float(q1)
             )
+            if np.isfinite(minor) and minor > 0:
+                result.update(
+                    q1_nominal_rho=float(abs(q1 - axis) / minor),
+                    nominal_rho_difference=float((inversion - q1) / minor),
+                )
         return result
     if flux is None or flux.psi is None or not np.isfinite(axis):
         return result
@@ -427,13 +640,12 @@ def select_core(
     width=7,
     maximum_to_core=1.5,
 ):
-    """Choose a shot proxy from a coherent hot profile, or nominal axis geometry.
+    """Use the EFIT axis and mask unverified/overlapping ECE spatial support.
 
-    The fallback excludes channels 40-47 from *core selection*, as their
-    spatial interpretation is unverified and the reviewed shots show harmonic
-    overlap. It does not assert that all terminal channels are nonphysical.
-    All channels with median Te above 1.5x the coherent core peak are masked.
-    This conservative prior and every selected channel are reported per shot.
+    Channels 40..47 never contribute to core, outer or redistribution tests.
+    With boundary geometry, channels whose median R2 is inside 2/3 R_LCFS,out
+    are also excluded. Nominal rho is a geometric distance proxy, not flux.
+    Missing geometry retains an explicitly unvalidated temperature proxy.
     """
     values = np.asarray(y, dtype=float)
     if values.ndim != 2 or len(values) < minimum_channels:
@@ -455,12 +667,29 @@ def select_core(
     coherent = int(np.nanargmax(smooth))
     peak = float(smooth[coherent])
     physical = finite & (median <= maximum_to_core * peak)
+    physical[stop:] = False
+    overlap = np.zeros(len(values), dtype=bool)
+    nominal_rho = np.full(len(values), np.nan)
+    if radius is not None:
+        if radius.R_m.shape[0] != len(values):
+            raise ValueError("radius and ECE channel axes disagree")
+        if radius.lcfs_outer_R_m is not None:
+            separation = _row_median(
+                radius.R_m - 2 / 3 * radius.lcfs_outer_R_m[None]
+            )
+            overlap = np.isfinite(separation) & (separation < 0)
+            physical &= ~overlap
+        if radius.nominal_rho is not None:
+            nominal_rho = _row_median(radius.nominal_rho)
     eligible &= physical
     candidates = np.flatnonzero(eligible)
     if len(candidates) < minimum_channels:
         raise ValueError("insufficient physically plausible ECE core channels")
     nearby = candidates[np.abs(candidates - coherent) <= 3]
-    center = int(nearby[np.argmax(median[nearby])])
+    center = (
+        int(nearby[np.argmax(median[nearby])]) if len(nearby)
+        else int(candidates[np.argmin(np.abs(candidates - coherent))])
+    )
     status = "shot_hottest_physical_channel_proxy"
     if radius is not None:
         distance = _row_median(np.abs(radius.R_m - radius.axis_R_m[None]))
@@ -474,19 +703,52 @@ def select_core(
     else:
         core = candidates[np.argsort(np.abs(candidates - center))[:width]]
     core = np.sort(core)
-    # A contiguous adjacent band on the lower-index side is the display/ML
-    # outer proxy; absent RF metadata this remains an ordered-channel claim.
-    outside = candidates[candidates < core[0]]
-    if len(outside) < minimum_channels:
-        outside = candidates[candidates > core[-1]]
-    outer = np.sort(outside[np.argsort(np.abs(outside - center))[:width]])
+    outer_status = "adjacent_channel_proxy_unvalidated"
+    if radius is not None and np.isfinite(nominal_rho).any():
+        side = _row_median(radius.R_m - radius.axis_R_m[None])
+        outside = candidates[
+            (side[candidates] > 0)
+            & (nominal_rho[candidates] >= 0.4)
+            & (nominal_rho[candidates] <= 0.65)
+            & ~np.isin(candidates, core)
+        ]
+        outer = np.sort(
+            outside[np.argsort(np.abs(nominal_rho[outside] - 0.525))[:width]]
+        )
+        outer_status = "nominal_low_field_side_rho_0.4_to_0.65"
+        if len(outer) < minimum_channels:
+            outer_status = "nominal_outer_band_insufficient_support"
+    else:
+        outside = candidates[candidates < core[0]]
+        if len(outside) < minimum_channels:
+            outside = candidates[candidates > core[-1]]
+        outer = np.sort(outside[np.argsort(np.abs(outside - center))[:width]])
     info = {
         "status": status,
         "radius_status": "unavailable" if radius is None else "nominal_R",
         "central_channel": center,
         "core_channels": core.tolist(),
         "outer_channels": outer.tolist(),
-        "outer_status": "adjacent_channel_proxy_unvalidated",
+        "outer_status": outer_status,
+        "nominal_rho_median": [
+            float(v) if np.isfinite(v) else None for v in nominal_rho
+        ],
+        "core_nominal_rho_median": (
+            float(np.median(nominal_rho[core]))
+            if len(core) and np.isfinite(nominal_rho[core]).all() else None
+        ),
+        "outer_nominal_rho_median": (
+            float(np.median(nominal_rho[outer]))
+            if len(outer) and np.isfinite(nominal_rho[outer]).all() else None
+        ),
+        "nominal_rho_definition": "abs(R-axis_R)/(LCFS_outer_R-axis_R)",
+        "nominal_rho_limitations": (
+            "vacuum second-harmonic geometric distance, not normalized flux; "
+            "no relativistic or optical-depth correction"
+        ),
+        "harmonic_overlap_excluded_channels": np.flatnonzero(overlap).tolist(),
+        "harmonic_overlap_mask": "median R2 < (2/3)*R_LCFS_outer",
+        "terminal_channels_excluded": list(range(stop, len(values))),
         "shot_median_te_kev": [float(v) if np.isfinite(v) else None for v in median],
         "coherent_core_peak_kev": peak,
         "maximum_channel_to_core": maximum_to_core,
