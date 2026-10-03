@@ -1,0 +1,455 @@
+{
+  "seed": 20261003,
+  "shots": [
+    186532,
+    196405,
+    192148,
+    204261,
+    203563,
+    202206,
+    201978,
+    196020,
+    192149,
+    191326,
+    195064,
+    193024
+  ],
+  "sampling": "Original uniform random usable nonexpert train-shot sample retained",
+  "figures": [
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_crash.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_overview.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_overview.png",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_crash.pdf",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_crash.png"
+  ],
+  "crash_windows": [
+    {
+      "shot": 186532,
+      "center_s": 2.1663999468248214,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 7.5,
+      "central_channel": 11,
+      "gain_block_channels": [
+        0,
+        8
+      ],
+      "outer_trace_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "central_relative_drop": 0.13012594794051555,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 196405,
+      "center_s": 3.181899922802629,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 17.5,
+      "central_channel": 32,
+      "gain_block_channels": [
+        0,
+        18
+      ],
+      "outer_trace_channels": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17
+      ],
+      "central_relative_drop": 0.19998520952938967,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 192148,
+      "center_s": 3.360299918582482,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 20.0,
+      "central_channel": 27,
+      "gain_block_channels": [
+        6,
+        20
+      ],
+      "outer_trace_channels": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ],
+      "central_relative_drop": 0.23951843282231597,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 204261,
+      "center_s": 2.1525999471512676,
+      "selection": "Diagnostic window; no label",
+      "state": "unassessed",
+      "bin_state": "unassessed",
+      "window_ms": 60,
+      "inversion_channel": null,
+      "central_channel": 28,
+      "gain_block_channels": [
+        null,
+        null
+      ],
+      "outer_trace_channels": [
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24
+      ],
+      "central_relative_drop": null,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 203563,
+      "center_s": 2.3720999419588784,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 20.5,
+      "central_channel": 27,
+      "gain_block_channels": [
+        3,
+        21
+      ],
+      "outer_trace_channels": [
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "central_relative_drop": 0.36950414216313204,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 202206,
+      "center_s": 1.0115999741422295,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 21.5,
+      "central_channel": 33,
+      "gain_block_channels": [
+        13,
+        21
+      ],
+      "outer_trace_channels": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "central_relative_drop": 0.07813167391196578,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 201978,
+      "center_s": 3.198899922400485,
+      "selection": "Diagnostic window; no label",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": null,
+      "central_channel": 38,
+      "gain_block_channels": [
+        null,
+        null
+      ],
+      "outer_trace_channels": [
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32
+      ],
+      "central_relative_drop": null,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 196020,
+      "center_s": 5.220999874566634,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 18.5,
+      "central_channel": 28,
+      "gain_block_channels": [
+        11,
+        19
+      ],
+      "outer_trace_channels": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "central_relative_drop": 0.0752234335948416,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 192149,
+      "center_s": 2.752799932953218,
+      "selection": "Detected crash",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": 20.5,
+      "central_channel": 27,
+      "gain_block_channels": [
+        7,
+        21
+      ],
+      "outer_trace_channels": [
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20
+      ],
+      "central_relative_drop": 0.2543425731233106,
+      "uncertainty_reasons": [
+        "qmin_conflict"
+      ]
+    },
+    {
+      "shot": 191326,
+      "center_s": 2.4778999394561234,
+      "selection": "Detected crash",
+      "state": "present",
+      "bin_state": "present",
+      "window_ms": 60,
+      "inversion_channel": 33.5,
+      "central_channel": 31,
+      "gain_block_channels": [
+        34,
+        48
+      ],
+      "outer_trace_channels": [
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "central_relative_drop": 0.14499840326240246,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 195064,
+      "center_s": 2.838799930918842,
+      "selection": "Diagnostic window; no label",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": null,
+      "central_channel": 38,
+      "gain_block_channels": [
+        null,
+        null
+      ],
+      "outer_trace_channels": [
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32
+      ],
+      "central_relative_drop": null,
+      "uncertainty_reasons": []
+    },
+    {
+      "shot": 193024,
+      "center_s": 1.631199959485262,
+      "selection": "Diagnostic window; no label",
+      "state": "uncertain",
+      "bin_state": "uncertain",
+      "window_ms": 60,
+      "inversion_channel": null,
+      "central_channel": 27,
+      "gain_block_channels": [
+        null,
+        null
+      ],
+      "outer_trace_channels": [
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "central_relative_drop": null,
+      "uncertainty_reasons": []
+    }
+  ],
+  "geometry_note": "Verified spatial pairing unavailable; channel order is not radius.",
+  "q_note": "EFIT01 q-min is a soft conflict flag; it never defines absence.",
+  "marker_note": "Crash markers show diagnostic candidate state; shaded spans show canonical bin state. Crash points and sustained-presence spans have different temporal support.",
+  "png_inspection": {
+    "complete": true,
+    "method": "Each PNG viewed with the agent image viewer",
+    "sha256": {
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_overview.png": "19bbf1d33600c5d30b7925ae15a6e343398e816c925cdba7e179454f8e313452",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_186532_crash.png": "921bb93feb92146afd7710038bdef29bdd5aa6e5a76848f0aacca9c726808d90",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_overview.png": "f789f9ece2947847d290186183a98614299fb0a57caabc046c4d088b53c40916",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196405_crash.png": "36554553205adf8fcab84a778ab9ef0ef669a093e5f9bf93449be0cf5f6b741f",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_overview.png": "ef4a683c9af35703dc1d8cd2f4533e53a6ce5743803a308d45dfa74c402b37d2",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192148_crash.png": "8d1496bc98daddb72c24e864211d61ae2f481400f3def2e8d9f695ec4d661605",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_overview.png": "13a663b7787f51b501a41e2385b3628d5b011a2092e1aefe9ec4b1d565765eff",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_204261_crash.png": "ae479ad2971e5d7ed388ae4267afe59e9e7948af5a76263e680b69ab2cae7253",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_overview.png": "08005ba319aec315c174671ff96379be63a18116066883c74e4e31772b004b57",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_203563_crash.png": "757cbb030bdbf738da3c3eea7a886837755a6c23a01876168bfbfde1861d4785",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_overview.png": "56eeecebde2d032be99048c16e6df45c087ef2f0fb5eab932f3ebade2eb71780",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_202206_crash.png": "924963ace6800152435942b8d239fb6f5c2b63747252aef0eccd8aac7494d4b2",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_overview.png": "fa51fb49ec0c450bc44f9f69bab0dc069a870761400f9c6eec7f16d08fccdc55",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_201978_crash.png": "a9c0df377068b18dcbca7ee7b127725aa2787bde9dd346b7a76c55bc31e59490",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_overview.png": "4ec7f9943178a093a95a57a7770d43b405a2cebe26ddcb5db4f4711532cc92d6",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_196020_crash.png": "f2453897bb23c400e66d29d4eead797e6857284ab975ee896367a4764c094e57",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_overview.png": "08e43ce34a5c30c89aa83c7a345ff19dd6cbb842441f9765cf8df1d541e7d1e5",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_192149_crash.png": "c25c0ff5eff0808419b701960fbe759a2f8496aff260efdc351fd2c7c330690e",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_overview.png": "6c021622dda75a0507dbeafe5c9a4d81514b607cebeb24b50f9ac629094ba828",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_191326_crash.png": "deb68ce1ceccf24992b18c6fba9c728774e4acda5877e525a1257f80c12f70ce",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_overview.png": "b96aeb6b0a205653f558bf5b961bd895900079e2e9aa388a0b42934ff7638568",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_195064_crash.png": "0c6c0e2e4f93dd751957867a18c697b68ec923c8b27ab92de814f9d13b0ce4b2",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_overview.png": "7aa5070501fad82a4dbb58f0d4e8ffc8ff4ed2a34a0522c1873ae807a65597b1",
+      "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/gallery/shot_193024_crash.png": "0ce6a44cd83db096215b553251b7755d8297b6b1be3cbe7eff8784aa766dcd25"
+    }
+  }
+}

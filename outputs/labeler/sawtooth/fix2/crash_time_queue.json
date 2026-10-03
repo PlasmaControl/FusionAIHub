@@ -1,0 +1,191 @@
+{
+  "queue": "data/events/sawtooth_oscillation/review/crash_time_queue.csv",
+  "regime_source": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/raw/Jalal_28042024_confinement_regime_shotlist.csv",
+  "regime_author": "Jalal Butt",
+  "confinement_regime_coverage": "Jalal Butt table has no fixed-val shots; H/L/QH/WP unknown",
+  "fallback_stratification": "cohort peak ECH/(NBI+ECH): <0.1 beam-dominant, <0.5 mixed, otherwise ECH-dominant; median predicted period <50ms short otherwise long. Heating and period proxies, not H/L labels.",
+  "selection": "deterministic regime round-robin, one window per val shot",
+  "split": "val",
+  "excluded_expert_shots": [
+    186636,
+    189324,
+    190637
+  ],
+  "strata": {
+    "ECH-dominant/long-period": 1,
+    "ECH-dominant/short-period": 1,
+    "beam-dominant/long-period": 3,
+    "beam-dominant/short-period": 4,
+    "mixed-heating/long-period": 3,
+    "mixed-heating/short-period": 3
+  },
+  "rows": [
+    {
+      "shot": 204530,
+      "window": "3381.3:3981.3 ms",
+      "why": "held-out val; ECH-dominant/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "ECH-dominant/long-period",
+      "window_s": [
+        3.3812999109890565,
+        3.9812999109890566
+      ],
+      "predicted_crashes_in_window": 5
+    },
+    {
+      "shot": 195786,
+      "window": "3487.8:4087.8 ms",
+      "why": "held-out val; ECH-dominant/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "ECH-dominant/short-period",
+      "window_s": [
+        3.4877999084697424,
+        4.0877999084697425
+      ],
+      "predicted_crashes_in_window": 14
+    },
+    {
+      "shot": 190300,
+      "window": "1768.2:2368.2 ms",
+      "why": "held-out val; beam-dominant/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/long-period",
+      "window_s": [
+        1.7681999491477942,
+        2.3681999491477943
+      ],
+      "predicted_crashes_in_window": 4
+    },
+    {
+      "shot": 185857,
+      "window": "4536.5:5136.5 ms",
+      "why": "held-out val; beam-dominant/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/short-period",
+      "window_s": [
+        4.536499883662186,
+        5.136499883662186
+      ],
+      "predicted_crashes_in_window": 3
+    },
+    {
+      "shot": 187105,
+      "window": "3929.5:4529.5 ms",
+      "why": "held-out val; mixed-heating/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/long-period",
+      "window_s": [
+        3.9294998980210933,
+        4.529499898021093
+      ],
+      "predicted_crashes_in_window": 4
+    },
+    {
+      "shot": 186093,
+      "window": "2225.6:2825.6 ms",
+      "why": "held-out val; mixed-heating/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/short-period",
+      "window_s": [
+        2.2255999383277545,
+        2.8255999383277546
+      ],
+      "predicted_crashes_in_window": 9
+    },
+    {
+      "shot": 192232,
+      "window": "1251.8:1851.8 ms",
+      "why": "held-out val; beam-dominant/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/long-period",
+      "window_s": [
+        1.2517999613635111,
+        1.8517999613635112
+      ],
+      "predicted_crashes_in_window": 3
+    },
+    {
+      "shot": 185866,
+      "window": "4969.6:5569.6 ms",
+      "why": "held-out val; beam-dominant/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/short-period",
+      "window_s": [
+        4.969599873416976,
+        5.569599873416975
+      ],
+      "predicted_crashes_in_window": 4
+    },
+    {
+      "shot": 187328,
+      "window": "1905.0:2505.0 ms",
+      "why": "held-out val; mixed-heating/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/long-period",
+      "window_s": [
+        1.9049999459117175,
+        2.5049999459117176
+      ],
+      "predicted_crashes_in_window": 6
+    },
+    {
+      "shot": 193075,
+      "window": "2089.2:2689.2 ms",
+      "why": "held-out val; mixed-heating/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/short-period",
+      "window_s": [
+        2.089199941554369,
+        2.689199941554369
+      ],
+      "predicted_crashes_in_window": 9
+    },
+    {
+      "shot": 200320,
+      "window": "5055.7:5655.7 ms",
+      "why": "held-out val; beam-dominant/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/long-period",
+      "window_s": [
+        5.055699871380234,
+        5.655699871380234
+      ],
+      "predicted_crashes_in_window": 4
+    },
+    {
+      "shot": 186427,
+      "window": "920.3:1520.3 ms",
+      "why": "held-out val; beam-dominant/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/short-period",
+      "window_s": [
+        0.9202999692053201,
+        1.52029996920532
+      ],
+      "predicted_crashes_in_window": 9
+    },
+    {
+      "shot": 189559,
+      "window": "3612.4:4212.4 ms",
+      "why": "held-out val; mixed-heating/long-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/long-period",
+      "window_s": [
+        3.612399905522263,
+        4.212399905522263
+      ],
+      "predicted_crashes_in_window": 6
+    },
+    {
+      "shot": 198806,
+      "window": "3144.8:3744.8 ms",
+      "why": "held-out val; mixed-heating/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "mixed-heating/short-period",
+      "window_s": [
+        3.14479991658359,
+        3.74479991658359
+      ],
+      "predicted_crashes_in_window": 7
+    },
+    {
+      "shot": 187196,
+      "window": "1832.0:2432.0 ms",
+      "why": "held-out val; beam-dominant/short-period regime proxy; H/L unknown; predicted crash support; independent timing unvalidated",
+      "regime": "beam-dominant/short-period",
+      "window_s": [
+        1.831999940541912,
+        2.431999940541912
+      ],
+      "predicted_crashes_in_window": 3
+    }
+  ],
+  "annotation_status": "pending owner; unvalidated",
+  "reviewer_display": "shot/window only, hide why and all predictions"
+}

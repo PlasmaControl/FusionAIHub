@@ -86,17 +86,28 @@ def state_at(time, record, t, observable):
     for start, end, state in state_spans(record):
         if start <= time < end:
             return state
-    return "absent"
+    return "uncertain"
 
 
 def marker_color(crash):
     return ORANGE if crash_state(crash) == "uncertain" else GREEN
 
 
-def trace_legend():
+def proxy_groups(record):
+    geometry = record.get("core_geometry", {})
+    return (
+        geometry.get("core_channels", list(range(20, 36))),
+        geometry.get("outer_channels", list(range(8, 16))),
+    )
+
+
+def trace_legend(record):
+    core, outer = proxy_groups(record)
+    core_text = ",".join(str(i) for i in core)
+    outer_text = ",".join(str(i) for i in outer)
     return [
-        Line2D([], [], color=BLUE, lw=1, label="Core ECE proxy (20–27)"),
-        Line2D([], [], color=VERMILION, lw=1, label="Outer ECE proxy (8–15)"),
+        Line2D([], [], color=BLUE, lw=1, label=f"Core ECE proxy ({core_text})"),
+        Line2D([], [], color=VERMILION, lw=1, label=f"Outer ECE proxy ({outer_text})"),
         Line2D(
             [],
             [],
@@ -126,7 +137,7 @@ def overview(shot, record, t, y, observable, destination):
     fig.subplots_adjust(left=0.17, right=0.97, bottom=0.08, top=0.70, hspace=0.28)
     fig.suptitle(f"DIII-D {shot}: whole-shot overview", y=0.99, fontsize=8)
     qreference = 1 + Rule().qmin_margin
-    handles = trace_legend() + [
+    handles = trace_legend(record) + [
         Line2D([], [], color="0.25", lw=0.7, label="EFIT01 q-min (magnetics only)"),
         Line2D(
             [],
@@ -147,7 +158,8 @@ def overview(shot, record, t, y, observable, destination):
         labelspacing=0.15,
     )
     stride = max(1, len(t) // 4500)
-    for rows, color in ((slice(20, 28), BLUE), (slice(8, 16), VERMILION)):
+    core, outer = proxy_groups(record)
+    for rows, color in ((core, BLUE), (outer, VERMILION)):
         trace = mean_trace(y[rows])
         axes[0].plot(t[::stride] * 1000, trace[::stride], color=color, lw=0.6)
     for axis in axes:
@@ -196,7 +208,8 @@ def choose_crash(record, t, y, observable):
     choices = uncertain or crashes
     if choices:
         return choices[len(choices) // 2], "Detected crash"
-    core = mean_trace(y[20:28])
+    core_channels, _ = proxy_groups(record)
+    core = mean_trace(y[core_channels])
     finite = np.isfinite(core) & observable
     derivative = np.diff(core, prepend=np.nan)
     valid = finite & np.isfinite(derivative)
@@ -227,10 +240,18 @@ def crash_window(shot, record, t, y, observable, destination):
         after = np.nanmedian(y[:, post], axis=1)
     central = crash["attrs"].get("central_channel")
     if central is None:
-        usable = np.where(np.isfinite(before[20:36]), before[20:36], -np.inf)
-        central = int(np.argmax(usable) + 20)
-    gain_start = crash["attrs"].get("rise_start", 8)
-    gain_stop = crash["attrs"].get("rise_stop", 16)
+        core_channels, _ = proxy_groups(record)
+        usable = np.where(
+            np.isfinite(before[core_channels]), before[core_channels], -np.inf
+        )
+        central = int(core_channels[np.argmax(usable)])
+    gain_start = crash["attrs"].get("rise_start")
+    gain_stop = crash["attrs"].get("rise_stop")
+    gain_channels = (
+        list(range(gain_start, gain_stop))
+        if gain_start is not None and gain_stop is not None
+        else proxy_groups(record)[1]
+    )
     fig, axes = plt.subplots(2, 1, figsize=(3.5, 5.1))
     fig.subplots_adjust(left=0.17, right=0.97, bottom=0.10, top=0.66, hspace=1.20)
     state_kind = (
@@ -242,14 +263,14 @@ def crash_window(shot, record, t, y, observable, destination):
         y=0.99,
         fontsize=8,
     )
-    handles = trace_legend()
+    handles = trace_legend(record)
     handles[0] = Line2D(
         [], [], color=BLUE, lw=1, label=f"Central ECE proxy (channel {central})"
     )
     gain_label = (
         f"Gain-block ECE mean ({gain_start}–{gain_stop - 1})"
-        if "rise_start" in crash["attrs"]
-        else f"Outer ECE proxy mean ({gain_start}–{gain_stop - 1})"
+        if gain_start is not None and gain_stop is not None
+        else "Outer ECE proxy mean (" + ",".join(map(str, gain_channels)) + ")"
     )
     handles[1] = Line2D(
         [],
@@ -273,7 +294,7 @@ def crash_window(shot, record, t, y, observable, destination):
     axes[0].plot(t[near] * 1000, y[central, near], color=BLUE, lw=0.8)
     axes[0].plot(
         t[near] * 1000,
-        mean_trace(y[gain_start:gain_stop])[near],
+        mean_trace(y[gain_channels])[near],
         color=VERMILION,
         lw=0.8,
     )
@@ -318,6 +339,7 @@ def crash_window(shot, record, t, y, observable, destination):
         "inversion_channel": inversion,
         "central_channel": central,
         "gain_block_channels": [gain_start, gain_stop],
+        "outer_trace_channels": gain_channels,
         "central_relative_drop": crash["attrs"].get("central_relative_drop"),
         "uncertainty_reasons": crash["attrs"].get("uncertainty_reasons", []),
     }
@@ -337,7 +359,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument(
-        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix"
+        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix2"
     )
     parser.add_argument(
         "--selection",

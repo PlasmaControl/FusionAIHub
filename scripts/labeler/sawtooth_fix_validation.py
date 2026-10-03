@@ -1,4 +1,4 @@
-"""Read-only old-rule rerun and four-state, per-shot independent validation."""
+"""Read-only old-rule rerun and exploratory comparisons with anchored spans."""
 
 from __future__ import annotations
 
@@ -276,7 +276,10 @@ def main():
                 "Coverage and conditional assessed metrics are reported separately."
             ),
             "limitation": (
-                "Only span annotations supplied; true crash scores unavailable"
+                "Spans were drawn while viewing old ece_sawtooth suggestions "
+                "and are anchored; 190637 may include edge-originated "
+                "relaxations. True crash scores and blind physical validation "
+                "are unavailable."
             ),
         },
         "legacy_agreement": aggregate(agreement),
@@ -287,6 +290,7 @@ def main():
         "crash_tolerance_ms": 2,
         "rule_frozen_before_validation": True,
         "review_csv": str(REVIEW),
+        "validation_status": "unvalidated; anchored spans and algorithm agreement",
     }
     save_json(OUTPUT / "validation.json", summary)
     references = []

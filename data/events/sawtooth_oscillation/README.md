@@ -6,8 +6,9 @@ falls below one: the m/n = 1/1 internal kink grows, magnetic reconnection
 (Kadomtsev) flattens the core temperature and density inside the mixing radius, and
 the profile then re-peaks over a few tens of ms - a slow ramp and a fast crash,
 hence the name. The inversion radius r_inv (where the crash changes sign from a
-drop inside to a rise outside) marks the q = 1 surface; on DIII-D it is typically at
-rho ~ 0.3-0.6. Sawtooth crashes can seed NTMs, expel fast ions and trigger ELMs, and
+drop inside to a rise outside) can be compared with the EFIT q = 1 surface;
+that relation is unvalidated in the current catalog. Sawtooth crashes can seed
+NTMs, expel fast ions and trigger ELMs, and
 a crash-triggered ELM can hide the inversion in edge channels.
 
 First observed on the ST tokamak with soft-X-ray diodes (von Goeler, Stodiek and
@@ -31,7 +32,7 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 ## Models
 **stable**: none
 
-**latest**: saw-ours (research candidate; four-state physics supervision, weak expert validation)
+**latest**: none (all current research candidates are unvalidated)
 
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
@@ -50,7 +51,8 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 - `SXR` (optional)
 
 **saw-hl3**:
-- ECE 20–27 mean, ECE 8–15 mean (uncalibrated core/outer proxies)
+- Per-shot physical-channel-screened core and adjacent outer ECE means
+  (uncalibrated proxies where actual RF channel frequencies are unavailable)
 - Mirnov 0–1 mean, cached Ip in MA (optional; missing values use training means)
 
 **saw-ours**:
@@ -93,9 +95,32 @@ and tuning. `saw-hl3` receives four adapted inputs while `saw-ours` receives the
 full ECE array, so their comparison includes input information as well as
 architecture. Expert tables contain spans, so true expert crash recall/precision
 cannot be measured; results are reported per shot without small-sample CIs.
-Expert validation remains weak, and no stable model is recommended.
+The span annotations for three expert shots were drawn while viewing the old
+`ece_sawtooth`
+suggestions, so they are anchored rather than independent validation. The
+190637 span may include edge-originated relaxations. No blind crash-time truth
+is available; every detector/model accuracy claim is unvalidated, and no model
+is recommended as latest or stable.
 See [method, adaptations and reproduction](../../../docs/labeler/sawtooth_physics.md)
 and [JSON-backed result tables](../../../docs/labeler/sawtooth_results.md).
+
+## Blind crash-time annotation queue
+
+`review/crash_time_queue.csv` lists 15 held-out nonexpert validation shots
+stratified by recorded heating and predicted period regimes, with predicted crash
+support; no test shot is included. Jalal Butt's cached confinement table covers
+no fixed-validation shots here, so physical H/L regimes remain unknown. For
+blind marking, show the owner only shot
+and time window in a shuffled order, with native-rate core and outer ECE and
+available auxiliary traces; hide the queue's `why` column, all model/detector
+picks, suggestions and state shading. Mark each confidently identified
+core-loss/adjacent-outer-gain crash time, its timing tolerance, and the observable
+span; mark edge-originated or otherwise ambiguous relaxations separately and
+explicitly mark observable crash-free spans. Preserve ambiguous/missing support
+as unknown. Lock the annotations before revealing predictions, then score both
+rules and both frozen models with one-to-one timing matches and 1,000 shot
+bootstrap replicates; do not use these shots to retune this benchmark. The owner
+is away and the queue is pending, so no blind expert results are reported.
 
 ## Alias
 sawtooth, sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free

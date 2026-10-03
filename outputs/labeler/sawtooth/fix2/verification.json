@@ -1,0 +1,41 @@
+{
+  "covering_tests_passed": 105,
+  "logs": {
+    "tests": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/tests.log",
+      "tail": [
+        "........................................................................ [ 68%]",
+        ".................................                                        [100%]",
+        "105 passed in 6.71s",
+        "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/lib/python3.11/site-packages/XRootD/client/finalize.py:46: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead",
+        "  if isinstance(obj, File) and obj.is_open():"
+      ]
+    },
+    "lint": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/lint.log",
+      "tail": [
+        "All checks passed!"
+      ]
+    },
+    "format": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/format.log",
+      "tail": [
+        "4 files already formatted"
+      ]
+    }
+  },
+  "checks_passed": true,
+  "test_files": [
+    "tests/labeler/test_sawtooth_physics.py",
+    "tests/labeler/test_sawtooth_preprocessing.py",
+    "tests/labeler/test_sawtooth_fix.py",
+    "tests/labeler/test_sawtooth_benchmark.py",
+    "tests/labeler/test_sawtooth_classification.py",
+    "tests/labeler/test_sawtooth_masked_metrics.py",
+    "tests/labeler/test_sawtooth_shot_geometry.py",
+    "tests/labeler/test_sawtooth_geometry.py"
+  ],
+  "test_command": "bash $LABELER_ROOT/scratch/bin/pt.sh $PWD <covering files> -q -p no:cacheprovider",
+  "lint_command": "pixi run --frozen --no-install <main manifest> -e labelmaker ruff check --extend-select E501 <changed .py>",
+  "format_command": "pixi run --frozen --no-install <main manifest> -e labelmaker ruff format --check <new .py>"
+}

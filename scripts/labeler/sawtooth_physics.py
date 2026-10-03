@@ -854,7 +854,9 @@ def geometry_audit(args):
                     if len(report["example_ece_metadata"]) < 6:
                         report["example_ece_metadata"].append(item["example"])
                 if counts["files_requested"] % 2000 == 0:
-                    print(f"{label}: {counts['files_requested']}/{len(files)}", flush=True)
+                    print(
+                        f"{label}: {counts['files_requested']}/{len(files)}", flush=True
+                    )
         report["stores"][label] = {
             "root": str(root), "glob": pattern, **dict(counts),
             "shots": [int(p.name.split("_")[0]) for p in files],
@@ -900,7 +902,9 @@ def geometry_audit(args):
         "tree": "ELECTRONS", "frequency_node": r"\ECE::TOP.SETUP.FREQ",
         "sightline_height_node": r"\ECE::TOP.SETUP.ECEZH",
         "reference_source_script": str(REPO.parent / "fdp/scripts/omnimode.py"),
-        "corpus_order_source": str(REPO / "scripts/data_fetching_omega/config_atlas.yaml"),
+        "corpus_order_source": str(
+            REPO / "scripts/data_fetching_omega/config_atlas.yaml"
+        ),
         "channel_join": "zero-based corpus row i joins TECEF{i+1:02d}/ECEVS{i+1:02d}",
     }
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
@@ -932,11 +936,17 @@ def geometry_audit(args):
         else "no channel RF-frequency calibration found in inventoried metadata; "
         "major radii and q=1 major-radius comparisons unavailable"
         if not report["frequency_sources"]
-        else "RF-frequency sources present; field reference and EFIT axis still required"
+        else (
+            "RF-frequency sources present; field reference and EFIT axis "
+            "still required"
+        )
     )
     save_json(OUTPUT / "geometry_metadata_audit.json", report)
     save_json(args.work / "geometry_metadata_audit.json", report)
-    print(json.dumps(report["stores"]), flush=True)
+    print(json.dumps({
+        label: {key: value for key, value in store.items() if key != "shots"}
+        for label, store in report["stores"].items()
+    }), flush=True)
 
 
 def validate(args):

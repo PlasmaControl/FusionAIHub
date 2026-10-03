@@ -44,9 +44,14 @@ def presence(row):
 def render_experts(lines, validation, validation_path):
     lines += [
         "",
-        "## Old rule and physics labels against expert spans",
+        "## Old rule and physics labels against anchored expert spans",
         "",
         (
+            "The span annotations for three expert shots were drawn while viewing "
+            "the old "
+            "`ece_sawtooth` suggestions and are anchored to that rule. Shot 190637's "
+            "span may contain edge-originated relaxations. These checks are "
+            "exploratory, unvalidated comparisons, not independent ground truth. "
             "Scores are shown separately for every reviewed shot. Primary metrics "
             "retrieve definite-present labels on all known expert bins with valid "
             "core ECE. No bootstrap is used for these shots."
@@ -262,11 +267,11 @@ def render_models(lines, benchmark, benchmark_path):
             "does not output crash times."
         ),
         "",
-        "## Independent model check per expert shot",
+        "## Model comparison with anchored expert spans",
         "",
         (
-            "Model expert scores use all known observable bins because independent "
-            "expert annotations resolve algorithmic uncertainty. The coverage table "
+            "Model span scores use all known observable bins; the anchored "
+            "annotations supply exploratory span targets. The coverage table "
             "retains the number of expert-positive bins the label rule called "
             "uncertain. "
             "No confidence interval is computed for the small expert set."
@@ -318,8 +323,8 @@ def render_models(lines, benchmark, benchmark_path):
                 "",
                 (
                     f"{name} pooled expert AUROC is {number(pooled)}, below chance. "
-                    "This independent ranking failure limits the model's physical "
-                    "validation despite its out-of-fold agreement with "
+                    "This anchored-span ranking result supplies no independent "
+                    "physical validation despite its out-of-fold agreement with "
                     "algorithmic labels."
                 ),
                 "",
@@ -335,22 +340,96 @@ def render_models(lines, benchmark, benchmark_path):
             lines += [
                 "",
                 (
-                    f"{name} ranks expert truth below chance on shots "
+                    f"{name} ranks the anchored span targets below chance on "
+                    f"{'shot' if len(below) == 1 else 'shots'} "
                     f"{', '.join(below)}. "
-                    "This is an independent validation failure; agreement with its "
-                    "training labels does not resolve it."
+                    "Neither this comparison nor agreement with algorithmic "
+                    "training labels establishes physical accuracy."
                 ),
             ]
     legacy = benchmark.get("legacy", {})
     if legacy:
         lines += ["", "## Published HL-3 context", ""]
+        lines += [
+            (
+                "| System / dataset | Three-class window accuracy [95% CI] | "
+                "Macro-F1 [95% CI] |"
+            ),
+            "|---|---:|---:|",
+        ]
+        baseline = models.get("saw-hl3", {})
+        if "three_class_window_accuracy" in baseline:
+            majority = baseline["three_class_majority_baseline"]
+            lines.append(
+                "| Adapted saw-hl3 / unvalidated DIII-D labels | "
+                + scored(
+                    baseline["three_class_window_accuracy"],
+                    baseline.get("three_class_accuracy_ci95"),
+                )
+                + " | "
+                + scored(
+                    baseline.get("three_class_macro_f1"),
+                    baseline.get("three_class_macro_f1_ci95"),
+                )
+                + " |"
+            )
+            lines.append(
+                "| Fit-chosen majority / same DIII-D windows | "
+                + scored(majority["accuracy"], majority.get("accuracy_ci95"))
+                + " | "
+                + scored(
+                    majority.get("macro_f1"),
+                    majority.get("ci95", {}).get("macro_f1"),
+                )
+                + " |"
+            )
+            observed = baseline.get("three_class_observed_majority_baseline")
+            if observed:
+                lines.append(
+                    f"| Observed majority class {observed['class']} / "
+                    "same DIII-D windows | "
+                    + scored(observed["accuracy"], observed.get("accuracy_ci95"))
+                    + " | "
+                    + scored(observed["macro_f1"], observed["ci95"]["macro_f1"])
+                    + " |"
+                )
         for setting, row in legacy.items():
             if isinstance(row, dict) and "accuracy_stated" in row:
                 lines.append(
-                    f"{setting.replace('_', ' ').capitalize()} three-regime window "
-                    f"accuracy: stated {number(row['accuracy_stated'])}, count-derived "
-                    f"{number(row.get('accuracy_from_counts'))}."
+                    f"| OuYang {setting.replace('_', ' ')} / HL-3 | "
+                    f"{number(row['accuracy_stated'])} stated; "
+                    f"{number(row.get('accuracy_from_counts'))} count-derived | "
+                    "not reported |"
                 )
+        if "three_class_confusion" in baseline:
+            recalls = baseline["three_class_per_class_recall"]
+            lines += [
+                "",
+                (
+                    "Confusion rows are algorithmic truth; columns are predictions. "
+                    "Classes are absent (0), short-period (1), long-period (2); the "
+                    "period boundary is fitted on each training fold."
+                ),
+                "",
+                "| Truth class | Predicted 0 | Predicted 1 | Predicted 2 | Recall |",
+                "|---|---:|---:|---:|---:|",
+            ]
+            for index, row in enumerate(baseline["three_class_confusion"]):
+                lines.append(
+                    f"| {index} | {row[0]} | {row[1]} | {row[2]} | "
+                    f"{number(recalls[index])} |"
+                )
+            lines += ["", source(benchmark_path, "Tokamak-SI.saw-hl3.three_class_*")]
+            lines += [
+                "",
+                (
+                    "The fit-chosen baseline predicts the natural fitting-window "
+                    "majority selected separately in each fold. The observed "
+                    "majority describes pooled out-of-fold class prevalence; its "
+                    "class is fixed across bootstrap resamples. Neither baseline "
+                    "selects model weights or thresholds."
+                ),
+            ]
         lines += [
             "",
             (
@@ -365,7 +444,7 @@ def render_models(lines, benchmark, benchmark_path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix"
+        "--output", type=Path, default=REPO / "outputs/labeler/sawtooth/fix2"
     )
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument(
@@ -404,9 +483,11 @@ def main():
         "# Sawtooth evaluation records",
         "",
         (
-            "These tables describe the corrected four-state physics labels and GPU "
+            "These tables describe unvalidated four-state research labels and GPU "
             "models. Uncertain and unassessed support never supplies negative targets. "
-            "Algorithmic agreement does not establish independent physical accuracy."
+            "Blind expert crash times are unavailable. No model is recommended "
+            "as latest or stable; algorithmic agreement does not establish "
+            "independent physical accuracy."
         ),
         "",
         "## Data",
@@ -449,6 +530,50 @@ def main():
         "",
         source(relative + "/data_summary.json", "splits.<split>.state_seconds"),
     ]
+    audit_path = args.output / "state_transition_audit.json"
+    if audit_path.exists():
+        audit = read(args.output, "state_transition_audit.json")
+        lines += [
+            "",
+            "## State policy before and after",
+            "",
+            (
+                "Absence requires candidate-free support within ±1.5 maximum periods "
+                "and a recorded core-ECE relaxation test with no periodic pattern. "
+                "Undetected ambiguous support stays uncertain. This is a conservative "
+                "research negative-label policy, not expert-validated absence."
+            ),
+            "",
+            (
+                "| Scope / run | Present (s) | Absent (s) | Uncertain (s) | "
+                "Unassessed (s) | Absent in <300 ms state holes (s) | "
+                "Absent between candidate spans (s) |"
+            ),
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+        for scope, comparison in audit["scopes"].items():
+            for phase in ("before", "after"):
+                row = comparison[phase]
+                lines.append(
+                    f"| {scope} / {phase} | "
+                    + " | ".join(
+                        number(row["state_seconds"][s])
+                        for s in ("present", "absent", "uncertain", "unassessed")
+                    )
+                    + f" | {number(row['absent_in_short_holes_seconds'])} |"
+                    + f" {number(row['absent_in_candidate_support_holes_seconds'])} |"
+                )
+        lines += [
+            "",
+            (
+                "Candidate holes are gaps <300 ms between merged detected present/"
+                "uncertain candidate spans. Canonical state holes also include tested "
+                "quiet spans flanked by default uncertainty from context/noise limits; "
+                "both definitions are reported explicitly."
+            ),
+            "",
+            source(relative + "/state_transition_audit.json", "scopes"),
+        ]
     population_path = args.output / "population_labels.json"
     if population_path.exists():
         population = read(args.output, "population_labels.json")
@@ -463,10 +588,70 @@ def main():
                 f"{len(population['errors'])} read failures are excluded "
                 "from label truth. Processed records can have no observable support; "
                 "those bins are unassessed. The same frozen rule applies to "
-                "cohort and population."
+                "cohort and population, with different evidence availability."
             ),
             "",
             source(relative + "/population_labels.json"),
+        ]
+        current_cohort = read(args.output, "cohort_labels.json")
+
+        def efit_count(summary):
+            return summary.get("q_sources", {}).get("EFIT01", 0)
+
+        lines += [
+            "",
+            (
+                f"EFIT01 availability: {efit_count(population):,}/"
+                f"{len(population['processed_shots']):,} population shots versus "
+                f"{efit_count(current_cohort):,}/"
+                f"{len(current_cohort['processed_shots']):,} cohort shots. The prior "
+                "run had 1,213/13,650 versus 452/500; equality of the rule does not "
+                "give equality of equilibrium evidence."
+            ),
+            "",
+            source(relative + "/population_labels.json", "q_sources"),
+            source(relative + "/cohort_labels.json", "q_sources"),
+            source("outputs/labeler/sawtooth/fix/population_labels.json", "q_sources"),
+            source("outputs/labeler/sawtooth/fix/cohort_labels.json", "q_sources"),
+        ]
+        lines += [
+            "",
+            "## Nominal geometry coverage and q=1 comparison",
+            "",
+            (
+                "Same-shot RF metadata and field/axis support determine nominal R. "
+                "Other shots use a per-shot hottest physical channel proxy; their "
+                "radii are null. These comparisons remain physically unvalidated."
+            ),
+            "",
+            (
+                "| Scope | Mapped shots | Paired inversion / q=1 crashes | "
+                "Median R difference (m) | Maximum absolute difference (m) |"
+            ),
+            "|---|---:|---:|---:|---:|",
+        ]
+        for scope, summary in (("cohort", current_cohort), ("population", population)):
+            mapped = sum(
+                n
+                for key, n in summary.get("radius_geometry_counts", {}).items()
+                if key.startswith("nominal_second_harmonic_R")
+            )
+            comparison = summary.get("q1_major_radius_comparison", {})
+            lines.append(
+                f"| {scope} | {mapped} | {comparison.get('comparable_crashes', 0)} | "
+                f"{number(comparison.get('median_difference_m'))} | "
+                f"{number(comparison.get('maximum_absolute_difference_m'))} |"
+            )
+        lines += [
+            "",
+            source(
+                relative + "/population_labels.json",
+                "radius_geometry_counts; q1_major_radius_comparison",
+            ),
+            source(
+                relative + "/cohort_labels.json",
+                "radius_geometry_counts; q1_major_radius_comparison",
+            ),
         ]
     validation = read(args.output, "validation.json")
     validation_path = relative + "/validation.json"
@@ -544,6 +729,37 @@ def main():
             ),
         ]
     lines += [
+        "",
+        "## Pending blind annotation and paper example",
+        "",
+        (
+            "The 15-shot nonexpert validation queue is in "
+            "`data/events/sawtooth_oscillation/review/crash_time_queue.csv`; its "
+            "regime stratification and shot/window list are recorded in "
+            f"`{relative}/crash_time_queue.json`. The owner is away; blind crash "
+            "accuracy remains unvalidated. The README contains the blind protocol."
+        ),
+        "",
+        source(relative + "/crash_time_queue.json"),
+        (
+            "The 3.25-inch example's trace channels, 300 ms window, vector PDF and "
+            f"150-dpi PNG paths are recorded in `{relative}/paper_example.json`. "
+            "Markers are algorithmic candidates, not expert crash truth."
+        ),
+        "",
+        source(relative + "/paper_example.json"),
+        "",
+        "## History appendix",
+        "",
+        (
+            "The first correction used observable gaps as absence, an auxiliary "
+            "noncorroboration gate, fixed ECE proxies and different training/inference "
+            "masking. Its results remain archived under "
+            "`outputs/labeler/sawtooth/fix/` "
+            "and are superseded here. The three span comparisons were previously "
+            "described as independent; the old-suggestion anchoring makes that "
+            "description incorrect. No blind crash validation has been completed."
+        ),
         "",
         (
             "See [the method, calibration provenance and "

@@ -1006,6 +1006,28 @@ def evaluate(args):
             majority["accuracy_ci95"] = majority["ci95"]["window_accuracy"]
             majority["class_by_fold"] = [s["majority_class"] for s in summaries]
             score["three_class_majority_baseline"] = majority
+            observed_class = int(np.argmax(classification["class_support"]))
+            observed_rows = []
+            for row in shot_class_cells:
+                cells = np.zeros((3, 3), dtype=int)
+                cells[:, observed_class] = row["cells"].sum(axis=1)
+                observed_rows.append({**row, "majority_cells": cells})
+            observed_majority = bootstrap_classification(observed_rows)[
+                "majority_baseline"
+            ]
+            observed_majority["class"] = observed_class
+            observed_majority["accuracy"] = observed_majority["window_accuracy"]
+            observed_majority["accuracy_ci95"] = observed_majority["ci95"][
+                "window_accuracy"
+            ]
+            observed_majority["selection"] = (
+                "argmax of pooled OOF true class support; descriptive class imbalance, "
+                "not a fitted or deployable baseline; no val/test or expert scores used"
+            )
+            observed_majority["bootstrap_class_policy"] = (
+                "pooled OOF class chosen once and fixed through all 1000 shot resamples"
+            )
+            score["three_class_observed_majority_baseline"] = observed_majority
             score["three_class_window_protocol"] = {
                 "classes": [
                     "no sawtooth",
