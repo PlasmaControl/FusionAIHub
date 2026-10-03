@@ -28,7 +28,7 @@ HIDDEN = {"alfven_eigenmode": alfven.DROPPED}
 BANDS = {"alfven_eigenmode": alfven.BAND_KHZ}
 # Changes to these diagnostic recipes replace earlier cached review rows.
 PANEL_VERSIONS = {
-    "edge_localized_mode": 3, "sawtooth_oscillation": 1, "detachment": 2,
+    "edge_localized_mode": 3, "sawtooth_oscillation": 1, "detachment": 3,
 }
 
 

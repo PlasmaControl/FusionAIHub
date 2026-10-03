@@ -33,6 +33,38 @@ def test_coarse_lines_are_interpolated_onto_the_grid():
     assert row.values.tolist() == [[[0, 5, 10]], [[0, 5, 10]]]
 
 
+def test_indicator_steps_cover_full_bins_and_keep_isolated_valid_values():
+    panel = Panel(
+        "Afrac",
+        x=np.array([25.0, 75, 125]),
+        y=np.array([[0.2, np.nan, 0.8]]),
+        metadata={
+            "trace_style": "step",
+            "bin_start_ms": [0.0, 50, 100],
+            "bin_end_ms": [50.0, 100, 150],
+        },
+    )
+    row = panel_rows._trace("p0", panel, panel.x, Grid(0, 10, 15))
+    np.testing.assert_allclose(row.values[:, 0, :5], 0.2)
+    assert np.isnan(row.values[:, 0, 5:10]).all()
+    np.testing.assert_allclose(row.values[:, 0, 10:], 0.8)
+
+
+def test_indicator_bins_finer_than_grid_keep_their_minimum_and_maximum():
+    panel = Panel(
+        "Afrac",
+        x=np.array([2.0, 6, 10]),
+        y=np.array([[np.nan, 0.8, 0.2]]),
+        metadata={
+            "trace_style": "step",
+            "bin_start_ms": [0.0, 4, 8],
+            "bin_end_ms": [4.0, 8, 12],
+        },
+    )
+    row = panel_rows._trace("p0", panel, panel.x, Grid(0, 12, 1))
+    np.testing.assert_allclose(row.values[:, 0, 0], [0.2, 0.8])
+
+
 def test_a_heatmap_is_scaled_and_placed_and_empty_columns_are_zero(monkeypatch):
     heatmap = Panel("S", x=np.array([0.0, 1, 2]), y=np.array([100.0]), kind="heatmap",
                     z=np.array([[0.0, 0.5, 1.0]]), zmin=0, zmax=1, bands=[(80, 250)])

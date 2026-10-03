@@ -854,7 +854,8 @@ function render() {
   });
 }
 
-const categoryColour = (c) => (S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
+const categoryColour = (c) => (S.event === "detachment" && S.categories[c] === "detached" ? "#0072b2" :
+  S.categories[c] === "uncertain" ? CATEGORY_COLOURS[5] :
   c === 1 ? T.label : CATEGORY_COLOURS[c] || T.muted);
 
 function drawRows() {
@@ -1268,6 +1269,7 @@ function hatch(g, x, y, width, height) {
 
 function showHeader() {
   renderResolution();
+  $("detachment-help").hidden = S.event !== "detachment";
   const next = neighbour(1);
   $("next-shot").textContent = next == null || next === S.shot ? "" : `→ ${next}`;
   const row = S.queue.find((r) => r.shot === S.shot) || {};
@@ -1648,9 +1650,26 @@ function pauseVideo() {
     S.video.timer = null;
     S.video.playing = false;
     S.video.epoch++;
+    S.video.seekSeq++;
+    S.video.cards.forEach(cancelVideoFrame);
+    if (Number.isFinite(S.video.time)) $("video-time").value = S.video.time;
   }
   $("video-play").textContent = "Play";
   $("video-play").setAttribute("aria-pressed", "false");
+}
+
+/** Release transaction-owned pixels without touching the last published frame. */
+function cancelVideoFrame(card) {
+  card.abort?.abort();
+  card.seq++;
+  if (card.staged?.url) URL.revokeObjectURL(card.staged.url);
+  card.staged = null;
+  card.pendingKey = "";
+  card.figure.setAttribute("aria-busy", "false");
+  if (card.img) card.img.style.visibility = "visible";
+  if (card.renderedNote) card.note.textContent = card.renderedNote;
+  else if (card.channel && card.note.textContent.startsWith("Loading"))
+    card.note.textContent = "Frame canceled; seek to retry.";
 }
 
 function clearVideo() {
@@ -1669,7 +1688,6 @@ function clearVideo() {
 function buildVideo() {
   if (S.event !== "detachment" || !S.meta?.video || S.api < 9) return;
   const cards = [];
-  const clocks = [];
   for (const camera of S.meta.video.cameras) {
     const figure = document.createElement("figure");
     figure.className = "camera";
@@ -1694,7 +1712,6 @@ function buildVideo() {
         select.append(option);
       }
       select.value = card.channel.channel;
-      clocks.push(...card.channel.times_ms);
       select.addEventListener("change", () => {
         pauseVideo();
         card.channel = camera.channels.find((c) => c.channel === Number(select.value));
@@ -1709,6 +1726,9 @@ function buildVideo() {
     figure.append(note);
     const spectral = document.createElement("small");
     spectral.textContent = camera.spectral_note || "Filter/emission line is not recorded.";
+    if (camera.sampling_note || camera.name === "tangtv")
+      spectral.textContent += " " + (camera.sampling_note ||
+        "Corpus 50 Hz linearly resampled frames (blend of adjacent exposures); preview ≤20 fps.");
     figure.append(spectral);
     cards.push(card);
   }
@@ -1719,7 +1739,8 @@ function buildVideo() {
   const slider = $("video-time");
   [slider.min, slider.max] = S.meta.t_range;
   slider.disabled = !S.video.times.length;
-  $("video-play").disabled = !S.video.times.length;
+  $("video-play").disabled = true;
+  $("video-clock").textContent = "";
   sizeCanvases();
   seekVideo(S.video.times[0] ?? S.meta.t_range[0]);
 }
@@ -1732,7 +1753,7 @@ function videoTimes() {
 
 async function seekVideo(t, playbackEpoch = null) {
   const v = S.video;
-  if (!v || pendingNavigation()) return false;
+  if (!v || !Number.isFinite(Number(t)) || pendingNavigation()) return false;
   if (playbackEpoch == null && v.playing) pauseVideo();
   const seq = ++v.seekSeq;
   const time = clamp(Number(t), ...S.meta.t_range);
@@ -1742,18 +1763,58 @@ async function seekVideo(t, playbackEpoch = null) {
     v.time = time;
     $("video-time").value = time;
     $("video-clock").textContent = `${time.toFixed(1)} ms`;
+    $("video-play").disabled = !v.times.length;
+    showVideoGeometry(time);
     showVideoCursor();
   };
-  if (playbackEpoch == null) commit();
-  const delivered = await Promise.all(v.cards.filter(c => c.channel)
-    .map(card => loadVideoFrame(card, time, current)));
-  if (!current() || delivered.some(ok => !ok)) return false;
-  // Playback publishes its clock only after all selected cameras decoded.
-  if (playbackEpoch != null) commit();
+  const cards = v.cards.filter(c => c.channel);
+  cards.forEach(cancelVideoFrame);
+  const delivered = await Promise.all(cards
+    .map(card => loadVideoFrame(card, time, current, playbackEpoch != null)));
+  if (!current()) return false;
+  if (delivered.some(frame => !frame)) {
+    cards.forEach(cancelVideoFrame);
+    if (Number.isFinite(v.time)) $("video-time").value = v.time;
+    return false;
+  }
+  // No await or browser paint can occur within this publication transaction.
+  for (const frame of delivered) {
+    const { card, img, url, key, note } = frame;
+    if (img) {
+      card.img.replaceWith(img);
+      card.img = img;
+      if (card.url) URL.revokeObjectURL(card.url);
+      card.url = url;
+    }
+    card.key = key;
+    card.staged = null;
+    card.pendingKey = "";
+    card.note.textContent = card.renderedNote = note;
+    card.img.style.visibility = "visible";
+    card.figure.setAttribute("aria-busy", "false");
+  }
+  commit();
   return true;
 }
 
-function loadVideoFrame(card, time, current) {
+function showVideoGeometry(time) {
+  const geometry = S.meta?.params?.detachment_geometry;
+  const line = $("video-geometry");
+  const samples = geometry?.samples || [];
+  const sample = samples.reduce((best, item) => !best ||
+    Math.abs(item.time_ms - time) < Math.abs(best.time_ms - time) ? item : best, null);
+  const nearby = sample && Math.abs(sample.time_ms - time) <= 40;
+  const configuration = nearby ? sample.configuration : "unknown";
+  const names = { LSN: "LSN (lower single null)", USN: "USN (upper single null)",
+    DN: "DN (double null)", limited: "limited", unknown: "unknown" };
+  line.textContent = `Magnetic configuration: ${names[configuration] || configuration}` +
+    (nearby ? ` · lower outer strike-point gate ${sample.shelf_gate ? "valid" : "invalid"}` :
+      " · EFIT unavailable at this time");
+  line.title = nearby ? `${sample.time_ms.toFixed(1)} ms: ${sample.reason || geometry.note}` :
+    (geometry?.note || "No local EFIT geometry source; use uncertain when geometry is required.");
+}
+
+function loadVideoFrame(card, time, current, playback) {
   const { channel, times_ms: times } = card.channel;
   let right = times.findIndex((t) => t >= time);
   if (right < 0) right = times.length - 1;
@@ -1761,25 +1822,18 @@ function loadVideoFrame(card, time, current) {
   const key = `${channel}/${right}`;
   const outside = time < times[0] || time > times.at(-1);
   const view = `${card.channel.view_name} · ${card.channel.region}`;
-  const note = `${times[right].toFixed(1)} ms · ${view} · nearest frame${outside ? " · outside camera coverage" : ""}`;
-  card.current = current;
-  card.targetNote = note;
-  if (card.pendingKey === key) return card.pending;
-  card.abort?.abort();
+  const note = `${times[right].toFixed(1)} ms · ${view} · nearest corpus frame${outside ? " · outside camera coverage" : ""}`;
   if (card.key === key) {
-    card.seq++;
-    card.pendingKey = "";
-    card.img.style.visibility = "visible";
-    card.figure.setAttribute("aria-busy", "false");
-    card.note.textContent = card.renderedNote = note;
-    return Promise.resolve(true);
+    return Promise.resolve({ card, key, note });
   }
   card.abort = new AbortController();
   const seq = ++card.seq, ticket = S.ticket;
   card.pendingKey = key;
-  card.img.style.visibility = "hidden";
   card.figure.setAttribute("aria-busy", "true");
-  card.note.textContent = `Loading ${view} at ${times[right].toFixed(1)} ms…`;
+  if (!playback) {
+    card.img.style.visibility = "hidden";
+    card.note.textContent = `Loading ${view} at ${times[right].toFixed(1)} ms…`;
+  }
   const query = new URLSearchParams({ event: S.event, shot: S.shot,
     camera: card.camera.name, channel, t_ms: times[right] });
   card.pending = (async () => {
@@ -1790,35 +1844,30 @@ function loadVideoFrame(card, time, current) {
       const img = new Image();
       img.src = url;
       await img.decode();
-      if (ticket !== S.ticket || seq !== card.seq || !card.current()) return false;
+      if (ticket !== S.ticket || seq !== card.seq || !current()) return false;
       const header = response.headers.get("X-Frame-Time-Ms");
       const actual = Number(header);
       if (header == null || !Number.isFinite(actual)) throw new Error("frame timestamp missing");
       img.alt = `${card.camera.name}: ${view} at ${actual.toFixed(1)} ms`;
       img.dataset.frameTime = actual;
       img.dataset.channel = channel;
-      card.img.replaceWith(img);
-      card.img = img;
-      if (card.url) URL.revokeObjectURL(card.url);
-      card.url = url;
+      card.staged = { card, img, url, key,
+        note: note.replace(times[right].toFixed(1), actual.toFixed(1)) };
       url = null;
-      card.key = key;
-      card.note.textContent = card.renderedNote = card.targetNote.replace(times[right].toFixed(1), actual.toFixed(1));
-      return true;
+      return card.staged;
     } catch (error) {
       if (ticket === S.ticket && seq === card.seq && error.name !== "AbortError") {
-        card.note.textContent = `Frame unavailable: ${error.message}`;
-        card.failed = true;
+        if (!card.renderedNote) card.note.textContent = `Frame unavailable: ${error.message}. Seek to retry.`;
+        say(`Frame unavailable: ${error.message}`, true);
       }
       return false;
     } finally {
       if (url) URL.revokeObjectURL(url);
-      if (seq === card.seq) {
+      if (seq === card.seq && !card.staged) {
         card.pendingKey = "";
         card.figure.setAttribute("aria-busy", "false");
-        if (!card.current() && card.renderedNote) card.note.textContent = card.renderedNote;
-        card.img.style.visibility = card.failed ? "hidden" : "visible";
-        card.failed = false;
+        if (card.renderedNote) card.note.textContent = card.renderedNote;
+        card.img.style.visibility = "visible";
       }
     }
   })();
@@ -1832,7 +1881,7 @@ function showVideoCursor() {
 }
 
 async function playVideo() {
-  if (!S.video || !S.video.times.length) return;
+  if (!S.video || !S.video.times.length || !Number.isFinite(S.video.time)) return;
   if (S.video.playing) return pauseVideo();
   const v = S.video;
   v.playing = true;
@@ -2122,7 +2171,11 @@ function wire() {
     $("hover-cursor").hidden = true;
     if (!S.video) $("cursor").hidden = true;
   });
-  $("video-time").addEventListener("input", () => { pauseVideo(); seekVideo($("video-time").value); });
+  $("video-time").addEventListener("input", () => {
+    const requested = $("video-time").value;
+    pauseVideo();
+    seekVideo(requested);
+  });
   $("video-play").addEventListener("click", playVideo);
   $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);
@@ -2176,6 +2229,11 @@ function wire() {
     render();
     fetchRows();
   }).observe(top);
+  new ResizeObserver(() => {
+    sizeRows();
+    sizeCanvases();
+    render();
+  }).observe($("video-panel"));
 }
 
 if (typeof module !== "undefined") {

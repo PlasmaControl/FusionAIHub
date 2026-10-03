@@ -113,6 +113,10 @@ canvas { display: block; width: 100%; }
 #video-controls { display: flex; align-items: center; gap: 10px; }
 #video-time { flex: 1; min-width: 60px; padding: 0; }
 #video-clock { min-width: 90px; text-align: right; }
+#video-context { margin: 6px 0; font-size: 12px; }
+#detachment-help { max-width: 650px; }
+#detachment-help dt { margin-top: 8px; font-weight: 600; }
+#detachment-help dd { margin-left: 0; }
 #video-cameras { display: flex; gap: 12px; margin-top: 8px; }
 .camera { flex: 1; min-width: 0; margin: 0; }
 .camera figcaption { display: flex; align-items: center; gap: 6px; }

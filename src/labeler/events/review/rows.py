@@ -153,8 +153,12 @@ def meta(path, hide=frozenset()) -> dict:
             {"name": name, **json.loads(f["rows"][name].attrs["meta"])}
             for name in _names(f, hide)
         ]
+        params = json.loads(f.attrs.get("params", "{}"))
+        geometry = params.get("detachment_geometry")
     grid = {"t0": t0, "dt": dt, "n": n}
-    return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows}
+    return {"grid": grid, "t_range": [t0, t0 + n * dt], "rows": rows,
+            **({"params": {"detachment_geometry": geometry}}
+               if geometry is not None else {})}
 
 
 def read_window(

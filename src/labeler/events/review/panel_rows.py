@@ -5,7 +5,8 @@ the panel pins `zmin`/`zmax`, or coded by `verify.mode_bytes` when the panel
 has `modes`; lines become trace rows. Every row goes onto
 one grid at the finest panel spacing, but no finer than 0.05 ms: finer data
 is min/max-binned, coarser data is interpolated (lines) or nearest-sampled
-(heatmaps).
+(heatmaps). Explicit indicator bins remain steps over their full intervals,
+including isolated valid bins between invalid bins.
 """
 
 from __future__ import annotations
@@ -85,7 +86,9 @@ def _centres(grid: Grid) -> np.ndarray:
 
 def _trace(name: str, panel, x, grid: Grid) -> TraceRow:
     y = np.atleast_2d(np.asarray(panel.y, dtype=np.float32))
-    if _fine(x, grid):
+    if (panel.metadata or {}).get("trace_style") == "step":
+        values = _steps(panel, y, grid)
+    elif _fine(x, grid):
         cols = _columns(x, grid)
         low = _bin(y, cols, grid.n, np.fmin, np.nan)
         high = _bin(y, cols, grid.n, np.fmax, np.nan)
@@ -99,6 +102,30 @@ def _trace(name: str, panel, x, grid: Grid) -> TraceRow:
     legend = list(panel.legend) if panel.legend else [f"ch {i}" for i in range(len(y))]
     return TraceRow(name, panel.title, values, y_units=panel.ylabel, legend=legend,
                     hlines=[float(v) for v in panel.hlines])
+
+
+def _steps(panel, y, grid: Grid) -> np.ndarray:
+    """Min/max of bin values overlapping each column; invalid bins stay gaps."""
+    starts = np.asarray(panel.metadata["bin_start_ms"], dtype=float)
+    ends = np.asarray(panel.metadata["bin_end_ms"], dtype=float)
+    if starts.shape != panel.x.shape or ends.shape != starts.shape:
+        raise ValueError("step intervals disagree with panel clock")
+    if not (np.isfinite(starts).all() and np.isfinite(ends).all()):
+        raise ValueError("step intervals must be finite")
+    if np.any(ends <= starts):
+        raise ValueError("step intervals must have positive width")
+    values = np.full((2, len(y), grid.n), np.nan, dtype=np.float32)
+    # A fine bin that does not contain a grid centre must still contribute.
+    # Use overlap with column edges, retaining extrema when several bins pool.
+    for i, (start, end) in enumerate(zip(starts, ends, strict=True)):
+        lo = max(0, math.floor((start - grid.t0_ms) / grid.dt_ms))
+        hi = min(grid.n, math.ceil((end - grid.t0_ms) / grid.dt_ms))
+        if hi <= lo:
+            continue
+        value = y[:, i, None]
+        values[0, :, lo:hi] = np.fmin(values[0, :, lo:hi], value)
+        values[1, :, lo:hi] = np.fmax(values[1, :, lo:hi], value)
+    return values
 
 
 def _limits(z, zmin=None, zmax=None) -> tuple[float, float]:

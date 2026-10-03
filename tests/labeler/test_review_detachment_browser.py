@@ -20,13 +20,24 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_video_slider_playback_clicks_and_labels(served, tmp_path):  # noqa: F811
+@pytest.mark.parametrize("scenario", ["detachment", "detachment-atomic"])
+def test_video_slider_playback_clicks_and_labels(
+    served,  # noqa: F811
+    tmp_path,
+    scenario,
+    monkeypatch,
+):
     base, existing = served
     paths = Paths(
         root=tmp_path / "root", corpus=tmp_path / "corpus", label_tables=existing.parent
     )
     source = corpus(paths)
     with h5py.File(source, "a") as store:
+        if scenario == "detachment-atomic":
+            del store["irtv"]
+            camera = store.create_group("irtv")
+            camera["xdata"] = np.arange(13) * 0.02
+            camera["ydata"] = np.broadcast_to(np.arange(13)[:, None, None], (13, 4, 6))
         store["tangtv/ydata"][1] = np.broadcast_to(
             np.arange(13)[:, None, None], (13, 4, 6)
         )
@@ -42,6 +53,19 @@ def test_video_slider_playback_clicks_and_labels(served, tmp_path):  # noqa: F81
     (event / "format/detachment_format_test.csv").write_text(
         "shot,category,t_start,t_end,confidence\n170815,1,0,60,\n170815,0,60,240,\n"
     )
+    geometry = tmp_path / "geometry"
+    geometry.mkdir()
+    signals = {}
+    for name, value in (
+        ("rvsod", 1.5),
+        ("zvsod", -1.25),
+        ("rxpt1", 1.4),
+        ("zxpt1", -1.1),
+    ):
+        signals[f"{name}__t"] = np.arange(13) * 20.0
+        signals[f"{name}__y"] = np.full(13, value)
+    np.savez(geometry / "170815.npz", **signals)
+    monkeypatch.setenv("LABELER_DETACHMENT_GEOMETRY_ROOT", str(geometry))
     build.build("detachment", 170815, paths)
     result = subprocess.run(
         [
@@ -51,7 +75,7 @@ def test_video_slider_playback_clicks_and_labels(served, tmp_path):  # noqa: F81
             TOKEN,
             str(SHELLS[-1]),
             str(tmp_path / "video-profile"),
-            "detachment",
+            scenario,
         ],
         capture_output=True,
         text=True,
@@ -61,4 +85,5 @@ def test_video_slider_playback_clicks_and_labels(served, tmp_path):  # noqa: F81
     assert result.returncode == 0, result.stdout + result.stderr[-2000:]
     checks = json.loads(result.stdout.splitlines()[-1])
     assert not [c for c in checks if not c["ok"]], checks
-    assert any(c == 2 for _, _, c in labels.read_saved(event)[170815].intervals)
+    if scenario == "detachment":
+        assert any(c == 2 for _, _, c in labels.read_saved(event)[170815].intervals)

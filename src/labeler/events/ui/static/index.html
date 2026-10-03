@@ -33,6 +33,7 @@
       <input id="video-time" type="range" step="any" aria-label="Camera time in milliseconds">
       <output id="video-clock" for="video-time"></output>
     </div>
+    <p id="video-context">Target: lower outer divertor leg. <span id="video-geometry"></span></p>
     <div id="video-cameras"></div>
   </section>
   <div id="rows"></div>
@@ -88,6 +89,17 @@
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Contrast</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> <kbd>Z</kbd></td><td>Undo</td></tr>
   </table>
+  <section id="detachment-help" hidden>
+    <h3>Detachment: lower outer divertor leg</h3>
+    <p>Review the active lower outer leg using the magnetic configuration and strike-point gate. Upper-single-null, double-null, limited or unknown geometry can make a lower-camera state uncertain. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at ≤20 fps.</p>
+    <dl>
+      <dt>Attached</dt><dd>Emission remains concentrated near the lower outer target/strike point, without a sustained upstream front. Valid low Afrac and low upstream radiation/front displacement support attachment; target ion saturation current supports it when available.</dd>
+      <dt>Detached</dt><dd>A sustained emission/radiation front lifts from the target along the lower outer leg, with reduced target emission and, when available, reduced target ion saturation current. Increasing valid Afrac, lower-divertor radiation fraction and TangTV front displacement support this state. Partial lifting and pronounced lifting toward the X-point share this label; this track does not grade detachment depth.</dd>
+      <dt>MARFE</dt><dd>A localized radiating blob near the X-point or inner wall, often associated with high density and a density-limit precursor. Distinguish its localized shape from an extended detached leg; radiation/density evidence should corroborate the image. A bright blob alone does not establish a density limit.</dd>
+      <dt>Uncertain</dt><dd>Missing or saturated images, invalid indicators, unsuitable or unknown geometry, transitions, or conflicting evidence prevent a reliable state. Do not infer attachment from absent diagnostics.</dd>
+    </dl>
+    <p>The state track is exclusive. It cannot encode coexisting MARFE and detachment; use uncertain when one state would conceal material conflicting evidence. Producer drafts and valid indicators are review aids, not ground truth.</p>
+  </section>
   <form method="dialog"><button>Close</button></form>
 </dialog>
 <dialog id="versions" aria-labelledby="versions-title">

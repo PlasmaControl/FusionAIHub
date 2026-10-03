@@ -498,8 +498,10 @@ The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
 4 uncertain**; unmarked time is unassessed. Drag **Time (ms)** or click the
 timeline to seek the nearest camera frame and move the cursor across all
 panels. The video panel stays visible while scrolling. **Play/Pause** waits for
-decoded frames before advancing. Pixels, physical view and actual frame time
-update together; seeking shows a loading state. Labels still use the
+decoded frames before advancing. All selected camera images, physical views,
+captions and the shared clock publish together; pausing discards staged frames.
+TangTV corpus images are 50 Hz linear resamples blending adjacent exposures;
+seeking shows a loading state. Labels still use the
 usual timeline lanes, saves and history.
 
 Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
@@ -511,8 +513,11 @@ plasma window. Optional producer files add validity-gated Afrac, lower-divertor
 radiation fraction and normalized TangTV DZ. Movies stay in the per-shot store;
 the page requests one frame at a time. Camera controls require server API 9.
 The state track is exclusive: MARFE can physically coexist with detachment,
-and partial detachment has no separate state. Candidate availability goes in
-`detachment/shots_review.csv`; `shots.csv` keeps its curation/history semantics.
+and partial detachment has no separate state. `detachment/shots.csv` is the
+real queue: LSN-gated live-camera train/validation cohort shots plus producer
+labelled shots, excluding blind test shots. The page shows EFIT configuration
+and lower outer strike-point validity. See `detachment_review.md` and page help
+for operational state definitions and source limitations.
 
 See [Detachment camera review](detachment_review.md) for data contracts,
 launch commands and the isolated real-shot screenshot check.

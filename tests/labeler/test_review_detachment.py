@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 
 import h5py
 import numpy as np
@@ -37,7 +38,7 @@ def corpus(paths, shot=170815):
     return path
 
 
-def test_frame_decimation_preserves_native_times_and_rejects_bad_clocks():
+def test_frame_decimation_preserves_corpus_times_and_rejects_bad_clocks():
     assert video.frame_indices(np.arange(13) * 0.02).tolist() == [0, 3, 6, 9, 12]
     assert video.frame_indices([0, np.nan, 0.05, 0.1]).tolist() == [0, 2, 3]
     assert not len(video.frame_indices([0]))
@@ -73,6 +74,35 @@ def test_builder_extracts_frames_fixed_scale_stubs_and_movie_only_shots(tmp_path
     assert rows.meta(path)["rows"] == []
     assert rows.meta(path)["t_range"][0] <= 0
     assert rows.meta(path)["t_range"][1] >= 240
+
+
+def test_external_producer_shot_is_trimmed_to_cached_current_window(
+    tmp_path, monkeypatch
+):
+    paths = Paths(root=tmp_path / "root", corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    cache = tmp_path / "producer_cache"
+    cache.mkdir()
+    monkeypatch.setenv("LABELER_DETACHMENT_GEOMETRY_ROOT", str(cache))
+    np.savez(
+        cache / "170815.npz",
+        ipmeas__t=[0, 60, 120, 180, 240],
+        ipmeas__y=[0, 600000, 600000, 600000, 0],
+    )
+    with h5py.File(source, "a") as store:
+        group = store.create_group("co2")
+        group["xdata"] = [0, 0.06, 0.12, 0.18, 0.24]
+        group["ydata"] = np.ones((4, 5))
+    path = build.build("detachment", 170815, paths)
+    assert rows.meta(path)["t_range"] == [60, 180]
+    np.testing.assert_allclose(
+        video.meta(path)["cameras"][1]["channels"][0]["times_ms"], [60, 120, 180]
+    )
+    with h5py.File(path) as store:
+        assert json.loads(store.attrs["params"])["plasma_window_source"] == (
+            "cached |Ip| >= 300 kA"
+        )
+    assert rows.meta(path)["rows"]  # Scalar context is retained inside that window.
 
 
 @pytest.mark.parametrize("time,index", [(-10, 0), (30, 0), (31, 1), (1000, 2)])
@@ -160,12 +190,94 @@ def test_context_block_means_do_not_alias_fast_signal(tmp_path):
         group = store.create_group("filterscopes")
         group["xdata"] = np.arange(40) * 0.000256
         group["ydata"] = np.tile([0, 2], (8, 20))
-    panel = panels.panels(170815, paths=paths, t_range=(0, 10))[0]
-    np.testing.assert_allclose(panel.y[:, :9], 1)
-    np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
-    assert panel.legend == [f"FS{i:02d} (a.u.)" for i in range(1, 9)]
-    assert panel.ylabel == "a.u."  # no calibration units recorded in corpus
-    assert panel.x[-1] <= 10
+    built = panels.panels(170815, paths=paths, t_range=(0, 10))
+    assert len(built) == 8  # Unknown chord locations must not share one scale.
+    for i, panel in enumerate(built, 1):
+        np.testing.assert_allclose(panel.y[:, :9], 1)
+        np.testing.assert_allclose(np.diff(panel.x[:9]), 1.024)
+        assert panel.legend == [f"FS{i:02d} (ph/(sr cm2 s))"]
+        assert panel.ylabel == "ph/(sr cm2 s)"
+        assert panel.title == f"D-alpha FS{i:02d} (location not recorded)"
+        assert panel.metadata["location"] == "not recorded in corpus"
+        assert panel.x[-1] <= 10
+
+
+def test_density_falls_back_to_local_thomson_when_co2_is_a_stub(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    with h5py.File(source, "a") as store:
+        co2 = store.create_group("co2")
+        co2["xdata"] = [0.0]
+        co2["ydata"] = np.full((4, 1), np.nan)
+        ts = store.create_group("ts_core_density")
+        ts["xdata"] = [0.0, 0.1, 0.2]
+        ts["ydata"] = np.array([[1e19, 2e19, 3e19], [np.nan, 4e19, 5e19]])
+    density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
+    assert len(density) == 1
+    panel = density[0]
+    assert "Thomson" in panel.title and "local" in panel.title
+    assert "not line-averaged" in panel.title
+    assert panel.ylabel == "m^-3"
+    np.testing.assert_allclose(panel.y, [[1e19, 2e19, 3e19], [np.nan, 4e19, 5e19]])
+    assert panel.legend == ["core channel 0 (m^-3)", "core channel 1 (m^-3)"]
+
+
+def test_usable_co2_density_keeps_the_line_average_instead_of_thomson(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    with h5py.File(source, "a") as store:
+        for name, channels in (("co2", 4), ("ts_core_density", 2)):
+            group = store.create_group(name)
+            group["xdata"] = [0.0, 0.1, 0.2]
+            group["ydata"] = np.ones((channels, 3))
+    density = [p for p in panels.panels(170815, paths=paths) if "density" in p.title]
+    assert [p.title for p in density] == ["CO2 R0 line-averaged density"]
+
+
+@pytest.mark.parametrize("width", [20.0, 50.0, 100.0])
+def test_indicator_bin_width_is_inferred_and_clipped_by_bin_overlap(
+    tmp_path, monkeypatch, width
+):
+    starts = 100 + np.arange(3) * width
+    np.savez(
+        tmp_path / "170815.npz",
+        start_ms=starts,
+        afrac_value=[0.1, 99, 0.2],
+        afrac_valid=[1, 0, 1],
+    )
+    monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(tmp_path))
+    result = panels.indicator_panels(
+        170815, Paths(root=tmp_path), t_range=(100, 100 + width / 4)
+    )
+    assert len(result) == 1  # First bin overlaps even though its centre is outside.
+    panel = result[0]
+    assert panel.metadata["bin_width_ms"] == width
+    assert panel.metadata["trace_style"] == "step"
+    assert panel.metadata["bin_start_ms"] == [100.0]
+    assert panel.metadata["bin_end_ms"] == [100 + width / 4]
+    np.testing.assert_allclose(panel.y, [[0.1]])
+
+
+def test_video_store_drops_frames_outside_the_plasma_window(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    source = corpus(paths)
+    path = paths.spectrogram_file("detachment", 170815)
+    rows.write(path, Grid(40, 20, 6), [], video_corpus=source)
+    channel = video.meta(path)["cameras"][1]["channels"][0]
+    np.testing.assert_allclose(channel["times_ms"], [60, 120])
+    with h5py.File(path) as store:
+        assert store["videos/tangtv/0/source_indices"][:].tolist() == [3, 6]
+
+
+def test_tangtv_manifest_describes_linear_resampling_instead_of_native_exposures(
+    tmp_path,
+):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    corpus(paths)
+    manifest = video.meta(build.build("detachment", 170815, paths))
+    note = manifest["cameras"][1]["sampling_note"]
+    assert "50 Hz" in note and "linear" in note
+    assert "adjacent exposures" in note
 
 
 def test_actual_detach_bin_schema_keeps_gates_and_dimensionless_ratios(

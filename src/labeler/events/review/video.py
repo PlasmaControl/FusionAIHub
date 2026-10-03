@@ -2,8 +2,11 @@
 
 Corpus clocks are seconds; stored and served clocks are milliseconds. Only
 image arrays (T,H,W) or (C,T,H,W) are movies: the usual bolo (48,T) is a
-diagnostic trace, not a tomographic image. Each channel keeps its native clock,
-decimated to at most 20 fps, and one fixed grayscale scale over the shot.
+diagnostic trace, not a tomographic image. TangTV corpus frames are linearly
+resampled onto a 50 Hz grid, blending adjacent exposures in prepare_data.py's
+interp1d; they are not individual native exposures. Preview channels preserve
+their corpus timestamps, decimated to at most 20 fps inside the store window,
+with one fixed grayscale scale per channel over that window.
 """
 
 from __future__ import annotations
@@ -19,6 +22,10 @@ from PIL import Image
 CAMERAS = {"bolo": (80, 120), "tangtv": (240, 720), "irtv": (256, 320)}
 MAX_FPS = 20.0
 PERCENTILES = (1.0, 99.5)
+TANGTV_SAMPLING_NOTE = (
+    "Corpus 50 Hz frames, linearly resampled by blending adjacent exposures "
+    "(prepare_data.py interp1d); previews decimated to at most 20 fps."
+)
 # Active input_key order in data/config/modalities/modalities.yaml. IRTV declares
 # seven output slots but only SIX active nodes; PERI75R0 is commented out. Do not
 # shift UPCEN/UPDIV to manufacture a seventh mapping.
@@ -59,7 +66,7 @@ def view(camera, channel):
 
 
 def frame_indices(times, max_fps=MAX_FPS) -> np.ndarray:
-    """Finite, increasing native times separated by at least 1/max_fps seconds.
+    """Finite corpus times separated by at least 1/max_fps seconds.
 
     Duplicate/backwards clocks are rejected rather than silently reordered.
     Nonfinite timestamps are dropped, with their corresponding frames.
@@ -135,6 +142,8 @@ def write(store, corpus) -> None:
     videos = store.create_group("videos")
     videos.attrs["max_fps"] = MAX_FPS
     videos.attrs["scale_percentiles"] = json.dumps(PERCENTILES)
+    lo_ms = float(store.attrs["t0_ms"])
+    hi_ms = lo_ms + float(store.attrs["dt_ms"]) * int(store.attrs["n"])
     source = h5py.File(corpus, "r") if corpus.is_file() else None
     try:
         for camera, shape in CAMERAS.items():
@@ -145,6 +154,9 @@ def write(store, corpus) -> None:
             try:
                 times, data, channels = _layout(source[camera])
                 indices = frame_indices(times)
+                indices = indices[
+                    (times[indices] * 1000 >= lo_ms) & (times[indices] * 1000 <= hi_ms)
+                ]
             except ValueError as error:
                 target.attrs["reason"] = str(error)
                 continue
@@ -240,6 +252,11 @@ def meta(path) -> dict:
                     "reason": str(group.attrs["reason"]),
                     "default_channel": default["channel"] if default else None,
                     "spectral_note": "Filter/emission line is not recorded in the corpus.",
+                    "sampling_note": (
+                        TANGTV_SAMPLING_NOTE
+                        if camera == "tangtv"
+                        else "Corpus frame timestamps; previews decimated to at most 20 fps."
+                    ),
                     **(
                         {
                             "inactive_node": "\\IRTV::TOP.IRTV:PERI75R0:DIGITAL_CAM:DIGITAL_RAW",
@@ -254,7 +271,7 @@ def meta(path) -> dict:
 
 
 def nearest_index(times, t_ms: float) -> int:
-    """Nearest native frame, endpoints clamped; an exact tie chooses earlier."""
+    """Nearest corpus preview; endpoints clamp and exact ties choose earlier."""
     if not math.isfinite(t_ms):
         raise ValueError("frame time must be finite")
     times = np.asarray(times, dtype=float)
