@@ -25,9 +25,16 @@ HORIZON_MS = 100.0
 #: unstable; the mode is already acting, so they leave the training and scoring sets.
 POST_MS = 100.0
 #: Length of the catalog's "RWM present" window before an onset. DIII-D's wall time
-#: tau_w is a few ms, so an exponentially growing mode gains a factor e per tau_w;
-#: 20 ms is about four wall times (an order of magnitude and a half in amplitude).
+#: tau_w is a few ms, so a mode growing on it gains a factor e per few ms: 20 ms is
+#: two to four e-foldings. The measured largest trailing 20 ms growth rate of the
+#: n = 1 RMS around the 48 distinct n = 1 onsets has a median e-folding time of 9 ms
+#: (quartiles 5.8 and 11.0 ms; `outputs/labeler/rwm/growth.json`), which is 2.2
+#: e-foldings (1.8 to 3.5) in 20 ms. The 1 kHz RMS itself cannot place the start of the
+#: growth more sharply, so this length rests on the wall time and is a convention.
 GROWTH_MS = 20.0
+
+#: Listed onsets this close are one event.
+MERGE_MS = 10.0
 
 POSITIVE, NEGATIVE, EXCLUDED = 1, 0, -1
 #: A slice of a shot whose onsets nobody listed: neither positive nor negative.
@@ -37,7 +44,9 @@ UNLABELLED = -2
 PRESENT, ABSENT, UNCERTAIN = 1, 0, 2
 
 
-def slice_labels(t_ms, onsets_ms, *, horizon_ms=HORIZON_MS, post_ms=POST_MS):
+def slice_labels(
+    t_ms, onsets_ms, *, horizon_ms=HORIZON_MS, post_ms=POST_MS, other_onsets_ms=()
+):
     """Per-slice label: 1 an onset within the next `horizon_ms`, 0 none, -1 excluded.
 
     A slice at `t` is positive when some onset `o` has `o - horizon <= t < o`. It is
@@ -45,10 +54,16 @@ def slice_labels(t_ms, onsets_ms, *, horizon_ms=HORIZON_MS, post_ms=POST_MS):
     that follows soon after another keeps its own positive slices). Every other slice
     is negative. With no onset every slice is negative; the caller decides whether
     that means "examined" or "unlabelled".
+
+    `other_onsets_ms` are onsets of a different kind (an n = 2 RWM when the target is
+    n = 1): their slices from `o - horizon` to `o + post` are excluded, never
+    positive and never negative, unless a target onset makes them positive.
     """
     t = np.asarray(t_ms, dtype=float)
-    onsets = np.sort(np.asarray(onsets_ms, dtype=float))
     label = np.zeros(t.shape, dtype=np.int8)
+    for other in np.asarray(other_onsets_ms, dtype=float):
+        label[(t >= other - horizon_ms) & (t < other + post_ms)] = EXCLUDED
+    onsets = np.sort(np.asarray(onsets_ms, dtype=float))
     if not len(onsets):
         return label
     # First onset strictly after each slice time, and last at or before it.
@@ -61,6 +76,20 @@ def slice_labels(t_ms, onsets_ms, *, horizon_ms=HORIZON_MS, post_ms=POST_MS):
     label[last_gap < post_ms] = EXCLUDED
     label[next_gap <= horizon_ms] = POSITIVE
     return label
+
+
+def merge_close(onsets_ms, within_ms=MERGE_MS):
+    """Onsets with any that follows within `within_ms` of the one kept dropped.
+
+    Hanson's tables list some onsets twice, a few tenths of a ms apart (156787 at
+    1616.9 and 1617.5 ms, 156795 at 1656.0 and 1656.4 ms); they are one event for
+    scoring, not two.
+    """
+    kept: list[float] = []
+    for onset in sorted(float(o) for o in onsets_ms):
+        if not kept or onset - kept[-1] > within_ms:
+            kept.append(onset)
+    return kept
 
 
 def growth_windows(onsets_ms, *, growth_ms=GROWTH_MS):

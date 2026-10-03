@@ -45,6 +45,7 @@ def shot_table(
     paths: Paths,
     onsets_ms=(),
     *,
+    other_onsets_ms=(),
     examined: bool = False,
     step_ms: float = features.STEP_MS,
 ) -> pd.DataFrame:
@@ -52,13 +53,16 @@ def shot_table(
 
     `label` is `labels.slice_labels` over the listed onsets; on a shot that was not
     `examined` every slice is `UNLABELLED` (-2) instead, since an absent onset there
-    is not a negative.
+    is not a negative. `other_onsets_ms` (the n = 2 onsets, for an n = 1 target) leave
+    their slices out of both classes.
     """
     signals = load_signals(shot, paths)
     table = features.slice_table(signals, step_ms=step_ms)
     table.insert(0, "shot", int(shot))
     if examined:
-        table["label"] = labels.slice_labels(table.t_ms.to_numpy(), onsets_ms)
+        table["label"] = labels.slice_labels(
+            table.t_ms.to_numpy(), onsets_ms, other_onsets_ms=other_onsets_ms
+        )
     else:
         table["label"] = np.int8(labels.UNLABELLED)
     return table

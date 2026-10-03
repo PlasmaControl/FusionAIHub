@@ -67,3 +67,26 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
         post_ms=100.0,
     )
     assert rows == [(7, lab.PRESENT, 130.0, 150.0)]
+
+
+def test_other_onsets_are_excluded_but_never_positive():
+    t = np.arange(0.0, 400.0, 10.0)
+    out = lab.slice_labels(
+        t, [], horizon_ms=40.0, post_ms=20.0, other_onsets_ms=[200.0]
+    )
+    assert (out[(t >= 160) & (t < 220)] == lab.EXCLUDED).all()
+    assert (out[(t < 160) | (t >= 220)] == lab.NEGATIVE).all()
+    # A target onset inside that span still makes its own slices positive.
+    both = lab.slice_labels(
+        t, [210.0], horizon_ms=40.0, post_ms=20.0, other_onsets_ms=[200.0]
+    )
+    assert (both[(t >= 170) & (t < 210)] == lab.POSITIVE).all()
+
+
+def test_merge_close_keeps_one_of_a_double_listed_onset():
+    assert lab.merge_close([1617.5, 1616.9, 2500.0, 2510.0, 2530.0]) == [
+        1616.9,
+        2500.0,
+        2530.0,
+    ]
+    assert lab.merge_close([]) == []
