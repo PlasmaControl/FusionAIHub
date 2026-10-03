@@ -504,7 +504,8 @@ def main() -> None:
             "n_bins": int(fit_mask.sum()),
             "excluded_split": "test",
             "method": "anchored: accuracies from the bins where every indicator is "
-            "valid, uniform class balance, propensities from all bins",
+            "valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, "
+            "propensities from all bins",
             "anchor_bins": model.anchor_bins,
             "anchor_shots": len(np.unique(shots_fit[valid[fit_mask].all(axis=1)])),
             "all_bins_fit_for_comparison": label_model.LabelModel(corr=STRUCTURES[best])

@@ -238,8 +238,11 @@ def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
     the AUROC of its value for the cold-plate bins (Te below the threshold), which
     needs no label. All with a shot bootstrap. A weak, independent check: the
     real-time points are sparse and the peak over them is not the strike-point Te.
+    An exact 0 eV (30 % of the bins) is a failed fit, not a cold plate, and is read
+    as missing.
     """
     te = frame.aux_te_div.to_numpy(dtype=float)
+    te = np.where(te > 0, te, np.nan)
     out = {"threshold_ev": TE_DETACHED_EV, "by_state": {}}
     for state in (*STATES, core.UNCERTAIN):
         x = te[(lm_state == state) & np.isfinite(te)]

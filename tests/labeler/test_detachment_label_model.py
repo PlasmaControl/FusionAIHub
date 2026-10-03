@@ -163,7 +163,7 @@ def test_anchored_fit_recovers_accuracies_that_pairs_cannot_identify():
     assert acc["afrac"]["implied_accuracy"] == pytest.approx(0.65, abs=0.07)
     assert acc["prad"]["implied_accuracy"] == pytest.approx(0.7, abs=0.07)
     assert acc["tangtv"]["implied_accuracy"] == pytest.approx(0.95, abs=0.05)
-    assert np.all(model.theta[:3] == 0.0)  # uniform class balance
+    assert model.theta[:3].tolist() == pytest.approx(lm.PRIOR_LOGIT.tolist())
 
 
 def test_anchored_fit_falls_back_to_the_plain_fit_without_enough_anchor_bins():
@@ -178,3 +178,14 @@ def test_anchored_fit_falls_back_to_the_plain_fit_without_enough_anchor_bins():
     assert model.anchor_bins == 3000 + 12000  # every bin has both of these LFs
     thin = lm.LabelModel().fit_anchored(votes, valid)
     assert thin.anchor_bins == 0 and thin.theta is not None
+
+
+def test_a_lone_vote_is_judged_as_hard_for_detached_as_for_attached():
+    # Afrac alone, valid, nothing else: the two votes carry the same posterior once the
+    # unresolved detached/marfe mass is pooled (a uniform 3-state prior would favour
+    # "detached" 2:1 before any vote).
+    votes, valid = simulate_two_populations()
+    model = lm.LabelModel().fit_anchored(votes, valid)
+    lone = np.array([[1, core.ABSTAIN, core.ABSTAIN], [2, core.ABSTAIN, core.ABSTAIN]])
+    post = lm.pool_marfe(model.posterior(lone), np.array([False, False]))
+    assert post[0, 0] == pytest.approx(post[1, 1], abs=0.02)

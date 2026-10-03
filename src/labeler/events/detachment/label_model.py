@@ -37,8 +37,14 @@ accuracies. Most bins carry two voters (TangTV is valid on few shots) and in the
 state is nearly constant (attached), so a fit on all bins can place the whole
 disagreement on one LF and give the other an accuracy near 1. `fit_anchored` therefore
 learns the accuracy and correlation weights from the bins where every LF is valid,
-fixes the class balance to uniform (Snorkel's default; nothing in the data identifies
-it across shots of different regimes) and fits only the propensities on all bins.
+fixes the class balance (nothing in the data identifies it across shots of different
+regimes) and fits only the propensities on all bins. The class balance is the
+maximum-entropy one for the two-level decision the indicators make: attached against
+not attached equally likely, the not-attached half split between detached and marfe
+(`PRIOR_LOGIT`). A uniform prior over the three states would count the pooled
+"detached or marfe" of the bins where only Afrac and Prad,div speak twice as likely
+as attached before any vote is cast, so a lone detached vote would label a bin while
+a lone attached vote of the same accuracy would not.
 
 Neither labeler uses the cohort test split: the model is fitted on the bins it is given.
 """
@@ -69,6 +75,8 @@ COMPATIBLE = {
 #: accuracy of a vote at 0.96 (three allowed votes) to 0.98 (two), the most a few
 #: thousand unlabelled bins from a few dozen shots can support.
 WEIGHT_MAX = 4.0
+#: Class balance of `fit_anchored`: attached 1/2, detached 1/4, marfe 1/4 (log).
+PRIOR_LOGIT = np.log(np.array([0.5, 0.25, 0.25]))
 #: L2 penalty on the propensity and prior terms, per observation, for stability.
 RIDGE = 1e-6
 #: Fewest all-LF-valid bins `fit_anchored` will learn the accuracies from.
@@ -195,8 +203,10 @@ class LabelModel:
         """Fit accuracies where all LFs are valid, then the propensities on every bin.
 
         See "Identification" in the module docstring. The class balance is fixed to
-        uniform. With fewer than `MIN_ANCHOR_BINS` bins on which every LF is valid the
-        accuracies are not identified and the plain `fit` is used instead
+        `PRIOR_LOGIT` after the accuracy fit (the accuracies are fitted with the class
+        balance free: on the anchor bins it is identified, but those shots are not a
+        sample of the corpus). With fewer than `MIN_ANCHOR_BINS` bins on which every
+        LF is valid the accuracies are not identified and the plain `fit` is used instead
         (`self.anchor_bins` is then 0).
         """
         votes, valid = np.asarray(votes), np.asarray(valid, dtype=bool)
@@ -207,7 +217,7 @@ class LabelModel:
             return self.fit(votes, valid)
         self.fit(votes[full], valid[full])
         base = self.theta.copy()
-        base[:3] = 0.0
+        base[:3] = PRIOR_LOGIT
         data = self.config_counts(votes, valid)
         free = np.arange(3, 3 + len(self.names))  # the propensity weights
 
