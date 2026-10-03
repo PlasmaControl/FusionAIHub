@@ -35,9 +35,11 @@ def interpretation(record: dict) -> list[str]:
             else "The paired intervals do not resolve an AUROC ranking reversal."
         )
         lines += [
-            f"On the shared 19 shots, threeway ae-ours minus {baseline} is "
-            f"{metric_cell(dense)} against dense and {metric_cell(legacy)} "
-            f"against legacy. {conclusion}",
+            (
+                f"On the shared 19 shots, threeway ae-ours minus {baseline} is "
+                f"{metric_cell(dense)} against dense and {metric_cell(legacy)} "
+                f"against legacy. {conclusion}"
+            ),
             "",
         ]
     for cohort, label in (("all_60", "60 shots"), ("fair_19", "shared 19 shots")):
@@ -97,10 +99,12 @@ def interpretation(record: dict) -> list[str]:
                 + ".",
                 "",
             ]
+    legacy_epoch = record["runs"]["ae-ours-legacy-seed2"]["selected_epoch"]
     lines += [
         (
             "Legacy supervision has substantial observed training variability. "
-            "Its seed 2 selected epoch 2 under the unchanged combined-loss rule; "
+            f"Its seed 2 selected epoch {legacy_epoch} under the unchanged "
+            "combined-loss rule; "
             "all completed seeds remain in the mean, SD and pooled intervals. "
             "The contrasts estimate behavior under this frozen training and "
             "selection recipe, including early stopping and target-specific "
