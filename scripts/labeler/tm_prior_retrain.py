@@ -45,8 +45,11 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
-if str(REPO / "src") not in sys.path:
-    sys.path.insert(0, str(REPO / "src"))
+for entry in (REPO / "src", Path(__file__).resolve().parent):
+    if str(entry) not in sys.path:
+        sys.path.insert(0, str(entry))
+
+from tm_cv_plan import load_plan
 
 from labeler.tearing import detectors, scoring
 
@@ -165,6 +168,9 @@ def make(kind: str, seed: int):
 
 
 def ensemble(kind, data, train, val, device):
+    assert any(np.any((data[s]["y"] > 0) & data[s]["train_ok"]) for s in val), (
+        "positive validation required for early stopping"
+    )
     own = HYPER[kind]
     nets = []
     for seed in HYPER["seeds"]:
@@ -213,7 +219,9 @@ def pick_threshold(data, scores, shots):
         )
         for s in shots
     ]
-    return scoring.best_threshold(stats, THRESHOLD_EDGES)
+    threshold = scoring.best_threshold(stats, THRESHOLD_EDGES)
+    assert threshold != 0.999
+    return threshold
 
 
 def truth(data, shots):
@@ -232,6 +240,8 @@ def main(argv=None) -> int:
         "--folds", type=int, default=FOLDS, help="run only the first k folds"
     )
     args = ap.parse_args(argv)
+    if args.final:
+        raise SystemExit("blind-test processing is forbidden in this regeneration")
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -262,7 +272,7 @@ def main(argv=None) -> int:
         ),
         "device": device,
     }
-    folds, shared_splits = scoring.shared_cv(dev_all)
+    folds, shared_splits = load_plan(dev_all)
     meta["cv_cohort_shots"] = dev_all
     meta["threshold_is"] = "F1-maximising on shared-fold inner validation shots only"
     oof, thresholds, fold_info = {}, {}, []
@@ -312,12 +322,7 @@ def main(argv=None) -> int:
                     s.shot for s in validation_stats if s.n_pos
                 ],
                 "threshold_estimable": bool(sum(s.n_pos for s in validation_stats)),
-                "threshold_status": (
-                    "inner-validation F1 optimum"
-                    if any(s.n_pos for s in validation_stats)
-                    else "no positive validation bins; deterministic highest-edge "
-                    "fallback, not an estimable F1 optimum"
-                ),
+                "threshold_status": "positive-bearing inner-validation F1 optimum",
                 "members": [record for _, record in nets],
                 "seconds": round(time.time() - began, 1),
             }

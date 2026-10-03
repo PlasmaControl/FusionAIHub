@@ -1,0 +1,150 @@
+#!/usr/bin/env python
+"""Verify current TM numerical exports, positive validation and figure provenance."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+
+import pandas as pd
+
+from labeler.tearing import scoring
+
+REPO = Path(__file__).resolve().parents[2]
+TM = (
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    / "round4/tm"
+)
+LOCAL = REPO / "data/events/neoclassical_tearing_mode/benchmark"
+
+
+def read(path):
+    return json.loads(path.read_text())
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    blind = set(cohort.query("split == 'test'").shot)
+    dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
+    labels = (
+        REPO
+        / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+    )
+    label_sha = sha(labels)
+    assert set(pd.read_csv(labels).shot) == set(dev)
+    assert not set(pd.read_csv(TM / "labels/tm_interval_population.csv").shot) & blind
+    plan = read(TM / "results/inner_splits_fix2.json")
+    assert plan["labels_sha256"] == label_sha
+    assert {int(s): f for s, f in plan["folds"].items()} == scoring.shot_folds(dev)
+    for split in plan["splits"]:
+        train, val, held = (set(split[k]) for k in ("train", "validation", "held"))
+        assert train | val | held == set(dev)
+        assert not train & val and not held & (train | val)
+        for group in plan["positive_input_support"].values():
+            assert val & set(group)
+    benchmark = read(LOCAL / "tm_benchmark.json")
+    assert benchmark["labels_sha256"] == label_sha
+    checked = []
+    for row in benchmark["rows"] + benchmark["appendix_rows"]:
+        assert not set(row["requested_shots"]) & blind
+        assert not row["threshold_unestimable_folds"]
+        assert row["metrics"]["replicates"] == 1000
+        record = read(REPO / row["source"])
+        if "labels_sha256" in record:
+            assert record["labels_sha256"] == label_sha
+        for fold in record.get("fold_info", []):
+            assert fold["validation_bins_positive"] > 0
+            assert fold["threshold"] != 0.999
+            assert not set(fold["validation"]) & set(fold["held"])
+        checked.append([row["model"], row["setting"]])
+    assert any(r["setting"] == "Interval, fixed 0.5" for r in benchmark["rows"])
+    assert any(r["setting"] == "Uncertain = negative" for r in benchmark["rows"])
+    audit = read(LOCAL / "sources/audit_fix2_current.json")
+    for scope in ("cohort", "population"):
+        a = audit[scope]
+        assert a["locking_audit"]["n_abrupt_incorrect_decay"] == 0
+        for key in (
+            "raw_failure_count",
+            "median_failure_count",
+            "supported_failure_count",
+        ):
+            assert a["after_seed_audit"][key] == 0
+    assert audit["source_sha256"]["src/labeler/tearing/rule.py"] == sha(
+        REPO / "src/labeler/tearing/rule.py"
+    )
+    assert audit["source_sha256"]["scripts/labeler/tm_label.py"] == sha(
+        REPO / "scripts/labeler/tm_label.py"
+    )
+    figures = []
+    for stem in (
+        "tm_gallery_mhr",
+        "tm_gallery_mirnov",
+        "tm_examples_column_mhr",
+        "tm_examples_column_mirnov",
+    ):
+        base = TM / "figures" / stem
+        p = read(base.with_suffix(".json"))
+        assert p["labels_sha256"] == label_sha
+        assert p["source_sha256"] == sha(REPO / "scripts/labeler/tm_gallery.py")
+        assert not set(p["shots"]) & blind
+        assert p["png_sha256"] == sha(base.with_suffix(".png"))
+        assert p["pdf_sha256"] == sha(base.with_suffix(".pdf"))
+        if "column" in stem:
+            assert p["width_inches"] == 3.25 and p["font_pt"] >= 7
+        figures.append(str(base))
+    for stem in (
+        "table_tm_benchmark",
+        "table_tm_benchmark_appendix",
+        "table_tm_paired",
+    ):
+        base = TM / "figures" / f"{stem}_preview"
+        p = read(base.with_suffix(".json"))
+        assert p["tex_sha256"] == sha(REPO / p["tex_source"])
+        assert p["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
+        assert p["text_width_inches"] == 6.75 and not p["overfull_boxes"]
+        assert p["png_sha256"] == sha(base.with_suffix(".png"))
+        assert p["pdf_sha256"] == sha(base.with_suffix(".pdf"))
+        figures.append(str(base))
+    assert not list((TM / "results").glob("*_test.json"))
+    doc = read(TM / "results/document_fix2.json")
+    assert doc["document_sha256"] == sha(REPO / doc["document"])
+    assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
+    assert (
+        "**latest**: tm-ours"
+        in (REPO / "data/events/neoclassical_tearing_mode/README.md").read_text()
+    )
+    for path in LOCAL.rglob("*.json"):
+        assert path.stat().st_size <= 2_000_000, path
+    record = {
+        "made_by": "scripts/labeler/tm_verify_artifacts.py",
+        "labels_sha256": label_sha,
+        "benchmark_sha256": sha(LOCAL / "tm_benchmark.json"),
+        "development_shots": len(dev),
+        "benchmark_rows_checked": checked,
+        "figures_verified": figures,
+        "no_zero_positive_folds": True,
+        "outer_assignments_unchanged": True,
+        "no_abrupt_decay": True,
+        "no_seed_audit_failures": True,
+        "blind_excluded": True,
+        "file_sizes_below_2mb": True,
+        "status": "passed",
+    }
+    for path in (
+        TM / "results/artifact_verification_fix2.json",
+        LOCAL / "sources/artifact_verification_fix2.json",
+    ):
+        path.write_text(json.dumps(record, indent=2) + "\n")
+    print(
+        "Verified current labels, unchanged outer folds, positive validation, all score sources, mask sensitivity, seed/locking audits, figures, quarantine, document and file sizes."
+    )
+
+
+if __name__ == "__main__":
+    main()

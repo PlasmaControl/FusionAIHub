@@ -28,6 +28,7 @@ sys.path.insert(0, str(REPO / "src"))
 import tm_ours
 import tm_prior_published
 import tm_prior_retrain
+from tm_cv_plan import load_plan
 
 from labeler.config import Paths, git_sha
 from labeler.tearing import scoring
@@ -66,12 +67,9 @@ def threshold_provenance(record):
     for info in record.get("fold_info", []):
         positive = info["validation_bins_positive"]
         info["threshold_estimable"] = bool(positive)
-        info["threshold_status"] = (
-            "inner-validation F1 optimum"
-            if positive
-            else "no positive validation bins; deterministic highest-edge fallback, "
-            "not an estimable F1 optimum"
-        )
+        assert positive > 0, "positive validation support required"
+        assert info["threshold"] != 0.999, "forbidden fallback threshold"
+        info["threshold_status"] = "positive-bearing inner-validation F1 optimum"
         if not positive:
             unestimable.append(
                 {
@@ -83,71 +81,71 @@ def threshold_provenance(record):
             )
     record["threshold_estimation"] = {
         "unestimable_folds": unestimable,
-        "zero_positive_convention": (
-            "highest candidate histogram lower edge, from the deterministic "
-            "all-zero-F1 tie convention; no evidence-supported F1 optimum"
-        ),
-        "f1_limitation": (
-            "headline F1 is sensitive to absent-positive inner folds; prespecified "
-            "shared splits and choices retained, without selecting on held scores"
-            if unestimable
-            else None
-        ),
+        "zero_positive_convention": "error: no fallback is allowed",
+        "f1_limitation": None,
     }
     return unestimable
 
 
 def rule_audit_bundle():
-    """Commit source records; keep interval-level audit details out of summary."""
-    records, sources = {}, {}
+    """Bundle current-only audits; no historical blind-cohort record is consumed."""
+    result = {"sources": {}}
     for filename in (
-        "calibration_dev_fix1.json",
-        "audit_fix1_current.json",
-        "audit_before_fix1.json",
-        "weak_diagnostics_fix1.json",
+        "audit_fix2_current.json",
+        "criterion_support_fix2.json",
+        "island_inventory_fix2.json",
     ):
         record = read(TM / "labels" / filename)
         destination = LOCAL / "sources" / filename
         write(destination, record)
         if destination.stat().st_size > 2_000_000:
             destination.write_text(json.dumps(record, separators=(",", ":")) + "\n")
-        assert destination.stat().st_size <= 2_000_000, destination
-        records[filename] = record
-        sources[filename] = str(destination.relative_to(REPO))
-    calibration = records["calibration_dev_fix1.json"]
-    current = records["audit_fix1_current.json"]
-    result = {
-        "sources": sources,
-        "calibration": {
-            k: calibration[k]
-            for k in (
-                "split",
-                "n_development_shots",
-                "n_reference_shots",
-                "n_reference_bins",
-                "selected_quantile",
-                "harmonic_ratio",
-                "disclosure",
-            )
-        },
-        "source_sha256": current.get("source_sha256"),
-        "label_sha256": current.get("label_sha256"),
-        "reviewed_shots": current.get("reviewed_shots"),
-        "weak_diagnostics_source": sources["weak_diagnostics_fix1.json"],
-    }
+        assert destination.stat().st_size <= 2_000_000
+        result["sources"][filename] = str(destination.relative_to(REPO))
+        result[filename.removesuffix(".json")] = {
+            key: value for key, value in record.items() if key != "details"
+        }
     for scope in ("cohort", "population"):
-        result[scope] = {
-            "changes": {
-                k: v for k, v in current[scope]["changes"].items() if k.startswith("n_")
-            },
-            **{
-                label: {
-                    k: v for k, v in current[scope][label].items() if k != "details"
-                }
-                for label in ("before_seed_audit", "after_seed_audit")
-            },
+        current = result["audit_fix2_current"][scope]
+        current["after_seed_audit"] = {
+            k: v for k, v in current["after_seed_audit"].items() if k != "details"
         }
     return result
+
+
+def uncertainty_sensitivity(cohort):
+    """Score category-2 time as negatives; retain category-3 barriers and thresholds."""
+    dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
+    data, _ = tm_ours.load(dev, False)
+    rows = dict(tuple(pd.read_csv(LABELS).groupby("shot")))
+    model = read(TM / "results/tm_ours_magnetics_cv.json")
+    thresholds = {i["fold"]: i["threshold"] for i in model["fold_info"]}
+    y, valid = {}, {}
+    for shot, (centres, features, _, _) in data.items():
+        y[shot], valid[shot] = scoring.label_bins(
+            rows[shot], centres, uncertain_negative=True
+        )
+        valid[shot] &= np.isfinite(features).all(axis=1)
+    with np.load(TM / "results/oof_tm_ours_magnetics.npz") as z:
+        scores = {s: z[f"s{s}"] for s in data}
+    record = {
+        "made_by": "scripts/labeler/tm_benchmark.py",
+        "model": "tm-ours",
+        "shots": sorted(data),
+        "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
+        "policy": "category 2 scored as negatives, category 3 excluded; same fitted "
+        "models and positive-bearing validation thresholds as primary evaluation",
+        "metrics": scoring.evaluate(
+            sorted(data),
+            y,
+            valid,
+            scores,
+            {s: thresholds[model["folds"][str(s)]] for s in data},
+            n=1000,
+            seed=0,
+        ),
+    }
+    write(TM / "results/tm_ours_uncertain_negative_dev.json", record)
 
 
 def historical_cnn_sources():
@@ -200,7 +198,7 @@ def rescore_oof(stem, cohort):
         scores = {s: z[f"s{s}"] for s in dev}
     cohort_dev = sorted(int(s) for s in cohort.query("split != 'test'").shot)
     folds = {int(s): int(k) for s, k in record["folds"].items()}
-    shared_folds, shared_splits = scoring.shared_cv(cohort_dev)
+    shared_folds, shared_splits = load_plan(cohort_dev)
     assert folds == shared_folds
     thresholds, splits = {}, []
     for info in record["fold_info"]:
@@ -266,9 +264,10 @@ def rescore_oof(stem, cohort):
 
 
 def coverage(cohort):
+    blind = set(cohort.query("split == 'test'").shot)
     out = {
         "scope": (
-            "fixed cohort, all splits for coverage only; common 10 ms catalog-window "
+            "development cohort and population excluding blind; common 10 ms catalog-window "
             "grid and observable plasma domain for both legacy and interval labels"
         )
     }
@@ -278,10 +277,12 @@ def coverage(cohort):
         ("ours_population", TM / "labels/tm_interval_population.csv"),
     ):
         table = pd.read_csv(path)
+        table = table[~table.shot.isin(blind)]
         catalog = "population" if "population" in name else "cohort"
         start_path = TM / f"labels/plasma_start_{catalog}.json"
         starts = read(start_path)
         windows = pd.read_csv(REPO / f"data/events/catalog/{catalog}.csv")
+        windows = windows[~windows.shot.isin(blind)]
         by_shot = {int(s): g for s, g in table.groupby("shot")}
         bins = positive = observable = classifiable = plasma_bins = 0
         for row in windows.itertuples():
@@ -313,6 +314,8 @@ def coverage(cohort):
             "labelled_seconds": bins * 0.01,
             "present_seconds": positive * 0.01,
             "observable_plasma_seconds": plasma_bins * 0.01,
+            "uncertain_seconds": (plasma_bins - bins) * 0.01,
+            "uncertain_fraction": (plasma_bins - bins) / plasma_bins,
             "definition": (
                 "labelled 10 ms bins from the measured plasma start to catalog "
                 "window end; uncertain and unobservable bins excluded"
@@ -326,7 +329,7 @@ def coverage(cohort):
         }
     paths = replace(Paths.from_env(), root=TM / "lroot")
     records, skipped = {}, {}
-    for shot in cohort.shot:
+    for shot in cohort.query("split != 'test'").shot:
         truth = archived_truth(int(shot), paths)
         if truth.get("available"):
             s = int(shot)
@@ -391,7 +394,7 @@ def coverage(cohort):
         )
     records = {}
     with h5py.File(path) as f:
-        for shot in cohort.shot:
+        for shot in cohort.query("split != 'test'").shot:
             if str(shot) not in f:
                 continue
             s = int(shot)
@@ -584,7 +587,10 @@ def table_tex(rows, caption, label):
         r"\centering",
         r"\scriptsize",
         r"\setlength{\tabcolsep}{3pt}",
-        r"\begin{tabular}{llrllll}",
+        (
+            r"\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}"
+            r">{\raggedright\arraybackslash}p{0.75in}rllll}"
+        ),
         r"\toprule",
         (
             r"Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & "
@@ -628,7 +634,6 @@ def main(argv=None):
     args = ap.parse_args(argv)
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     blind = set(cohort.query("split == 'test'").shot)
-    historical = historical_cnn_sources()
     if args.rescore:
         for stem in (
             "tm_prior_retrained_tm-onsetcnn_cv",
@@ -637,6 +642,7 @@ def main(argv=None):
             "tm_ours_magnetics_rms_cv",
         ):
             rescore_oof(stem, cohort)
+    uncertainty_sensitivity(cohort)
     rows, appendix = [], []
 
     def add(
@@ -696,7 +702,7 @@ def main(argv=None):
 
     add(
         "tm_prior_published_tm-onsetcnn_legacy_cohort",
-        "Onset CNN",
+        "tm-onsetcnn-published",
         "Legacy",
         held_out=False,
         note=(
@@ -708,14 +714,14 @@ def main(argv=None):
         label = {"250ms": "250 ms", "500ms": "500 ms", "1s": "1 s"}[h]
         add(
             f"tm_prior_published_tm-dsm-{h}_legacy",
-            f"Survival MLP ({label})",
+            f"tm-dsm-{h}-published",
             "Legacy",
             note="Outside published training list; cohort blind test excluded.",
             extra=h != "500ms",
         )
     add(
         "tm_prior_published_tm-onsetcnn_tokamak-si_dev",
-        "Onset CNN",
+        "tm-onsetcnn-published",
         "Interval, published",
         held_out=False,
         note="Published weights; original training overlap unknown.",
@@ -724,42 +730,55 @@ def main(argv=None):
         label = {"250ms": "250 ms", "500ms": "500 ms", "1s": "1 s"}[h]
         add(
             f"tm_prior_published_tm-dsm-{h}_tokamak-si_dev",
-            f"Survival MLP ({label})",
+            f"tm-dsm-{h}-published",
             "Interval, published",
             metric_key="metrics_outside_training",
             note="Outside published training list; fold-tuned risk threshold.",
             extra=h != "500ms",
         )
-    add("tm_prior_retrained_tm-onsetcnn_cv", "Onset CNN", "Tokamak-SI")
-    add("tm_prior_retrained_tm-dsm_cv", "Survival MLP", "Tokamak-SI")
-    add("tm_ours_magnetics_cv", "Magnetic detector", "Tokamak-SI")
-    add("tm_baseline_n1rms_cv_tuned_dev", "RMS threshold", "Tokamak-SI")
+    add("tm_prior_retrained_tm-onsetcnn_cv", "tm-onsetcnn-retrained", "Interval")
+    add(
+        "tm_prior_published_tm-onsetcnn_tokamak-si_dev",
+        "tm-onsetcnn-published",
+        "Interval, fixed 0.5",
+        metric_key="metrics_fixed_published",
+        held_out=False,
+        note="Published weights and published threshold; original training overlap unknown.",
+    )
+    add("tm_prior_retrained_tm-dsm_cv", "tm-dsm-retrained", "Interval")
+    add("tm_ours_magnetics_cv", "tm-ours", "Interval")
+    add("tm_baseline_n1rms_cv_tuned_dev", "tm-rms", "Interval")
     add(
         "tm_baseline_n1rms_12g_dev",
-        "RMS threshold (12 G)",
+        "tm-rms-12g",
         "Fixed threshold extra",
         extra=True,
     )
     add(
         "tm_ours_magnetics_rms_cv",
-        "Magnetic detector + RMS",
-        "Tokamak-SI",
+        "tm-ours-rms",
+        "Interval",
         note="Circular input ablation: RMS defines the label.",
     )
+    add(
+        "tm_ours_uncertain_negative_dev",
+        "tm-ours",
+        "Uncertain = negative",
+        note="Sensitivity: same fits and thresholds; unavailable bins still excluded.",
+    )
     fixed_rows = [
-        ("tm_prior_published_tm-onsetcnn_legacy_cohort", "Onset CNN, legacy"),
-        ("tm_prior_published_tm-onsetcnn_tokamak-si_dev", "Onset CNN, interval"),
+        ("tm_prior_published_tm-onsetcnn_legacy_cohort", "tm-onsetcnn-published"),
     ]
     for horizon, label in (("250ms", "250 ms"), ("500ms", "500 ms"), ("1s", "1 s")):
         fixed_rows.extend(
             [
                 (
                     f"tm_prior_published_tm-dsm-{horizon}_legacy",
-                    f"Survival MLP ({label}), legacy",
+                    f"tm-dsm-{horizon}-published",
                 ),
                 (
                     f"tm_prior_published_tm-dsm-{horizon}_tokamak-si_dev",
-                    f"Survival MLP ({label}), interval",
+                    f"tm-dsm-{horizon}-published",
                 ),
             ]
         )
@@ -767,19 +786,19 @@ def main(argv=None):
         add(
             stem,
             model,
-            "Fixed published threshold extra",
+            "Legacy, fixed" if "legacy" in stem else "Interval, fixed",
             metric_key=(
                 "metrics_outside_training:fixed"
                 if "dsm" in stem and "tokamak" in stem
                 else "metrics_fixed_published"
             ),
-            held_out="Onset" not in model,
+            held_out="onsetcnn" not in model,
             extra=True,
             note="DSM survival threshold 0.7 corresponds to risk threshold 0.3.",
         )
     agreements = {}
     for ref in ("seo", "survival"):
-        for split in ("dev", "all"):
+        for split in ("dev",):
             name = f"agreement_{ref}_cohort_{split}.json"
             agreements[f"{ref}_{split}"] = read(TM / "agreement" / name)
             write(LOCAL / "sources" / name, agreements[f"{ref}_{split}"])
@@ -793,6 +812,10 @@ def main(argv=None):
     paired = paired_common_shots(cohort)
     cnn_ranking = cnn_ranking_comparison(cohort)
     audit = rule_audit_bundle()
+    write(
+        LOCAL / "sources/inner_splits_fix2.json",
+        read(TM / "results/inner_splits_fix2.json"),
+    )
     locking = {}
     frequencies = {int(p.stem) for p in (TM / "signals_freq").glob("*.npz")}
     for split in ("cohort", "population"):
@@ -825,9 +848,9 @@ def main(argv=None):
         "git_sha": git_sha(),
         "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
         "evaluation": (
-            "development only; all main F1 thresholds tuned inside the same cohort-450 "
-            "CV inner validation shot lists; fixed published thresholds explicitly "
-            "separated as extras"
+            "development only; AUROC/AUPRC are primary; F1 tuned on predeclared "
+            "interval-presence-stratified inner validation with positive input support "
+            "for every model; outer folds unchanged; CNN fixed published 0.5 also main"
         ),
         "bootstrap": {
             "unit": "shot",
@@ -843,8 +866,20 @@ def main(argv=None):
         "appendix_rows": appendix,
         "paired_common_shots": paired,
         "cnn_ranking_common_bins": cnn_ranking,
-        "historical_cnn_ranking": historical,
         "rule_audit": audit,
+        "inner_split_plan": "data/events/neoclassical_tearing_mode/benchmark/sources/inner_splits_fix2.json",
+        "review_baseline": {
+            "source": "user-supplied tm-opus2.md re-review",
+            "seo_matched_onsets": 13,
+            "seo_reference_onsets": 26,
+            "survival_matched_onsets": 18,
+            "survival_reference_onsets": 67,
+            "uncertain_exclusion_percent": 42,
+            "survival_matched_interval_seconds": 435.7,
+            "survival_matched_legacy_seconds": 909.9,
+            "meaning": "Previously reported figures, quoted for required review "
+            "context only; no blind-shot data is reopened or recomputed.",
+        },
         "agreement": agreements,
         "coverage": cov,
         "label_counts": {
@@ -854,6 +889,10 @@ def main(argv=None):
         "locking_coverage": locking,
         "gallery": {
             d: read(TM / f"figures/tm_gallery_{d}.json") for d in ("mhr", "mirnov")
+        },
+        "column_examples": {
+            d: read(TM / f"figures/tm_examples_column_{d}.json")
+            for d in ("mhr", "mirnov")
         },
         "gallery_review": {
             "reviewed": args.gallery_reviewed,
@@ -873,31 +912,38 @@ def main(argv=None):
             "reporting": "excluded from benchmark, model selection and new scoring",
             "historical_exposure": (
                 "Previous implementer wrote *_test.json records with --final. "
-                "They remain external and are excluded from this paper export."
+                "Moved without reading into results/quarantine_blind_test/; "
+                "excluded from every current calculation."
             ),
         },
     }
     write(LOCAL / "tm_benchmark.json", summary)
     write(TM / "results/tm_benchmark.json", summary)
+    excluded = cov["ours"]["uncertain_fraction"] * 100
     caption = (
-        "Strong rotating n=1/n=2 mode (tearing-mode proxy) benchmarks. F1 thresholds "
-        "follow shared "
-        "development CV inner-validation splits. Zero-positive validation folds use "
-        "a deterministic highest-edge fallback, making F1 sensitive to calibration "
-        "coverage. Brackets give 95\\% shot-bootstrap intervals (1,000 draws). "
-        "Segmental F1 uses IoU 0.5 and hard barriers at unavailable bins. "
-        "Legacy targets "
-        "differ; a dagger marks unknown training overlap. RMS inputs define the label. "
-        "DSM uses 500 ms; other horizons and fixed-threshold extras are in the "
-        "appendix. Blind tests are excluded."
+        "Recovery of a strong rotating n=1/n=2 magnetic rule, not independent TM "
+        "identification. AUROC/AUPRC are primary. F1 uses positive-bearing stratified "
+        "inner validation; outer held-shot folds are unchanged. CNN fixed 0.5 is also "
+        f"shown. Mirnov-derived uncertainty shares tm-ours inputs and excludes {excluded:.1f}"
+        "\\% of observable development plasma (42\\% before this correction); "
+        "the sensitivity row scores uncertainty as negative. Legacy bins are 25 ms, "
+        "interval bins 10 ms; each row's input/reference-dependent shot set is listed "
+        "in the source JSON. Brackets: 95\\% shot-bootstrap intervals (1,000 draws); "
+        "segmental IoU 0.5. $\\dagger$: published CNN training overlap unknown. "
+        "Archive onset recall before correction: Seo 13/26, survival 18/67. "
+        "Fast-locking and weak modes can be omitted (189879, 7 kHz, 2.6--4.5 s remains "
+        "absent). No TM coverage gain is claimed. RMS-input ablation is circular; "
+        "DSM horizon is 500 ms. Blind shots are excluded throughout."
     )
-    assert len(caption.split()) <= 80
     lines = [
         r"\begin{table*}[t]",
         r"\centering",
         r"\scriptsize",
         r"\setlength{\tabcolsep}{3pt}",
-        r"\begin{tabular}{llrllll}",
+        (
+            r"\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}"
+            r">{\raggedright\arraybackslash}p{0.75in}rllll}"
+        ),
         r"\toprule",
         (
             r"Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & "
@@ -936,7 +982,11 @@ def main(argv=None):
             "Additional DSM horizons and explicitly fixed-threshold results. Fixed DSM "
             "alarms use risk 0.3, equivalent to upstream survival probability 0.7. "
             "Other rows use shared-fold validation thresholds. Brackets give 95\\% "
-            "shot-bootstrap intervals; blind cohort tests are excluded.",
+            "shot-bootstrap intervals; blind shots are excluded. "
+            "$\\dagger$: the published CNN training-shot list is unavailable, "
+            "so its original training overlap is unknown and scores are descriptive. "
+            "Legacy uses 25 ms bins; interval rows use 10 ms. Each row has its own "
+            "input/reference-dependent shot set recorded in the source JSON.",
             "tab:tm-benchmark-appendix",
         )
     )
@@ -956,20 +1006,17 @@ def main(argv=None):
         )
     )
     figure_rows = []
-    for model in (
-        "Onset CNN",
-        "Survival MLP",
-        "Magnetic detector",
-        "RMS threshold",
+    for model, legacy_name in (
+        ("tm-onsetcnn-retrained", "tm-onsetcnn-published"),
+        ("tm-dsm-retrained", "tm-dsm-500ms-published"),
+        ("tm-ours", None),
+        ("tm-rms", None),
     ):
-        legacy_name = "Survival MLP (500 ms)" if model == "Survival MLP" else model
         a = next(
             (r for r in rows if r["model"] == legacy_name and r["setting"] == "Legacy"),
             None,
         )
-        b = next(
-            r for r in rows if r["model"] == model and r["setting"] == "Tokamak-SI"
-        )
+        b = next(r for r in rows if r["model"] == model and r["setting"] == "Interval")
         figure_rows.append(
             {
                 "model": model,
@@ -977,6 +1024,7 @@ def main(argv=None):
                 if a is None
                 else {
                     "f1": a["metrics"]["f1"],
+                    "auroc": a["metrics"]["auroc"],
                     "auprc": a["metrics"]["auprc"],
                     "shots": a["metrics"]["n_shots"],
                     "held_out": a["held_out"],
@@ -984,6 +1032,7 @@ def main(argv=None):
                 },
                 "tokamak_si": {
                     "f1": b["metrics"]["f1"],
+                    "auroc": b["metrics"]["auroc"],
                     "auprc": b["metrics"]["auprc"],
                     "shots": b["metrics"]["n_shots"],
                     "source": b["source"],
@@ -1030,8 +1079,10 @@ def main(argv=None):
                 if k.startswith("legacy")
             },
             "threshold_policy": (
-                "F1 at shared-fold inner-validation-tuned thresholds for every row"
+                "F1 at positive-bearing presence-stratified inner-validation thresholds; "
+                "published CNN also scored at its published 0.5 threshold"
             ),
+            "primary_comparison": "AUROC and AUPRC",
             "paired_common_shots": paired,
             "note": (
                 "Legacy and interval targets differ; no paired performance gain is "

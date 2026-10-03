@@ -30,10 +30,10 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
         sys.path.insert(0, str(entry))
 
 from tm_agreement import survival_references
-from tm_label import line_evidence
+from tm_label import LOCK_SIGNALS, line_evidence
 
 from labeler.config import git_sha
-from labeler.tearing import agreement, rule
+from labeler.tearing import agreement, rule, scoring
 
 OUT_ROOT = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
@@ -65,9 +65,14 @@ def intervals_with(rule_, shots, windows, starts, signals: Path) -> pd.DataFrame
         w0, w1 = windows[shot]
         start = min(max(float(starts[str(shot)]["start_ms"]), w0), w1)
         t_ms, n1, _ = rule.uniform(t_ms, n1)
-        coherent, weak, locks, seed, weak_release = line_evidence(
+        coherent, weak, locks, seed, weak_release, screened = line_evidence(
             shot, t_ms, OUT_ROOT / "signals_freq"
         )
+        amplitude = None
+        lock_path = LOCK_SIGNALS / f"{shot}.npz"
+        if lock_path.is_file():
+            with np.load(lock_path) as z:
+                amplitude = {1: scoring.align_scores(z["t_ms"], z["bradial"], t_ms)}
         label = rule.label_shot(
             shot,
             t_ms,
@@ -80,6 +85,8 @@ def intervals_with(rule_, shots, windows, starts, signals: Path) -> pd.DataFrame
             seed_coherent=seed,
             weak_coherent=weak,
             weak_release_coherent=weak_release,
+            screened=screened,
+            lock_amplitude=amplitude,
             lock_ms=locks,
         )
         for item in label.intervals:

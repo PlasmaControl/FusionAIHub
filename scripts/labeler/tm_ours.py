@@ -44,8 +44,11 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
-if str(REPO / "src") not in sys.path:
-    sys.path.insert(0, str(REPO / "src"))
+for entry in (REPO / "src", Path(__file__).resolve().parent):
+    if str(entry) not in sys.path:
+        sys.path.insert(0, str(entry))
+
+from tm_cv_plan import load_plan
 
 from labeler.tearing import magfeatures, scoring
 
@@ -160,6 +163,9 @@ def train_one(data, train, val, seed, device):
     import torch
     from torch import nn
 
+    assert any(np.any(data[s][2] & data[s][3]) for s in val), (
+        "positive validation required"
+    )
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
     mean, std = standardizer(data, train)
@@ -226,7 +232,9 @@ def pick_threshold(data, val_scores, val):
         )
         for s in val
     ]
-    return scoring.best_threshold(stats, THRESHOLD_EDGES)
+    threshold = scoring.best_threshold(stats, THRESHOLD_EDGES)
+    assert threshold != 0.999
+    return threshold
 
 
 def truth_of(data, shots):
@@ -311,6 +319,8 @@ def main(argv=None) -> int:
     ap.add_argument("--final", action="store_true", help="also score the 50 test shots")
     ap.add_argument("--bootstrap", type=int, default=1000)
     args = ap.parse_args(argv)
+    if args.final:
+        raise SystemExit("blind-test processing is forbidden in this regeneration")
     if not args.baseline and args.features is None:
         raise SystemExit("name --features or --baseline")
 
@@ -343,7 +353,8 @@ def main(argv=None) -> int:
         # the baseline needs no features of the magnetics: its n1 column is the RMS
         score, onset = run_baseline(data, dev)
         y, valid = truth_of(data, dev)
-        tuned, info = scoring.cv_thresholds(dev_all, y, valid, score)
+        _, splits = load_plan(dev_all)
+        tuned, info = scoring.cv_thresholds(dev_all, y, valid, score, splits=splits)
         for fold in info:
             fold["threshold_g"] = float(10 ** fold["threshold"])
         variants = {
@@ -400,7 +411,7 @@ def main(argv=None) -> int:
     if device == "cuda":
         torch.cuda.set_per_process_memory_fraction(0.28)
     tag = args.features.replace("+", "_")
-    folds, shared_splits = scoring.shared_cv(dev_all)
+    folds, shared_splits = load_plan(dev_all)
     oof, thresholds, fold_info = {}, {}, []
     for split in shared_splits:
         k = split["fold"]
@@ -443,12 +454,7 @@ def main(argv=None) -> int:
                     s.shot for s in validation_stats if s.n_pos
                 ],
                 "threshold_estimable": bool(sum(s.n_pos for s in validation_stats)),
-                "threshold_status": (
-                    "inner-validation F1 optimum"
-                    if any(s.n_pos for s in validation_stats)
-                    else "no positive validation bins; deterministic highest-edge "
-                    "fallback, not an estimable F1 optimum"
-                ),
+                "threshold_status": "positive-bearing inner-validation F1 optimum",
                 "checkpoint": save_ensemble(nets, tag, k, train, val, thr),
                 "val_loss": [float(n[3]) for n in nets],
             }

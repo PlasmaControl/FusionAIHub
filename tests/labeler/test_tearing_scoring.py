@@ -265,3 +265,42 @@ def test_cv_thresholds_never_use_held_labels_and_intersect_availability():
     for s in thresholds:
         if folds[s] == 0:
             assert other[s] == thresholds[s]
+
+
+def test_stratified_inner_validation_preserves_outer_folds_and_model_support():
+    shots = list(range(100, 200))
+    positive = set(shots[:25])
+    groups = {"cnn": set(shots[:8]), "dsm": set(shots[8:16])}
+    folds, splits = scoring.shared_cv(
+        shots, positive_shots=positive, support_groups=groups
+    )
+    assert folds == scoring.shot_folds(shots)
+    assert (folds, splits) == scoring.shared_cv(
+        shots[::-1], positive_shots=positive, support_groups=groups
+    )
+    for split in splits:
+        train, val, held = (set(split[k]) for k in ("train", "validation", "held"))
+        assert not train & val and not held & (train | val)
+        assert train | val | held == set(shots)
+        assert val & positive and train & positive
+        for support in groups.values():
+            assert val & support
+    # A held fold's interval membership cannot affect its inner roles.
+    changed = positive ^ {s for s in shots if folds[s] == 0}
+    _, other = scoring.shared_cv(shots, positive_shots=changed, support_groups=groups)
+    assert splits[0] == other[0]
+
+
+def test_threshold_search_rejects_zero_positive_validation():
+    stats = stats_for(1, [0, 0], [0.1, 0.2], np.linspace(0, 1, 1001))
+    with pytest.raises(ValueError, match="positive validation"):
+        scoring.best_threshold([stats], np.linspace(0, 1, 1001))
+
+
+def test_uncertain_as_negative_sensitivity_retains_unobservable_barriers():
+    table = rows((1, 0, 20), (2, 20, 40), (3, 40, 60))
+    y, valid = scoring.label_bins(
+        table, np.array([5, 15, 25, 35, 45, 55]), uncertain_negative=True
+    )
+    assert y.tolist() == [1, 1, 0, 0, 0, 0]
+    assert valid.tolist() == [True, True, True, True, False, False]

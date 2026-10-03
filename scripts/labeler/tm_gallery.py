@@ -68,8 +68,11 @@ def intervals_of(frame: pd.DataFrame):
         if row.t_end > row.t_start:
             spans.append(
                 (
-                    row.t_start, row.t_end, int(attrs["n"]),
-                    bool(attrs.get("locked")), bool(attrs.get("locked_candidate")),
+                    row.t_start,
+                    row.t_end,
+                    int(attrs["n"]),
+                    bool(attrs.get("locked")),
+                    bool(attrs.get("locked_candidate")),
                 )
             )
         else:
@@ -220,6 +223,9 @@ def main(argv=None) -> int:
         "--shots", type=int, nargs="+", help="these shots instead of a draw"
     )
     ap.add_argument("--columns", type=int, default=3)
+    ap.add_argument(
+        "--width", type=float, default=7.3, help="publication width in inches"
+    )
     ap.add_argument("--diagnostic", choices=("mhr", "mirnov"), default="mhr")
     args = ap.parse_args(argv)
 
@@ -250,16 +256,19 @@ def main(argv=None) -> int:
     plt.rcParams.update({"font.size": FONT, "axes.linewidth": 0.5})
     # The log-scale separation between 6 and 12 G needs enough vertical space for
     # both tick labels at the specified publication font size.
-    fig = plt.figure(figsize=(7.3, 3.2 * rows + 0.4))
+    column = args.width <= 3.25
+    fig = plt.figure(figsize=(args.width, 3.2 * rows + (1.0 if column else 0.4)))
     grid = fig.add_gridspec(
         rows,
         columns,
         hspace=0.25,
         wspace=0.28,
-        left=0.06,
+        left=0.15 if args.width <= 3.25 else 0.06,
         right=0.995,
         top=0.975,
-        bottom=0.09 if rows < 4 else 0.065,
+        bottom=(0.28 if rows == 1 else 0.18)
+        if column
+        else (0.09 if rows < 4 else 0.065),
     )
     coverage = {}
     for k, shot in enumerate(shots):
@@ -302,16 +311,20 @@ def main(argv=None) -> int:
     selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
     if any(s[4] for s in selected_spans):
         handles.append(
-            Patch(facecolor="white", edgecolor="black", hatch="..", label="lock candidate")
+            Patch(
+                facecolor="white", edgecolor="black", hatch="..", label="lock candidate"
+            )
         )
     if any(s[3] for s in selected_spans):
         handles.append(
-            Patch(facecolor="white", edgecolor="black", hatch="////", label="locked end")
+            Patch(
+                facecolor="white", edgecolor="black", hatch="////", label="locked end"
+            )
         )
     fig.legend(
         handles=handles,
         loc="lower center",
-        ncol=5,
+        ncol=2 if args.width <= 3.25 else 5,
         fontsize=FONT,
         frameon=False,
         bbox_to_anchor=(0.5, 0.0),
@@ -324,13 +337,19 @@ def main(argv=None) -> int:
             {
                 "made_by": "scripts/labeler/tm_gallery.py",
                 "git_sha": git_sha(),
-                "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "source_sha256": hashlib.sha256(
+                    Path(__file__).read_bytes()
+                ).hexdigest(),
                 "labels_sha256": hashlib.sha256(args.labels.read_bytes()).hexdigest(),
-                "full_labels_sha256": hashlib.sha256(args.full.read_bytes()).hexdigest(),
-                "png_sha256": hashlib.sha256(args.out.with_suffix(".png").read_bytes())
-                .hexdigest(),
-                "pdf_sha256": hashlib.sha256(args.out.with_suffix(".pdf").read_bytes())
-                .hexdigest(),
+                "full_labels_sha256": hashlib.sha256(
+                    args.full.read_bytes()
+                ).hexdigest(),
+                "png_sha256": hashlib.sha256(
+                    args.out.with_suffix(".png").read_bytes()
+                ).hexdigest(),
+                "pdf_sha256": hashlib.sha256(
+                    args.out.with_suffix(".pdf").read_bytes()
+                ).hexdigest(),
                 "diagnostic": args.diagnostic,
                 "diagnostic_row": PROBE_ROW if args.diagnostic == "mirnov" else MHR_ROW,
                 "seed": args.seed,
@@ -340,13 +359,23 @@ def main(argv=None) -> int:
                 "labels": str(args.labels),
                 "plotted_intervals": selected_spans,
                 "uncertain_rows": [
-                    {"shot": int(r.shot), "t_start": r.t_start, "t_end": r.t_end,
-                     **parse_attrs(r.attrs)}
-                    for r in table[(table.shot.isin(shots)) & (table.category == 2)]
-                    .itertuples(index=False)
+                    {
+                        "shot": int(r.shot),
+                        "t_start": r.t_start,
+                        "t_end": r.t_end,
+                        **parse_attrs(r.attrs),
+                    }
+                    for r in table[
+                        (table.shot.isin(shots)) & (table.category == 2)
+                    ].itertuples(index=False)
                 ],
                 "frequency_khz": [0, 50],
                 "dpi": 150,
+                "width_inches": args.width,
+                "font_pt": FONT,
+                "use": "column example"
+                if args.width <= 3.25
+                else "supplementary audit gallery",
             },
             indent=2,
         )

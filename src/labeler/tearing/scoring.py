@@ -41,15 +41,52 @@ def shot_folds(shots, k: int = 5, seed: int = 0) -> dict[int, int]:
     return {ordered[i]: int(rank % k) for rank, i in enumerate(order)}
 
 
-def inner_split(shots, seed: int, fraction: float = 0.1) -> tuple[list, list]:
+def inner_split(
+    shots, seed: int, fraction: float = 0.1, *, positive_shots=None, support_groups=None
+) -> tuple[list, list]:
     """`(train, validation)`: hold back a seeded fraction of shots, at least one."""
+    if positive_shots is not None:
+        shots = sorted(set(shots))
+        positive = set(positive_shots) & set(shots)
+        rng = np.random.default_rng(seed)
+        validation = set()
+        for stratum in (positive, set(shots) - positive):
+            ordered = rng.permutation(sorted(stratum)).tolist()
+            if ordered:
+                count = min(len(ordered) - 1, max(1, round(fraction * len(ordered))))
+                validation.update(ordered[:count])
+        if not validation & positive:
+            raise ValueError("inner split requires positive validation support")
+        # Availability is a pre-fit design constraint. Preserve the presence-stratum
+        # sizes while ensuring each model has an observable positive validation shot.
+        protected = []
+        for name, group in sorted((support_groups or {}).items()):
+            candidates = set(group) & set(shots)
+            if not candidates:
+                raise ValueError(f"no positive validation support available for {name}")
+            if not validation & candidates:
+                chosen = int(rng.choice(sorted(candidates)))
+                replaceable = [
+                    s
+                    for s in sorted(validation)
+                    if (s in positive) == (chosen in positive)
+                    and all((validation - {s}) & g for g in protected)
+                ]
+                if not replaceable:
+                    raise ValueError(f"cannot preserve stratification for {name}")
+                validation.remove(int(rng.choice(replaceable)))
+                validation.add(chosen)
+            protected.append(candidates)
+        return sorted(set(shots) - validation), sorted(validation)
     shots = list(shots)
     order = np.random.default_rng(seed).permutation(len(shots))
     k = max(1, round(fraction * len(shots)))
     return [shots[i] for i in order[k:]], [shots[i] for i in order[:k]]
 
 
-def shared_cv(shots, k: int = 5, seed: int = 0) -> tuple[dict, list[dict]]:
+def shared_cv(
+    shots, k: int = 5, seed: int = 0, *, positive_shots=None, support_groups=None
+) -> tuple[dict, list[dict]]:
     """One cohort-wide fold plan, before any detector's input-availability filter.
 
     Intersect these lists with available inputs only after creating the plan. Thus
@@ -61,7 +98,12 @@ def shared_cv(shots, k: int = 5, seed: int = 0) -> tuple[dict, list[dict]]:
     for fold in range(k):
         held = [s for s in shots if folds[s] == fold]
         pool = [s for s in shots if folds[s] != fold]
-        train, val = inner_split(pool, 100 + fold)
+        train, val = inner_split(
+            pool,
+            100 + fold,
+            positive_shots=positive_shots,
+            support_groups=support_groups,
+        )
         splits.append({"fold": fold, "train": train, "validation": val, "held": held})
     return folds, splits
 
@@ -82,7 +124,9 @@ def _inside(centres, spans) -> np.ndarray:
     return mask
 
 
-def label_bins(rows: pd.DataFrame, centres) -> tuple[np.ndarray, np.ndarray]:
+def label_bins(
+    rows: pd.DataFrame, centres, *, uncertain_negative: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """`(y, valid)` over bin `centres` from one shot's interval-table rows.
 
     `rows` has `category`, `t_start`, `t_end` (the catalog's interval schema: 1
@@ -96,7 +140,9 @@ def label_bins(rows: pd.DataFrame, centres) -> tuple[np.ndarray, np.ndarray]:
         kept = span[span.category == category]
         return _inside(centres, zip(kept.t_start, kept.t_end, strict=True))
 
-    return of(1).astype(np.int8), ~(of(2) | of(3))
+    uncertain = of(2)
+    y = of(1) & ~uncertain if uncertain_negative else of(1)
+    return y.astype(np.int8), ~of(3) if uncertain_negative else ~(uncertain | of(3))
 
 
 def align_scores(
@@ -348,10 +394,10 @@ def bootstrap(
 def best_threshold(stats: list[ShotStats], edges) -> float:
     """Highest candidate edge attaining maximal pooled validation F1.
 
-    With no positive validation bins every candidate has zero F1 in this search,
-    so the deterministic tie convention returns the highest histogram lower edge.
-    That fallback is not an estimable F1 optimum and must be identified as such.
+    Zero-positive validation cannot calibrate a detector and raises an error.
     """
+    if not stats or sum(s.n_pos for s in stats) == 0:
+        raise ValueError("threshold search requires positive validation bins")
     pos = np.sum([s.pos_hist for s in stats], axis=0)[::-1].cumsum()
     neg = np.sum([s.neg_hist for s in stats], axis=0)[::-1].cumsum()
     total = float(np.sum([s.pos_hist for s in stats]))
@@ -361,13 +407,16 @@ def best_threshold(stats: list[ShotStats], edges) -> float:
     return float(np.asarray(edges)[len(edges) - 2 - k])
 
 
-def cv_thresholds(cohort_shots, y, valid, score, *, edges=None) -> tuple[dict, list]:
+def cv_thresholds(
+    cohort_shots, y, valid, score, *, edges=None, splits=None
+) -> tuple[dict, list]:
     """F1 thresholds using only each shared fold's inner validation shots.
 
     Histogram edges, if not supplied, are derived separately from that validation
     subset. Missing inputs are excluded; held-fold labels never choose thresholds.
     """
-    _, splits = shared_cv(cohort_shots)
+    if splits is None:
+        _, splits = shared_cv(cohort_shots)
     thresholds, info = {}, []
     for split in splits:
         val = [
@@ -388,6 +437,7 @@ def cv_thresholds(cohort_shots, y, valid, score, *, edges=None) -> tuple[dict, l
             use_edges = edges_for(pooled)
         stats = [shot_stats(s, y[s], valid[s], score[s], use_edges) for s in val]
         threshold = best_threshold(stats, use_edges)
+        assert threshold != 0.999, "forbidden zero-positive fallback threshold"
         held = [s for s in split["held"] if s in score]
         thresholds.update({s: threshold for s in held})
         info.append(

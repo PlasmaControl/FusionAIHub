@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import h5py
@@ -41,9 +42,7 @@ from labeler.tearing.agreement import Reference
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 )
-OUT_ROOT = Path(
-    os.environ.get("TM_OUT_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm")
-)
+OUT_ROOT = Path(os.environ.get("TM_OUT_ROOT", LABELER / "round4/tm"))
 CATALOG = REPO / "data/events/catalog"
 SURVIVAL_H5 = REPO / "data/events/neoclassical_tearing_mode/raw/tm_labels.h5"
 MAIN_CHECKOUT = Path("/scratch/gpfs/nc1514/FusionAIHub")
@@ -153,6 +152,7 @@ def main(argv=None) -> int:
     )
     ap.add_argument("--tol-ms", type=float, default=agreement.TOLERANCE_MS)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--features-root", type=Path, default=OUT_ROOT / "lroot")
     args = ap.parse_args(argv)
 
     full = args.intervals or (
@@ -162,14 +162,16 @@ def main(argv=None) -> int:
     cohort = pd.read_csv(CATALOG / "cohort.csv")
     table = pd.read_csv(CATALOG / f"{args.source}.csv")
     shots = [int(s) for s in table.shot]
-    if args.exclude_test:
-        test = set(cohort[cohort.split == "test"].shot)
-        shots = [s for s in shots if s not in test]
+    test = set(cohort[cohort.split == "test"].shot)
+    shots = [s for s in shots if s not in test]
+    args.exclude_test = True
     if args.reference == "survival":
         refs, absent = survival_references(shots)
         notes = {"not_in_reference": len(absent)}
     else:
-        refs, skipped = seo_references(shots, Paths.from_env())
+        refs, skipped = seo_references(
+            shots, replace(Paths.from_env(), root=args.features_root)
+        )
         notes = {
             "skipped": len(skipped),
             "skipped_reasons_first_10": dict(list(skipped.items())[:10]),

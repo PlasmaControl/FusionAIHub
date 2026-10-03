@@ -44,12 +44,18 @@ import numpy as np
 import pandas as pd
 
 REPO = Path(__file__).resolve().parents[2]
-if str(REPO / "src") not in sys.path:
-    sys.path.insert(0, str(REPO / "src"))
+for entry in (REPO / "src", Path(__file__).resolve().parent):
+    if str(entry) not in sys.path:
+        sys.path.insert(0, str(entry))
+
+from tm_cv_plan import load_plan
 
 from labeler.tearing import detectors, scoring
 
-TM = Path("/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm")
+TM = (
+    Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
+    / "round4/tm"
+)
 INPUTS = Path(os.environ.get("TM_ROOT", TM)) / "detector_inputs"
 RESULTS = Path(os.environ.get("TM_ROOT", TM)) / "results"
 CATALOG = REPO / "data/events/catalog"
@@ -88,8 +94,14 @@ def development_shots():
 
 
 def tune(y, valid, score):
+    _, splits = load_plan(development_shots())
     return scoring.cv_thresholds(
-        development_shots(), y, valid, score, edges=np.linspace(0.0, 1.0, 1001)
+        development_shots(),
+        y,
+        valid,
+        score,
+        edges=np.linspace(0.0, 1.0, 1001),
+        splits=splits,
     )
 
 
@@ -269,7 +281,8 @@ def run_legacy_cnn(args) -> None:
     )
     threshold, population_validation = None, []
     if args.set != "cohort":
-        _, val = scoring.inner_split(development_shots(), 999)
+        _, splits = load_plan(development_shots())
+        val = splits[0]["validation"]
         val = [s for s in val if s in score and valid[s].any()]
         population_validation = val
         edges = np.linspace(0.0, 1.0, 1001)
