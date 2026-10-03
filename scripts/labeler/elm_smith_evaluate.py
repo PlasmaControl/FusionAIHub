@@ -473,6 +473,13 @@ def run_evaluate(paths, args):
     bins = {m: [] for m in ("elm-ours", "elm-ours-onset", "elm-elmo")}
     events = {m: {str(tol): [] for tol in (2, 5)} for m in bins}
     overlap = np.zeros(3, dtype=int)
+    overlap_parts = []
+    old_sweep_path = paths.root / "benchmarks/elm/elmo/smith_sweep.npz"
+    with np.load(old_sweep_path) as legacy_sweep:
+        i = int(np.flatnonzero(np.isclose(legacy_sweep["thresholds"], 1.0))[0])
+        j = int(np.flatnonzero(np.isclose(legacy_sweep["etas"], 0.997))[0])
+        old_per_window = legacy_sweep["counts"][:, :, i, j]
+    old_overlap_parts = []
     raw_counts = {"bins": 0, "positive_bins": 0, "hand_onsets": 0}
     coverage_audit = {
         "all_windows": len(window_table),
@@ -526,6 +533,14 @@ def run_evaluate(paths, args):
         raw_counts["positive_bins"] += int((z["state"][mask] == 1).sum())
         raw_counts["hand_onsets"] += len(z["truth"])
         overlap += z["elmo_overlap_counts"]
+        overlap_parts.append(
+            dict(zip(("tp", "fp", "fn"), z["elmo_overlap_counts"].tolist()))
+            | {"errors_ms": []}
+        )
+        old_count = old_per_window[window_table.shot.to_numpy() == shot].sum(axis=0)
+        old_overlap_parts.append(
+            dict(zip(("tp", "fp", "fn"), old_count.tolist())) | {"errors_ms": []}
+        )
         detail = {
             "shot": shot,
             "onset_fold": next(
@@ -582,25 +597,28 @@ def run_evaluate(paths, args):
         "requested_elmo_reference": {
             "precision": 0.997,
             "recall": 0.980,
-            "source": "Prior local ELM-O reimplementation on these 2316 windows; reproduced below. Overlap-region precision/recall, not onset timing. The paper digest Table II fixed-setting score is separately retained.",
+            "source": "Prior local ELM-O reimplementation on these 2316 windows, reproduced from the original saved sweep below. Overlap-region precision/recall, not onset timing. Correcting the source time resets improves recall without changing settings. The paper digest Table II fixed-setting score is separately retained.",
             "verified_digest_fixed_setting": {
                 "precision": 0.995,
                 "recall": 0.976,
                 "events": 972,
             },
         },
-        "reimplemented_elmo_overlap": {
-            "counts": dict(zip(("tp", "fp", "fn"), overlap.tolist())),
-            "point": {
-                "precision": float(overlap[0] / (overlap[0] + overlap[1])),
-                "recall": float(overlap[0] / (overlap[0] + overlap[2])),
-            },
-        },
+        "reimplemented_elmo_overlap": smith.event_summary(overlap_parts, boot),
+        "original_cached_elmo_overlap": smith.event_summary(old_overlap_parts, boot)
+        | {"source": str(old_sweep_path), "source_sha256": sha256_of(old_sweep_path)},
         "code_sha256": {
             str(p.relative_to(REPO)): sha256_of(p)
             for p in (Path(__file__), REPO / "src/labeler/elm/smith.py")
         },
     }
+    for name in ("reimplemented_elmo_overlap", "original_cached_elmo_overlap"):
+        result[name].pop("timing_error_ms")
+        result[name]["bootstrap"] = {
+            k: v
+            for k, v in result[name]["bootstrap"].items()
+            if not k.startswith("timing_")
+        }
     for method, parts in bins.items():
         occupancy = score.summarise(parts, boot)
         metrics = {
@@ -634,11 +652,22 @@ def run_evaluate(paths, args):
         "Frozen auxiliary onset head; separate from delivered occupancy output, no Smith threshold tuning."
     )
     result["onset_output_delivered"] = False
+    result["onset_output_scope"] = "Physical-onset output in the reviewed event catalog"
+    result["experimental_smith_cv_onset_traces"] = {
+        "model": "elm-ours-onset",
+        "delivered": True,
+        "path": str(directory / "cv/pred"),
+        "scope": "1ms benchmark traces on Smith shots from held-out-shot folds; selected-window evaluation only",
+    }
+    frozen_f1 = result["methods"]["elm-ours"]["events"]["2"]["point"]["f1"]
+    smith_f1 = result["methods"]["elm-ours-onset"]["events"]["2"]["point"]["f1"]
     result["onset_delivery_reason"] = (
-        "Smith-selected windows are not full-discharge validation; independent physical-onset deployment output remains withheld. Report Smith CV performance separately from frozen occupancy transfer."
+        f"Frozen auxiliary onset F1 at +/-2ms is {frozen_f1:.3f}; Smith-only CV onset F1 is {smith_f1:.3f}. The experimental CV trace is delivered, but physical-onset catalog output remains withheld because selected Smith windows do not validate continuous-discharge false alarms or transfer of the Smith-trained head to the review domain."
     )
+    # Undefined metrics stay explicit nulls alongside valid/undefined draw counts.
+    result = json.loads(json.dumps(result), parse_constant=lambda _: None)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(result, indent=1) + "\n")
+    args.out.write_text(json.dumps(result, indent=1, allow_nan=False) + "\n")
     for method, row in result["methods"].items():
         print(method, "occupancy", row["occupancy_1ms"]["point"], flush=True)
         print(
