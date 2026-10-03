@@ -1,9 +1,10 @@
 #!/usr/bin/env python
-"""A gallery of the tearing-mode interval labels: spectrogram and n = 1 / n = 2 RMS.
+"""A gallery of strong rotating n=1/n=2 modes (tearing-mode proxies).
 
 Each shot is three rows on one time axis: a strip with its intervals (one colour per
-toroidal number, a triangle at each onset, a hatch where the interval ended by locking),
-the 0-50 kHz MHR spectrogram (corpus `mhr` row 0, in dB above each frequency's
+toroidal number, a triangle at each onset, dots for unconfirmed lock candidates and
+slashes for confirmed locking),
+the 0-50 kHz MHR spectrogram (corpus `mhr` row 2, in dB above each frequency's
 own floor over the plasma), and the n = 1 and n = 2 RMS (log gauss) with the onset
 threshold and, per interval, the release level it was cut at. MHR often covers only
 part of a pulse; its uncovered times are grey. `--diagnostic mirnov` gives a second
@@ -16,6 +17,7 @@ gallery with the longer MPI66M322D record (corpus `mirnov` row 15).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -32,7 +34,10 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
+from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
+from labeler.config import git_sha
 from labeler.events.interval_tables import parse_attrs
 from labeler.events.panels._shared import above_floor_db, finite, plasma_columns, stft
 from labeler.events.verify import NoDataError, corpus_signal
@@ -50,18 +55,22 @@ COHORT = REPO / "data/events/catalog/cohort.csv"
 #: Okabe-Ito: n = 1 vermillion, n = 2 blue; the traces use the same colours.
 COLOUR = {1: "#D55E00", 2: "#0072B2"}
 PROBE_ROW = 15
+MHR_ROW = 2
 Z_DB = (-3.0, 42.0)
 FONT = 7.5
 
 
 def intervals_of(frame: pd.DataFrame):
-    """`(spans, onsets)` of one shot's rows: `[(t0, t1, n, locked)]`, `[(t, n)]`."""
+    """Spans `(t0,t1,n,locked,candidate)` and onset points `(t,n)` of one shot."""
     spans, onsets = [], []
     for row in frame[frame.category == 1].itertuples(index=False):
         attrs = parse_attrs(row.attrs)
         if row.t_end > row.t_start:
             spans.append(
-                (row.t_start, row.t_end, int(attrs["n"]), bool(attrs.get("locked")))
+                (
+                    row.t_start, row.t_end, int(attrs["n"]),
+                    bool(attrs.get("locked")), bool(attrs.get("locked_candidate")),
+                )
             )
         else:
             onsets.append((row.t_start, int(attrs["n"])))
@@ -74,7 +83,7 @@ def spectrogram(shot: int, window, diagnostic="mhr"):
         array = corpus_signal(
             shot,
             diagnostic,
-            channels=[PROBE_ROW if diagnostic == "mirnov" else 0],
+            channels=[PROBE_ROW if diagnostic == "mirnov" else MHR_ROW],
             t_range=window,
         )
     except (NoDataError, KeyError, OSError):
@@ -89,19 +98,20 @@ def spectrogram(shot: int, window, diagnostic="mhr"):
 
 def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     """The three rows of one shot in its cell of the figure."""
-    sub = grid.subgridspec(3, 1, height_ratios=[0.35, 2.2, 1.6], hspace=0.08)
+    sub = grid.subgridspec(3, 1, height_ratios=[0.35, 2.2, 2.6], hspace=0.08)
     strip, spec_ax, rms_ax = (fig.add_subplot(sub[i]) for i in range(3))
     w0, w1 = window[0] / 1000.0, window[1] / 1000.0
     spans, onsets = intervals_of(frame)
-    for t0, t1, n, locked in spans:
+    for t0, t1, n, locked, candidate in spans:
         strip.axvspan(
             t0 / 1000,
             t1 / 1000,
             ymin=0.12 + 0.4 * (n == 2),
             ymax=0.52 + 0.4 * (n == 2),
-            color=COLOUR[n],
-            lw=0,
-            hatch="////" if locked else None,
+            facecolor=COLOUR[n],
+            edgecolor="black" if locked or candidate else COLOUR[n],
+            lw=0.5 if locked or candidate else 0,
+            hatch="////" if locked else ".." if candidate else None,
         )
         rms_ax.axvspan(t0 / 1000, t1 / 1000, color=COLOUR[n], alpha=0.12, lw=0)
     for t, n in onsets:
@@ -120,6 +130,17 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
     for side in ("top", "right", "left"):
         strip.spines[side].set_visible(False)
     strip.set_title(f"{shot}", fontsize=FONT, loc="left", pad=2)
+    uncertain = frame[(frame.category == 2) & (frame.t_end > frame.t_start)]
+    for row in uncertain.itertuples(index=False):
+        strip.axvspan(
+            row.t_start / 1000,
+            row.t_end / 1000,
+            facecolor="0.8",
+            edgecolor="0.25",
+            lw=0.25,
+            alpha=0.75,
+            zorder=0,
+        )
     got = spectrogram(shot, window, diagnostic)
     spec_ax.set_facecolor("0.85")
     if got is None:
@@ -147,7 +168,7 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
         )
         spec_ax.set_xlim(w0, w1)
     spec_ax.set_ylim(0, 50)
-    for t0, t1, n, _ in spans:
+    for t0, t1, n, _, _ in spans:
         spec_ax.axvspan(t0 / 1000, t1 / 1000, color=COLOUR[n], alpha=0.12, lw=0)
         for edge in (t0, t1):
             spec_ax.axvline(edge / 1000, color=COLOUR[n], lw=0.6, ls="--")
@@ -167,6 +188,9 @@ def draw_shot(fig, grid, shot, window, signals, frame, thresholds, diagnostic):
             ls="--",
         )
     rms_ax.set_yscale("log")
+    rms_ax.yaxis.set_major_locator(FixedLocator([0.1, 1, 6, 12, 100]))
+    rms_ax.yaxis.set_major_formatter(FuncFormatter(lambda y, _: f"{y:g}"))
+    rms_ax.yaxis.set_minor_formatter(NullFormatter())
     rms_ax.set_ylim(0.05, 150)
     rms_ax.set_xlim(w0, w1)
     rms_ax.set_ylabel("RMS (G)", fontsize=FONT, labelpad=1)
@@ -224,11 +248,13 @@ def main(argv=None) -> int:
     columns = args.columns
     rows = int(np.ceil(len(shots) / columns))
     plt.rcParams.update({"font.size": FONT, "axes.linewidth": 0.5})
-    fig = plt.figure(figsize=(7.3, 1.75 * rows + 0.25))
+    # The log-scale separation between 6 and 12 G needs enough vertical space for
+    # both tick labels at the specified publication font size.
+    fig = plt.figure(figsize=(7.3, 3.2 * rows + 0.4))
     grid = fig.add_gridspec(
         rows,
         columns,
-        hspace=0.45,
+        hspace=0.25,
         wspace=0.28,
         left=0.06,
         right=0.995,
@@ -267,9 +293,21 @@ def main(argv=None) -> int:
         plt.Line2D([], [], color=COLOUR[1], lw=1.5, label="n = 1"),
         plt.Line2D([], [], color=COLOUR[2], lw=1.5, label="n = 2"),
         plt.Line2D([], [], color="k", marker="v", ls="", ms=3.5, label="onset"),
-        plt.Line2D([], [], color="0.3", ls=":", lw=0.8, label="onset level"),
-        plt.Line2D([], [], color="0.3", ls="--", lw=1.0, label="release level"),
+        plt.Line2D([], [], color=COLOUR[1], ls=":", lw=0.8, label="n = 1 seed (12 G)"),
+        plt.Line2D([], [], color=COLOUR[2], ls=":", lw=0.8, label="n = 2 seed (6 G)"),
+        plt.Line2D([], [], color=COLOUR[1], ls="--", lw=1.0, label="n = 1 release"),
+        plt.Line2D([], [], color=COLOUR[2], ls="--", lw=1.0, label="n = 2 release"),
+        Patch(facecolor="0.8", edgecolor="0.25", label="uncertain"),
     ]
+    selected_spans = intervals_of(table[table.shot.isin(shots)])[0]
+    if any(s[4] for s in selected_spans):
+        handles.append(
+            Patch(facecolor="white", edgecolor="black", hatch="..", label="lock candidate")
+        )
+    if any(s[3] for s in selected_spans):
+        handles.append(
+            Patch(facecolor="white", edgecolor="black", hatch="////", label="locked end")
+        )
     fig.legend(
         handles=handles,
         loc="lower center",
@@ -285,12 +323,28 @@ def main(argv=None) -> int:
         json.dumps(
             {
                 "made_by": "scripts/labeler/tm_gallery.py",
+                "git_sha": git_sha(),
+                "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                "labels_sha256": hashlib.sha256(args.labels.read_bytes()).hexdigest(),
+                "full_labels_sha256": hashlib.sha256(args.full.read_bytes()).hexdigest(),
+                "png_sha256": hashlib.sha256(args.out.with_suffix(".png").read_bytes())
+                .hexdigest(),
+                "pdf_sha256": hashlib.sha256(args.out.with_suffix(".pdf").read_bytes())
+                .hexdigest(),
                 "diagnostic": args.diagnostic,
+                "diagnostic_row": PROBE_ROW if args.diagnostic == "mirnov" else MHR_ROW,
                 "seed": args.seed,
                 "shots": shots,
                 "split": "development (train and validation); blind test excluded",
                 "spectrogram_coverage_s": coverage,
                 "labels": str(args.labels),
+                "plotted_intervals": selected_spans,
+                "uncertain_rows": [
+                    {"shot": int(r.shot), "t_start": r.t_start, "t_end": r.t_end,
+                     **parse_attrs(r.attrs)}
+                    for r in table[(table.shot.isin(shots)) & (table.category == 2)]
+                    .itertuples(index=False)
+                ],
                 "frequency_khz": [0, 50],
                 "dpi": 150,
             },

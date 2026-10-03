@@ -42,23 +42,19 @@ def test_a_spike_is_not_a_mode_and_neither_is_a_mode_below_the_onset_level():
     assert rule.mode_intervals(T, small, rule.N1_RULE) == []
 
 
-def test_a_burst_on_a_lasting_mode_starts_the_interval_where_the_mode_does():
+def test_a_short_seed_on_a_lasting_sub_seed_plateau_is_not_present():
     # a 6 G plateau of 250 ms with a 40 G burst on it: the burst alone is above the
     # onset level for 8 ms, but the mode around it stays above a tenth of 40 G for the
     # plateau
     y = np.maximum(trace((1000, 100, 100, 100, 6.0)), trace((1150, 3, 6, 3, 40.0)))
-    (item,) = rule.mode_intervals(T, y, rule.N1_RULE)
-    assert item.peak_g == pytest.approx(40.0, abs=1.0)
-    assert item.start_ms == pytest.approx(1000 + 100 * (4.0 - 0.2) / 5.8, abs=5)
-    assert item.end_ms == pytest.approx(1200 + 100 * (6.0 - 4.0) / 5.8, abs=5)
+    assert rule.mode_intervals(T, y, rule.N1_RULE) == []
 
 
 def test_a_ragged_mode_counts_but_a_train_of_short_spikes_does_not():
     ragged = trace()
     for a, b in ((1518, 1535), (1556, 1583), (1591, 1599), (1611, 1631)):
         ragged[a:b] = 25.0
-    (item,) = rule.mode_intervals(T, ragged, rule.N1_RULE)
-    assert item.start_ms < 1530 and item.end_ms > 1620
+    assert rule.mode_intervals(T, ragged, rule.N1_RULE) == []
     spikes = trace()
     for a in range(1000, 2000, 30):  # 100 ms of ELM-like spikes, 6 ms wide, 30 ms apart
         spikes[a : a + 6] = 25.0
@@ -97,7 +93,11 @@ def test_a_mode_present_when_the_window_opens_has_no_observed_onset():
     y = trace((0, 1, 800, 50, 20.0))
     (item,) = rule.mode_intervals(T, y, rule.N1_RULE, window=(0.0, 3000.0))
     assert not item.onset_seen
-    table = rule.shot_table(rule.label_shot(1, T, y, None, (0.0, 3000.0)))
+    table = rule.shot_table(
+        rule.label_shot(
+            1, T, y, None, (0.0, 3000.0), coherent={1: np.ones(T.shape, bool)}
+        )
+    )
     present = table[table.category == rule.PRESENT]
     assert len(present) == 1  # the span, no onset point
 
@@ -113,7 +113,7 @@ def test_n2_harmonic_of_a_large_n1_mode_is_not_a_second_mode():
     harmonic = 0.3 * n1
     found = rule.tearing_intervals(T, n1, harmonic)
     assert [i.n for i in found] == [1]
-    independent = trace((1000, 50, 600, 50, 20.0))
+    independent = trace((1000, 50, 600, 50, 26.0))
     both = rule.tearing_intervals(T, n1, independent)
     assert [i.n for i in both] == [1, 2]
 
@@ -130,11 +130,11 @@ def test_a_locking_in_the_last_stretch_of_an_interval_marks_it_locked():
     y = trace((1000, 50, 800, 50, 30.0))
     found = rule.tearing_intervals(T, y)
     end = found[0].end_ms
-    locked = rule.apply_locking(found, [end - 40.0])
+    locked = rule.apply_locking(found, [end - 40.0], confirmed_ms=[end - 40.0])
     assert locked[0].locked and locked[0].ended == rule.LOCKED
-    assert locked[0].end_ms == end
-    # a detection shortly after the decay, within the allowance, still marks it
-    assert rule.apply_locking(found, [end + 60.0])[0].locked
+    assert locked[0].end_ms == end - 40.0
+    # a drop after decay is only a candidate and cannot extend a rotating span
+    assert rule.apply_locking(found, [end + 60.0])[0].locked_candidate
     # one long before the end (the mode kept rotating), long after, or none, does not
     assert not rule.apply_locking(found, [1200.0])[0].locked
     assert not rule.apply_locking(found, [end + 500.0])[0].locked
@@ -142,14 +142,14 @@ def test_a_locking_in_the_last_stretch_of_an_interval_marks_it_locked():
     assert not rule.apply_locking(found, [10.0])[0].locked
     # by toroidal number: n = 2's locking is not n = 1's
     assert not rule.apply_locking(found, {2: [end - 40.0]})[0].locked
-    assert rule.apply_locking(found, {1: [end - 40.0]})[0].locked
+    assert rule.apply_locking(found, {1: [end - 40.0]})[0].locked_candidate
 
 
-def test_a_plasma_ended_interval_that_locked_keeps_its_end_reason():
+def test_a_plasma_ended_interval_truncates_at_a_confirmed_lock():
     y = trace((1000, 50, 5000, 50, 30.0))
     found = rule.tearing_intervals(T, y, window=(100.0, 2500.0))
-    (item,) = rule.apply_locking(found, [2450.0])
-    assert item.locked and item.ended == rule.PLASMA_END
+    (item,) = rule.apply_locking(found, [2450.0], confirmed_ms=[2450.0])
+    assert item.locked and item.ended == rule.LOCKED and item.end_ms == 2450.0
 
 
 def test_frequency_locks_find_a_mode_that_spun_down_and_not_one_born_slow():
@@ -177,14 +177,33 @@ def test_present_mask_selects_by_toroidal_number():
 
 def test_shot_table_is_a_valid_catalog_table_with_onset_points_and_spans():
     y = trace((1000, 50, 400, 50, 30.0))
-    label = rule.label_shot(185805, T, y, None, (5.0, 2900.0), start_ms=100.0)
+    label = rule.label_shot(
+        185805,
+        T,
+        y,
+        None,
+        (5.0, 2900.0),
+        start_ms=100.0,
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+    )
     table = rule.shot_table(label)
     validate_intervals(table)
     span = table[(table.category == 1) & (table.t_end > table.t_start)]
     point = table[(table.category == 1) & (table.t_end == table.t_start)]
     assert len(span) == 1 and len(point) == 1
-    assert parse_attrs(span["attrs"].iloc[0]) == {"iscrowd": 1, "n": 1}
-    assert parse_attrs(point["attrs"].iloc[0]) == {"iscrowd": 0, "n": 1}
+    assert parse_attrs(span["attrs"].iloc[0]) == {
+        "iscrowd": 1,
+        "n": 1,
+        "ended": "decay",
+        "locked_known": False,
+    }
+    assert parse_attrs(point["attrs"].iloc[0]) == {
+        "iscrowd": 0,
+        "n": 1,
+        "ended": "decay",
+        "locked_known": False,
+    }
     assert point.t_start.iloc[0] == span.t_start.iloc[0]
     for cell in table["attrs"]:
         assert not attr_problems(rule.CATEGORY, parse_attrs(cell))
@@ -200,14 +219,30 @@ def test_shot_table_is_a_valid_catalog_table_with_onset_points_and_spans():
 
 def test_the_ramp_up_is_uncertain_only_where_the_rule_fires_in_it():
     quiet_ramp = trace((1500, 50, 400, 50, 30.0))
-    label = rule.label_shot(1, T, quiet_ramp, None, (5.0, 2900.0), start_ms=300.0)
+    label = rule.label_shot(
+        1,
+        T,
+        quiet_ramp,
+        None,
+        (5.0, 2900.0),
+        start_ms=300.0,
+        coherent={1: quiet_ramp > 1.0},
+    )
     assert label.ramp_up == ()
     table = rule.shot_table(label)
-    assert not (table.category == 2).any()
+    assert not ((table.category == 2) & (table.t_start < 300)).any()
     noisy_ramp = trace((100, 20, 100, 20, 30.0), (1500, 50, 400, 50, 30.0))
-    label = rule.label_shot(1, T, noisy_ramp, None, (5.0, 2900.0), start_ms=300.0)
+    label = rule.label_shot(
+        1,
+        T,
+        noisy_ramp,
+        None,
+        (5.0, 2900.0),
+        start_ms=300.0,
+        coherent={1: noisy_ramp > 1.0},
+    )
     table = rule.shot_table(label)
-    assert (table.category == 2).sum() == 1
+    assert ((table.category == 2) & (table.t_start < 300)).sum() == 1
     assert len(label.intervals) == 1  # the ramp-up's mode is not an interval
 
 
@@ -240,7 +275,15 @@ def test_a_non_uniform_time_base_is_resampled():
 
 def test_intervals_frame_lists_what_the_catalog_table_cannot():
     y = trace((1000, 50, 400, 50, 30.0))
-    label = rule.label_shot(7, T, y, None, (5.0, 2900.0))
+    label = rule.label_shot(
+        7,
+        T,
+        y,
+        None,
+        (5.0, 2900.0),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+    )
     frame = rule.intervals_frame([label])
     assert list(frame.shot) == [7]
     assert frame.peak_g.iloc[0] == pytest.approx(30.0, abs=0.5)
@@ -248,3 +291,139 @@ def test_intervals_frame_lists_what_the_catalog_table_cannot():
     assert frame.duration_ms.iloc[0] == pytest.approx(
         frame.t_end.iloc[0] - frame.t_start.iloc[0]
     )
+
+
+def test_hold_never_counts_sub_release_gaps_or_short_seed_on_a_long_plateau():
+    y = np.full(T.shape, 0.3)
+    y[500:503] = 20.0
+    y[548:551] = 2.5
+    y[589:592] = 2.5
+    assert rule.mode_intervals(T, y, rule.N1_RULE) == []
+    y[1000:1300] = 6.0
+    y[1100:1108] = 40.0
+    assert rule.mode_intervals(T, y, rule.N1_RULE) == []
+
+
+def test_acquisition_gap_stays_nan_and_is_a_hard_interval_barrier():
+    t = np.r_[np.arange(1000.0), np.arange(1100.0, 2000.0)]
+    grid, y, _ = rule.uniform(t, np.full(t.shape, 20.0))
+    assert np.isnan(y[(grid >= 1000) & (grid < 1100)]).all()
+    short = np.full(T.shape, 0.3)
+    short[500:540] = 20.0
+    short[540:560] = np.nan
+    short[560:600] = 20.0
+    assert rule.mode_intervals(T, short, rule.N1_RULE) == []
+
+
+def test_missing_or_high_frequency_evidence_makes_seeded_candidates_uncertain():
+    y = trace((1000, 50, 400, 50, 30.0))
+    for coherent in (None, {1: np.zeros(T.shape, bool)}):
+        label = rule.label_shot(1, T, y, None, (0, 2999), coherent=coherent)
+        assert not label.intervals
+        table = rule.shot_table(label)
+        assert (table.category == rule.UNCERTAIN).any()
+    label = rule.label_shot(
+        1, T, y, None, (0, 2999), coherent={1: np.ones(T.shape, bool)}
+    )
+    assert len(label.intervals) == 1
+
+
+def test_coherent_sub_seed_activity_is_uncertain_and_never_a_negative():
+    y = np.full(T.shape, 0.2)
+    y[1000:2000] = 3.0
+    evidence = np.zeros(T.shape, bool)
+    evidence[1000:2000] = True
+    label = rule.label_shot(1, T, y, None, (0, 2999), coherent={1: evidence})
+    table = rule.shot_table(label)
+    assert not label.intervals
+    assert table[(table.t_start <= 1500) & (table.t_end >= 1500)].category.eq(2).all()
+
+
+def test_frequency_drop_is_only_a_candidate_until_locked_mode_confirmation():
+    (item,) = rule.mode_intervals(T, trace((1000, 50, 400, 50, 30)), rule.N1_RULE)
+    time = item.end_ms - 40
+    (candidate,) = rule.apply_locking([item], [time])
+    assert not candidate.locked and candidate.locked_candidate
+    assert candidate.lock_time_ms == time and candidate.end_ms == item.end_ms
+    (early,) = rule.apply_locking([item], [item.start_ms + 100, time])
+    assert early.lock_candidates_ms == (item.start_ms + 100, time)
+    assert early.locked_candidate and not early.locked
+    (locked,) = rule.apply_locking([item], [time], confirmed_ms=[time])
+    assert locked.locked and locked.end_ms == time and locked.ended == rule.LOCKED
+    (unknown,) = rule.apply_locking([item], None)
+    assert unknown.ended == "unknown" and not unknown.locked_known
+
+
+def test_coherent_frequency_excludes_rapid_sweeps_stationary_and_high_lines():
+    stable = np.full(300, 5.0)
+    assert rule.coherent_frequency(stable, 1.0).all()
+    for frequency in (
+        np.linspace(2, 29, 75),
+        np.full(300, 1.0),
+        np.full(300, 40.0),
+        np.full(300, np.nan),
+    ):
+        assert not rule.coherent_frequency(frequency, 1.0).any()
+    stable[100:200] = np.nan
+    mask = rule.coherent_frequency(stable, 1.0)
+    assert not mask[100:200].any()
+
+
+def test_rotating_seed_evidence_is_required_independently_of_release_support():
+    y = trace((1000, 50, 400, 50, 30))
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        seed_coherent={1: np.zeros(T.shape, bool)},
+    )
+    assert not label.intervals
+    assert rule.shot_table(label).category.eq(rule.UNCERTAIN).any()
+
+
+def test_short_acquisition_gap_is_unobservable_even_inside_a_strong_mode():
+    y = trace((1000, 50, 400, 50, 30))
+    y[1200:1220] = np.nan
+    label = rule.label_shot(
+        1, T, y, None, (0, 2999), coherent={1: np.ones(T.shape, bool)}
+    )
+    table = rule.shot_table(label)
+    middle = table[(table.t_start <= 1210) & (table.t_end >= 1210)]
+    assert not middle.empty and middle.category.eq(rule.NOT_OBSERVABLE).all()
+
+
+def test_weak_track_bridges_brief_coherence_interruptions_after_continuous_core():
+    y = np.full(T.shape, 0.5)
+    evidence = np.zeros(T.shape, bool)
+    evidence[1000:2000] = True
+    for start in range(1200, 2000, 100):
+        evidence[start : start + 20] = False
+    label = rule.label_shot(1, T, y, None, (0, 2999), weak_coherent={1: evidence})
+    table = rule.shot_table(label)
+    assert table[(table.t_start <= 1510) & (table.t_end >= 1510)].category.eq(2).all()
+    assert any(a <= 1000 and b >= 1999 for a, b, _, _ in label.uncertain)
+    y[1500:1520] = np.nan
+    label = rule.label_shot(1, T, y, None, (0, 2999), weak_coherent={1: evidence})
+    assert not any(a < 1500 and b > 1520 for a, b, _, _ in label.uncertain)
+
+
+def test_weak_hysteresis_extends_only_tracks_with_a_continuous_high_core():
+    y = np.full(T.shape, 0.5)
+    seed = np.zeros(T.shape, bool)
+    release = seed.copy()
+    seed[1400:1500] = True
+    release[1000:2000] = True
+    label = rule.label_shot(
+        1, T, y, None, (0, 2999),
+        weak_coherent={1: seed}, weak_release_coherent={1: release},
+    )
+    assert any(a == 1000 and b == 1999 for a, b, _, _ in label.uncertain)
+    seed[1450:1460] = False
+    label = rule.label_shot(
+        1, T, y, None, (0, 2999),
+        weak_coherent={1: seed}, weak_release_coherent={1: release},
+    )
+    assert not label.uncertain

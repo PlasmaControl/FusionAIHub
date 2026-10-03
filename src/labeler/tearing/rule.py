@@ -1,34 +1,26 @@
-r"""The whole-interval tearing-mode label: where a mode is present, by magnetic RMS.
+r"""A strong rotating n=1/n=2 mode (tearing-mode proxy), from magnetic RMS.
 
-The lab's tearing-mode labels so far were onsets: Seo's archive marks the growth phase
-of an n = 1 mode, and the survival labels (Farre-Kaga et al. 2025) the time the n = 1
-RMS first reaches a tenth of a peak above 12 G that holds for 50 ms (Fu et al. 2020 used
-10 G for 50 ms). This module keeps that rule and makes it a whole interval, the way the
-owner asked: a mode is present from its onset until it decays, locks or the plasma ends.
+Farre-Kaga et al. (2025) require n1 RMS >12 G continuously for 50 ms, with
+onset at 10% of the peak. Here `mode_intervals` requires that uninterrupted
+seed crossing BEFORE joining any runs. Both measured and median-smoothed RMS
+must exceed the seed; sub-release dips and acquisition gaps never count toward
+the hold. The n2 seed of 6 G is a local extension.
 
-One mode of toroidal number `n` is read off `\MHD::N<n>RMS` (gauss, 1 kHz) in four
-steps, each a number a `ModeRule` names:
+Each qualifying seed grows backwards/forwards to max(1 G, 10% of its seed peak).
+Release dips <=50 ms may be joined only across measured samples. Merged components
+retain their individual release levels in `release_components`; the summary level
+is their minimum and the summary peak is their largest qualified seed peak.
 
-1. The trace is smoothed by a running median of `smooth_ms`, so a spike of a few samples
-   (an ELM, a sawtooth crash) is not a mode.
-2. A seed is a stretch where the smoothed trace is above `onset_g` (Farre-Kaga's "peaks
-   above 12 G"); runs of it at most `merge_gap_ms` apart are one stretch, a locking
-   mode's RMS being ragged, if the runs fill `min_duty` of it (a train of ELM spikes
-   does not). Its peak sets the release level of step 3.
-3. The mode around the peak is the stretch that stays above `release_fraction` of the
-   peak (Farre-Kaga's onset at 10 % of the peak), never below `release_floor_g`, the
-   magnetics' noise; dips shorter than `merge_gap_ms` do not end it. It is a mode, and
-   an interval, only if it lasts `hold_ms` (Farre-Kaga's 50 ms): a seed whose mode is
-   shorter, such as a burst the trace falls from at once, is not. This is the
-   hysteresis: a high threshold to start an interval, a lower one to end it.
-4. Intervals closer than `merge_gap_ms` are one.
+`label_shot` additionally requires a coherent n-resolved line below 30 kHz, including
+a continuous 50 ms supported seed and >=80% support through the span. Unsupported
+or short seeds and sustained coherent sub-seed lines are uncertain, not absent.
+The caller supplies N1FREQ/N2FREQ or Mirnov phase-coherence evidence. These magnetics
+alone do not establish an island's poloidal number or distinguish every MHD family.
 
-An interval ends at decay (the trace fell below its release level), at the end of the
-plasma (the window's end), or at locking (`apply_locking`: a locked-mode detection
-inside the interval or just after its end). The onset is a point event (`iscrowd` 0) at
-the interval's start; the interval is a span (`iscrowd` 1). `shot_table` writes both in
-the catalog's interval schema with the rest of the window absent, the ramp-up uncertain
-where the rule fires in it, and what the record did not cover not observable.
+Frequency drops alone are `locked_candidate`, with `lock_time_ms`. Only independent
+locked-mode confirmation truncates the rotating interval and sets `locked`; without
+frequency its end/locking status is unknown. Observed onsets are points (iscrowd 0),
+present intervals spans (iscrowd 1). Acquisition gaps remain NaN and are unobservable.
 """
 
 from __future__ import annotations
@@ -38,14 +30,14 @@ from itertools import pairwise
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import median_filter
+from scipy.ndimage import median_filter, percentile_filter
 
 from ..events.interval_tables import WITH_ATTRS, attrs_text
 
 ABSENT, PRESENT, UNCERTAIN, NOT_OBSERVABLE = 0, 1, 2, 3
 CATEGORY = "neoclassical_tearing_mode"
 #: Why an interval ended.
-DECAY, PLASMA_END, LOCKED = "decay", "plasma_end", "locked"
+DECAY, PLASMA_END, LOCKED, UNKNOWN = "decay", "plasma_end", "locked", "unknown"
 
 
 @dataclass(frozen=True)
@@ -62,21 +54,22 @@ class ModeRule:
     #: A mode that starts less than this after the window opens was already there:
     #: its onset was not seen.
     onset_margin_ms: float = 20.0
-    #: A seed's runs above `onset_g` must fill this fraction of the stretch they span,
-    #: so a train of short spikes (ELMs) bridged by `merge_gap_ms` is not one mode.
+    #: Retained for compatibility with earlier callers; continuous seed duration
+    #: supersedes joined-run duty, so this field no longer changes the rule.
     min_duty: float = 0.5
     #: n = 2 only: the RMS counts where it exceeds this multiple of the n = 1 RMS, so
     #: the n = 2 harmonic of a large n = 1 mode is not a second mode.
     harmonic_ratio: float | None = None
+    #: Development-only absent-time 95th percentile (calibration_dev_fix1.json).
+    weak_g: float = 2.028201377
 
 
-#: Farre-Kaga et al. 2025: a peak above 12 G, the mode lasting 50 ms, onset at 10 % of
-#: the peak.
+#: Farre-Kaga et al. 2025: above 12 G continuously for 50 ms; onset at 10% of peak.
 N1_RULE = ModeRule(n=1, onset_g=12.0)
-#: No published n = 2 rule. Half the n = 1 onset: a mode's vacuum field falls off as
-#: r^-(m+1), and the 3/2 sits further in than the 2/1. Harmonics of an n = 1 mode reach
-#: 0.3 of it (shots 185805, 187043), hence the ratio.
-N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.4)
+#: The 6 G n2 seed is a local extension, without an island-number assignment.
+#: The ratio is the rounded-up development-only p99 during strong n1-only modes
+#: (scripts/labeler/tm_calibrate_rule.py; calibration_dev_fix1.json). No test reference.
+N2_RULE = ModeRule(n=2, onset_g=6.0, harmonic_ratio=0.57, weak_g=1.827998042)
 RULES = (N1_RULE, N2_RULE)
 
 
@@ -94,6 +87,16 @@ class Interval:
     onset_seen: bool = True
     release_g: float = float("nan")
     m: int | None = None
+    seed_duration_ms: float = 0.0
+    seed_start_ms: float | None = None
+    locked_candidate: bool = False
+    locked_known: bool = False
+    lock_time_ms: float | None = None
+    lock_candidates_ms: tuple[float, ...] = ()
+    coherent_fraction: float = 0.0
+    #: Each merged component retains its own peak-relative release, not 10% of
+    #: the largest merged peak. The displayed release is their minimum.
+    release_components: tuple[tuple[float, float, float], ...] = ()
 
 
 def uniform(t_ms, y) -> tuple[np.ndarray, np.ndarray, float]:
@@ -112,7 +115,12 @@ def uniform(t_ms, y) -> tuple[np.ndarray, np.ndarray, float]:
     if np.allclose(np.diff(t), dt, rtol=0, atol=dt * 1e-3):
         return t, y, dt
     grid = np.arange(t[0], t[-1] + dt / 2, dt)
-    return grid, np.interp(grid, t, y, left=np.nan, right=np.nan), dt
+    values = np.interp(grid, t, y, left=np.nan, right=np.nan)
+    right = np.clip(np.searchsorted(t, grid), 0, len(t) - 1)
+    left = np.maximum(right - 1, 0)
+    across_gap = (t[right] - t[left] > 1.5 * dt) & (grid != t[right])
+    values[across_gap] = np.nan
+    return grid, values, dt
 
 
 def _runs(mask) -> tuple[np.ndarray, np.ndarray]:
@@ -121,11 +129,15 @@ def _runs(mask) -> tuple[np.ndarray, np.ndarray]:
     return np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
 
 
-def _bridge(starts, stops, gap: int) -> tuple[np.ndarray, np.ndarray]:
+def _bridge(starts, stops, gap: int, available=None) -> tuple[np.ndarray, np.ndarray]:
     """The runs, those at most `gap` samples apart joined into one."""
     out_a, out_b = [], []
     for a, b in zip(starts, stops, strict=True):
-        if out_b and a - out_b[-1] <= gap:
+        if (
+            out_b
+            and a - out_b[-1] <= gap
+            and (available is None or np.all(available[out_b[-1] : a]))
+        ):
             out_b[-1] = b
         else:
             out_a.append(int(a))
@@ -135,11 +147,15 @@ def _bridge(starts, stops, gap: int) -> tuple[np.ndarray, np.ndarray]:
 
 def smoothed(y, dt_ms: float, smooth_ms: float) -> np.ndarray:
     """`y` through a running median of `smooth_ms`; a gap (NaN) counts as no signal."""
-    y = np.nan_to_num(np.asarray(y, dtype=np.float64), nan=0.0)
+    y = np.asarray(y, dtype=np.float64)
+    valid = np.isfinite(y)
+    y = np.where(valid, y, 0.0)
     width = max(1, round(smooth_ms / dt_ms))
     if width % 2 == 0:
         width += 1
-    return median_filter(y, size=width, mode="nearest") if width > 1 else y
+    out = median_filter(y, size=width, mode="nearest") if width > 1 else y
+    out[~valid] = np.nan
+    return out
 
 
 def window_slice(t, window) -> tuple[int, int]:
@@ -152,7 +168,9 @@ def window_slice(t, window) -> tuple[int, int]:
     )
 
 
-def mode_intervals(t_ms, rms, rule: ModeRule, window=None, *, reference=None):
+def mode_intervals(
+    t_ms, rms, rule: ModeRule, window=None, *, reference=None, include_short=False
+):
     """One mode's intervals from its RMS trace, inside `window` (ms), in time order.
 
     `reference` is the n = 1 trace on the same samples, which `rule.harmonic_ratio`
@@ -170,36 +188,39 @@ def mode_intervals(t_ms, rms, rule: ModeRule, window=None, *, reference=None):
     xs[i1:] = 0.0
     hold = int(np.ceil(rule.hold_ms / dt - 1e-9))
     gap = int(np.floor(rule.merge_gap_ms / dt + 1e-9))
-    groups: list[list[int]] = []
-    for a, b in zip(*_runs(xs > rule.onset_g), strict=True):
-        if groups and a - groups[-1][1] <= gap:
-            groups[-1][1] = int(b)
-            groups[-1][2] += int(b - a)
-        else:
-            groups.append([int(a), int(b), int(b - a)])
+    # Duration is measured BEFORE any merging, on an uninterrupted crossing of
+    # both the measured and smoothed seed threshold. Smoothing cannot erase a dip.
+    available = np.isfinite(y)
+    seed_mask = (xs > rule.onset_g) & (y > rule.onset_g)
     seeds = []
-    for a, b, above in groups:
-        if above < rule.min_duty * (b - a):
+    for a, b in zip(*_runs(seed_mask), strict=True):
+        if not include_short and b - a < hold:
             continue
         peak = a + int(np.argmax(xs[a:b]))
         release = max(rule.release_floor_g, rule.release_fraction * xs[peak])
-        starts, stops = _bridge(*_runs(xs > release), gap)
+        starts, stops = _bridge(*_runs(xs > release), gap, available)
         k = int(np.searchsorted(starts, peak, side="right")) - 1
-        if stops[k] - starts[k] >= hold:
-            seeds.append((int(starts[k]), int(stops[k]), peak, float(release)))
+        seeds.append(
+            (int(starts[k]), int(stops[k]), peak, float(release), int(b - a), int(a))
+        )
     seeds.sort()
     merged: list[list] = []
-    for a, b, peak, release in seeds:
-        if merged and a - merged[-1][1] <= gap:
+    for a, b, peak, release, duration, seed_start in seeds:
+        component = (float(t[a]), float(t[b - 1]), release)
+        if merged and a - merged[-1][1] <= gap and np.all(available[merged[-1][1] : a]):
             last = merged[-1]
             last[1] = max(last[1], b)
             if xs[peak] > xs[last[2]]:
                 last[2] = peak
             last[3] = min(last[3], release)
+            if duration > last[4]:
+                last[4:6] = [duration, seed_start]
+            if component not in last[6]:
+                last[6].append(component)
         else:
-            merged.append([a, b, peak, release])
+            merged.append([a, b, peak, release, duration, seed_start, [component]])
     found = []
-    for a, b, peak, release in merged:
+    for a, b, peak, release, duration, seed_start, components in merged:
         touches_end = window is not None and b >= i1
         found.append(
             Interval(
@@ -211,6 +232,9 @@ def mode_intervals(t_ms, rms, rule: ModeRule, window=None, *, reference=None):
                 ended=PLASMA_END if touches_end else DECAY,
                 onset_seen=window is None or (a - i0) * dt >= rule.onset_margin_ms,
                 release_g=release,
+                seed_duration_ms=float(duration * dt),
+                seed_start_ms=float(t[seed_start]),
+                release_components=tuple(components),
             )
         )
     return found
@@ -258,26 +282,87 @@ def frequency_locks(
     return np.asarray(found, dtype=float)
 
 
-def apply_locking(
-    intervals, lock_ms, *, tail_ms: float = 150.0, after_ms: float = 100.0
-):
-    """The intervals, each that ended by locking marked `locked`.
+def coherent_frequency(freq_khz, dt_ms, *, window_ms=50.0):
+    """A sustained rotating line, excluding fast sweeps and stationary activity.
 
-    A locked mode no longer rotates and leaves the RMS band, so the RMS collapses at
-    locking. An interval is locked when a locking (`frequency_locks`) falls within its
-    last `tail_ms` or up to `after_ms` after its end. `lock_ms` is the locking times, or
-    a dict of them by toroidal number (none: nothing changes). An interval that the
-    plasma ended keeps saying so; its `locked` is still set.
+    The local 50 ms 10th--90th-percentile width must be <=max(2 kHz, 25% of
+    median frequency), with 1.5<=f<=30 kHz. This local stability convention is
+    an explicit extension to reject broadband/chirping bursts, not a published
+    tearing/island discriminator. Missing samples remain unsupported.
+    """
+    freq = np.asarray(freq_khz, dtype=float)
+    finite = np.isfinite(freq)
+    safe = np.where(finite, freq, 0.0)
+    width = max(1, round(window_ms / dt_ms))
+    if width % 2 == 0:
+        width += 1
+    lo = percentile_filter(safe, 10, size=width, mode="nearest")
+    hi = percentile_filter(safe, 90, size=width, mode="nearest")
+    median = median_filter(safe, size=width, mode="nearest")
+    return (
+        finite
+        & (freq >= 1.5)
+        & (freq <= 30.0)
+        & (hi - lo <= np.maximum(2.0, 0.25 * median))
+    )
+
+
+def apply_locking(
+    intervals,
+    lock_ms,
+    *,
+    confirmed_ms=None,
+    tail_ms: float = 150.0,
+    after_ms: float = 100.0,
+):
+    """Flag frequency drops as candidates; truncate only independently confirmed locks.
+
+    `confirmed_ms` supplies times confirmed by a locked-mode diagnostic. A drop
+    alone never sets `locked`. Missing frequency leaves end/locking unknown.
+    A confirmation must coincide with a frequency drop (within 20 ms) inside the
+    span; a candidate after a span's decay does not extend that rotating span.
     """
     out = []
     for item in intervals:
         times = lock_ms.get(item.n) if isinstance(lock_ms, dict) else lock_ms
+        known = times is not None
         times = np.sort(np.asarray([] if times is None else times, dtype=float))
-        hit = (times >= item.end_ms - tail_ms) & (times <= item.end_ms + after_ms)
-        hit &= times >= item.start_ms
+        confirmation = (
+            confirmed_ms.get(item.n) if isinstance(confirmed_ms, dict) else confirmed_ms
+        )
+        item = replace(
+            item,
+            ended=item.ended if known else UNKNOWN,
+            locked_known=known and confirmation is not None,
+        )
+        # Preserve every in-span drop; continued rotation makes it unconfirmed,
+        # not grounds to silently erase the candidate. `tail_ms` is retained for
+        # callers of the earlier end-only flagging API.
+        hit = (times >= item.start_ms) & (times <= item.end_ms + after_ms)
         if hit.any():
-            ended = LOCKED if item.ended == DECAY else item.ended
-            item = replace(item, ended=ended, locked=True)
+            item = replace(
+                item,
+                locked_candidate=True,
+                lock_time_ms=float(times[hit][0]),
+                lock_candidates_ms=tuple(float(time) for time in times[hit]),
+            )
+        for time in times:
+            if (
+                not item.start_ms < time <= item.end_ms
+                or confirmation is None
+                or time < (item.seed_start_ms or item.start_ms) + 50.0
+            ):
+                continue
+            if np.any(np.abs(np.asarray(confirmation) - time) <= 20.0):
+                item = replace(
+                    item,
+                    ended=LOCKED,
+                    locked=True,
+                    locked_candidate=False,
+                    lock_time_ms=float(time),
+                    end_ms=float(time),
+                )
+                break
         out.append(item)
     return out
 
@@ -350,6 +435,7 @@ class ShotLabel:
     intervals: tuple[Interval, ...]
     ramp_up: tuple[tuple[float, float], ...] = ()
     not_observable: tuple[tuple[float, float], ...] = ()
+    uncertain: tuple[tuple[float, float, str, int], ...] = ()
 
 
 def label_shot(
@@ -361,8 +447,13 @@ def label_shot(
     start_ms: float | None = None,
     *,
     lock_ms=None,
+    confirmed_lock_ms=None,
+    coherent=None,
+    seed_coherent=None,
+    weak_coherent=None,
+    weak_release_coherent=None,
     rules=RULES,
-    gap_ms: float = 50.0,
+    gap_ms: float = 0.0,
     m_of=None,
 ) -> ShotLabel:
     """The shot's label over `window`, the plasma starting at `start_ms`.
@@ -375,8 +466,80 @@ def label_shot(
     """
     w0, w1 = float(window[0]), float(window[1])
     start = w0 if start_ms is None else min(max(float(start_ms), w0), w1)
-    plasma = tearing_intervals(t_ms, n1, n2, (start, w1), rules)
-    plasma = apply_locking(plasma, lock_ms)
+    plasma, uncertain = [], []
+    t, first, dt = uniform(t_ms, n1)
+    traces = {1: first}
+    if n2 is not None:
+        traces[2] = uniform(t_ms, n2)[1]
+    for mode_rule in rules:
+        n = mode_rule.n
+        if n not in traces:
+            continue
+        y = traces[n]
+        reference = first if n == 2 else None
+        valid = np.isfinite(y)
+        support = np.zeros(t.shape, bool)
+        if coherent is not None and n in coherent:
+            support = np.asarray(coherent[n], dtype=bool) & valid
+        weak_support = support & (y > mode_rule.weak_g)
+        if weak_coherent is not None and n in weak_coherent:
+            weak_support |= np.asarray(weak_coherent[n], dtype=bool) & valid
+        candidates = mode_intervals(
+            t, y, mode_rule, (start, w1), reference=reference, include_short=True
+        )
+        strict = mode_intervals(t, y, mode_rule, (start, w1), reference=reference)
+        for item in strict:
+            inside = (t >= item.start_ms) & (t <= item.end_ms)
+            fraction = float(support[inside].mean())
+            seed_support = support
+            if seed_coherent is not None and n in seed_coherent:
+                seed_support = np.asarray(seed_coherent[n], dtype=bool) & valid
+            seed = (y > mode_rule.onset_g) & seed_support & inside
+            if n == 2:
+                seed &= y > mode_rule.harmonic_ratio * first
+            duration = max(
+                (b - a for a, b in zip(*_runs(seed), strict=True)), default=0
+            )
+            if fraction >= 0.8 and duration * dt >= mode_rule.hold_ms:
+                plasma.append(replace(item, coherent_fraction=fraction))
+        accepted = [(i.start_ms, i.end_ms) for i in plasma if i.n == n]
+        for item in candidates:
+            reason = (
+                "short_seed"
+                if item.seed_duration_ms < mode_rule.hold_ms
+                else "coherent_line_unconfirmed_or_above_30khz"
+            )
+            uncertain.extend(
+                (a, b, reason, n)
+                for a, b in _minus([(item.start_ms, item.end_ms)], accepted)
+            )
+        # Weak lines visible in Mirnov remain uncertain even below the quiet-RMS
+        # p95. RMS above that p95 requires rotating-line evidence too.
+        weak = weak_support & (t >= start) & (t <= w1)
+        weak_starts, weak_stops = _runs(weak)
+        cores = [
+            (a, b)
+            for a, b in zip(weak_starts, weak_stops, strict=True)
+            if (b - a) * dt >= 100.0
+        ]
+        release = weak.copy()
+        if weak_release_coherent is not None and n in weak_release_coherent:
+            release |= np.asarray(weak_release_coherent[n], dtype=bool) & valid
+            release &= (t >= start) & (t <= w1)
+        release_starts, release_stops = _runs(release)
+        for a, b in zip(
+            *_bridge(release_starts, release_stops, int(50.0 / dt), valid),
+            strict=True,
+        ):
+            # One uninterrupted 100 ms core establishes the weak track before
+            # filling short evidence interruptions. Missing acquisition is never
+            # bridged; no collection of short fragments can establish a core.
+            if any(a <= lo and hi <= b for lo, hi in cores):
+                uncertain.extend(
+                    (lo, hi, "coherent_sub_seed", n)
+                    for lo, hi in _minus([(float(t[a]), float(t[b - 1]))], accepted)
+                )
+    plasma = apply_locking(plasma, lock_ms, confirmed_ms=confirmed_lock_ms)
     if m_of is not None:
         plasma = [replace(i, m=m_of(i.n, i.start_ms, i.end_ms)) for i in plasma]
     ramp = ()
@@ -384,7 +547,9 @@ def label_shot(
         early = tearing_intervals(t_ms, n1, n2, (w0, start), rules)
         ramp = tuple(_union([(i.start_ms, i.end_ms) for i in early]))
     gaps = coverage_gaps(t_ms, n1, (w0, w1), min_ms=gap_ms)
-    return ShotLabel(int(shot), (w0, w1), start, tuple(plasma), ramp, tuple(gaps))
+    return ShotLabel(
+        int(shot), (w0, w1), start, tuple(plasma), ramp, tuple(gaps), tuple(uncertain)
+    )
 
 
 def _row(shot, category, a, b, attrs=None):
@@ -401,8 +566,15 @@ def _row(shot, category, a, b, attrs=None):
 def interval_attrs(item: Interval, *, crowd: int) -> dict:
     """The catalog attributes of one interval's span (`crowd` 1) or onset (0)."""
     attrs = {"iscrowd": int(crowd), "n": int(item.n)}
+    attrs.update(ended=item.ended, locked_known=item.locked_known)
     if item.locked:
         attrs["locked"] = True
+    if item.locked_candidate:
+        attrs["locked_candidate"] = True
+    if item.lock_time_ms is not None:
+        attrs["lock_time_ms"] = float(item.lock_time_ms)
+    if item.lock_candidates_ms:
+        attrs["lock_candidates_ms"] = list(item.lock_candidates_ms)
     if item.m is not None:
         # m = n q needs the safety factor, which is the offline EFIT01 here
         attrs["m"] = int(item.m)
@@ -442,10 +614,20 @@ def shot_table(label: ShotLabel) -> pd.DataFrame:
             )
     w0, w1 = label.window
     gaps = list(label.not_observable)
-    ramp = _minus(list(label.ramp_up), gaps)
-    busy = _union([(i.start_ms, i.end_ms) for i in label.intervals] + ramp + gaps)
+    present = [(i.start_ms, i.end_ms) for i in label.intervals]
+    ramp = _minus(list(label.ramp_up), gaps + present)
+    uncertain = []
+    for a, b, reason, n in label.uncertain:
+        uncertain.extend(
+            (lo, hi, reason, n) for lo, hi in _minus([(a, b)], gaps + present)
+        )
+    busy = _union(present + ramp + gaps + [(a, b) for a, b, _, _ in uncertain])
     rows += [_row(label.shot, NOT_OBSERVABLE, a, b) for a, b in gaps]
     rows += [_row(label.shot, UNCERTAIN, a, b) for a, b in ramp]
+    rows += [
+        _row(label.shot, UNCERTAIN, a, b, {"reason": reason, "n": n})
+        for a, b, reason, n in uncertain
+    ]
     rows += [_row(label.shot, ABSENT, a, b) for a, b in _minus([(w0, w1)], busy)]
     frame = pd.DataFrame(rows, columns=list(WITH_ATTRS))
     return frame.sort_values(
@@ -467,6 +649,14 @@ def intervals_frame(labels) -> pd.DataFrame:
             "release_g": item.release_g,
             "ended": item.ended,
             "locked": item.locked,
+            "locked_candidate": item.locked_candidate,
+            "locked_known": item.locked_known,
+            "lock_time_ms": item.lock_time_ms,
+            "lock_candidates_ms": item.lock_candidates_ms,
+            "seed_duration_ms": item.seed_duration_ms,
+            "seed_start_ms": item.seed_start_ms,
+            "coherent_fraction": item.coherent_fraction,
+            "release_components": item.release_components,
             "onset_seen": item.onset_seen,
             "m": item.m,
         }
@@ -486,6 +676,14 @@ def intervals_frame(labels) -> pd.DataFrame:
             "release_g",
             "ended",
             "locked",
+            "locked_candidate",
+            "locked_known",
+            "lock_time_ms",
+            "lock_candidates_ms",
+            "seed_duration_ms",
+            "seed_start_ms",
+            "coherent_fraction",
+            "release_components",
             "onset_seen",
             "m",
         ],

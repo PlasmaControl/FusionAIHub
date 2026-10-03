@@ -199,6 +199,7 @@ def test_data_guide_phenomena_table_agrees_with_the_vocabulary():
                 float: "number",
                 bool: "boolean, true / false",
                 str: "nonblank string",
+                list: "array",
             }[rule]
             if key in phenomenon.lower_bounds:
                 value, inclusive = phenomenon.lower_bounds[key]

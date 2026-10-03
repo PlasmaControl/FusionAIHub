@@ -108,6 +108,11 @@ always observable because Ip always exists.
 <code>seed</code>: string, sawtooth / elm / fishbone / none;<br />
 <code>confinement</code>: string, L / H;<br />
 <code>locked</code>: boolean, true / false;<br />
+<code>locked_candidate</code>: boolean, true / false;<br />
+<code>locked_known</code>: boolean, true / false;<br />
+<code>lock_time_ms</code>: number;<br />
+<code>lock_candidates_ms</code>: array;<br />
+<code>ended</code>: string, decay / plasma_end / locked / unknown;<br />
 <code>override</code>: string, island_not_resolved / q_unreliable /
 classical_tm / not_tearing_mode;<br />
 <code>other_mhd</code>: string, m1 / classical_tm / fishbone / eho / kink;<br />

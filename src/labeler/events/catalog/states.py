@@ -61,6 +61,11 @@ PHENOMENA = {
                 "seed": _words("sawtooth", "elm", "fishbone", "none"),
                 "confinement": _words("L", "H"),
                 "locked": bool,
+                "locked_candidate": bool,
+                "locked_known": bool,
+                "lock_time_ms": float,
+                "lock_candidates_ms": list,
+                "ended": _words("decay", "plasma_end", "locked", "unknown"),
                 "override": _words(
                     "island_not_resolved",
                     "q_unreliable",
@@ -120,7 +125,9 @@ def attr_problems(category: str, attrs: Mapping) -> list[str]:
     for key, value in attrs.items():
         if key == "iscrowd":
             if not isinstance(value, int) or value not in (0, 1):
-                problems.append(f"iscrowd={value!r} must be 0 (individual) or 1 (group)")
+                problems.append(
+                    f"iscrowd={value!r} must be 0 (individual) or 1 (group)"
+                )
             continue
         rule = allowed.get(key)
         if rule is None:

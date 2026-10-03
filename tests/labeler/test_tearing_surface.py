@@ -67,7 +67,9 @@ def test_an_m_hook_returning_none_leaves_both_onset_and_span_unattributed():
     n1 = np.full(t.shape, 0.2)
     n1[1000:1500] = 30.0
     label = rule.label_shot(
-        1, t, n1, None, (5.0, 2900.0), m_of=lambda n, start, end: None
+        1, t, n1, None, (5.0, 2900.0),
+        coherent={1: np.ones(t.shape, bool)},
+        m_of=lambda n, start, end: None,
     )
     present = rule.shot_table(label).query("category == 1")
     assert len(present) == 2
@@ -86,7 +88,10 @@ def test_a_label_carries_m_and_its_efit_tree_when_the_hook_gives_one():
         seen.append((n, round(start), round(end)))
         return 2
 
-    label = rule.label_shot(1, t, n1, None, (5.0, 2900.0), start_ms=100.0, m_of=m_of)
+    label = rule.label_shot(
+        1, t, n1, None, (5.0, 2900.0), start_ms=100.0,
+        coherent={1: np.ones(t.shape, bool)}, m_of=m_of,
+    )
     assert seen and seen[0][0] == 1
     (item,) = label.intervals
     assert item.m == 2
@@ -97,7 +102,10 @@ def test_a_label_carries_m_and_its_efit_tree_when_the_hook_gives_one():
     assert not attr_problems(rule.CATEGORY, attrs)
     assert rule.intervals_frame([label]).m.tolist() == [2]
     # no hook, no m
-    bare = rule.label_shot(1, t, n1, None, (5.0, 2900.0), start_ms=100.0)
+    bare = rule.label_shot(
+        1, t, n1, None, (5.0, 2900.0), start_ms=100.0,
+        coherent={1: np.ones(t.shape, bool)},
+    )
     assert bare.intervals[0].m is None
     assert "m" not in parse_attrs(
         rule.shot_table(bare)

@@ -46,7 +46,7 @@ signature, and on the radial saddle loops once locked.
 ## Models
 **stable**: d3d_tearing_onset_cnn1d | 2022_12_01
 
-**latest**: tm-ours | 2026_10_03 (experimental interval detector)
+**experimental detector**: tm-ours | 2026_10_03 (development CV; saved fold weights)
 
 **all**:
 - d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
@@ -54,10 +54,12 @@ signature, and on the radial saddle loops once locked.
 - d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
 - tm-onsetcnn | 2026_10_03 (prior CNN architecture retrained for detection at t)
 - tm-dsm | 2026_10_03 (prior survival embedding with a detection head at t)
-- tm-ours | 2026_10_03 (Mirnov spectrogram detector, 10 ms bins)
+- tm-ours | 2026_10_03 (Mirnov spectrogram detector, 10 ms bins; saved CV ensembles)
 
-The three short names identify the benchmark training scripts and saved
-cross-validation predictions, rather than deployed registry adapters. Published
+The three short names identify benchmark training scripts and saved
+cross-validation predictions. The tm-ours fold ensembles, normalization and
+thresholds are saved under `$LABELER_ROOT/round4/tm/checkpoints/tm_ours_magnetics/`;
+they are experimental CV checkpoints, without a deployed registry adapter. Published
 weights remain available through the three original model IDs above.
 
 ## Inputs
@@ -96,21 +98,34 @@ Three claims:
 **Whole-interval labels** (`extend_tm_interval/tm_interval.csv`, the 500-shot cohort;
 the lab's earlier labels are onsets or forecasts, these say when a mode is present):
 a rule on the n = 1 and n = 2 magnetic RMS (`\MHD::N1RMS`, `N2RMS`, gauss, 1 kHz; the
-processed magnetic traces used for rotating tearing modes), `labeler.tearing.rule`, with
-hysteresis: a seed is the smoothed RMS above 12 G (n = 1, Farre-Kaga et al. 2025; Fu et
-al. 2020 used 10 G) or 6 G (n = 2, a lab choice, not published), runs less than 50 ms
-apart being one; the mode is the stretch around the seed's peak that stays above a tenth
-of that peak (never below 1 G), and counts only if it lasts 50 ms. An interval ends at
-decay, when the plasma ends, or at locking (`locked` set when the mode's frequency,
-`\MHD::N1FREQ` / `N2FREQ`, fell to ≤1 kHz near its end; this is a frequency proxy,
-not saddle-loop confirmation). The onset is a point event
+processed magnetic traces), `labeler.tearing.rule`. The label is **a strong rotating
+n=1/n=2 mode (tearing-mode proxy)**, without independent island identification.
+A seed must exceed 12 G (n1, Farre-Kaga et al. 2025) or 6 G (n2, local extension)
+continuously for at least 50 ms in both raw and 5 ms median RMS, before any runs
+are joined. A stable rotating n-resolved line below 30 kHz must support that seed
+(`N1FREQ`/`N2FREQ`, or Mirnov coherence when frequency is unavailable).
+Hysteresis extends each qualified seed to max(1 G, 10% of its peak); release dips
+up to 50 ms merge only across available data. Merged components retain their own
+release levels; the stored summary release is the minimum, the peak the largest.
+The development-only harmonic cutoff is n2/n1 >0.57. Unsupported seeds, high-frequency
+or chirping bursts, and sustained coherent sub-seed lines are category 2 (uncertain).
+Weak uncertainty tracks require a continuous 100 ms coherent core above the frozen
+development quiet-amplitude p95, then follow that line at 10% of this amplitude
+floor. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
+Frequency drops alone are `locked_candidate`, with all candidate times retained;
+only independent locked-mode confirmation sets `locked=true` and truncates the
+rotating span at the confirmed time. No such diagnostic is resolved in these
+labels. Missing frequency gives `ended=unknown`, `locked_known=false`; all unknown
+shots are listed in metadata. Other spans end at RMS decay or the plasma window.
+The onset is a point event
 (`iscrowd` 0, at the interval's start), the interval a span (`iscrowd` 1); both carry
 `n`. `m` requires EFIT q at an independently observed island radius, such as an ECE
 flattening location. No island radius is resolved here, so `m` is empty; a unique
 candidate rational surface alone does not identify it. The rest of each shot's
-window is absent, the ramp-up
-uncertain where the rule fires in it, and stretches the RMS record did not cover not
-observable. Counts, thresholds, the agreement with Seo's and the survival onsets and
+window is absent, the ramp-up uncertain where the rule fires in it, and every RMS
+acquisition gap unobservable (preserved as NaN). tm-ours reads the same Mirnov array
+as the label's N1RMS; this benchmark measures recovery of an RMS-based rule.
+Counts, thresholds, the agreement with Seo's and the survival onsets and
 the detector benchmark are in
 [tearing_detection.md](../../../docs/labeler/tearing_detection.md). The detectors
 trained on these labels are `tm-ours` (Mirnov-array spectrogram features, per 10 ms

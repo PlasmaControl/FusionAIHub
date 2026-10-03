@@ -18,6 +18,7 @@ Run from the worktree::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -36,7 +37,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.config import Paths, git_sha
 from labeler.events import spans
 from labeler.events.interval_tables import write_interval_table
-from labeler.tearing import rule, surface
+from labeler.tearing import rule, scoring, surface
 
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
@@ -44,6 +45,7 @@ LABELER = Path(
 OUT_ROOT = LABELER / "round4/tm"
 SIGNALS = OUT_ROOT / "signals"
 FREQUENCIES = OUT_ROOT / "signals_freq"
+MAGFEATURES = OUT_ROOT / "magfeatures"
 CATALOG = REPO / "data/events/catalog"
 COHORT_OUT = REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval"
 
@@ -89,6 +91,86 @@ def surface_hook(shot: int, roots):
     return None
 
 
+def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
+    """Coherent/weak-line masks on the uniform RMS grid, and frequency drops.
+
+    N<n>FREQ is the processed n-resolved line frequency. Where missing, use the
+    Mirnov phase fit >=0.9, prominence >=10 dB, frequency <=30 kHz and coherent
+    amplitude above the development-only quiet p95. An available frequency >30
+    kHz vetoes the Mirnov fallback for that n. No blind test calibration is read.
+    """
+    t = np.asarray(t_ms)
+    dt = float(np.median(np.diff(t)))
+    mirnov = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
+    weak_mirnov = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
+    weak_release = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
+    seed_support = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
+    path = mag_dir / f"{shot}.npz"
+    if path.is_file():
+        with np.load(path) as z:
+            centres, features = z["centres_ms"], z["features"]
+            names = list(z["names"])
+        index = np.searchsorted(centres + 5.0, t)
+        inside = (index < len(centres)) & (t >= centres[0] - 5.0)
+        for n, floor in ((1, -0.2435681), (2, -0.6028450)):
+            amplitude = np.max(
+                features[
+                    :, [i for i, name in enumerate(names) if name.startswith(f"a{n}_")]
+                ],
+                axis=1,
+            )
+            frequency = features[:, names.index("line_khz")]
+            mask = (
+                (features[:, names.index(f"fit{n}")] >= 0.9)
+                & (features[:, names.index("line_prominence_db")] >= 10.0)
+                & (frequency >= 1.0)
+                & (frequency <= 30.0)
+                & (amplitude > floor)
+            )
+            mirnov[n][inside] = mask[index[inside]]
+            # a<n> is already restricted to cells best-fitting n with >=0.9
+            # coherence. A different, stronger line can reduce fit<n> at the
+            # overall peak without erasing this weaker n-resolved line.
+            weak_mask = (
+                (amplitude > floor)
+                & (features[:, names.index("line_prominence_db")] >= 10.0)
+                & (frequency >= 1.0)
+                & (frequency <= 30.0)
+            )
+            weak_mirnov[n][inside] = weak_mask[index[inside]]
+            release_mask = (
+                (amplitude > floor - 1.0)
+                & (features[:, names.index("line_prominence_db")] >= 10.0)
+                & (frequency >= 1.0)
+                & (frequency <= 30.0)
+            )
+            weak_release[n][inside] = release_mask[index[inside]]
+            seed_mask = mask & rule.coherent_frequency(frequency, 10.0)
+            seed_support[n][inside] = seed_mask[index[inside]]
+    support = {n: mask.copy() for n, mask in mirnov.items()}
+    locks = None
+    path = None if freq_dir is None else freq_dir / f"{shot}.npz"
+    if path is not None and path.is_file():
+        locks = {}
+        with np.load(path) as z:
+            for n in (1, 2):
+                freq = z[f"n{n}freq"]
+                aligned = scoring.align_scores(z["t_ms"], freq, t)
+                support[n] |= (aligned >= 1.0) & (aligned <= 30.0)
+                # Available processed frequency settles the rotating seed:
+                # a coherent rapid sweep or stationary pulse is only a candidate.
+                seed_support[n] = np.where(
+                    np.isfinite(aligned),
+                    rule.coherent_frequency(aligned, dt),
+                    seed_support[n],
+                )
+                support[n][aligned > 30.0] = False
+                mirnov[n][aligned > 30.0] = False
+                if np.isfinite(freq).any():
+                    locks[n] = rule.frequency_locks(z["t_ms"], freq)
+    return support, weak_mirnov, locks, seed_support, weak_release
+
+
 def shot_label(
     shot: int, window, paths: Paths, directory: Path, freq_dir=None, q_roots=()
 ):
@@ -98,7 +180,9 @@ def shot_label(
         return None
     t_ms, n1, n2 = record
     start, how = spans.plasma_start(shot, paths, window)
-    locks = None if freq_dir is None else lock_times(shot, freq_dir)
+    t_ms, n1, _ = rule.uniform(t_ms, n1)
+    _, n2, _ = rule.uniform(record[0], n2)
+    coherent, weak, locks, seed, weak_release = line_evidence(shot, t_ms, freq_dir)
     label = rule.label_shot(
         shot,
         t_ms,
@@ -107,9 +191,13 @@ def shot_label(
         window,
         start,
         lock_ms=locks,
+        coherent=coherent,
+        seed_coherent=seed,
+        weak_coherent=weak,
+        weak_release_coherent=weak_release,
         m_of=surface_hook(shot, q_roots or (paths,)),
     )
-    return label, how, locks is not None
+    return label, how, locks is not None and all(i.n in locks for i in label.intervals)
 
 
 def table_for(
@@ -151,9 +239,12 @@ def counts_of(frame, intervals) -> dict:
             str(k): int(v) for k, v in intervals.ended.value_counts().items()
         },
         "n_locked": int(intervals.locked.sum()),
+        "n_locked_candidates": int(intervals.locked_candidate.sum()),
+        "n_locked_known": int(intervals.locked_known.sum()),
+        "n_uncertain_rows": int(frame.category.eq(2).sum()),
         "n_with_m": int(intervals.m.notna().sum()),
         "n_without_observed_onset": int((~intervals.onset_seen.astype(bool)).sum()),
-        "shots_with_ramp_up_uncertain": int(frame[frame.category == 2].shot.nunique()),
+        "shots_with_uncertain": int(frame[frame.category == 2].shot.nunique()),
         "shots_with_not_observable": int(frame[frame.category == 3].shot.nunique()),
         "median_duration_ms": float(intervals.duration_ms.median())
         if len(intervals)
@@ -169,6 +260,10 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "made_by": "scripts/labeler/tm_label.py",
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "git_sha": git_sha(),
+        "rule_sha256": hashlib.sha256(
+            (REPO / "src/labeler/tearing/rule.py").read_bytes()
+        ).hexdigest(),
+        "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "shots": which,
         "n_requested_shots": len(shots),
         "n_labelled_shots": len(labels),
@@ -180,18 +275,41 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "crowd": "span rows iscrowd 1 (the whole interval), onset point rows "
         "iscrowd 0; t_start == t_end marks a point",
         "absent": "the rest of the shot's catalog window; ramp-up uncertain where the "
-        "rule fires in it; stretches the record did not cover not observable",
+        "rule fires in it; unsupported seeds and >=100 ms weak coherent lines "
+        "uncertain; every acquisition gap is not observable",
         "plasma_start": "labeler.events.spans.plasma_start: the rule runs from the "
         "time Ip reaches its flat-top fraction; each shot's start is in "
         "$LABELER_ROOT/round4/tm/labels/plasma_start_<set>.json",
-        "missing_signal_shots": missing[:50],
+        "missing_signal_shots": missing,
         "locked": {
             "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz)",
-            "rule": "labeler.tearing.rule.frequency_locks / apply_locking: the mode's "
-            "frequency falls to <= 1 kHz for 20 ms after >= 1.5 kHz, within the "
-            "interval's last 150 ms or 100 ms after it; set only when true",
-            "intervals_without_a_frequency_record_shots": unlocked[:50],
+            "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a "
+            "locked_candidate, storing earliest lock_time_ms and every in-span "
+            "drop in lock_candidates_ms (plus <=100 ms after the RMS end). "
+            "Only independent locked-mode "
+            "confirmation truncates the rotating span and sets locked=true. No "
+            "dedicated locked-mode diagnostic is resolved in this run. Without "
+            "frequency: ended=unknown and locked_known=false per row.",
+            "intervals_without_a_frequency_record_shots": unlocked,
+            "unknown_locking_shots": sorted(
+                label.shot
+                for label in labels
+                if any(not item.locked_known for item in label.intervals)
+            ),
         },
+        "coherent_line": "Continuous >=50 ms seed crossing before merging, "
+        "n-resolved frequency 1.5..30 kHz or Mirnov phase fit>=0.9, prominence>=10 dB "
+        "and amplitude above development-only quiet p95; local 50 ms frequency "
+        "p90-p10 width <= max(2 kHz, 25% median), >=80% span support. "
+        "Unsupported seeds and sustained >=100 ms weak coherent activity are "
+        "uncertain, excluded from detector training/scoring.",
+        "weak_track": "Continuous >=100 ms n-resolved Mirnov amplitude above "
+        "the frozen development quiet p95 establishes uncertainty, extended "
+        "along the coherent line at 10% of that amplitude floor; <=50 ms "
+        "evidence interruptions can be joined, acquisition gaps cannot.",
+        "calibration": str(OUT_ROOT / "labels/calibration_dev_fix1.json"),
+        "test_exposure_correction": "Earlier harmonic_ratio=0.4 cited blind test "
+        "shot 187043; replaced by development-only p99 rounded up to 0.57.",
         "m": {
             "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01",
             "rule": "labeler.tearing.surface.supported_m requires an independently "

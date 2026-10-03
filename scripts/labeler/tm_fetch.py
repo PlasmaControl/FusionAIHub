@@ -72,7 +72,9 @@ def fetch_shot(shot: int, kind: str = "rms") -> dict[str, np.ndarray]:
                 names[1]: np.asarray(record.y[1], dtype=np.float32),
             }
         except NoDataError:
-            if attempt == 2:
+            if attempt == 2 or any(
+                word in str(sys.exc_info()[1]).lower() for word in AUTH_WORDS
+            ):
                 raise
             time.sleep(5.0)
     raise AssertionError("unreachable")
@@ -99,6 +101,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--pace", type=float, default=1.0, help="seconds between shots")
+    ap.add_argument(
+        "--stop-file",
+        type=Path,
+        default=OUT_ROOT / "fetch_auth_stop.json",
+        help="shared stop marker: all workers stop fetching after an auth error",
+    )
     args = ap.parse_args(argv)
 
     shots = sorted(set(args.shots)) if args.shots else catalog_shots(args.source)
@@ -111,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     failures = 0
     for shot in shots:
+        if args.stop_file.exists():
+            print(json.dumps({"stopped": "authentication in another worker"}))
+            return 2
         done = args.out_dir / f"{shot}.npz"
         gone = args.out_dir / f"{shot}.missing.json"
         if done.exists() or gone.exists():
@@ -121,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
         except NoDataError as error:
             message = str(error)
             if any(word in message.lower() for word in AUTH_WORDS):
+                args.stop_file.write_text(
+                    json.dumps({"shot": shot, "error": message[:300]})
+                )
                 print(
                     json.dumps(
                         {

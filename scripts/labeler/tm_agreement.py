@@ -20,6 +20,7 @@ Writes ``<out>/agreement_<reference>_<set>.json`` and a per-onset / per-interval
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -34,7 +35,7 @@ if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
 from labeler.config import Paths, git_sha
-from labeler.tearing import agreement
+from labeler.tearing import agreement, rule
 from labeler.tearing.agreement import Reference
 
 LABELER = Path(
@@ -93,6 +94,8 @@ def miss_reasons(onsets: pd.DataFrame, intervals: pd.DataFrame, table, signals: 
     """The `agreement.REASONS` entry for each missed onset, as a list in row order."""
     windows = table.set_index("shot")[["window_start_ms", "window_end_ms"]]
     starts = intervals[intervals.n == 1].groupby("shot").t_start.apply(list).to_dict()
+    start_file = signals.parent / "labels/plasma_start_cohort.json"
+    plasma_starts = json.loads(start_file.read_text()) if start_file.is_file() else {}
     out = []
     for row in onsets.itertuples(index=False):
         if row.matched:
@@ -105,15 +108,29 @@ def miss_reasons(onsets: pd.DataFrame, intervals: pd.DataFrame, table, signals: 
         with np.load(path) as npz:
             t_ms, n1 = npz["t_ms"], npz["n1rms"]
         win = windows.loc[int(row.shot)]
-        out.append(
-            agreement.miss_reason(
-                t_ms,
-                n1,
-                row.onset_ms,
-                (float(win.window_start_ms), float(win.window_end_ms)),
-                starts.get(int(row.shot), []),
-            )
+        window = (float(win.window_start_ms), float(win.window_end_ms))
+        plasma_start = plasma_starts.get(str(int(row.shot)), {}).get(
+            "start_ms", window[0]
         )
+        if window[0] <= row.onset_ms < plasma_start:
+            out.append("excluded_ramp_up")
+            continue
+        reason = agreement.miss_reason(
+            t_ms,
+            n1,
+            row.onset_ms,
+            (plasma_start, window[1]),
+            starts.get(int(row.shot), []),
+        )
+        if reason == "short_burst" and any(
+            item.end_ms >= row.onset_ms - agreement.TOLERANCE_MS
+            and item.start_ms <= row.onset_ms + 300.0
+            for item in rule.mode_intervals(
+                t_ms, n1, rule.N1_RULE, (plasma_start, window[1])
+            )
+        ):
+            reason = "coherent_line_not_supported"
+        out.append(reason)
     return out
 
 
@@ -176,7 +193,12 @@ def main(argv=None) -> int:
             )
             both[name]["missed_reasons"] = {
                 key: int((onsets.reason == key).sum())
-                for key in (*agreement.REASONS, "no_record")
+                for key in (
+                    *agreement.REASONS,
+                    "no_record",
+                    "excluded_ramp_up",
+                    "coherent_line_not_supported",
+                )
             }
         stem = f"{args.reference}_{args.source}_{name}{args.tag}"
         out = OUT_ROOT / "agreement"
@@ -191,6 +213,29 @@ def main(argv=None) -> int:
         "n_shots_considered": len(shots),
         "git_sha": git_sha(),
         "intervals_table": str(full),
+        "intervals_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
+        "caveat": "Survival agreement shares N1RMS, 12 G / 50 ms and "
+        "10%-of-peak onset with this rule; it is near-circular and does not "
+        "independently validate tearing islands."
+        if args.reference == "survival"
+        else "Seo labels are growth-phase labels with limited temporal coverage.",
+        "unmatched_interval_breakdown": {
+            "definition": "n1 intervals on selected shots: compare only starts "
+            "inside available archive coverage; other spans are not comparable",
+            "all_n1_intervals": int(
+                intervals[intervals.shot.isin(shots) & intervals.n.eq(1)].shape[0]
+            ),
+            "outside_reference_coverage_or_no_reference": int(
+                intervals[intervals.shot.isin(shots) & intervals.n.eq(1)].shape[0]
+            )
+            - both["n1"]["compared_intervals"],
+            "reference_mode_shots": both["n1"].get(
+                "intervals_without_an_onset_on_reference_mode_shots", 0
+            ),
+            "reference_quiet_shots": both["n1"].get(
+                "intervals_without_an_onset_on_reference_quiet_shots", 0
+            ),
+        },
         **notes,
         "agreement": both,
         "agreement_strict": strict,

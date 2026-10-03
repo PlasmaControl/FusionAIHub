@@ -14,6 +14,7 @@ the evidence for keeping them, not a search for better ones.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -29,6 +30,7 @@ for entry in (REPO / "src", Path(__file__).resolve().parent):
         sys.path.insert(0, str(entry))
 
 from tm_agreement import survival_references
+from tm_label import line_evidence
 
 from labeler.config import git_sha
 from labeler.tearing import agreement, rule
@@ -41,15 +43,13 @@ CATALOG = REPO / "data/events/catalog"
 
 #: `(name, changes to N1_RULE)`; the first is the frozen rule.
 VARIANTS = (
-    ("frozen: 12 G, 50 ms, duty 0.5, release 10 %", {}),
+    ("frozen: 12 G, continuous 50 ms seed, coherent line, release 10 %", {}),
     ("onset 8 G", {"onset_g": 8.0}),
     ("onset 10 G", {"onset_g": 10.0}),
     ("onset 15 G", {"onset_g": 15.0}),
     ("hold 20 ms", {"hold_ms": 20.0}),
     ("hold 30 ms", {"hold_ms": 30.0}),
     ("hold 100 ms", {"hold_ms": 100.0}),
-    ("no duty test", {"min_duty": 0.0}),
-    ("duty 0.8", {"min_duty": 0.8}),
     ("merge gap 20 ms", {"merge_gap_ms": 20.0}),
     ("merge gap 100 ms", {"merge_gap_ms": 100.0}),
     ("release 5 %", {"release_fraction": 0.05}),
@@ -64,7 +64,25 @@ def intervals_with(rule_, shots, windows, starts, signals: Path) -> pd.DataFrame
             t_ms, n1 = npz["t_ms"], npz["n1rms"]
         w0, w1 = windows[shot]
         start = min(max(float(starts[str(shot)]["start_ms"]), w0), w1)
-        for item in rule.tearing_intervals(t_ms, n1, None, (start, w1), (rule_,)):
+        t_ms, n1, _ = rule.uniform(t_ms, n1)
+        coherent, weak, locks, seed, weak_release = line_evidence(
+            shot, t_ms, OUT_ROOT / "signals_freq"
+        )
+        label = rule.label_shot(
+            shot,
+            t_ms,
+            n1,
+            None,
+            (w0, w1),
+            start,
+            rules=(rule_,),
+            coherent=coherent,
+            seed_coherent=seed,
+            weak_coherent=weak,
+            weak_release_coherent=weak_release,
+            lock_ms=locks,
+        )
+        for item in label.intervals:
             rows.append((shot, 1, item.start_ms, item.end_ms))
     return pd.DataFrame(rows, columns=["shot", "n", "t_start", "t_end"])
 
@@ -121,6 +139,18 @@ def main(argv=None) -> int:
         "n_shots": len(shots),
         "not_in_reference": len(absent),
         "git_sha": git_sha(),
+        "rule_sha256": hashlib.sha256(
+            (REPO / "src/labeler/tearing/rule.py").read_bytes()
+        ).hexdigest(),
+        "frozen_label_sha256": hashlib.sha256(
+            (
+                REPO
+                / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+            ).read_bytes()
+        ).hexdigest(),
+        "caveat": "Survival shares N1RMS, 12 G / 50 ms and 10%-of-peak onset; "
+        "agreement is near-circular, not independent physics validation. "
+        "Variants are sensitivity checks only and do not choose the frozen rule.",
         "variants": out,
     }
     path = OUT_ROOT / "agreement" / f"sensitivity_survival{args.tag}.json"
