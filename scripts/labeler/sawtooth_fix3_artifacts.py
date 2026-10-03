@@ -561,7 +561,11 @@ def queue(args):
                 "negative or ambiguous intervals. Empty lists are unreviewed until review_complete "
                 "is true. Times are absolute seconds. Channel nominal rho is "
                 "abs(R-axis)/(LCFS_outer_R-axis), a geometric coordinate, "
-                "not calibrated flux. Review every window before returning."
+                "not calibrated flux. Only channels 0–39 have nominal radial "
+                "ordering; channels 40–47 remain spatially unverified. Raw "
+                "traces are preserved; do not infer redistribution from "
+                "unverified adjacency, and mark ambiguity when geometry is "
+                "insufficient. Review every window before returning."
             ),
             "npz_fields": list(arrays),
             "signal_units": "t_s seconds; ece_kev keV; zero-based channel indices",

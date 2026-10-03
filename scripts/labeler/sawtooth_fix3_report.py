@@ -102,6 +102,7 @@ def report(args):
     cohort, population = read("cohort_labels.json"), read("population_labels.json")
     bench, validation = read("benchmark.json"), read("validation.json")
     q1 = read("q1_radius_audit.json")
+    frequency = read("fetched_frequency_audit.json")
     bias, null = read("qmin_bias_audit.json"), read("phase_null_audit.json")
     legacy, queue = read("legacy_disagreement.json"), read("crash_time_queue.json")
     reference, manifest = read("muscatello_reference.json"), read("label_manifest.json")
@@ -135,6 +136,19 @@ def report(args):
         source("cohort_labels.json"),
         source("population_labels.json"),
         source("benchmark.json", "Tokamak-SI.saw-ours.assessment_totals"),
+        (
+            "Conditional OOF crash F1 at ±2 ms: derivative "
+            f"{number(models['saw-derivative']['crash_tolerance_2ms']['crash']['f1'])}, "
+            "HL-3-gated derivative "
+            f"{number(models['saw-hl3']['crash_tolerance_2ms']['crash']['f1'])}, "
+            "saw-ours "
+            f"{number(models['saw-ours']['crash_tolerance_2ms']['crash']['f1'])}. "
+            "The derivative baseline has the highest point estimate; the "
+            "HL-3 paired crash-F1 interval includes zero. "
+            "HL-3's expert-shot ranking remains inverted on shot 190637; "
+            "independent physical validation remains pending.\n"
+        ),
+        source("benchmark.json", "Tokamak-SI.*"),
         "### Geometry and equilibrium\n",
         (
             "Channels 0–39 use the archived fixed RF grid; same-shot setup takes "
@@ -147,6 +161,16 @@ def report(args):
             "metadata does not establish definite-positive spatial evidence. "
             "Previously terminal-dependent candidates are retained as uncertainty.\n"
         ),
+        (
+            f"The archived grid audit covers "
+            f"{frequency['archived_grid_proof']['shots_audited']} shots with "
+            f"{len(frequency['archived_grid_proof']['exceptions'])} documented "
+            "setup exception. The fetched cohort setup check matches "
+            f"{frequency['matches']}/{frequency['cached_setup_records']} "
+            "first-40 grids. The fixed grid is transferred to other population "
+            "shots; an unaudited historical setup change cannot be excluded.\n"
+        ),
+        source("fetched_frequency_audit.json"),
         (
             "The adapted HL-3 outer input uses low-field-side nominal geometric "
             "ρ=0.4–0.65, beyond the typical inversion region, rather than adjacent "
@@ -411,7 +435,7 @@ def report(args):
         ),
         (
             f"Source: `{args.work}/shots/190637.json` → `state_seconds`; "
-            "`outputs/labeler/sawtooth/fix3/validation.json` → `experts`.\n"
+            "`outputs/labeler/sawtooth/fix3/validation.json` → `expert.by_shot`.\n"
         ),
         (
             "| Reviewed shot | New recall | Legacy recall | New F1 | "
