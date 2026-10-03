@@ -11,6 +11,20 @@ import torch
 from labeler.elm import inputs, labels, net, train
 
 
+def test_smoothed_selection_excludes_warmup_and_uses_trailing_three():
+    history = [
+        {"epoch": i, "val_auprc": value}
+        for i, value in enumerate([0.99, 0.98, 0.97, 0.4, 0.5, 0.6, 0.55, 0.52])
+    ]
+    # Warm-up is four epochs; a window may not reach back into it.
+    assert train.selection_score(history[:6], "trailing3", 4) is None
+    assert train.selection_score(history[:7], "trailing3", 4) == pytest.approx(0.55)
+    assert train.selection_score(history[:8], "trailing3", 4) == pytest.approx(
+        (0.6 + 0.55 + 0.52) / 3
+    )
+    assert train.selection_score(history[:1], "raw", 4) == 0.99
+
+
 def _shot(shot, present=False):
     spans = pd.DataFrame(
         [

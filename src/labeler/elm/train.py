@@ -62,6 +62,7 @@ class Config:
     crop_ms: int = CROP_MS
     level_shift: float = 0.4  # sd of the D-alpha level offset (units of FS_SCALE)
     seed: int = SEED
+    selection: str = "raw"
 
 
 @dataclass
@@ -262,6 +263,18 @@ def val_scores(model, data, shots, device):
 # ----------------------------------------------------------------- training
 
 
+def selection_score(history: list[dict], rule: str, warmup: int) -> float | None:
+    """Validation criterion; smoothed windows must lie entirely after warm-up."""
+    if rule == "raw":
+        return history[-1]["val_auprc"]
+    if rule != "trailing3":
+        raise ValueError(f"unknown checkpoint selection rule: {rule}")
+    if len(history) < warmup + 3:
+        return None
+    values = [row["val_auprc"] for row in history[-3:]]
+    return float(np.mean(values)) if np.isfinite(values).all() else None
+
+
 def train_fold(data, train, val, cfg: Config, device, log=print):
     """Train on `train`; keep the epoch with the best inner-validation AUPRC.
 
@@ -306,13 +319,17 @@ def train_fold(data, train, val, cfg: Config, device, log=print):
             "seconds": time.time() - t0,
         }
         history.append(row)
+        criterion = selection_score(
+            history, cfg.selection, int(np.ceil(cfg.epochs * 0.15))
+        )
+        row["selection_score"] = criterion
         log(
             json.dumps(
                 {k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()}
             )
         )
-        if np.isfinite(ap) and ap > best:
-            best = ap
+        if criterion is not None and np.isfinite(criterion) and criterion > best:
+            best = criterion
             best_state = {
                 k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
@@ -338,6 +355,7 @@ def run(args: argparse.Namespace) -> int:
             if getattr(args, "training_seed", None) is None
             else args.training_seed
         ),
+        selection=getattr(args, "selection", "raw"),
     )
     device = torch.device(args.device)
     data = load(paths)
@@ -402,7 +420,8 @@ def run(args: argparse.Namespace) -> int:
             {
                 k2: info[k2]
                 for k2 in ("fold", "test", "threshold", "onset_threshold", "best")
-            } | {"artifacts": provenance.fold_artifacts(out, k, test)},
+            }
+            | {"artifacts": provenance.fold_artifacts(out, k, test)},
         )
         (out / "run.json").write_text(json.dumps(record, indent=1))
     return 0
@@ -419,14 +438,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", type=int, default=Config.batch)
     ap.add_argument("--lr", type=float, default=Config.lr)
     ap.add_argument(
-        "--seed", type=int, default=SEED,
+        "--seed",
+        type=int,
+        default=SEED,
         help="shot-partition seed (also the default training seed)",
     )
     ap.add_argument(
-        "--training-seed", type=int,
+        "--training-seed",
+        type=int,
         help="weight initialisation, dropout and crop seed; preserves shot partitions",
     )
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--selection", choices=("raw", "trailing3"), default="raw")
     return run(ap.parse_args(argv))
 
 
