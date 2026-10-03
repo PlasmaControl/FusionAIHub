@@ -1,6 +1,6 @@
 {
- "git": "1a675d02",
- "created": "2026-10-03T20:29:30.157874+00:00",
+ "git": "a2a483d5",
+ "created": "2026-10-03T21:04:59.592893+00:00",
  "protocol": {
   "git": "3c293c3b",
   "created": "2026-10-03T19:21:26.774896+00:00",
@@ -701,7 +701,7 @@
   "onset_recipe": "Same U-Net from scratch, onset-only masked BCE on Smith hand starts; sigma=1 ms; 5 shot folds, 21 inner-validation shots; select trailing-3 mean inner-val event F1 at +/-2ms after warmup; threshold on inner validation only. No review/cohort test shots; no tuning on outer folds.",
   "limitations": "Smith windows are selected around known ELMs, not a continuous-discharge negative population. Event FPs within them depend on completeness of single-region hand annotations. Smith CV is developmental, frozen review-to-Smith transfer is independent.",
   "code_sha256": {
-   "scripts/labeler/elm_smith_evaluate.py": "c108ac745232dad9445130a0b2dbba63f08c9307f39dc680597af4b4b2f20a6c",
+   "scripts/labeler/elm_smith_evaluate.py": "19b571bf7615de47aa0e947fb1270d2c73f6d460066f9425bab2335a5ff66aba",
    "src/labeler/elm/smith.py": "f9cd52bd206924b5bf6977933142fe3d79b3313bd4bd43bdc3199884b7ac4af6"
   },
   "input_source_repairs": [
@@ -736,7 +736,8 @@
     }
    }
   ],
-  "onset_postprocessing": "Local maxima at 1 ms output resolution, minimum separation 10 ms, scored in whole Smith-window cells; thresholds frozen for elm-ours and chosen only on inner validation for elm-ours-onset."
+  "onset_postprocessing": "Local maxima at 1 ms output resolution, minimum separation 10 ms, scored in whole Smith-window cells; thresholds frozen for elm-ours and chosen only on inner validation for elm-ours-onset.",
+  "metric_conditioning": "Every method's occupancy and event metrics, including precision/F1, are conditional on the same selected Smith windows. Selected-window precision/F1 remain available in point/ci95 and an explicit audit. Continuous-discharge precision/F1 are unknown for every method because negative time outside these selected windows is not adjudicated."
  },
  "frozen_model": {
   "git": "7ddfeea3",
@@ -2165,6 +2166,562 @@
    "checkpoint_sha256": "7fea3290b4a217941df94ae9c89a058d601492e3971aef52b89b1e7d636ddd91"
   }
  ],
+ "onset_run_day_audit": {
+  "definition": "Calendar run days represented in more than one existing Smith onset-CV outer-shot fold; this is an audit, not a new split.",
+  "date_source": "protocol.independence.smith_shot_run_days",
+  "fold_source": "onset_folds[].test",
+  "run_days": 31,
+  "run_days_spanning_multiple_folds": 21,
+  "shots_missing_run_day": [],
+  "memberships": [
+   {
+    "run_day": "20160108",
+    "shots": [
+     164824
+    ],
+    "folds": [
+     1
+    ]
+   },
+   {
+    "run_day": "20160111",
+    "shots": [
+     164876
+    ],
+    "folds": [
+     1
+    ]
+   },
+   {
+    "run_day": "20160404",
+    "shots": [
+     166433,
+     166434,
+     166440,
+     166441,
+     166443,
+     166449,
+     166455,
+     166458
+    ],
+    "folds": [
+     0,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20160407",
+    "shots": [
+     166576,
+     166577,
+     166578,
+     166579,
+     166580,
+     166581,
+     166584,
+     166585
+    ],
+    "folds": [
+     0,
+     1,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20160408",
+    "shots": [
+     166595,
+     166596,
+     166597,
+     166598,
+     166600,
+     166602,
+     166603,
+     166604,
+     166605,
+     166606,
+     166613,
+     166615,
+     166616,
+     166617,
+     166620,
+     166621
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20160412",
+    "shots": [
+     166676,
+     166679,
+     166680,
+     166681,
+     166684,
+     166685,
+     166686,
+     166691,
+     166692
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20160624",
+    "shots": [
+     167333,
+     167337,
+     167338,
+     167342
+    ],
+    "folds": [
+     0,
+     2,
+     4
+    ]
+   },
+   {
+    "run_day": "20160706",
+    "shots": [
+     167556,
+     167557,
+     167558,
+     167559
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3
+    ]
+   },
+   {
+    "run_day": "20170721",
+    "shots": [
+     172201,
+     172202,
+     172204,
+     172205,
+     172206,
+     172211
+    ],
+    "folds": [
+     0,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20171011",
+    "shots": [
+     173181,
+     173183,
+     173186,
+     173187,
+     173200
+    ],
+    "folds": [
+     0,
+     1,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20171012",
+    "shots": [
+     173224
+    ],
+    "folds": [
+     2
+    ]
+   },
+   {
+    "run_day": "20180124",
+    "shots": [
+     175031,
+     175035
+    ],
+    "folds": [
+     0
+    ]
+   },
+   {
+    "run_day": "20180130",
+    "shots": [
+     175147,
+     175150,
+     175152,
+     175153,
+     175154
+    ],
+    "folds": [
+     1,
+     2,
+     3
+    ]
+   },
+   {
+    "run_day": "20180216",
+    "shots": [
+     175471
+    ],
+    "folds": [
+     3
+    ]
+   },
+   {
+    "run_day": "20180220",
+    "shots": [
+     175490,
+     175491
+    ],
+    "folds": [
+     4
+    ]
+   },
+   {
+    "run_day": "20180222",
+    "shots": [
+     175550,
+     175552,
+     175553,
+     175557,
+     175560
+    ],
+    "folds": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20180223",
+    "shots": [
+     175586,
+     175587,
+     175589,
+     175591,
+     175596,
+     175598,
+     175599
+    ],
+    "folds": [
+     0,
+     1,
+     2
+    ]
+   },
+   {
+    "run_day": "20180226",
+    "shots": [
+     175635,
+     175636,
+     175637,
+     175638,
+     175639,
+     175640,
+     175643,
+     175646,
+     175647
+    ],
+    "folds": [
+     0,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20180227",
+    "shots": [
+     175674,
+     175676,
+     175679,
+     175680,
+     175685,
+     175687,
+     175688,
+     175689,
+     175690,
+     175692,
+     175693,
+     175694,
+     175695,
+     175697,
+     175699,
+     175700,
+     175703
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20180228",
+    "shots": [
+     175720,
+     175732,
+     175738,
+     175739,
+     175742
+    ],
+    "folds": [
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20180308",
+    "shots": [
+     175923
+    ],
+    "folds": [
+     1
+    ]
+   },
+   {
+    "run_day": "20180322",
+    "shots": [
+     176307
+    ],
+    "folds": [
+     0
+    ]
+   },
+   {
+    "run_day": "20180418",
+    "shots": [
+     176713
+    ],
+    "folds": [
+     1
+    ]
+   },
+   {
+    "run_day": "20180423",
+    "shots": [
+     176806,
+     176807,
+     176809,
+     176812,
+     176813,
+     176814,
+     176815,
+     176816,
+     176817,
+     176818,
+     176820,
+     176821,
+     176822
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20190801",
+    "shots": [
+     179427,
+     179428,
+     179429,
+     179430,
+     179431,
+     179434,
+     179435,
+     179442,
+     179444,
+     179447,
+     179448,
+     179449,
+     179450,
+     179451,
+     179452,
+     179453,
+     179454,
+     179455,
+     179456
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20190802",
+    "shots": [
+     179486,
+     179487,
+     179488,
+     179489,
+     179491,
+     179492,
+     179493,
+     179494,
+     179495,
+     179496,
+     179497,
+     179498,
+     179499
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20190816",
+    "shots": [
+     179827,
+     179832
+    ],
+    "folds": [
+     1
+    ]
+   },
+   {
+    "run_day": "20190819",
+    "shots": [
+     179854,
+     179855,
+     179859,
+     179860,
+     179873
+    ],
+    "folds": [
+     0,
+     1,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20190925",
+    "shots": [
+     180537,
+     180538,
+     180540
+    ],
+    "folds": [
+     2,
+     4
+    ]
+   },
+   {
+    "run_day": "20210201",
+    "shots": [
+     184429,
+     184430,
+     184431,
+     184436,
+     184437,
+     184440,
+     184443,
+     184445,
+     184446,
+     184447,
+     184448,
+     184449,
+     184451,
+     184452,
+     184453
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "run_day": "20210202",
+    "shots": [
+     184458,
+     184459,
+     184460,
+     184461,
+     184462,
+     184463,
+     184464,
+     184465,
+     184466,
+     184467,
+     184468,
+     184469,
+     184472,
+     184474,
+     184475,
+     184476,
+     184477,
+     184478,
+     184479,
+     184480,
+     184481,
+     184483
+    ],
+    "folds": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ]
+   }
+  ],
+  "shared_run_days": [
+   "20160404",
+   "20160407",
+   "20160408",
+   "20160412",
+   "20160624",
+   "20160706",
+   "20170721",
+   "20171011",
+   "20180130",
+   "20180222",
+   "20180223",
+   "20180226",
+   "20180227",
+   "20180228",
+   "20180423",
+   "20190801",
+   "20190802",
+   "20190819",
+   "20190925",
+   "20210201",
+   "20210202"
+  ]
+ },
  "counts": {
   "bins": 24470,
   "positive_bins": 3606,
@@ -2308,7 +2865,36 @@
       "undefined": 0
      }
     },
-    "replicates": 1000
+    "replicates": 1000,
+    "metric_scope": "conditional on selected Smith windows",
+    "selected_window_precision_f1": {
+     "precision": {
+      "point": 0.14750051429746966,
+      "ci95": [
+       0.14303297578211854,
+       0.15239944150111173
+      ]
+     },
+     "f1": {
+      "point": 0.2568879653183333,
+      "ci95": [
+       0.25010672979098697,
+       0.2642784840560971
+      ]
+     }
+    },
+    "precision_f1_status": "conditional selected-window estimates",
+    "continuous_discharge_precision_f1": {
+     "precision": {
+      "point": null,
+      "ci95": null
+     },
+     "f1": {
+      "point": null,
+      "ci95": null
+     },
+     "status": "unknown: continuous-discharge negative time is not adjudicated"
+    }
    },
    "events": {
     "2": {
@@ -2387,6 +2973,35 @@
        0.0,
        0.0
       ]
+     },
+     "metric_scope": "conditional on selected Smith windows",
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 0.0,
+       "ci95": [
+        0.0,
+        0.0
+       ]
+      },
+      "f1": {
+       "point": 0.0,
+       "ci95": [
+        0.0,
+        0.0
+       ]
+      }
+     },
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
      }
     },
     "5": {
@@ -2486,6 +3101,35 @@
        0.10226401606906478,
        0.15560990137056488
       ]
+     },
+     "metric_scope": "conditional on selected Smith windows",
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 0.5,
+       "ci95": [
+        0.4502592548946987,
+        0.5498611111111111
+       ]
+      },
+      "f1": {
+       "point": 0.12866817155756208,
+       "ci95": [
+        0.10226401606906478,
+        0.15560990137056488
+       ]
+      }
+     },
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
      }
     }
    },
@@ -2590,7 +3234,36 @@
       "undefined": 0
      }
     },
-    "replicates": 1000
+    "replicates": 1000,
+    "metric_scope": "conditional on selected Smith windows",
+    "selected_window_precision_f1": {
+     "precision": {
+      "point": 0.8819112627986349,
+      "ci95": [
+       0.8671884199755528,
+       0.89674104185429
+      ]
+     },
+     "f1": {
+      "point": 0.7906976744186046,
+      "ci95": [
+       0.7810607306646352,
+       0.7999405306495883
+      ]
+     }
+    },
+    "precision_f1_status": "conditional selected-window estimates",
+    "continuous_discharge_precision_f1": {
+     "precision": {
+      "point": null,
+      "ci95": null
+     },
+     "f1": {
+      "point": null,
+      "ci95": null
+     },
+     "status": "unknown: continuous-discharge negative time is not adjudicated"
+    }
    },
    "events": {
     "2": {
@@ -2600,9 +3273,9 @@
       "fn": 162
      },
      "point": {
-      "precision": null,
+      "precision": 1.0,
       "recall": 0.9300518134715026,
-      "f1": null
+      "f1": 0.963758389261745
      },
      "positive_bearing_shots": 211,
      "descriptive_only": false,
@@ -2678,13 +3351,20 @@
       }
      },
      "ci95": {
-      "precision": null,
+      "precision": [
+       1.0,
+       1.0
+      ],
       "recall": [
        0.9154089638601969,
        0.944938346508315
       ],
-      "f1": null
+      "f1": [
+       0.955836566315276,
+       0.9716897691919274
+      ]
      },
+     "metric_scope": "conditional on selected Smith windows",
      "selected_window_precision_f1": {
       "precision": {
        "point": 1.0,
@@ -2701,7 +3381,18 @@
        ]
       }
      },
-     "precision_f1_status": "not estimable under selected windows"
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
+     }
     },
     "5": {
      "counts": {
@@ -2710,9 +3401,9 @@
       "fn": 162
      },
      "point": {
-      "precision": null,
+      "precision": 1.0,
       "recall": 0.9300518134715026,
-      "f1": null
+      "f1": 0.963758389261745
      },
      "positive_bearing_shots": 211,
      "descriptive_only": false,
@@ -2788,13 +3479,20 @@
       }
      },
      "ci95": {
-      "precision": null,
+      "precision": [
+       1.0,
+       1.0
+      ],
       "recall": [
        0.9154089638601969,
        0.944938346508315
       ],
-      "f1": null
+      "f1": [
+       0.955836566315276,
+       0.9716897691919274
+      ]
      },
+     "metric_scope": "conditional on selected Smith windows",
      "selected_window_precision_f1": {
       "precision": {
        "point": 1.0,
@@ -2811,7 +3509,18 @@
        ]
       }
      },
-     "precision_f1_status": "not estimable under selected windows"
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
+     }
     }
    }
   },
@@ -2915,6 +3624,35 @@
      }
     },
     "replicates": 1000,
+    "metric_scope": "conditional on selected Smith windows",
+    "selected_window_precision_f1": {
+     "precision": {
+      "point": 0.9956772334293948,
+      "ci95": [
+       0.9928960605613103,
+       0.997879165393533
+      ]
+     },
+     "f1": {
+      "point": 0.8661861485427765,
+      "ci95": [
+       0.8547663734849688,
+       0.8765720558996904
+      ]
+     }
+    },
+    "precision_f1_status": "conditional selected-window estimates",
+    "continuous_discharge_precision_f1": {
+     "precision": {
+      "point": null,
+      "ci95": null
+     },
+     "f1": {
+      "point": null,
+      "ci95": null
+     },
+     "status": "unknown: continuous-discharge negative time is not adjudicated"
+    },
     "score_source": "Binary fixed-setting overlap call; AUROC/AP are binary-score metrics, no eta sweep."
    },
    "events": {
@@ -3015,6 +3753,35 @@
        0.9620120934711504,
        0.9807990721871587
       ]
+     },
+     "metric_scope": "conditional on selected Smith windows",
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 0.9580888516345348,
+       "ci95": [
+        0.9449471688215783,
+        0.9698400310066656
+       ]
+      },
+      "f1": {
+       "point": 0.9723521905572097,
+       "ci95": [
+        0.9620120934711504,
+        0.9807990721871587
+       ]
+      }
+     },
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
      }
     },
     "5": {
@@ -3114,6 +3881,35 @@
        0.9620120934711504,
        0.9807990721871587
       ]
+     },
+     "metric_scope": "conditional on selected Smith windows",
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 0.9580888516345348,
+       "ci95": [
+        0.9449471688215783,
+        0.9698400310066656
+       ]
+      },
+      "f1": {
+       "point": 0.9723521905572097,
+       "ci95": [
+        0.9620120934711504,
+        0.9807990721871587
+       ]
+      }
+     },
+     "precision_f1_status": "conditional selected-window estimates",
+     "continuous_discharge_precision_f1": {
+      "precision": {
+       "point": null,
+       "ci95": null
+      },
+      "f1": {
+       "point": null,
+       "ci95": null
+      },
+      "status": "unknown: continuous-discharge negative time is not adjudicated"
      }
     }
    }
@@ -13089,6 +13885,35 @@
     0.9829923868904025,
     0.9966451015719503
    ]
+  },
+  "metric_scope": "conditional on selected Smith windows",
+  "selected_window_precision_f1": {
+   "precision": {
+    "point": 0.9973787680209698,
+    "ci95": [
+     0.9952623464541441,
+     0.9991561896302565
+    ]
+   },
+   "f1": {
+    "point": 0.9915309446254071,
+    "ci95": [
+     0.9829923868904025,
+     0.9966451015719503
+    ]
+   }
+  },
+  "precision_f1_status": "conditional selected-window estimates",
+  "continuous_discharge_precision_f1": {
+   "precision": {
+    "point": null,
+    "ci95": null
+   },
+   "f1": {
+    "point": null,
+    "ci95": null
+   },
+   "status": "unknown: continuous-discharge negative time is not adjudicated"
   }
  },
  "original_cached_elmo_overlap": {
@@ -13134,10 +13959,39 @@
    ]
   },
   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/smith_sweep.npz",
-  "source_sha256": "0318dd3fe24528611059042b2d915d29fe7e171dc76a46b5e56f9f536b7ade04"
+  "source_sha256": "0318dd3fe24528611059042b2d915d29fe7e171dc76a46b5e56f9f536b7ade04",
+  "metric_scope": "conditional on selected Smith windows",
+  "selected_window_precision_f1": {
+   "precision": {
+    "point": 0.9973626373626374,
+    "ci95": [
+     0.9952275687154453,
+     0.9991511238133689
+    ]
+   },
+   "f1": {
+    "point": 0.9884556741450664,
+    "ci95": [
+     0.97782630334702,
+     0.9960894169452957
+    ]
+   }
+  },
+  "precision_f1_status": "conditional selected-window estimates",
+  "continuous_discharge_precision_f1": {
+   "precision": {
+    "point": null,
+    "ci95": null
+   },
+   "f1": {
+    "point": null,
+    "ci95": null
+   },
+   "status": "unknown: continuous-discharge negative time is not adjudicated"
+  }
  },
  "code_sha256": {
-  "scripts/labeler/elm_smith_evaluate.py": "c108ac745232dad9445130a0b2dbba63f08c9307f39dc680597af4b4b2f20a6c",
+  "scripts/labeler/elm_smith_evaluate.py": "19b571bf7615de47aa0e947fb1270d2c73f6d460066f9425bab2335a5ff66aba",
   "src/labeler/elm/smith.py": "f9cd52bd206924b5bf6977933142fe3d79b3313bd4bd43bdc3199884b7ac4af6"
  },
  "onset_window_audit": {
@@ -13156,5 +14010,5 @@
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/smith/cv/pred",
   "scope": "1ms benchmark traces on Smith shots from held-out-shot folds; selected-window evaluation only"
  },
- "onset_delivery_reason": "Frozen auxiliary onset F1 at +/-2ms is 0.000; Smith-only CV onset recall is 0.930. Precision/F1 are not estimable under selected windows. The experimental CV trace is available; catalog physical-onset output is withheld pending continuous-discharge false-alarm validation and transfer of the Smith-trained head to the review domain."
+ "onset_delivery_reason": "Frozen auxiliary onset conditional selected-window F1 at +/-2ms is 0.000; Smith-only CV selected-window onset recall is 0.930. Continuous-discharge precision/F1 are unknown for every method. The experimental CV trace is available; catalog physical-onset output is withheld pending continuous-discharge false-alarm validation and transfer of the Smith-trained head to the review domain."
 }

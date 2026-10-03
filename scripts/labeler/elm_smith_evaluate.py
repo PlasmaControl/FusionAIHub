@@ -450,6 +450,56 @@ def run_train(paths, args):
         (directory / "cv/run.json").write_text(json.dumps(record, indent=1) + "\n")
 
 
+def condition_selected_window_metrics(summary):
+    """Keep conditional window scores and distinguish unavailable population rates."""
+    summary["metric_scope"] = "conditional on selected Smith windows"
+    summary["selected_window_precision_f1"] = {
+        key: {
+            "point": summary["point"][key],
+            "ci95": summary.get("ci95", {}).get(key),
+        }
+        for key in ("precision", "f1")
+    }
+    summary["precision_f1_status"] = "conditional selected-window estimates"
+    summary["continuous_discharge_precision_f1"] = {
+        "precision": {"point": None, "ci95": None},
+        "f1": {"point": None, "ci95": None},
+        "status": "unknown: continuous-discharge negative time is not adjudicated",
+    }
+    return summary
+
+
+def onset_run_day_audit(shot_run_days, folds):
+    """Audit calendar-day sharing across existing outer-shot fold memberships."""
+    days = {}
+    missing = []
+    for fold in folds:
+        for shot in fold["test"]:
+            day = shot_run_days.get(str(shot))
+            if day is None:
+                missing.append(int(shot))
+                continue
+            row = days.setdefault(day, {"shots": [], "folds": set()})
+            row["shots"].append(int(shot))
+            row["folds"].add(int(fold["fold"]))
+    memberships = [
+        {"run_day": day, "shots": sorted(row["shots"]), "folds": sorted(row["folds"])}
+        for day, row in sorted(days.items())
+    ]
+    shared = [row for row in memberships if len(row["folds"]) > 1]
+    return {
+        "definition": "Calendar run days represented in more than one existing "
+        "Smith onset-CV outer-shot fold; this is an audit, not a new split.",
+        "date_source": "protocol.independence.smith_shot_run_days",
+        "fold_source": "onset_folds[].test",
+        "run_days": len(memberships),
+        "run_days_spanning_multiple_folds": len(shared),
+        "shots_missing_run_day": sorted(missing),
+        "memberships": memberships,
+        "shared_run_days": [row["run_day"] for row in shared],
+    }
+
+
 def run_evaluate(paths, args):
     directory = work_dir(paths)
     protocol = json.loads((directory / "protocol.json").read_text())
@@ -467,6 +517,13 @@ def run_evaluate(paths, args):
     )
     protocol["onset_postprocessing"] = (
         "Local maxima at 1 ms output resolution, minimum separation 10 ms, scored in whole Smith-window cells; thresholds frozen for elm-ours and chosen only on inner validation for elm-ours-onset."
+    )
+    protocol["metric_conditioning"] = (
+        "Every method's occupancy and event metrics, including precision/F1, "
+        "are conditional on the same selected Smith windows. Selected-window "
+        "precision/F1 remain available in point/ci95 and an explicit audit. "
+        "Continuous-discharge precision/F1 are unknown for every method because "
+        "negative time outside these selected windows is not adjudicated."
     )
     frozen = json.loads((directory / "frozen/sources.json").read_text())
     cv = json.loads((directory / "cv/run.json").read_text())
@@ -620,6 +677,9 @@ def run_evaluate(paths, args):
             {k: v for k, v in row.items() if k != "history"}
             for row in cv["fold_records"]
         ],
+        "onset_run_day_audit": onset_run_day_audit(
+            protocol["independence"]["smith_shot_run_days"], cv["fold_records"]
+        ),
         "counts": raw_counts,
         "coverage_audit": coverage_audit,
         "common_covered_comparison": {
@@ -652,6 +712,7 @@ def run_evaluate(paths, args):
         },
     }
     for name in ("reimplemented_elmo_overlap", "original_cached_elmo_overlap"):
+        condition_selected_window_metrics(result[name])
         result[name].pop("timing_error_ms")
         result[name]["bootstrap"] = {
             k: v
@@ -678,9 +739,9 @@ def run_evaluate(paths, args):
             k: occupancy["counts"][k] for k in ("tp", "fp", "fn", "tn")
         }
         result["methods"][method] = {
-            "occupancy_1ms": occupancy,
+            "occupancy_1ms": condition_selected_window_metrics(occupancy),
             "events": {
-                tol: smith.event_summary(parts, boot)
+                tol: condition_selected_window_metrics(smith.event_summary(parts, boot))
                 for tol, parts in events[method].items()
             },
         }
@@ -698,15 +759,6 @@ def run_evaluate(paths, args):
         "truth; these are firings, not adjudicated false positives."
     )
     result["onset_window_audit"] = head_audit
-    for row in result["methods"]["elm-ours-onset"]["events"].values():
-        row["selected_window_precision_f1"] = {
-            key: {"point": row["point"][key], "ci95": row["ci95"][key]}
-            for key in ("precision", "f1")
-        }
-        for key in ("precision", "f1"):
-            row["point"][key] = None
-            row["ci95"][key] = None
-        row["precision_f1_status"] = "not estimable under selected windows"
     result["onset_output_delivered"] = False
     result["onset_output_scope"] = "Physical-onset output in the reviewed event catalog"
     result["experimental_smith_cv_onset_traces"] = {
@@ -718,9 +770,10 @@ def run_evaluate(paths, args):
     frozen_f1 = result["methods"]["elm-ours"]["events"]["2"]["point"]["f1"]
     smith_recall = result["methods"]["elm-ours-onset"]["events"]["2"]["point"]["recall"]
     result["onset_delivery_reason"] = (
-        f"Frozen auxiliary onset F1 at +/-2ms is {frozen_f1:.3f}; Smith-only CV "
-        f"onset recall is {smith_recall:.3f}. Precision/F1 are not estimable under "
-        "selected windows. The experimental CV trace is available; catalog "
+        f"Frozen auxiliary onset conditional selected-window F1 at +/-2ms is "
+        f"{frozen_f1:.3f}; Smith-only CV selected-window onset recall is "
+        f"{smith_recall:.3f}. Continuous-discharge precision/F1 are unknown for "
+        "every method. The experimental CV trace is available; catalog "
         "physical-onset output is withheld pending continuous-discharge false-alarm "
         "validation and transfer of the Smith-trained head to the review domain."
     )
