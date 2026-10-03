@@ -3,8 +3,8 @@
 An onset is a point in time. Two labels are made from it, and they are different
 things:
 
-* the **conventional weak window** `[onset - GROWTH_MS, onset]` (category 1),
-  a wall-time convention, not a verified physical instability interval;
+* the **uncertain onset window** `[onset - GROWTH_MS, onset)` (category 2),
+  a wall-time convention whose physical extent and direction are unverified;
 * the **forecast target** of the baseline, as Piccione et al. 2022 define their
   stability label: a time slice is positive when an onset follows within
   `HORIZON_MS` (100 ms there). Primary negatives are earlier than the last target
@@ -26,9 +26,10 @@ HORIZON_MS = 100.0
 #: Slices from an onset to this long after it are neither stable nor about to go
 #: unstable; the mode is already acting, so they leave the training and scoring sets.
 POST_MS = 100.0
-#: Conventional weak pre-onset interval motivated by the millisecond wall time
-#: tau_w. Its extent is not a measurement of growth: N1RMS is not RWM-specific and
-#: an identical slope search at random flat-top times gives similar maxima.
+#: Uncertain pre-onset interval motivated by the millisecond wall time tau_w.
+#: Hanson's ONSET_TIME has no documented detection/threshold meaning in the
+#: supplied sources, so neither the direction nor extent establishes presence.
+#: N1RMS is not RWM-specific; a random-time slope search gives similar maxima.
 GROWTH_MS = 20.0
 
 #: Listed onsets this close are one event.
@@ -111,7 +112,11 @@ def merge_close(onsets_ms, within_ms=MERGE_MS):
 
 
 def growth_windows(onsets_ms, *, growth_ms=GROWTH_MS):
-    """Merged `(start, end)` growth windows, one per onset (overlaps joined)."""
+    """Merged uncertain `(start, end)` onset windows (overlaps joined).
+
+    The historic function name is retained for callers; these are not measured
+    growth intervals and do not imply that growth preceded ONSET_TIME.
+    """
     merged: list[list[float]] = []
     for onset in sorted(float(o) for o in onsets_ms):
         start = onset - growth_ms
@@ -151,11 +156,14 @@ def window_rows(
 ):
     """Interval-table rows `(shot, category, t_start, t_end)` for one shot.
 
-    Category 1 is each conventional weak window. With `assumed_absent=True`,
+    Category 2 is each uncertain onset window. ONSET_TIME is not established as a
+    detection/threshold time, so pre-onset mode presence is not inferred.
+    With `assumed_absent=True`,
     category 0 covers flat-top time before the first onset's precursor, conditional
     on onset-list completeness; it never denotes verified coverage. Every remaining
     stretch is explicitly category 4 (unassessed), including time after the first
-    onset, except later weak windows. An onset list supplies no termination evidence.
+    onset, except later uncertain windows. An onset list supplies no termination
+    evidence.
 
     The rows tile the flat-top and any weak windows extending beyond it. With no
     flat-top they tile only the weak windows' bounding span. `post_ms` is retained
@@ -164,7 +172,7 @@ def window_rows(
     """
     onsets = sorted(float(o) for o in onsets_ms)
     windows = growth_windows(onsets, growth_ms=growth_ms)
-    rows = [(shot, PRESENT, a, b) for a, b in windows]
+    rows = [(shot, UNCERTAIN, a, b) for a, b in windows]
     bounds = windows + ([flattop] if flattop is not None else [])
     if not bounds:
         return rows

@@ -14,19 +14,34 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates screen on the matched comparison shots, which are unlabelled and not negatives. Only the raw onset points are verified; reviewed negative coverage is unknown even on Hanson shots.",
-  "made_at": "2026-10-03T15:31:40+00:00",
+  "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Category 1 has no duration rows here: only the raw onset points are verified. Reviewed negative coverage is unknown.",
+  "made_at": "2026-10-03T17:35:13+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
   "n_rows": 558,
   "n_shots": 165,
   "rules": {
-    "present": "the 20 ms before each listed onset, of either mode number (conventional weak annotation motivated by tau_w, not a measured growth interval; see outputs/labeler/rwm/growth.json)",
+    "present": "no present duration inferred; verified point onsets remain in the curated format source",
     "absent": "high-current time only before the first listed onset minus 100 ms, assuming complete onset listing. No post-onset physical absence is inferred without mode termination evidence",
-    "uncertain": "rwm_candidates screen spans, comparison shots only",
-    "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later conventional weak windows; comparison time outside screen spans"
+    "uncertain": "Hanson: [20 ms before ONSET_TIME, ONSET_TIME), of either mode number, as a convention with unverified direction and extent. Comparison: rwm_candidates screen spans.",
+    "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later uncertain onset windows; comparison time outside screen spans"
+  },
+  "onset_time_provenance": {
+    "field": "ONSET_TIME",
+    "detection_or_threshold_time_verified": false,
+    "finding": "Hanson source CSVs and category README name onset times but do not define growth-start versus detection/threshold timing. Piccione digests describe NSTX threshold t_RWM and cannot establish the meaning of Hanson's DIII-D ONSET_TIME.",
+    "sources_searched": [
+      "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+      "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+      "main:data/events/resistive_wall_mode/README.md",
+      "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+      "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md"
+    ],
+    "physical_window_category": 2,
+    "forecast_target": "separate 100 ms point-time forecast target; unchanged",
+    "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search"
   },
   "evidence_tiers": {
-    "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
+    "onset_window_uncertain": "20 ms pre-onset convention; ONSET_TIME meaning and physical extent unverified",
     "assumed_absent": "Hanson time before first precursor; completeness assumption",
     "unlabelled_screen": "screen candidates on comparison shots; not negatives",
     "unassessed": "no assessed physical state or termination evidence"

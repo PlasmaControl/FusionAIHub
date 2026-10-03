@@ -64,7 +64,7 @@ def test_window_rows_do_not_infer_physical_recovery_from_the_forecast_horizon():
     assert rows == [
         (7, lab.ABSENT, 100.0, 200.0),
         (7, 4, 200.0, 280.0),
-        (7, lab.PRESENT, 280.0, 300.0),
+        (7, lab.UNCERTAIN, 280.0, 300.0),
         (7, 4, 300.0, 800.0),
     ]
     # An unexamined shot's physical state stays explicitly unassessed.
@@ -85,7 +85,7 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
     )
     assert rows == [
         (7, 4, 100.0, 130.0),
-        (7, lab.PRESENT, 130.0, 150.0),
+        (7, lab.UNCERTAIN, 130.0, 150.0),
         (7, 4, 150.0, 200.0),
     ]
 
@@ -94,9 +94,9 @@ def test_later_onsets_do_not_establish_absence_after_an_earlier_onset():
     assert lab.window_rows(7, [300.0, 600.0], (100.0, 800.0), assumed_absent=True) == [
         (7, lab.ABSENT, 100.0, 200.0),
         (7, 4, 200.0, 280.0),
-        (7, lab.PRESENT, 280.0, 300.0),
+        (7, lab.UNCERTAIN, 280.0, 300.0),
         (7, 4, 300.0, 580.0),
-        (7, lab.PRESENT, 580.0, 600.0),
+        (7, lab.UNCERTAIN, 580.0, 600.0),
         (7, 4, 600.0, 800.0),
     ]
 
@@ -104,6 +104,20 @@ def test_later_onsets_do_not_establish_absence_after_an_earlier_onset():
 def test_an_empty_onset_list_does_not_establish_physical_absence():
     assert lab.window_rows(7, [], (100.0, 800.0), assumed_absent=True) == [
         (7, 4, 100.0, 800.0),
+    ]
+
+
+def test_uncertain_onset_extent_does_not_change_the_distinct_forecast_target():
+    # ONSET_TIME does not establish that the preceding 20 ms contains the mode.
+    rows = lab.window_rows(7, [300.0], None, assumed_absent=False)
+    assert rows == [(7, lab.UNCERTAIN, 280.0, 300.0)]
+    # A forecast needs only the listed point time, not a physical mode interval.
+    assert lab.slice_labels([199.0, 200.0, 280.0, 299.0, 300.0], [300.0]).tolist() == [
+        lab.NEGATIVE,
+        lab.POSITIVE,
+        lab.POSITIVE,
+        lab.POSITIVE,
+        lab.EXCLUDED,
     ]
 
 

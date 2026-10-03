@@ -9,9 +9,10 @@ Reads the candidate pool (`labeler.rwm.shots.choose`, written by
    same campaign, nearest in those two numbers, without reusing a shot (greedy, the
    Hanson shots with the highest beta_N first so the scarce high-beta shots are not
    used up), and records how well the matching balanced the two sets;
-3. stacks the causal slice features of the chosen shots (`labeler.rwm.data`) with the
+3. stacks trailing features on offline inputs (`labeler.rwm.data`) with the
    `rwm_candidates` screen's call, into ``$LABELER_ROOT/round4/rwm/slices.parquet``;
-4. writes conventional weak windows before listed onsets (category 1)
+4. writes uncertain windows before listed onsets (category 2), since the sources
+   do not define ONSET_TIME as a detection/threshold time,
    and assumed-absent time before the first precursor (category 0) on Hanson shots.
    Explicit unassessed intervals (category 4) preserve every hole and all post-onset
    physical state; comparison screen spans are uncertain (category 2), with remaining
@@ -179,12 +180,14 @@ def main() -> None:
     windows["confidence"] = ""
     tiers = windows.category.map(
         {
-            labels.PRESENT: "conventional_weak",
             labels.ABSENT: "assumed_absent",
             labels.UNCERTAIN: "unlabelled_screen",
             labels.UNASSESSED: "unassessed",
         }
     )
+    tiers.loc[
+        windows.shot.isin(hanson_shots) & (windows.category == labels.UNCERTAIN)
+    ] = "onset_window_uncertain"
     windows["attrs"] = tiers.map(
         lambda tier: json.dumps({"evidence_tier": tier, "coverage_verified": False})
     )
@@ -213,6 +216,28 @@ def main() -> None:
     stats[keep].to_csv(out_dir / "shots.csv", index=False)
 
     hanson_rows = windows[windows.shot.isin(hanson_shots)]
+    probe_path = REPO / "outputs" / "labeler" / "rwm" / "sensor_probe.json"
+    probe = json.loads(probe_path.read_text()) if probe_path.is_file() else {}
+    onset_provenance = {
+        "field": "ONSET_TIME",
+        "detection_or_threshold_time_verified": False,
+        "finding": (
+            "Hanson source CSVs and category README name onset times but do not "
+            "define growth-start versus detection/threshold timing. Piccione "
+            "digests describe NSTX threshold t_RWM and cannot establish the "
+            "meaning of Hanson's DIII-D ONSET_TIME."
+        ),
+        "sources_searched": [
+            "data/events/resistive_wall_mode/raw/rwm_onsets_2017.csv",
+            "data/events/resistive_wall_mode/raw/rwm_onsets_2024.csv",
+            "main:data/events/resistive_wall_mode/README.md",
+            "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+            "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md",
+        ],
+        "physical_window_category": labels.UNCERTAIN,
+        "forecast_target": "separate 100 ms point-time forecast target; unchanged",
+        "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search",
+    }
     summary = {
         "script": "scripts/labeler/rwm_build.py",
         "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -272,6 +297,9 @@ def main() -> None:
             "conventional_weak_windows": int(
                 (hanson_rows.category == labels.PRESENT).sum()
             ),
+            "uncertain_onset_windows": int(
+                (hanson_rows.category == labels.UNCERTAIN).sum()
+            ),
             "assumed_absent_spans": int((hanson_rows.category == labels.ABSENT).sum()),
             "verified_absent_spans": 0,
             "hanson_unassessed_spans": int(
@@ -284,7 +312,10 @@ def main() -> None:
                 ).sum()
             ),
             "candidate_spans_on_comparison_shots": int(
-                (windows.category == labels.UNCERTAIN).sum()
+                (
+                    (windows.category == labels.UNCERTAIN)
+                    & ~windows.shot.isin(hanson_shots)
+                ).sum()
             ),
             "growth_ms": labels.GROWTH_MS,
             "horizon_ms": labels.HORIZON_MS,
@@ -292,7 +323,8 @@ def main() -> None:
         },
         "evidence": {
             "verified": "Hanson listed onset points only; no verified negative coverage",
-            "windows": "20 ms tau_w convention, not measured growth intervals",
+            "windows": "uncertain 20 ms pre-onset convention; direction and extent unverified",
+            "onset_time_provenance": onset_provenance,
             "negative_assumption": "onset listing is complete only before first onset precursor for physical category 0; not termination evidence",
             "unassessed": "explicit category 4 for precursors and post-onset physical state through end of analysis; comparison time outside screen spans",
             "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
@@ -340,11 +372,14 @@ def main() -> None:
             "dusbradial_in_primary_model": False,
             "fetch_specs": sorted(raw.FETCH_SPECS),
             "low_frequency_n1_rwm_sensor_specs": [],
-            "low_frequency_sensor_fetch_attempted": False,
-            "low_frequency_sensor_status": (
-                "not available through approved FETCH_SPECS or feature namespace; "
-                "no validated saddle-loop/Bp n=1 amplitude locator; no guessed fetch"
+            "low_frequency_sensor_fetch_attempted": bool(
+                probe.get("fetch_attempted", False)
             ),
+            "low_frequency_sensor_status": probe.get(
+                "status", "sensor candidate source audit has not been run"
+            ),
+            "low_frequency_sensor_probe": "outputs/labeler/rwm/sensor_probe.json",
+            "low_frequency_sensor_candidate_specs": probe.get("candidate_specs", []),
         },
     }
     meta = {
@@ -364,10 +399,11 @@ def main() -> None:
             "attrs",
         ],
         "coverage": (
-            "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates "
-            "screen on the matched comparison shots, which are unlabelled and not "
-            "negatives. Only the raw onset points are verified; reviewed negative "
-            "coverage is unknown even on Hanson shots."
+            "Hanson category 0 is assumed absence before the first precursor; "
+            "Hanson category 2 is the uncertain 20 ms pre-onset convention. "
+            "Comparison category 2 is the rwm_candidates screen, unlabelled and "
+            "not negative. Category 1 has no duration rows here: only the raw "
+            "onset points are verified. Reviewed negative coverage is unknown."
         ),
         "made_at": summary["made_at"],
         "made_by": "scripts/labeler/rwm_build.py",
@@ -375,20 +411,24 @@ def main() -> None:
         "n_shots": int(windows.shot.nunique()),
         "rules": {
             "present": (
-                f"the {labels.GROWTH_MS:g} ms before each listed onset, of either mode "
-                "number (conventional weak annotation motivated by tau_w, not a "
-                "measured growth interval; see outputs/labeler/rwm/growth.json)"
+                "no present duration inferred; verified point onsets remain in "
+                "the curated format source"
             ),
             "absent": (
                 f"high-current time only before the first listed onset minus "
                 f"{labels.HORIZON_MS:g} ms, assuming complete onset listing. "
                 "No post-onset physical absence is inferred without mode termination evidence"
             ),
-            "uncertain": "rwm_candidates screen spans, comparison shots only",
-            "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later conventional weak windows; comparison time outside screen spans",
+            "uncertain": (
+                f"Hanson: [{labels.GROWTH_MS:g} ms before ONSET_TIME, ONSET_TIME), "
+                "of either mode number, as a convention with unverified direction "
+                "and extent. Comparison: rwm_candidates screen spans."
+            ),
+            "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later uncertain onset windows; comparison time outside screen spans",
         },
+        "onset_time_provenance": onset_provenance,
         "evidence_tiers": {
-            "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
+            "onset_window_uncertain": "20 ms pre-onset convention; ONSET_TIME meaning and physical extent unverified",
             "assumed_absent": "Hanson time before first precursor; completeness assumption",
             "unlabelled_screen": "screen candidates on comparison shots; not negatives",
             "unassessed": "no assessed physical state or termination evidence",
