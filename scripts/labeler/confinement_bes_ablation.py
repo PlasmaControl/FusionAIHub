@@ -158,6 +158,14 @@ def _chain() -> dict[str, Row]:
         label="within-shot block split, paper criteria (500 kHz; leaky diagnostic)",
         protocol="blocks",
     )
+    # and with every fetched shot at 1 MHz: does the within-shot split still reach the
+    # published score when the pipeline has the data it was built for
+    rows["leak_abcdrge"] = replace(
+        rows["cum_abcdrge"],
+        name="leak_abcdrge",
+        label="within-shot block split, paper criteria, every shot at 1 MHz (leaky)",
+        protocol="blocks",
+    )
     return rows
 
 
