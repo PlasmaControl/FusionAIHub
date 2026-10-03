@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_evaluate.py",
-  "made_at": "2026-10-03T18:13:45+00:00",
+  "made_at": "2026-10-03T19:33:15+00:00",
   "protocol": {
     "outer_folds": 5,
     "inner_folds": 3,
@@ -27,6 +27,7 @@
     "primary_training": "Hanson positives and assumed negatives only",
     "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
     "within_shot_auroc": "primary and broad Hanson masks, fixed score orientation; equal-shot mean/median over shots with both classes; per-shot class counts include excluded one-class shots",
+    "paired_within_shot_auroc": "forest minus each continuous scalar, primary and broad masks; equal-shot mean of per-shot AUROCs over shared two-class Hanson shots; 95% basic paired shot-bootstrap intervals, seed 0",
     "primary_mask_mechanism": "primary negatives end at last n=1 onset; final labelled slices are positive, giving increasing elapsed time nearly perfect within-shot ranking",
     "broad_sensitivity": "same predictions; post-last-onset and n=2-only negatives added",
     "high_beta": "beta_N >= 0.8 times each shot's whole-window p95 (evaluation only)",
@@ -14274,7 +14275,7 @@
           },
           "fold_seed": 3,
           "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet",
-          "chance_detection": 0.22163192494075643,
+          "chance_detection": 0.221586685519821,
           "counts": {
             "hanson_shots": 33,
             "comparison_shots": 132,
@@ -14832,14 +14833,14 @@
               "high": 0.39218900675024104
             },
             "uniform_alarm_reference": {
-              "estimate": 0.22163192494075643,
-              "low": 0.13282233359644482,
-              "high": 0.30999511199372615
+              "estimate": 0.221586685519821,
+              "low": 0.13282107110097685,
+              "high": 0.3099521487700705
             },
             "detection_minus_uniform_reference": {
-              "estimate": 0.04920140839257689,
-              "low": -0.05448821207337323,
-              "high": 0.14240745896662313
+              "estimate": 0.04924664781351232,
+              "low": -0.05442772050480813,
+              "high": 0.14249776381072116
             },
             "warning_ms_mean": {
               "estimate": 236.10769230769228,
@@ -17556,13 +17557,13 @@
                   "high": 0.36363636363636365
                 },
                 "uniform_alarm_reference": {
-                  "estimate": 0.2339751922826633,
-                  "low": 0.11812872826608037,
-                  "high": 0.3495059172099604
+                  "estimate": 0.23389167335170563,
+                  "low": 0.11806814351934021,
+                  "high": 0.3494334048809753
                 },
                 "detection_minus_uniform_reference": {
-                  "estimate": -0.003205961513432526,
-                  "low": -0.16220816283133568,
+                  "estimate": -0.003122442582474849,
+                  "low": -0.16213515576582604,
                   "high": 0.1220267953473961
                 },
                 "warning_ms_mean": {
@@ -17835,7 +17836,7 @@
           },
           "fold_seed": 4,
           "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet",
-          "chance_detection": 0.06830691627709219,
+          "chance_detection": 0.06826167685615678,
           "counts": {
             "hanson_shots": 33,
             "comparison_shots": 132,
@@ -18393,12 +18394,12 @@
               "high": 0.2450255102040815
             },
             "uniform_alarm_reference": {
-              "estimate": 0.06830691627709219,
+              "estimate": 0.06826167685615678,
               "low": 0.026418218874060186,
-              "high": 0.11473345498650489
+              "high": 0.11460152009863228
             },
             "detection_minus_uniform_reference": {
-              "estimate": 0.05669308372290781,
+              "estimate": 0.05673832314384322,
               "low": -0.021031613484542966,
               "high": 0.1580933265082225
             },
@@ -21003,14 +21004,14 @@
                   "high": 0.2502314814814813
                 },
                 "uniform_alarm_reference": {
-                  "estimate": 0.06248239912473326,
+                  "estimate": 0.06239888019377557,
                   "low": 0.0,
-                  "high": 0.14157675290834595
+                  "high": 0.14129095651492687
                 },
                 "detection_minus_uniform_reference": {
-                  "estimate": 0.05290221625988213,
+                  "estimate": 0.05298573519083982,
                   "low": 0.0,
-                  "high": 0.13000446898305798
+                  "high": 0.13009432739858456
                 },
                 "warning_ms_mean": {
                   "estimate": 82.16666666666659,
@@ -21258,8 +21259,8 @@
         }
       }
     },
-    "rule-elapsed-time": {
-      "model": "rule-elapsed-time",
+    "rwm-rule-elapsed-time": {
+      "model": "rwm-rule-elapsed-time",
       "kind": "rule",
       "horizon_ms": 100.0,
       "options": {
@@ -21267,7 +21268,7 @@
         "column": "time_since_flattop_ms"
       },
       "fold_seed": 0,
-      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-elapsed-time_seed0.parquet",
+      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet",
       "chance_detection": 0.046462126283258076,
       "counts": {
         "hanson_shots": 33,
@@ -25472,14 +25473,14 @@
             "high": 0.13046338672768876
           },
           "uniform_alarm_reference": {
-            "estimate": 0.08858947264134288,
-            "low": 0.07475282134654891,
-            "high": 0.10150938596263834
+            "estimate": 0.08857849291161317,
+            "low": 0.07472684914631315,
+            "high": 0.10147792567582091
           },
           "detection_minus_uniform_reference": {
-            "estimate": -0.026089472641342884,
-            "low": -0.08790808920418597,
-            "high": 0.04552951364476956
+            "estimate": -0.02607849291161317,
+            "low": -0.08788190195050781,
+            "high": 0.04553951536434785
           },
           "warning_ms_mean": {
             "estimate": 103.98333333333328,
@@ -28347,13 +28348,13 @@
                 "high": 0.13340909090909084
               },
               "uniform_alarm_reference": {
-                "estimate": 0.1062569511549499,
-                "low": 0.08355722183982721,
-                "high": 0.12593485370863822
+                "estimate": 0.10623668088467965,
+                "low": 0.08355676750618321,
+                "high": 0.12593428085317404
               },
               "detection_minus_uniform_reference": {
-                "estimate": -0.06779541269341144,
-                "low": -0.12194803760526728,
+                "estimate": -0.06777514242314119,
+                "low": -0.12193149176254954,
                 "high": 0.0312518642221312
               },
               "warning_ms_mean": {
@@ -28599,11 +28600,11 @@
             }
           }
         },
-        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-elapsed-time_full_trace.parquet"
+        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet"
       }
     },
-    "rule-betan": {
-      "model": "rule-betan",
+    "rwm-rule-betan": {
+      "model": "rwm-rule-betan",
       "kind": "rule",
       "horizon_ms": 100.0,
       "options": {
@@ -28611,7 +28612,7 @@
         "column": "betan"
       },
       "fold_seed": 0,
-      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-betan_seed0.parquet",
+      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet",
       "chance_detection": 0.025207463600314933,
       "counts": {
         "hanson_shots": 33,
@@ -35759,11 +35760,11 @@
             }
           }
         },
-        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-betan_full_trace.parquet"
+        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet"
       }
     },
-    "rule-betan-over-li": {
-      "model": "rule-betan-over-li",
+    "rwm-rule-betan-over-li": {
+      "model": "rwm-rule-betan-over-li",
       "kind": "rule",
       "horizon_ms": 100.0,
       "options": {
@@ -35771,7 +35772,7 @@
         "column": "betan_over_li"
       },
       "fold_seed": 0,
-      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-betan-over-li_seed0.parquet",
+      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet",
       "chance_detection": 0.030122239047930103,
       "counts": {
         "hanson_shots": 33,
@@ -42747,11 +42748,11 @@
             }
           }
         },
-        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-betan-over-li_full_trace.parquet"
+        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet"
       }
     },
-    "rule-rwm-candidates": {
-      "model": "rule-rwm-candidates",
+    "rwm-rule-rwm-candidates": {
+      "model": "rwm-rule-rwm-candidates",
       "kind": "rule",
       "horizon_ms": 100.0,
       "options": {
@@ -42760,7 +42761,7 @@
         "binary": true
       },
       "fold_seed": 0,
-      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-rwm-candidates_seed0.parquet",
+      "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet",
       "chance_detection": 0.0,
       "counts": {
         "hanson_shots": 33,
@@ -49742,12 +49743,12 @@
             }
           }
         },
-        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rule-rwm-candidates_full_trace.parquet"
+        "predictions": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet"
       }
     }
   },
   "paired": {
-    "rwm-brf - rule-elapsed-time": {
+    "rwm-brf - rwm-rule-elapsed-time": {
       "slice_auroc": {
         "estimate": 0.0014686409768474018,
         "low": -0.049084839974529025,
@@ -49887,9 +49888,23 @@
         "estimate": -0.33333333333333337,
         "low": -0.7198863636363635,
         "high": 0.007575757575757569
+      },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "estimate": -0.1473058164956158,
+          "low": -0.19962373253232737,
+          "high": -0.08358075967412446
+        },
+        "broad": {
+          "n_shots": 30,
+          "estimate": 0.3021296242047748,
+          "low": 0.216744813532865,
+          "high": 0.383832594519025
+        }
       }
     },
-    "rwm-brf - rule-betan": {
+    "rwm-brf - rwm-rule-betan": {
       "slice_auroc": {
         "estimate": 0.053174555978433236,
         "low": -0.03805043554269569,
@@ -50029,9 +50044,23 @@
         "estimate": -0.3712121212121212,
         "low": -0.85625,
         "high": 0.0910984848484847
+      },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "estimate": -0.030804177543612088,
+          "low": -0.10922506204012734,
+          "high": 0.04541901765035304
+        },
+        "broad": {
+          "n_shots": 30,
+          "estimate": -0.020451360444092015,
+          "low": -0.09526686252158853,
+          "high": 0.058452577617381
+        }
       }
     },
-    "rwm-brf - rule-betan-over-li": {
+    "rwm-brf - rwm-rule-betan-over-li": {
       "slice_auroc": {
         "estimate": 0.03674972248652075,
         "low": -0.03768539220170018,
@@ -50171,6 +50200,20 @@
         "estimate": 0.007575757575757569,
         "low": -0.3939393939393939,
         "high": 0.4015151515151515
+      },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "estimate": -0.07102316273973741,
+          "low": -0.1325289050622218,
+          "high": -0.010139829509499432
+        },
+        "broad": {
+          "n_shots": 30,
+          "estimate": -0.06673886147153996,
+          "low": -0.13702868990745856,
+          "high": 0.00219867902272064
+        }
       }
     }
   },
@@ -52899,18 +52942,18 @@
             "high": 0.09430624911870472
           },
           "3": {
-            "estimate": 0.04920140839257689,
-            "low": -0.05448821207337323,
-            "high": 0.14240745896662313
+            "estimate": 0.04924664781351232,
+            "low": -0.05442772050480813,
+            "high": 0.14249776381072116
           },
           "4": {
-            "estimate": 0.05669308372290781,
+            "estimate": 0.05673832314384322,
             "low": -0.021031613484542966,
             "high": 0.1580933265082225
           }
         },
         "min": -0.002158771804925852,
-        "max": 0.05669308372290781,
+        "max": 0.05673832314384322,
         "all_cis_include_zero": true
       },
       "warning_ms_median": {
@@ -52954,8 +52997,8 @@
     "slice_fpr": 0.214,
     "onsets_warned": 10,
     "target_onsets": 11,
-    "comparison_shots_with_an_alarm": 2,
-    "comparison_shots": 17,
+    "stable_shots_with_an_alarm": 2,
+    "stable_shots": 17,
     "slice_f1": null,
     "date": "2022",
     "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",

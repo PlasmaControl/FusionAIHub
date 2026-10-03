@@ -4,14 +4,17 @@
 \setlength{\tabcolsep}{4pt}
 \begin{tabular}{@{}lcc@{}}
 \toprule
-Model / rule & Primary mean AUROC & Broad mean AUROC \\
+Model / rule (or difference) & Primary mean AUROC & Broad mean AUROC \\
 \midrule
 rwm-brf & $0.784$ & $0.719$ \\
-rule-elapsed-time & $0.931$ & $0.417$ \\
-rule-betan & $0.814$ & $0.739$ \\
-rule-betan-over-li & $0.855$ & $0.786$ \\
-rule-rwm-candidates & $0.500$ & $0.499$ \\
+rwm-rule-elapsed-time & $0.931$ & $0.417$ \\
+rwm-rule-betan & $0.814$ & $0.739$ \\
+rwm-rule-betan-over-li & $0.855$ & $0.786$ \\
+rwm-rule-rwm-candidates & $0.500$ & $0.499$ \\
+rwm-brf - rwm-rule-elapsed-time & $-0.147$ {\scriptsize $[-0.200, -0.084]$} & $0.302$ {\scriptsize $[0.217, 0.384]$} \\
+rwm-brf - rwm-rule-betan & $-0.031$ {\scriptsize $[-0.109, 0.045]$} & $-0.020$ {\scriptsize $[-0.095, 0.058]$} \\
+rwm-brf - rwm-rule-betan-over-li & $-0.071$ {\scriptsize $[-0.133, -0.010]$} & $-0.067$ {\scriptsize $[-0.137, 0.002]$} \\
 \bottomrule
 \end{tabular}
-\caption{Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. The forest ranks below both continuous plasma scalars on both masks, and below elapsed time on primary only. One-class shots are omitted; comparisons are unlabelled.}
+\caption{Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Model means are point estimates; differences have 95\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0). The forest is below $\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad $\beta_N/l_i$ is distinguishable. It is below elapsed time on primary and above it on broad. One-class shots are omitted; comparisons are unlabelled.}
 \end{table*}

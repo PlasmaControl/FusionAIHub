@@ -14,16 +14,16 @@
     "confidence",
     "attrs"
   ],
-  "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Category 1 has no duration rows here: only the raw onset points are verified. Reviewed negative coverage is unknown.",
-  "made_at": "2026-10-03T18:51:05+00:00",
+  "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Hanson category 1 is one minimal 10 ms post-onset slice, not a measured duration. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Reviewed negative coverage is unknown.",
+  "made_at": "2026-10-03T19:27:17+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
-  "n_rows": 558,
+  "n_rows": 612,
   "n_shots": 165,
   "rules": {
-    "present": "no present duration inferred; verified point onsets remain in the curated format source",
+    "present": "Hanson: [ONSET_TIME, ONSET_TIME + 10 ms) for either mode number, one minimal present slice; evidence tier onset_point_minimal. Mode duration is unmeasured. Present evidence takes precedence over overlapping uncertain windows.",
     "absent": "high-current time only before the first listed onset minus 100 ms, assuming complete onset listing. No post-onset physical absence is inferred without mode termination evidence",
-    "uncertain": "Hanson: [20 ms before ONSET_TIME, ONSET_TIME), of either mode number, as a convention with unverified direction and extent. Comparison: rwm_candidates screen spans.",
-    "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later uncertain onset windows; comparison time outside screen spans"
+    "uncertain": "Hanson: [20 ms before ONSET_TIME, ONSET_TIME), of either mode number, as a convention with unverified pre-onset presence and extent; overlapping present time takes precedence. Comparison: rwm_candidates screen spans.",
+    "unassessed": "explicit precursor gaps and time beyond minimal present slices, apart from later uncertain onset windows; comparison time outside screen spans"
   },
   "onset_time_provenance": {
     "field": "ONSET_TIME",
@@ -36,12 +36,16 @@
       "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md"
     ],
-    "physical_window_category": 2,
+    "physical_window_categories": {
+      "pre_onset": 2,
+      "minimal_post_onset": 1
+    },
     "forecast_target": "separate 100 ms point-time forecast target; unchanged",
     "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search"
   },
   "evidence_tiers": {
-    "onset_window_uncertain": "category 2 on Hanson shots: [o-20 ms, o) by convention; ONSET_TIME meaning, physical direction and extent unknown",
+    "onset_point_minimal": "category 1 on Hanson shots: [o, o+10 ms), one minimal present slice from the listed onset; not a measured duration",
+    "onset_window_uncertain": "category 2 on Hanson shots: [o-20 ms, o) by convention; ONSET_TIME meaning, pre-onset presence and extent unverified",
     "assumed_absent": "Hanson time before first precursor; completeness assumption",
     "unlabelled_screen": "category 2 on comparison shots: rwm_candidates screen spans, not onset windows or verified negatives",
     "unassessed": "no assessed physical state or termination evidence"

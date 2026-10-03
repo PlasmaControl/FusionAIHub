@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "c671a3d3819a61ab073d839dace8344f6fdf40c046b7242dd595b443acd1d61b",
+  "source_sha256": "903c353f982b3dd893c89009bb3d099f86e842d5684cf0d7fc21f1a9cec0dea4",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -49,181 +49,181 @@
           "n_shots": 30
         }
       },
-      "rule-elapsed-time": {
+      "rwm-rule-elapsed-time": {
         "slice_auroc": {
-          "json_path": "configs.rule-elapsed-time.metrics.slice_auroc",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_auroc",
           "estimate": 0.7587335474151602,
           "low": 0.7118506687957216,
           "high": 0.8148521262935791
         },
         "broad_auroc": {
-          "json_path": "configs.rule-elapsed-time.metrics.broad_auroc",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.broad_auroc",
           "estimate": 0.390047299248989,
           "low": 0.33291810827721663,
           "high": 0.4398378255138416
         },
         "slice_auprc": {
-          "json_path": "configs.rule-elapsed-time.metrics.slice_auprc",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_auprc",
           "estimate": 0.22785363859801916,
           "low": 0.21216351902873304,
           "high": 0.30695559234855635
         },
         "slice_f1": {
-          "json_path": "configs.rule-elapsed-time.metrics.slice_f1",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_f1",
           "estimate": 0.26720321931589536,
           "low": 0.21690540005005843,
           "high": 0.33135096496997535
         },
         "slice_tpr": {
-          "json_path": "configs.rule-elapsed-time.metrics.slice_tpr",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_tpr",
           "estimate": 0.6916666666666667,
           "low": 0.5245262054507337,
           "high": 0.829643605870021
         },
         "slice_fpr": {
-          "json_path": "configs.rule-elapsed-time.metrics.slice_fpr",
+          "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_fpr",
           "estimate": 0.31836346336822074,
           "low": 0.24437115374446478,
           "high": 0.3681517415831221
         },
         "within_shot_primary_mean": {
-          "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary.mean",
+          "json_path": "configs.rwm-rule-elapsed-time.within_shot_auroc.primary.mean",
           "estimate": 0.9309497992055623,
           "n_shots": 30
         }
       },
-      "rule-betan": {
+      "rwm-rule-betan": {
         "slice_auroc": {
-          "json_path": "configs.rule-betan.metrics.slice_auroc",
+          "json_path": "configs.rwm-rule-betan.metrics.slice_auroc",
           "estimate": 0.7070276324135744,
           "low": 0.6389341617487666,
           "high": 0.7717948860197866
         },
         "broad_auroc": {
-          "json_path": "configs.rule-betan.metrics.broad_auroc",
+          "json_path": "configs.rwm-rule-betan.metrics.broad_auroc",
           "estimate": 0.7150719718852301,
           "low": 0.6407577550974536,
           "high": 0.7759842125820196
         },
         "slice_auprc": {
-          "json_path": "configs.rule-betan.metrics.slice_auprc",
+          "json_path": "configs.rwm-rule-betan.metrics.slice_auprc",
           "estimate": 0.1656533156078931,
           "low": 0.1281706498450382,
           "high": 0.24642607838773417
         },
         "slice_f1": {
-          "json_path": "configs.rule-betan.metrics.slice_f1",
+          "json_path": "configs.rwm-rule-betan.metrics.slice_f1",
           "estimate": 0.24615384615384617,
           "low": 0.19392559186526598,
           "high": 0.3118434633873013
         },
         "slice_tpr": {
-          "json_path": "configs.rule-betan.metrics.slice_tpr",
+          "json_path": "configs.rwm-rule-betan.metrics.slice_tpr",
           "estimate": 0.75,
           "low": 0.6187357954545455,
           "high": 0.8652696488294314
         },
         "slice_fpr": {
-          "json_path": "configs.rule-betan.metrics.slice_fpr",
+          "json_path": "configs.rwm-rule-betan.metrics.slice_fpr",
           "estimate": 0.3967649857278782,
           "low": 0.32276111912678007,
           "high": 0.45378258832394364
         },
         "within_shot_primary_mean": {
-          "json_path": "configs.rule-betan.within_shot_auroc.primary.mean",
+          "json_path": "configs.rwm-rule-betan.within_shot_auroc.primary.mean",
           "estimate": 0.8144481602535586,
           "n_shots": 30
         }
       },
-      "rule-betan-over-li": {
+      "rwm-rule-betan-over-li": {
         "slice_auroc": {
-          "json_path": "configs.rule-betan-over-li.metrics.slice_auroc",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_auroc",
           "estimate": 0.7234524659054868,
           "low": 0.6636812093487351,
           "high": 0.7840685911293114
         },
         "broad_auroc": {
-          "json_path": "configs.rule-betan-over-li.metrics.broad_auroc",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.broad_auroc",
           "estimate": 0.7522622099460813,
           "low": 0.6875420800226769,
           "high": 0.8153225046626771
         },
         "slice_auprc": {
-          "json_path": "configs.rule-betan-over-li.metrics.slice_auprc",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_auprc",
           "estimate": 0.15880887831181684,
           "low": 0.12736523472238975,
           "high": 0.2318260607893155
         },
         "slice_f1": {
-          "json_path": "configs.rule-betan-over-li.metrics.slice_f1",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_f1",
           "estimate": 0.26119126896041434,
           "low": 0.21167225886867003,
           "high": 0.32761739346218915
         },
         "slice_tpr": {
-          "json_path": "configs.rule-betan-over-li.metrics.slice_tpr",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_tpr",
           "estimate": 0.7354166666666667,
           "low": 0.601875,
           "high": 0.8470728291316526
         },
         "slice_fpr": {
-          "json_path": "configs.rule-betan-over-li.metrics.slice_fpr",
+          "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_fpr",
           "estimate": 0.3558515699333968,
           "low": 0.26864187796097494,
           "high": 0.4272105191201794
         },
         "within_shot_primary_mean": {
-          "json_path": "configs.rule-betan-over-li.within_shot_auroc.primary.mean",
+          "json_path": "configs.rwm-rule-betan-over-li.within_shot_auroc.primary.mean",
           "estimate": 0.8546671454496839,
           "n_shots": 30
         }
       },
-      "rule-rwm-candidates": {
+      "rwm-rule-rwm-candidates": {
         "slice_auroc": {
-          "json_path": "configs.rule-rwm-candidates.metrics.slice_auroc",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_auroc",
           "estimate": 0.5,
           "low": 0.5,
           "high": 0.5
         },
         "broad_auroc": {
-          "json_path": "configs.rule-rwm-candidates.metrics.broad_auroc",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.broad_auroc",
           "estimate": 0.49776140958983245,
           "low": 0.49538329515220875,
           "high": 0.49951558676875607
         },
         "slice_auprc": {
-          "json_path": "configs.rule-rwm-candidates.metrics.slice_auprc",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_auprc",
           "estimate": 0.08369659982563209,
           "low": 0.0703560487145368,
           "high": 0.10202112345716674
         },
         "slice_f1": {
-          "json_path": "configs.rule-rwm-candidates.metrics.slice_f1",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_f1",
           "estimate": 0.0,
           "low": 0.0,
           "high": 0.0
         },
         "slice_tpr": {
-          "json_path": "configs.rule-rwm-candidates.metrics.slice_tpr",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_tpr",
           "estimate": 0.0,
           "low": 0.0,
           "high": 0.0
         },
         "slice_fpr": {
-          "json_path": "configs.rule-rwm-candidates.metrics.slice_fpr",
+          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_fpr",
           "estimate": 0.0,
           "low": 0.0,
           "high": 0.0
         },
         "within_shot_primary_mean": {
-          "json_path": "configs.rule-rwm-candidates.within_shot_auroc.primary.mean",
+          "json_path": "configs.rwm-rule-rwm-candidates.within_shot_auroc.primary.mean",
           "estimate": 0.5,
           "n_shots": 30
         }
       }
     },
-    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\\% shot-bootstrap intervals at fixed predictions. Within-shot means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established; within shot the forest ranks below both continuous plasma scalars on both masks (Supplement). Legacy uses different inputs and validation; results are not comparable.",
-    "caption_words": 74,
+    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\\% shot-bootstrap intervals at fixed predictions. Within-shot point means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established. Paired within-shot intervals place the forest below $\\beta_N/l_i$ on primary; neither $\\beta_N$ mask nor broad $\\beta_N/l_i$ is distinguishable (Supplement). Legacy uses different inputs and validation; results are not comparable.",
+    "caption_words": 80,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -247,12 +247,12 @@
           "json_path": "legacy.target_onsets",
           "value": 11
         },
-        "comparison_shots_with_an_alarm": {
-          "json_path": "legacy.comparison_shots_with_an_alarm",
+        "stable_shots_with_an_alarm": {
+          "json_path": "legacy.stable_shots_with_an_alarm",
           "value": 2
         },
-        "comparison_shots": {
-          "json_path": "legacy.comparison_shots",
+        "stable_shots": {
+          "json_path": "legacy.stable_shots",
           "value": 17
         }
       },
@@ -407,7 +407,7 @@
             "max": 0.8123160515447749
           }
         },
-        "paired.rwm-brf - rule-elapsed-time.broad_auroc": {
+        "paired.rwm-brf - rwm-rule-elapsed-time.broad_auroc": {
           "estimate": 0.34954769340939723,
           "low": 0.28685367671869855,
           "high": 0.4143236212777892
@@ -1168,8 +1168,52 @@
     "within_shot": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
-      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. The forest ranks below both continuous plasma scalars on both masks, and below elapsed time on primary only. One-class shots are omitted; comparisons are unlabelled.",
+      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0). The forest is below $\\beta_N/l_i$ on primary; neither $\\beta_N$ mask nor broad $\\beta_N/l_i$ is distinguishable. It is below elapsed time on primary and above it on broad. One-class shots are omitted; comparisons are unlabelled.",
       "source": {
+        "paired_within_shot_auroc": {
+          "rwm-brf - rwm-rule-elapsed-time": {
+            "primary": {
+              "n_shots": 30,
+              "estimate": -0.1473058164956158,
+              "low": -0.19962373253232737,
+              "high": -0.08358075967412446
+            },
+            "broad": {
+              "n_shots": 30,
+              "estimate": 0.3021296242047748,
+              "low": 0.216744813532865,
+              "high": 0.383832594519025
+            }
+          },
+          "rwm-brf - rwm-rule-betan": {
+            "primary": {
+              "n_shots": 30,
+              "estimate": -0.030804177543612088,
+              "low": -0.10922506204012734,
+              "high": 0.04541901765035304
+            },
+            "broad": {
+              "n_shots": 30,
+              "estimate": -0.020451360444092015,
+              "low": -0.09526686252158853,
+              "high": 0.058452577617381
+            }
+          },
+          "rwm-brf - rwm-rule-betan-over-li": {
+            "primary": {
+              "n_shots": 30,
+              "estimate": -0.07102316273973741,
+              "low": -0.1325289050622218,
+              "high": -0.010139829509499432
+            },
+            "broad": {
+              "n_shots": 30,
+              "estimate": -0.06673886147153996,
+              "low": -0.13702868990745856,
+              "high": 0.00219867902272064
+            }
+          }
+        },
         "configs.rwm-brf.within_shot_auroc": {
           "primary": {
             "mean": 0.7836439827099465,
@@ -1182,7 +1226,7 @@
             "n_shots": 30
           }
         },
-        "configs.rule-elapsed-time.within_shot_auroc": {
+        "configs.rwm-rule-elapsed-time.within_shot_auroc": {
           "primary": {
             "mean": 0.9309497992055623,
             "median": 1.0,
@@ -1194,7 +1238,7 @@
             "n_shots": 30
           }
         },
-        "configs.rule-betan.within_shot_auroc": {
+        "configs.rwm-rule-betan.within_shot_auroc": {
           "primary": {
             "mean": 0.8144481602535586,
             "median": 0.8840988626421697,
@@ -1206,7 +1250,7 @@
             "n_shots": 30
           }
         },
-        "configs.rule-betan-over-li.within_shot_auroc": {
+        "configs.rwm-rule-betan-over-li.within_shot_auroc": {
           "primary": {
             "mean": 0.8546671454496839,
             "median": 0.8998095512082853,
@@ -1218,7 +1262,7 @@
             "n_shots": 30
           }
         },
-        "configs.rule-rwm-candidates.within_shot_auroc": {
+        "configs.rwm-rule-rwm-candidates.within_shot_auroc": {
           "primary": {
             "mean": 0.5,
             "median": 0.5,
@@ -2130,14 +2174,14 @@
               "high": 0.39218900675024104
             },
             "uniform_alarm_reference": {
-              "estimate": 0.22163192494075643,
-              "low": 0.13282233359644482,
-              "high": 0.30999511199372615
+              "estimate": 0.221586685519821,
+              "low": 0.13282107110097685,
+              "high": 0.3099521487700705
             },
             "detection_minus_uniform_reference": {
-              "estimate": 0.04920140839257689,
-              "low": -0.05448821207337323,
-              "high": 0.14240745896662313
+              "estimate": 0.04924664781351232,
+              "low": -0.05442772050480813,
+              "high": 0.14249776381072116
             },
             "warning_ms_mean": {
               "estimate": 236.10769230769228,
@@ -2272,12 +2316,12 @@
               "high": 0.2450255102040815
             },
             "uniform_alarm_reference": {
-              "estimate": 0.06830691627709219,
+              "estimate": 0.06826167685615678,
               "low": 0.026418218874060186,
-              "high": 0.11473345498650489
+              "high": 0.11460152009863228
             },
             "detection_minus_uniform_reference": {
-              "estimate": 0.05669308372290781,
+              "estimate": 0.05673832314384322,
               "low": -0.021031613484542966,
               "high": 0.1580933265082225
             },
@@ -2399,18 +2443,18 @@
                 "high": 0.09430624911870472
               },
               "3": {
-                "estimate": 0.04920140839257689,
-                "low": -0.05448821207337323,
-                "high": 0.14240745896662313
+                "estimate": 0.04924664781351232,
+                "low": -0.05442772050480813,
+                "high": 0.14249776381072116
               },
               "4": {
-                "estimate": 0.05669308372290781,
+                "estimate": 0.05673832314384322,
                 "low": -0.021031613484542966,
                 "high": 0.1580933265082225
               }
             },
             "min": -0.002158771804925852,
-            "max": 0.05669308372290781,
+            "max": 0.05673832314384322,
             "all_cis_include_zero": true
           },
           "warning_ms_median": {
@@ -4535,6 +4579,7 @@
     "Piccione-style primary scores \u2014 all models (reference split, seed 0)",
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
     "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
+    "Paired within-shot mean AUROC differences (95% basic shot CIs)",
     "Broad-mask run-record holdout \u2014 forest minus elapsed time",
     "High-beta conditional scores \u2014 all models",
     "Above no-wall-proxy conditional scores \u2014 all models",
@@ -4569,17 +4614,17 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "1b9a7d45a23dbd4d9db480ea1b64d2a6d1297a999f26c69aeb24681f726bab3d"
+        "sha256": "11ce1ca14b8e81341b8eaaa8ed4c300084f87b9e4b1b5fc142ccd97614f6765e"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "86d23c9e115b2488ca546880c23a7e5ccc9f6295b86a71db6c9258b2679ffde2"
+        "sha256": "c1910889f11171a6cf4dcbd54135cde1e2ed9a367576749406dcc3fef2d37550"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "9fc338a66a9662f22cc6559c273192a864190ca75d2ecffdaeaaf83e0e02c644"
+        "sha256": "4ad0e72a2e10b675fdcc3f221c7625f429e832091b84ad23160af26ad6d76c22"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
@@ -4589,17 +4634,17 @@
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "e1d88514f43dfa4302a8b259dda269c6ea9a82148797f4a3ac42dad0839eadbf"
+        "sha256": "df67d5d4725b1250733cf4064481dd49bab7f455efe8a2db3cb446508b98df1a"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "29b06f85edc1882b2d0d30972e37b9833630fe5570bdff4b89b2eb3b78a7512b"
+        "sha256": "5eb31bf2d25bb4cd5446c36d97e8ff828866c9cfe6e4d838f8a827792ff78c82"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "8e07f65e7056cd97b7122d4f7d6c55c9bd746df0fdd18e23359cc10b5e744ce3"
+        "sha256": "3ca2d8034866840ad72a0a8525b0c5fe053ada41ae43f9020bb7a6966b42df41"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
@@ -4609,7 +4654,7 @@
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "b89c026b5cb6b8b443def23482f8a0c1e5c7bb68049e31d07b54d7a452650ecc"
+        "sha256": "783043c7b1544c192dc6320420d92b5e562309811b5f59fc9acd8cb7e0b1f863"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
@@ -4619,7 +4664,7 @@
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "2d7747345cae5813ac6bd84bb75944cd1eef5ad769281b57df76f72880989754"
+        "sha256": "f90b9c9b3bee88b426cfb13fb8311259fd8a9f52291e30fb48e6f06c7fd49f29"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -4629,7 +4674,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "aaaad10d4cfb286c9616fff6de49fd1048780bd005024b068d5e9c590780810e"
+        "sha256": "b5e8ac9e4a2d717e0f54d7fdfb7f08456dca77b0a01f9e2a572c566ce5219c53"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -4640,7 +4685,7 @@
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": "..................................................                       [100%]\n50 passed in 4.74s"
+      "output": ".....................................................                    [100%]\n53 passed in 5.42s"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -4648,7 +4693,7 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "4 files already formatted"
+      "output": "9 files already formatted"
     },
     "table_ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-ruff.log",
@@ -4656,11 +4701,11 @@
     },
     "table_ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-format.log",
-      "output": "4 files already formatted"
+      "output": "9 files already formatted"
     },
     "table_validation": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-validation.log",
-      "output": "PASS: one aligned main table; caption 74 words; six-line glossary / eight-line lead.\nPASS: saved primary/broad/within-shot cells, README lines, supplementary ranges and wording/source checks.\nPASS: seven one-page PDF/PNG table pairs, mirror/hash checks, figure caption and unchanged physical window placement."
+      "output": "PASS: all 16 saved prediction/slice artifacts byte-identical after rule filename renames.\nPASS: all forecast metrics/CIs, masks/counts, fold rules, alarm outcomes and within-shot point estimates exactly unchanged.\nReference-only corrections: [{\"path\": \"/configs/rwm-brf/split_seeds/3/chance_detection\", \"before\": 0.22163192494075643, \"after\": 0.221586685519821}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/estimate\", \"before\": 0.22163192494075643, \"after\": 0.221586685519821}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/low\", \"before\": 0.13282233359644482, \"after\": 0.13282107110097685}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/high\", \"before\": 0.30999511199372615, \"after\": 0.3099521487700705}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.04920140839257689, \"after\": 0.04924664781351232}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/low\", \"before\": -0.05448821207337323, \"after\": -0.05442772050480813}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/high\", \"before\": 0.14240745896662313, \"after\": 0.14249776381072116}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.2339751922826633, \"after\": 0.23389167335170563}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/low\", \"before\": 0.11812872826608037, \"after\": 0.11806814351934021}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.3495059172099604, \"after\": 0.3494334048809753}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.003205961513432526, \"after\": -0.003122442582474849}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/detection_minus_uniform_reference/low\", \"before\": -0.16220816283133568, \"after\": -0.16213515576582604}, {\"path\": \"/configs/rwm-brf/split_seeds/4/chance_detection\", \"before\": 0.06830691627709219, \"after\": 0.06826167685615678}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/uniform_alarm_reference/estimate\", \"before\": 0.06830691627709219, \"after\": 0.06826167685615678}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/uniform_alarm_reference/high\", \"before\": 0.11473345498650489, \"after\": 0.11460152009863228}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.06248239912473326, \"after\": 0.06239888019377557}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.14157675290834595, \"after\": 0.14129095651492687}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.05290221625988213, \"after\": 0.05298573519083982}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/detection_minus_uniform_reference/high\", \"before\": 0.13000446898305798, \"after\": 0.13009432739858456}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/estimate\", \"before\": 0.08858947264134288, \"after\": 0.08857849291161317}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/low\", \"before\": 0.07475282134654891, \"after\": 0.07472684914631315}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/high\", \"before\": 0.10150938596263834, \"after\": 0.10147792567582091}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.026089472641342884, \"after\": -0.02607849291161317}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/low\", \"before\": -0.08790808920418597, \"after\": -0.08788190195050781}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/high\", \"before\": 0.04552951364476956, \"after\": 0.04553951536434785}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.1062569511549499, \"after\": 0.10623668088467965}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/low\", \"before\": 0.08355722183982721, \"after\": 0.08355676750618321}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.12593485370863822, \"after\": 0.12593428085317404}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.06779541269341144, \"after\": -0.06777514242314119}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/detection_minus_uniform_reference/low\", \"before\": -0.12194803760526728, \"after\": -0.12193149176254954}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/estimate\", \"before\": 0.04920140839257689, \"after\": 0.04924664781351232}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/low\", \"before\": -0.05448821207337323, \"after\": -0.05442772050480813}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/high\", \"before\": 0.14240745896662313, \"after\": 0.14249776381072116}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/4/estimate\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/max\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}]\nPASS: six 1000-replicate basic paired within-shot intervals; plasma-scalar claim matches their signs.\nPASS: physical CSV tiles coverage without overlaps; 54 present 10 ms slices; pre-onset, absent and comparison rows unchanged.\nPASS: model/Legacy naming, interval-qualified claims, point-estimate header, README scores and 112-word Method.\nPASS: seven current one-page PDF/150-dpi PNG table pairs; hashes and source mirrors; clean diff."
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-latex.log",
@@ -4668,7 +4713,7 @@
     },
     "visual_inspection": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-visual.log",
-      "output": "Fix round 6: viewed all eight final PNGs with tools.view_image(detail=original).\ntable_rwm-1.png: one aligned table, primary/broad/within-shot columns readable, 3-digit CI bounds intact, short caption unclipped.\ntable_rwm_split_summary-1.png: ranges and paired cells aligned; seed 3 retains the -0.0001 bound.\ntable_rwm_within_shot-1.png: both mask means readable; elapsed-time exception explicit.\ntable_rwm_alarms-1.png: readable forest results; four-rule seed-0 scope explicit; betaN highlight removed.\ntable_rwm_campaign_pairs-1.png: all paired cells and caption intact.\ntable_rwm_onset_actual-1.png: all 48 onset rows and sampling caption readable.\ntable_rwm_onset_window-1.png: all 48 window rows and sampling caption readable.\nrwm_onset_scores.png: all eight panels, axes and legend readable; caption identifies proxy line as right-axis betaN/li=4, not score 0.5.\nNo clipping or overlap observed. Tables use 9 pt body / 7 pt CIs in 10 pt wrappers; figure labels >=7 pt at native column width."
+      "output": "Fix round 7: viewed all eight regenerated PNGs using view_image.\nMain table: primary, broad and within-shot columns align; within-shot column explicitly says point estimate. Caption and Legacy block fit without clipping or overlap.\nWithin-shot supplement: all six paired intervals are legible; primary beta_N/l_i excludes zero, other plasma-scalar intervals cross zero.\nSplit/campaign/alarms and both onset tables: legible, one page each, no overlap or clipping.\nOnset-score figure: eight panels, axes and reference lines remain legible."
     }
   }
 }

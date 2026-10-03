@@ -6,7 +6,7 @@
 \toprule
 \multicolumn{8}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\
 \midrule
-Model / rule & \shortstack{Primary\\AUROC} & \shortstack{Broad\\AUROC} & \shortstack{Within-shot mean\\AUROC (primary)} & \shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & \shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\
+Model / rule & \shortstack{Primary\\AUROC} & \shortstack{Broad\\AUROC} & \shortstack{Within-shot mean AUROC\\(primary point estimate)} & \shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & \shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\
 \midrule
 \texttt{rwm-brf} & \shortstack{$0.760$\\{\scriptsize $[0.706, 0.809]$}} & \shortstack{$0.740$\\{\scriptsize $[0.668, 0.799]$}} & $0.784$ & \shortstack{$0.163$\\{\scriptsize $[0.123, 0.220]$}} & \shortstack{$0.275$\\{\scriptsize $[0.227, 0.337]$}} & \shortstack{$0.756$\\{\scriptsize $[0.646, 0.869]$}} & \shortstack{$0.342$\\{\scriptsize $[0.261, 0.421]$}} \\
 \addlinespace[1.5pt]
@@ -27,6 +27,6 @@ NSTX RUS forest & $0.918$ & -- & -- & -- & -- & $0.924$ & $0.214$ \\
 \multicolumn{8}{@{}l}{Detected unstable shots: 10/11; stable shots with false alarms: 2/17} \\
 \bottomrule
 \end{tabular}
-\caption{Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\% shot-bootstrap intervals at fixed predictions. Within-shot means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established; within shot the forest ranks below both continuous plasma scalars on both masks (Supplement). Legacy uses different inputs and validation; results are not comparable.}
+\caption{Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\% shot-bootstrap intervals at fixed predictions. Within-shot point means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established. Paired within-shot intervals place the forest below $\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad $\beta_N/l_i$ is distinguishable (Supplement). Legacy uses different inputs and validation; results are not comparable.}
 \label{tab:rwm-baseline}
 \end{table*}

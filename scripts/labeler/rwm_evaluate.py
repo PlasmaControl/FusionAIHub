@@ -164,7 +164,9 @@ def run_config(args):
     if saved is not None and seed != SEED:
         saved = saved["split_seeds"][str(seed)]
     if saved_record is not None and saved is None:
-        raise ValueError(f"saved replay has no prediction record for {name} seed={seed}")
+        raise ValueError(
+            f"saved replay has no prediction record for {name} seed={seed}"
+        )
     if saved is not None:
         oof, alarms, rules = replay(saved, target, every)
         oof_path = Path(saved["predictions"])

@@ -49,18 +49,20 @@ no-wall limit.
 
 **all** (reference split (seed 0); Hanson primary 100 ms forecasts on 10 ms slices; assumed negatives):
 
-- rwm-brf | 2026_10_03 | Primary AUROC: 0.760 [0.706, 0.809] | Broad AUROC: 0.740 [0.668, 0.799] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
-- rule-elapsed-time | 2026_10_03 | Primary AUROC: 0.759 [0.712, 0.815] | Broad AUROC: 0.390 [0.333, 0.440] | AUPRC: 0.228 [0.212, 0.307] | F1: 0.267 [0.217, 0.331]
-- rule-betan | 2026_10_03 | Primary AUROC: 0.707 [0.639, 0.772] | Broad AUROC: 0.715 [0.641, 0.776] | AUPRC: 0.166 [0.128, 0.246] | F1: 0.246 [0.194, 0.312]
-- rule-betan-over-li | 2026_10_03 | Primary AUROC: 0.723 [0.664, 0.784] | Broad AUROC: 0.752 [0.688, 0.815] | AUPRC: 0.159 [0.127, 0.232] | F1: 0.261 [0.212, 0.328]
-- rule-rwm-candidates | 2026_10_03 | Primary AUROC: 0.500 [0.500, 0.500] | Broad AUROC: 0.498 [0.495, 0.500] | AUPRC: 0.084 [0.070, 0.102] | F1: 0.000 [0.000, 0.000]
+- rwm-brf | 2026_10_03 | Primary AUROC: 0.760 [0.706, 0.809] (ties elapsed time) | Broad AUROC: 0.740 [0.668, 0.799] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
+- rwm-rule-elapsed-time | 2026_10_03 | Primary AUROC: 0.759 [0.712, 0.815] | Broad AUROC: 0.390 [0.333, 0.440] | AUPRC: 0.228 [0.212, 0.307] | F1: 0.267 [0.217, 0.331]
+- rwm-rule-betan | 2026_10_03 | Primary AUROC: 0.707 [0.639, 0.772] | Broad AUROC: 0.715 [0.641, 0.776] | AUPRC: 0.166 [0.128, 0.246] | F1: 0.246 [0.194, 0.312]
+- rwm-rule-betan-over-li | 2026_10_03 | Primary AUROC: 0.723 [0.664, 0.784] | Broad AUROC: 0.752 [0.688, 0.815] | AUPRC: 0.159 [0.127, 0.232] | F1: 0.261 [0.212, 0.328]
+- rwm-rule-rwm-candidates | 2026_10_03 | Primary AUROC: 0.500 [0.500, 0.500] | Broad AUROC: 0.498 [0.495, 0.500] | AUPRC: 0.084 [0.070, 0.102] | F1: 0.000 [0.000, 0.000]
 
 No AUROC advantage over the strongest scalar, or onset-specific warning skill,
-was established; within shot the forest ranks below both continuous plasma
-scalars on both masks: primary/broad means are forest **0.784/0.719**, beta_N
-**0.814/0.739**, beta_N/l_i **0.855/0.786**. Elapsed time is **0.931/0.417**; its
-primary median is **1.0**, reflecting negatives truncated at the last onset.
-Source: `evaluation.json/configs/<model>/within_shot_auroc`.
+was established. Paired within-shot intervals place the forest below beta_N/l_i
+on the primary mask; neither beta_N mask nor broad beta_N/l_i is distinguishable.
+Primary/broad point means are forest **0.784/0.719**, beta_N **0.814/0.739**,
+beta_N/l_i **0.855/0.786**, elapsed time **0.931/0.417**. Elapsed time's primary
+median is **1.0**, reflecting negatives truncated at the last onset.
+Sources: `evaluation.json/configs/<model>/within_shot_auroc` and
+`evaluation.json/paired/rwm-brf - <scalar>/within_shot_auroc`.
 
 In 2014 high-beta, the forest is below chance on the reference split
 (**0.311 [0.22, 0.41]**); the scalar rules are near chance. Forest detection ranges
@@ -71,6 +73,9 @@ rule alarms were not replayed over seeds 1–4. Sources:
 `split_sensitivity/alarm_ranges`. Full results and limitations are in
 [the current protocol](../../../docs/labeler/rwm_baseline.md) and
 [evaluation.json](../../../outputs/labeler/rwm/evaluation.json).
+
+`nnpu.py`, `evaluate.Nnpu`, and `Brf(use_comparison=True)` are excluded
+development code and contribute to none of these results.
 
 ## Inputs
 **rwm-brf** (stored scalars and profiles; trailing/held features on a 10 ms grid):
@@ -83,15 +88,18 @@ rule alarms were not replayed over seeds 1–4. Sources:
 **rules**: beta_N, beta_N/l_i, elapsed time since the first |Ip| ≥0.5 MA sample, and the existing `rwm_candidates` call. The analysis span and the candidate screen's whole-flat-top median/MAD threshold are retrospective; the screen is not a causal alarm comparator.
 
 ## Method
-Only the curated onset points are confirmed evidence. Original database events retain NaN confidence and NaN coverage; onset listing does not establish an examined interval. The original 500-shot screen export is header-only, not an absence claim.
-
-The review editor's `rwm_candidates` screen requires n=1 RMS above the whole-flat-top median plus **6 MAD**, **beta_N > 4 l_i**, and **at least 10 ms** duration. Screen candidates are uncertain, other time is unassessed, and missing inputs are not observable. N1RMS cannot distinguish RWM from tearing or applied-field response. See [the editor guide](../../../docs/labeler/equilibrium_review.md).
-
-The supplied Hanson CSVs/README do not define `ONSET_TIME` as growth-start versus detection/threshold crossing; the local Piccione digests concern NSTX and cannot confirm the DIII-D convention (searched sources: `rwm_windows.meta.json/onset_time_provenance`, `sensor_probe.json/source_search`). The baseline interval table therefore writes **[o−20 ms, o) as UNCERTAIN (category 2)**, with zero present duration rows: neither direction nor extent is measured. Immediately post-onset time stays **category 4**, pending extent/termination evidence; the matched random-time N1RMS slope search cannot repair this gap. Time before the first onset's 100 ms precursor is **assumed absent**, conditional on list completeness. Precursors and all post-onset physical time are explicitly **unassessed (category 4)** apart from later uncertain windows; comparisons remain unlabelled, with uncertain screen spans and category 4 elsewhere. These physical categories are separate from forecast labels.
-
-All features are trailing calculations on offline inputs: holding samples does not establish causal availability of postprocessed N1RMS/N2RMS or acausal ZIPFIT. [Onset-physics tables](../../../outputs/labeler/rwm/tables.md) give beta_N, l_i, beta_N/l_i and elapsed time at every merged n=1 onset, and separately at the first slice in its uncertain 20 ms window; six below-proxy and three missing-EFIT flags apply to the latter snapshot, not exact onset.
-
-Forecasting uses the paper-inspired 100 ms horizon and only pre-last-n=1-onset assumed negatives; immediate aftermath and n=2 surroundings are excluded, and n=2-only shots have no primary n=1 negatives. This future-onset target is separate from physical state. Five outer and three inner shot-grouped folds keep thresholds and alarm choices inside training shots, repeated over five seeds; leave-one-run-record-out is a separate sensitivity. Primary Hanson alarm tuning/scoring ends at the last n=1/n=2 onset +100 ms, while comparison traces retain full span; the former full-trace objective is separately retuned. Alarm tuning targets n=1 separately from n=1/n=2 events used to explain alarms. Rebuild and score with `scripts/labeler/rwm_build.py`, `rwm_growth.py`, `rwm_evaluate.py`, `rwm_tables.py` and `rwm_figure.py`, following the stream environment rules. This presentation round regenerates metadata/tables/figure from cached inputs and unchanged evaluation/predictions, without refitting or fetching. Protocol, every result and paired CIs are in `outputs/labeler/rwm/evaluation.json`.
+Hanson onset points support one minimal present slice **[o, o+10 ms)**
+(category 1, `onset_point_minimal`); this does not measure mode duration.
+**[o−20 ms, o)** remains uncertain (category 2). Time before the first
+100 ms precursor is assumed absent, conditional on list completeness;
+remaining time is unassessed. Comparisons are unlabelled, with uncertain screen
+spans. Forecast labels remain separate: a 100 ms horizon, pre-last-onset
+negatives, and aftermath/n=2 exclusions. Five outer and three inner shot-grouped
+folds keep tuning inside training shots; five split seeds and four run-record
+holdouts assess sensitivity. Offline magnetic timing and acausal ZIPFIT limit
+online interpretation. This round rescores saved predictions without refitting.
+See [protocol and reproduction](../../../docs/labeler/rwm_baseline.md) and
+[evaluation.json](../../../outputs/labeler/rwm/evaluation.json) for scores and intervals.
 
 ## Alias
 resistive wall mode, rwm, resonant field amplification (precursor), rfa

@@ -47,20 +47,20 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | model | AUROC (95% CI) | AUPRC (95% CI) | F1 (95% CI) | slice TPR (95% CI) | slice FPR (95% CI) |
 |---|---|---|---|---|---|
 | rwm-brf | 0.760 [0.706, 0.809] | 0.163 [0.123, 0.220] | 0.275 [0.227, 0.337] | 0.756 [0.646, 0.869] | 0.342 [0.261, 0.421] |
-| rule-elapsed-time | 0.759 [0.712, 0.815] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] | 0.692 [0.525, 0.830] | 0.318 [0.244, 0.368] |
-| rule-betan | 0.707 [0.639, 0.772] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] | 0.750 [0.619, 0.865] | 0.397 [0.323, 0.454] |
-| rule-betan-over-li | 0.723 [0.664, 0.784] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] | 0.735 [0.602, 0.847] | 0.356 [0.269, 0.427] |
-| rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
+| rwm-rule-elapsed-time | 0.759 [0.712, 0.815] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] | 0.692 [0.525, 0.830] | 0.318 [0.244, 0.368] |
+| rwm-rule-betan | 0.707 [0.639, 0.772] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] | 0.750 [0.619, 0.865] | 0.397 [0.323, 0.454] |
+| rwm-rule-betan-over-li | 0.723 [0.664, 0.784] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] | 0.735 [0.602, 0.847] | 0.356 [0.269, 0.427] |
+| rwm-rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
 ### Broader Hanson-negative sensitivity — same models and predictions
 
 | model | AUROC (95% CI) | AUPRC (95% CI) |
 |---|---|---|
 | rwm-brf | 0.740 [0.668, 0.799] | 0.065 [0.043, 0.103] |
-| rule-elapsed-time | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
-| rule-betan | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
-| rule-betan-over-li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
-| rule-rwm-candidates | 0.498 [0.495, 0.500] | 0.034 [0.026, 0.041] |
+| rwm-rule-elapsed-time | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
+| rwm-rule-betan | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
+| rwm-rule-betan-over-li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
+| rwm-rule-rwm-candidates | 0.498 [0.495, 0.500] | 0.034 [0.026, 0.041] |
 
 ### Within-shot AUROC — primary and broad Hanson masks (reference split, seed 0)
 
@@ -68,14 +68,22 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 |---|---|---|---|---|
 | rwm-brf | primary | 30 | 0.830 | 0.784 |
 | rwm-brf | broad | 30 | 0.760 | 0.719 |
-| rule-elapsed-time | primary | 30 | 1.000 | 0.931 |
-| rule-elapsed-time | broad | 30 | 0.419 | 0.417 |
-| rule-betan | primary | 30 | 0.884 | 0.814 |
-| rule-betan | broad | 30 | 0.821 | 0.739 |
-| rule-betan-over-li | primary | 30 | 0.900 | 0.855 |
-| rule-betan-over-li | broad | 30 | 0.866 | 0.786 |
-| rule-rwm-candidates | primary | 30 | 0.500 | 0.500 |
-| rule-rwm-candidates | broad | 30 | 0.500 | 0.499 |
+| rwm-rule-elapsed-time | primary | 30 | 1.000 | 0.931 |
+| rwm-rule-elapsed-time | broad | 30 | 0.419 | 0.417 |
+| rwm-rule-betan | primary | 30 | 0.884 | 0.814 |
+| rwm-rule-betan | broad | 30 | 0.821 | 0.739 |
+| rwm-rule-betan-over-li | primary | 30 | 0.900 | 0.855 |
+| rwm-rule-betan-over-li | broad | 30 | 0.866 | 0.786 |
+| rwm-rule-rwm-candidates | primary | 30 | 0.500 | 0.500 |
+| rwm-rule-rwm-candidates | broad | 30 | 0.500 | 0.499 |
+
+### Paired within-shot mean AUROC differences (95% basic shot CIs)
+
+| forest minus scalar | primary | broad | two-class shots per mask |
+|---|---|---|---|
+| rwm-brf - rwm-rule-elapsed-time | -0.147 [-0.200, -0.084] | 0.302 [0.217, 0.384] | 30/30 |
+| rwm-brf - rwm-rule-betan | -0.031 [-0.109, 0.045] | -0.020 [-0.095, 0.058] | 30/30 |
+| rwm-brf - rwm-rule-betan-over-li | -0.071 [-0.133, -0.010] | -0.067 [-0.137, 0.002] | 30/30 |
 
 ### Broad-mask run-record holdout — forest minus elapsed time
 
@@ -88,20 +96,20 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | model | AUROC (95% CI) | AUPRC (95% CI) | positive slices | assumed-negative slices | prevalence |
 |---|---|---|---|---|---|
 | rwm-brf | 0.602 [0.491, 0.688] | 0.168 [0.123, 0.228] | 365 | 2351 | 0.134 |
-| rule-elapsed-time | 0.642 [0.557, 0.732] | 0.255 [0.241, 0.343] | 365 | 2351 | 0.134 |
-| rule-betan | 0.563 [0.468, 0.651] | 0.176 [0.132, 0.273] | 365 | 2351 | 0.134 |
-| rule-betan-over-li | 0.593 [0.509, 0.677] | 0.165 [0.132, 0.249] | 365 | 2351 | 0.134 |
-| rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.134 [0.108, 0.171] | 365 | 2351 | 0.134 |
+| rwm-rule-elapsed-time | 0.642 [0.557, 0.732] | 0.255 [0.241, 0.343] | 365 | 2351 | 0.134 |
+| rwm-rule-betan | 0.563 [0.468, 0.651] | 0.176 [0.132, 0.273] | 365 | 2351 | 0.134 |
+| rwm-rule-betan-over-li | 0.593 [0.509, 0.677] | 0.165 [0.132, 0.249] | 365 | 2351 | 0.134 |
+| rwm-rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.134 [0.108, 0.171] | 365 | 2351 | 0.134 |
 
 ### Above no-wall-proxy conditional scores — all models
 
 | model | AUROC (95% CI) | AUPRC (95% CI) | positive slices | assumed-negative slices | prevalence |
 |---|---|---|---|---|---|
 | rwm-brf | 0.546 [0.416, 0.642] | 0.176 [0.130, 0.240] | 365 | 1913 | 0.160 |
-| rule-elapsed-time | 0.597 [0.524, 0.676] | 0.268 [0.254, 0.355] | 365 | 1913 | 0.160 |
-| rule-betan | 0.509 [0.386, 0.617] | 0.183 [0.139, 0.279] | 365 | 1913 | 0.160 |
-| rule-betan-over-li | 0.512 [0.428, 0.591] | 0.168 [0.132, 0.252] | 365 | 1913 | 0.160 |
-| rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.160 [0.125, 0.215] | 365 | 1913 | 0.160 |
+| rwm-rule-elapsed-time | 0.597 [0.524, 0.676] | 0.268 [0.254, 0.355] | 365 | 1913 | 0.160 |
+| rwm-rule-betan | 0.509 [0.386, 0.617] | 0.183 [0.139, 0.279] | 365 | 1913 | 0.160 |
+| rwm-rule-betan-over-li | 0.512 [0.428, 0.591] | 0.168 [0.132, 0.252] | 365 | 1913 | 0.160 |
+| rwm-rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.160 [0.125, 0.215] | 365 | 1913 | 0.160 |
 
 ### Leave-one-run-record-out — rwm-brf (95% shot CIs)
 
@@ -148,30 +156,30 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | model | onsets warned | Hanson shots: unexplained alarm | unlabelled shots: any alarm |
 |---|---|---|---|
 | rwm-brf | 9/48 | 8/33 | 19/132 |
-| rule-elapsed-time | 3/48 | 4/33 | 128/132 |
-| rule-betan | 4/48 | 1/33 | 58/132 |
-| rule-betan-over-li | 1/48 | 3/33 | 30/132 |
-| rule-rwm-candidates | 0/48 | 0/33 | 36/132 |
+| rwm-rule-elapsed-time | 3/48 | 4/33 | 128/132 |
+| rwm-rule-betan | 4/48 | 1/33 | 58/132 |
+| rwm-rule-betan-over-li | 1/48 | 3/33 | 30/132 |
+| rwm-rule-rwm-candidates | 0/48 | 0/33 | 36/132 |
 
 ### Alarm rates — all models (95% shot CIs)
 
 | model | onset detection | Hanson unexplained incidence | alarm incidence on unlabelled shots |
 |---|---|---|---|
 | rwm-brf | 0.188 [0.049, 0.333] | 0.242 [0.091, 0.394] | 0.144 [0.083, 0.212] |
-| rule-elapsed-time | 0.062 [0.000, 0.137] | 0.121 [0.030, 0.242] | 0.970 [0.939, 1.000] |
-| rule-betan | 0.083 [0.019, 0.163] | 0.030 [0.000, 0.121] | 0.439 [0.356, 0.515] |
-| rule-betan-over-li | 0.021 [0.000, 0.064] | 0.091 [0.000, 0.212] | 0.227 [0.167, 0.295] |
-| rule-rwm-candidates | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.273 [0.197, 0.348] |
+| rwm-rule-elapsed-time | 0.062 [0.000, 0.137] | 0.121 [0.030, 0.242] | 0.970 [0.939, 1.000] |
+| rwm-rule-betan | 0.083 [0.019, 0.163] | 0.030 [0.000, 0.121] | 0.439 [0.356, 0.515] |
+| rwm-rule-betan-over-li | 0.021 [0.000, 0.064] | 0.091 [0.000, 0.212] | 0.227 [0.167, 0.295] |
+| rwm-rule-rwm-candidates | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.273 [0.197, 0.348] |
 
 ### Warning times — all models (detected onsets only)
 
 | model | median warning, ms (95% CI) | uniform-alarm reference | detection minus reference |
 |---|---|---|---|
 | rwm-brf | 356 [286, 389] | 0.190 [0.080, 0.302] | -0.002 [-0.058, 0.052] |
-| rule-elapsed-time | 145 [36, 235] | 0.046 [0.023, 0.069] | 0.016 [-0.039, 0.083] |
-| rule-betan | 34 [16, 385] | 0.025 [0.006, 0.050] | 0.058 [0.014, 0.115] |
-| rule-betan-over-li | 36 [36, 36] | 0.030 [0.006, 0.065] | -0.009 [-0.052, 0.030] |
-| rule-rwm-candidates | - | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
+| rwm-rule-elapsed-time | 145 [36, 235] | 0.046 [0.023, 0.069] | 0.016 [-0.039, 0.083] |
+| rwm-rule-betan | 34 [16, 385] | 0.025 [0.006, 0.050] | 0.058 [0.014, 0.115] |
+| rwm-rule-betan-over-li | 36 [36, 36] | 0.030 [0.006, 0.065] | -0.009 [-0.052, 0.030] |
+| rwm-rule-rwm-candidates | - | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
 ### Forest alarm sensitivity — five splits and run-record holdout
 
@@ -309,10 +317,10 @@ First slice in the [onset - 20 ms, onset) window: 6 snapshots are below beta_N/l
 | model | Detected Hanson shots | Missed Hanson shots | Early Hanson shots | Hanson shots without n=1 targets (excluded) | FP on comparison shots (alarm incidence) |
 |---|---|---|---|---|---|
 | rwm-brf | 6/30 | 22/30 | 2/30 | 3 | 19/132 |
-| rule-elapsed-time | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
-| rule-betan | 4/30 | 26/30 | 0/30 | 3 | 58/132 |
-| rule-betan-over-li | 1/30 | 26/30 | 3/30 | 3 | 30/132 |
-| rule-rwm-candidates | 0/30 | 30/30 | 0/30 | 3 | 36/132 |
+| rwm-rule-elapsed-time | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
+| rwm-rule-betan | 4/30 | 26/30 | 0/30 | 3 | 58/132 |
+| rwm-rule-betan-over-li | 1/30 | 26/30 | 3/30 | 3 | 30/132 |
+| rwm-rule-rwm-candidates | 0/30 | 30/30 | 0/30 | 3 | 36/132 |
 
 Detected, Early and Missed are mutually exclusive on Hanson shots with an n=1 target: any Detected alarm takes precedence over Early, then Missed. Early means more than 400 ms before a listed onset. The FP column reports unlabelled-shot alarm incidence, not a verified stable-shot false-positive rate.
 
@@ -337,41 +345,41 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-elapsed-time | 0.001 [-0.049, 0.060] | -0.065 [-0.100, 0.016] |
-| rwm-brf - rule-betan | 0.053 [-0.038, 0.140] | -0.003 [-0.064, 0.069] |
-| rwm-brf - rule-betan-over-li | 0.037 [-0.038, 0.115] | 0.004 [-0.047, 0.071] |
+| rwm-brf - rwm-rule-elapsed-time | 0.001 [-0.049, 0.060] | -0.065 [-0.100, 0.016] |
+| rwm-brf - rwm-rule-betan | 0.053 [-0.038, 0.140] | -0.003 [-0.064, 0.069] |
+| rwm-brf - rwm-rule-betan-over-li | 0.037 [-0.038, 0.115] | 0.004 [-0.047, 0.071] |
 
 ### Paired differences — rwm-brf versus rules, broad
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-elapsed-time | 0.350 [0.287, 0.414] | 0.040 [0.006, 0.058] |
-| rwm-brf - rule-betan | 0.025 [-0.068, 0.117] | 0.001 [-0.037, 0.036] |
-| rwm-brf - rule-betan-over-li | -0.013 [-0.092, 0.072] | -0.009 [-0.045, 0.029] |
+| rwm-brf - rwm-rule-elapsed-time | 0.350 [0.287, 0.414] | 0.040 [0.006, 0.058] |
+| rwm-brf - rwm-rule-betan | 0.025 [-0.068, 0.117] | 0.001 [-0.037, 0.036] |
+| rwm-brf - rwm-rule-betan-over-li | -0.013 [-0.092, 0.072] | -0.009 [-0.045, 0.029] |
 
 ### Paired differences — rwm-brf versus rules, high-beta conditional
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-elapsed-time | -0.040 [-0.120, 0.061] | -0.087 [-0.128, 0.011] |
-| rwm-brf - rule-betan | 0.039 [-0.101, 0.187] | -0.008 [-0.077, 0.087] |
-| rwm-brf - rule-betan-over-li | 0.009 [-0.092, 0.123] | 0.003 [-0.049, 0.081] |
+| rwm-brf - rwm-rule-elapsed-time | -0.040 [-0.120, 0.061] | -0.087 [-0.128, 0.011] |
+| rwm-brf - rwm-rule-betan | 0.039 [-0.101, 0.187] | -0.008 [-0.077, 0.087] |
+| rwm-brf - rwm-rule-betan-over-li | 0.009 [-0.092, 0.123] | 0.003 [-0.049, 0.081] |
 
 ### Paired differences — rwm-brf versus rules, above-proxy conditional
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-elapsed-time | -0.051 [-0.157, 0.092] | -0.091 [-0.138, 0.002] |
-| rwm-brf - rule-betan | 0.037 [-0.123, 0.192] | -0.007 [-0.074, 0.081] |
-| rwm-brf - rule-betan-over-li | 0.034 [-0.092, 0.167] | 0.008 [-0.046, 0.085] |
+| rwm-brf - rwm-rule-elapsed-time | -0.051 [-0.157, 0.092] | -0.091 [-0.138, 0.002] |
+| rwm-brf - rwm-rule-betan | 0.037 [-0.123, 0.192] | -0.007 [-0.074, 0.081] |
+| rwm-brf - rwm-rule-betan-over-li | 0.034 [-0.092, 0.167] | 0.008 [-0.046, 0.085] |
 
 ### Paired alarm differences — rwm-brf versus rules (95% basic CIs)
 
 | first model minus rule | detection difference | Hanson incidence difference | unlabelled incidence difference |
 |---|---|---|---|
-| rwm-brf - rule-elapsed-time | 0.125 [-0.021, 0.270] | 0.121 [-0.091, 0.333] | -0.826 [-0.894, -0.765] |
-| rwm-brf - rule-betan | 0.104 [-0.053, 0.245] | 0.212 [0.061, 0.333] | -0.295 [-0.394, -0.197] |
-| rwm-brf - rule-betan-over-li | 0.167 [0.015, 0.310] | 0.152 [0.000, 0.303] | -0.083 [-0.182, 0.015] |
+| rwm-brf - rwm-rule-elapsed-time | 0.125 [-0.021, 0.270] | 0.121 [-0.091, 0.333] | -0.826 [-0.894, -0.765] |
+| rwm-brf - rwm-rule-betan | 0.104 [-0.053, 0.245] | 0.212 [0.061, 0.333] | -0.295 [-0.394, -0.197] |
+| rwm-brf - rwm-rule-betan-over-li | 0.167 [0.015, 0.310] | 0.152 [0.000, 0.303] | -0.083 [-0.182, 0.015] |
 
 ### Split sensitivity — rwm-brf (fixed hyperparameters)
 

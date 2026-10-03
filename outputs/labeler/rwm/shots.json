@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_build.py",
-  "made_at": "2026-10-03T18:51:05+00:00",
+  "made_at": "2026-10-03T19:27:17+00:00",
   "pool": {
     "shots": 208,
     "usable": 207,
@@ -327,8 +327,8 @@
   },
   "windows": {
     "csv": "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv",
-    "rows": 558,
-    "conventional_weak_windows": 0,
+    "rows": 612,
+    "minimal_present_windows": 54,
     "uncertain_onset_windows": 54,
     "assumed_absent_spans": 33,
     "verified_absent_spans": 0,
@@ -336,12 +336,13 @@
     "comparison_unassessed_spans": 258,
     "candidate_spans_on_comparison_shots": 126,
     "onset_window_ms": 20.0,
+    "minimal_present_ms": 10.0,
     "horizon_ms": 100.0,
     "post_ms": 100.0
   },
   "evidence": {
     "verified": "Hanson listed onset points only; no verified negative coverage",
-    "windows": "uncertain 20 ms pre-onset convention; direction and extent unverified",
+    "windows": "uncertain 20 ms pre-onset convention; minimal present 10 ms post-onset slice; neither is a measured mode duration",
     "onset_time_provenance": {
       "field": "ONSET_TIME",
       "detection_or_threshold_time_verified": false,
@@ -353,12 +354,15 @@
         "main:.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
         "main:.tmp/label_papers/outside/Piccione_tsdw2021_RWM_poster.md"
       ],
-      "physical_window_category": 2,
+      "physical_window_categories": {
+        "pre_onset": 2,
+        "minimal_post_onset": 1
+      },
       "forecast_target": "separate 100 ms point-time forecast target; unchanged",
       "source_audit": "outputs/labeler/rwm/sensor_probe.json#/source_search"
     },
     "negative_assumption": "onset listing is complete only before first onset precursor for physical category 0; not termination evidence",
-    "unassessed": "explicit category 4 for precursors and post-onset physical state through end of analysis; comparison time outside screen spans",
+    "unassessed": "explicit category 4 for precursor gaps and time beyond minimal present slices; comparison time outside screen spans",
     "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
     "comparison": "unlabelled, never primary supervised negatives"
   },

@@ -11,10 +11,11 @@ This retrospective forest forecasts listed n=1 onsets in 33 Hanson shots; four
 rules were compared. Reference-split pooled AUROC is **0.760 primary / 0.740 broad**.
 Primary-mask elapsed time ranks almost perfectly within shot (median **1.0**).
 No AUROC advantage over the strongest scalar, or onset-specific warning skill,
-was established; within shot the forest ranks below both continuous plasma
-scalars on both masks, and below elapsed time on primary only (numbers below).
+was established. Paired within-shot intervals place the forest below beta_N/l_i
+on primary; neither beta_N mask nor broad beta_N/l_i is distinguishable.
 Negative coverage, physical duration and online input timing remain unverified.
-Source: `E#/configs/<model>/{metrics,within_shot_auroc}`; E is defined below.
+Sources: `E#/configs/<model>/{metrics,within_shot_auroc}` and
+`E#/paired/rwm-brf - <scalar>/within_shot_auroc`; E is defined below.
 
 ## Records and provenance
 
@@ -128,27 +129,28 @@ The `rwm-onset-window` rule exports the physical interval CSV under the
 `data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv`, with JSON
 `attrs.evidence_tier` and `coverage_verified=false`, plus `rwm_windows.meta.json`:
 
-- **Category 2, uncertain onset window:** [o−20 ms, o) for each listed n=1 or
-  n=2 point. The supplied Hanson CSVs name `ONSET_TIME` but do not define whether
-  it is growth onset, detection or threshold crossing; disk README/source and
-  paper-digest searches did not resolve that meaning. Piccione's NSTX threshold
-  definition cannot establish Hanson's DIII-D convention. The window stays before
-  the point by convention; its physical direction is unknown, and neither
-  direction nor 20 ms extent establishes presence. There are **zero category-1
-  present intervals**; immediately post-onset time remains category 4.
-  The source search is recorded in `rwm_windows.meta.json/onset_time_provenance`.
+- **Category 1, minimal present slice:** [o, o+10 ms) for each listed n=1 or
+  n=2 onset, evidence tier `onset_point_minimal`. One 10 ms slice records minimal
+  post-onset presence; it is not a measured duration or termination time. Present
+  evidence takes precedence if a later uncertain pre-onset window overlaps it.
+- **Category 2, uncertain pre-onset window:** [o−20 ms, o) by convention.
+  Hanson `ONSET_TIME` does not specify growth start versus detection/threshold
+  crossing, so pre-onset presence and the 20 ms extent remain unverified. Piccione's
+  NSTX convention cannot establish this DIII-D meaning. Source searches are in
+  `rwm_windows.meta.json/onset_time_provenance`.
 - **Category 0, assumed absent:** high-current Hanson time before the **first**
   listed onset's 100 ms precursor, conditional on onset-list completeness. There
   is no post-onset reset to absence and no verified absence interval.
-- **Category 4, unassessed:** precursor gaps and all physical post-onset time,
-  except later uncertain onset windows. The physical state does not expire
+- **Category 4, unassessed:** precursor gaps and time beyond minimal present
+  slices, except later uncertain onset windows. The physical state does not expire
   after 100 ms. Comparison time outside uncertain screen spans is category 4 too.
 - **Comparison screen spans:** unlabelled candidates for review, never primary
   negatives. The screen requires N1RMS above the whole-flat-top median +6 MAD,
   beta_N >4l_i and at least 10 ms duration. Missing inputs are not observable.
 
-The export has **558 rows on 165 shots**: 54 uncertain onset windows, 33 assumed-absent,
-87 Hanson unassessed, 126 comparison screen and 258 comparison unassessed spans.
+The export has **612 rows on 165 shots**: 54 minimal present slices, 54 uncertain
+onset windows, 33 assumed-absent, 87 Hanson unassessed, 126 comparison screen and
+258 comparison unassessed spans.
 Comparison spans are clipped to analysis coverage. The review reader retains
 category 0/4 rows and aligned evidence attributes; the category-only editor rejects
 saving tiered sources until an evidence-aware workflow is available.
@@ -160,7 +162,7 @@ and random flat-top centres on n=1 Hanson shots: 90 offsets (−150 to +28 ms),
 trailing 20 ms fits, controls at least 170 ms from listed onsets. Median maximum
 N1RMS slope is **111.7/s at onsets versus 109.8/s at 7,704 controls**; slope at the
 onset itself has median **−1.75/s**. Comparable control maxima cannot validate
-physical growth extent or the direction of the 20 ms uncertain window.
+physical growth extent or pre-onset presence in the 20 ms uncertain window.
 Sources: `G#/{search,controls,max_growth_per_s_n1,control_max_growth_per_s_n1,
 slope_at_onset_per_s_n1}` and its per-centre CSV paths.
 
@@ -242,7 +244,8 @@ Between-model paired differences share shot draws and use **basic** bootstrap
 CIs (reflected percentile endpoints). All intervals condition on fixed fitted OOF
 predictions; they do not include refitting, fold selection or run-population
 uncertainty. The random-alarm reference keeps each target shot's alarm count and
-places alarms independently/uniformly over its scored span; it is approximate.
+places alarms independently/uniformly over its scored span, intersecting each
+onset's warning window with that span; it is approximate.
 Warning-time CIs condition on detected onsets. Sources: `E#/protocol`,
 `E#/paired_method`, `src/labeler/rwm/metrics.py` and `evaluate.py/chance_detection`.
 
@@ -259,9 +262,23 @@ Reference-split within-shot means (30 two-class Hanson shots, equal shot weights
 | beta_N/l_i | 0.855 | 0.786 |
 | Candidate screen | 0.500 | 0.499 |
 
-The forest ranks below both continuous plasma scalars on both masks. It ranks
-below elapsed time on primary only: the primary truncation makes time almost
-perfect within shot (median **1.0**). Broad paired forest-minus-time AUROC is
+Forest minus scalar within-shot mean AUROC (95% basic paired shot-bootstrap
+intervals; 1,000 replicates, seed 0; 30 shared two-class shots per mask):
+
+| Scalar | Primary difference | Broad difference |
+|---|---|---|
+| Elapsed time | -0.147 [-0.200, -0.084] | +0.302 [+0.217, +0.384] |
+| beta_N | -0.031 [-0.109, +0.045] | -0.020 [-0.095, +0.058] |
+| beta_N/l_i | -0.071 [-0.133, -0.010] | -0.067 [-0.137, +0.002] |
+
+Paired within-shot intervals place the forest below beta_N/l_i on primary;
+neither beta_N mask nor broad beta_N/l_i is distinguishable. The forest is below
+elapsed time on primary and above it on broad. Primary truncation makes time
+almost perfect within shot (median **1.0**). These are differences of equal-shot
+means, separate from pooled AUROC differences. Source:
+`E#/paired/rwm-brf - <scalar>/within_shot_auroc`.
+
+Broad pooled paired forest-minus-time AUROC is
 **+0.350 [0.287, 0.414]** (run-record holdout **+0.362 [0.304, 0.428]**), while
 forest-minus-beta_N/l_i is **−0.013 [−0.092, 0.072]**. These intervals establish
 neither scalar equivalence nor onset-specific warning skill. Sources:
@@ -338,13 +355,13 @@ time AUPRC is **−0.065 [−0.100, 0.016]** under the basic paired bootstrap. I
 60 scores are concentrated in 176078 (48 slices) and 176069 (12). Split-0
 broader-negative sensitivity is **AUROC 0.740 [0.668, 0.799] / AUPRC 0.065
 [0.043, 0.103]**, from identical predictions. Sources: `E#/paired/rwm-brf -
-rule-elapsed-time/slice_auprc`, `E#/configs/rule-elapsed-time/
+rwm-rule-elapsed-time/slice_auprc`, `E#/configs/rwm-rule-elapsed-time/
 top_score_concentration`, `E#/configs/rwm-brf/metrics/broad_{auroc,auprc}`.
 Broad elapsed-time AUROC is **0.390** versus forest **0.740** and beta_N/l_i
 **0.752**; the broad paired differences above reverse the forest-versus-time
 comparison while retaining no advantage over the best scalar. This is mask
 sensitivity, not evidence of onset-specific skill or scalar equivalence.
-Source: `E#/configs/{rule-elapsed-time,rwm-brf,rule-betan-over-li}/metrics/broad_auroc`.
+Source: `E#/configs/{rwm-rule-elapsed-time,rwm-brf,rwm-rule-betan-over-li}/metrics/broad_auroc`.
 
 Five-split forest alarms warn **6–13/48** onsets: detection **0.125–0.271**,
 reference difference **−0.002 to +0.057**, median warning **135–356 ms**. No
@@ -421,9 +438,11 @@ inputs require no fetching. Build/fit with `rwm_build.py`, `rwm_growth.py`,
 `rwm_evaluate.py --workers 5 --replicates 1000`; render with `rwm_tables.py` and
 `rwm_figure.py`, all under `scripts/labeler/`.
 
-This round regenerates metadata, tables and the figure from cached inputs and
-unchanged E/predictions, using `rwm_build.py`, `rwm_tables.py` and `rwm_figure.py`;
-no refitting, retuning or evaluation rescore is needed.
+This round runs `rwm_build.py` for the physical export, then
+`rwm_evaluate.py --rescore-saved --workers 5 --replicates 1000` for paired
+within-shot intervals. Saved predictions, forecast labels, fitted parameters and
+thresholds remain unchanged; there is no refitting, retuning or fetching. Render
+with `rwm_tables.py` and `rwm_figure.py`.
 
 Large artifacts live under `$LABELER_ROOT/round4/rwm/`. The figure
 `rwm_onset_scores.{pdf,png}` shows six Hanson and two comparison shots selected by
@@ -471,3 +490,9 @@ artifact hashes and compilation/visual checks. Compile with `booktabs` and
   moved ranges to supplements; clarified nonsignificance, 2014 inversion, rule
   multiplicity, unexplained collapses, actuator context, recorded rotation units
   and the two category-2 evidence tiers. Fits and evaluation results are unchanged.
+
+- **Round 7:** added paired shot-bootstrap intervals for within-shot differences
+  by saved-prediction replay, qualified the scalar comparisons, added one minimal
+  10 ms present slice per onset, renamed task-specific rules and Legacy stable-shot
+  keys, and clipped random-alarm warning windows to each scored span. Forecast
+  labels and classifier scores remain unchanged.
