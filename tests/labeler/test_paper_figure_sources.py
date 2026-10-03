@@ -81,7 +81,7 @@ def test_crash_override_is_clipped_to_present_spans(tmp_path):
     assert record["source"] == str(path)
 
 
-def test_reviewed_ae_wins_and_does_not_require_fallback_model(tmp_path):
+def test_reviewed_ae_is_available_without_fallback_model(tmp_path):
     p = Paths(root=tmp_path, label_tables=tmp_path / "data/events")
     path = p.label_tables / "alfven_eigenmode/review/labels.csv"
     path.parent.mkdir(parents=True)
@@ -91,3 +91,21 @@ def test_reviewed_ae_wins_and_does_not_require_fallback_model(tmp_path):
     assert track.source.tier == "silver: expert review"
     assert [(r.t_start, r.t_end) for r in track.rows] == [(100, 500)]
     assert fs.reviewed_or_stored_ae(p, 43) is None
+
+
+def test_paper_ae_predictions_take_precedence_when_expert_intervals_also_exist(
+    tmp_path,
+):
+    p = Paths(root=tmp_path, label_tables=tmp_path / "data/events")
+    path = p.label_tables / "alfven_eigenmode/review/labels.csv"
+    path.parent.mkdir(parents=True)
+    path.write_text("shot,category,t_start,t_end,confidence\n42,1,100,500,\n")
+    p.labels.mkdir()
+    with h5py.File(p.labels_file(42), "w") as h:
+        for name, y in [("ae_active", [0.8, 0.2]), ("ae_active_valid", [1, 1])]:
+            g = h.create_group(f"d3d_ae_activity_seldnet/{name}")
+            g.create_dataset("xdata", data=[0.025, 0.050])
+            g.create_dataset("ydata", data=np.array([y]))
+    track = fs.reviewed_or_stored_ae(p, 42)
+    assert track.source.what.startswith("ae-ours")
+    assert track.file == p.labels_file(42)

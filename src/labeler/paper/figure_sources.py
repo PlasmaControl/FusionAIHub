@@ -100,14 +100,17 @@ def stored_ae_track(paths: Paths, shot: int) -> lf.Track | None:
 
 
 def reviewed_or_stored_ae(paths: Paths, shot: int) -> lf.Track | None:
-    """Resolve the AE source before touching any older fallback installation."""
+    """Paper predictions first, else current expert source; no fallback lookup."""
+    stored = stored_ae_track(paths, shot)
+    if stored is not None:
+        return stored
     spec = next(s for s in lf.TRACKS if s.key == mt.AE)
     source = spec.sources[0]
     path = source.locate(paths)
     rows = lf.read_rows(path).get(shot)
     if rows:
         return lf.Track(spec, source, path, rows)
-    return stored_ae_track(paths, shot)
+    return None
 
 
 def crash_times(paths: Paths, shot: int, spans, source: Path | None = None):
