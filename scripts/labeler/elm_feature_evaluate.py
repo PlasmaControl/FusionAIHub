@@ -5,14 +5,57 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 
 from labeler.config import Paths, git_sha, sha256_of
-from labeler.elm import compare, dsm, feature, score, train
+from labeler.elm import compare, dsm, feature, methods, score, train
 
 REPO = Path(__file__).resolve().parents[2]
+
+
+def common_bin_audit(paths, data, sets, rows, oof):
+    """Assert that the feature's common bins are the benchmark's common bins.
+
+    `elm-feature-only` restricts the primary bins with `dsm.bins_with_rows`; the
+    common-bin control table restricts them with `compare.bin_support` over every
+    method's support. Both must keep the same bins, shot by shot, or the feature
+    row would be scored on bins the other rows were not.
+    """
+    work = paths.root / "round4/elm/dsm"
+    fits = json.loads((work / "fits.json").read_text())
+    detection = {
+        s: dsm.load_rows(s, work / "repaired_raw_rows" / f"{s}.npz") for s in data
+    }
+    dscores = compare.DsmScores.load(
+        work, rows, variants=tuple(fits["detectors"]), detection_rows=detection
+    )
+    audit = {}
+    for tag, sdef in sets.items():
+        total = 0
+        for s in sdef.shots:
+            bins = sdef.bins[s]
+            masks = compare.bin_support(
+                s, bins, sdef.cover[s], oof.trace(s)[0], dscores
+            )
+            if sdef.has_elmo:
+                masks[compare.NAME["elmo"]] = compare.covered_bin_mask(
+                    bins, sdef.elmo_cover[s]
+                )
+            keep = np.logical_and.reduce(list(masks.values()))
+            rowed = dsm.bins_with_rows(
+                bins, rows[s].usable, lags=(compare.FORECAST_LAG_ROWS, 0)
+            )
+            if set(bins.t0[keep].tolist()) != set(rowed.t0.tolist()):
+                raise AssertionError(
+                    f"{tag} shot {s}: feature common bins differ from the "
+                    "benchmark's common bins"
+                )
+            total += int(keep.sum())
+        audit[tag] = {"shots": len(sdef.shots), "common_bins": total}
+    return {"bin_sets_equal": True, "sets": audit}
 
 
 def main(argv=None):
@@ -49,8 +92,11 @@ def main(argv=None):
     rows = {
         s: dsm.load_rows(s, paths.root / "round4/elm/dsm" / f"{s}.npz") for s in data
     }
+    oof = methods.Oof(run)
     record = {
-        "git": git_sha(),
+        "git": git_sha(full=True),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "script_sha256": sha256_of(Path(__file__)),
         "name": "elm-feature-only",
         "feature": "max across FS02-FS04 of within-bin max minus median log10 "
         "D-alpha on the existing 0.1ms cell-maximum input grid",
@@ -60,6 +106,7 @@ def main(argv=None):
         "cohort_test_shots_used": 0,
         "primary_run": str(run / "run.json"),
         "primary_run_sha256": sha256_of(run / "run.json"),
+        "common_bin_audit": common_bin_audit(paths, data, sets, rows, oof),
         "sets": {},
     }
     for scope in ("primary", "common"):

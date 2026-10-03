@@ -297,6 +297,25 @@ def score_reference(parts, truths, boot, skip=()) -> dict:
     return out
 
 
+def auroc_change(parts, review, other, boot) -> dict:
+    """Paired shot-bootstrap AUROC change `other - review` per method with a score.
+
+    Both references use the same bins, the same predictions and the same bootstrap
+    draws, so the interval is for the change itself, not for two separate AUROCs.
+    """
+    shots = [p.shot for p in next(iter(parts.values()))]
+    out = {}
+    for name, plist in parts.items():
+        if any(p.score is None for p in plist):
+            continue
+        reviewed = [
+            swap.retruth(p, review[s]) for p, s in zip(plist, shots, strict=True)
+        ]
+        changed = [swap.retruth(p, other[s]) for p, s in zip(plist, shots, strict=True)]
+        out[name] = score.paired_difference(changed, reviewed, boot, "auroc")
+    return out
+
+
 def flips(a: dict, b: dict) -> dict:
     """Pairs of methods whose order differs between two references' point values."""
     out = {}
@@ -736,6 +755,9 @@ def main(argv=None) -> int:
         res["finding_1"] = agreement(ref_parts, legacy, sel, boot)
         res["finding_1"]["as_methods"] = oracle_rows(ref_parts, legacy, sel, boot)
         res["comparison"] = compare_references(res["reviewed"], res["legacy"])
+        res["comparison"]["auroc_change_paired"] = auroc_change(
+            parts, review, legacy, boot
+        )
         res["occupancy"] = {}
         for gap in swap.OCCUPANCY_GAPS_MS:
             truth = {s: swap.table_truth(table, s, bins_of[s], gap_ms=gap) for s in sel}
@@ -816,7 +838,9 @@ def main(argv=None) -> int:
     from labeler.elm import swap_tex
 
     if not args.no_tables:
-        swap_tex.write(record, args.out_dir)
+        ours_path = OUT.parent / "ours" / "evaluation.json"
+        ours = json.loads(ours_path.read_text()) if ours_path.exists() else None
+        swap_tex.write(record, args.out_dir, ours=ours)
     print("overlap shots:", shots_over)
     for tag, r in record["swap"].items():
         if "finding_1" not in r:
