@@ -1016,10 +1016,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 1.20, "raw_mid": 0.70, "raw_lo": 1.35,
+        "h_raw": 0.32, "raw_hi": 1.16, "raw_mid": 0.74, "raw_lo": 1.35,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 1.20, "pr_mid": 0.70, "pr_lo": 1.35,
+        "pr_hi": 1.16, "pr_mid": 0.74, "pr_lo": 1.35,
         "crashes": 0.24 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
