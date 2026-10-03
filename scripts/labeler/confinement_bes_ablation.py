@@ -20,7 +20,9 @@ The ROWS table below names each configuration. Stages::
 
     consolidate --data 500k|1m     join per-shot feature files into one dataset
     run ROW [ROW ...]              train a row's folds (GPU), write predictions
-    summarize                      score every finished row -> ablation.json
+    summarize                      score every finished row -> ablation.json and one
+                                   ablation_rows/<row>.json each
+    table                          the record as Markdown tables
 
 Every score is per window and carries a 95 % interval bootstrapped over shots (1000
 replicates). A row is scored on its own population (the windows it kept) and on the
@@ -393,6 +395,22 @@ def summarize(args: argparse.Namespace) -> None:
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "ablation.json").write_text(json.dumps(record, indent=1))
+    per_row = args.out_dir / "ablation_rows"
+    per_row.mkdir(exist_ok=True)
+    for name, res in results.items():
+        (per_row / f"{name}.json").write_text(
+            json.dumps(
+                {
+                    "git": record["git"],
+                    "created": record["created"],
+                    "replicates": REPLICATES,
+                    "paper_criteria": PAPER_CRITERIA,
+                    "row": asdict(ROWS[name]),
+                    **res,
+                },
+                indent=1,
+            )
+        )
     for name, res in results.items():
         own, crit = res["own_population"], res["paper_criteria_population"]
         print(
