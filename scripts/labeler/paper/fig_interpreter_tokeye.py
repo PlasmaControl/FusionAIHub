@@ -917,10 +917,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 1.20, "raw_mid": 0.45, "raw_lo": 1.35,
+        "h_raw": 0.32, "raw_hi": 1.20, "raw_mid": 0.70, "raw_lo": 1.35,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 1.20, "pr_mid": 0.45, "pr_lo": 1.35,
+        "pr_hi": 1.20, "pr_mid": 0.70, "pr_lo": 1.35,
         "crashes": 0.24 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
@@ -1132,12 +1132,12 @@ def draw(
         if da_sig.rows:
             trace(da, da_sig.rows[0])
             top = float(np.max(da_sig.rows[0].values[1]))
-            da.set_ylim(0, top * 2.8)
+            da.set_ylim(0, top * 3.0)
             peaks = elm_peaks(da_sig.rows[0], elm_spans)
             if len(peaks):
                 (peak_artist,) = da.plot(
                     peaks,
-                    np.full(len(peaks), top * 1.05),
+                    np.full(len(peaks), top),
                     "v",
                     color=EVENT_COLOURS[elm_key],
                     ms=2.2,
@@ -1356,7 +1356,7 @@ def draw(
             if peak_artist is None
             else (
                 da.transData.transform((t0, top * 1.45))[1]
-                - da.transData.transform((t0, top * 1.05))[1]
+                - da.transData.transform((t0, top))[1]
             )
             * 72
             / fig.dpi
