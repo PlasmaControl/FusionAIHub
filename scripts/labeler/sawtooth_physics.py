@@ -22,22 +22,15 @@ import pandas as pd
 from scipy.signal import resample_poly
 
 from labeler.config import Paths
-from labeler.events import equilibrium, schema
+from labeler.events import equilibrium
 from labeler.events.panels import ece_geometry
 from labeler.events.verify import NoDataError
-from labeler.sawtooth.metrics import (
-    aggregate,
-    bin_times,
-    bootstrap_cells,
-    event_cells,
-    interval_cells,
-    score_histogram,
-    spans_at,
-)
 from labeler.sawtooth.physics import Rule, detect, noise_calibration
+from labeler.sawtooth.preprocessing import mask_spans, sample_native, state_spans
 
 REPO = Path(__file__).resolve().parents[2]
-WORK = Paths.from_env().root / "round4/saw"
+WORK = Paths.from_env().root / "round4/saw/fix"
+OUTPUT = REPO / "outputs/labeler/sawtooth/fix"
 SEED = 20261003
 FS = 10000
 REVIEW = Paths.from_env().label_tables / "sawtooth_oscillation/review/labels.csv"
@@ -51,8 +44,8 @@ def save_json(path, value):
     temp.replace(path)
 
 
-def sampled(group, *, rows=None, fs=FS):
-    """Read at at least 50 kHz then FIR-decimate to 10 kHz.
+def legacy_sampled(group, *, rows=None, fs=FS):
+    """Original aliased reader, retained ONLY for train-shot impact measurement.
 
     ECE's 500 kHz archive is first sampled at 50 kHz to bound IO and memory.
     That first sampling step has no antialias filter: above-25-kHz noise may
@@ -84,6 +77,69 @@ def sampled(group, *, rows=None, fs=FS):
     return tx, values
 
 
+sampled = sample_native
+
+
+def frozen_rule(work):
+    path = Path(work) / "freeze.json"
+    if not path.exists():
+        raise ValueError(f"Missing TRAIN-only freeze: {path}; run sawtooth_freeze.py")
+    return Rule(**json.loads(path.read_text())["rule"])
+
+
+def mean_finite(values):
+    finite = np.isfinite(values)
+    return np.divide(
+        np.where(finite, values, 0).sum(axis=0),
+        finite.sum(axis=0),
+        out=np.full(values.shape[1], np.nan),
+        where=finite.sum(axis=0) > 0,
+    )
+
+
+def density_support(file, t, shot, paths, rule):
+    """Conservative second-harmonic X-mode cutoff proxy, never a radius claim."""
+    support = np.ones(len(t), dtype=bool)
+    info = {"status": "density_unavailable", "cutoff_proxy": True}
+    if "ts_core_density" not in file:
+        return support, info
+    g = file["ts_core_density"]
+    tx, y = np.asarray(g["xdata"]), np.asarray(g["ydata"])
+    if len(tx) < 2:
+        return support, info
+    y[y <= 0] = np.nan
+    good = np.isfinite(y).any(axis=0)
+    ne = np.full(len(tx), np.nan)
+    ne[good] = np.nanquantile(y[:, good], 0.9, axis=0)
+    density = ece_geometry.align_q(t, tx, ne[None])[0]
+    bt = local_scalar(shot, "bt", paths)
+    if bt is None:
+        # Read the local scalar archive without any remote resolver or writes.
+        from labeler.features import resolve_archive
+
+        arrays, _ = resolve_archive.resolve(shot, ["bt"])
+        if "bt" in arrays:
+            a = equilibrium.canonical(arrays["bt"], "bt")
+            bt = a.x, a.y[0]
+    if bt is not None:
+        b = ece_geometry.align_q(t, bt[0], np.atleast_2d(bt[1]))[0]
+        cutoff = 0.9 * 2 * (27.992e9 * np.abs(b) / 8.98) ** 2
+        info["status"] = "Thomson_90percentile_and_local_bt"
+    else:
+        # A train-frozen conservative high-density guard when Bt is unavailable.
+        cutoff = np.full(len(t), 8e19)
+        info["status"] = "Thomson_90percentile_fixed_density_guard_bt_missing"
+    high = np.isfinite(density) & (density >= cutoff)
+    support[high] = False
+    info.update(
+        high_density_samples=int(high.sum()),
+        density_samples=int(np.isfinite(density).sum()),
+        fixed_density_guard_m3=8e19,
+        margin=0.9,
+    )
+    return support, info
+
+
 def interpolate(t, tx, y):
     return np.stack([np.interp(t, tx, row, left=np.nan, right=np.nan) for row in y])
 
@@ -96,20 +152,63 @@ def local_scalar(shot, name, paths):
         return None
 
 
+def local_q(shot, paths):
+    """Prefer explicitly MSE-constrained local equilibrium, never infer from MSE data."""
+    from labeler.events import raw
+    from labeler.features.store import read_feature
+
+    for path in (
+        paths.features_file(shot),
+        paths.corpus_file(shot),
+        raw.cache_path(shot, paths=paths),
+    ):
+        for name in ("qmin_mse", "qmin_efit02", "qpsi_mse", "qpsi_efit02", "qpsi"):
+            try:
+                array = read_feature(path, name)
+            except (OSError, KeyError):
+                continue
+            attrs = array.attrs
+            constrained = (
+                "mse" in name
+                or str(attrs.get("mse_constrained", "")).lower() in ("true", "1", "yes")
+                or "mse" in str(attrs.get("constraints", "")).lower()
+            )
+            if not constrained or len(array.x) < 2:
+                continue
+            y = np.asarray(array.y, dtype=float)
+            valid = np.isfinite(y) & (y > 0)
+            q = np.min(np.where(valid, y, np.inf), axis=0)
+            q[~np.isfinite(q)] = np.nan
+            if np.isfinite(q).any():
+                return (array.x, q), f"MSE-constrained:{name}"
+    q = local_scalar(shot, "qmin", paths)
+    return q, "EFIT01" if q is not None else "unavailable"
+
+
 def process_shot(job):
-    shot, work, keep_signal, window = job
+    shot, work, keep_signal, window, *options = job
     work, paths = Path(work), Paths.from_env()
+    rule = frozen_rule(work)
     record = work / "shots" / f"{shot}.json"
     signal = work / "signals" / f"{shot}.npz"
     if record.exists() and (not keep_signal or signal.exists()):
-        return json.loads(record.read_text())
+        previous = json.loads(record.read_text())
+        if "error" not in previous:
+            return previous
     started = time.monotonic()
-    result = {"shot": int(shot), "crashes": [], "intervals": []}
+    result = {
+        "shot": int(shot),
+        "crashes": [],
+        "intervals": [],
+        "uncertain_intervals": [],
+        "rule": asdict(rule),
+    }
     try:
         with h5py.File(paths.corpus_file(shot), "r", locking=False) as file:
             if "ece" not in file:
                 raise ValueError("no ECE group")
-            t, y = sampled(file["ece"])
+            reader = legacy_sampled if options and options[0] == "aliased" else sampled
+            t, y = reader(file["ece"])
             y[(y < 0) | (y > 100)] = np.nan
             if len(y) != 48:
                 raise ValueError(f"ECE array has {len(y)} channels, expected 48")
@@ -129,9 +228,9 @@ def process_shot(job):
             result["window_source"] = (
                 "cohort" if keep_signal else "local Ip or ECE extent"
             )
-            sxr, dalpha = None, None
+            sxr, dalpha, neutron, mirnov = None, None, None, None
             result["sxr_channels"] = []
-            if "sxr" in file and file["sxr/ydata"].shape[-1] > 32:
+            if keep_signal and "sxr" in file and file["sxr/ydata"].shape[-1] > 32:
                 # First lit fan among the four fans used by the established detector.
                 for first in (0, 32, 160, 192):
                     ts, ys = sampled(file["sxr"], rows=slice(first, first + 32))
@@ -154,7 +253,7 @@ def process_shot(job):
                     where=counts > 0,
                 )
                 dalpha = td, mean
-            baseline = np.zeros((4, len(t)), dtype=np.float32)
+            baseline = np.full((4, len(t)), np.nan, dtype=np.float32)
             for i, rows in enumerate((slice(20, 28), slice(8, 16))):
                 v = y[rows]
                 counts = np.isfinite(v).sum(axis=0)
@@ -165,15 +264,34 @@ def process_shot(job):
                     where=counts > 0,
                 )
             result["mirnov_available"] = False
-            if keep_signal and "mirnov" in file and file["mirnov/ydata"].shape[-1] > 32:
-                tm, ym = sampled(file["mirnov"], rows=slice(0, 2))
-                baseline[2] = interpolate(t, tm, ym).mean(axis=0)
-                result["mirnov_available"] = bool(np.isfinite(baseline[2]).mean() > 0.5)
-        ip, qmin = local_scalar(shot, "ip", paths), local_scalar(shot, "qmin", paths)
+            if "mirnov" in file and file["mirnov/ydata"].shape[-1] > 32:
+                try:
+                    tm, ym = sampled(file["mirnov"], rows=slice(0, 2))
+                    baseline[2] = mean_finite(interpolate(t, tm, ym))
+                    result["mirnov_available"] = bool(
+                        np.isfinite(baseline[2]).mean() > 0.5
+                    )
+                    tm, ym = sampled(file["mirnov"], rows=slice(0, 2), rms=True)
+                    mirnov = tm, mean_finite(ym)
+                except ValueError as error:
+                    result["mirnov_error"] = str(error)
+            if "neutron_rate" in file and file["neutron_rate/ydata"].shape[-1] > 32:
+                try:
+                    tn, yn = sampled(file["neutron_rate"], rows=slice(0, 1))
+                    neutron = tn, mean_finite(yn)
+                except ValueError as error:
+                    result["neutron_error"] = str(error)
+            result["neutron_available"] = neutron is not None
+            observable, result["density_guard"] = density_support(
+                file, t, shot, paths, rule
+            )
+        ip = local_scalar(shot, "ip", paths)
+        qmin, q_source = local_q(shot, paths)
         if ip is not None:
             baseline[3] = np.interp(t, ip[0], ip[1], left=np.nan, right=np.nan) / 1e6
         result["ip_available"] = ip is not None
         result["qmin_available"] = qmin is not None
+        result["q_source"] = q_source
         try:
             geometry = ece_geometry.load_geometry(shot, paths)
             result["geometry"] = (
@@ -186,12 +304,17 @@ def process_shot(job):
             t,
             y,
             shot=shot,
+            rule=rule,
             qmin=qmin,
+            q_source=q_source,
             geometry=geometry,
             dalpha=dalpha,
             sxr=sxr,
             core_channels=range(20, 36),
             ip=ip,
+            observability=observable,
+            neutron=neutron,
+            mirnov=mirnov,
         )
         result.update(
             candidates=detected.candidates,
@@ -204,10 +327,36 @@ def process_shot(job):
                 {"start_s": e.t0_s, "end_s": e.t1_s, "attrs": e.attrs}
                 for e in detected.intervals
             ],
+            uncertain_intervals=[
+                {"start_s": e.t0_s, "end_s": e.t1_s, "attrs": e.attrs}
+                for e in detected.uncertain_intervals
+            ],
         )
+        states, assessed = state_spans(
+            t,
+            detected.observable,
+            [(r["start_s"], r["end_s"]) for r in result["intervals"]],
+            [(r["start_s"], r["end_s"]) for r in result["uncertain_intervals"]],
+        )
+        result.update(
+            states=states,
+            observable_spans=mask_spans(t, detected.observable),
+            assessed_spans=mask_spans(t, assessed),
+        )
+        result["state_seconds"] = {
+            state: sum(r["end_s"] - r["start_s"] for r in states if r["state"] == state)
+            for state in ("present", "absent", "uncertain", "unassessed")
+        }
         if keep_signal:
             signal.parent.mkdir(parents=True, exist_ok=True)
-            np.savez_compressed(signal, t=t, y=y.astype(np.float16), baseline=baseline)
+            np.savez_compressed(
+                signal,
+                t=t,
+                y=y.astype(np.float16),
+                baseline=baseline,
+                observable=detected.observable,
+                assessed=assessed,
+            )
     except (OSError, KeyError, ValueError) as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
     result["elapsed_s"] = round(time.monotonic() - started, 3)
@@ -215,7 +364,7 @@ def process_shot(job):
     return result
 
 
-def export_csv(records, destination, *, compact=False):
+def export_csv(records, destination, *, compact=False, prefix="labels"):
     destination.mkdir(parents=True, exist_ok=True)
     columns = ["shot", "category", "t_start", "t_end", "crowd", "confidence", "attrs"]
     part, bytes_used, handle = 0, 0, None
@@ -229,16 +378,28 @@ def export_csv(records, destination, *, compact=False):
                 (r["start_s"], r["end_s"], True, 1.0, r["attrs"])
                 for r in record["intervals"]
             ]
+            rows += [
+                (r["start_s"], r["end_s"], True, 1.0, {"state": r["state"]})
+                for r in record.get("states", [])
+            ]
             for start, end, crowd, confidence, attrs in rows:
                 if compact:
                     attrs = {
                         key: attrs[key]
-                        for key in ("inversion_rho", "inversion_channel", "period_ms")
+                        for key in (
+                            "inversion_rho",
+                            "inversion_channel",
+                            "period_ms",
+                            "state",
+                            "central_relative_drop",
+                            "q_conflict",
+                        )
+                        if key in attrs
                     }
                 if handle is None or bytes_used > 1_400_000:
                     if handle is not None:
                         handle.close()
-                    handle = (destination / f"labels-{part:03d}.csv").open(
+                    handle = (destination / f"{prefix}-{part:03d}.csv").open(
                         "w", newline=""
                     )
                     writer = csv.writer(handle)
@@ -248,7 +409,12 @@ def export_csv(records, destination, *, compact=False):
                 writer.writerow(
                     [
                         record["shot"],
-                        1,
+                        {
+                            "present": 1,
+                            "absent": 0,
+                            "uncertain": 2,
+                            "unassessed": 3,
+                        }.get(attrs.get("state", "present"), 1),
                         round(start * 1000, 4),
                         round(end * 1000, 4),
                         crowd,
@@ -261,7 +427,7 @@ def export_csv(records, destination, *, compact=False):
         if handle is not None:
             handle.close()
     # Remove only obsolete shards made by this writer, after successful export.
-    for path in destination.glob("labels-*.csv"):
+    for path in destination.glob(f"{prefix}-*.csv"):
         if int(path.stem.split("-")[-1]) >= part:
             path.unlink()
 
@@ -285,6 +451,8 @@ def labels(args):
         int(r.shot): (r.window_start_ms / 1000, r.window_end_ms / 1000)
         for r in cohort.itertuples()
     }
+    if args.population and args.skip_cohort:
+        shots = [s for s in shots if s not in windows and s not in set(reviewed.shot)]
     jobs = [
         (s, str(args.work), s in windows or s in set(reviewed.shot), windows.get(s))
         for s in shots
@@ -306,6 +474,13 @@ def labels(args):
         "processed_shots": [r["shot"] for r in records if "error" not in r],
         "errors": {r["shot"]: r["error"] for r in records if "error" in r},
         "crashes": sum(len(r["crashes"]) for r in records),
+        "crash_state_counts": dict(
+            Counter(
+                point["attrs"]["state"]
+                for record in records
+                for point in record["crashes"]
+            )
+        ),
         "intervals": sum(len(r["intervals"]) for r in records),
         "positive_shots": sum(bool(r["intervals"]) for r in records),
         "qmin_shots": sum(r.get("qmin_available", False) for r in records),
@@ -317,37 +492,59 @@ def labels(args):
             sum((Counter(r.get("rejected", {})) for r in records), Counter())
         ),
         "split_counts": cohort.split.value_counts().to_dict(),
-        "rule": asdict(Rule()),
+        "rule": asdict(frozen_rule(args.work)),
         "adaptations": {
             "core_proxy_channels": list(range(20, 36)),
             "minimum_ip_ma_when_measured": 0.3,
             "ece_valid_range_kev": [0, 100],
             "model_and_detector_sample_rate_hz": FS,
-            "first_ece_sampling_hz": 5 * FS,
+            "native_rate_antialiasing": "FIR polyphase, chunks with full halos",
             "radius_units": "sqrt(normalized poloidal flux), only if calibrated",
-            "sxr_use": "optional corroboration, not independent crash labels",
+            "sxr_use": "coverage recorded only; no corroboration claim",
         },
         "seconds": round(time.monotonic() - begun, 1),
         "source_records": str(args.work / "shots"),
         "signals": str(args.work / "signals"),
     }
+    summary["state_seconds"] = {
+        state: sum(r.get("state_seconds", {}).get(state, 0) for r in records)
+        for state in ("present", "absent", "uncertain", "unassessed")
+    }
+    summary["uncertain_intervals"] = sum(
+        len(r.get("uncertain_intervals", [])) for r in records
+    )
+    summary["neutron_shots"] = sum(r.get("neutron_available", False) for r in records)
+    summary["mirnov_shots"] = sum(r.get("mirnov_available", False) for r in records)
+    summary["q_sources"] = dict(
+        Counter(r.get("q_source", "not_processed") for r in records)
+    )
     scope = "population" if args.population else "cohort"
     if args.shards > 1:
         scope += f"_shard_{args.shard}"
     save_json(args.work / f"{scope}_labels.json", summary)
-    save_json(REPO / f"outputs/labeler/sawtooth/{scope}_labels.json", summary)
+    if args.shards == 1:
+        save_json(OUTPUT / f"{scope}_labels.json", summary)
     if not args.population:
         export_csv(
             records,
             REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
             compact=True,
+            prefix="cohort",
         )
         save_json(
-            REPO / "outputs/labeler/sawtooth/noise_calibration.json",
-            noise_calibration(),
+            OUTPUT / "noise_calibration.json",
+            noise_calibration(frozen_rule(args.work)),
         )
+        export_csv(records, args.work / "labels", compact=True, prefix="cohort")
     else:
-        export_csv(records, args.work / f"{scope}_labels")
+        if args.shards == 1:
+            export_csv(records, args.work / "labels", compact=True, prefix="population")
+            export_csv(
+                records,
+                REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
+                compact=True,
+                prefix="population",
+            )
     print(
         json.dumps(
             {k: v for k, v in summary.items() if not isinstance(v, list)},
@@ -366,278 +563,33 @@ def records_at(work, shots):
 
 
 def validate(args):
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
-    review = pd.read_csv(REVIEW)
-    reviewed = []
-    span_rows = []
-    for record in records_at(args.work, sorted(review.shot.unique())):
-        rows = review[review.shot == record["shot"]]
-        if "window_s" not in record:
-            continue
-        lo, hi = record["window_s"]
-        t = bin_times(
-            (max(lo, rows.t_start.min() / 1000), min(hi, rows.t_end.max() / 1000))
-        )
-        positive = [
-            (r.t_start / 1000, r.t_end / 1000)
-            for r in rows.itertuples()
-            if r.category == 1
-        ]
-        known = [
-            (r.t_start / 1000, r.t_end / 1000)
-            for r in rows.itertuples()
-            if r.category in (0, 1)
-        ]
-        # Ordinary absent/present boundaries do not break observable coverage.
-        # Split predictions only at genuinely unassessed gaps, never at truth
-        # transitions: otherwise span IoU would depend on artificial fragments.
-        known_windows = []
-        for start, end in sorted(known):
-            if known_windows and start <= known_windows[-1][1]:
-                known_windows[-1] = (
-                    known_windows[-1][0],
-                    max(end, known_windows[-1][1]),
-                )
-            else:
-                known_windows.append((start, end))
-        mask = spans_at(t, known)
-        truth = spans_at(t, positive)[mask]
-        found = spans_at(t, [(r["start_s"], r["end_s"]) for r in record["intervals"]])[
-            mask
-        ]
-        times = np.array([r["time_s"] for r in record["crashes"]])
-        support = spans_at(times, positive)
-        covered = spans_at(times, known)
-        overlap = [
-            any(max(a, s["start_s"]) < min(b, s["end_s"]) for s in record["intervals"])
-            for a, b in positive
-        ]
-        estimates = [
-            (max(lo, start, r["start_s"]), min(hi, end, r["end_s"]))
-            for r in record["intervals"]
-            for start, end in known_windows
-            if max(lo, start, r["start_s"]) < min(hi, end, r["end_s"])
-        ]
-        references = [
-            (max(lo, start), min(hi, end))
-            for start, end in positive
-            if max(lo, start) < min(hi, end)
-        ]
-        span_rows.append(
-            {
-                "shot": record["shot"],
-                "cells": interval_cells(references, estimates, 0.1),
-            }
-        )
-        reviewed.append(
-            {
-                "shot": record["shot"],
-                "cells": np.array([support.sum(), (covered & ~support).sum(), 0]),
-                "histogram": score_histogram(truth, found.astype(float)),
-                "expert_spans": len(positive),
-                "overlapped_spans": sum(overlap),
-                "supported_crashes": int(support.sum()),
-                "assessed_crashes": int(covered.sum()),
-            }
-        )
-    expert = aggregate(reviewed)
-    expert.pop("crash_cells")
-    expert["span_matching"] = bootstrap_cells(span_rows)
-    expert["span_matching"]["minimum_iou"] = 0.1
-    expert["crash_recall"] = None
-    expert["crash_f1"] = None
-    expert["crash"] = {
-        "span_supported_pick_fraction": sum(r["supported_crashes"] for r in reviewed)
-        / max(1, sum(r["assessed_crashes"] for r in reviewed)),
-        "supported_picks": sum(r["supported_crashes"] for r in reviewed),
-        "assessed_picks": sum(r["assessed_crashes"] for r in reviewed),
-    }
-    expert["ci95"] = {
-        k: v for k, v in expert["ci95"].items() if not k.startswith("crash_")
-    }
-    expert["span_overlap_recall"] = sum(r["overlapped_spans"] for r in reviewed) / max(
-        1, sum(r["expert_spans"] for r in reviewed)
-    )
-    expert["by_shot"] = [
-        {k: v for k, v in r.items() if k not in ("cells", "histogram")}
-        for r in reviewed
-    ]
-    expert["limitation"] = (
-        "Review provides spans, not crash times: crash precision/recall cannot be measured. Supported-pick fraction is not crash precision. Categories >=2 abstain."
-    )
-    agreement = []
-    missing = []
-    for record in records_at(args.work, cohort.shot):
-        if "window_s" not in record:
-            continue
-        path = Paths.from_env().events_file(record["shot"])
-        if not path.exists():
-            missing.append(record["shot"])
-            continue
-        old = schema.read_events(path, source="ece_sawtooth")
-        lo, hi = record["window_s"]
-        reference = sorted(
-            e.t0_s for e in old.itertuples() if lo <= e.t0_s <= hi and e.t0_s == e.t1_s
-        )
-        estimate = [r["time_s"] for r in record["crashes"]]
-        bins = bin_times((lo, hi))
-        # Old crash times imply trains under the SAME span construction.
-        from labeler.sawtooth.physics import trains
+    import subprocess
+    import sys
 
-        old_spans = [
-            (reference[a], reference[b - 1]) for a, b in trains(sorted(reference))
-        ]
-        interval_spans = [(r["start_s"], r["end_s"]) for r in record["intervals"]]
-        agreement.append(
-            {
-                "shot": record["shot"],
-                "cells": event_cells(reference, estimate),
-                "histogram": score_histogram(
-                    spans_at(bins, old_spans),
-                    spans_at(bins, interval_spans).astype(float),
-                ),
-            }
-        )
-    output = {
-        "rule": asdict(Rule()),
-        "expert": expert,
-        "legacy_agreement": aggregate(agreement),
-        "missing_legacy_shots": missing,
-        "review_csv": str(REVIEW),
-        "legacy_source": "read-only production ece_sawtooth event rows (ECE/SXR union)",
-        "bin_ms": 2,
-        "crash_tolerance_ms": 2,
-        "rule_frozen_before_validation": True,
-    }
-    save_json(REPO / "outputs/labeler/sawtooth/validation.json", output)
-    print(
-        json.dumps(
-            {
-                "expert": expert["presence"],
-                "legacy_agreement": output["legacy_agreement"]["crash"],
-            }
-        ),
-        flush=True,
+    subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "scripts/labeler/sawtooth_fix_validation.py"),
+            "validate",
+            "--work",
+            str(args.work),
+        ],
+        check=True,
     )
 
 
 def gallery(args):
-    import matplotlib
+    import subprocess
+    import sys
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    from scipy.ndimage import gaussian_filter1d
-
-    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
-    reviewed = set(pd.read_csv(REVIEW).shot)
-    eligible = sorted(
-        s
-        for s in cohort[cohort.split == "train"].shot
-        if s not in reviewed and (args.work / "signals" / f"{s}.npz").exists()
-    )
-    shots = (
-        np.random.default_rng(SEED).choice(eligible, size=12, replace=False).tolist()
-    )
-    out = args.work / "gallery"
-    out.mkdir(parents=True, exist_ok=True)
-    figures = []
-    plt.rcParams.update(
-        {
-            "font.size": 8,
-            "axes.labelsize": 8,
-            "legend.fontsize": 7,
-            "xtick.labelsize": 7,
-            "ytick.labelsize": 7,
-        }
-    )
-    for shot, record in zip(shots, records_at(args.work, shots), strict=True):
-        data = np.load(args.work / "signals" / f"{shot}.npz")
-        t, y = data["t"], data["y"].astype(float)
-        fig, axes = plt.subplots(
-            2, 1, figsize=(3.5, 3.5), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
-        )
-        for rows, color, name in (
-            (slice(20, 28), "#0072B2", "ECE core proxy"),
-            (slice(8, 16), "#D55E00", "ECE outer proxy"),
-        ):
-            values = y[rows]
-            valid = np.isfinite(values)
-            trace = np.divide(
-                np.where(valid, values, 0).sum(axis=0),
-                valid.sum(axis=0),
-                out=np.full(len(t), np.nan),
-                where=valid.sum(axis=0) > 0,
-            )
-            axes[0].plot(
-                t[::10] * 1000,
-                gaussian_filter1d(np.nan_to_num(trace), 5)[::10],
-                color=color,
-                lw=0.7,
-                label=name,
-            )
-        for r in record["crashes"]:
-            axes[0].axvline(r["time_s"] * 1000, color="#009E73", lw=0.5, alpha=0.6)
-        for r in record["intervals"]:
-            axes[0].axvspan(
-                r["start_s"] * 1000, r["end_s"] * 1000, color="#009E73", alpha=0.12
-            )
-        radii = [r["attrs"]["inversion_rho"] for r in record["crashes"]]
-        if radii and all(r is not None for r in radii):
-            axes[1].scatter(
-                [r["time_s"] * 1000 for r in record["crashes"]],
-                radii,
-                s=6,
-                label="inversion rho",
-            )
-            axes[1].scatter(
-                [r["time_s"] * 1000 for r in record["crashes"]],
-                [r["attrs"]["q1_rho"] for r in record["crashes"]],
-                s=6,
-                label="q = 1 rho",
-            )
-            axes[1].set_ylabel("Normalized radius")
-        else:
-            axes[1].scatter(
-                [r["time_s"] * 1000 for r in record["crashes"]],
-                [r["attrs"]["inversion_channel"] for r in record["crashes"]],
-                s=6,
-                color="#009E73",
-                label="Inversion channel",
-            )
-            axes[1].set_ylabel("ECE channel")
-            axes[1].text(
-                0.02,
-                0.90,
-                "Radius / q = 1 mapping unavailable",
-                transform=axes[1].transAxes,
-                fontsize=7,
-            )
-        axes[0].set_ylabel("ECE Te (keV)")
-        axes[0].text(0.02, 0.93, f"Shot {shot}", transform=axes[0].transAxes)
-        axes[0].legend(loc="upper right", frameon=False, handlelength=1)
-        qmin = local_scalar(shot, "qmin", Paths.from_env())
-        if qmin is not None:
-            qaxis = axes[1].twinx()
-            qaxis.plot(qmin[0] * 1000, qmin[1], color="#333333", lw=0.6)
-            qaxis.axhline(1.05, color="#333333", ls=":", lw=0.6)
-            qaxis.set_ylabel("EFIT q-min", fontsize=7)
-            qaxis.set_ylim(0, 2)
-        axes[1].set_xlabel("Time (ms)")
-        fig.tight_layout()
-        for extension in ("pdf", "png"):
-            path = out / f"shot_{shot}.{extension}"
-            fig.savefig(path, dpi=150)
-            figures.append(str(path))
-        plt.close(fig)
-    save_json(
-        REPO / "outputs/labeler/sawtooth/gallery.json",
-        {
-            "seed": SEED,
-            "shots": shots,
-            "sampling": "12 uniform random usable nonreview train shots, no replacement",
-            "figures": figures,
-            "geometry_note": "Channels shown when calibrated radii are absent; no q=1 radius inferred.",
-        },
+    subprocess.run(
+        [
+            sys.executable,
+            str(REPO / "scripts/labeler/sawtooth_gallery.py"),
+            "--work",
+            str(args.work),
+        ],
+        check=True,
     )
 
 
@@ -647,6 +599,7 @@ def main():
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--population", action="store_true")
+    parser.add_argument("--skip-cohort", action="store_true")
     parser.add_argument("--shots", nargs="+", type=int)
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)
