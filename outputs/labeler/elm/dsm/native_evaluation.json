@@ -1,8 +1,8 @@
 {
- "git": "aa4ccbf2b5d53ac4097774dfa3e7fda2b6f5dd5c",
- "created": "2026-10-03T17:54:21+00:00",
+ "git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "created": "2026-10-03T19:12:39+00:00",
  "script": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_native.py",
- "script_sha256": "9abb8b3e55ce783b8efaa3f400999749d23ce84cae690f890cb196ade876cda7",
+ "script_sha256": "73e4a4507446a1a61d3ecd0982e29087a0181778914d166d9dad2d6ebcab16c4",
  "checkpoint": {
   "checkpoint": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/models/model9.pkl",
   "checkpoint_sha256": "55d5425bd8dfdf74c198ab367f3ee0714ad69edf0de6d23ace5693d8a48eb11a",
@@ -1888,7 +1888,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186093_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186093_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -2080,9 +2089,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -2128,7 +2135,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186427_pcphd02.npz",
+     "samples": 142495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186427_pcphd03.npz",
+     "samples": 142495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -2320,9 +2336,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -2368,7 +2382,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186569_pcphd02.npz",
+     "samples": 162497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186569_pcphd03.npz",
+     "samples": 162497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -2560,9 +2583,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -2791,7 +2812,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186945_pcphd02.npz",
+     "samples": 172497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/186945_pcphd03.npz",
+     "samples": 172497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -2983,9 +3013,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -3213,7 +3241,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187076_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187076_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -3405,9 +3442,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -3453,7 +3488,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187105_pcphd02.npz",
+     "samples": 142495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187105_pcphd03.npz",
+     "samples": 142495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -3645,9 +3689,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -3693,7 +3735,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187196_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/187196_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -3885,9 +3936,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -4073,7 +4122,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 2615
+   "reconstructed_reviewed_rows": 2611
   },
   "189004": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/189004_slow.h5",
@@ -4116,7 +4165,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189004_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189004_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -4308,9 +4366,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -4356,7 +4412,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189044_pcphd02.npz",
+     "samples": 152501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189044_pcphd03.npz",
+     "samples": 152501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -4548,9 +4613,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -4596,7 +4659,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189061_pcphd02.npz",
+     "samples": 152495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189061_pcphd03.npz",
+     "samples": 152495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -4788,9 +4860,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -5159,7 +5229,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 5003
+   "reconstructed_reviewed_rows": 4995
   },
   "189559": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/189559_slow.h5",
@@ -5202,7 +5272,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189559_pcphd02.npz",
+     "samples": 142495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189559_pcphd03.npz",
+     "samples": 142495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -5394,9 +5473,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -5442,7 +5519,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189688_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/189688_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -5634,9 +5720,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -6112,7 +6196,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190094_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190094_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -6304,9 +6397,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -6352,7 +6443,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190177_pcphd02.npz",
+     "samples": 142495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190177_pcphd03.npz",
+     "samples": 142495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -6544,9 +6644,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -6592,7 +6690,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190218_pcphd02.npz",
+     "samples": 142495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190218_pcphd03.npz",
+     "samples": 142495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -6784,9 +6891,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -6832,7 +6937,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190300_pcphd02.npz",
+     "samples": 152495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190300_pcphd03.npz",
+     "samples": 152495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -7024,9 +7138,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -7072,7 +7184,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190335_pcphd02.npz",
+     "samples": 162499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190335_pcphd03.npz",
+     "samples": 162499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -7264,9 +7385,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -7387,7 +7506,7 @@
    "reconstructable": true,
    "blocked_reason": null,
    "exact_export_reviewed_rows": 2593,
-   "reconstructed_reviewed_rows": 5320
+   "reconstructed_reviewed_rows": 5318
   },
   "190695": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/190695_slow.h5",
@@ -7796,7 +7915,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190991_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/190991_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -7988,9 +8116,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -8036,7 +8162,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191326_pcphd02.npz",
+     "samples": 102499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191326_pcphd03.npz",
+     "samples": 102499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -8229,8 +8364,6 @@
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
     "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -8418,7 +8551,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 5316
+   "reconstructed_reviewed_rows": 5313
   },
   "191470": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/191470_slow.h5",
@@ -8461,7 +8594,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191470_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/191470_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -8653,9 +8795,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -8841,7 +8981,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 4243
+   "reconstructed_reviewed_rows": 4239
   },
   "192003": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/192003_slow.h5",
@@ -9024,7 +9164,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 2453
+   "reconstructed_reviewed_rows": 2449
   },
   "192010": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/192010_slow.h5",
@@ -9390,7 +9530,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 5497
+   "reconstructed_reviewed_rows": 5493
   },
   "192148": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/192148_slow.h5",
@@ -9433,7 +9573,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192148_pcphd02.npz",
+     "samples": 142498
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192148_pcphd03.npz",
+     "samples": 142498
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -9625,9 +9774,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -9673,7 +9820,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192226_pcphd02.npz",
+     "samples": 162495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192226_pcphd03.npz",
+     "samples": 162495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -9865,9 +10021,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -9913,7 +10067,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192229_pcphd02.npz",
+     "samples": 162500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192229_pcphd03.npz",
+     "samples": 162500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -10105,9 +10268,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -10153,7 +10314,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192232_pcphd02.npz",
+     "samples": 162495
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/192232_pcphd03.npz",
+     "samples": 162495
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -10345,9 +10515,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -10956,7 +11124,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 5172
+   "reconstructed_reviewed_rows": 5170
   },
   "192751": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/192751_slow.h5",
@@ -11016,7 +11184,7 @@
    "blocked_reason": null,
    "exact_export_reviewed_rows": 0,
    "exact_export_blocked_reason": "source-export phase rows do not overlap a scored expert-review span",
-   "reconstructed_reviewed_rows": 3354
+   "reconstructed_reviewed_rows": 3350
   },
   "192914": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/192914_slow.h5",
@@ -11789,7 +11957,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193276_pcphd02.npz",
+     "samples": 162497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/193276_pcphd03.npz",
+     "samples": 162497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -11981,9 +12158,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -12575,7 +12750,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194600_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194600_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -12768,8 +12952,6 @@
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
     "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -12817,7 +12999,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194608_pcphd02.npz",
+     "samples": 152501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/194608_pcphd03.npz",
+     "samples": 152501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -13010,8 +13201,6 @@
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
     "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -13931,7 +14120,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 521
+   "reconstructed_reviewed_rows": 517
   },
   "195111": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/195111_slow.h5",
@@ -14157,7 +14346,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195186_pcphd02.npz",
+     "samples": 125894
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195186_pcphd03.npz",
+     "samples": 125894
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -14349,9 +14547,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -14720,7 +14916,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 5410
+   "reconstructed_reviewed_rows": 5402
   },
   "195646": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/195646_slow.h5",
@@ -14903,7 +15099,7 @@
    "missing_reconstruction_columns": [],
    "reconstructable": true,
    "blocked_reason": null,
-   "reconstructed_reviewed_rows": 4574
+   "reconstructed_reviewed_rows": 4570
   },
   "195786": {
    "original_h5": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/195786_slow.h5",
@@ -14946,7 +15142,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195786_pcphd02.npz",
+     "samples": 156105
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/195786_pcphd03.npz",
+     "samples": 156105
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -15138,9 +15343,7 @@
     "bes_slow_channel_6_downsampled",
     "bes_slow_channel_7_downsampled",
     "bes_slow_channel_8_downsampled",
-    "bes_slow_channel_9_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled"
+    "bes_slow_channel_9_downsampled"
    ],
    "reconstructable": false,
    "blocked_reason": "original diagnostic records missing; adapter 50 ms means cannot recover 1 ms inputs"
@@ -15793,7 +15996,16 @@
      64
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198806_pcphd02.npz",
+     "samples": 142501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198806_pcphd03.npz",
+     "samples": 142501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -15930,8 +16142,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -15979,7 +16189,16 @@
      64
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198899_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198899_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -16116,8 +16335,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -16165,7 +16382,16 @@
      64
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198971_pcphd02.npz",
+     "samples": 162501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/198971_pcphd03.npz",
+     "samples": 162501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -16302,8 +16528,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -16351,7 +16575,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199087_pcphd02.npz",
+     "samples": 122501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199087_pcphd03.npz",
+     "samples": 122501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -16552,8 +16785,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -16601,7 +16832,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199789_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199789_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -16846,8 +17086,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -16895,7 +17133,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199790_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199790_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -17140,8 +17387,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -17189,7 +17434,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199909_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199909_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -17434,8 +17688,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -17483,7 +17735,16 @@
      1
     ]
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199921_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/199921_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -17728,8 +17989,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -17750,7 +18009,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200127_pcphd02.npz",
+     "samples": 140407
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200127_pcphd03.npz",
+     "samples": 140407
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -17999,8 +18267,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -18021,7 +18287,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200198_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200198_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -18270,8 +18545,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -18292,7 +18565,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200320_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200320_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -18541,8 +18823,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -18841,7 +19121,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200427_pcphd02.npz",
+     "samples": 142501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200427_pcphd03.npz",
+     "samples": 142501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -19090,8 +19379,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -19112,7 +19399,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200636_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200636_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -19361,8 +19657,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -19383,7 +19677,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200917_pcphd02.npz",
+     "samples": 142501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200917_pcphd03.npz",
+     "samples": 142501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -19632,8 +19935,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -19654,7 +19955,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200954_pcphd02.npz",
+     "samples": 142501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200954_pcphd03.npz",
+     "samples": 142501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -19903,8 +20213,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -19925,7 +20233,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200990_pcphd02.npz",
+     "samples": 122501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/200990_pcphd03.npz",
+     "samples": 122501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -20174,8 +20491,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -20196,7 +20511,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201270_pcphd02.npz",
+     "samples": 142497
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201270_pcphd03.npz",
+     "samples": 142497
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -20445,8 +20769,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -20467,7 +20789,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201395_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201395_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -20716,8 +21047,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -20738,7 +21067,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201447_pcphd02.npz",
+     "samples": 142496
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201447_pcphd03.npz",
+     "samples": 142496
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -20987,8 +21325,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -21009,7 +21345,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201494_pcphd02.npz",
+     "samples": 162500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201494_pcphd03.npz",
+     "samples": 162500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -21258,8 +21603,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -21280,7 +21623,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201707_pcphd02.npz",
+     "samples": 202490
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201707_pcphd03.npz",
+     "samples": 202490
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -21529,8 +21881,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -21551,7 +21901,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201973_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201973_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -21800,8 +22159,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -21822,7 +22179,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201978_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/201978_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -22071,8 +22437,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -22093,7 +22457,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203012_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203012_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -22342,8 +22715,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -22364,7 +22735,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203041_pcphd02.npz",
+     "samples": 122500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203041_pcphd03.npz",
+     "samples": 122500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -22613,8 +22993,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -22635,7 +23013,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203132_pcphd02.npz",
+     "samples": 142501
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203132_pcphd03.npz",
+     "samples": 142501
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -22884,8 +23271,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -22906,7 +23291,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203187_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203187_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -23155,8 +23549,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -23177,7 +23569,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203470_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203470_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -23426,8 +23827,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -23448,7 +23847,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203521_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203521_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -23697,8 +24105,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -23719,7 +24125,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203576_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203576_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -23968,8 +24383,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -23990,7 +24403,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203629_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203629_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -24239,8 +24661,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -24261,7 +24681,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203719_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203719_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -24510,8 +24939,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -24532,7 +24959,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203764_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203764_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -24781,8 +25217,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -24803,7 +25237,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203778_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203778_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -25052,8 +25495,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -25074,7 +25515,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203941_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203941_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -25323,8 +25773,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -25345,7 +25793,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203959_pcphd02.npz",
+     "samples": 142500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/203959_pcphd03.npz",
+     "samples": 142500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -25594,8 +26051,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -25616,7 +26071,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204233_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204233_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -25865,8 +26329,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -25887,7 +26349,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204240_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204240_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -26136,8 +26607,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -26158,7 +26627,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204243_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204243_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -26407,8 +26885,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -26429,7 +26905,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204256_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204256_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -26678,8 +27163,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -26700,7 +27183,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204530_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204530_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -26949,8 +27441,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -26971,7 +27461,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204560_pcphd02.npz",
+     "samples": 152500
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204560_pcphd03.npz",
+     "samples": 152500
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -27220,8 +27719,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -27242,7 +27739,16 @@
     "co2_density_slow": [],
     "bes_slow": []
    },
-   "photodiodes": {},
+   "photodiodes": {
+    "pcphd02": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204937_pcphd02.npz",
+     "samples": 142499
+    },
+    "pcphd03": {
+     "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/native_photodiodes/204937_pcphd03.npz",
+     "samples": 142499
+    }
+   },
    "exact_native_export_available": false,
    "missing_native_export_columns": [
     "ip_downsampled",
@@ -27491,8 +27997,6 @@
     "ech_downsampled",
     "gas_downsampled",
     "ip_downsampled",
-    "pcphd02_downsampled",
-    "pcphd03_downsampled",
     "pinj_downsampled",
     "tinj_downsampled"
    ],
@@ -27503,18 +28007,24 @@
  "reviewed_exact_export": {
   "method": "elm-dsm native exact export",
   "source_exposed": true,
+  "role": "appendix audit only: four exact-export source-exposed shots",
   "threshold": "none; continuous-score metrics only",
   "horizons": {
    "h5ms": {
-    "auroc": 0.4710094476223382,
-    "auroc_ci95": [
-     0.23150700649944406,
-     0.6618844121850285
-    ],
-    "auprc": 0.515880718785114,
+    "auroc": 0.48798307509507044,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 998,
+      "undefined": 2
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 4,
+    "auprc": 0.5513631501711929,
     "rows": 11565,
-    "cases": 5836,
-    "controls": 5729,
+    "cases": 6106,
+    "controls": 5459,
     "shots": [
      190637,
      190643,
@@ -27525,18 +28035,23 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": -3.09561002420633e-06
+    "auroc_histogram_error": -3.2100654211442148e-06
    },
    "h10ms": {
-    "auroc": 0.4687145388151213,
-    "auroc_ci95": [
-     0.22851373617139886,
-     0.6602174506879152
-    ],
-    "auprc": 0.5150785968689675,
+    "auroc": 0.5029453018437564,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 998,
+      "undefined": 2
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 4,
+    "auprc": 0.5874828431052921,
     "rows": 11565,
-    "cases": 5836,
-    "controls": 5729,
+    "cases": 6376,
+    "controls": 5189,
     "shots": [
      190637,
      190643,
@@ -27547,18 +28062,23 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": 3.1404739375684443e-07
+    "auroc_histogram_error": 2.5842476835125083e-06
    },
    "h20ms": {
-    "auroc": 0.4652321569935483,
-    "auroc_ci95": [
-     0.20988544858135394,
-     0.6583926102564311
-    ],
-    "auprc": 0.5139487828012278,
+    "auroc": 0.5318979242785721,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 998,
+      "undefined": 2
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 4,
+    "auprc": 0.6586981595322811,
     "rows": 11565,
-    "cases": 5836,
-    "controls": 5729,
+    "cases": 6916,
+    "controls": 4649,
     "shots": [
      190637,
      190643,
@@ -27569,18 +28089,23 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": -1.5253730553665967e-06
+    "auroc_histogram_error": -3.1412814014419865e-06
    },
    "h50ms": {
-    "auroc": 0.4647059032894341,
-    "auroc_ci95": [
-     0.13886374830535353,
-     0.6533158638599793
-    ],
-    "auprc": 0.5073153188460163,
+    "auroc": 0.6069953614326975,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 998,
+      "undefined": 2
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 4,
+    "auprc": 0.8166804780922666,
     "rows": 11565,
-    "cases": 5836,
-    "controls": 5729,
+    "cases": 8353,
+    "controls": 3212,
     "shots": [
      190637,
      190643,
@@ -27591,7 +28116,113 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": 9.720514568267724e-07
+    "auroc_histogram_error": 2.3854040703819024e-06
+   }
+  },
+  "non_crowd_start_horizons": {
+   "h5ms": {
+    "auroc": 0.6497779302458547,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 3,
+    "auprc": 0.04861738544137657,
+    "rows": 8515,
+    "cases": 265,
+    "controls": 8250,
+    "shots": [
+     190637,
+     190643,
+     192721
+    ],
+    "n_shots": 3,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": 7.5471698113283026e-06
+   },
+   "h10ms": {
+    "auroc": 0.6557187780772686,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 3,
+    "auprc": 0.09831798413821712,
+    "rows": 8510,
+    "cases": 530,
+    "controls": 7980,
+    "shots": [
+     190637,
+     190643,
+     192721
+    ],
+    "n_shots": 3,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": -2.719061805489531e-06
+   },
+   "h20ms": {
+    "auroc": 0.6568950978900385,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 3,
+    "auprc": 0.19260222314421735,
+    "rows": 8500,
+    "cases": 1060,
+    "controls": 7440,
+    "shots": [
+     190637,
+     190643,
+     192721
+    ],
+    "n_shots": 3,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": -3.867417326053335e-06
+   },
+   "h50ms": {
+    "auroc": 0.6560256830811979,
+    "auroc_ci95": null,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": true,
+    "positive_shots": 3,
+    "auprc": 0.4139526433160462,
+    "rows": 8470,
+    "cases": 2624,
+    "controls": 5846,
+    "shots": [
+     190637,
+     190643,
+     192721
+    ],
+    "n_shots": 3,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": -3.0313097135747924e-06
    }
   }
  },
@@ -27603,15 +28234,23 @@
   "caveat": "source NBI smoothing concatenated filtered phase rows across boundaries; serving reconstructs within-shot rows before native domain filtering, so agreement audit must be read with this panel",
   "horizons": {
    "h5ms": {
-    "auroc": 0.6075566374505734,
+    "auroc": 0.6098185829769585,
     "auroc_ci95": [
-     0.5398183284612301,
-     0.7003299828281011
+     0.5408626804337542,
+     0.7048103907475117
     ],
-    "auprc": 0.5214539488655328,
-    "rows": 138100,
-    "cases": 59719,
-    "controls": 78381,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 25,
+    "auprc": 0.5266103438837648,
+    "rows": 138049,
+    "cases": 60142,
+    "controls": 77907,
     "shots": [
      185945,
      185961,
@@ -27651,18 +28290,26 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": 1.0713900544523369e-07
+    "auroc_histogram_error": -9.572119241685328e-08
    },
    "h10ms": {
-    "auroc": 0.6088564599350851,
+    "auroc": 0.6134949877024654,
     "auroc_ci95": [
-     0.5400950035422744,
-     0.7016779532245316
+     0.5440293872599247,
+     0.707560149383597
     ],
-    "auprc": 0.5226394951348903,
-    "rows": 138100,
-    "cases": 59719,
-    "controls": 78381,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 25,
+    "auprc": 0.5331780796398556,
+    "rows": 137986,
+    "cases": 60565,
+    "controls": 77421,
     "shots": [
      185945,
      185961,
@@ -27702,18 +28349,26 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": -5.286450028840761e-07
+    "auroc_histogram_error": 9.106413723092288e-08
    },
    "h20ms": {
-    "auroc": 0.610525200363191,
+    "auroc": 0.6197019100379175,
     "auroc_ci95": [
-     0.5399779944567011,
-     0.7042206012994592
+     0.5493341789665991,
+     0.7151084327071261
     ],
-    "auprc": 0.5242269371515328,
-    "rows": 138100,
-    "cases": 59719,
-    "controls": 78381,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 25,
+    "auprc": 0.5456476441525484,
+    "rows": 137825,
+    "cases": 61421,
+    "controls": 76404,
     "shots": [
      185945,
      185961,
@@ -27753,18 +28408,26 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": 3.0112149185246295e-07
+    "auroc_histogram_error": -4.665648004609224e-07
    },
    "h50ms": {
-    "auroc": 0.6889888965384002,
+    "auroc": 0.7086689326917517,
     "auroc_ci95": [
-     0.6111953900355394,
-     0.7728743157755211
+     0.6297308192771567,
+     0.7886950522314667
     ],
-    "auprc": 0.5786416417149289,
-    "rows": 138100,
-    "cases": 59719,
-    "controls": 78381,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 25,
+    "auprc": 0.6333512276125491,
+    "rows": 137282,
+    "cases": 63796,
+    "controls": 73486,
     "shots": [
      185945,
      185961,
@@ -27804,7 +28467,149 @@
     "bootstrap_replicates": 1000,
     "bootstrap_unit": "physical shot",
     "ci_histogram_bins": 2000,
-    "auroc_histogram_error": -9.976852544113513e-08
+    "auroc_histogram_error": -1.6072565289793062e-07
+   }
+  },
+  "non_crowd_start_horizons": {
+   "h5ms": {
+    "auroc": 0.7431129026345951,
+    "auroc_ci95": [
+     0.5324589558822569,
+     0.842309152167865
+    ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 7,
+    "auprc": 0.026967507626350452,
+    "rows": 32215,
+    "cases": 332,
+    "controls": 31883,
+    "shots": [
+     190637,
+     190643,
+     190695,
+     190790,
+     192721,
+     192914,
+     193075,
+     195263,
+     196541
+    ],
+    "n_shots": 9,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": 3.920584637606694e-06
+   },
+   "h10ms": {
+    "auroc": 0.7479316870127876,
+    "auroc_ci95": [
+     0.5364337350952254,
+     0.8476748270587307
+    ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 8,
+    "auprc": 0.05450445738204908,
+    "rows": 32197,
+    "cases": 665,
+    "controls": 31532,
+    "shots": [
+     190637,
+     190643,
+     190695,
+     190790,
+     192721,
+     192914,
+     193075,
+     195263,
+     196541
+    ],
+    "n_shots": 9,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": 9.156469761295583e-06
+   },
+   "h20ms": {
+    "auroc": 0.7475042417453526,
+    "auroc_ci95": [
+     0.5238404051903729,
+     0.8512453428204965
+    ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 8,
+    "auprc": 0.10633839029548148,
+    "rows": 32147,
+    "cases": 1334,
+    "controls": 30813,
+    "shots": [
+     190637,
+     190643,
+     190695,
+     190790,
+     192721,
+     192914,
+     193075,
+     195263,
+     196541
+    ],
+    "n_shots": 9,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": -3.697888179776676e-06
+   },
+   "h50ms": {
+    "auroc": 0.75748499590744,
+    "auroc_ci95": [
+     0.523483581771122,
+     0.8723939732117219
+    ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 8,
+    "auprc": 0.24466556912929782,
+    "rows": 31994,
+    "cases": 3337,
+    "controls": 28657,
+    "shots": [
+     190637,
+     190643,
+     190695,
+     190790,
+     192721,
+     192914,
+     193075,
+     195263,
+     196541
+    ],
+    "n_shots": 9,
+    "bootstrap_replicates": 1000,
+    "bootstrap_unit": "physical shot",
+    "ci_histogram_bins": 2000,
+    "auroc_histogram_error": 1.056171498148295e-06
    }
   }
  },
@@ -27827,7 +28632,7 @@
     "max_abs_normalized_difference": 1.039516968550341
    },
    "tinj_downsampled": {
-    "median_abs_normalized_difference": 2.0816681711721685e-17,
+    "median_abs_normalized_difference": 1.474514954580286e-17,
     "max_abs_normalized_difference": 0.2525503941722511
    },
    "ech_downsampled": {
@@ -28823,7 +29628,7 @@
     "max_abs_normalized_difference": 1.2093954408898187
    },
    "tinj_downsampled": {
-    "median_abs_normalized_difference": 5.551115123125783e-17,
+    "median_abs_normalized_difference": 2.7755575615628914e-17,
     "max_abs_normalized_difference": 0.2887211363743165
    },
    "ech_downsampled": {
@@ -30300,6 +31105,8 @@
    }
   }
  },
+ "review_target": "any reviewed present in (t, t+h]; complete reviewed future-window coverage required at each horizon",
+ "onset_target": "non-crowd span start in (t, t+h], on per-ELM reviewed portions of shots with non-crowd spans; complete absent/non-crowd coverage required and crowd time excluded; annotation starts are not verified physical ELM onsets",
  "own_target": {
   "role": "original checkpoint early-stopping validation; historical reversed source split",
   "horizons": {
@@ -30309,7 +31116,15 @@
      0.9145563416233413,
      0.9369287263682469
     ],
-    "auprc": 0.08144695634866315,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 210,
+    "auprc": 0.08144695634866317,
     "rows": 699512,
     "cases": 8867,
     "controls": 690645,
@@ -30653,7 +31468,15 @@
      0.9191296797835705,
      0.9412014308225785
     ],
-    "auprc": 0.14844048885981884,
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 210,
+    "auprc": 0.1484404888598188,
     "rows": 697855,
     "cases": 16248,
     "controls": 681607,
@@ -30997,6 +31820,14 @@
      0.9273122882184682,
      0.9485514457519127
     ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 210,
     "auprc": 0.27383782479858493,
     "rows": 694596,
     "cases": 30468,
@@ -31341,6 +32172,14 @@
      0.9449220338373264,
      0.9635313630819026
     ],
+    "bootstrap_draw_counts": {
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "descriptive_only": false,
+    "positive_shots": 210,
     "auprc": 0.5432685348210831,
     "rows": 685337,
     "cases": 67130,

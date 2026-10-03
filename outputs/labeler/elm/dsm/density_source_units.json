@@ -1,0 +1,19 @@
+{
+ "shot": 190643,
+ "units": {
+  "DENV2F": {
+   "data": "V",
+   "dim0": "ms"
+  },
+  "DENV3F": {
+   "data": "V",
+   "dim0": "ms"
+  }
+ },
+ "errors": {
+  "DENV2UF": "%TREE-W-NNF, Node Not Found",
+  "DENV3UF": "%TREE-W-NNF, Node Not Found"
+ },
+ "git": "206e4c1ddb2677b67d203eac6d4c1078e4cdb52c",
+ "script_sha256": "25a954910744a770845ac115ca4b4ff4cd3521e6c838ff56a6d312429b49e707"
+}

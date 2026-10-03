@@ -1,0 +1,4010 @@
+{
+ "git": "31d2553fe39ac6b0ba401a5e294e21200825721b",
+ "script_sha256": "86db33904ff314d7f147e2ebfb88f2d52bc0bdb9ff2b22d0d28d9cdb99413ecc",
+ "before_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/archive/dsm/evaluation_before_input_repair_bcf3638d953d.json",
+ "after_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
+ "before_inputs": "no D-alpha; slow CO2 missing on 75/119 shots",
+ "after_inputs": {
+  "scope": "isolated detector only; survival and historical scores unchanged",
+  "input_columns": 60,
+  "photodiodes": "PCPHD02/03 preferred; FS02/03 50 ms means are explicit substitutes only when a photodiode record is unavailable",
+  "co2_v2_v3": "DENV2F/3F native-ordinate 50 ms means; the same fixed failed-digitiser screen as elm-ours rejects median magnitude >1e16 and fills that column at the fold mean. Live metadata says V; physical conversion unresolved, no rescaling",
+  "co2_r0_v1": "original slow CO2 when available, else fold mean",
+  "raw_row_store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/repaired_raw_rows",
+  "rows": {
+   "185857": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "7d0d88f6957c70ffbf9313057d53e79164c856850d4279481a26f17891795996",
+    "source_signature": "ef2b32498b0401e95e0d2e209a3e66df8e292d1bc1862a10c052aa209a9911eb"
+   },
+   "185866": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "a975e2d4205658da7d0cdbbf009879241247f85bed9b099d9176c15b20aaa73f",
+    "source_signature": "401a42a57c479d0e239f51ddc067138e9a98325a35ede1f8384253e0e2f3cba4"
+   },
+   "185945": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "706c5322c90f093ee2bab3cc188cf6c5a9d45bb8d5e5d4337de571780f8f27c3",
+    "source_signature": "ffa47ed7c869975a5deb4ca9affd5b0ce91390981cac44c52cd7b24c4b67fb88"
+   },
+   "185961": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "ea585c5f41ecb399e5d8d97593ac9942afae7107d0cf6fdac24b06e49a2efb08",
+    "source_signature": "e378934f06394ba48d3e632489eacf6857a76807c3a0cda5497af83656cde942"
+   },
+   "186013": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "8187dce99fc2c65e7f52d1dc1e553c267fc6ab1e51792c3397445e53a955731a",
+    "source_signature": "a4048ecf5d91f5c69fd50581bcf8bc8def0fd15671e2830ee30e7fab7f1383c4"
+   },
+   "186093": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "dcdbe2a41ec01fadbd4822af0362f247b6d43d55f619e0d51e81205f14148175",
+    "source_signature": "c0c07fb1bfb10d623f8eb0985ab219316a93d26192288d2a18a597a022ec9c45"
+   },
+   "186427": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "36886d8b03aaade985d43164589fbc3126dee8a67c3089b373a2c2b4fa3e7d23",
+    "source_signature": "af454646f14aa2856ad51dff11055e6956f2a775b7670797d07c8aa95e8f895d"
+   },
+   "186569": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "a004d2cb569af91b4ba0eb14aee3f05e600f5e53a08ae3c07053551480279288",
+    "source_signature": "0bfa6fa130f7dbb7fd2545a7d333f485ca0f67cfafba798928cb59f63b3236d2"
+   },
+   "186636": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "06c1339c769b0ec6e1670bf08551ec2c0c94cdba09dc3579f49a0869e5f76faa",
+    "source_signature": "3c0b3cecea5f266861f85d3584efc6a55d026c53dbd0ff2a3a7157a40dc30029"
+   },
+   "186945": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "cc3c80c15dde8ce8dffa657625072edeca54cabf3fc1e8aa8a32acbbe16028a8",
+    "source_signature": "51326bd3eabe49ecd54824eb100361ef68377a37b377c39d6af88fa80c147fee"
+   },
+   "187035": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "292847e6cebf8857c8041f49c9e1ab2497367d3b9b0dba27f3f4d50d393abdc7",
+    "source_signature": "5e116b8762c2da3bc44ac2102c7ac73ffcdfa37cb945403a807e73c7bdebbbab"
+   },
+   "187076": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "e90b8b2df75fdeab910459b5ade5d9ffc5d097cf45a8eaeff83fd131432abe8c",
+    "source_signature": "91b4a00eeb30ceb33cfbdfc555ccc03077780be5865655bbdb3afda2131f7948"
+   },
+   "187105": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "3f67576cc7c835ab371405115f26e88de9fa98d756b85608c649e1bf0f84cc5e",
+    "source_signature": "1c30544a29b3e61ce00c184379895c94795a7bed43e96764ebf4ed1e7d5f5451"
+   },
+   "187196": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "aa2a3fdf890ba65417aa812af29208f99dcaebc4ca177fd11dfacecb8c4d7fef",
+    "source_signature": "cc390ce678860fdb014aed6541aaa819bc639948461aa4201aa171b1face150e"
+   },
+   "187328": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "archive",
+     "bt": "archive",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "189a82078ecdc9caef1ab2768c0c4c183897cc39ee705d00e19b5893ff12a216",
+    "source_signature": "a41a5de1bf8b0addf52daf038870562f927d130817c5d4125704d86a68580132"
+   },
+   "189004": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "ccababd4c756a77e4ace441ce5bedd7b65345ae155cac532d9a4cfc61627353e",
+    "source_signature": "3eaa7382b869f68af6c9d0491f08e8213552dfbbab65afbfafcb5b4739b71c5e"
+   },
+   "189044": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "4de343e2b8bd96d15ee177e4ec526ba75fed306bcf315ab8ee67fb63969508c6",
+    "source_signature": "a858f5af7202bb9709f94bb1938adebd0690d688a6170ee231acb70ffaca8c9c"
+   },
+   "189061": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "73ce0d6ebba85825f477676bf0133a2687aef5bba4bf166bf8b3a1683ad874f7",
+    "source_signature": "21ec06f4969717839d628236b7cf8c0762d20d98f256f9e860e8086946353c5d"
+   },
+   "189272": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "5e663a02f36374f7be31cffddb8475e503257e8a130af5dcec03ad01298012c3",
+    "source_signature": "3fe2cbb5cda5ff16065125fed6586c5fa3d2853eac853d225d9c36f54a52c001"
+   },
+   "189324": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "b8c7eb0113bbf1b8c41ef1e8cc0e0b8f2b8e65a77dd585ae17bcca4d1a2a7e88",
+    "source_signature": "0e857beb9a62b60fbaa3bbf3ba3071471322fa82f4eac7b0f40c3f290ac5b579"
+   },
+   "189559": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "beaad084320b97d13c8f4407fca6800298411ef05658dc56988786f2f0ea8371",
+    "source_signature": "78347c085fc275f8d448203172412a3aab28e73cd2be7fba6c0ae8b3cc3f4e77"
+   },
+   "189688": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "7e52fc8de2da218763265f5ab66413f6dad4dc204bd1047dc3e38e672035e154",
+    "source_signature": "c89bbd740986edb3fdc2868921878cae980cc474101940d5af2ee331fbfc5d4c"
+   },
+   "189741": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "9cd558d3b399ea5a7d1624586e7efa15dc8f34526f8b8e8460b03acf0988204e",
+    "source_signature": "037e6dbdebe3ae63bffaa6c6386d933912ce8a0ec26c8aa1f1d9403499d32f30"
+   },
+   "189885": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "cb48bb53be0debee67381bcc51eed322259fb7a11c3b7b9975978af303c59a96",
+    "source_signature": "8236753241098eed6e4a98624d8528ba5861f43eefa82d582cce45b51e2a780f"
+   },
+   "190094": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "0cd7d43ef1ce7f59e2e9dbefeea3abb2a7a2bf4ab5ac319d30540ef66f96f7f7",
+    "source_signature": "e849bd0ba23a20459aaff99b5c580b07e23bb44adbe3f4960a631fe749d23adc"
+   },
+   "190177": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "17bcafc188a27536f2d72eb0ffe70a01bd40395131247892ea82ff09c124de2c",
+    "source_signature": "4f0714ca365d88b8adf0a2e59f01a354a4ef61248c1a1c7ad431bd03658958ff"
+   },
+   "190218": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "6ba7dd11eba58e7048d3b32657b7e733a521961c8e1320a38df33ed6d2c7a1c6",
+    "source_signature": "29a6202afcc80fe006ed7c35ccc3a607b8bfb34db15874c3b6fdbf0bca1b5ea9"
+   },
+   "190300": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "68bee332d472cf09d5c4693089c46d083532baa920078d10cc2338989c60ab02",
+    "source_signature": "d374805affa3ffb3f8726a89c3f211b01f94302818775df2bef85da917199c44"
+   },
+   "190335": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "6d2ff46efe43ba23ed166b473015a08cb317f6cff2680002e223f6c575203928",
+    "source_signature": "62a3502bade53e6ab614754f221dba9a754a0c3dcf5b81dda582a0503787deee"
+   },
+   "190637": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "d403d14fee41cf052e16ab749983cc080d4b0cf43f873f67afd1f496db28870f",
+    "source_signature": "538033cb77b8f9648957da1b9c963b2c3d3b0b87eb63e39d56bd546febeb611a"
+   },
+   "190643": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "817f82f31c352e4b330a653e105302b8d287d02c78e18a527fca917a3e63431e",
+    "source_signature": "7849c230da52ce95f50e93426435d08976df793dc99f039d1e9978cbe0da8cef"
+   },
+   "190695": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "336df1927006ce5850e516267673bed8d14a99eb98ecb3bcb563224be1482dc2",
+    "source_signature": "f679bd31e020a668be67bd929e83f52653cef806e88b11c0537da5be9b1a9d20"
+   },
+   "190790": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "5e81693e333a869660dfbc13e838d453c99bc295fc0c322f954e26fe656623e2",
+    "source_signature": "1d48e020d87dbd464ac81b40b2500cbb156a9cc34e66c1dea28320dcdebb9e43"
+   },
+   "190991": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "archive",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "d6a5d4d7b6a95b162710161a089c9bf91d1d381755a4a2963afedf37ba214102",
+    "source_signature": "bdb0b4003ad30d14a6cef74f60e815ce632c2dceab528edda7a192d5198d5872"
+   },
+   "191326": {
+    "usable_rows": 202,
+    "in_filter_rows": 202,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "tinj_total"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 3,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "e4ebcdafd54e763d667ec882e6cfc86a05a24ad99b95c6c2e22f1cebfd413ce7",
+    "source_signature": "cd7829b37e7eca0bf0327c0d4026f653d6b36f4561a3d341426285b99056c956"
+   },
+   "191382": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": true,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "archive",
+     "tinj_total": "archive",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "9278add4bb98629bfda187110e9a30e0e0a9fd0de53decaeb75dd1c7fa0b78ac",
+    "source_signature": "943013c857f4a95c2c546a224827b79be47ad42dbc7380b409a6f1f5976ba81d"
+   },
+   "191470": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "bc2d387675cc1a4c00e6b1ec26c9b2fd6e0422623c7fe3c1f51b64e922769f28",
+    "source_signature": "2ece6591d962b755a3d8b4744e2c2fc4129b8a57d5586eecca5f084befdf8999"
+   },
+   "191677": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "fd343c7e2cb226cef61c62aa71be3e0919ee2ca0694301bbbfe64b20e9296775",
+    "source_signature": "8073b24b107212dc27be47ae09939d36d0e23aa5378cbd005a13d18a6d7e7ef7"
+   },
+   "192003": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "33e23d77015698ef27fec16c3e2446610ed334afb13db8542e5c25aca24ed736",
+    "source_signature": "d53af47cac13640037f45a22fddd0253de7c5cedb9e11f53ed6e939d6c36edeb"
+   },
+   "192010": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "14ec6509bf75680f8c7a2968ca189ab39083337980cb1b0fa339a08e88f85ca4",
+    "source_signature": "328f8279e0073ed1dd2e06fc1dc3571380f104db0de75305ac029a1382a6dd2c"
+   },
+   "192015": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "6a77092ca8cd12ff1be1ce4d887ecd74db7ac5c66d91d87691f68ca8442b9629",
+    "source_signature": "365b4f9d3affcf92c2105bc8b4b47980650db8d6a46417d3fe7e47a90044a727"
+   },
+   "192148": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "60066b897571b80a1a84c091a17e14431420a418cf2c2b6431e7fd5384df63b5",
+    "source_signature": "f0cd9ba4b41eb6c78155fd89a6539cec76cd3626ceeaf5ba3912628c3a01efd3"
+   },
+   "192226": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "861149809ccac4ac491758620a0fb55e008a159403ea37aadb490f0e85862c5e",
+    "source_signature": "5eeef07043b513f92ac8d7fe36cd1fa5d5277832abb0c89282ba0a8b8ff8d9ab"
+   },
+   "192229": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "170c80725701adccfbd63c9c446d100f302208e55ae18ccc1fd9589724474c81",
+    "source_signature": "520e2cf919e8661f562e4bbb9b8955f117f29bf2661b9193168057f7dff2303c"
+   },
+   "192232": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "61e96fd4421660527c6f81d59073b5cfc977c906b30ed8b5629653cbe2c1a551",
+    "source_signature": "e223f2998d760a3cdff032eb011d13472b2269a478cde0179cbc83cb6b7439f5"
+   },
+   "192425": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "298d4ba9973dab9e7f687c3882c6dbc581fd143ac70fb8bb6960da3ac832b927",
+    "source_signature": "811b01738320f9030dd48b47677c6ff4b7a71302a2a6c34935d1c5447be3d928"
+   },
+   "192432": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "1212d4130921c6a2bb9704c45daddbc523ad14d84f6ba7afceef6c3e0ff4d26e",
+    "source_signature": "5045a6896ca1f89c138285396661e04fe71ec433ec4fc356eec9c60e69b3d2b0"
+   },
+   "192721": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "4c0cf873765659e9837f09131b518476e67b3382bac296e1400c7730c03783bc",
+    "source_signature": "395b27a3a4651ebf113fc401e059da7872d6f7d91e4bea5229e8ad2b30b86e1c"
+   },
+   "192732": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "9e1abb25e27b3a23a7042ae3517f0c387e1faf570516896eea02fa2424ea585a",
+    "source_signature": "c26356d15e7d2c488f9bf12730e250bf0513b9b9074e2a49b68e7bd3d5032d41"
+   },
+   "192751": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "81aa7d8d423921953b86d69ce347a8d30b32de5eea9cfd1bdd2e546eb3104771",
+    "source_signature": "daf9a8c8d4dde7598da3549aa8ca6c0b3ff006eb500920dbb390c684cc932745"
+   },
+   "192914": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "b70cd6f6c6623b53f435cd65ad93ef292cdaf7c196e9686a31d6944363ab2a4b",
+    "source_signature": "913f1ba7f3d8c732c84a2e34231ff2d83a2c62a7979a332cc49a3bfa7b73b1ec"
+   },
+   "193008": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "co2_v2"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F rejected: failed digitiser",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 3,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "co2_density_slow_v2_downsampled"
+    ],
+    "rows_sha256": "a3c7ef8d4a41f3965d342c29e4cc714d1d4c4a81509c9fd2b0894dcecab3ee12",
+    "source_signature": "3043dafc2f8a5acb06ce02607c6a83f4ba5bb1221fc1bcfff5eafea5a4155cc0"
+   },
+   "193022": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "21e63e7d9b32263815a3a881f32a0106386a1390c8ca3731c04944584ef86f99",
+    "source_signature": "75542faa7a25b3608a0f9666523b50aef2165ee7712934ca80815dec3a72f862"
+   },
+   "193075": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "d1fb3c0cfbe480e2f4fe4e25663971ad8f4ee2c50914e3eed0db99a5e206baa6",
+    "source_signature": "d05d7684543d62cd9f103d055fd063c8edcae0761e00fa898031baa0b2d86b08"
+   },
+   "193276": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "f8870e9e4ccc08ccf8af9778ea71e3cc316a46228ed961ce871642bda8666781",
+    "source_signature": "d49281e2605b08c34e2643593cd33c6e535ed2f7479e8847ae14ec48cc7c35b7"
+   },
+   "194155": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "co2_v2",
+     "co2_v3"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F rejected: failed digitiser",
+     "co2_v3": "DENV3F rejected: failed digitiser"
+    },
+    "mean_filled_columns": 4,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "co2_density_slow_v2_downsampled",
+     "co2_density_slow_v3_downsampled"
+    ],
+    "rows_sha256": "b49223e1c8c833bfe33a3d453faf061065430aa4ffc38aa0490351496ccc9675",
+    "source_signature": "4a957db6a215594f0b155a7a126e246d7f711c4157e69d01000208e8db1848d4"
+   },
+   "194160": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "co2_v2",
+     "co2_v3"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F rejected: failed digitiser",
+     "co2_v3": "DENV3F rejected: failed digitiser"
+    },
+    "mean_filled_columns": 4,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "co2_density_slow_v2_downsampled",
+     "co2_density_slow_v3_downsampled"
+    ],
+    "rows_sha256": "e71bd6c56cccc0460f383378d63efbca3d7fe50536044922257d4b5b88e62794",
+    "source_signature": "ba6c4dd4389a1e0e0c69c94988f6bd901af31f3df7a195a716db00ba23aeeeba"
+   },
+   "194445": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "co2_v2",
+     "co2_v3"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F rejected: failed digitiser",
+     "co2_v3": "DENV3F rejected: failed digitiser"
+    },
+    "mean_filled_columns": 4,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "co2_density_slow_v2_downsampled",
+     "co2_density_slow_v3_downsampled"
+    ],
+    "rows_sha256": "06309c97e848db4857e0fc92b5f30d0ef1d936109e132b825f3dd464f6a449da",
+    "source_signature": "123e503d4190cb5e92ca4617daae60de136aacd707f4b4e5a62b5cdd0c85b22c"
+   },
+   "194600": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 4,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "532a6d9b0c9670aebd55d19c0c642f099ed92085bade807f10f2b8ecfd1667c6",
+    "source_signature": "b1b783df56573de8fb52012f5167cfffe25d2e40b762d8fb16f4297b39463610"
+   },
+   "194608": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 4,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "39adfa0004e4be21eedc980e1d3687171818af3e3d169b37cc1812830d041141",
+    "source_signature": "2496e6f2b9520f3ea3d51b8869b5d913e12275e7253f81d500e37cca3a886191"
+   },
+   "195016": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "a26053b1f6e35ab95bf88a16613db2bf3f9e78d9f8470e4cb05bc231b41b655b",
+    "source_signature": "b8fbed18ebd247c619622848c417f7a87bed2b1fb524df44d44a82ebefd9744f"
+   },
+   "195024": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "b1dd394d08cf210cb48488f2503ca0d17f71cc851243379c94d5e60a9e98b754",
+    "source_signature": "5d5463fd63ccc59b4c92fb17fd1ddc81b33b3a953b7602c1d1a5b21536ec1d57"
+   },
+   "195066": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "dcbbda80605f2c9bc861698c1610d8729a4f92e3d878f1440e5cad803af05257",
+    "source_signature": "5374c2a28e394db11e330ccf2f7cf0ee1dc3a36bc287a799e582ce378d8564e8"
+   },
+   "195102": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "094cac52e24c63759e04b95823172108cf4f23a66eab472a9766759ec840ff06",
+    "source_signature": "f1ca60166e85f910f7d48387c8efe31faaa0862acf4c54047f78446f8696209b"
+   },
+   "195103": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "9ca9b0ae8f4c3fb4a484784ec2bb86f89a69020a46e14d08e37dc7cd85f8451b",
+    "source_signature": "d06a74ccfaeb5360d2287ec296f54bba751b234bc2e073b0574f78c726defe01"
+   },
+   "195111": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "33ba7c79f39acee2237c54810e5d7c4f2ee119d1ce0dcc3d9668542ab62ae5a0",
+    "source_signature": "3504846702e2f255a2b808cc0162a1a87729e56f5f5df48a0b6db401819f447f"
+   },
+   "195186": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "1e91f3e853ba8648a0982fd2cb03eda3cea3b68de714d37274485210d894527a",
+    "source_signature": "86cb820a5c3441b28a1da2e26c508f3c8be4c7a9eb680a1785254520bcc730c0"
+   },
+   "195263": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "5d70111c5851ca2d1896cd63778871c5b5cc080fc6f83954ab35b7c7de3308ab",
+    "source_signature": "781a388d92fb8cab68df03ccf10989fe84369dea540fcf35e9a325268d22990a"
+   },
+   "195279": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "db883df6ba2cba1d766befcfbe54cc5f86726717cd8bfa76078fe0a57dc0a2f2",
+    "source_signature": "4db432d68f523302bfec15da77c5bea23b1d34aeb71392f3ef171efc9a1005e8"
+   },
+   "195646": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "a8bafe71657b0fdf665dd1d2bfeef18be27fc9385d28d119c023b6ec9071fd05",
+    "source_signature": "08336490e9a67b1d529725171298eeb9dcfa3431673e9ee18596afbbbb028ff8"
+   },
+   "195786": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1",
+     "co2_v3"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F rejected: failed digitiser"
+    },
+    "mean_filled_columns": 3,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled",
+     "co2_density_slow_v3_downsampled"
+    ],
+    "rows_sha256": "39cc747e39c4c14528630401a143770434da831dc57855656653b85561a457e0",
+    "source_signature": "3661e2122fbb65d1631c8f60a4920d664827428ab3d3a24125d5ab49131b36bf"
+   },
+   "195959": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "d55d942e9d4daaf747c69c9cbf9463a4b7997fcd11562830346c260cf0d75c82",
+    "source_signature": "07aa100efb496ba2fd3d598514e8c29862460a5805c1a6314214b64d61479259"
+   },
+   "196332": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "43df7d9d60ef664a8e8dd2d13e2f61598c84faae4fe2dc921dac664ede4283c3",
+    "source_signature": "9682590c285e9a85286f78b340a57082c26b5718063f208f76d66fc45d324e99"
+   },
+   "196405": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "1ea1da41806c3be71c5f313a9923eadcbfb192836161bd29d1bc9defa1f0a05a",
+    "source_signature": "8185694fd53334067e03f749e2256e02d8137356388fcc222db820f69dcf02ca"
+   },
+   "196541": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "co2_r0",
+     "co2_v1"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "co2_density_slow_r0_downsampled",
+     "co2_density_slow_v1_downsampled"
+    ],
+    "rows_sha256": "4626696dbbd312e9d584cf1f4093683c3c999936cfd25275d0dba9be88160f30",
+    "source_signature": "e8f4aca2906a6107fcfb895b2c39f00891011e31a0c204d2b6c571497e6976ba"
+   },
+   "198806": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "04d6ba4e2ccf5777c782b2c09db50c54a891a017749aed51a09c54d3b114d908",
+    "source_signature": "b7463b0b9cb0caeeb2a232cc089543ceaca72d39b525ba5e67bd75b781dbcbb1"
+   },
+   "198899": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "eafba7f856bf3c660a3507f1931f0dd1eb555602ef32adb856c95ceb89b5443b",
+    "source_signature": "1a25bc104f99d9796bbc79603e625686244a43dd8037a88642fdad74761b190e"
+   },
+   "198971": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "210175ec493b516caf54b34407db8c338d05f2cf4e941a11421e90d5dc954749",
+    "source_signature": "b3070868ce404f12f3fe8b61abfc09c2889dcbd3f1c6d050347f53d21c3ad54e"
+   },
+   "199087": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "3741ce69d1e9ef4bc3ab489b747d32a44c02bb20e5aa50f8b9b514c581a39168",
+    "source_signature": "412b3d4ca45ed42706299c65d4fec963f1251b6d314fb16cd107445319dc8536"
+   },
+   "199789": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "aec1fcbfab0837c9507edaf5c3968b7f2ebd24a8c97162e288680aa369f5b57e",
+    "source_signature": "4f90c64d5dda7f022b0f64d670620e1f01c2fecef9a4c189a81db38597737081"
+   },
+   "199790": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "dbf6b7f1209ae10a56bb30dc4f715b9e11df21ef2996c570125b26b5eccc21b1",
+    "source_signature": "9e099270e60aac3ab604851cc46155442e122d88b7ef515c55a0eabd6cef5b0a"
+   },
+   "199909": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "78af6d1bad89cab9e93d091e214f8f528fb9de6caee4842a8d8cdfc36f3d529e",
+    "source_signature": "a3255b9dc8887ba7bf3e1301409f2a8c6a4a4b2ebc2325d7404be1334c72906d"
+   },
+   "199921": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "bd104adbabc96b9bda8e74ececd1eecb8e411d538aebf66f57850db019bc37dc",
+    "source_signature": "ceb83d3235a409c8030c7845da2b29057bdfce6048deb3234ea86bd9054feee0"
+   },
+   "200127": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "cc62d18375ece39350e730018a15693a24fc51a528c77b66910528da7f618157",
+    "source_signature": "a776dfdbd746602ae2bbfb8e0a2025e0fa4c41aea135eb37c8f1189d959ad619"
+   },
+   "200198": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "6a196f40d9aaad9769382db9a67244d38f1846ea06037edd398245780aeee870",
+    "source_signature": "d1a2e5af478c66c983da830406c34d9afdc4786a141799acf693f452ae797f36"
+   },
+   "200320": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "5f045086967b6345b1332ef990da733e4fb20fede07569b6f9e87173eb0332c3",
+    "source_signature": "e981b11c57e3c52fabf76cc36ca2e3a91f587552907b259971e811f41c540afc"
+   },
+   "200385": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 upstream photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 upstream photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "28856c876d69ba5ae96a4d1ed3c90932a97837be60c2b25e7ab33e1644e70c5c",
+    "source_signature": "e0fc63e2c5a46b904515146e1512bcad27cec15998e6f7e1e874a9ca82a06522"
+   },
+   "200427": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "30559759f6197d03c73c2528bd73392a8af39b73fbfac84dc1839c30e086bc1d",
+    "source_signature": "f0feb6e338406af80d03b5e1dc5ec8f9c579b3dba8f7e31d9c2a53922384bb7c"
+   },
+   "200636": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "1c2a1f7a62694112da6bdc8946a49d780953e86835f45bbf01288fb83bf9973c",
+    "source_signature": "b715cca5adee6c96f5083ba7a621bf4945eb64e70a59378749e0b3eea9350c4c"
+   },
+   "200917": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "bdb66f23d6b4085fe9e7b049d5bfbdc702826acf149177d49f05aace42a723c1",
+    "source_signature": "cd8376a3597c2f7f371d0d7836d2ba1c0e79855df9a1cde12de7591ab4564cbf"
+   },
+   "200954": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "c2de505ad3f257784236b8b1a09e049031be529f53d8825f7080652cd83819c4",
+    "source_signature": "1ecd8151c9f7eabc89adb6680039d9d1e640da996013b57a68cd3300c9013fee"
+   },
+   "200990": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "85c6cbc247c24a84563c2104c47a490502aa735755400c51ff0520ef4f12f52a",
+    "source_signature": "cefcce64f8e112bf962c50895801b593e44471f261589fb511d38b4d1871bd7d"
+   },
+   "201270": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "8dc35bfd3c44b3a9edf8d961d62adb7dec2163553a983bd92a35fabf77cbfa44",
+    "source_signature": "7843c79b55b9f3a426f351313abcbcb92c6db4b548ea89b4d6b4dc8c6a923be5"
+   },
+   "201395": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "9c29bf6208e7b8961d092a36d53c5ceaaa477bc298c0c6a9e6c836ad75987af8",
+    "source_signature": "a08b49ccbfa553691a20715e9d5ae90b896dcdba7296c579aa20504ab9b35b99"
+   },
+   "201447": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "84ec195099a8b5709c134248f306ee5caca12e7b405035d3b8e55782a9c08d6f",
+    "source_signature": "2638695317d0cc19e576df22cbb95212ecc2f7b6964a755633210ec682624cfd"
+   },
+   "201494": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "a8e8ce1521c0ac2a37a87e786ab3d1ec52fa385462b3f05a661ff77236774c2e",
+    "source_signature": "382af13f675403c9f632c0365be806198ce5b85b4a6d52099e759708d7e4cefa"
+   },
+   "201707": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "e456e7553a6ed9a7ac5d0b034b8ae0f85c8c9303893e6737e7f337b514fa9b8b",
+    "source_signature": "49a12c52a7841f8dc948e131623032c9c507c55a0ea66413e489aaf513234765"
+   },
+   "201973": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "a8d58e3585a5b7e0efdd96e29cc0bc93e1e38f5e5200a1740fa08885f5e06a82",
+    "source_signature": "f95be79224eb0717c07e91b28c3826df7e6401793a83d296da3e423ad655e28b"
+   },
+   "201978": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "5387d49c10294806a54365ee44dbd4f76c399221d346bd4d5ec6932838108951",
+    "source_signature": "113085039c4068a202ca3f32b189269ae0502dd0eabc64584063e8b42a0d9556"
+   },
+   "203012": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "86106f34821c61f046f90ec3161ad1fc09313aabe40c3c75d566b167e8d737dd",
+    "source_signature": "10dba900adc206349a2670ce1a0a2d44367c0481007b91f71bcb69600a3309bb"
+   },
+   "203041": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "f904edf1462e9088395bdbc27a3dd3a909e624d106384eb3ce2656e423f7766e",
+    "source_signature": "e4c88210af38ffbdc1791cf9a2cf2eb0ea7b23cba2bb65cd2b11eb5b03a2ff97"
+   },
+   "203132": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "5e897c15937290c4df4df2c44af528bb2bbb21d473455d3cb1808fe134402167",
+    "source_signature": "953197cf05f6dca2acaf1b64c9ef8b989905288ec19fa4b0e2610d5e055bdf9d"
+   },
+   "203187": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "90c7bf67b429a497d7042d9d784c5050d4609fae96e2d2e3fe5263170005a800",
+    "source_signature": "624b395499d897f0d17d26c0ab8a637ce1506947af4fb00620eb442c5e068e7a"
+   },
+   "203470": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "d6aa2d9843593d2bdb628592d82c4bb9025a8818331e2a14bef6309842bebcb2",
+    "source_signature": "4701ccbd5341628aaccfcfa9d3d7be43e05f9ce501228c6d47cc3426b14e1d8f"
+   },
+   "203521": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "02060328f204a277f5a5511f7dcb71e0be4711c04f260cc9676cac967733ef93",
+    "source_signature": "d2efa657f922b8202dcdba288ff89c92f6c51055a004b7a9f80a9b07194d18b7"
+   },
+   "203576": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "0cfd8096765eb161e4df1c4b3132207733470dde92cdd5a2c2671c0e08b8fa3d",
+    "source_signature": "4f5e6698210d45133f39899683471a1e7daa7a6a67f0d48a5f9903a136307aea"
+   },
+   "203629": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [
+     "pinj_total",
+     "tinj_total"
+    ],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 2,
+    "mean_filled_column_names": [
+     "pinj_downsampled",
+     "tinj_downsampled"
+    ],
+    "rows_sha256": "3d39bdf6e9d3698930e74cf98ed7fae0ae01e87a031863fb66bcfe4cd23a71c8",
+    "source_signature": "b5a86d9f9c45e784e87208795ad8716f1169d7bb8a4e3743f125a9d995083d49"
+   },
+   "203719": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "0ecff2ac69c4ffdcb9ea47707ba45a596a43af2b16f67c618fa47c9d65a5f744",
+    "source_signature": "4bd58ad138763fe173090d561f74466f89b4b4a6a489ffcfda86a64ef54f8a20"
+   },
+   "203764": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "df1f2613ef7e8abc1ec0dee3ea3d36ac1da97bf43aac9e3b2c09f4f84abaf375",
+    "source_signature": "71b74babd9541510bceddeb517a65f3c0d094a1fbeaad49acb2575a93ed7a57b"
+   },
+   "203778": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "2f886b7298c5e640a1c176177dda8c442b80ae144ce2b0d6615d2aaaa3fad10a",
+    "source_signature": "0518070db1b98cdbac25a204d315e83d32cbd419fc97e8aeed5c64a75422f26b"
+   },
+   "203941": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "c6655184a8f649119ec062b07a37fea51b7b1d9ea645e4680d9d8e7549ecaa11",
+    "source_signature": "f898f7aed7a6ed55841dc569412963b21ef8b626c1408264b4cd00d6981403bd"
+   },
+   "203959": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "6564c232a7b6856521070f541441fcb396561ad9ca2a94998db3e711f080c505",
+    "source_signature": "4da70e351f0907174174a7bac011b60c90a864b6d9e69c98f9a0529bf67f6b82"
+   },
+   "204233": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "164511254e93ddaa814036714dac5c083f7348ac2fe5df02adba940a3daa3159",
+    "source_signature": "efdc33d51444fd5b8bcb1e7336277bb8234ba224104c30ed0667a40413620f30"
+   },
+   "204240": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "21b510b5abfc992ac1fbb3f11d0a796974044282c0ef5006c3e0818a1ce0c996",
+    "source_signature": "e477263b456d5562b17e09f9fbd319c540167aa752d35ba6f314e283971bf71d"
+   },
+   "204243": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "c45695774bc5bba88d14f5a2b9ab650f5b4cb8d412332092f305a69a32980bdd",
+    "source_signature": "fa76874254eaa4208ecc2cf6e557708e424f34ce136f0c88927c4a2572026505"
+   },
+   "204256": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "f08708269a8dd01e488ec71f557e5c9c5b0031066c2886bc30c2e5db61316eaa",
+    "source_signature": "127547ce6d7c33982de9d3d7840141670918d916bc88a53590fe712a5c8ebe99"
+   },
+   "204530": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "a130bcb3790881265e8f4c51ea47b99fa6ff6f14e55605c1de9a3bf201e3ff1f",
+    "source_signature": "0278270332209a7cdf7c922e62988935e6fcf07dd7e40a2d055a6678e0b7becd"
+   },
+   "204560": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "5a2e5ad15da8a8a0763229c9ff8e70cc59e34aa4d65ef7fb853971e8966be353",
+    "source_signature": "f30e929e36f8a0e878119fa38596a60283a3cb0c6c96154a226b640210e31208"
+   },
+   "204937": {
+    "usable_rows": 240,
+    "in_filter_rows": 240,
+    "outside_training_filter_usable_rows": 0,
+    "outside_training_filter_usable_row_share": 0.0,
+    "missing_features": [],
+    "archive_features": false,
+    "resolvers": {
+     "ip": "fdp",
+     "bt": "fdp",
+     "gas": "corpus",
+     "pinj_total": "corpus",
+     "tinj_total": "corpus",
+     "ech_power_total": "corpus",
+     "co2_r0": "corpus",
+     "co2_v1": "corpus",
+     "co2_v2": "DENV2F; 50 ms mean; native ordinate",
+     "co2_v3": "DENV3F; 50 ms mean; native ordinate",
+     "ece": "corpus",
+     "pcphd02": "PCPHD02 fetched photodiode; 50 ms mean",
+     "pcphd03": "PCPHD03 fetched photodiode; 50 ms mean"
+    },
+    "mean_filled_columns": 0,
+    "mean_filled_column_names": [],
+    "rows_sha256": "192e3bfe73a9703ee44f3c8820521ca4235017154cca9b837d94c4f22a3237b4",
+    "source_signature": "42b68b4f3a76fa56d3898e756d4e0786eeb7b664cbee487c76382306ded6035b"
+   }
+  },
+  "normalization": "optimizer-training shots only, independently per fold",
+  "initialization": "independent seeded random weights, unchanged recipe",
+  "prior_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/archive/dsm/evaluation_before_input_repair_bcf3638d953d.json",
+  "unit_audit": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/detection_input_audit.json",
+  "prior_record_sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
+ },
+ "recipe_changed": false,
+ "sets": {
+  "bes73": {
+   "before": {
+    "shots": 73,
+    "counts": {
+     "tp": 2437,
+     "fp": 1090,
+     "fn": 282,
+     "tn": 2718,
+     "crowd_bins": 2632,
+     "crowd_hit": 2375,
+     "non_crowd_spans": 93,
+     "non_crowd_span_hit": 74,
+     "absent_spans": 200,
+     "absent_span_alarm": 152,
+     "crowd_spans": 52,
+     "absent_spans_guard25_eligible": 176,
+     "absent_span_alarm_guard25": 131,
+     "absent_spans_guard25_empty": 24
+    },
+    "point": {
+     "precision": 0.6909554862489368,
+     "recall": 0.8962853990437661,
+     "f1": 0.7803394172270253,
+     "false_alarm_bin_rate": 0.2862394957983193,
+     "crowd_bin_recall": 0.9023556231003039,
+     "non_crowd_span_touch_recall": 0.7956989247311828,
+     "absent_span_alarm_rate": 0.76,
+     "absent_span_alarm_rate_guard25": 0.655,
+     "absent_span_interior_alarm_rate_guard25": 0.7443181818181818,
+     "auroc": 0.8555644743185984,
+     "auprc": 0.7672100756397484,
+     "prevalence": 0.4165772943159185
+    },
+    "ci95": {
+     "precision": [
+      0.595905350356442,
+      0.7765261634143762
+     ],
+     "recall": [
+      0.8242229165882368,
+      0.9473715146015509
+     ],
+     "f1": [
+      0.7046020995429759,
+      0.8423224328498632
+     ],
+     "false_alarm_bin_rate": [
+      0.20865481676541586,
+      0.36886960686626263
+     ],
+     "crowd_bin_recall": [
+      0.8318687089515376,
+      0.9534333205543709
+     ],
+     "non_crowd_span_touch_recall": [
+      0.4594015444015444,
+      0.9067027027027026
+     ],
+     "absent_span_alarm_rate": [
+      0.6369764957264957,
+      0.8431140510948905
+     ],
+     "absent_span_alarm_rate_guard25": [
+      0.5591035980148883,
+      0.7615972879217913
+     ],
+     "absent_span_interior_alarm_rate_guard25": [
+      0.6274313725490196,
+      0.8241935483870967
+     ],
+     "auroc": [
+      0.8064279974330921,
+      0.9015528248669704
+     ],
+     "auprc": [
+      0.6683780812715336,
+      0.8612877508726061
+     ]
+    },
+    "replicates": 1000,
+    "display_name": "elm-dsm detection (isolated)",
+    "high_recall": false
+   },
+   "after": {
+    "shots": 73,
+    "counts": {
+     "tp": 2504,
+     "fp": 1176,
+     "fn": 215,
+     "tn": 2632,
+     "crowd_bins": 2632,
+     "crowd_hit": 2441,
+     "non_crowd_spans": 93,
+     "non_crowd_span_hit": 62,
+     "absent_spans": 200,
+     "absent_span_alarm": 137,
+     "crowd_spans": 52,
+     "absent_spans_guard25_eligible": 176,
+     "absent_span_alarm_guard25": 113,
+     "absent_spans_guard25_empty": 24
+    },
+    "point": {
+     "precision": 0.6804347826086956,
+     "recall": 0.920926811327694,
+     "f1": 0.7826222847319894,
+     "false_alarm_bin_rate": 0.3088235294117647,
+     "crowd_bin_recall": 0.9274316109422492,
+     "non_crowd_span_touch_recall": 0.6666666666666666,
+     "absent_span_alarm_rate": 0.685,
+     "absent_span_alarm_rate_guard25": 0.565,
+     "absent_span_interior_alarm_rate_guard25": 0.6420454545454546,
+     "auroc": 0.8399576316366929,
+     "auprc": 0.7307304466753819,
+     "prevalence": 0.4165772943159185
+    },
+    "positive_shots": 53,
+    "descriptive_only": false,
+    "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+    "ci95": {
+     "precision": [
+      0.5814230022765351,
+      0.7648568788263833
+     ],
+     "recall": [
+      0.866006600513834,
+      0.963126052798355
+     ],
+     "f1": [
+      0.7105107860787013,
+      0.84188636636203
+     ],
+     "false_alarm_bin_rate": [
+      0.2230829582809363,
+      0.3993347117068703
+     ],
+     "crowd_bin_recall": [
+      0.8723532671178486,
+      0.9698377797438912
+     ],
+     "non_crowd_span_touch_recall": [
+      0.24614754098360658,
+      0.9239186656671664
+     ],
+     "absent_span_alarm_rate": [
+      0.5121680216802168,
+      0.8308552175829712
+     ],
+     "absent_span_alarm_rate_guard25": [
+      0.4454808792286321,
+      0.6842348927875244
+     ],
+     "absent_span_interior_alarm_rate_guard25": [
+      0.4910124536203666,
+      0.7833359872611465
+     ],
+     "auroc": [
+      0.7774094401635682,
+      0.8916958539896422
+     ],
+     "auprc": [
+      0.6124241286930445,
+      0.8364086709543216
+     ]
+    },
+    "bootstrap_draw_counts": {
+     "precision": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "f1": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "false_alarm_bin_rate": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "crowd_bin_recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "non_crowd_span_touch_recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_alarm_rate": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_alarm_rate_guard25": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_interior_alarm_rate_guard25": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "auprc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "replicates": 1000,
+    "display_name": "elm-dsm detection (isolated)",
+    "high_recall": false
+   },
+   "before_bins": 6527,
+   "after_bins": 6527
+  },
+  "all119": {
+   "before": {
+    "shots": 119,
+    "counts": {
+     "tp": 3862,
+     "fp": 1831,
+     "fn": 694,
+     "tn": 5266,
+     "crowd_bins": 4432,
+     "crowd_hit": 3774,
+     "non_crowd_spans": 120,
+     "non_crowd_span_hit": 96,
+     "absent_spans": 311,
+     "absent_span_alarm": 230,
+     "crowd_spans": 86,
+     "absent_spans_guard25_eligible": 283,
+     "absent_span_alarm_guard25": 200,
+     "absent_spans_guard25_empty": 28
+    },
+    "point": {
+     "precision": 0.6783769541542245,
+     "recall": 0.8476733977172959,
+     "f1": 0.7536345009269197,
+     "false_alarm_bin_rate": 0.2579963364802029,
+     "crowd_bin_recall": 0.8515342960288809,
+     "non_crowd_span_touch_recall": 0.8,
+     "absent_span_alarm_rate": 0.7395498392282959,
+     "absent_span_alarm_rate_guard25": 0.6430868167202572,
+     "absent_span_interior_alarm_rate_guard25": 0.7067137809187279,
+     "auroc": 0.8549335571065096,
+     "auprc": 0.7780879339501329,
+     "prevalence": 0.3909722818158414
+    },
+    "ci95": {
+     "precision": [
+      0.6012222038962778,
+      0.7502960768323103
+     ],
+     "recall": [
+      0.7766691638634841,
+      0.9133156683436398
+     ],
+     "f1": [
+      0.6964210318555024,
+      0.8106803520055768
+     ],
+     "false_alarm_bin_rate": [
+      0.19870041515057868,
+      0.3173003469910341
+     ],
+     "crowd_bin_recall": [
+      0.7778494217566893,
+      0.9190176614344266
+     ],
+     "non_crowd_span_touch_recall": [
+      0.5731271777003484,
+      0.8934749784296807
+     ],
+     "absent_span_alarm_rate": [
+      0.6433692226890757,
+      0.8140845070422535
+     ],
+     "absent_span_alarm_rate_guard25": [
+      0.5693154692594318,
+      0.7156963258489516
+     ],
+     "absent_span_interior_alarm_rate_guard25": [
+      0.6123392353770261,
+      0.7785323498792832
+     ],
+     "auroc": [
+      0.8129413518074086,
+      0.8957129513956588
+     ],
+     "auprc": [
+      0.6958438862386871,
+      0.8438053697534071
+     ]
+    },
+    "replicates": 1000,
+    "display_name": "elm-dsm detection (isolated)",
+    "high_recall": false
+   },
+   "after": {
+    "shots": 119,
+    "counts": {
+     "tp": 3846,
+     "fp": 1959,
+     "fn": 710,
+     "tn": 5138,
+     "crowd_bins": 4432,
+     "crowd_hit": 3754,
+     "non_crowd_spans": 120,
+     "non_crowd_span_hit": 84,
+     "absent_spans": 311,
+     "absent_span_alarm": 223,
+     "crowd_spans": 86,
+     "absent_spans_guard25_eligible": 283,
+     "absent_span_alarm_guard25": 191,
+     "absent_spans_guard25_empty": 28
+    },
+    "point": {
+     "precision": 0.6625322997416021,
+     "recall": 0.844161545215101,
+     "f1": 0.7423993822990059,
+     "false_alarm_bin_rate": 0.27603212625052836,
+     "crowd_bin_recall": 0.8470216606498195,
+     "non_crowd_span_touch_recall": 0.7,
+     "absent_span_alarm_rate": 0.7170418006430869,
+     "absent_span_alarm_rate_guard25": 0.6141479099678456,
+     "absent_span_interior_alarm_rate_guard25": 0.6749116607773852,
+     "auroc": 0.8446549278324702,
+     "auprc": 0.7476844924024734,
+     "prevalence": 0.3909722818158414
+    },
+    "positive_shots": 86,
+    "descriptive_only": false,
+    "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+    "ci95": {
+     "precision": [
+      0.5791755975411276,
+      0.7347826371084136
+     ],
+     "recall": [
+      0.769992919485912,
+      0.9121235824721549
+     ],
+     "f1": [
+      0.680837011176251,
+      0.7984687149206465
+     ],
+     "false_alarm_bin_rate": [
+      0.21262462903709145,
+      0.33413581624204347
+     ],
+     "crowd_bin_recall": [
+      0.7687478219145306,
+      0.9164225631824316
+     ],
+     "non_crowd_span_touch_recall": [
+      0.3739130434782609,
+      0.9047721674876847
+     ],
+     "absent_span_alarm_rate": [
+      0.5989089877400828,
+      0.815960972017673
+     ],
+     "absent_span_alarm_rate_guard25": [
+      0.5276663669473131,
+      0.7018909925045231
+     ],
+     "absent_span_interior_alarm_rate_guard25": [
+      0.5659122637457045,
+      0.7709124579124579
+     ],
+     "auroc": [
+      0.7962189294679121,
+      0.8932800951657965
+     ],
+     "auprc": [
+      0.6508244425944444,
+      0.8324612165430969
+     ]
+    },
+    "bootstrap_draw_counts": {
+     "precision": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "f1": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "false_alarm_bin_rate": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "crowd_bin_recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "non_crowd_span_touch_recall": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_alarm_rate": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_alarm_rate_guard25": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "absent_span_interior_alarm_rate_guard25": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "auroc": {
+      "valid": 1000,
+      "undefined": 0
+     },
+     "auprc": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "replicates": 1000,
+    "display_name": "elm-dsm detection (isolated)",
+    "high_recall": false
+   },
+   "before_bins": 11653,
+   "after_bins": 11653
+  }
+ },
+ "before_record_sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
+}

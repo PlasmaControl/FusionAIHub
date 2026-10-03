@@ -537,6 +537,16 @@ def archive_duplicate_records(paths: Paths, out_dir: Path) -> int:
     previous = current.get("archived_records", {})
     previous.update(mappings)
     current["archived_records"] = previous
+    current["model_context"]["input_audit_scope"] = (
+        "Historical survival/refit and exposed/init input paths are described by "
+        "photodiode_columns, serving_changes and row_diagnostics. The current "
+        "source-isolated detector uses detection_input_repair, with measured "
+        "PCPHD02/03 and quality-screened DENV2F/3F; its normalization is fold-local."
+    )
+    current["row_diagnostics"]["scope"] = (
+        "historical survival/refit serving only; current isolated detection "
+        "inputs and per-shot missingness are in detection_input_repair.rows"
+    )
     old = previous.get(str(out_dir / "evaluation_before_input_repair.json"))
     if old:
         current["detection_input_repair"].update(
