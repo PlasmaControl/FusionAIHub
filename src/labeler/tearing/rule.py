@@ -93,6 +93,7 @@ class Interval:
     locked: bool = False
     onset_seen: bool = True
     release_g: float = float("nan")
+    m: int | None = None
 
 
 def uniform(t_ms, y) -> tuple[np.ndarray, np.ndarray, float]:
@@ -362,18 +363,22 @@ def label_shot(
     lock_ms=None,
     rules=RULES,
     gap_ms: float = 50.0,
+    m_of=None,
 ) -> ShotLabel:
     """The shot's label over `window`, the plasma starting at `start_ms`.
 
     The rule runs from the plasma's start to the window's end. The ramp-up before it
     is uncertain where the rule fires on it, so a mode of the ramp-up neither makes an
     interval nor passes for an absence. Stretches of the window the n = 1 record did
-    not cover for `gap_ms` are not observable.
+    not cover for `gap_ms` are not observable. `m_of(n, start_ms, end_ms)`, if given,
+    returns an interval's poloidal number or None (`surface.supported_m`).
     """
     w0, w1 = float(window[0]), float(window[1])
     start = w0 if start_ms is None else min(max(float(start_ms), w0), w1)
     plasma = tearing_intervals(t_ms, n1, n2, (start, w1), rules)
     plasma = apply_locking(plasma, lock_ms)
+    if m_of is not None:
+        plasma = [replace(i, m=m_of(i.n, i.start_ms, i.end_ms)) for i in plasma]
     ramp = ()
     if start > w0:
         early = tearing_intervals(t_ms, n1, n2, (w0, start), rules)
@@ -398,6 +403,10 @@ def interval_attrs(item: Interval, *, crowd: int) -> dict:
     attrs = {"iscrowd": int(crowd), "n": int(item.n)}
     if item.locked:
         attrs["locked"] = True
+    if item.m is not None:
+        # m = n q needs the safety factor, which is the offline EFIT01 here
+        attrs["m"] = int(item.m)
+        attrs["efit_tree"] = "efit01"
     return attrs
 
 
@@ -405,9 +414,10 @@ def shot_table(label: ShotLabel) -> pd.DataFrame:
     """The shot's rows in the catalog's interval schema, sorted by time.
 
     Each interval is a present span (`iscrowd` 1) and, if its onset was seen, a present
-    point at its start (`iscrowd` 0), both with the mode's `n` (and `locked`). Where
-    nothing else holds, the window is absent; the ramp-up is uncertain where the rule
-    fired in it; and what the record did not cover is not observable.
+    point at its start (`iscrowd` 0), both with the mode's `n` (and `locked`, and `m`
+    where EFIT's q supports one). Where nothing else holds, the window is absent; the
+    ramp-up is uncertain where the rule fired in it; and what the record did not cover
+    is not observable.
     """
     rows = []
     for item in label.intervals:
@@ -458,6 +468,7 @@ def intervals_frame(labels) -> pd.DataFrame:
             "ended": item.ended,
             "locked": item.locked,
             "onset_seen": item.onset_seen,
+            "m": item.m,
         }
         for label in labels
         for item in label.intervals
@@ -476,5 +487,6 @@ def intervals_frame(labels) -> pd.DataFrame:
             "ended",
             "locked",
             "onset_seen",
+            "m",
         ],
     )

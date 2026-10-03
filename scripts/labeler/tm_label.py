@@ -21,10 +21,11 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -35,7 +36,7 @@ if str(REPO / "src") not in sys.path:
 from labeler.config import Paths, git_sha
 from labeler.events import spans
 from labeler.events.interval_tables import write_interval_table
-from labeler.tearing import rule
+from labeler.tearing import rule, surface
 
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
@@ -68,7 +69,28 @@ def lock_times(shot: int, directory: Path):
         }
 
 
-def shot_label(shot: int, window, paths: Paths, directory: Path, freq_dir=None):
+def surface_hook(shot: int, roots):
+    """`m_of(n, start_ms, end_ms)` from the shot's EFIT q in its features, or None.
+
+    `roots` are the `Paths` to look in, in order; the first holding the shot's feature
+    file with a `qpsi` record is used.
+    """
+    for paths in roots:
+        path = paths.features_file(shot)
+        if not path.is_file():
+            continue
+        with h5py.File(path, "r") as f:
+            if "qpsi" not in f:
+                continue
+            t_ms = f["qpsi/xdata"][:] * 1000.0
+            q, rho = f["qpsi/ydata"][:], f["qpsi/rho"][:]
+        return lambda n, start, end: surface.supported_m(n, t_ms, q, rho, start, end)
+    return None
+
+
+def shot_label(
+    shot: int, window, paths: Paths, directory: Path, freq_dir=None, q_roots=()
+):
     """`(label, how, locks_known)` of one shot, or None: its record was not fetched."""
     record = load_signals(shot, directory)
     if record is None:
@@ -76,11 +98,22 @@ def shot_label(shot: int, window, paths: Paths, directory: Path, freq_dir=None):
     t_ms, n1, n2 = record
     start, how = spans.plasma_start(shot, paths, window)
     locks = None if freq_dir is None else lock_times(shot, freq_dir)
-    label = rule.label_shot(shot, t_ms, n1, n2, window, start, lock_ms=locks)
+    label = rule.label_shot(
+        shot,
+        t_ms,
+        n1,
+        n2,
+        window,
+        start,
+        lock_ms=locks,
+        m_of=surface_hook(shot, q_roots or (paths,)),
+    )
     return label, how, locks is not None
 
 
-def table_for(shots: pd.DataFrame, paths: Paths, directory: Path, freq_dir=None):
+def table_for(
+    shots: pd.DataFrame, paths: Paths, directory: Path, freq_dir=None, q_roots=()
+):
     """`(rows, intervals, labels, missing, starts, unlocked)` over the shots.
 
     `unlocked` lists the shots with an interval and no frequency record, whose
@@ -89,7 +122,7 @@ def table_for(shots: pd.DataFrame, paths: Paths, directory: Path, freq_dir=None)
     labels, tables, missing, starts, unlocked = [], [], [], {}, []
     for row in shots.itertuples(index=False):
         window = (float(row.window_start_ms), float(row.window_end_ms))
-        made = shot_label(int(row.shot), window, paths, directory, freq_dir)
+        made = shot_label(int(row.shot), window, paths, directory, freq_dir, q_roots)
         if made is None:
             missing.append(int(row.shot))
             continue
@@ -101,6 +134,30 @@ def table_for(shots: pd.DataFrame, paths: Paths, directory: Path, freq_dir=None)
         tables.append(rule.shot_table(label))
     rows = pd.concat(tables, ignore_index=True) if tables else pd.DataFrame()
     return rows, rule.intervals_frame(labels), labels, missing, starts, unlocked
+
+
+def counts_of(frame, intervals) -> dict:
+    """What the table holds: intervals by n and end reason, locked, m, onset points."""
+    span = frame[(frame.category == 1) & (frame.t_end > frame.t_start)]
+    point = frame[(frame.category == 1) & (frame.t_end == frame.t_start)]
+    return {
+        "n_intervals": len(span),
+        "n_onset_points": len(point),
+        "intervals_by_n": {
+            str(k): int(v) for k, v in intervals.n.value_counts().sort_index().items()
+        },
+        "intervals_by_end": {
+            str(k): int(v) for k, v in intervals.ended.value_counts().items()
+        },
+        "n_locked": int(intervals.locked.sum()),
+        "n_with_m": int(intervals.m.notna().sum()),
+        "n_without_observed_onset": int((~intervals.onset_seen.astype(bool)).sum()),
+        "shots_with_ramp_up_uncertain": int(frame[frame.category == 2].shot.nunique()),
+        "shots_with_not_observable": int(frame[frame.category == 3].shot.nunique()),
+        "median_duration_ms": float(intervals.duration_ms.median())
+        if len(intervals)
+        else None,
+    }
 
 
 def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
@@ -134,6 +191,13 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             "interval's last 150 ms or 100 ms after it; set only when true",
             "intervals_without_a_frequency_record_shots": unlocked[:50],
         },
+        "m": {
+            "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01",
+            "rule": "labeler.tearing.surface.supported_m: m is recorded (with "
+            "efit_tree efit01) only when the interval's median q profile inside "
+            "rho 0.95 has exactly one rational surface m / n with m > n; otherwise "
+            "m is left empty (no radial evidence, ECE or the poloidal array, is used)",
+        },
         **(extra or {}),
     }
 
@@ -146,19 +210,36 @@ def main(argv=None) -> int:
     ap.add_argument("--signals-dir", type=Path, default=SIGNALS)
     ap.add_argument("--freq-dir", type=Path, default=FREQUENCIES)
     ap.add_argument("--out-dir", type=Path, default=None)
+    ap.add_argument(
+        "--features-root",
+        type=Path,
+        nargs="*",
+        default=[OUT_ROOT / "lroot", LABELER],
+        help="labeler roots whose feature files give EFIT q (first match wins)",
+    )
     args = ap.parse_args(argv)
 
     paths = Paths.from_env()
     table = pd.read_csv(CATALOG / f"{args.source}.csv")
     shots = table[["shot", "window_start_ms", "window_end_ms"]]
+    q_roots = [replace(paths, root=root) for root in args.features_root]
     rows, intervals, labels, missing, starts, unlocked = table_for(
-        shots, paths, args.signals_dir, args.freq_dir
+        shots, paths, args.signals_dir, args.freq_dir, q_roots
     )
     out_dir = args.out_dir or (
         COHORT_OUT if args.source == "cohort" else OUT_ROOT / "labels"
     )
     out_dir.mkdir(parents=True, exist_ok=True)
-    meta = meta_for(args.source, rows, labels, missing, unlocked, shots, rule.RULES)
+    meta = meta_for(
+        args.source,
+        rows,
+        labels,
+        missing,
+        unlocked,
+        shots,
+        rule.RULES,
+        {"counts": counts_of(rows, intervals)},
+    )
     name = (
         "tm_interval.csv" if args.source == "cohort" else "tm_interval_population.csv"
     )
