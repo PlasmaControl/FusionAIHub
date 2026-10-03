@@ -209,3 +209,41 @@ def restrict_bins(bins: labels.Bins, keep: np.ndarray) -> labels.Bins:
     return labels.Bins(
         bins.t0[keep], bins.truth[keep], bins.kind[keep], bins.span[keep]
     )
+
+
+PAIRED_METRICS = (
+    "f1",
+    "precision",
+    "recall",
+    "false_alarm_bin_rate",
+    "crowd_bin_recall",
+    "individual_span_recall",
+    "absent_span_alarm_rate",
+)
+
+
+def summarise_methods(
+    parts: dict[str, list[score.ShotScore]], boot: np.ndarray, reference: str
+) -> dict:
+    """Every method's summary and each one's paired difference from `reference`.
+
+    All methods must have been scored on the same shots in the same order. A
+    difference of AUROC or AUPRC is given where both methods have a continuous score.
+    """
+    out: dict = {"methods": {}, "paired": {}}
+    for name, plist in parts.items():
+        out["methods"][name] = score.summarise(plist, boot)
+    ref = parts[reference]
+    for name, plist in parts.items():
+        if name == reference:
+            continue
+        metrics = list(PAIRED_METRICS)
+        if all(p.score is not None for p in ref) and all(
+            p.score is not None for p in plist
+        ):
+            metrics += ["auroc", "auprc"]
+        for metric in metrics:
+            out["paired"][f"{reference} - {name}: {metric}"] = score.paired_difference(
+                ref, plist, boot, metric
+            )
+    return out

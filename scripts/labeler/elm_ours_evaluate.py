@@ -107,19 +107,16 @@ def evaluate_set(
         "shots": [int(s) for s in shots],
         "n_shots": len(shots),
         "bins": int(sum(len(parts["ours"][i].truth) for i in range(len(shots)))),
-        "methods": {},
     }
-    for m, plist in parts.items():
-        res = score.summarise(plist, boot)
-        out["methods"][NAMES[m]] = res
+    named = {NAMES[m]: plist for m, plist in parts.items()}
+    out.update(methods.summarise_methods(named, boot, NAMES["ours"]))
+    paired = out["paired"]
     if elmo_spans is not None:
         counts = out["methods"][NAMES["elmo"]]["counts"]
         out["elmo_counts_match_published"] = all(
             counts[k] == v for k, v in PUBLISHED_ELMO.items()
         )
-    # the curve of ELM-O's threshold sweep supplies its AUROC and AUPRC
-    paired: dict = {}
-    if "elmo" in parts:
+        # ELM-O makes hard calls; its AUROC and AUPRC come from its eta threshold sweep
         sweep = pd.read_csv(Path(elmo.DEFAULT_WORK) / "review_sweep.csv.gz")
         cover_all = pd.concat(
             [cover_of[s].assign(shot=s) for s in shots], ignore_index=True
@@ -135,27 +132,10 @@ def evaluate_set(
         ours_reps = np.array([areas(parts["ours"], d) for d in boot])
         for i, metric in enumerate(("auroc", "auprc")):
             ours_point = out["methods"][NAMES["ours"]]["point"][metric]
-            diff = ours_reps[:, i] - reps[:, i]
             paired[f"{NAMES['ours']} - {NAMES['elmo']}: {metric}"] = {
                 "value": float(ours_point - elmo_res["point"][metric]),
-                "ci95": score._ci(diff),
+                "ci95": score._ci(ours_reps[:, i] - reps[:, i]),
             }
-    for other in ("elmo", "clock"):
-        if other not in parts:
-            continue
-        for metric in (
-            "f1",
-            "precision",
-            "recall",
-            "false_alarm_bin_rate",
-            "crowd_bin_recall",
-            "individual_span_recall",
-            "absent_span_alarm_rate",
-        ):
-            paired[f"{NAMES['ours']} - {NAMES[other]}: {metric}"] = (
-                score.paired_difference(parts["ours"], parts[other], boot, metric)
-            )
-    out["paired"] = paired
     out["onset"] = {
         NAMES[m]: {
             f"tol_{int(tol)}ms": methods.onset_summary(np.array(rows), boot)
