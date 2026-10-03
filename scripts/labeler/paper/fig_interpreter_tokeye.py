@@ -384,8 +384,9 @@ def merged_boxes(blobs: list[mode_tags.Blob], event: str) -> list[tuple]:
     return [tuple(r) for r in runs]
 
 
-def chip(ax, x, y, text, colour, **kw) -> None:
-    ax.text(
+def chip(ax, x, y, text, colour, **kw):
+    """A label with a coloured background; returns the text."""
+    return ax.text(
         x,
         y,
         text,
@@ -395,6 +396,17 @@ def chip(ax, x, y, text, colour, **kw) -> None:
         zorder=8,
         **kw,
     )
+
+
+def clear_of(fixed, moved: list) -> None:
+    """Shift each text of `moved` that `fixed` covers to start where `fixed`
+    ends (left-aligned texts of one axes, in data x)."""
+    fixed.figure.draw_without_rendering()
+    box = fixed.get_window_extent()
+    inv = fixed.axes.transData.inverted()
+    for text in moved:
+        if box.overlaps(text.get_window_extent()):
+            text.set_x(inv.transform((box.x1, box.y0))[0] + 15.0)
 
 
 def draw_boxes(ax, boxes, event, ylim, chip_y) -> None:
@@ -623,21 +635,26 @@ def draw(
                 )  # fmt: skip
             if elm_spans:
                 a, b = max(elm_spans, key=lambda s: s[1] - s[0])
-                chip(da, min(b, t1) - 20, top * 1.3, "ELMs", "#cccccc",
-                     ha="right", va="top")  # fmt: skip
+                elm_chip = chip(da, min(b, t1) - 20, top * 1.3, "ELMs", "#cccccc",
+                                ha="right", va="top")  # fmt: skip
         da.set_yticks([])
         da.set_ylabel("D-alpha", rotation=0, ha="right", va="center", labelpad=3)
         regime_names = {1: "H-mode", 2: "L-mode", 3: "QH-mode", 4: "WPQH-mode"}
         shown = set()
+        regime_texts = []
         for r in by_key["confinement"].rows:
             if r.category in regime_names:
                 da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[r.category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
                 if r.t_end > t0 and r.t_start < t1 and r.category not in shown:
                     shown.add(r.category)
-                    da.text(max(r.t_start, t0) + 20, 0.94, regime_names[r.category],
-                            transform=da.get_xaxis_transform(), fontsize=FONT,
-                            color="#444444", va="top", ha="left")  # fmt: skip
+                    regime_texts.append(
+                        da.text(max(r.t_start, t0) + 20, 0.94, regime_names[r.category],
+                                transform=da.get_xaxis_transform(), fontsize=FONT,
+                                color="#444444", va="top", ha="left")
+                    )  # fmt: skip
+        if elm_spans and regime_texts:
+            clear_of(elm_chip, regime_texts)
 
         # ---- label tracks
         titles = {
