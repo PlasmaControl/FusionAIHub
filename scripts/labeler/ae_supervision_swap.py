@@ -81,6 +81,7 @@ def provenance() -> dict:
                 REPO / "scripts/labeler/ae_train.py",
                 REPO / "src/labeler/ae/supervision.py",
                 REPO / "src/labeler/ae/model.py",
+                REPO / "scripts/labeler/ae_supervision_swap_report.py",
             )
         },
     }
@@ -468,7 +469,7 @@ def evaluate(args) -> None:
     manifest_path = args.out_dir / "manifest.json"
     manifest = load_manifest(manifest_path)
     refs = references(manifest)
-    sources, scores, thresholds, missing, attempts = {}, {}, {}, [], {}
+    sources, scores, thresholds, missing, attempts, runs = {}, {}, {}, [], {}, {}
     for supervision in SUPERVISIONS:
         for seed in manifest["seeds"]:
             name = f"ae-ours-{supervision}-seed{seed}"
@@ -484,6 +485,7 @@ def evaluate(args) -> None:
                     }
                 continue
             run = json.loads(path.read_text())
+            runs[name] = run
             if run["status"] != "finished" or run["manifest_sha256"] != sha256(
                 manifest_path
             ):
@@ -559,6 +561,7 @@ def evaluate(args) -> None:
         "attempts": attempts,
         "manifest": {"path": str(manifest_path), "sha256": sha256(manifest_path)},
         "sources": sources,
+        "runs": runs,
         "thresholds": thresholds,
         "results": blocks,
         "dense_counts": manifest["dense_counts"],
@@ -568,8 +571,10 @@ def evaluate(args) -> None:
         "limitations": [
             "Older detectors have no saved predictions for 41/60 evaluation shots.",
             "Older thresholds use only available, older-held-out selection shots.",
-            "Pooled intervals resample shots and the three observed seed IDs; "
-            "three seeds give limited precision for training variability.",
+            (
+                "Pooled intervals resample shots and the three observed seed IDs; "
+                "three seeds give limited precision for training variability."
+            ),
         ],
     }
     write_json(args.out_dir / "evaluation.json", record)
@@ -631,6 +636,10 @@ def evaluate(args) -> None:
         "% Individual-seed CIs resample shots only. Booktabs required.",
     ]
     (args.out_dir / "table_supervision_swap.tex").write_text("\n".join(lines) + "\n")
+    if not missing:
+        from ae_supervision_swap_report import render_report
+
+        render_report(record, manifest, args.out_dir, REPO)
     print(
         json.dumps(
             {
