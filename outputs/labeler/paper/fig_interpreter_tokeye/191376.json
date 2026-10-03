@@ -7,17 +7,18 @@
  ],
  "split": "train",
  "decision_thresholds": {
-  "ae": 0.7,
+  "ae": 0.5,
   "ntm": 0.63,
   "sawtooth": 0.6,
   "tokeye": 0.2,
   "sawtooth_elm_veto_ms": 5.0,
   "ece_crash_match_ms": 3.0
  },
+ "ae_threshold_scope": "AE threshold is the paper ae-ours operating point; earlier frame fallback uses its checkpoint threshold in tracks",
  "sawtooth_decision_rule": "core ECE drop with spatial inversion/heat pulse; only accepted physics states; explicit confidence >=0.6 if provided; deterministic accepted physics classes need no invented probability; veto inclusive +/-5ms D-alpha peaks or recorded ELM coincidence",
  "print_layout": {
   "width_in": 6.75,
-  "height_in": 5.8,
+  "height_in": 5.5,
   "minimum_font_pt": 7,
   "include_at": "textwidth"
  },
@@ -39,9 +40,9 @@
   },
   "hole_area_px": 10,
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
-  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2}; sawtooth crash ticks, no mode tag",
-  "ae_box_min_span_ms": 100.0,
-  "outline_display_rule": "max pool at 150-dpi axes resolution; erode for edge, dilate one print pixel; clip to raw time/band spans",
+  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND measured n pixel <=30 kHz; sawtooth crash ticks, no mode tag",
+  "ae_highlight_rule": "pixel tint only; no component bounding boxes",
+  "outline_display_rule": "max pool at 150-dpi axes resolution; erode for edge, expand one print pixel inward; re-intersect native measured-pixel mask; clip to raw time/band spans",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -164,7 +165,7 @@
    "rows": 6,
    "model": "elm_frames",
    "decision_threshold": null,
-   "crowd_semantics": "expert iscrowd=1 rows (category 1 or 2) denote solid ELMing periods; category 2 without iscrowd remains uncertain",
+   "crowd_semantics": "iscrowd=1 identifies the expert crowd lane; category 1 stays present, category 2 stays uncertain (hatching with a crowd marker)",
    "primary_bars": {
     "E1": false,
     "E2": false,
@@ -188,32 +189,6 @@
      2250.0
     ]
    ]
-  },
-  "sawtooth_oscillation": {
-   "tier": "generated: automated labeler",
-   "title": "sawtooth cand.",
-   "what": "sawtooth detector candidates",
-   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
-   "sha256": "8270b1c441b25d8f2d115174d60ac2bf0203c8ee13a985ce6460c8ba7ff715ba",
-   "rows": 33,
-   "model": "sawtooth detector candidates",
-   "decision_threshold": 0.6,
-   "crowd_semantics": null,
-   "primary_bars": null,
-   "metadata": null,
-   "metadata_sha256": null,
-   "states": {
-    "1": "present",
-    "2": "uncertain",
-    "3": "not observable"
-   },
-   "present_spans_ms": [],
-   "source_files": [
-    {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots/191376.json",
-     "sha256": "8270b1c441b25d8f2d115174d60ac2bf0203c8ee13a985ce6460c8ba7ff715ba"
-    }
-   ]
   }
  },
  "ae_co2": {
@@ -235,7 +210,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/caption.tex",
-  "sha256": "1dfd1359e7cdc0a0d264b05f7f2b0f2faa59e5f1d08593e67564d5f4b4576983"
+  "sha256": "6c9c534b93165c681355b187be005c7662eb44f588957abaa83064270b3463f8"
  },
  "drawn": {
   "figure": [
@@ -260,20 +235,19 @@
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
-  "n2_island_harmonic": false,
+  "sawtooth_track_shown": false,
+  "sawtooth_omission_reason": "optional source track omitted",
+  "view_description": "follow aligned signals, modes and intervals",
+  "n2_harmonic_consistent": false,
   "harmonic_support": {
    "frequency_tolerance_khz": 1.2,
    "minimum_support_ms": 50.0,
-   "n1_band_khz": [
-    6,
-    10
-   ],
-   "n2_band_khz": [
-    12,
-    18
-   ],
+   "caption_frequency_step_khz": 5.0,
+   "ridge_rule": "per-column pixel-weighted frequency of each measured n",
    "support_ms": 0.0
   },
+  "n3_components_unoutlined": 1,
+  "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
   "n_map": {
    "kept_share": 0.1209,
    "keys": [
@@ -366,6 +340,20 @@
     }
    }
   },
+  "ntm_measured_pixel_audit": {
+   "zoom": {
+    "outside_measured_n": 0,
+    "above_n_view_band": 0,
+    "rendered_outline_pixels": 0,
+    "measured_n3_outline_pixels": 0
+   },
+   "wide": {
+    "outside_measured_n": 0,
+    "above_n_view_band": 0,
+    "rendered_outline_pixels": 0,
+    "measured_n3_outline_pixels": 0
+   }
+  },
   "regimes_shown": [
    "H-mode",
    "L-mode"
@@ -389,5 +377,5 @@
    }
   }
  },
- "git": "b3d1a1e2"
+ "git": "b7639a4b"
 }

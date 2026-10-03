@@ -1,13 +1,20 @@
-# TokEye Figure 1 — fix round 2
+# TokEye Figure 1 — current build
 
-Generator: `scripts/labeler/paper/fig_interpreter_tokeye.py`. Primary 201978;
-alternates 201973, 203187, 186636; regime examples 191376, 191782. Records,
-caption copies and `fix_round2_audit.json` are committed here. PDFs, 150-dpi
-PNGs, caches and isolated AE predictions live under `$LABELER_ROOT/round4/fig1`.
-Use **\\textwidth** (6.75 inches) in the manuscript; all text is at least 7 pt
-at that width. The source manuscript is intentionally left for the controller.
+Primary: shot **201978**, **1500–3300 ms**. This view follows the AE cascade,
+H-mode transition, ELM onset and the low-frequency mode and harmonics. It has
+four aligned source tracks: AE, NTM, H-mode and ELMs. Sawtooth is not assessed
+here because ECE is cut off in ELMy H-mode according to the physics source's
+density guard. The sawtooth row is optional for later, suitable shots.
 
-Run in this stream worktree using local data only:
+Include the PDF at **\textwidth**: **6.75 × 5.5 inches**, fonts **≥7 pt**.
+PDFs, 150-dpi PNGs, cached TokEye arrays and isolated AE inference live under
+`$LABELER_ROOT/round4/fig1/`. Six small records, matching caption copies and
+`fix_round3_audit.json` are committed here. `fix_round3.md` is the current report;
+older audit files are historical snapshots, not current measurements.
+
+## Reproduce from local read-only inputs
+
+Run in the `r4-fig1` worktree:
 
 ```bash
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1
@@ -16,87 +23,98 @@ export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" MPLBACKEND=Agg
 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
+  python scripts/labeler/paper/fig1_ae_infer.py --shots 201978 201973 203187 \
+  --out "$LABELER_ROOT/round4/fig1/ae_ours.csv"
+pixi run --frozen --no-install \
+  --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python scripts/labeler/paper/fig_interpreter_tokeye.py --shot 201978 \
   --ae-labels "$LABELER_ROOT/round4/fig1/ae_ours.csv" \
   --sawtooth-source "$LABELER_ROOT/round4/saw/fix/shots" \
   --record outputs/labeler/paper/fig_interpreter_tokeye/201978.json
 ```
 
-The physics source is read-only. It accepts a shot JSON, a directory of shot
-JSONs (direct or under `shots/`), a cohort CSV, a directory of `cohort-*.csv`
-shards, or a minimal `shot,t_ms` CSV. The current cohort export can be paired
-with its full ECE evidence when rerendering:
+AE inference calls the model adapter (`spec.load`, `INPUT_SPEC.build`,
+`predict`) on CPU. The pinned checkpoint digest, local CO2 input hashes,
+probabilities and validity are in `ae_ours.meta.json`. One constant,
+`figure_sources.AE_THRESHOLD`, sets the paper operating point **p≥0.5**, as
+in `scripts/labeler/ae_baselines_evaluate.py`. This is fixed, not selected
+from these shots. The three other renders retain the earlier interferometer
+frame fallback's own checkpoint threshold (recorded separately in each track).
+Source priority: expert review, supplied paper-model predictions, valid stored
+paper-model predictions, then the earlier frame fallback.
 
-```bash
-# Add these options to the generator command, replacing --sawtooth-source above:
---sawtooth-source /scratch/gpfs/nc1514/FusionAIHub-r4-saw/data/events/sawtooth_oscillation/extend_saw_physics \
---sawtooth-evidence "$LABELER_ROOT/round4/saw/fix/shots"
-```
+## Source and display conventions
 
-JSON/CSV point matches allow at most 0.5 ms of export rounding. Full physics
-JSON evidence must establish a core temperature drop and a spatially distinct
-rise/inversion, with accepted state. Explicit confidence values must pass 0.6;
-a deterministic accepted physics class without a probability still requires
-all ECE evidence. Reduced CSV points without paired evidence require local
-ECE core-drop/heat-pulse corroboration within 3 ms. SXR alone never supplies a
-tick. All ticks are vetoed within inclusive +/-5 ms of D-alpha peaks anywhere
-in the window, independent of ELM label coverage; recorded physics ELM
-coincidence also vetoes a point. Missing D-alpha means no verified ticks.
+- Expert ELM `iscrowd=1` identifies the annotation lane and does not change
+  category. Category 1 stays PRESENT; category 2 stays UNCERTAIN, with hatching
+  and a crowd marker above it. Only PRESENT intervals receive definite
+  D-alpha peak triangles. The processed panel names the box **ELMs** and the
+  key **ELM intervals**. Peaks use a 25-sample median, 4 MADs and 3-sample spacing.
+- Hatching means uncertainty. Blank means **unassessed / unobservable**.
+  Confinement prioritizes saved review, Gill's and Jalal Butt's curated regime
+  intervals, then the D-alpha L-H detector. The binary fallback is named
+  **H-mode**; its absence does not establish L-mode.
+- AE uses **tint only**, with no bounding boxes. Every highlighted pixel
+  intersects a raw end-exclusive PRESENT interval and **≥60 kHz**.
+- NTM coincidence requires a component's unique dominant measured n=1/2,
+  then clips to pixels where n was actually measured, **≤30 kHz**, inside
+  PRESENT times and the nominal **<60 kHz** band. Print-grid inner outlines
+  are intersected again with the native eligible mask. No n is extrapolated.
+  The detector fails its acceptance bar and is displayed as an
+  **unverified suggestion**, with **detector** below its bar. Shared magnetic
+  inputs mean this is not independent mode identification.
+- Measured n=1/2/3 use blue/cyan/blue-green; other n is purple; unmeasured mask
+  pixels are white. Components dominated by n=3 are not outlined because they
+  do not meet the NTM rule. Measured n=3 pixels within a component dominated
+  by n=1/2 can remain inside an outline; their count is recorded separately.
+- Harmonic support is computed from coincident measured n=1/2 frequencies,
+  using each column's pixel-weighted ridge frequency, without shot-specific
+  bands. A 2:1 match must be within 1.2 kHz with ≥50 ms sampled support.
+  The caption's approximate frequency is rounded to a recorded 5 kHz step
+  on every shot. This establishes consistency with a harmonic, not a common
+  magnetic island. Medians, duration, tolerance and rounding are in the record.
+- The 55 kHz fold changes spectrogram resolution, not the 60 kHz tag rule.
+  The raw magnetics label sits in the heading, clear of the cascade.
 
-The sawtooth track uses the **same source** as the crash ticks, replacing the
-old frame-model ELMy phase track. Only surviving verified crashes receive
-present point marks; other positive intervals remain candidates. With no
-surviving crash the strip and leader disappear and the track is honestly
-named **sawtooth cand.** All consumed source/evidence files are hashed in the
-record. `--sawtooth-crashes` and `--sawtooth-labels` are aliases; different
-independent label/crash sources are rejected.
+## Optional sawtooth source
 
-AE source priority is expert review, supplied ae-ours inference, valid stored
-ae-ours, then the existing interferometer frame fallback. Fixed AE probability
-threshold 0.7; NTM 0.63; sawtooth explicit confidence 0.6; TokEye 0.2. Infer
-only local corpus CO2 using the pinned paper checkpoint, with no training:
+`--show-sawtooth` enables the row and verified crash strip for a suitable shot.
+`--sawtooth-source` accepts read-only shot JSONs, a JSON directory, cohort CSVs
+or `shot,t_ms` CSVs. `--sawtooth-evidence` pairs reduced CSVs with full physics
+JSONs (point matches within 0.5 ms). Track and ticks share the source, but
+**interval categories are preserved** independently of tick verification.
 
-```bash
-CUDA_VISIBLE_DEVICES=0 \
-/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python \
-  scripts/labeler/paper/fig1_ae_infer.py --shots 201978 201973 203187 \
-  --out "$LABELER_ROOT/round4/fig1/ae_ours.csv"
-```
+A tick needs an accepted core ECE drop with spatial inversion/heat-pulse
+corroboration; explicit confidence must pass 0.6. A reduced point without
+full evidence must match local ECE evidence within 3 ms. Ticks reject inclusive
+±5 ms D-alpha coincidence and recorded ELM coincidence; missing D-alpha
+supplies no verified ticks. SXR alone cannot supply one. All consumed sources
+and evidence are hashed. The primary still records the physics source and
+rejections while omitting the row/strip.
 
-Inference reads the model-card transform, 1024-frame windows with 128-frame
-context, causal 25-ms aggregation and validity. It writes only isolated
-predictions plus metadata in round4/fig1; production labels are untouched.
+## Alternates and audit
 
-Expert `iscrowd=1` ELM rows encode solid, distinctly marked ELMing periods,
-including the source's category-2 crowd convention. Ordinary uncertain rows
-are lighter/hatched and receive no definite triangles. Triangles are explicitly
-keyed **D-alpha peaks, figure threshold** (25-sample median; 4 MAD; 3-sample
-peak spacing). Hatching only denotes uncertainty; blank denotes no assessment.
+Use the same generator with `--out "$LABELER_ROOT/round4/fig1/alt_<shot>"` and
+`--record outputs/labeler/paper/fig_interpreter_tokeye/<shot>.json`:
 
-Projection uses raw end-exclusive present intervals, AE >=60 kHz, NTM <60 kHz
-with uniquely dominant measured n=1/2. The n map is never extrapolated beyond
-its measured band. Unmeasured TokEye-mask pixels are white; other n is purple
-with a diamond key. NTM outlines are max-pooled to the print display grid,
-then thickened and clipped to time/frequency boundaries. Independent audit
-enumerates projected coordinates against **raw spans**, without calling
-`present_columns` or interval union. Frequency support for the near-15-kHz
-harmonic interpretation is recorded (n=1 at 6–10 kHz, n=2 at 12–18 kHz,
-2:1 within 1.2 kHz for at least 50 ms); the caption qualifies the interpretation.
+| Shot | Window (ms) | Supplied AE CSV |
+|---|---|---|
+| 201973 | 1600–3350 (preset) | yes |
+| 203187 | 1700–3150 (preset) | yes |
+| 186636 | 1300–3900 (preset) | no |
+| 191376 | `--tmin 1500 --tmax 2900` | no |
+| 191782 | `--tmin 1800 --tmax 3700` | no |
 
-Confinement source order: saved four-class review, curated regime intervals,
-then D-alpha transition detector. The curated run directory defaults to
-`runs/labeler/confinement/v1` beside the main label tables. Missing sources
-raise errors. Regime tracks retain the name **regime**; the binary fallback
-is **H-mode**, whose absence does not establish L-mode.
-
-Other-shot renders use `--out "$LABELER_ROOT/round4/fig1/alt_<shot>"` and their
-corresponding record paths. Only 201973 and 203187 also use the supplied AE CSV.
-Regime windows: 191376 1500–2900 ms, 191782 1800–3700 ms. No blind test shot is
-selected. Audit the six records and generate the ranked shortlist with:
+Every alternate has its own `fig:interpreter-<shot>` label; only the primary
+uses `fig:interpreter`. All six current PNGs were visually inspected. Audit:
 
 ```bash
 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
-  python scripts/labeler/paper/fig1_audit.py \
-  --out outputs/labeler/paper/fig_interpreter_tokeye/fix_round2_audit.json
+  python scripts/labeler/paper/fig1_audit.py --rebuild-primary \
+  --out outputs/labeler/paper/fig_interpreter_tokeye/fix_round3_audit.json
 ```
+
+The audit validates raw time/band clipping, rendered n support, source hashes,
+caption lengths and unique labels, external/committed record identity, PDF
+size, train/val-only selection and byte-identical primary PDF/PNG rebuilding.

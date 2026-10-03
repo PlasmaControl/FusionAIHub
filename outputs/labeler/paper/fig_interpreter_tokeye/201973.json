@@ -7,17 +7,18 @@
  ],
  "split": "val",
  "decision_thresholds": {
-  "ae": 0.7,
+  "ae": 0.5,
   "ntm": 0.63,
   "sawtooth": 0.6,
   "tokeye": 0.2,
   "sawtooth_elm_veto_ms": 5.0,
   "ece_crash_match_ms": 3.0
  },
+ "ae_threshold_scope": "AE threshold is the paper ae-ours operating point; earlier frame fallback uses its checkpoint threshold in tracks",
  "sawtooth_decision_rule": "core ECE drop with spatial inversion/heat pulse; only accepted physics states; explicit confidence >=0.6 if provided; deterministic accepted physics classes need no invented probability; veto inclusive +/-5ms D-alpha peaks or recorded ELM coincidence",
  "print_layout": {
   "width_in": 6.75,
-  "height_in": 5.8,
+  "height_in": 5.5,
   "minimum_font_pt": 7,
   "include_at": "textwidth"
  },
@@ -39,9 +40,9 @@
   },
   "hole_area_px": 10,
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
-  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2}; sawtooth crash ticks, no mode tag",
-  "ae_box_min_span_ms": 100.0,
-  "outline_display_rule": "max pool at 150-dpi axes resolution; erode for edge, dilate one print pixel; clip to raw time/band spans",
+  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND measured n pixel <=30 kHz; sawtooth crash ticks, no mode tag",
+  "ae_highlight_rule": "pixel tint only; no component bounding boxes",
+  "outline_display_rule": "max pool at 150-dpi axes resolution; erode for edge, expand one print pixel inward; re-intersect native measured-pixel mask; clip to raw time/band spans",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -70,16 +71,16 @@
   "alfven_eigenmode": {
    "tier": "generated: automated labeler",
    "title": "AE",
-   "what": "ae-ours, CO2 activity predictions, p>=0.7",
+   "what": "ae-ours, CO2 activity predictions, p>=0.5",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.csv",
-   "sha256": "b413c8f66207e39198bb1b197ddd0f372566ea1b00bdb4e29e6aa1a2ab69a9c5",
+   "sha256": "ea4e80d6cb4cfefa6f959b9065489fabf5b4225cfb90f0bef2eeaa9da55e58e1",
    "rows": 3,
    "model": "ae-ours, CO2 activity inference",
-   "decision_threshold": 0.7,
+   "decision_threshold": 0.5,
    "crowd_semantics": null,
    "primary_bars": null,
    "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.meta.json",
-   "metadata_sha256": "baf90e31191b465e90cd3628b7418e181d801c5a7d3c42a9849ae6d1c1e2fa8d",
+   "metadata_sha256": "abf8eee386a55866a2866e4a82d519da2ac5be06c3d0be6080c80d491024cf1f",
    "states": {
     "1": "present",
     "2": "uncertain",
@@ -157,7 +158,7 @@
    "rows": 11,
    "model": "the expert's review",
    "decision_threshold": null,
-   "crowd_semantics": "expert iscrowd=1 rows (category 1 or 2) denote solid ELMing periods; category 2 without iscrowd remains uncertain",
+   "crowd_semantics": "iscrowd=1 identifies the expert crowd lane; category 1 stays present, category 2 stays uncertain (hatching with a crowd marker)",
    "primary_bars": null,
    "metadata": null,
    "metadata_sha256": null,
@@ -188,32 +189,6 @@
      3356.0
     ]
    ]
-  },
-  "sawtooth_oscillation": {
-   "tier": "generated: automated labeler",
-   "title": "sawtooth cand.",
-   "what": "sawtooth detector candidates",
-   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
-   "sha256": "ee1189a719bd58b489bb2da47f6619dde32ebe5340c4d30d483756553fbd7d16",
-   "rows": 11,
-   "model": "sawtooth detector candidates",
-   "decision_threshold": 0.6,
-   "crowd_semantics": null,
-   "primary_bars": null,
-   "metadata": null,
-   "metadata_sha256": null,
-   "states": {
-    "1": "present",
-    "2": "uncertain",
-    "3": "not observable"
-   },
-   "present_spans_ms": [],
-   "source_files": [
-    {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots/201973.json",
-     "sha256": "ee1189a719bd58b489bb2da47f6619dde32ebe5340c4d30d483756553fbd7d16"
-    }
-   ]
   }
  },
  "ae_co2": null,
@@ -232,7 +207,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/caption.tex",
-  "sha256": "188e02d9ddcbab8894af347352606a11fa86257cee9104ff3e401ab6ed9fb055"
+  "sha256": "72b06da7770b2ffa86f982a0614306b56dabcfd2ed5c34fe984a12b2bde79970"
  },
  "drawn": {
   "figure": [
@@ -319,28 +294,30 @@
   ],
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [
-   [
-    2165.0,
-    2748.0
-   ]
+   {
+    "span_ms": [
+     2165.0,
+     2748.0
+    ],
+    "category": 1
+   }
   ],
   "sawtooth_strip_shown": false,
-  "n2_island_harmonic": true,
+  "sawtooth_track_shown": false,
+  "sawtooth_omission_reason": "optional source track omitted",
+  "view_description": "follow aligned signals, modes and intervals",
+  "n2_harmonic_consistent": true,
   "harmonic_support": {
    "frequency_tolerance_khz": 1.2,
    "minimum_support_ms": 50.0,
-   "n1_band_khz": [
-    6,
-    10
-   ],
-   "n2_band_khz": [
-    12,
-    18
-   ],
-   "support_ms": 248.83200928315955,
-   "n1_median_khz": 7.629394246620175,
-   "n2_median_khz": 14.947509207978246
+   "caption_frequency_step_khz": 5.0,
+   "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+   "support_ms": 446.46401665620397,
+   "n1_median_khz": 5.375453203475814,
+   "n2_median_khz": 10.077842923304743
   },
+  "n3_components_unoutlined": 3,
+  "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
   "n_map": {
    "kept_share": 0.1596,
    "keys": [
@@ -359,14 +336,7 @@
    "1": 10,
    "2": 4
   },
-  "ae_boxes_ms_khz": [
-   [
-    1600.1610693319913,
-    2449.8251010304075,
-    60.0,
-    250.0
-   ]
-  ],
+  "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
    "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
    "files": [
@@ -397,7 +367,7 @@
      "pixels_55_to_60": 0
     },
     "neoclassical_tearing_mode": {
-     "pixels": 32698,
+     "pixels": 32285,
      "outside_present": 0,
      "outside_band": 0,
      "pixels_55_to_60": 0
@@ -416,6 +386,20 @@
      "outside_band": 0,
      "pixels_55_to_60": 0
     }
+   }
+  },
+  "ntm_measured_pixel_audit": {
+   "zoom": {
+    "outside_measured_n": 0,
+    "above_n_view_band": 0,
+    "rendered_outline_pixels": 27271,
+    "measured_n3_outline_pixels": 545
+   },
+   "wide": {
+    "outside_measured_n": 0,
+    "above_n_view_band": 0,
+    "rendered_outline_pixels": 0,
+    "measured_n3_outline_pixels": 0
    }
   },
   "regimes_shown": [
@@ -440,5 +424,5 @@
    }
   }
  },
- "git": "b3d1a1e2"
+ "git": "b7639a4b"
 }
