@@ -24,6 +24,13 @@ indicators; if they all agree that is the state; if they disagree, or every vali
 indicator abstains (a transition band), the state is `uncertain`; if no indicator
 is valid the bin has no label.
 
+**Validity.** An indicator that is invalid on a bin (no data, wrong geometry) is not
+an abstention in the transition band: it cannot vote at all. The likelihood is
+therefore conditional on the validity pattern of each bin: the normaliser runs only
+over vote configurations in which every invalid indicator abstains, so a pattern
+that rarely lets TangTV speak (most shots have no inversion) does not teach the model
+that TangTV is silent by choice.
+
 Neither uses the cohort test split: the model is fitted on the bins it is given.
 """
 
@@ -100,54 +107,80 @@ class LabelModel:
         pos = (0.0, WEIGHT_MAX)
         return [free] * (3 + n_lf) + [pos] * (n_lf + len(self.corr))
 
-    def config_counts(self, votes: np.ndarray) -> np.ndarray:
-        """Histogram of the vote tuples in `votes` (rows are bins, columns LFs)."""
-        counts = np.zeros(len(self._configs))
-        for row in np.asarray(votes):
-            counts[self._index[tuple(int(v) for v in row)]] += 1
-        return counts
+    def _patterns(self, valid: np.ndarray):
+        """Unique validity patterns, each bin's pattern index and the config masks."""
+        valid = np.asarray(valid, dtype=bool)
+        patterns, inverse = np.unique(valid, axis=0, return_inverse=True)
+        cfg = np.array(self._configs)
+        masks = np.array(
+            [[bool(np.all(row[~pat] == ABSTAIN)) for row in cfg] for pat in patterns]
+        )
+        return patterns, np.asarray(inverse).reshape(-1), masks
+
+    def config_counts(self, votes: np.ndarray, valid: np.ndarray | None = None):
+        """`(counts, masks)`: vote-tuple histograms per validity pattern and the
+        configurations each pattern allows. `valid=None` means every LF is valid."""
+        votes = np.asarray(votes)
+        if valid is None:
+            valid = np.ones(votes.shape, dtype=bool)
+        patterns, inverse, masks = self._patterns(valid)
+        counts = np.zeros((len(patterns), len(self._configs)))
+        for row, p in zip(votes, inverse, strict=True):
+            counts[p, self._index[tuple(int(v) for v in row)]] += 1
+        return counts, masks
 
     def _scores(self, theta: np.ndarray) -> np.ndarray:
         return self._phi @ theta
 
-    def neg_loglik(self, theta: np.ndarray, counts: np.ndarray):
-        """Negative marginal log-likelihood of the vote counts and its gradient."""
+    def neg_loglik(self, theta: np.ndarray, data):
+        """Negative marginal log-likelihood of the votes and its gradient.
+
+        `data` is the `(counts, masks)` pair of `config_counts`: the votes of each
+        validity pattern are scored against a normaliser summed over only the
+        configurations that pattern allows.
+        """
+        counts, masks = data
         s = self._scores(theta)
-        log_z = logsumexp(s)
         log_marg = logsumexp(s, axis=1)
-        total = counts.sum()
-        ll = float(counts @ log_marg - total * log_z)
         post = np.exp(s - log_marg[:, None])
-        joint = np.exp(s - log_z)
-        e_post = np.einsum("c,ck,ckd->d", counts, post, self._phi)
-        e_model = total * np.einsum("ck,ckd->d", joint, self._phi)
+        total = counts.sum()
+        ll = 0.0
+        grad = np.zeros(len(theta))
+        for n_c, mask in zip(counts, masks, strict=True):
+            n_p = n_c.sum()
+            if n_p == 0:
+                continue
+            log_z = logsumexp(s[mask])
+            ll += float(n_c @ log_marg - n_p * log_z)
+            joint = np.where(mask[:, None], np.exp(s - log_z), 0.0)
+            grad += np.einsum("c,ck,ckd->d", n_c, post, self._phi)
+            grad -= n_p * np.einsum("ck,ckd->d", joint, self._phi)
         reg = RIDGE * total
         n_free = 3 + len(self.names)
         ll -= 0.5 * reg * float(theta[:n_free] @ theta[:n_free])
-        grad = e_post - e_model
         grad[:n_free] -= reg * theta[:n_free]
         return -ll, -grad
 
-    def fit(self, votes: np.ndarray) -> LabelModel:
-        """Maximise the marginal likelihood of the observed vote tuples (L-BFGS-B)."""
-        counts = self.config_counts(votes)
+    def fit(self, votes: np.ndarray, valid: np.ndarray | None = None) -> LabelModel:
+        """Maximise the marginal likelihood of the observed votes (L-BFGS-B)."""
+        data = self.config_counts(votes, valid)
         theta0 = np.zeros(self.n_params)
         theta0[3 + len(self.names) : 3 + 2 * len(self.names)] = 1.0
         res = minimize(
             self.neg_loglik,
             theta0,
-            args=(counts,),
+            args=(data,),
             jac=True,
             method="L-BFGS-B",
             bounds=self._bounds(),
         )
-        self.theta, self.loglik, self.n_obs = res.x, -res.fun, int(counts.sum())
+        self.theta, self.loglik, self.n_obs = res.x, -res.fun, int(data[0].sum())
         return self
 
-    def loglik_per_obs(self, votes: np.ndarray) -> float:
+    def loglik_per_obs(self, votes: np.ndarray, valid: np.ndarray | None = None):
         """Mean marginal log-likelihood of `votes` under the fitted parameters."""
-        counts = self.config_counts(votes)
-        return float(-self.neg_loglik(self.theta, counts)[0] / counts.sum())
+        data = self.config_counts(votes, valid)
+        return float(-self.neg_loglik(self.theta, data)[0] / data[0].sum())
 
     def posterior(self, votes: np.ndarray) -> np.ndarray:
         """`(bins, 3)` posterior over attached / detached / marfe for each bin."""
@@ -172,19 +205,23 @@ class LabelModel:
 
 
 def decide(
-    posterior: np.ndarray, any_vote: np.ndarray, threshold: float = 0.7
+    posterior: np.ndarray,
+    assessed: np.ndarray,
+    has_vote: np.ndarray,
+    threshold: float = 0.7,
 ) -> np.ndarray:
-    """State per bin: the posterior argmax if it reaches `threshold`, else uncertain.
+    """State per bin from the posterior.
 
-    `any_vote` is False where every valid indicator abstained or none is valid; such
-    bins get ABSENT when no vote was possible. The caller passes `any_vote` = at
-    least one valid indicator; a bin with valid indicators but a flat posterior
-    (all abstain) is uncertain.
+    `assessed` is True where the bin has enough valid indicators to be labelled at
+    all (else ABSENT); `has_vote` is True where at least one indicator cast a vote.
+    An assessed bin with no vote (every valid indicator in its transition band) or
+    a posterior argmax below `threshold` is UNCERTAIN; otherwise the argmax.
     """
     best = posterior.argmax(axis=1)
     top = posterior.max(axis=1)
-    state = np.where(top >= threshold, np.array(VOTE_STATES)[best], UNCERTAIN)
-    return np.where(any_vote, state, ABSENT).astype(np.int8)
+    sure = (top >= threshold) & np.asarray(has_vote, dtype=bool)
+    state = np.where(sure, np.array(VOTE_STATES)[best], UNCERTAIN)
+    return np.where(assessed, state, ABSENT).astype(np.int8)
 
 
 def rule(votes: np.ndarray, valid: np.ndarray) -> np.ndarray:

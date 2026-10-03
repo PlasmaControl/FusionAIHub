@@ -98,19 +98,16 @@ def beam_power(shot: int, cache, t_dst, width_ms: float):
     """Neutral-beam power (W) averaged over `width_ms` windows at `t_dst`, or None.
 
     The corpus `pinj` (rows are beams, in watts) when it is a real record, else the
-    per-beam MDSplus fetches in the cache. Averaged, not sampled: a beam may blip.
+    fetched `\\NB::PINJ` total (kW). Averaged, not sampled: a beam may blip.
     """
     corpus = corpus_group(shot, "pinj")
     if corpus is not None:
         t, y = corpus
         return window_mean(t, np.nansum(y, axis=0), t_dst, width_ms)
-    parts = [(t, y) for name, (t, y) in cache.items() if name.startswith("pinj_")]
-    if not parts:
-        return None
-    total = np.zeros(len(t_dst))
-    for t, y in parts:
-        total += np.nan_to_num(window_mean(t, y, t_dst, width_ms))
-    return total
+    if "pinj_total" in cache and np.isfinite(cache["pinj_total"][1]).any():
+        t, y = cache["pinj_total"]
+        return window_mean(t, y, t_dst, width_ms) * 1e3
+    return None
 
 
 #: ECHPWR is the total gyrotron power in kW; readings under this are the offset.

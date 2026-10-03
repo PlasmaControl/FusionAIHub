@@ -89,9 +89,24 @@ def test_rule_agreement_conflict_and_absence():
 
 
 def test_decide_threshold_and_absence():
-    post = np.array([[0.9, 0.05, 0.05], [0.5, 0.45, 0.05], [0.3, 0.3, 0.4]])
-    state = lm.decide(post, np.array([True, True, False]), threshold=0.7)
-    assert state.tolist() == [1, 4, 0]
+    post = np.array(
+        [[0.9, 0.05, 0.05], [0.5, 0.45, 0.05], [0.3, 0.3, 0.4], [0.9, 0.05, 0.05]]
+    )
+    assessed = np.array([True, True, False, True])
+    has_vote = np.array([True, True, True, False])
+    state = lm.decide(post, assessed, has_vote, threshold=0.7)
+    assert state.tolist() == [1, 4, 0, 4]
+
+
+def test_invalid_indicators_are_not_read_as_abstentions():
+    # TangTV is invalid on most bins; the fit must still rate it by where it speaks.
+    _, votes = simulate(n=9000, seed=3)
+    valid = np.ones(votes.shape, dtype=bool)
+    valid[:6000, 2] = False
+    votes = votes.copy()
+    votes[:6000, 2] = core.ABSTAIN
+    acc = lm.LabelModel().fit(votes, valid).accuracies()
+    assert acc["tangtv"]["acc_weight"] > acc["afrac"]["acc_weight"]
 
 
 def test_despeckle_only_bridges_same_neighbours():

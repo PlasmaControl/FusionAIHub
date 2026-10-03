@@ -79,12 +79,10 @@ PTDATA_NODES: tuple[str, ...] = (
     "ECHPWR",
 )
 
-#: Injected power per neutral beam (W): fetched only for a shot whose corpus `pinj`
-#: group is a stub. The PTDATA total `PINJ` is not in the archive fdp reaches.
-BEAMS = ("15L", "15R", "21L", "21R", "30L", "30R", "33L", "33R")
-BEAM_NODES: tuple[tuple[str, str, str], ...] = tuple(
-    (f"pinj_{b.lower()}", "D3D", rf"\D3D::TOP.NB.NB{b}:PINJ_{b}") for b in BEAMS
-)
+#: Total injected neutral-beam power (kW): fetched only for a shot whose corpus `pinj`
+#: group is a stub. Matches the corpus' summed beams to float rounding on 199166 and
+#: 190109; the PTDATA `PINJ` is not in the archive the fdp wrapper reaches.
+BEAM_NODES: tuple[tuple[str, str, str], ...] = (("pinj_total", "NB", r"\NB::PINJ"),)
 
 #: Nodes sampled far faster than a label bin needs (the CO2 chords run at 2 MHz) are
 #: stored as block means of this many milliseconds.
