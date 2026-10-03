@@ -179,6 +179,31 @@ def paper_roles(
     return table.shot.map(lambda s: role.get(int(s), 0)).to_numpy()
 
 
+def block_roles(
+    table: pd.DataFrame,
+    seed: int,
+    *,
+    block: int = 50,
+    test_fraction: float = 0.125,
+    val_fraction: float = 0.15,
+) -> np.ndarray:
+    """A within-shot split (a leaky diagnostic, not a benchmark): runs of ``block``
+    consecutive windows of one shot go to train, validation or test at random, so a test
+    window has training windows of its own shot beside it.
+    """
+    idx = table.groupby("shot").cumcount().to_numpy() // block
+    _, inverse = np.unique(
+        table.shot.to_numpy().astype(np.int64) * 100_000 + idx, return_inverse=True
+    )
+    draw = np.random.default_rng(seed).random(inverse.max() + 1)
+    role = np.where(
+        draw < test_fraction,
+        2,
+        np.where(draw < test_fraction + val_fraction, 1, 0),
+    )
+    return role[inverse]
+
+
 def confusion_by_shot(
     pred: np.ndarray,
     truth: np.ndarray,

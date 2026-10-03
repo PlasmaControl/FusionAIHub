@@ -85,7 +85,9 @@ class Row:
     buildup_ms: float = 0.0
     layout: bool = False
     optimiser: str = "ours"
-    # cv5: shot-grouped 5-fold; paper: stratified 72.5 / 15 / 12.5 % splits
+    # cv5: shot-grouped 5-fold; paper: stratified 72.5 / 15 / 12.5 % splits by shot;
+    # blocks: the same fractions drawn over 0.2 s blocks of windows, so a test window
+    # has training windows of its own shot beside it (a leaky diagnostic)
     protocol: str = "cv5"
 
 
@@ -136,6 +138,14 @@ def _chain() -> dict[str, Row]:
         name="cum_abcdrf",
         label="+ paper split protocol (500 kHz, corpus shots)",
         protocol="paper",
+    )
+    # the same pipeline with a within-shot split: how far the score rises when test windows
+    # share shots with training windows (a leaky diagnostic, not a benchmark number)
+    rows["leak_abcdr"] = replace(
+        rows["cum_abcdr"],
+        name="leak_abcdr",
+        label="within-shot block split, paper criteria (500 kHz; leaky diagnostic)",
+        protocol="blocks",
     )
     return rows
 
@@ -195,6 +205,9 @@ def plan(row: Row, table: pd.DataFrame, power: np.ndarray):
     if row.protocol == "cv5":
         roles = [bp.cv_roles(table, f) for f in range(5)]
         names = [f"fold{f}" for f in range(5)]
+    elif row.protocol == "blocks":
+        roles = [bp.block_roles(table, SEED + r) for r in range(REPEATS)]
+        names = [f"split{r}" for r in range(REPEATS)]
     else:
         dom = bp.dominant_regime(table, train_ok & score_ok)
         roles = [bp.paper_roles(table, dom, SEED + r) for r in range(REPEATS)]
@@ -352,7 +365,7 @@ def score_row(row: Row, rank: bool = False) -> dict | None:
             "population": "own",
             **scoring.rank_with_ci(probs[own], truth[own], shots[own], replicates=1000),
         }
-    if row.protocol == "paper":
+    if row.protocol != "cv5":
         per = []
         for n in names:
             sub = pred[pred.split == n]

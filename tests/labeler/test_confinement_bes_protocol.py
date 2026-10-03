@@ -108,3 +108,13 @@ def test_paired_difference_is_positive_when_a_beats_b_on_every_shot():
     assert out["difference"] > 0.3
     assert out["ci95"][0] > 0
     assert out["share_not_above_zero"] == 0.0
+
+
+def test_block_roles_split_inside_a_shot_in_runs():
+    table = pd.DataFrame({"shot": np.repeat([1, 2], 400)})
+    roles = bp.block_roles(table, seed=1, block=50)
+    runs = roles.reshape(2, 8, 50)
+    assert (runs == runs[:, :, :1]).all()  # one role per block of 50 windows
+    assert set(np.unique(roles)) <= {0, 1, 2}
+    # at least one of the two shots has windows in more than one role
+    assert any(len(set(roles[table.shot == s])) > 1 for s in (1, 2))
