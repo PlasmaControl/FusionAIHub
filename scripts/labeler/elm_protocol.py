@@ -488,7 +488,8 @@ def main():
             "published fixed setting. Its previous 0.997 precision / 0.980 recall "
             "are window-overlap reimplementation scores, not comparable onset "
             "matching scores; the paper digest reports 0.995 / 0.976 on 972 tuning "
-            "ELMs. Poor onset agreement means the onset output is not delivered."
+            "ELMs. The frozen auxiliary onset output is not delivered; the "
+            "Smith-trained head has the experimental scope stated above."
         ),
         "",
         "## Reference swap",
@@ -580,10 +581,6 @@ def main():
     section = [
         "## Models",
         "",
-        "**stable**: elm-dsm (offline survival adapter)",
-        "",
-        "**latest**: elm-ours",
-        "",
         *model_lines,
         "",
         caveat,
@@ -599,9 +596,92 @@ def main():
     )
     rendered = rendered.replace(
         "`pcphd02`, `pcphd03` (always mean-filled)",
+        "`pcphd02`, `pcphd03` (detection: measured on all 119 review shots)",
+    ).replace(
         "`pcphd02`, `pcphd03` (detection: measured, otherwise FS substitutes)",
+        "`pcphd02`, `pcphd03` (detection: measured on all 119 review shots)",
+    )
+    rendered = rendered.replace("**ELM-O**:", "**elm-elmo**:").replace(
+        "**elm_frames (round three)**:", "**elm-frames (label view)**:"
+    )
+    old_claim = (
+        "are the truth the ELM-O benchmark is scored on: the re-implementation "
+        "reproduces the published precision and recall on them (0.997 and "
+        "0.980; paper 0.995 and 0.976). Not yet ingested as a label source here."
+    )
+    rendered = rendered.replace(
+        old_claim,
+        "are the truth for the selected-window ELM-O benchmark. The current "
+        "one-to-one onset and region-overlap scores, distinct from the paper's "
+        "972-event tuning score, are in "
+        "[elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md). "
+        "The experimental elm-ours-onset head uses Smith-only shot CV; these "
+        "windows are not ingested as catalog labels.",
     )
     readme.write_text(rendered)
+    benchmark = REPO / "docs/labeler/elm_benchmark_elmo.md"
+    archive = Paths.from_env().root / "round4/elm/archive/fix4_docs"
+    archive.mkdir(parents=True, exist_ok=True)
+    if not (archive / benchmark.name).exists():
+        (archive / benchmark.name).write_bytes(benchmark.read_bytes())
+    elmo = smith["methods"]["elm-elmo"]
+    overlap = smith["reimplemented_elmo_overlap"]
+    event = elmo["events"]["2"]
+    reviewed = detector["sets"]["bes73"]["methods"]["elm-elmo"]
+    benchmark.write_text(
+        "# ELM benchmark: elm-elmo\n\n"
+        "ELM-O is a rule-based diagnostic-vote detector reimplemented from "
+        "O'Shea et al., *Automatic identification of edge localized modes in "
+        "the DIII-D tokamak*, APL Machine Learning 1, 026102 (2023), "
+        "doi:10.1063/5.0134001. The public repository has no licence; its code "
+        "was not copied.\n\n"
+        "It reads DENV2F/3F, FS02–FS04 and all 64 BES channels, interpolating "
+        "diagnostics by chunked DCT upsampling at the BES rate. The lower-range "
+        "32 BES channels are doubled before averaging. BES exceeds 1 V; "
+        "absolute first differences of each density/filterscope signal exceed "
+        "its 0.997 quantile. Density and filterscope masks are widened by "
+        "100 microseconds on each side. A call requires either density chord, "
+        "two of three filterscopes and BES. Gaps at most 100 microseconds are "
+        "bridged; onset matching uses span starts, while the FS03 peak remains "
+        "a separate span descriptor. Parameters are fixed across shots.\n\n"
+        "## Selected-window benchmark\n\n"
+        "Smith's 2,316 hand-labelled ELM windows on 211 shots have no review "
+        "shot or run-day overlap. All windows have diagnostic-record coverage. "
+        "One repeated acquisition axis uses an audited first-monotone-record "
+        "derivative. All methods use the same repaired source. Smith was "
+        "historically used for ELM-O; overlap with the paper's tuning events "
+        "is unresolved. This does not establish independent ELM-O tuning.\n\n"
+        f"One-to-one onset matching at ±2 and ±5 ms gives precision "
+        f"{metric(event, 'precision')}, recall {metric(event, 'recall')}, "
+        f"F1 {metric(event, 'f1')} (TP {event['counts']['tp']:,}, "
+        f"FP {event['counts']['fp']:,}, FN {event['counts']['fn']:,}). "
+        "Extra fragments count as unmatched predictions. Median signed "
+        f"timing error is {event['timing_error_ms']['median']:.3f} ms; "
+        "full timing quantiles and shot-bootstrap intervals are recorded.\n\n"
+        f"Region-overlap scoring gives precision {metric(overlap, 'precision')}, "
+        f"recall {metric(overlap, 'recall')} (TP {overlap['counts']['tp']:,}, "
+        f"FP {overlap['counts']['fp']:,}, FN {overlap['counts']['fn']:,}). "
+        "This differs from onset matching. The paper reports 0.995/0.976 on "
+        "972 tuning ELMs; the prior local 0.997/0.980 used the old source "
+        "record and overlap counting. Historical checks and results are "
+        "preserved in the stream report and external documentation archive.\n\n"
+        "## Reviewed occupancy\n\n"
+        "BES coverage restricts this comparison to 73 review shots and 6,527 "
+        f"common 50 ms bins: AUROC {metric(reviewed, 'auroc')}, AUPRC "
+        f"{metric(reviewed, 'auprc')}, F1 {metric(reviewed, 'f1')}. "
+        "Hard calls use the fixed published setting; ranking curves use the "
+        "recorded eta sweep. These occupancy targets are largely crowd spans "
+        "and the clock seeded review; disagreements cannot adjudicate "
+        "physical false alarms.\n\n" + domain + "\n\n"
+        "Canonical sources are `outputs/labeler/elm/smith/evaluation.json` "
+        "(`methods.elm-elmo`, `reimplemented_elmo_overlap`, `protocol`) and "
+        "`dsm/evaluation.json:sets.bes73.methods.elm-elmo`. Reproduce with "
+        "`elm_smith_evaluate.py evaluate`, `elm_dsm_evaluate.py --rescore` "
+        "and `elm_protocol.py` through the mandated labelmaker wrapper. "
+        "Large signals and predictions stay under `$LABELER_ROOT`; current "
+        "code/source hashes and valid/undefined bootstrap draws remain in "
+        "the canonical records.\n"
+    )
     manifest = {
         "git": git_sha(),
         "sources": {
@@ -611,7 +691,7 @@ def main():
         },
         "artifacts": {
             str(p.relative_to(REPO)): sha256_of(p)
-            for p in (REPO / "docs/labeler/elm_ours.md", readme)
+            for p in (REPO / "docs/labeler/elm_ours.md", readme, benchmark)
         },
         "metadata": {
             "reviewed_shots": primary["n_shots"],
