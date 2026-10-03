@@ -1,0 +1,23 @@
+{
+  "code_commit": "cfe0e4f0341693016c944e905127d7cee4ec8e4b",
+  "sha256": {
+    "src/labeler/sawtooth/__init__.py": "ead643ca679ccccb58cffade518ed23e9db4fbe70a45fc88b61ba0d36c7b87a8",
+    "src/labeler/sawtooth/metrics.py": "caf79d7de235937cf39f10eb4c136fe53fc7520e8c3484a1bf71eb90dcf68c1b",
+    "src/labeler/sawtooth/models.py": "0bcd7607b928fab2f11d67123388c754dbafb85970abf44b1783671fab2889b1",
+    "src/labeler/sawtooth/physics.py": "7a966abd22b130dbed188046d9dd9e8ee05ca9bf3eb8abce61b0cdaf78ee1939",
+    "scripts/labeler/sawtooth_physics.py": "e042b0703159d811887766aa7ecb53ec30eea65ea8e0864ff2c9b7440132b45b",
+    "scripts/labeler/sawtooth_benchmark.py": "73b373cd3cc424894c5301b53668ac7e09a06b17748041caf6b1c3d0b1c501cd",
+    "scripts/labeler/sawtooth_results.py": "e6a44fedb62d68d2c9cc7998c0eb638143e5d1e322313088766e039ea513cc4d"
+  },
+  "python": "3.11.16",
+  "packages": {
+    "numpy": "1.26.4",
+    "scipy": "1.17.1",
+    "pandas": "3.0.5",
+    "h5py": "3.16.0",
+    "torch": "2.14.0+cpu",
+    "matplotlib": "3.11.1"
+  },
+  "population_slurm_array": 2952132,
+  "note": "Training/inference functions unchanged since initial implementation; final evaluation uses shared absolute bin grid. CPU execution."
+}
