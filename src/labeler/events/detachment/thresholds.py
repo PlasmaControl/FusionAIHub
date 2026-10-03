@@ -10,8 +10,8 @@ that is a judgement call says so.
 #: Afrac = Jsat / (C <ne>^2 q_par^(-3/7)) = 1 / DOD.  Eldon 2021 reference shot
 #: 180257: DOD 1 (attached, 2.4 s), 2 (detaching, 3.6 s), 4 (detached, 4.8 s), i.e.
 #: Afrac 1, 0.5, 0.25. The offline Jroll tracker over-estimates the attached level
-#: by ~10 %, so "attached" reads 0.8-0.9 there; the reference level here is set the
-#: same way (on the shot's own attached window), so the same margin applies.
+#: by ~10 %, so "attached" reads 0.8-0.9 there. The margin below is an operational
+#: choice, not proof of calibration for the local whole-shot proxy reference.
 AFRAC_ATTACHED_MIN = 0.75
 #: Detached below Afrac 0.5 (DOD >= 2): the first reference-shot window the paper
 #: calls detaching, and the operating point Eldon 2022 controls to. Between 0.5 and
@@ -42,7 +42,8 @@ MIN_INPUT_POWER_W = 0.5e6
 # --- TangTV DZ (Chen 2026) ---------------------------------------------------------
 #: DZ = 1 - (ZX - ZE)/(ZX - ZS): 0 at the strike point (attached), 1 at the X-point.
 #: The Te cliff sits at DZ ~ 0.5 (shot 201081). Attached below 0.35; detached from
-#: 0.5 to 1.0; the 0.35-0.5 band is the cliff, where the divertor dithers (Eldon
+#: 0.5 to 1.2 under the owner's candidate-MARFE margin; the 0.35-0.5 band is the cliff,
+#: where the divertor dithers (Eldon
 #: 2017: 2.5 ms jumps), so the indicator abstains rather than call it.
 DZ_ATTACHED_MAX = 0.35
 DZ_DETACHED_MIN = 0.5
@@ -59,7 +60,7 @@ EMISSION_THRESHOLD = 0.1
 
 # --- Geometry gate for TangTV (Chen 2026; the owner's rule) ------------------------
 #: plasma_tv's regression and its Redge = 1.35 m correction were built on shots whose
-#: outer strike point is on the lower divertor SHELF (Z = -1.25 m, R > 1.37 m). The
+#: outer strike point is on the upper shelf (Z = -1.25 m, R > 1.37 m). The
 #: lower shelf (Z = -1.363 m, R < 1.37 m) is another geometry; Victor & Scotti 2024 needed a
 #: separate model for it. SHELF_WALL_R is plasma_tv's own `SHELF_WALL_R`.
 SHELF_WALL_R = 1.37

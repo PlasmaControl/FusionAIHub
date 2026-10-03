@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import Counter
 from pathlib import Path
 
 import detach_benchmark as bench
@@ -216,6 +217,38 @@ def candidate_selection():
     }
 
 
+def fetch_audit():
+    probes = [
+        json.loads(line)
+        for line in (ROOT / "processed_probes_log.jsonl").read_text().splitlines()
+    ]
+    geometry = [
+        json.loads(line)
+        for line in (ROOT / "geometry02_log.jsonl").read_text().splitlines()
+    ]
+    flux = {}
+    for path in (ROOT / "efit").glob("*.npz"):
+        with np.load(path) as f:
+            flux[path.stem] = {
+                "source": str(f.get("source", "EFIT01")),
+                "slices": len(f["gtime_ms"]),
+                "lim_available": "lim" in f,
+            }
+    return {
+        "processed_probe_attempts": len(probes),
+        "processed_probe_shots_with_positioned_current": sum(
+            row.get("n_probes", 0) > 0 for row in probes
+        ),
+        "geometry_attempts": len(geometry),
+        "geometry_status": dict(Counter(row["status"] for row in geometry)),
+        "flux_maps": flux,
+        "auth_stop": (ROOT / "fetch_auth_stop").exists(),
+        "tree_and_pointname_attempts": str(ROOT / "processed_probe.json"),
+        "node_read_attempts": json.loads((ROOT / "node_read.json").read_text()),
+        "bolometer_geometry": "No chord geometry in surveyed BOLOM tree/local resources; row omitted, no invented chord rays.",
+    }
+
+
 def main():
     frame = pd.read_csv(ROOT / "labels_bins.csv.gz")
     bins = dl.load_all(ROOT / "bins")
@@ -313,6 +346,7 @@ def main():
             "te_check": "withdrawn, no geometrically localised processed DTS",
         },
         "candidate_selection": candidate_selection(),
+        "fetch": fetch_audit(),
     }
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / "detachment_fix.json").write_text(json.dumps(records, indent=1))

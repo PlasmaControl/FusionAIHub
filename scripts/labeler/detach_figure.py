@@ -1,27 +1,15 @@
 #!/usr/bin/env python
-"""Appendix figure: the three detachment views and the label of one shot.
+"""Appendix camera/inversion views and a separate indicator timeline.
 
     python scripts/labeler/detach_figure.py --shot 189057 \\
         --out-dir $LABELER_ROOT/round4/detach/figure
 
-Writes `fig_detachment_views.pdf` (vector) and a 150-dpi PNG. Columns are three
-times of one shot, one per state (attached, detached, MARFE; the third column is
-the deepest detached bin when the shot has no MARFE). Rows:
-
-1. the raw TangTV frame nearest the time (the camera's own video);
-2. the TangTV inversion nearest the time, with the EFIT flux surfaces, the
-   separatrix, the X-point and the outer strike point, and the front height ZE;
-3. the bolometer chords at the time: DIII-D's bolometer is a set of chord signals,
-   not an image, so this row shows the chord profile (change in the raw chord
-   voltage over its pre-shot level) of the lower and upper arrays, not a picture;
-4. (spans the columns) the timeline: the label and the three indicators' votes as
-   colour strips, then Afrac, Prad,div and the front height with their
-   thresholds, the chosen times marked;
-5. (spans the columns) the state fractions of every labelled shot.
-
-IRTV is not in the corpus for these shots and is not drawn. The EFIT overlay needs
-`detach_fetch_efit.py`'s parked flux maps and is skipped (with a note) without them.
-Every number drawn comes from `labels_bins.csv.gz` and the parked signals.
+Both figures are 6.75 inches wide, vector PDF plus 150-dpi PNG. Three columns
+show attached/detached fronts and the highest front; headers give the actual
+observed label. Inversions include EFIT flux surfaces and the g-file LIM wall.
+The bolometer row is omitted because no usable chord geometry was obtained.
+The recorded IRTV heat-flux attempt returned NODATA. Every number comes from
+the exported labels and parked signals; omissions are recorded in figure.json.
 """
 
 from __future__ import annotations
@@ -37,7 +25,7 @@ import pandas as pd
 mpl.use("Agg")
 import matplotlib.pyplot as plt
 
-from labeler.events.detachment import core, signals, thresholds
+from labeler.events.detachment import core, thresholds
 
 #: Okabe-Ito: attached blue, detached orange, MARFE reddish purple, uncertain grey.
 STATE_COLOUR = {1: "#0072B2", 2: "#E69F00", 3: "#CC79A7", 4: "#999999"}
@@ -45,7 +33,6 @@ STATE_NAME = {1: "attached", 2: "detached", 3: "MARFE", 4: "uncertain"}
 INK = "#222222"
 #: Top of the plotted inversion window (m): the divertor view, not the whole frame.
 VIEW_ZMAX = -0.85
-#: Afrac values above this are clipped at the top of its axis (density dips spike it).
 
 
 def root() -> Path:
@@ -100,6 +87,8 @@ def efit_slice(shot: int, t_ms: float):
         return None
     with np.load(path) as f:
         k = int(np.argmin(np.abs(f["gtime_ms"] - t_ms)))
+        if abs(f["gtime_ms"][k] - t_ms) > 40:
+            return None
         psi, axis, edge = f["psirz"][k], float(f["ssimag"][k]), float(f["ssibry"][k])
         return {
             "r": f["r"],
@@ -110,19 +99,6 @@ def efit_slice(shot: int, t_ms: float):
             "t_ms": float(f["gtime_ms"][k]),
             "lim": f.get("lim", None),
         }
-
-
-def chord_profile(shot: int, t_ms: float, half_ms: float = 25.0):
-    """Chord signals at a time: change from the pre-shot level, (lower, upper) arrays."""
-    got = signals.corpus_group(shot, "bolo")
-    if got is None:
-        return None
-    t, y = got
-    base = np.median(y[:, t < 0.0], axis=1)
-    window = (t >= t_ms - half_ms) & (t <= t_ms + half_ms)
-    now = np.median(y[:, window], axis=1)
-    delta = now - base
-    return delta[:24], delta[24:]
 
 
 def style() -> None:
@@ -220,8 +196,9 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
     lo, hi = start.min(), start.max() + core.BIN_MS
     for ax in axes:
         ax.set_xlim(lo, hi)
-        for state, t in times.items():
-            ax.axvline(t, color=STATE_COLOUR[state], lw=1.0, alpha=0.9)
+        for t in times.values():
+            observed = int(group.iloc[np.argmin(np.abs(centre - t))].state_lm)
+            ax.axvline(t, color=STATE_COLOUR[observed], lw=1.0, alpha=0.9)
     for ax in axes[4:6]:
         ax.tick_params(axis="x", labelbottom=False)
     for ax in axes:
