@@ -114,7 +114,7 @@ def onset_counts(found_ms, shot_spans, onset_mask, n_ms, cov0, cov1, tol):
 
 
 def onset_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
-    """Pooled onset precision, recall and F1 of `(shots, 3)` tp/fp/fn rows, with intervals."""
+    """Pooled onset precision, recall and F1 of `(shots, 3)` tp/fp/fn rows."""
 
     def rates(total):
         tp, fp, fn = total

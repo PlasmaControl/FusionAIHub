@@ -1,4 +1,4 @@
-"""`elm-dsm`: the lab's ELM time-to-event model on the reviewed shots, and as a detector.
+"""`elm-dsm`: the lab's ELM time-to-event model on the reviewed shots, as a detector.
 
 The model is Deep Survival Machines (auton-survival, LogNormal, three components, a
 128-unit ReLU6 embedding with dropout 0.2) fitted by the labeler on the ELM survival
@@ -23,11 +23,12 @@ ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
 `[t - 50, t)` mean), so the row at a bin's end summarises the bin and the row at its
 start the bin before it.
 
-**What the corpus cannot serve.** `ip` and `bt` come from an archive that holds 36 of
-the 119 reviewed shots, the four CO2 columns are absent on many shots, and the two
-photodiodes (`pcphd02/03`) have no corpus source at all. A column the corpus cannot
-serve is filled at its training mean, exactly 0 after normalisation, as the adapter
-does; `shot_rows` reports which per shot.
+**What the corpus cannot serve.** `ip` and `bt` are served for 15 of the 119 reviewed
+shots (the archive holds features for 36, not always these two), the four CO2 columns
+are absent on 75, and the two photodiodes (`pcphd02/03`) have no corpus source at all.
+A column the corpus cannot serve is filled at its training mean, exactly 0 after
+normalisation, as the adapter does; `shot_rows` reports which per shot (the counts are
+in `outputs/labeler/elm/dsm/evaluation.json`, `rows`).
 """
 
 from __future__ import annotations
@@ -368,7 +369,7 @@ def predict(model: Detector, x: np.ndarray) -> np.ndarray:
 
 
 def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None):
-    """Train a `Detector` on `train` shots; keep the epoch with the best inner-val AUPRC.
+    """Train a `Detector` on `train` shots; keep the best inner-val AUPRC epoch.
 
     `rows`, `spans` and `bins` are dicts by shot. Returns the best state, the
     F1-maximising threshold on the inner-validation bins at that epoch, and the history.

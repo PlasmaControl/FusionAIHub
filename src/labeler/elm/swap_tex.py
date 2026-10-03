@@ -118,10 +118,10 @@ def full_table(res: dict, record: dict, source: str) -> str:
     )
     # the expert labels read as a detector of the legacy marks: the legacy table's
     # precision against the review is the expert's recall against the legacy table
+    oracle_f1 = cell(_f1(lp["recall"], lp["precision"]), leg_vs_rev["ci95"]["f1"], 3, 3)
     lines.append(
         f"expert (oracle) & 1.000 & 1.000 & 1.000 & {lp['recall']:.3f} & "
-        f"{lp['precision']:.3f} & "
-        f"{cell(_f1(lp['recall'], lp['precision']), leg_vs_rev['ci95']['f1'], 3, 3)} \\\\"
+        f"{lp['precision']:.3f} & {oracle_f1} \\\\"
     )
     lines += [
         "\\midrule",

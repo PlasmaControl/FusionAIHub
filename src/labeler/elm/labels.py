@@ -116,7 +116,7 @@ def dense(spans: pd.DataFrame, n_ms: int) -> Dense:
 
 @dataclass(frozen=True)
 class Bins:
-    """The scored 50 ms bins of one shot: left edges, truth, and where they came from."""
+    """The scored 50 ms bins of one shot: left edges, truth, and their origin."""
 
     t0: np.ndarray  # float (m,) left edge, ms
     truth: np.ndarray  # int8 (m,) 1 present, 0 absent
@@ -194,7 +194,7 @@ def bin_scores(fine: np.ndarray, bins: Bins) -> np.ndarray:
 
 
 def hard_hits(starts: np.ndarray, stops: np.ndarray, bins: Bins) -> np.ndarray:
-    """Whether any span `[starts, stops)` (ms, sorted, not overlapping) touches each bin."""
+    """Whether any span `[starts, stops)` (ms, sorted, disjoint) touches each bin."""
     if not len(starts):
         return np.zeros(bins.t0.size, dtype=bool)
     starts, stops = np.asarray(starts, float), np.asarray(stops, float)

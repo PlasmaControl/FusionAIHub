@@ -101,7 +101,7 @@ def block_reduce(
 
 
 def grid_length(t_fs_ms: np.ndarray, t_int_ms: np.ndarray) -> int:
-    """Whole milliseconds, in cells, from `GRID0_MS` to the end of the shorter record."""
+    """Whole milliseconds, in cells, from `GRID0_MS` to the shorter record's end."""
     end = min(float(t_fs_ms[-1]), float(t_int_ms[-1]))
     return int(np.floor(end - GRID0_MS)) * CELLS_PER_MS
 

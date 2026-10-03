@@ -117,7 +117,7 @@ def test_scored_bins_follow_the_elmo_rule():
             (600.0, 800.0, "absent"),  # under half analysed
         ]
     )
-    # the last span has exactly half its time analysed, so it keeps the bins in [700, 800)
+    # the last span has exactly half its time analysed: it keeps the bins in [700, 800)
     b = labels.scored_bins(spans, np.array([0.0, 700.0]), np.array([500.0, 800.0]))
     assert b.t0[b.kind == "absent"].tolist() == [0.0, 50.0, 700.0, 750.0]
     assert b.t0[b.kind == "crowd"].tolist() == [150.0, 200.0, 250.0, 300.0, 350.0]
@@ -357,7 +357,7 @@ def test_trace_part_calls_bins_at_the_threshold():
         np.array([0, 1]),
     )
     review = _review([(50.0, 100.0, "absent"), (100.0, 200.0, "crowd")])
-    # the review is on the shot clock: crowd 100-200 ms is cells 150-250, shifted by GRID0
+    # the review is on the shot clock: crowd 100-200 ms is cells 150-250 (GRID0 shift)
     cover = methods.cover_frame([0.0], [350.0])
     part = methods.trace_part(review, 3, bins, cover, fine, 0.5)
     assert part.call.tolist() == [True, False]

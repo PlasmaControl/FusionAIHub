@@ -152,7 +152,7 @@ def agreement_rates(total: np.ndarray) -> dict[str, float]:
 
 
 def agreement_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
-    """Finding 1: pooled counts, `|M|`, `|P|` and rates with shot-bootstrap intervals."""
+    """Finding 1: pooled counts, `|M|`, `|P|` and rates with bootstrap intervals."""
     total = per_shot.sum(axis=0)
     point = agreement_rates(total)
     reps = [agreement_rates(per_shot[d].sum(axis=0)) for d in boot]

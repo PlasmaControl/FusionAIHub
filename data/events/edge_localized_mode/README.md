@@ -44,14 +44,18 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 ## Models
 **stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (forecast, not a detector)
 
-**latest**: d3d_elm_time_to_event_dsm | 2026_09_06
+**latest**: elm-ours | 2026_10_03
 
 **all**:
-- d3d_elm_time_to_event_dsm | 2026_09_06 (`no_bes` fit; horizons 5/10/20/50 ms)
+- elm-ours | 2026_10_03 | AUROC: 0.941 | AUPRC: 0.877 | F1: 0.830 (1D U-Net on filterscope D-alpha and line density, no BES; the 119 review shots, 5-fold shot-grouped CV)
+- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.780 | AUPRC: 0.666 | F1: 0.638 (`no_bes` fit; horizons 5/10/20/50 ms; as published, `elm-dsm`; a forecast, scored here as a detector on the 11,653 bins it can serve)
+- elm-dsm-detect | 2026_10_03 | AUROC: 0.855 | AUPRC: 0.762 | F1: 0.735 (the same 60 inputs and embedding, objective changed to detection, one logit head, trained on the review in the same folds)
 - elm_clock | 2026_09_13 (rule-based detector, `labeler.events.transients`)
 - elmo | 2026_10_01 | AUROC: 0.918 | AUPRC: 0.833 | F1: 0.842 (rule-based detector, O'Shea et al. 2023, re-implemented)
 
-Scores are for ELM-O as published (eta 0.997, BES threshold 1 V) against the owner-reviewed ELM spans: 50 ms bins of the 73 review shots that have BES in the corpus (precision 0.840, recall 0.844; the other 46 shots have no BES, which ELM-O needs). ELM-O makes hard calls, so its AUROC and AUPRC come from sweeping its detection threshold eta over the same bins, not from a probability. It finds 85 % of the bins inside crowd spans and 59 of 93 individual spans, and puts ELMs in 96 of 218 spans marked absent, where the D-alpha of the worst shows ELM trains. `elm_clock` scores F1 0.708 on the same bins, but the reviewers started from it. On David Smith's labelled windows the re-implementation reproduces the published scores (precision 0.997, recall 0.980 over 2,316 windows; paper 0.995 and 0.976). Protocol, variants and caveats: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
+`elm-ours` scores are pooled out-of-fold, 12,409 bins of 50 ms (38 % present), intervals over shot resamples: AUROC 0.941 [0.906, 0.967], AUPRC 0.877 [0.774, 0.949], F1 0.830 [0.778, 0.871] at a threshold chosen on each fold's inner-validation shots (no cohort test shot is read). On the 73 shots with BES it scores AUROC 0.941, AUPRC 0.875, F1 0.845 against ELM-O's 0.918, 0.833 and 0.842, a difference inside the intervals, without BES. It finds 85 % of the bins inside crowd spans and 68 % of the single-ELM spans; its onset head is weak (F1 0.045 at 5 ms) and is not a result. The survival model (`elm-dsm`) is scored on bins it can serve (the corpus lacks `ip`, `bt` and the photodiodes on most shots, mean-filled) and on its own target the published split gives AUROC 0.758 to 0.777 at 5 to 50 ms. Reference swap: Hiro's 50 ms onset table covers 8 of the 119 reviewed shots (|M| = 40 of 147 present bins, |P| = 4 of 641) and does not change the order of the methods. Protocol, tables and caveats: [elm_ours.md](../../../docs/labeler/elm_ours.md).
+
+Scores for ELM-O are as published (eta 0.997, BES threshold 1 V) against the owner-reviewed ELM spans: 50 ms bins of the 73 review shots that have BES in the corpus (precision 0.840, recall 0.844; the other 46 shots have no BES, which ELM-O needs). ELM-O makes hard calls, so its AUROC and AUPRC come from sweeping its detection threshold eta over the same bins, not from a probability. It finds 85 % of the bins inside crowd spans and 59 of 93 individual spans, and puts ELMs in 96 of 218 spans marked absent, where the D-alpha of the worst shows ELM trains. `elm_clock` scores F1 0.708 on the same bins, but the reviewers started from it. On David Smith's labelled windows the re-implementation reproduces the published scores (precision 0.997, recall 0.980 over 2,316 windows; paper 0.995 and 0.976). Protocol, variants and caveats: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
 
 ## Inputs
 **d3d_elm_time_to_event_dsm**:
@@ -69,6 +73,11 @@ Scores are for ELM-O as published (eta 0.997, BES threshold 1 V) against the own
 - `interferometer` chords `DENV2F`, `DENV3F` (`\BCI::`, 100 kS/s)
 - `filterscopes` FS02, FS03, FS04 (`\SPECTROSCOPY::`, 50 kS/s)
 - `BES` (64 ch; 500 kS/s in the corpus, 1 MS/s in Smith's windows)
+
+**elm-ours**:
+- `filterscopes` FS02, FS03, FS04 (`\SPECTROSCOPY::`, 50 kS/s; log level and contrast to a 0.5 s running median)
+- `interferometer` chords `DENV2F`, `DENV3F` (`\BCI::`, 100 kS/s; density and its 0.2 s high-pass)
+- a validity mask; 10 kHz grid, no BES
 
 **elm_frames (round three)**:
 - `D-alpha FS` (the ELM spans' channel)
@@ -89,6 +98,8 @@ for >= 50 ms) and the ELM rate. Coverage is the D-alpha span actually processed.
 Known gap: a narrow ELM riding on a broad D-alpha hump measures wide and is dropped.
 
 Benchmark: the rule-based ELM-O detector (O'Shea et al. 2023: interferometers, filterscopes and BES, no learning) is the benchmark for these labels. It was re-implemented from the paper (the public code has no licence) and scored on David Smith's labelled windows and on the reviewed ELM spans, individual ELMs and crowd spans apart: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md). It needs BES, which 73 of the 119 review shots have in the corpus.
+
+`elm-ours` (`labeler.elm`) is a 1D U-Net (PhaseNet / U-Time kind, 401,714 parameters) that reads the filterscopes and the line density, not BES, and writes per millisecond the probability of ELMy time and a second head for ELM onsets. It is trained on the reviewed spans (present, crowds included, against absent) with five shot-grouped folds over the 119 review shots, so every shot has one out-of-fold prediction.
 
 ## Alias
 edge localized mode, edge localised mode, elm, elms, elmy, elming

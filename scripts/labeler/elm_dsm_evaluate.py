@@ -107,7 +107,7 @@ def fit_detectors(rows, data, oof, graph, cfg, log):
 
 def published_thresholds(rows, risk, data, oof):
     """Per shot: the fold's F1-maximising threshold of the published 50 ms risk on the
-    fold's inner-validation bins (the forecast row of each bin), and the fold records."""
+    fold's inner-validation bins (the forecast row of each bin), and fold records."""
     thr, records = {}, []
     for k in range(len(oof.record["folds"])):
         info = json.loads((oof.dir / f"fold{k}" / "fold.json").read_text())

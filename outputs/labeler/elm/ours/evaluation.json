@@ -1,6 +1,6 @@
 {
- "git": "0d16c19",
- "created": "2026-10-03T12:37:58+00:00",
+ "git": "1794b86",
+ "created": "2026-10-03T14:02:26+00:00",
  "run": "cv2",
  "train_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
  "reference": "expert-reviewed spans (review/labels.csv)",
@@ -432,20 +432,54 @@
      "score_source": "eta threshold sweep (elmo_benchmark.sweep_counts)"
     }
    },
-   "elmo_counts_match_published": true,
    "paired": {
-    "elm-ours - elm-elmo: auroc": {
-     "value": 0.022942007418430665,
+    "elm-ours - elm-clock: f1": {
+     "value": 0.13689452763657006,
      "ci95": [
-      -0.014337545899778205,
-      0.06723434640902322
+      0.048235845859991196,
+      0.23295650654495076
      ]
     },
-    "elm-ours - elm-elmo: auprc": {
-     "value": 0.04255168646657159,
+    "elm-ours - elm-clock: precision": {
+     "value": 0.003999285275335995,
      "ci95": [
-      -0.057514888098725514,
-      0.12926710880861497
+      -0.08931644270431226,
+      0.0870015262365005
+     ]
+    },
+    "elm-ours - elm-clock: recall": {
+     "value": 0.24290909090909085,
+     "ci95": [
+      0.11334588123987742,
+      0.3700605023108849
+     ]
+    },
+    "elm-ours - elm-clock: false_alarm_bin_rate": {
+     "value": 0.03200586366967993,
+     "ci95": [
+      -0.025296954040576792,
+      0.09506687468730066
+     ]
+    },
+    "elm-ours - elm-clock: crowd_bin_recall": {
+     "value": 0.24830954169797148,
+     "ci95": [
+      0.11438810126582284,
+      0.3797981034759462
+     ]
+    },
+    "elm-ours - elm-clock: individual_span_recall": {
+     "value": 0.4838709677419355,
+     "ci95": [
+      -0.2908770161290322,
+      0.7704187925170068
+     ]
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate": {
+     "value": 0.5,
+     "ci95": [
+      0.2856943335993615,
+      0.6666970802919708
      ]
     },
     "elm-ours - elm-elmo: f1": {
@@ -497,56 +531,22 @@
       0.412927240274498
      ]
     },
-    "elm-ours - elm-clock: f1": {
-     "value": 0.13689452763657006,
+    "elm-ours - elm-elmo: auroc": {
+     "value": 0.022942007418430665,
      "ci95": [
-      0.048235845859991196,
-      0.23295650654495076
+      -0.014337545899778205,
+      0.06723434640902322
      ]
     },
-    "elm-ours - elm-clock: precision": {
-     "value": 0.003999285275335995,
+    "elm-ours - elm-elmo: auprc": {
+     "value": 0.04255168646657159,
      "ci95": [
-      -0.08931644270431226,
-      0.0870015262365005
-     ]
-    },
-    "elm-ours - elm-clock: recall": {
-     "value": 0.24290909090909085,
-     "ci95": [
-      0.11334588123987742,
-      0.3700605023108849
-     ]
-    },
-    "elm-ours - elm-clock: false_alarm_bin_rate": {
-     "value": 0.03200586366967993,
-     "ci95": [
-      -0.025296954040576792,
-      0.09506687468730066
-     ]
-    },
-    "elm-ours - elm-clock: crowd_bin_recall": {
-     "value": 0.24830954169797148,
-     "ci95": [
-      0.11438810126582284,
-      0.3797981034759462
-     ]
-    },
-    "elm-ours - elm-clock: individual_span_recall": {
-     "value": 0.4838709677419355,
-     "ci95": [
-      -0.2908770161290322,
-      0.7704187925170068
-     ]
-    },
-    "elm-ours - elm-clock: absent_span_alarm_rate": {
-     "value": 0.5,
-     "ci95": [
-      0.2856943335993615,
-      0.6666970802919708
+      -0.057514888098725514,
+      0.12926710880861497
      ]
     }
    },
+   "elmo_counts_match_published": true,
    "onset": {
     "elm-ours": {
      "tol_5ms": {
