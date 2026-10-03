@@ -414,12 +414,17 @@ def main(argv=None) -> int:
         for s in over["shot_level_ground_truth"]["overlap_shots"]
     }
     over["shot_level_ground_truth"]["reviewed_present_spans"] = reviewed_present
+    dsm_record = json.loads((OUT.parent / "dsm" / "evaluation.json").read_text())
+    dsm_source = dsm_record["own_target"]
 
     record = {
         "git": git_sha(),
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "run": args.run,
         "cohort_test_shots_used": 0,
+        "cohort_test_shots_used_scope": "reviewed-label detector training/tuning; "
+        "the fixed DSM refit and initialized detector inherit prior pretraining "
+        "overlap, recorded separately in legacy_trained_method",
         "overlap": over,
         "conversion": swap.__doc__,
         "legacy_trained_method": {
@@ -428,6 +433,11 @@ def main(argv=None) -> int:
             "training_label_source": "Hiro's onsets via elm_survival_labels.pkl "
             "and the wpqh_elm_hiro survival-row split; same source as legacy onset table",
             "ae_analogue": "legacy-trained RCN/LSTM",
+            "reviewed_source_overlap": dsm_source[
+                "reviewed_shot_ids_in_published_split"
+            ],
+            "cohort_source_overlap": dsm_source["cohort_physical_shot_overlap"],
+            "own_target_selection_role": dsm_source["selection_role"],
         },
         "interval_audit": interval_coverage_audit(table, data, shots_over),
         "onset_agreement": onset_agreement_audit(paths, table, data, shots_over),

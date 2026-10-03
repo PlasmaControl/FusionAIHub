@@ -243,7 +243,8 @@ def interval_caption() -> str:
         "resamples, shared across methods and references. ELM-O AUROC uses the "
         "saved nested eta sweep on these exact bins; the clock has hard calls only. "
         "DSM refit, limited inputs (60 of the original 124), was trained on "
-        "Hiro's legacy onset source with reviewed-shot overlap; detection heads "
+        "Hiro's legacy onset source with reviewed and cohort-test shot overlap; "
+        "detection heads "
         "use reviewed spans, with the initialized variant retaining that embedding. "
         "Detector/rule F1 is marked degenerate when recall $\\geq0.99$."
     )
