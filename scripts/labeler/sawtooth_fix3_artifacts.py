@@ -881,8 +881,8 @@ def paper_example(args):
         channel_label(record, [core], "Core"),
         channel_label(record, outer, "Outer LFS"),
     ]
-    fig, axes = plt.subplots(2, 1, figsize=(3.25, 2.6), sharex=True)
-    fig.subplots_adjust(left=0.17, right=0.98, bottom=0.16, top=0.76, hspace=0.13)
+    fig, axes = plt.subplots(2, 1, figsize=(3.25, 2.8), sharex=True)
+    fig.subplots_adjust(left=0.17, right=0.98, bottom=0.15, top=0.74, hspace=0.13)
     colors = {
         "present": "#009E73",
         "absent": "#FFFFFF",
@@ -915,33 +915,26 @@ def paper_example(args):
         axis.spines[["top", "right"]].set_visible(False)
     axes[-1].set(xlabel="Time (ms)", xlim=(lo * 1000, hi * 1000))
     axes[-1].xaxis.set_major_locator(MaxNLocator(nbins=4, prune="both"))
+    state_handles = [
+        Patch(
+            facecolor=colors[state],
+            edgecolor="0.6",
+            alpha=0.4,
+            label=f"{state.capitalize()} (algorithmic state)",
+        )
+        for state in colors
+        if state in shown_states
+    ]
     fig.legend(
         handles=handles
-        + [Line2D([], [], color="0.15", ls=":", lw=0.6, label="Crash candidate")],
+        + [Line2D([], [], color="0.15", ls=":", lw=0.6, label="Crash candidate")]
+        + state_handles,
         loc="upper center",
         bbox_to_anchor=(0.5, 1.0),
         ncol=1,
         frameon=False,
         labelspacing=0.2,
         handlelength=1.0,
-    )
-    fig.legend(
-        handles=[
-            Patch(
-                facecolor=colors[state],
-                edgecolor="0.6",
-                alpha=0.4,
-                label=state.capitalize(),
-            )
-            for state in colors
-            if state in shown_states
-        ],
-        loc="upper center",
-        bbox_to_anchor=(0.5, 0.82),
-        ncol=len(shown_states),
-        frameon=False,
-        handlelength=0.8,
-        columnspacing=0.7,
     )
     paths = save_plot(fig, args.work / "figures/sawtooth_example")
     plt.close(fig)

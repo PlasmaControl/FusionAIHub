@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 from sawtooth_physics import OUTPUT, REPO, WORK
@@ -114,8 +115,6 @@ def report(args):
     percentage = 100 * counts["assessed_bins"] / counts["observable_bins"]
     lines = [
         "# Sawtooth physics-rule labels: current state\n",
-        "## Fix round 3\n",
-        f"Status: DONE_WITH_CONCERNS. Commit range: `{args.commit_range}`.\n",
         (
             "These are **physics-rule labels validated only by the checks described "
             "here**. There are no blind expert crash times. Neither physical label "
@@ -590,18 +589,20 @@ def report(args):
             "and evaluate all frozen methods over independently observable "
             "support without retuning.\n"
         ),
-        "## Appendix: superseded history\n",
+        "### Appendix: superseded history\n",
         (
             "Earlier rounds used a hottest-channel proxy, sparse same-shot "
             "RF localization, a q_min>1.05 conflict and unbounded fractional "
-            "edge phases. Their results are superseded. The prior history "
-            "and records remain available in commit ad0ca40f and the read-only "
-            "round4/saw/fix and fix2 artifact directories. The superseded "
-            "outputs/labeler/sawtooth/fix tree and old plan documents were "
-            "removed from the working branch.\n"
+            "edge phases. Their results are superseded. The first-round "
+            "`outputs/labeler/sawtooth/fix` records and the two earlier plan "
+            "documents were removed; `outputs/labeler/sawtooth/fix2` remains "
+            "as the immediate predecessor record, and the earlier rounds' "
+            "narrative is in the stream report appendix.\n"
         ),
     ]
-    text = "\n".join(lines)
+    body = "\n".join(lines[1:])
+    # Repository doc: subsections are level two under the title.
+    text = lines[0] + "\n" + re.sub(r"(?m)^### ", "## ", body)
     (REPO / "docs/labeler/sawtooth_results.md").write_text(text)
     (REPO / "docs/labeler/sawtooth_physics.md").write_text(
         "# Sawtooth physics-rule method\n\n"
@@ -612,14 +613,17 @@ def report(args):
         "pending. Production labels are not replaced.\n"
     )
     if args.report:
-        history = args.work / "report_history.md"
-        if not history.exists() and args.report.exists():
-            history.write_text(args.report.read_text())
-        prior = history.read_text() if history.exists() else ""
-        external_text = text.replace(args.commit_range, args.report_commit_range)
+        # Appended as the last section; an earlier copy of this section is
+        # replaced so reruns stay idempotent.
+        marker = "\n## Fix round 3\n"
+        existing = args.report.read_text()
+        if marker in existing:
+            existing = existing[: existing.index(marker)]
+        status = (
+            f"Status: DONE_WITH_CONCERNS. Commit range: `{args.report_commit_range}`.\n"
+        )
         args.report.write_text(
-            external_text + "\n<details>\n<summary>Prior report text, "
-            "retained as superseded history</summary>\n\n" + prior + "\n</details>\n"
+            existing.rstrip("\n") + "\n" + marker + "\n" + status + "\n" + body
         )
     update_readme(manifest)
 
@@ -627,9 +631,20 @@ def report(args):
 def update_readme(manifest):
     path = REPO / "data/events/sawtooth_oscillation/README.md"
     text = path.read_text()
-    first = text.index("**saw-hl3**:", text.index("## Inputs"))
-    last = text.index("## Alias", first)
-    content = f"""**saw-hl3**:
+    inputs = text.index("**saw-hl3**:", text.index("## Inputs"))
+    method = text.index("## Method\n", inputs)
+    # Keep the production ece_sawtooth description; replace everything from
+    # the physics-rule paragraphs (first run) or the previous rewrite onward.
+    tails = [
+        text.find(marker, method)
+        for marker in (
+            "`labeler.sawtooth.physics.detect`",
+            "## Physics-rule labels and validation",
+        )
+    ]
+    tail = min(index for index in tails if index >= 0)
+    last = text.index("## Alias", tail)
+    inputs_content = """**saw-hl3**:
 - EFIT-axis core ECE and low-field-side outer ECE at nominal geometric ρ=0.4–0.65
 - Mirnov 0–1 mean and Ip in MA; missing values use fitting-shot means
 
@@ -637,7 +652,8 @@ def update_readme(manifest):
 - The physical first-40-channel ECE array, 100 ms context at 10 kHz; unverified
   channels 40–47 and third-harmonic overlap samples are masked
 
-## Method and validation
+"""
+    content = f"""## Physics-rule labels and validation
 
 These are **physics-rule labels validated only by the checks described** in the
 [current-state report](../../../docs/labeler/sawtooth_results.md). The rule uses
@@ -649,6 +665,15 @@ repeats the same group search. Geometry is nominal, with no flux calibration.
 Present/absent/uncertain/unassessed states remain distinct. Production labels
 are not replaced. Old `ece_sawtooth` disagreement and its reader audit are in
 the report; the retained legacy rule and current catalog detector differ.
+Valid core ECE defines observability: missing ECE, low temperature and detected
+cutoff yield `unassessed`, and trains split at observability gaps. Native-rate
+antialiasing precedes decimation to 10 kHz. Where local neutron-rate and Mirnov
+data exist, their drop/burst flags give optional corroboration; no SXR
+corroboration is claimed without verified core/edge spatial pairing. Absence
+requires complete candidate-free context with a noise-resolved core relaxation
+test, or sustained EFIT01 q-min ≥ 1.5; ambiguous observable support remains
+uncertain. The untracked exports in `extend_saw_physics/` hold four-state spans
+and crash points; they are additive research labels.
 
 Complete population label shards are at
 `$LABELER_ROOT/round4/saw/fix3/labels/`. Verify with `sha256sum -c SHA256SUMS`
@@ -658,14 +683,21 @@ from that directory. The `SHA256SUMS` file has sha256
 bundle at `$LABELER_ROOT/round4/saw/fix3/cohort_labels/`; `extend_saw_physics/`
 is the untracked integration copy. Git does not carry the large label store.
 
-Three whole-shot TRAIN folds with inner selection fit the models and trivial
-derivative/always-present baselines. The second held-out set is the 47 nonexpert
+Both learned models use three whole-shot TRAIN folds with inner-shot selection
+of checkpoint, hyperparameters and thresholds; CUDA training stops on
+inner-selection loss patience. The trivial derivative and always-present
+baselines use the same folds. The three reviewed shots and the blind test split
+are excluded from training and tuning. `saw-hl3` receives adapted inputs
+(EFIT-axis core ECE, low-field-side outer ECE, Mirnov, Ip) while `saw-ours`
+receives the first 40 ECE channels, so comparisons include input information as
+well as architecture. The second held-out set is the 47 nonexpert
 fixed-validation shots. Headline scores are **conditional agreement with the
 physics rule on assessed bins** and include excluded-pick counts and paired
 shot-bootstrap comparisons. HL-3 crash timing is **derivative picker gated by
 HL-3**, an adapted baseline, rather than a learned crash head. Reviewed spans
 were anchored to old suggestions and used in previous rule revisions; they
-are exploratory and provide no independent crash-time precision/recall.
+are exploratory and provide no independent crash-time precision/recall; the
+190637 span may include edge-originated relaxations.
 
 ## Blind crash-time annotation queue
 
@@ -683,7 +715,7 @@ shot clustering reduces the effective count. The owner is away: annotation is
 pending and physical accuracy remains unvalidated. No model is recommended.
 
 """
-    text = text[:first] + content + text[last:]
+    text = text[:inputs] + inputs_content + text[method:tail] + content + text[last:]
     text = text.replace(
         "q conflicts abstain)", "nominal geometry and bias-aware q evidence)"
     )
@@ -695,7 +727,6 @@ def main():
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--report", type=Path)
-    parser.add_argument("--commit-range", default="ad0ca40f..r4-saw")
     parser.add_argument("--report-commit-range", default="ad0ca40f..r4-saw")
     report(parser.parse_args())
 
