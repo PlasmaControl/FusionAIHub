@@ -11,7 +11,9 @@ predicts the label at the centre bin: attached, detached or marfe. None of the t
 indicators' own inputs is among them (no Langmuir probes, no bolometer, no camera),
 though the heating power and the line density also normalise Afrac and Prad,div, so
 the model is not wholly independent of them. It is trained on the bins where the
-label is a certain state.
+label is a certain state. Only shots with every measured input present and windows
+with every sample finite are retained. No missingness channels or imputed values
+are inputs.
 
 Validation is by shot: 5-fold CV over the shots that are not in the cohort's test
 split, then a model trained on all of them scored on the test shots; both with
@@ -87,7 +89,7 @@ def shot_channels(shot: int) -> np.ndarray | None:
         t, y = got
         live = [r for r in y if np.isfinite(r).mean() > 0.9 and np.nanmedian(r) > 0]
         if live:
-            x = np.nanmedian([np.nan_to_num(r) / np.nanmedian(r) for r in live], axis=0)
+            x = np.nanmedian([r / np.nanmedian(r) for r in live], axis=0)
             dalpha = core.bin_median(t, x, edges)[0]
             with np.errstate(all="ignore"):
                 dalpha = dalpha / np.nanmedian(dalpha)
@@ -112,38 +114,72 @@ def shot_channels(shot: int) -> np.ndarray | None:
 
 def prep() -> None:
     labels = pd.read_csv(root() / "labels_bins.csv.gz")
-    certain = labels  # retain uncertain rows for independent LOO evaluation
     windows, target, shots, starts, split = [], [], [], [], []
-    for shot, rows in certain.groupby("shot"):
+    eligibility = []
+    for shot, rows in labels.groupby("shot"):
         x = shot_channels(int(shot))
         if x is None:
+            eligibility.append({"shot": int(shot), "reason": "no_signal_grid"})
+            continue
+        missing_channels = np.asarray(CHANNELS)[~np.isfinite(x).any(axis=0)].tolist()
+        if missing_channels:
+            eligibility.append(
+                {
+                    "shot": int(shot),
+                    "reason": "incomplete_inputs",
+                    "missing_channels": missing_channels,
+                }
+            )
             continue
         with np.load(root() / "bins" / f"{int(shot)}.npz") as npz:
             grid = npz["start_ms"]
         index = {float(s): i for i, s in enumerate(grid)}
-        padded = np.pad(
-            x, ((HALF, HALF), (0, 0)), mode="constant", constant_values=np.nan
-        )
+        kept = 0
         for row in rows.itertuples():
             i = index.get(float(row.start_ms))
-            if i is None:
+            if i is None or i < HALF or i + HALF >= len(x):
                 continue
-            windows.append(padded[i : i + 2 * HALF + 1])
+            window = x[i - HALF : i + HALF + 1]
+            if not np.isfinite(window).all():
+                continue
+            windows.append(window)
             target.append(int(row.state_lm) - 1 if row.state_lm in (1, 2, 3) else -1)
             shots.append(int(shot))
             starts.append(float(row.start_ms))
             split.append(row.split)
-        print("prep", shot, len(rows), flush=True)
+            kept += 1
+        eligibility.append(
+            {
+                "shot": int(shot),
+                "split": str(rows.split.iloc[0]),
+                "reason": "complete_inputs" if kept else "no_complete_window",
+                "assessed_bins": len(rows),
+                "finite_windows": kept,
+            }
+        )
+        print("prep", shot, kept, "complete windows of", len(rows), flush=True)
     out = root() / "ours"
     out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         out / "dataset.npz",
-        x=np.stack(windows).astype(np.float32),
+        x=np.stack(windows).astype(np.float32)
+        if windows
+        else np.empty((0, 2 * HALF + 1, len(CHANNELS)), dtype=np.float32),
         y=np.asarray(target, dtype=np.int64),
         shot=np.asarray(shots),
         start_ms=np.asarray(starts),
         split=np.asarray(split),
         channels=np.asarray(CHANNELS),
+    )
+    (out / "eligibility.json").write_text(
+        dumps(
+            {
+                "policy": "all measured channels present; all window samples finite; "
+                "no imputation or missingness channels",
+                "shots": eligibility,
+            },
+            indent=1,
+        )
     )
     print("dataset", len(target), "windows", len(set(shots)), "shots")
 
@@ -156,13 +192,17 @@ def metrics(y: np.ndarray, pred: np.ndarray) -> dict:
         fp = np.sum((y != k) & (pred == k))
         fn = np.sum((y == k) & (pred != k))
         f1[k] = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) else float("nan")
-    po = float(np.mean(y == pred))
-    pe = sum(np.mean(y == k) * np.mean(pred == k) for k in labels)
+    po = float(np.mean(y == pred)) if len(y) else float("nan")
+    pe = sum(np.mean(y == k) * np.mean(pred == k) for k in labels) if len(y) else 1.0
     present = [k for k in labels if np.any(y == k)]
     return {
         "accuracy": po,
-        "kappa": float((po - pe) / (1 - pe)) if pe < 1 else 1.0,
-        "macro_f1": float(np.nanmean([f1[k] for k in present])),
+        "kappa": float((po - pe) / (1 - pe))
+        if 1 - pe > np.finfo(float).eps
+        else float("nan"),
+        "macro_f1": float(np.mean([f1[k] for k in present]))
+        if present
+        else float("nan"),
         "f1_attached": f1[0],
         "f1_detached": f1[1],
         "f1_marfe": f1[2],
@@ -170,28 +210,35 @@ def metrics(y: np.ndarray, pred: np.ndarray) -> dict:
 
 
 def with_ci(y, pred, shot, rng) -> dict:
-    if not len(y):
-        return {"n_bins": 0, "n_shots": 0}
     point = metrics(y, pred)
     by_shot = {s: np.flatnonzero(shot == s) for s in np.unique(shot)}
     keys = list(by_shot)
     draws = {k: [] for k in point}
-    for _ in range(BOOTSTRAPS):
+    for _ in range(BOOTSTRAPS if keys else 0):
         pick = rng.integers(0, len(keys), len(keys))
         idx = np.concatenate([by_shot[keys[j]] for j in pick])
         for k, v in metrics(y[idx], pred[idx]).items():
             draws[k].append(v)
-    return {
-        k: {
-            "value": point[k],
-            "ci95": [float(v) for v in np.nanpercentile(draws[k], [2.5, 97.5])],
-        }
-        for k in point
+    result = {
+        "n_bins": len(y),
+        "n_shots": len(keys),
+        "shot_ids": [int(s) for s in keys],
     }
+    for k, value in point.items():
+        finite = np.asarray(draws[k])[np.isfinite(draws[k])]
+        result[k] = {
+            "value": value,
+            "ci95": [float(v) for v in np.percentile(finite, [2.5, 97.5])]
+            if len(finite)
+            else [float("nan"), float("nan")],
+            "valid_replicates": len(finite),
+            "replicates": BOOTSTRAPS,
+        }
+    return result
 
 
 def baseline_strata(data, pred, rng):
-    """Independent proxy-pair LOO and inversion-source populations, exactly."""
+    """Bins where the other two indicators agree, by split and camera source."""
     import detach_benchmark as benchmark
 
     labels = pd.read_csv(root() / "labels_bins.csv.gz").set_index(["shot", "start_ms"])
@@ -211,13 +258,15 @@ def baseline_strata(data, pred, rng):
                 ("combined", rows.state_lm.to_numpy()),
                 ("loo_tangtv", reference),
             ):
-                keep = selection & np.isin(truth, (1, 2, 3))
+                keep = selection & np.isin(truth, (1, 2, 3)) & (pred >= 0)
                 entry = with_ci(truth[keep] - 1, pred[keep], data["shot"][keep], rng)
                 entry["n_bins"] = int(keep.sum())
                 entry["n_shots"] = len(np.unique(data["shot"][keep]))
                 out[f"{population}_{source}_{name}"] = entry
     out["reference_note"] = (
-        "LOO TangTV is compatible Afrac/Prad proxy-pair agreement, low confidence; not independently reviewed truth."
+        "loo_tangtv = bins where the other two indicators agree: the compatible "
+        "Afrac/Prad proxy pair, with posterior gates. This selects agreement and "
+        "is not independently reviewed truth."
     )
     return out
 
@@ -232,25 +281,16 @@ def train() -> None:
     rng = np.random.default_rng(SEED)
 
     def standardise(train_x, *others):
-        mean = np.nanmean(train_x.reshape(-1, train_x.shape[-1]), axis=0)
-        std = np.nanstd(train_x.reshape(-1, train_x.shape[-1]), axis=0) + 1e-6
-        out = []
-        for a in (train_x, *others):
-            z = (a - mean) / std
-            missing = ~np.isfinite(z)
-            out.append(
-                np.concatenate(
-                    [np.where(missing, 0.0, z), missing.astype(np.float32)], axis=2
-                )
-            )
-        return out
+        mean = train_x.reshape(-1, train_x.shape[-1]).mean(axis=0)
+        std = train_x.reshape(-1, train_x.shape[-1]).std(axis=0) + 1e-6
+        return [(a - mean) / std for a in (train_x, *others)]
 
     def net(channels: int) -> nn.Module:
         class Net(nn.Module):
             def __init__(self):
                 super().__init__()
                 self.body = nn.Sequential(
-                    nn.Conv1d(2 * channels, 32, 5, padding=2),
+                    nn.Conv1d(channels, 32, 5, padding=2),
                     nn.ReLU(),
                     nn.Conv1d(32, 32, 5, padding=4, dilation=2),
                     nn.ReLU(),
@@ -266,6 +306,8 @@ def train() -> None:
         return Net()
 
     def fit_predict(train_idx, test_idx, seed):
+        if not len(train_idx):
+            return np.full((len(test_idx), 3), np.nan)
         torch.manual_seed(seed)
         xt, xe = standardise(x[train_idx], x[test_idx])
         yt = y[train_idx]
@@ -291,23 +333,42 @@ def train() -> None:
     fit_shots = np.unique(shot[split != "test"])
     rng.shuffle(fit_shots)
     folds = np.array_split(fit_shots, FOLDS)
-    majority_pred = np.zeros(len(y), int)
+    if not np.isfinite(x).all():
+        raise ValueError("Rerun prep: detach-ours requires complete finite inputs")
+    majority_pred = np.full(len(y), -1, int)
     prob = np.full((len(y), 3), np.nan)
+    fold_records = []
     for k, held in enumerate(folds):
+        if not len(held):
+            continue
         test_mask = np.isin(shot, held)
         train_mask = (split != "test") & (y >= 0) & ~test_mask
         prob[test_mask] = fit_predict(
             np.flatnonzero(train_mask), np.flatnonzero(test_mask), SEED + k
         )
-        majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
+        if train_mask.any():
+            majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
+        fold_records.append(
+            {
+                "fold": k,
+                "training_shot_ids": sorted(
+                    int(s) for s in np.unique(shot[train_mask])
+                ),
+                "heldout_shot_ids": sorted(int(s) for s in held),
+                "training_certain_bins": int(train_mask.sum()),
+                "predicted_bins": int(np.isfinite(prob[test_mask]).all(axis=1).sum()),
+            }
+        )
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
     if len(final):
         prob[final] = fit_predict(
             np.flatnonzero((split != "test") & (y >= 0)), final, SEED + FOLDS
         )
-    pred = prob.argmax(axis=1)
-    cv = np.flatnonzero((split != "test") & (y >= 0))
+    scored = np.isfinite(prob).all(axis=1)
+    pred = np.full(len(y), -1, int)
+    pred[scored] = prob[scored].argmax(axis=1)
+    cv = np.flatnonzero((split != "test") & (y >= 0) & scored)
     boot = np.random.default_rng(1)
     result = {
         "inputs": list(CHANNELS),
@@ -315,18 +376,26 @@ def train() -> None:
         "bin_ms": core.BIN_MS,
         "epochs": EPOCHS,
         "folds": FOLDS,
+        "fold_records": fold_records,
         "n_windows": len(y),
         "n_shots": len(np.unique(shot)),
         "class_counts": {
             core.STATE_NAMES[k + 1]: int(np.sum(y == k)) for k in range(3)
         },
+        "input_policy": "complete measured input windows; no imputation or "
+        "missingness channels",
+        "fit_excluded_split": "test",
+        "normalization": "mean and standard deviation fitted on training "
+        "windows within each shot-held-out fold",
+        "unscored_windows": int((~scored).sum()),
+        "eligibility": str(root() / "ours" / "eligibility.json"),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
     }
     result["n_cv_windows"] = len(cv)
     result["n_cv_shots"] = len(np.unique(shot[cv]))
     result["stratified"] = baseline_strata(data, pred, boot)
-    final = final[y[final] >= 0]
+    final = final[(y[final] >= 0) & scored[final]]
     if len(final):
         result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
         result["test_majority"] = metrics(

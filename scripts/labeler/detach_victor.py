@@ -14,13 +14,12 @@ the lower-divertor view, nearest to the bin centre, black level removed, square-
 8 x 8 block means to 30 x 90) and predicts attached, detached or marfe. The target is
 the combined label where it is a certain state.
 
-Two caveats are scored, not hidden. (1) The TangTV indicator is one of the label's
-three voters and is itself read from these frames, so the label and the input share
-information; the score is therefore also reported on the bins where TangTV did not
-vote (the label there is Afrac and Prad,div alone), which is the fair test of whether
-the frames know about the state. (2) The camera sees the divertor only on the
-geometry it was built for; on other geometries the model is asked a question the
-frames may not answer.
+The TangTV indicator is required by the certain consensus and is read from the
+same diagnostic as these frames: the combined-label score shares information with
+the input. A separate diagnostic agreement score uses bins where the other two
+indicators agree (the Afrac/Prad proxy pair), with TangTV withheld. This selected
+reference is not independent physical truth. No certain consensus bins without a
+TangTV vote are implied. The camera is also limited to its divertor geometry.
 
 Validation is by shot: 5-fold CV over the shots outside the cohort's test split, then
 a model trained on all of them scored once on the test shots; 1000-replicate shot
@@ -89,7 +88,9 @@ def prep() -> None:
     out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         out / "dataset.npz",
-        x=np.concatenate(frames),
+        x=np.concatenate(frames)
+        if frames
+        else np.empty((0, 240 // BLOCK, 720 // BLOCK), dtype=np.float16),
         y=np.asarray(target, dtype=np.int64),
         shot=np.asarray(shots),
         start_ms=np.asarray(starts),
@@ -130,6 +131,8 @@ def train() -> None:
             return self.head(self.body(a))
 
     def fit_predict(train_idx, test_idx, seed):
+        if not len(train_idx):
+            return np.full((len(test_idx), 3), np.nan)
         torch.manual_seed(seed)
         scale = max(
             float(np.percentile(x[train_idx][::7].astype(np.float32), 99.5)), 1e-6
@@ -161,32 +164,53 @@ def train() -> None:
 
     fit_shots = np.unique(shot[split != "test"])
     np.random.default_rng(SEED).shuffle(fit_shots)
-    majority_pred = np.zeros(len(y), int)
+    majority_pred = np.full(len(y), -1, int)
     prob = np.full((len(y), 3), np.nan)
+    fold_records = []
     for k, held in enumerate(np.array_split(fit_shots, FOLDS)):
+        if not len(held):
+            continue
         test_mask = np.isin(shot, held)
         train_mask = (split != "test") & (y >= 0) & ~test_mask
         prob[test_mask] = fit_predict(
             np.flatnonzero(train_mask), np.flatnonzero(test_mask), SEED + k
         )
-        majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
+        if train_mask.any():
+            majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
+        fold_records.append(
+            {
+                "fold": k,
+                "training_shot_ids": sorted(
+                    int(s) for s in np.unique(shot[train_mask])
+                ),
+                "heldout_shot_ids": sorted(int(s) for s in held),
+                "training_certain_bins": int(train_mask.sum()),
+                "predicted_bins": int(np.isfinite(prob[test_mask]).all(axis=1).sum()),
+            }
+        )
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
     if len(final):
         prob[final] = fit_predict(
             np.flatnonzero((split != "test") & (y >= 0)), final, SEED + FOLDS
         )
-    pred = prob.argmax(axis=1)
-    cv = np.flatnonzero((split != "test") & (y >= 0))
+    scored = np.isfinite(prob).all(axis=1)
+    pred = np.full(len(y), -1, int)
+    pred[scored] = prob[scored].argmax(axis=1)
+    cv = np.flatnonzero((split != "test") & (y >= 0) & scored)
     boot = np.random.default_rng(1)
-    major = np.bincount(y[cv]).argmax()
+    fit_labels = y[(split != "test") & (y >= 0)]
+    major = np.bincount(fit_labels).argmax() if len(fit_labels) else -1
     result = {
         "input": f"TangTV channel 2 frame, {240 // BLOCK} x {720 // BLOCK}",
         "epochs": EPOCHS,
         "folds": FOLDS,
+        "fold_records": fold_records,
         "n_frames": len(y),
         "n_shots": len(np.unique(shot)),
         "n_tangtv_voted": int(voted.sum()),
+        "fit_excluded_split": "test",
+        "unscored_frames": int((~scored).sum()),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
     }
@@ -196,7 +220,7 @@ def train() -> None:
         "99.5th percentile fitted on training frames within each fold"
     )
     result["stratified"] = baseline_strata(data, pred, boot)
-    final = final[y[final] >= 0]
+    final = final[(y[final] >= 0) & scored[final]]
     free = cv[~voted[cv]]
     if len(free) > 50 and len(np.unique(y[free])) > 1:
         result["cv_no_tangtv_vote"] = {
@@ -204,6 +228,14 @@ def train() -> None:
             "n_shots": len(np.unique(shot[free])),
             **with_ci(y[free], pred[free], shot[free], boot),
             "majority": metrics(y[free], np.full(len(free), major)),
+        }
+    else:
+        result["cv_no_tangtv_vote"] = {
+            "n_frames": len(free),
+            "n_shots": len(np.unique(shot[free])),
+            "status": "unavailable",
+            "reason": "Certain consensus requires a TangTV vote; no independent "
+            "no-camera consensus accuracy reference is supplied.",
         }
     if len(final):
         result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)

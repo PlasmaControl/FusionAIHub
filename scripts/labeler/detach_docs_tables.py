@@ -31,9 +31,12 @@ def ci(entry: dict, digits: int = 2) -> str:
     """`value [lo, hi]` of a `{value, ci95}` entry."""
     if entry is None:
         return "-"
-    value, (lo, hi) = entry["value"], entry["ci95"]
-    if math.isnan(value):
+    value = entry.get("value")
+    lo, hi = entry.get("ci95", (None, None))
+    if value is None or not math.isfinite(value):
         return "-"
+    if lo is None or hi is None:
+        return f"{value:.{digits}f}"
     return f"{value:.{digits}f} [{lo:.{digits}f}, {hi:.{digits}f}]"
 
 
@@ -164,7 +167,7 @@ def benchmark_tables() -> str:
         return ""
     out = ""
     for ref, title in (
-        ("loo", "against the label with that indicator's vote withheld"),
+        ("loo", "bins where the other two indicators agree"),
         ("combined", "against the combined label (circular, an upper bound)"),
     ):
         for subset in ("all", "test_shots"):
@@ -218,7 +221,7 @@ def benchmark_tables() -> str:
             ["source", "reference", "bins", "agreement", "kappa"], rows
         )
     te = bench.get("divertor_te_check")
-    if te:
+    if te and te.get("status") != "withdrawn":
         rows = [
             [
                 state,

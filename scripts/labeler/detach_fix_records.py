@@ -13,6 +13,7 @@ import detach_label as dl
 import numpy as np
 import pandas as pd
 from detach_json import dumps
+from detach_round2_records import BEFORE, summarize
 
 from labeler.events.detachment import core, label_model, thresholds
 
@@ -95,7 +96,10 @@ def legacy_sensitivity():
         },
         "refit_implied_accuracies": subset.accuracies(),
         "original_implied_accuracies": record["labelling_functions"],
-        "interpretation": "Model-implied weights are not physical accuracy. Original TangTV weight was a bound solution; posteriors uncalibrated.",
+        "interpretation": (
+            "Model-implied weights are not physical accuracy. Original TangTV "
+            "weight was a bound solution; posteriors uncalibrated."
+        ),
     }
 
 
@@ -111,8 +115,8 @@ def current_sensitivity(frame):
         model = label_model.LabelModel().fit_anchored(
             votes[fit], valid[fit], anchor_mask=mask
         )
-        posterior = label_model.pool_marfe(model.posterior(votes), votes[:, 2] > 0)
-        states, _ = label_model.redundant_decide(posterior, votes, valid, 0.7)
+        labelled, _, _ = dl.label_frame(frame, model, 0.7)
+        states = labelled.state_model_diagnostic.to_numpy()
         models[name] = (model, states)
     changed = models["mixed"][1] != models["inversion_only"][1]
     return {
@@ -138,13 +142,16 @@ def development_validation(bins):
     train = bins.split.isin(("train", "outside")).to_numpy()
     tv = bins.tangtv_vote.to_numpy()
     pv = bins.prad_vote.to_numpy()
-    common = (
+    available = (
         train
         & bins.prad_valid.to_numpy()
         & bins.tangtv_valid.to_numpy()
         & (bins.tangtv_source == "inversion").to_numpy()
         & np.isin(tv, (1, 2))
     )
+    # Unsigned lower-shelf windows are a separate provisional population.
+    common = available & bins.tangtv_tier.eq("upper_shelf").to_numpy()
+    lower = available & bins.tangtv_tier.eq("lower_shelf_window").to_numpy()
     voting = common & (pv > 0)
     table = np.array(
         [[np.sum(voting & (tv == a) & (pv == b)) for b in (1, 2)] for a in (1, 2)]
@@ -169,14 +176,29 @@ def development_validation(bins):
                 [by_shot[i] for i in rng.integers(0, len(by_shot), len(by_shot))],
                 axis=0,
             )
-            draws.append(bench.kappa_from(t))
+            score = bench.kappa_from(t)
+            if np.isfinite(score):
+                draws.append(score)
     return {
         "thresholds": {
             "attached_max": thresholds.PRAD_ATTACHED_MAX,
             "detached_min": thresholds.PRAD_DETACHED_MIN,
         },
-        "source": "Local Chen 201081 worked example; Eldon 2019 supplies sensor definition, not these thresholds.",
-        "selection": "Fixed thresholds, no optimisation; fixed cohort train plus external inversion development shots, excluding val and test. External shots are development training inputs to the label fit, not blind evaluation.",
+        "source": (
+            "Local Chen 201081 worked example; Eldon 2019 supplies sensor "
+            "definition, not these thresholds."
+        ),
+        "selection": (
+            "Fixed thresholds, no optimisation; fixed cohort train plus external "
+            "upper-shelf inversion development shots, excluding val and test. "
+            "Lower-shelf windows are reported separately pending sign-off. "
+            "External shots "
+            "are development training inputs to the label fit, not blind evaluation."
+        ),
+        "provisional_lower_shelf_valid_reference": population(bins, lower),
+        "provisional_lower_shelf_cohort_train_reference": population(
+            bins, lower & bins.split.eq("train").to_numpy()
+        ),
         "valid_reference": population(bins, common),
         "cohort_train_valid_reference": population(
             bins, common & bins.split.eq("train").to_numpy()
@@ -188,6 +210,8 @@ def development_validation(bins):
         "confusion_ref_by_vote": table.tolist(),
         "binary_kappa": bench.kappa_from(table),
         "kappa_ci95": np.nanpercentile(draws, [2.5, 97.5]).tolist() if draws else None,
+        "kappa_valid_bootstrap_replicates": len(draws),
+        "bootstrap_replicates_requested": 1000,
         "agreement": float(np.trace(table) / table.sum()) if table.sum() else None,
         "power_range_mw": np.nanpercentile(
             bins.loc[common, "aux_p_in_w"] / 1e6, [0, 100]
@@ -220,7 +244,11 @@ def candidate_selection():
         "inversions": len(inversion),
         "cohort_inversion_overlap": len(selected & inversion),
         "additional_examples": sorted(examples),
-        "recipe": "Union of fixed cohort with real bolo (xdata>1) and real TangTV OR Langmuir (xdata>1), all local inversions, plus four explicit examples. Group presence/stubs do not count. No state labels/scores used.",
+        "recipe": (
+            "Union of fixed cohort with real bolo (xdata>1) and real TangTV OR "
+            "Langmuir (xdata>1), all local inversions, plus four explicit examples. "
+            "Group presence/stubs do not count. No state labels/scores used."
+        ),
         "survey": str(ROOT / "survey/corpus_survey.csv"),
         "shot_list": str(ROOT / "shots_fetch.txt"),
     }
@@ -254,7 +282,10 @@ def fetch_audit():
         "auth_stop": (ROOT / "fetch_auth_stop").exists(),
         "tree_and_pointname_attempts": str(ROOT / "processed_probe.json"),
         "node_read_attempts": json.loads((ROOT / "node_read.json").read_text()),
-        "bolometer_geometry": "No chord geometry in surveyed BOLOM tree/local resources; row omitted, no invented chord rays.",
+        "bolometer_geometry": (
+            "No chord geometry in surveyed BOLOM tree/local resources; appendix "
+            "uses a chord-index profile, not spatial rays."
+        ),
     }
 
 
@@ -268,8 +299,29 @@ def main():
     certain = np.isin(state, (1, 2, 3))
     conflict = label_model.rule(votes, valid) == core.UNCERTAIN
     audit = {
-        "certain_below_threshold": int(
-            np.sum(certain & (frame.confidence.to_numpy() < 0.7))
+        "certain_elm_unknown": int(np.sum(certain & ~np.isfinite(frame.aux_elm_share))),
+        "certain_lower_shelf": int(
+            np.sum(certain & frame.tangtv_tier.ne("upper_shelf"))
+        ),
+        "jsat_vote_without_sol_position": int(
+            np.sum((bins.afrac_vote > 0) & ~bins.afrac_probe_position_valid)
+        ),
+        "jsat_vote_in_private_flux_or_margin": int(
+            np.sum(
+                (bins.afrac_vote > 0)
+                & (
+                    ~np.isfinite(bins.aux_jsat_selected_psin)
+                    | (
+                        bins.aux_jsat_selected_psin
+                        < thresholds.PROBE_SOL_PSI_N_MIN - 1e-6
+                    )
+                    | ~np.isfinite(bins.aux_jsat_radial_margin_m)
+                    | (
+                        bins.aux_jsat_radial_margin_m
+                        < thresholds.PROBE_STRIKE_MARGIN_M - 1e-6
+                    )
+                )
+            )
         ),
         "certain_conflict": int(np.sum(certain & conflict)),
         "certain_without_valid_tangtv_vote": int(
@@ -286,9 +338,6 @@ def main():
                     | ~frame.tangtv_marfe_second_cue.to_numpy()
                 )
             )
-        ),
-        "tangtv_valid_elm_majority": int(
-            np.sum(valid[:, 2] & (frame.aux_elm_share.to_numpy() > 0.5))
         ),
         "tangtv_valid_short_or_missing_aux_leg": int(
             np.sum(
@@ -311,6 +360,20 @@ def main():
         ),
     }
     assert all(v == 0 for k, v in audit.items() if k != "temporal_imputations"), audit
+    elm_coverage = {
+        name: {
+            "bins": len(rows),
+            "finite_bins": int(np.isfinite(rows.aux_elm_share).sum()),
+            "nan_bins": int((~np.isfinite(rows.aux_elm_share)).sum()),
+            "majority_bins": int((rows.aux_elm_share > 0.5).sum()),
+        }
+        for name, rows in (
+            ("all_discharge", bins),
+            ("assessed", frame),
+            ("certain", frame.loc[certain]),
+            ("tangtv_valid", bins.loc[bins.tangtv_valid]),
+        )
+    }
     by_source = {}
     for source in ("inversion", "surrogate", "none"):
         for envelope in (True, False):
@@ -358,6 +421,7 @@ def main():
         )
     records = {
         "audit": audit,
+        "elm_coverage": elm_coverage,
         "population": population(frame, np.ones(len(frame), bool)),
         "certain": population(frame, certain),
         "tiers": {str(k): int(v) for k, v in frame.tier.value_counts().items()},
@@ -375,79 +439,27 @@ def main():
             ),
             "valid": population(bins, lower & bins.tangtv_valid),
             "votes": bins.loc[lower, "tangtv_vote"].value_counts().to_dict(),
-            "method": "SSA rx<=R<1.37; lower-shelf strike Z; >=10 cm leg; same ELM/MARFE gates",
+            "method": (
+                "Owner make_labels_for_file(r_max=SHELF_WALL_R=1.37); lower-shelf "
+                "strike Z; >=10 cm leg; known ELM coverage; provisional "
+                "lower_shelf_window, excluded from certain tier pending sign-off"
+            ),
+            "exported_tier": population(frame, frame.tier.eq("lower_shelf_window")),
+            "provisional_states": frame.loc[
+                frame.tier.eq("lower_shelf_window"), "state_lower_shelf_window"
+            ]
+            .value_counts()
+            .to_dict(),
             "loo_other_indicators": lower_checks,
             "te_check": "withdrawn, no geometrically localised processed DTS",
         },
         "candidate_selection": candidate_selection(),
         "fetch": fetch_audit(),
+        "round2_populations": summarize(),
+        "round2_before": json.loads(BEFORE.read_text()),
     }
     RESULTS.mkdir(exist_ok=True)
     (RESULTS / "detachment_fix.json").write_text(dumps(records, indent=1))
-    paper = {
-        "task": "detachment",
-        "bin_ms": 50,
-        "reference": "unverified redundant diagnostic consensus; no expert truth",
-        "legacy": [
-            {
-                "indicator": "Afrac (Eldon 2021/2022)",
-                "setting": "nearest outer-target processed Jsat; attached pre-puff C, separate L/H; DOD=1/Afrac",
-                "reproduced": bool((bins.afrac_method == "eldon_pre_puff_LH").any()),
-                "coverage_kind": "valid measurements with fitted attached L/H reference",
-                "coverage": population(
-                    bins, bins.afrac_valid & bins.afrac_method.eq("eldon_pre_puff_LH")
-                ),
-            },
-            {
-                "indicator": "Prad,div (Eldon 2019)",
-                "setting": "published calibrated multi-chord lower-divertor sensor; no universal published state threshold",
-                "reproduced": False,
-                "coverage_kind": "published state classification; no universal thresholds available",
-                "coverage": {"bins": 0, "shots": 0},
-            },
-            {
-                "indicator": "TangTV (Chen 2026)",
-                "setting": "C-III SSA height; DZ cliff about 0.5; upper shelf; height>1 is candidate MARFE",
-                "reproduced": True,
-                "coverage_kind": "valid upper-shelf SSA/DZ measurements, including transition-band abstentions; not expert state labels",
-                "coverage": population(
-                    bins,
-                    bins.tangtv_valid & bins.tangtv_source.eq("inversion") & ~lower,
-                ),
-            },
-        ],
-        "Tokamak-SI": {
-            "coverage_kind": "certain compatible diagnostic consensus; unverified",
-            "setting": "compatible redundant votes plus posterior>=0.7, TangTV support, geometry/ELM gates, MARFE spatial+persistent+second cue; proxy pair uncertain",
-            "assessed": population(frame, np.ones(len(frame), bool)),
-            "certain": population(frame, certain),
-            "state_counts": {
-                core.STATE_NAMES[k]: int(np.sum(state == k)) for k in (1, 2, 3, 4)
-            },
-            "tier_counts": records["tiers"],
-        },
-        "local_proxies": {
-            "jsat": population(
-                bins, bins.afrac_valid & bins.afrac_method.eq("local_proxy")
-            ),
-            "prad": population(bins, bins.prad_valid),
-        },
-        "sources": [
-            "detachment_fix.json",
-            "detachment_benchmark.json",
-            "../data/events/detachment/extend_detach_vote/records/label_model.json",
-        ],
-    }
-
-    # Keep Figure 2 input small; detailed shot IDs are in the full fix audit.
-    def trim(x):
-        if isinstance(x, dict):
-            return {k: trim(v) for k, v in x.items() if k != "shot_ids"}
-        if isinstance(x, list):
-            return [trim(v) for v in x]
-        return x
-
-    (RESULTS / "detachment_figure2.json").write_text(dumps(trim(paper), indent=1))
     print(
         dumps(
             {
