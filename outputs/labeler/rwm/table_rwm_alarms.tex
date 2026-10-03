@@ -1,0 +1,19 @@
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{table*}[t]
+\centering
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Evaluation & \shortstack{Onsets\\warned} & \shortstack{Onset\\detection} & \shortstack{Detection minus\\random reference} & \shortstack{Median warning\\(ms)} \\
+\midrule
+Seed 0 & 9/48 & $0.188$ {\scriptsize $[0.049, 0.333]$} & $-0.002$ {\scriptsize $[-0.058, 0.052]$} & 356 [286, 389] \\
+Seed 1 & 8/48 & $0.167$ {\scriptsize $[0.046, 0.302]$} & $0.031$ {\scriptsize $[-0.042, 0.118]$} & 179 [75, 343] \\
+Seed 2 & 10/48 & $0.208$ {\scriptsize $[0.085, 0.340]$} & $0.038$ {\scriptsize $[-0.012, 0.094]$} & 302 [56, 340] \\
+Seed 3 & 13/48 & $0.271$ {\scriptsize $[0.158, 0.392]$} & $0.049$ {\scriptsize $[-0.054, 0.142]$} & 239 [114, 347] \\
+Seed 4 & 6/48 & $0.125$ {\scriptsize $[0.025, 0.245]$} & $0.057$ {\scriptsize $[-0.021, 0.158]$} & 135 [38, 341] \\
+Run-record holdout & 8/48 & $0.167$ {\scriptsize $[0.049, 0.309]$} & $0.014$ {\scriptsize $[-0.025, 0.053]$} & 214 [140, 343] \\
+Five-split point range & -- & $0.125$ to $0.271$ & $-0.002$ to $0.057$ & $135$ to $356$ \\
+\bottomrule
+\end{tabular}
+\caption{Forest alarms across all five splits and the run-record holdout. Brackets: 95\% shot-bootstrap intervals (basic paired intervals for differences), conditional on fixed fitted predictions. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. The reference-split $\beta_N$ rule warns 4/48 onsets; detection minus reference is $0.058$ {\scriptsize $[0.014, 0.115]$}. Its low detection coverage limits this result.}
+\end{table*}

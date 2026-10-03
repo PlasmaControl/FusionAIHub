@@ -1,3 +1,5 @@
+Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions; differences use basic paired intervals. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
+
 ### Five-split AUROC ranges — rwm-brf (seeds 0–4)
 
 | campaign / scope | primary AUROC range | high-beta conditional AUROC range | above-proxy conditional AUROC range |
@@ -19,24 +21,43 @@ Ranges are min/max point estimates across seeds 0–4, not confidence intervals.
 | 4 | 0.034 [-0.017, 0.088] | 0.022 [-0.054, 0.105] | 0.017 [-0.076, 0.128] |
 | point range | 0.001–0.047 | -0.040–0.054 | -0.051–0.061 |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-time ranks are fixed across splits. These three pooled strata retain discharge-phase information.
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals condition on fixed fitted predictions; elapsed-time ranks are fixed across splits. These three pooled strata retain discharge-phase information. The primary seed-3 lower bound is -0.0001, borderline near zero; a bootstrap-bound sign change alone would not establish robust superiority.
 
-### Piccione-style primary scores — all models (split 0)
+### Campaign paired AUROC — five splits and run-record holdout
 
-| model | AUROC (95% CI) | AUPRC (95% CI) | F1 (95% CI) |
-|---|---|---|---|
-| rwm-brf | 0.760 [0.706, 0.809] | 0.163 [0.123, 0.220] | 0.275 [0.227, 0.337] |
-| rule-time-since-flattop | 0.759 [0.712, 0.815] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] |
-| rule-betan | 0.707 [0.639, 0.772] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] |
-| rule-betan-over-li | 0.723 [0.664, 0.784] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] |
-| rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] |
+| campaign | evaluation | primary AUROC difference | high-beta conditional AUROC difference | above-proxy conditional AUROC difference |
+|---|---|---|---|---|
+| 2014 | seed 0 | -0.047 [-0.126, 0.050] | -0.255 [-0.422, -0.067] | -0.262 [-0.451, -0.045] |
+| 2014 | seed 1 | 0.006 [-0.066, 0.091] | -0.113 [-0.231, 0.059] | -0.105 [-0.246, 0.062] |
+| 2014 | seed 2 | -0.011 [-0.078, 0.068] | -0.148 [-0.247, -0.002] | -0.155 [-0.267, -0.004] |
+| 2014 | seed 3 | 0.025 [-0.039, 0.111] | -0.039 [-0.148, 0.125] | -0.031 [-0.169, 0.159] |
+| 2014 | seed 4 | 0.012 [-0.061, 0.110] | -0.097 [-0.223, 0.111] | -0.106 [-0.245, 0.089] |
+| 2014 | run-record holdout | 0.019 [-0.052, 0.096] | -0.126 [-0.245, 0.005] | -0.134 [-0.293, 0.011] |
+| 2018 | seed 0 | -0.025 [-0.057, 0.033] | -0.033 [-0.078, 0.048] | -0.044 [-0.109, 0.065] |
+| 2018 | seed 1 | -0.012 [-0.039, 0.031] | -0.009 [-0.049, 0.059] | -0.023 [-0.081, 0.061] |
+| 2018 | seed 2 | -0.020 [-0.050, 0.036] | -0.024 [-0.068, 0.066] | -0.042 [-0.106, 0.075] |
+| 2018 | seed 3 | 0.004 [-0.020, 0.046] | 0.016 [-0.016, 0.081] | 0.015 [-0.040, 0.109] |
+| 2018 | seed 4 | -0.012 [-0.041, 0.045] | -0.005 [-0.052, 0.080] | -0.014 [-0.084, 0.101] |
+| 2018 | run-record holdout | -0.049 [-0.073, -0.013] | -0.070 [-0.117, -0.010] | -0.057 [-0.109, 0.011] |
+
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 high-beta AUROC is at or below chance across the five splits (0.31–0.53; reference-split CI [0.22, 0.41]) and below elapsed time on every split.
+
+### Piccione-style primary scores — all models (reference split, seed 0)
+
+| model | AUROC (95% CI) | AUPRC (95% CI) | F1 (95% CI) | slice TPR (95% CI) | slice FPR (95% CI) |
+|---|---|---|---|---|---|
+| rwm-brf | 0.760 [0.706, 0.809] | 0.163 [0.123, 0.220] | 0.275 [0.227, 0.337] | 0.756 [0.646, 0.869] | 0.342 [0.261, 0.421] |
+| rule-elapsed-time | 0.759 [0.712, 0.815] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] | 0.692 [0.525, 0.830] | 0.318 [0.244, 0.368] |
+| rule-betan | 0.707 [0.639, 0.772] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] | 0.750 [0.619, 0.865] | 0.397 [0.323, 0.454] |
+| rule-betan-over-li | 0.723 [0.664, 0.784] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] | 0.735 [0.602, 0.847] | 0.356 [0.269, 0.427] |
+| rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
 ### Broader Hanson-negative sensitivity — same models and predictions
 
 | model | AUROC (95% CI) | AUPRC (95% CI) |
 |---|---|---|
 | rwm-brf | 0.740 [0.668, 0.799] | 0.065 [0.043, 0.103] |
-| rule-time-since-flattop | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
+| rule-elapsed-time | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
 | rule-betan | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
 | rule-betan-over-li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
 | rule-rwm-candidates | 0.498 [0.495, 0.500] | 0.034 [0.026, 0.041] |
@@ -46,7 +67,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-ti
 | model | AUROC (95% CI) | AUPRC (95% CI) | positive slices | assumed-negative slices | prevalence |
 |---|---|---|---|---|---|
 | rwm-brf | 0.602 [0.491, 0.688] | 0.168 [0.123, 0.228] | 365 | 2351 | 0.134 |
-| rule-time-since-flattop | 0.642 [0.557, 0.732] | 0.255 [0.241, 0.343] | 365 | 2351 | 0.134 |
+| rule-elapsed-time | 0.642 [0.557, 0.732] | 0.255 [0.241, 0.343] | 365 | 2351 | 0.134 |
 | rule-betan | 0.563 [0.468, 0.651] | 0.176 [0.132, 0.273] | 365 | 2351 | 0.134 |
 | rule-betan-over-li | 0.593 [0.509, 0.677] | 0.165 [0.132, 0.249] | 365 | 2351 | 0.134 |
 | rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.134 [0.108, 0.171] | 365 | 2351 | 0.134 |
@@ -56,21 +77,10 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-ti
 | model | AUROC (95% CI) | AUPRC (95% CI) | positive slices | assumed-negative slices | prevalence |
 |---|---|---|---|---|---|
 | rwm-brf | 0.546 [0.416, 0.642] | 0.176 [0.130, 0.240] | 365 | 1913 | 0.160 |
-| rule-time-since-flattop | 0.597 [0.524, 0.676] | 0.268 [0.254, 0.355] | 365 | 1913 | 0.160 |
+| rule-elapsed-time | 0.597 [0.524, 0.676] | 0.268 [0.254, 0.355] | 365 | 1913 | 0.160 |
 | rule-betan | 0.509 [0.386, 0.617] | 0.183 [0.139, 0.279] | 365 | 1913 | 0.160 |
 | rule-betan-over-li | 0.512 [0.428, 0.591] | 0.168 [0.132, 0.252] | 365 | 1913 | 0.160 |
 | rule-rwm-candidates | 0.500 [0.500, 0.500] | 0.160 [0.125, 0.215] | 365 | 1913 | 0.160 |
-
-### Campaign sensitivity — rwm-brf, split 0 (95% shot CIs)
-
-| group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
-|---|---|---|---|---|---|---|---|
-| 2014 | primary | 20 | 260 | 2280 | 0.102 | 0.663 [0.596, 0.745] | 0.130 [0.099, 0.190] |
-| 2014 | high-beta conditional | 20 | 168 | 754 | 0.182 | 0.311 [0.220, 0.408] | 0.125 [0.091, 0.180] |
-| 2014 | above-proxy conditional | 20 | 176 | 705 | 0.200 | 0.277 [0.172, 0.382] | 0.132 [0.095, 0.200] |
-| 2018 | primary | 13 | 220 | 2975 | 0.069 | 0.819 [0.744, 0.879] | 0.236 [0.159, 0.336] |
-| 2018 | high-beta conditional | 13 | 197 | 1597 | 0.110 | 0.698 [0.569, 0.801] | 0.229 [0.155, 0.332] |
-| 2018 | above-proxy conditional | 13 | 189 | 1208 | 0.135 | 0.647 [0.526, 0.763] | 0.244 [0.168, 0.362] |
 
 ### Leave-one-run-record-out — rwm-brf (95% shot CIs)
 
@@ -117,7 +127,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-ti
 | model | onsets warned | Hanson shots: unexplained alarm | unlabelled shots: any alarm |
 |---|---|---|---|
 | rwm-brf | 9/48 | 8/33 | 19/132 |
-| rule-time-since-flattop | 3/48 | 4/33 | 128/132 |
+| rule-elapsed-time | 3/48 | 4/33 | 128/132 |
 | rule-betan | 4/48 | 1/33 | 58/132 |
 | rule-betan-over-li | 1/48 | 3/33 | 30/132 |
 | rule-rwm-candidates | 0/48 | 0/33 | 36/132 |
@@ -127,7 +137,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-ti
 | model | onset detection | Hanson unexplained incidence | alarm incidence on unlabelled shots |
 |---|---|---|---|
 | rwm-brf | 0.188 [0.049, 0.333] | 0.242 [0.091, 0.394] | 0.144 [0.083, 0.212] |
-| rule-time-since-flattop | 0.062 [0.000, 0.137] | 0.121 [0.030, 0.242] | 0.970 [0.939, 1.000] |
+| rule-elapsed-time | 0.062 [0.000, 0.137] | 0.121 [0.030, 0.242] | 0.970 [0.939, 1.000] |
 | rule-betan | 0.083 [0.019, 0.163] | 0.030 [0.000, 0.121] | 0.439 [0.356, 0.515] |
 | rule-betan-over-li | 0.021 [0.000, 0.064] | 0.091 [0.000, 0.212] | 0.227 [0.167, 0.295] |
 | rule-rwm-candidates | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.273 [0.197, 0.348] |
@@ -137,17 +147,148 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Elapsed-ti
 | model | median warning, ms (95% CI) | uniform-alarm reference | detection minus reference |
 |---|---|---|---|
 | rwm-brf | 356 [286, 389] | 0.190 [0.080, 0.302] | -0.002 [-0.058, 0.052] |
-| rule-time-since-flattop | 145 [36, 235] | 0.046 [0.023, 0.069] | 0.016 [-0.039, 0.083] |
+| rule-elapsed-time | 145 [36, 235] | 0.046 [0.023, 0.069] | 0.016 [-0.039, 0.083] |
 | rule-betan | 34 [16, 385] | 0.025 [0.006, 0.050] | 0.058 [0.014, 0.115] |
 | rule-betan-over-li | 36 [36, 36] | 0.030 [0.006, 0.065] | -0.009 [-0.052, 0.030] |
 | rule-rwm-candidates | - | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
+
+### Forest alarm sensitivity — five splits and run-record holdout
+
+| evaluation | onsets warned | onset detection (95% CI) | detection minus random reference (95% basic CI) | median warning, ms (95% CI) |
+|---|---|---|---|---|
+| seed 0 | 9/48 | 0.188 [0.049, 0.333] | -0.002 [-0.058, 0.052] | 356 [286, 389] |
+| seed 1 | 8/48 | 0.167 [0.046, 0.302] | 0.031 [-0.042, 0.118] | 179 [75, 343] |
+| seed 2 | 10/48 | 0.208 [0.085, 0.340] | 0.038 [-0.012, 0.094] | 302 [56, 340] |
+| seed 3 | 13/48 | 0.271 [0.158, 0.392] | 0.049 [-0.054, 0.142] | 239 [114, 347] |
+| seed 4 | 6/48 | 0.125 [0.025, 0.245] | 0.057 [-0.021, 0.158] | 135 [38, 341] |
+| run-record holdout | 8/48 | 0.167 [0.049, 0.309] | 0.014 [-0.025, 0.053] | 214 [140, 343] |
+| five-split point range | — | 0.125–0.271 | -0.002–0.057 | 135–356 |
+
+No improvement over the approximate rate-matched random-alarm reference was established: all five detection-difference intervals include zero. This does not establish equivalence. Warning medians condition on detected onsets; intervals condition on fixed fitted predictions. In the reference split, the beta_N rule warns 4/48 onsets and has detection minus reference 0.058 [0.014, 0.115]; its low detection coverage limits that result.
+
+### n=1 onset physics — actual onset, by campaign
+
+| campaign | shot | n=1 onset, ms | beta_N | li | beta_N/li | elapsed time, ms | proxy category | pre-onset high-beta slices |
+|---|---|---|---|---|---|---|---|---|
+| 2014 | 156785 | 856.0 | 1.28 | 0.52 | 2.46 | 749 | below 4 | 0 |
+| 2014 | 156786 | 1892.0 | 2.59 | 0.61 | 4.23 | 1782 | at or above 4 | 10 |
+| 2014 | 156786 | 2318.5 | 2.58 | 0.72 | 3.61 | 2208 | below 4 | 10 |
+| 2014 | 156787 | 1146.5 | 2.63 | 0.63 | 4.20 | 1040 | at or above 4 | 10 |
+| 2014 | 156787 | 1616.9 | 2.62 | 0.65 | 4.06 | 1510 | at or above 4 | 10 |
+| 2014 | 156790 | 1920.0 | 3.21 | 0.69 | 4.64 | 1812 | at or above 4 | 10 |
+| 2014 | 156791 | 1429.5 | 2.90 | 0.68 | 4.29 | 1322 | at or above 4 | 10 |
+| 2014 | 156792 | 1498.5 | 3.02 | 0.63 | 4.78 | 1390 | at or above 4 | 10 |
+| 2014 | 156792 | 2802.0 | 3.51 | 0.75 | 4.65 | 2693 | at or above 4 | 10 |
+| 2014 | 156793 | 1945.5 | 2.92 | 0.59 | 4.97 | 1836 | at or above 4 | 2 |
+| 2014 | 156793 | 2725.0 | 3.60 | 0.62 | 5.76 | 2616 | at or above 4 | 10 |
+| 2014 | 156794 | 1127.0 | 2.80 | 0.70 | 4.02 | 870 | at or above 4 | 0 |
+| 2014 | 156794 | 1306.0 | 3.01 | 0.62 | 4.86 | 1049 | at or above 4 | 3 |
+| 2014 | 156795 | 1656.0 | 3.14 | 0.58 | 5.43 | 1419 | at or above 4 | 10 |
+| 2014 | 156795 | 2283.3 | 2.98 | 0.62 | 4.84 | 2046 | at or above 4 | 10 |
+| 2014 | 156796 | 2730.0 | 2.30 | 0.66 | 3.51 | 2360 | below 4 | 0 |
+| 2014 | 156797 | 1598.0 | - | - | - | 1236 | missing EFIT | 0 |
+| 2014 | 156797 | 1998.0 | 2.76 | 0.60 | 4.60 | 1636 | at or above 4 | 4 |
+| 2014 | 158012 | 1406.0 | 2.59 | 0.62 | 4.18 | 1190 | at or above 4 | 0 |
+| 2014 | 158013 | 1450.0 | 3.05 | 0.64 | 4.81 | 1232 | at or above 4 | 10 |
+| 2014 | 158013 | 3061.1 | 3.35 | 0.59 | 5.69 | 2843 | at or above 4 | 10 |
+| 2014 | 158014 | 1927.0 | 2.78 | 0.59 | 4.73 | 1691 | at or above 4 | 10 |
+| 2014 | 158018 | 2016.0 | 3.03 | 0.57 | 5.34 | 1777 | at or above 4 | 9 |
+| 2014 | 158019 | 1608.0 | 2.91 | 0.58 | 4.99 | 1373 | at or above 4 | 0 |
+| 2014 | 158021 | 1084.0 | 2.24 | 0.62 | 3.63 | 845 | below 4 | 0 |
+| 2014 | 158022 | 2996.4 | 3.61 | 0.71 | 5.05 | 2758 | at or above 4 | 10 |
+| 2018 | 176067 | 2638.0 | 2.72 | 0.59 | 4.60 | 2177 | at or above 4 | 10 |
+| 2018 | 176068 | 2418.5 | 2.63 | 0.62 | 4.25 | 1964 | at or above 4 | 10 |
+| 2018 | 176068 | 2692.0 | 2.70 | 0.58 | 4.67 | 2238 | at or above 4 | 10 |
+| 2018 | 176068 | 2970.5 | 2.63 | 0.57 | 4.64 | 2516 | at or above 4 | 10 |
+| 2018 | 176068 | 3293.0 | 2.74 | 0.57 | 4.79 | 2839 | at or above 4 | 10 |
+| 2018 | 176069 | 2269.7 | 2.66 | 0.63 | 4.23 | 1815 | at or above 4 | 10 |
+| 2018 | 176069 | 3235.0 | - | - | - | 2781 | missing EFIT | 0 |
+| 2018 | 176069 | 3789.5 | 2.87 | 0.56 | 5.16 | 3335 | at or above 4 | 10 |
+| 2018 | 176070 | 2818.4 | - | - | - | 2330 | missing EFIT | 6 |
+| 2018 | 176070 | 3013.5 | - | - | - | 2525 | missing EFIT | 8 |
+| 2018 | 176071 | 3071.0 | 2.45 | 0.57 | 4.28 | 2588 | at or above 4 | 6 |
+| 2018 | 176074 | 2239.0 | 2.64 | 0.60 | 4.41 | 1790 | at or above 4 | 10 |
+| 2018 | 176074 | 3461.0 | 2.85 | 0.58 | 4.95 | 3012 | at or above 4 | 10 |
+| 2018 | 176077 | 1653.5 | 2.82 | 0.61 | 4.63 | 1206 | at or above 4 | 10 |
+| 2018 | 176078 | 3435.0 | 3.05 | 0.58 | 5.25 | 2985 | at or above 4 | 10 |
+| 2018 | 176078 | 4149.0 | 3.06 | 0.64 | 4.80 | 3699 | at or above 4 | 10 |
+| 2018 | 176085 | 3560.0 | 3.33 | 0.61 | 5.45 | 3116 | at or above 4 | 10 |
+| 2018 | 176087 | 3138.0 | 3.13 | 0.50 | 6.24 | 2680 | at or above 4 | 10 |
+| 2018 | 176088 | 2121.0 | 3.19 | 0.62 | 5.12 | 1664 | at or above 4 | 10 |
+| 2018 | 176088 | 2328.0 | 3.19 | 0.62 | 5.18 | 1871 | at or above 4 | 10 |
+| 2018 | 176088 | 3616.0 | 3.74 | 0.61 | 6.12 | 3159 | at or above 4 | 10 |
+| 2018 | 176089 | 2843.0 | 2.45 | 0.63 | 3.86 | 2359 | below 4 | 7 |
+
+Offline EFIT inputs held at the actual listed n=1 onset (last sample age <= 50 ms): 5 snapshots are below beta_N/li = 4 and 4 have missing EFIT inputs; missing inputs remain explicit rather than being classified above or below the proxy. Elapsed time is measured from the first |Ip| >= 0.5 MA crossing. The high-beta slice count uses the forecast-positive pre-onset window.
+
+### n=1 onset-window physics — first pre-onset window slice, by campaign
+
+| campaign | shot | n=1 onset, ms | window sample, ms | beta_N | li | beta_N/li | elapsed time, ms | proxy category | pre-onset high-beta slices |
+|---|---|---|---|---|---|---|---|---|---|
+| 2014 | 156785 | 856.0 | 840.0 | 1.28 | 0.52 | 2.46 | 733 | below 4 | 0 |
+| 2014 | 156786 | 1892.0 | 1880.0 | 2.59 | 0.60 | 4.30 | 1770 | at or above 4 | 10 |
+| 2014 | 156786 | 2318.5 | 2300.0 | 2.81 | 0.71 | 3.96 | 2190 | below 4 | 10 |
+| 2014 | 156787 | 1146.5 | 1130.0 | 2.59 | 0.66 | 3.95 | 1023 | below 4 | 10 |
+| 2014 | 156787 | 1616.9 | 1600.0 | 2.62 | 0.65 | 4.06 | 1493 | at or above 4 | 10 |
+| 2014 | 156790 | 1920.0 | 1900.0 | 3.33 | 0.69 | 4.82 | 1792 | at or above 4 | 10 |
+| 2014 | 156791 | 1429.5 | 1410.0 | 2.75 | 0.68 | 4.05 | 1302 | at or above 4 | 10 |
+| 2014 | 156792 | 1498.5 | 1480.0 | 3.02 | 0.63 | 4.78 | 1371 | at or above 4 | 10 |
+| 2014 | 156792 | 2802.0 | 2790.0 | 3.55 | 0.76 | 4.68 | 2681 | at or above 4 | 10 |
+| 2014 | 156793 | 1945.5 | 1930.0 | 2.93 | 0.59 | 4.95 | 1821 | at or above 4 | 2 |
+| 2014 | 156793 | 2725.0 | 2710.0 | 3.64 | 0.63 | 5.78 | 2601 | at or above 4 | 10 |
+| 2014 | 156794 | 1127.0 | 1110.0 | 2.75 | 0.72 | 3.83 | 853 | below 4 | 0 |
+| 2014 | 156794 | 1306.0 | 1290.0 | 2.99 | 0.63 | 4.76 | 1033 | at or above 4 | 3 |
+| 2014 | 156795 | 1656.0 | 1640.0 | 3.11 | 0.59 | 5.25 | 1403 | at or above 4 | 10 |
+| 2014 | 156795 | 2283.3 | 2270.0 | 3.15 | 0.64 | 4.95 | 2033 | at or above 4 | 10 |
+| 2014 | 156796 | 2730.0 | 2710.0 | 2.31 | 0.66 | 3.49 | 2340 | below 4 | 0 |
+| 2014 | 156797 | 1598.0 | 1580.0 | - | - | - | 1218 | missing EFIT | 0 |
+| 2014 | 156797 | 1998.0 | 1980.0 | 2.76 | 0.60 | 4.60 | 1618 | at or above 4 | 4 |
+| 2014 | 158012 | 1406.0 | 1390.0 | 2.60 | 0.62 | 4.16 | 1174 | at or above 4 | 0 |
+| 2014 | 158013 | 1450.0 | 1430.0 | 2.88 | 0.63 | 4.61 | 1212 | at or above 4 | 10 |
+| 2014 | 158013 | 3061.1 | 3050.0 | 3.35 | 0.59 | 5.69 | 2832 | at or above 4 | 10 |
+| 2014 | 158014 | 1927.0 | 1910.0 | 2.77 | 0.61 | 4.55 | 1674 | at or above 4 | 10 |
+| 2014 | 158018 | 2016.0 | 2000.0 | 2.98 | 0.57 | 5.22 | 1761 | at or above 4 | 9 |
+| 2014 | 158019 | 1608.0 | 1590.0 | 2.83 | 0.60 | 4.71 | 1355 | at or above 4 | 0 |
+| 2014 | 158021 | 1084.0 | 1070.0 | 2.24 | 0.62 | 3.63 | 831 | below 4 | 0 |
+| 2014 | 158022 | 2996.4 | 2980.0 | 3.61 | 0.72 | 5.05 | 2742 | at or above 4 | 10 |
+| 2018 | 176067 | 2638.0 | 2620.0 | 2.72 | 0.59 | 4.60 | 2159 | at or above 4 | 10 |
+| 2018 | 176068 | 2418.5 | 2400.0 | 2.63 | 0.62 | 4.25 | 1946 | at or above 4 | 10 |
+| 2018 | 176068 | 2692.0 | 2680.0 | 2.70 | 0.58 | 4.67 | 2226 | at or above 4 | 10 |
+| 2018 | 176068 | 2970.5 | 2960.0 | 2.63 | 0.57 | 4.64 | 2506 | at or above 4 | 10 |
+| 2018 | 176068 | 3293.0 | 3280.0 | 2.75 | 0.57 | 4.81 | 2826 | at or above 4 | 10 |
+| 2018 | 176069 | 2269.7 | 2250.0 | 2.65 | 0.65 | 4.09 | 1796 | at or above 4 | 10 |
+| 2018 | 176069 | 3235.0 | 3220.0 | - | - | - | 2766 | missing EFIT | 0 |
+| 2018 | 176069 | 3789.5 | 3770.0 | 2.80 | 0.57 | 4.92 | 3316 | at or above 4 | 10 |
+| 2018 | 176070 | 2818.4 | 2800.0 | - | - | - | 2312 | missing EFIT | 6 |
+| 2018 | 176070 | 3013.5 | 3000.0 | 2.25 | 0.55 | 4.10 | 2512 | at or above 4 | 8 |
+| 2018 | 176071 | 3071.0 | 3060.0 | 2.45 | 0.57 | 4.28 | 2577 | at or above 4 | 6 |
+| 2018 | 176074 | 2239.0 | 2220.0 | 2.64 | 0.60 | 4.41 | 1771 | at or above 4 | 10 |
+| 2018 | 176074 | 3461.0 | 3450.0 | 2.92 | 0.58 | 5.02 | 3001 | at or above 4 | 10 |
+| 2018 | 176077 | 1653.5 | 1640.0 | 2.74 | 0.64 | 4.28 | 1193 | at or above 4 | 10 |
+| 2018 | 176078 | 3435.0 | 3420.0 | 3.05 | 0.58 | 5.25 | 2970 | at or above 4 | 10 |
+| 2018 | 176078 | 4149.0 | 4130.0 | 3.07 | 0.64 | 4.79 | 3680 | at or above 4 | 10 |
+| 2018 | 176085 | 3560.0 | 3540.0 | 3.36 | 0.61 | 5.56 | 3096 | at or above 4 | 10 |
+| 2018 | 176087 | 3138.0 | 3120.0 | 3.13 | 0.50 | 6.24 | 2662 | at or above 4 | 10 |
+| 2018 | 176088 | 2121.0 | 2110.0 | 3.21 | 0.62 | 5.13 | 1653 | at or above 4 | 10 |
+| 2018 | 176088 | 2328.0 | 2310.0 | 3.32 | 0.58 | 5.72 | 1853 | at or above 4 | 10 |
+| 2018 | 176088 | 3616.0 | 3600.0 | 3.74 | 0.61 | 6.12 | 3143 | at or above 4 | 10 |
+| 2018 | 176089 | 2843.0 | 2830.0 | 2.62 | 0.62 | 4.24 | 2346 | at or above 4 | 7 |
+
+First slice in the [onset - 20 ms, onset) window: 6 snapshots are below beta_N/li = 4 and 3 have missing EFIT inputs; missing inputs remain explicit rather than being classified above or below the proxy. Elapsed time is measured from the first |Ip| >= 0.5 MA crossing. The high-beta slice count uses the forecast-positive pre-onset window.
+
+### n=1 onset and window coverage summary — by campaign
+
+| campaign | n=1 onsets | actual onset below beta_N/li = 4 | actual onset missing EFIT | window sample below beta_N/li = 4 | window sample missing EFIT | no high-beta pre-onset slices |
+|---|---|---|---|---|---|---|
+| 2014 | 26 | 4/26 (15.4%) | 1/26 (3.8%) | 6/26 (23.1%) | 1/26 (3.8%) | 7/26 (26.9%) |
+| 2018 | 22 | 1/22 (4.5%) | 3/22 (13.6%) | 0/22 (0.0%) | 2/22 (9.1%) | 1/22 (4.5%) |
 
 ### Piccione-style per-shot categories — primary alarm definition
 
 | model | Detected Hanson shots | Missed Hanson shots | Early Hanson shots | Hanson shots without n=1 targets (excluded) | FP on comparison shots (alarm incidence) |
 |---|---|---|---|---|---|
 | rwm-brf | 6/30 | 22/30 | 2/30 | 3 | 19/132 |
-| rule-time-since-flattop | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
+| rule-elapsed-time | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
 | rule-betan | 4/30 | 26/30 | 0/30 | 3 | 58/132 |
 | rule-betan-over-li | 1/30 | 26/30 | 3/30 | 3 | 30/132 |
 | rule-rwm-candidates | 0/30 | 30/30 | 0/30 | 3 | 36/132 |
@@ -175,7 +316,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-time-since-flattop | 0.001 [-0.049, 0.060] | -0.065 [-0.100, 0.016] |
+| rwm-brf - rule-elapsed-time | 0.001 [-0.049, 0.060] | -0.065 [-0.100, 0.016] |
 | rwm-brf - rule-betan | 0.053 [-0.038, 0.140] | -0.003 [-0.064, 0.069] |
 | rwm-brf - rule-betan-over-li | 0.037 [-0.038, 0.115] | 0.004 [-0.047, 0.071] |
 
@@ -183,7 +324,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-time-since-flattop | -0.040 [-0.120, 0.061] | -0.087 [-0.128, 0.011] |
+| rwm-brf - rule-elapsed-time | -0.040 [-0.120, 0.061] | -0.087 [-0.128, 0.011] |
 | rwm-brf - rule-betan | 0.039 [-0.101, 0.187] | -0.008 [-0.077, 0.087] |
 | rwm-brf - rule-betan-over-li | 0.009 [-0.092, 0.123] | 0.003 [-0.049, 0.081] |
 
@@ -191,7 +332,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 | first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
 |---|---|---|
-| rwm-brf - rule-time-since-flattop | -0.051 [-0.157, 0.092] | -0.091 [-0.138, 0.002] |
+| rwm-brf - rule-elapsed-time | -0.051 [-0.157, 0.092] | -0.091 [-0.138, 0.002] |
 | rwm-brf - rule-betan | 0.037 [-0.123, 0.192] | -0.007 [-0.074, 0.081] |
 | rwm-brf - rule-betan-over-li | 0.034 [-0.092, 0.167] | 0.008 [-0.046, 0.085] |
 
@@ -199,7 +340,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 | first model minus rule | detection difference | Hanson incidence difference | unlabelled incidence difference |
 |---|---|---|---|
-| rwm-brf - rule-time-since-flattop | 0.125 [-0.021, 0.270] | 0.121 [-0.091, 0.333] | -0.826 [-0.894, -0.765] |
+| rwm-brf - rule-elapsed-time | 0.125 [-0.021, 0.270] | 0.121 [-0.091, 0.333] | -0.826 [-0.894, -0.765] |
 | rwm-brf - rule-betan | 0.104 [-0.053, 0.245] | 0.212 [0.061, 0.333] | -0.295 [-0.394, -0.197] |
 | rwm-brf - rule-betan-over-li | 0.167 [0.015, 0.310] | 0.152 [0.000, 0.303] | -0.083 [-0.182, 0.015] |
 
@@ -213,7 +354,18 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | rwm-brf | 3 | 0.806 | 0.696 | 0.271 | 0.242 |
 | rwm-brf | 4 | 0.793 | 0.664 | 0.125 | 0.091 |
 
-### Campaign sensitivity — rwm-brf, split 1 (95% shot CIs)
+### Campaign sensitivity — rwm-brf, reference split, seed 0 (95% shot CIs)
+
+| group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
+|---|---|---|---|---|---|---|---|
+| 2014 | primary | 20 | 260 | 2280 | 0.102 | 0.663 [0.596, 0.745] | 0.130 [0.099, 0.190] |
+| 2014 | high-beta conditional | 20 | 168 | 754 | 0.182 | 0.311 [0.220, 0.408] | 0.125 [0.091, 0.180] |
+| 2014 | above-proxy conditional | 20 | 176 | 705 | 0.200 | 0.277 [0.172, 0.382] | 0.132 [0.095, 0.200] |
+| 2018 | primary | 13 | 220 | 2975 | 0.069 | 0.819 [0.744, 0.879] | 0.236 [0.159, 0.336] |
+| 2018 | high-beta conditional | 13 | 197 | 1597 | 0.110 | 0.698 [0.569, 0.801] | 0.229 [0.155, 0.332] |
+| 2018 | above-proxy conditional | 13 | 189 | 1208 | 0.135 | 0.647 [0.526, 0.763] | 0.244 [0.168, 0.362] |
+
+### Campaign sensitivity — rwm-brf, seed 1 (95% shot CIs)
 
 | group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
 |---|---|---|---|---|---|---|---|
@@ -224,7 +376,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | 2018 | high-beta conditional | 13 | 197 | 1597 | 0.110 | 0.723 [0.599, 0.830] | 0.218 [0.154, 0.335] |
 | 2018 | above-proxy conditional | 13 | 189 | 1208 | 0.135 | 0.667 [0.536, 0.792] | 0.227 [0.163, 0.376] |
 
-### Campaign sensitivity — rwm-brf, split 2 (95% shot CIs)
+### Campaign sensitivity — rwm-brf, seed 2 (95% shot CIs)
 
 | group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
 |---|---|---|---|---|---|---|---|
@@ -235,7 +387,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | 2018 | high-beta conditional | 13 | 197 | 1597 | 0.110 | 0.707 [0.576, 0.805] | 0.206 [0.140, 0.312] |
 | 2018 | above-proxy conditional | 13 | 189 | 1208 | 0.135 | 0.649 [0.518, 0.764] | 0.216 [0.147, 0.336] |
 
-### Campaign sensitivity — rwm-brf, split 3 (95% shot CIs)
+### Campaign sensitivity — rwm-brf, seed 3 (95% shot CIs)
 
 | group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
 |---|---|---|---|---|---|---|---|
@@ -246,7 +398,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | 2018 | high-beta conditional | 13 | 197 | 1597 | 0.110 | 0.747 [0.626, 0.846] | 0.318 [0.233, 0.444] |
 | 2018 | above-proxy conditional | 13 | 189 | 1208 | 0.135 | 0.706 [0.577, 0.821] | 0.335 [0.252, 0.468] |
 
-### Campaign sensitivity — rwm-brf, split 4 (95% shot CIs)
+### Campaign sensitivity — rwm-brf, seed 4 (95% shot CIs)
 
 | group | slice mask | Hanson shots | positive slices | assumed-negative slices | prevalence | AUROC (95% shot CI) | AUPRC (95% shot CI) |
 |---|---|---|---|---|---|---|---|

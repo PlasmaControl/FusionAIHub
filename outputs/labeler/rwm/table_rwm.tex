@@ -1,0 +1,47 @@
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+\multicolumn{7}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\
+\midrule
+Model / rule & \shortstack{Primary\\AUROC} & \shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & \shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} & \shortstack{High-$\beta$ conditional\\AUROC} \\
+\midrule
+\texttt{rwm-brf} & \shortstack{$0.760$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.163$\\{\scriptsize $[0.12, 0.22]$}} & \shortstack{$0.275$\\{\scriptsize $[0.23, 0.34]$}} & \shortstack{$0.756$\\{\scriptsize $[0.65, 0.87]$}} & \shortstack{$0.342$\\{\scriptsize $[0.26, 0.42]$}} & \shortstack{$0.602$\\{\scriptsize $[0.49, 0.69]$}} \\
+\addlinespace[1.5pt]
+Elapsed time & \shortstack{$0.759$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.228$\\{\scriptsize $[0.21, 0.31]$}} & \shortstack{$0.267$\\{\scriptsize $[0.22, 0.33]$}} & \shortstack{$0.692$\\{\scriptsize $[0.52, 0.83]$}} & \shortstack{$0.318$\\{\scriptsize $[0.24, 0.37]$}} & \shortstack{$0.642$\\{\scriptsize $[0.56, 0.73]$}} \\
+\addlinespace[1.5pt]
+$\beta_N$ & \shortstack{$0.707$\\{\scriptsize $[0.64, 0.77]$}} & \shortstack{$0.166$\\{\scriptsize $[0.13, 0.25]$}} & \shortstack{$0.246$\\{\scriptsize $[0.19, 0.31]$}} & \shortstack{$0.750$\\{\scriptsize $[0.62, 0.87]$}} & \shortstack{$0.397$\\{\scriptsize $[0.32, 0.45]$}} & \shortstack{$0.563$\\{\scriptsize $[0.47, 0.65]$}} \\
+\addlinespace[1.5pt]
+$\beta_N/l_i$ & \shortstack{$0.723$\\{\scriptsize $[0.66, 0.78]$}} & \shortstack{$0.159$\\{\scriptsize $[0.13, 0.23]$}} & \shortstack{$0.261$\\{\scriptsize $[0.21, 0.33]$}} & \shortstack{$0.735$\\{\scriptsize $[0.60, 0.85]$}} & \shortstack{$0.356$\\{\scriptsize $[0.27, 0.43]$}} & \shortstack{$0.593$\\{\scriptsize $[0.51, 0.68]$}} \\
+\addlinespace[1.5pt]
+RWM screen & \shortstack{$0.500$\\{\scriptsize $[0.50, 0.50]$}} & \shortstack{$0.084$\\{\scriptsize $[0.07, 0.10]$}} & \shortstack{$0.000$\\{\scriptsize $[0.00, 0.00]$}} & \shortstack{$0.000$\\{\scriptsize $[0.00, 0.00]$}} & \shortstack{$0.000$\\{\scriptsize $[0.00, 0.00]$}} & \shortstack{$0.500$\\{\scriptsize $[0.50, 0.50]$}} \\
+\addlinespace[1.5pt]
+\bottomrule
+\end{tabular}
+\par\smallskip
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Scope & Primary AUROC & High-$\beta$ conditional AUROC & Above-proxy conditional AUROC \\
+\midrule
+Pooled (five splits) & $0.76$ to $0.81$ & $0.60$ to $0.70$ & $0.55$ to $0.66$ \\
+2014 (five splits) & $0.66$ to $0.73$ & $0.31$ to $0.53$ & $0.28$ to $0.51$ \\
+2018 (five splits) & $0.82$ to $0.85$ & $0.70$ to $0.75$ & $0.65$ to $0.71$ \\
+Run-record holdout & $0.779$ {\scriptsize $[0.73, 0.82]$} & $0.621$ {\scriptsize $[0.54, 0.70]$} & $0.579$ {\scriptsize $[0.47, 0.68]$} \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\begin{tabular}{@{}lc@{}}
+\toprule
+\multicolumn{2}{@{}l}{Legacy (Piccione et al., NSTX)} \\
+\midrule
+Slice AUROC / F1 & 0.918 / -- \\
+Slice TPR / FPR & 92.4\% / 21.4\% \\
+Detected unstable shots & 10/11 \\
+False-positive stable shots & 2/17 \\
+\bottomrule
+\end{tabular}
+\caption{Retrospective DIII-D forecasting on 33 Hanson shots with offline ZIPFIT and postprocessed magnetic-RMS inputs, and unverified negative coverage. Positives precede listed $n=1$ onsets by at most 100 ms; high-$\beta$ conditions on $\beta_N\geq0.8$ shot whole-window p95; above-proxy conditions on $\beta_N/l_i>4$. Brackets: 95\% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. Five-split forest-minus-elapsed-time AUROC ranges: high-$\beta$ $-0.04$ to $0.05$; above-proxy $-0.05$ to $0.06$. The primary seed-3 lower bound is borderline near zero. Campaign 2014 high-$\beta$ AUROC is at or below chance ($0.31$ to $0.53$; reference-split CI [0.22, 0.41]) and below elapsed time on every split. Run-record holdout retains four records across three dates. Legacy uses different inputs and expert-reviewed stable shots; results are not comparable.}
+\label{tab:rwm-baseline}
+\end{table*}

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -12,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 NAMES = (
     "rwm-brf",
-    "rule-time-since-flattop",
+    "rule-elapsed-time",
     "rule-betan",
     "rule-betan-over-li",
     "rule-rwm-candidates",
@@ -36,6 +37,15 @@ def point(metric, digits=3):
 
 def split_range(values, digits=3, separator="–"):
     return f"{values['min']:.{digits}f}{separator}{values['max']:.{digits}f}"
+
+
+def latex_range(values, digits=2):
+    return f"${values['min']:.{digits}f}$ to ${values['max']:.{digits}f}$"
+
+
+def forest_runs(record):
+    config = record["configs"]["rwm-brf"]
+    return {"0": config, **config["split_seeds"]}
 
 
 def split_scores(record):
@@ -70,6 +80,7 @@ def split_scores(record):
 def split_pairs(record):
     summary = record["split_sensitivity"]
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+    borderline = summary["paired_time_by_seed"]["3"]["slice_auroc"]
     return table(
         [
             "fold seed",
@@ -89,8 +100,52 @@ def split_pairs(record):
         ],
     ) + (
         "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals. "
-        "Elapsed-time ranks are fixed across splits. These three pooled strata "
-        "retain discharge-phase information."
+        "Intervals condition on fixed fitted predictions; elapsed-time ranks "
+        "are fixed across splits. These three pooled strata retain "
+        "discharge-phase information. The primary seed-3 lower bound is "
+        f"{borderline['low']:.4f}, borderline near zero; a bootstrap-bound "
+        "sign change alone would not "
+        "establish robust superiority."
+    )
+
+
+def campaign_pairs(record):
+    keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+    rows = []
+    for campaign, seeds in record["split_sensitivity"][
+        "paired_time_by_campaign"
+    ].items():
+        for seed, metrics in seeds.items():
+            rows.append(
+                [campaign, f"seed {seed}", *(interval(metrics[k]) for k in keys)]
+            )
+        holdout = record["leave_one_run_record_out"]["paired_time_by_campaign"][
+            campaign
+        ]
+        rows.append(
+            [campaign, "run-record holdout", *(interval(holdout[k]) for k in keys)]
+        )
+    ranges = record["split_sensitivity"]["auroc_ranges"]["2014"]["high_beta_auroc"]
+    reference = record["configs"]["rwm-brf"]["by_campaign"]["2014"]["metrics"][
+        "high_beta_auroc"
+    ]
+    return table(
+        [
+            "campaign",
+            "evaluation",
+            "primary AUROC difference",
+            "high-beta conditional AUROC difference",
+            "above-proxy conditional AUROC difference",
+        ],
+        rows,
+    ) + (
+        "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals "
+        "condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times "
+        "the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 "
+        "high-beta AUROC is at or below chance across the five splits "
+        f"({split_range(ranges, 2)}; reference-split CI "
+        f"[{reference['low']:.2f}, {reference['high']:.2f}]) and below elapsed time "
+        "on every split."
     )
 
 
@@ -102,7 +157,7 @@ def table(header, rows):
 def scores(configs, prefix="slice", conditional=False):
     keys = [f"{prefix}_auroc", f"{prefix}_auprc"]
     if prefix == "slice":
-        keys.append("slice_f1")
+        keys += ["slice_f1", "slice_tpr", "slice_fpr"]
     rows = []
     for name in NAMES:
         c = configs[name]
@@ -117,7 +172,11 @@ def scores(configs, prefix="slice", conditional=False):
         rows.append([name, *values])
     return table(
         ["model", "AUROC (95% CI)", "AUPRC (95% CI)"]
-        + (["F1 (95% CI)"] if prefix == "slice" else [])
+        + (
+            ["F1 (95% CI)", "slice TPR (95% CI)", "slice FPR (95% CI)"]
+            if prefix == "slice"
+            else []
+        )
         + (
             ["positive slices", "assumed-negative slices", "prevalence"]
             if conditional
@@ -185,6 +244,157 @@ def alarm_tables(configs):
             warnings,
         ),
     }
+
+
+def forest_alarm_splits(record):
+    keys = (
+        "onset_detection_rate",
+        "detection_minus_uniform_reference",
+        "warning_ms_median",
+    )
+    runs = forest_runs(record)
+    rows = []
+    for label, result in (
+        *((f"seed {seed}", run) for seed, run in runs.items()),
+        ("run-record holdout", record["leave_one_run_record_out"]),
+    ):
+        n, metrics = result["counts"], result["metrics"]
+        rows.append(
+            [
+                label,
+                f"{n['onsets_warned']}/{n['target_onsets']}",
+                *(
+                    interval(metrics[k], 0 if k == "warning_ms_median" else 3)
+                    for k in keys
+                ),
+            ]
+        )
+    rows.append(
+        [
+            "five-split point range",
+            "—",
+            *(
+                split_range(
+                    record["split_sensitivity"]["alarm_ranges"][k],
+                    0 if k == keys[2] else 3,
+                )
+                for k in keys
+            ),
+        ]
+    )
+    betan = record["configs"]["rule-betan"]
+    betan_count = betan["counts"]
+    return table(
+        [
+            "evaluation",
+            "onsets warned",
+            "onset detection (95% CI)",
+            "detection minus random reference (95% basic CI)",
+            "median warning, ms (95% CI)",
+        ],
+        rows,
+    ) + (
+        "\n\nNo improvement over the approximate rate-matched random-alarm "
+        "reference was established: all five detection-difference intervals "
+        "include zero. This does not establish equivalence. Warning medians "
+        "condition on detected onsets; intervals condition on fixed fitted "
+        "predictions. In the reference split, the beta_N rule warns "
+        f"{betan_count['onsets_warned']}/{betan_count['target_onsets']} onsets "
+        "and has detection minus reference "
+        f"{interval(betan['metrics']['detection_minus_uniform_reference'])}; its low "
+        "detection coverage limits that result."
+    )
+
+
+def onset_flag(row, actual=False):
+    prefix = "onset_" if actual else ""
+    if row[f"{prefix}efit_missing"]:
+        return "missing EFIT"
+    return "below 4" if row[f"{prefix}below_proxy"] else "at or above 4"
+
+
+def onset_physics_table(record, actual=False):
+    physics = record["onset_physics"]
+    prefix = "onset_" if actual else ""
+    rows = [
+        [
+            str(row["campaign"]),
+            str(row["shot"]),
+            point(row["onset_ms"], 1),
+            *([] if actual else [point(row["sample_ms"], 1)]),
+            point(row[f"{prefix}betan"], 2),
+            point(row[f"{prefix}li"], 2),
+            point(row[f"{prefix}betan_over_li"], 2),
+            point(row[f"{prefix}elapsed_time_ms"], 0),
+            onset_flag(row, actual),
+            str(row["n_high_beta_pre_onset_slices"]),
+        ]
+        for row in physics["rows"]
+    ]
+    below = sum(bool(row[f"{prefix}below_proxy"]) for row in physics["rows"])
+    missing = sum(row[f"{prefix}efit_missing"] for row in physics["rows"])
+    scope = (
+        "Offline EFIT inputs held at the actual listed n=1 onset "
+        f"(last sample age <= {physics['efit_max_age_ms']:g} ms)"
+        if actual
+        else "First slice in the [onset - 20 ms, onset) window"
+    )
+    return table(
+        [
+            "campaign",
+            "shot",
+            "n=1 onset, ms",
+            *([] if actual else ["window sample, ms"]),
+            "beta_N",
+            "li",
+            "beta_N/li",
+            "elapsed time, ms",
+            "proxy category",
+            "pre-onset high-beta slices",
+        ],
+        rows,
+    ) + (
+        f"\n\n{scope}: {below} snapshots are below beta_N/li = 4 and {missing} have "
+        "missing EFIT inputs; missing inputs remain explicit rather than "
+        "being classified above or below the proxy. Elapsed time is measured "
+        "from the first |Ip| >= 0.5 MA crossing. The high-beta slice count "
+        "uses the forecast-positive pre-onset window."
+    )
+
+
+def onset_campaign_summary(record):
+    rows = []
+    physics = record["onset_physics"]
+    for campaign, summary in physics["by_campaign"].items():
+        denominator = summary["onsets"]
+        rows.append(
+            [
+                str(campaign),
+                str(denominator),
+                *(
+                    f"{summary[k]}/{denominator} ({summary[k] / denominator:.1%})"
+                    for k in (
+                        "onset_below_proxy",
+                        "onset_efit_missing",
+                        "below_proxy",
+                        "efit_missing",
+                        "no_high_beta_pre_onset_slices",
+                    )
+                ),
+            ]
+        )
+    return table(
+        [
+            "campaign",
+            "n=1 onsets",
+            "actual onset below beta_N/li = 4",
+            "actual onset missing EFIT",
+            "window sample below beta_N/li = 4",
+            "window sample missing EFIT",
+            "no high-beta pre-onset slices",
+        ],
+        rows,
+    )
 
 
 def paired(record, prefix):
@@ -383,37 +593,52 @@ def legacy_table(legacy):
     )
 
 
-def latex_cell(m):
+def latex_cell(m, stacked=False, bound_digits=2):
     if m["estimate"] is None:
         return "--"
-    point = f"{m['estimate']:.3f}"
+    point = f"${m['estimate']:.3f}$"
     if m["low"] is None or m["high"] is None:
         return point
-    return point + r" {\scriptsize [" + f"{m['low']:.2f}, {m['high']:.2f}]" + "}"
+    bounds = (
+        r"{\scriptsize $["
+        + f"{m['low']:.{bound_digits}f}, {m['high']:.{bound_digits}f}]"
+        + "$}"
+    )
+    if stacked:
+        return r"\shortstack{" + point + r"\\" + bounds + "}"
+    return point + " " + bounds
 
 
 def write_latex(record, out_dir):
     configs, legacy = record["configs"], record["legacy"]
     labels = {
         "rwm-brf": r"\texttt{rwm-brf}",
-        "rule-time-since-flattop": "Elapsed time",
+        "rule-elapsed-time": "Elapsed time",
         "rule-betan": r"$\beta_N$",
         "rule-betan-over-li": r"$\beta_N/l_i$",
         "rule-rwm-candidates": "RWM screen",
     }
-    keys = ("slice_auroc", "slice_auprc", "slice_f1", "high_beta_auroc")
+    keys = (
+        "slice_auroc",
+        "slice_auprc",
+        "slice_f1",
+        "slice_tpr",
+        "slice_fpr",
+        "high_beta_auroc",
+    )
     lines = [
         r"\begin{table*}[t]",
         r"\centering",
         r"\small",
         r"\setlength{\tabcolsep}{4pt}",
-        r"\begin{tabular}{@{}lcccc@{}}",
+        r"\begin{tabular}{@{}lcccccc@{}}",
         r"\toprule",
-        r"\multicolumn{5}{@{}l}{Tokamak-SI (DIII-D; split 0)} \\",
+        r"\multicolumn{7}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
         r"\midrule",
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
+            r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} & "
             r"\shortstack{High-$\beta$ conditional\\AUROC} \\"
         ),
         r"\midrule",
@@ -423,7 +648,9 @@ def write_latex(record, out_dir):
         lines.append(
             labels[name]
             + " & "
-            + " & ".join(latex_cell(configs[name]["metrics"][k]) for k in keys)
+            + " & ".join(
+                latex_cell(configs[name]["metrics"][k], stacked=True) for k in keys
+            )
             + r" \\"
         )
         lines.append(r"\addlinespace[1.5pt]")
@@ -448,7 +675,7 @@ def write_latex(record, out_dir):
         lines.append(
             f"{campaign.capitalize()} (five splits) & "
             + " & ".join(
-                split_range(row[k], separator="--")
+                latex_range(row[k])
                 for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
             )
             + r" \\"
@@ -488,23 +715,31 @@ def write_latex(record, out_dir):
         r"\end{tabular}",
     ]
     summary = record["split_sensitivity"]
-    if not all(
-        v["all_cis_include_zero"] for v in summary["paired_time_ranges"].values()
-    ):
-        raise ValueError(
-            "caption's paired claim requires all intervals to include zero"
-        )
+    campaign_range = ranges["2014"]["high_beta_auroc"]
+    campaign_reference = configs["rwm-brf"]["by_campaign"]["2014"]["metrics"][
+        "high_beta_auroc"
+    ]
+    n_hanson = configs["rwm-brf"]["counts"]["hanson_shots"]
+    n_bootstrap = record["protocol"]["bootstrap_replicates"]
     caption = (
-        r"Retrospective DIII-D forecasting on 33 Hanson shots with acausal ZIPFIT "
-        r"inputs and unverified negative coverage. Positives precede listed $n=1$ "
+        f"Retrospective DIII-D forecasting on {n_hanson} Hanson shots with offline ZIPFIT "
+        r"and postprocessed magnetic-RMS inputs, and unverified negative coverage. "
+        r"Positives precede listed $n=1$ "
         r"onsets by at most 100 ms; high-$\beta$ conditions on $\beta_N\geq0.8$ "
-        r"shot p95. Brackets: 95\% shot-bootstrap intervals (1,000 resamples). "
-        r"Ranges span five splits: high-$\beta$ AUROC "
-        + split_range(ranges["pooled"]["high_beta_auroc"], 2, "--")
-        + r"; forest-minus-elapsed-time AUROC "
-        + split_range(summary["paired_time_ranges"]["high_beta_auroc"], 2, "--")
-        + r", with paired intervals including zero in all three pooled strata. "
-        r"Leave-one-run-record-out retains four records across three dates. "
+        r"shot whole-window p95; above-proxy conditions on $\beta_N/l_i>4$. "
+        r"Brackets: 95\% "
+        f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed fitted "
+        r"predictions. Five-split forest-minus-elapsed-time AUROC ranges: "
+        r"high-$\beta$ "
+        + latex_range(summary["paired_time_ranges"]["high_beta_auroc"])
+        + r"; above-proxy "
+        + latex_range(summary["paired_time_ranges"]["above_proxy_auroc"])
+        + r". The primary seed-3 lower bound is borderline near zero. "
+        r"Campaign 2014 high-$\beta$ AUROC is at or below chance ("
+        + latex_range(campaign_range)
+        + f"; reference-split CI [{campaign_reference['low']:.2f}, "
+        + f"{campaign_reference['high']:.2f}]) and below elapsed time on every split. "
+        r"Run-record holdout retains four records across three dates. "
         r"Legacy uses different inputs and expert-reviewed stable shots; results "
         r"are not comparable."
     )
@@ -514,9 +749,13 @@ def write_latex(record, out_dir):
         r"\end{table*}",
     ]
     target = out_dir / "table_rwm.tex"
-    target.write_text("\n".join(lines) + "\n")
+    source = OUT / target.name
+    tex = "\n".join(lines) + "\n"
+    target.write_text(tex)
+    source.write_text(tex)
     return {
         "path": str(target),
+        "source_path": str(source),
         "cells": provenance,
         "caption": caption,
         "caption_words": len(caption.split()),
@@ -527,6 +766,10 @@ def write_latex(record, out_dir):
         "paired_time_ranges": {
             "json_path": "split_sensitivity.paired_time_ranges",
             "values": summary["paired_time_ranges"],
+        },
+        "paired_time_by_campaign": {
+            "json_path": "split_sensitivity.paired_time_by_campaign",
+            "values": summary["paired_time_by_campaign"],
         },
         "run_record_cells": {
             k: {
@@ -554,6 +797,214 @@ def write_latex(record, out_dir):
     }
 
 
+def write_supplemental_latex(record, out_dir):
+    """Keep full paired, alarm and snapshot evidence readable in separate tables."""
+    artifacts = {}
+    n_bootstrap = record["protocol"]["bootstrap_replicates"]
+
+    def write(name, columns, header, rows, caption, source, long=False):
+        environment = "longtable" if long else "tabular"
+        lines = [r"\small", r"\setlength{\tabcolsep}{4pt}"]
+        if not long:
+            lines += [r"\begin{table*}[t]", r"\centering"]
+        lines += [r"\begin{" + environment + "}{@{}" + columns + "@{}}"]
+        if long:
+            lines += [r"\caption{" + caption + r"} \\"]
+        lines += [r"\toprule", " & ".join(header) + r" \\", r"\midrule"]
+        if long:
+            lines += [
+                r"\endfirsthead",
+                r"\toprule",
+                " & ".join(header) + r" \\",
+                r"\midrule",
+                r"\endhead",
+                r"\midrule",
+                r"\endfoot",
+                r"\bottomrule",
+                r"\endlastfoot",
+            ]
+        lines += [" & ".join(row) + r" \\" for row in rows]
+        if not long:
+            lines += [r"\bottomrule"]
+        lines += [r"\end{" + environment + "}"]
+        if not long:
+            lines += [r"\caption{" + caption + "}", r"\end{table*}"]
+        path = out_dir / f"table_rwm_{name}.tex"
+        source_path = OUT / path.name
+        tex = "\n".join(lines) + "\n"
+        path.write_text(tex)
+        source_path.write_text(tex)
+        artifacts[name] = {
+            "path": str(path),
+            "source_path": str(source_path),
+            "caption": caption,
+            "source": source,
+        }
+
+    keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+    rows = []
+    campaigns = record["split_sensitivity"]["paired_time_by_campaign"]
+    for campaign, seeds in campaigns.items():
+        for seed, metrics in seeds.items():
+            rows.append(
+                [
+                    campaign,
+                    f"Seed {seed}",
+                    *(latex_cell(metrics[k], bound_digits=3) for k in keys),
+                ]
+            )
+        holdout = record["leave_one_run_record_out"]["paired_time_by_campaign"][
+            campaign
+        ]
+        rows.append(
+            [
+                campaign,
+                "Run-record holdout",
+                *(latex_cell(holdout[k], bound_digits=3) for k in keys),
+            ]
+        )
+    write(
+        "campaign_pairs",
+        "llccc",
+        [
+            "Campaign",
+            "Evaluation",
+            r"\shortstack{Primary\\AUROC difference}",
+            r"\shortstack{High-$\beta$ conditional\\AUROC difference}",
+            r"\shortstack{Above-proxy conditional\\AUROC difference}",
+        ],
+        rows,
+        r"Forest minus elapsed time by campaign. Brackets: 95\% basic paired "
+        f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed "
+        r"fitted predictions. High-$\beta$: $\beta_N\geq0.8$ shot p95; "
+        r"above-proxy: $\beta_N/l_i>4$. All five 2014 point differences are "
+        r"negative in both conditional strata; all five 2018 split-seed "
+        r"intervals include zero. Run-record holdout intervals are tabulated "
+        r"separately.",
+        {
+            "split_sensitivity.paired_time_by_campaign": campaigns,
+            "leave_one_run_record_out.paired_time_by_campaign": record[
+                "leave_one_run_record_out"
+            ]["paired_time_by_campaign"],
+        },
+    )
+    keys = (
+        "onset_detection_rate",
+        "detection_minus_uniform_reference",
+        "warning_ms_median",
+    )
+    rows = []
+    runs = forest_runs(record)
+    for label, result in (
+        *((f"Seed {seed}", result) for seed, result in runs.items()),
+        ("Run-record holdout", record["leave_one_run_record_out"]),
+    ):
+        n, metrics = result["counts"], result["metrics"]
+        rows.append(
+            [
+                label,
+                f"{n['onsets_warned']}/{n['target_onsets']}",
+                *(latex_cell(metrics[k], bound_digits=3) for k in keys[:2]),
+                interval(metrics[keys[2]], 0),
+            ]
+        )
+    ranges = record["split_sensitivity"]["alarm_ranges"]
+    rows.append(
+        [
+            "Five-split point range",
+            "--",
+            *(latex_range(ranges[k], 0 if k == keys[2] else 3) for k in keys),
+        ]
+    )
+    betan = record["configs"]["rule-betan"]
+    n, m = betan["counts"], betan["metrics"]
+    write(
+        "alarms",
+        "lcccc",
+        [
+            "Evaluation",
+            r"\shortstack{Onsets\\warned}",
+            r"\shortstack{Onset\\detection}",
+            r"\shortstack{Detection minus\\random reference}",
+            r"\shortstack{Median warning\\(ms)}",
+        ],
+        rows,
+        r"Forest alarms across all five splits and the run-record holdout. "
+        r"Brackets: 95\% shot-bootstrap intervals (basic paired intervals for "
+        r"differences), conditional on fixed fitted predictions. No improvement "
+        r"over the approximate rate-matched random reference was established: "
+        r"all five difference intervals include zero; equivalence is not "
+        r"established. Warning medians condition on detected onsets. The "
+        r"reference-split $\beta_N$ rule warns "
+        f"{n['onsets_warned']}/{n['target_onsets']} onsets; detection minus "
+        "reference is "
+        + latex_cell(m["detection_minus_uniform_reference"], bound_digits=3)
+        + ". Its low detection coverage limits this result.",
+        {
+            "configs.rwm-brf": {s: r["metrics"] for s, r in runs.items()},
+            "split_sensitivity.alarm_ranges": ranges,
+            "leave_one_run_record_out.metrics": record["leave_one_run_record_out"][
+                "metrics"
+            ],
+            "configs.rule-betan": {"counts": n, "metrics": m},
+        },
+    )
+    physics = record["onset_physics"]
+    for actual in (True, False):
+        prefix = "onset_" if actual else ""
+        rows = []
+        for row in physics["rows"]:
+            rows.append(
+                [
+                    str(row["campaign"]),
+                    str(row["shot"]),
+                    point(row["onset_ms"], 1),
+                    *([] if actual else [point(row["sample_ms"], 1)]),
+                    *(
+                        point(row[f"{prefix}{k}"], 2)
+                        for k in ("betan", "li", "betan_over_li")
+                    ),
+                    point(row[f"{prefix}elapsed_time_ms"], 0),
+                    onset_flag(row, actual),
+                    str(row["n_high_beta_pre_onset_slices"]),
+                ]
+            )
+        below = sum(bool(row[f"{prefix}below_proxy"]) for row in physics["rows"])
+        missing = sum(row[f"{prefix}efit_missing"] for row in physics["rows"])
+        scope = (
+            "Offline EFIT inputs held at the actual listed onset "
+            f"(last sample age $\\leq{physics['efit_max_age_ms']:g}$ ms)"
+            if actual
+            else r"First slice in the $[\mathrm{onset}-20\,\mathrm{ms},\mathrm{onset})$ window"
+        )
+        write(
+            "onset_actual" if actual else "onset_window",
+            "rrrrrrrlr" if actual else "rrrrrrrrlr",
+            [
+                "Campaign",
+                "Shot",
+                r"\shortstack{Onset\\(ms)}",
+                *([] if actual else [r"\shortstack{Window sample\\(ms)}"]),
+                r"$\beta_N$",
+                r"$l_i$",
+                r"$\beta_N/l_i$",
+                r"\shortstack{Elapsed\\(ms)}",
+                "Proxy category",
+                r"\shortstack{High-$\beta$\\slices}",
+            ],
+            rows,
+            scope + f": {below} snapshots below $\\beta_N/l_i=4$; {missing} missing "
+            r"EFIT snapshots. Missing inputs retain their own category. "
+            r"Elapsed time starts at the first $|I_p|\geq0.5$ MA crossing. "
+            r"High-$\beta$ slices are counted in the 100 ms pre-onset forecast "
+            r"window. The pre-onset-window snapshot is distinct from the actual "
+            r"onset; no post-onset extent is inferred.",
+            {"onset_physics": physics},
+            long=True,
+        )
+    return artifacts
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT / "tables.md")
@@ -565,16 +1016,18 @@ def main():
     sections = {
         "Five-split AUROC ranges — rwm-brf (seeds 0–4)": split_scores(record),
         "Five-split paired AUROC — forest minus elapsed time": split_pairs(record),
-        "Piccione-style primary scores — all models (split 0)": scores(configs),
+        "Campaign paired AUROC — five splits and run-record holdout": campaign_pairs(
+            record
+        ),
+        "Piccione-style primary scores — all models (reference split, seed 0)": scores(
+            configs
+        ),
         "Broader Hanson-negative sensitivity — same models and predictions": scores(
             configs, "broad"
         ),
         "High-beta conditional scores — all models": scores(configs, "high_beta", True),
         "Above no-wall-proxy conditional scores — all models": scores(
             configs, "above_proxy", True
-        ),
-        "Campaign sensitivity — rwm-brf, split 0 (95% shot CIs)": grouped_scores(
-            c["by_campaign"]
         ),
         "Leave-one-run-record-out — rwm-brf (95% shot CIs)": grouped_scores(
             {"pooled four-record holdout": run_out}
@@ -589,6 +1042,18 @@ def main():
             grouped_alarm_scores(run_out["by_run_record"], intervals=False)
         ),
         **alarm_tables(configs),
+        "Forest alarm sensitivity — five splits and run-record holdout": forest_alarm_splits(
+            record
+        ),
+        "n=1 onset physics — actual onset, by campaign": onset_physics_table(
+            record, actual=True
+        ),
+        "n=1 onset-window physics — first pre-onset window slice, by campaign": onset_physics_table(
+            record
+        ),
+        "n=1 onset and window coverage summary — by campaign": onset_campaign_summary(
+            record
+        ),
         "Piccione-style per-shot categories — primary alarm definition": (
             shot_categories(configs)
         ),
@@ -623,7 +1088,7 @@ def main():
             if not name.endswith("rule-rwm-candidates")
         ],
     )
-    runs = {"0": c, **c["split_seeds"]}
+    runs = forest_runs(record)
     sections["Split sensitivity — rwm-brf (fixed hyperparameters)"] = table(
         [
             "model",
@@ -652,25 +1117,53 @@ def main():
         ],
     )
     for seed, run in runs.items():
-        sections[f"Campaign sensitivity — rwm-brf, split {seed} (95% shot CIs)"] = (
+        scope = "reference split, seed 0" if seed == "0" else f"seed {seed}"
+        sections[f"Campaign sensitivity — rwm-brf, {scope} (95% shot CIs)"] = (
             grouped_scores(run["by_campaign"])
         )
     sections["Leave-one-run-record-out — by campaign (95% shot CIs)"] = grouped_scores(
         run_out["by_campaign"]
     )
     text = (
-        "\n\n".join(f"### {name}\n\n{body}" for name, body in sections.items()) + "\n"
+        "Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% "
+        f"shot-bootstrap intervals ({record['protocol']['bootstrap_replicates']:,} "
+        "resamples), conditional on fixed "
+        "fitted predictions; differences use basic paired intervals. High-beta "
+        "means beta_N >= 0.8 times the shot's whole-window beta_N p95; "
+        "above-proxy means beta_N/li > 4. Negative slices are assumed negative.\n\n"
+        + "\n\n".join(f"### {name}\n\n{body}" for name, body in sections.items())
+        + "\n"
     )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text)
     out_dir = Path(os.environ["LABELER_ROOT"]) / "round4" / "rwm"
+    out_dir.mkdir(parents=True, exist_ok=True)
     provenance = {
         "script": "scripts/labeler/rwm_tables.py",
         "source": "outputs/labeler/rwm/evaluation.json",
+        "source_sha256": hashlib.sha256(
+            (OUT / "evaluation.json").read_bytes()
+        ).hexdigest(),
         "latex": write_latex(record, out_dir),
+        "supplemental_latex": write_supplemental_latex(record, out_dir),
         "markdown": str(args.out),
         "sections": list(sections),
     }
+    provenance["rendered_latex"] = {}
+    for name, artifact in {
+        "main": provenance["latex"],
+        **provenance["supplemental_latex"],
+    }.items():
+        tex_path = Path(artifact["path"])
+        paths = [tex_path.with_suffix(".pdf"), *out_dir.glob(tex_path.stem + "-*.png")]
+        provenance["rendered_latex"][name] = [
+            {
+                "path": str(path),
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+            for path in paths
+            if path.is_file()
+        ]
     # Preserve exact covering-check output in the small provenance record for
     # report citations. These logs are supplied by the stream's required runners;
     # rendering tables does not itself run or certify the checks.
@@ -684,7 +1177,10 @@ def main():
             ("covering_tests", "tests.log"),
             ("ruff_check", "ruff.log"),
             ("ruff_format", "format.log"),
-            ("latex_compile", "latex.log"),
+            ("table_ruff_check", "tables-ruff.log"),
+            ("table_ruff_format", "tables-format.log"),
+            ("table_validation", "tables-validation.log"),
+            ("latex_compile", "tables-latex.log"),
         )
         if (tmp_dir / filename).is_file()
     }

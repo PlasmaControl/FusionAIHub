@@ -1,25 +1,37 @@
 # RWM baseline on DIII-D: current protocol
 
 This retrospective reference forecasts Jeremy Hanson's listed n=1 onsets using a
-Piccione-inspired balanced forest (`rwm-brf`) and fixed scalar rules. It conditions
+Piccione-style forest on generic 0D inputs (`rwm-brf`) and fixed scalar rules.
+It conditions
 on assumed negative coverage and conventional forecast windows in 33 Hanson shots;
 it does not measure physical instability duration or establish a validated detector.
 
 Across five shot-fold splits, pooled AUROC is **0.760–0.806** and **high-beta
-conditional AUROC is 0.602–0.696 (about 0.60–0.70)**. High-beta AUROC is about chance
-in 2014 (**0.311–0.527**) and **0.698–0.747 in 2018**. The forest is not
+conditional AUROC is 0.602–0.696 (about 0.60–0.70)**. High-beta AUROC is
+**at or below chance in 2014 (0.31–0.53; split-0 CI [0.22, 0.41]) and below
+elapsed time on every split**, versus **0.698–0.747 in 2018**.
+Many 2014 onsets precede the beta_N peak; **7/26 (26.9%)** have no pre-onset
+slice in the high-beta mask within their 100 ms forecast window
+(`E#/onset_physics/by_campaign/2014`). The forest is not
 distinguishable from the elapsed-time rule in AUROC in any of the three pooled
 strata: forest-minus-time point differences range **0.001–0.047** for primary
 slices, **−0.040 to +0.054** for high-beta, and **−0.051 to +0.061** for above-proxy;
-every seed's paired 95% interval includes zero. These conditional strata retain
+every seed's paired 95% interval includes zero, but primary seed 3 is
+borderline: **0.047 [−0.0001, 0.098]**. These conditional strata retain
 discharge-phase information. Sources: `E#/split_sensitivity/{auroc_ranges,
 paired_time_ranges,paired_time_by_seed}`.
 
-Primary split-0 detection is **0.188**, indistinguishable from the rate-matched
-random-alarm reference **0.190**: difference **−0.002 [−0.058, 0.052]**. The median
-warning is **356 ms [286, 389]**, near the 400 ms acceptance limit and consistent
-with phase tracking. This does not establish useful onset-specific timing skill.
-Source: `E#/configs/rwm-brf/metrics`.
+Across all five splits, detection ranges **0.125–0.271**, detection minus the
+rate-matched random reference **−0.002 to +0.057**, and median warning **135–356 ms**:
+**no improvement over the approximate random reference was established (all five
+CIs include 0)**. Run-record holdout detection is **0.167**, reference difference
+**0.014 [−0.025, 0.053]**, and median warning **214 ms**. These results do not
+establish useful onset-specific timing skill. The beta_N rule's reference-split
+detection does exceed this approximate reference: **0.058 [0.014, 0.115]**, from
+**4/48** warned onsets, without establishing a validated detector.
+Sources: `E#/split_sensitivity/alarm_ranges`,
+`E#/leave_one_run_record_out/{counts,metrics}`,
+`E#/configs/rule-betan/{counts,metrics}`.
 
 ## Records and provenance
 
@@ -63,22 +75,53 @@ exchangeable missing labels. Campaign balance and the unchosen pool are in
 
 Inputs are beta_N, l_i, q95, qmin, W_MHD, |Ip|, beta_N/l_i, beta_N−4l_i, N1RMS,
 N2RMS and ZIPFIT toroidal rotation at the configured radii. RMS features use trailing
-means, peaks and log slopes. Resampling holds the last available sample, but
-ZIPFIT's upstream time smoothing is mildly acausal. Analysis-span selection and the
-candidate screen's whole-flat-top threshold are also retrospective. This is an
-adaptation of Piccione's NSTX inputs, not a reproduction of them.
+means, peaks and log slopes: these are trailing calculations on offline inputs,
+not proof of real-time availability. N1RMS/N2RMS are postprocessed amplitudes with
+uncertain upstream timing; ZIPFIT's upstream time smoothing is mildly acausal.
+Analysis-span selection and the
+candidate screen's whole-flat-top threshold are also retrospective. This is a
+Piccione-style forest on generic 0D inputs; only beta_N and an RMS amplitude
+concept overlap the seven NSTX inputs.
 Sources: `E#/configs/rwm-brf/options/columns`, `S#/feature_coverage`,
 `src/labeler/rwm/features.py` and `src/labeler/features/namespace.py`.
 
 DUSBRADIAL is excluded: it is zero in 79/100 selected 2014 traces, including
 15/20 Hanson traces, and the namespace flags shots 176030–176912 as corrupted,
 covering all 2018 Hanson shots. N1RMS is rotating-mode RMS and cannot distinguish
-RWM from tearing or applied-field response. No validated low-frequency n=1
-saddle-loop/Bp amplitude locator exists in the approved disk FETCH_SPECS or feature
-namespace. No node is guessed or fetched. No DCON wall limits, E-cross-B frequency,
-ion collisionality or MHD peak-frequency reconstruction is available here.
-Source: `S#/input_audit`, including `low_frequency_n1_rwm_sensor_specs` and
-`low_frequency_sensor_status`.
+RWM from tearing or applied-field response. No validated low-frequency n=1 RWM-specific
+sensor is included. An isolated DIII-D probe tested existing OPERATIONS node
+locators CN1BAMP, ILN1BAMP and IUN1BAMP on Hanson shots 156785, 158021 and 176068.
+All nine returned finite nonzero Gauss traces with approximately 1 ms cadence;
+node names and units do not establish corrected plasma-mode amplitude, filtering
+or subtraction of applied-coil fields, so none was promoted to a model input.
+No DCON wall limits, E-cross-B frequency, ion collisionality or MHD peak-frequency
+reconstruction is available here. Sources: `S#/input_audit` and
+[sensor_probe.json](../../outputs/labeler/rwm/sensor_probe.json), generated by
+`scripts/labeler/rwm_sensor_probe.py` from an on-disk archive node inventory.
+
+Rotation columns retain the inherited `rot_*_khz` names. Their values match
+**krad/s**, rather than kHz; the namespace's unit label is unresolved, and no
+frequency conversion or isolated rotation benefit is claimed. This is a
+provenance note, not a unit validation. Source: `src/labeler/features/namespace.py`
+(`rot_zipfit`) and `src/labeler/rwm/features.py`.
+
+## Onset physics and sampling times
+
+The generated [onset tables](../../outputs/labeler/rwm/tables.md) list beta_N,
+l_i, beta_N/l_i and elapsed time for **all 48 merged n=1 points**, by campaign.
+Values at the exact listed onset hold the last original EFIT sample for at most
+**50 ms**, using the feature age limit; elapsed time starts at the first
+|Ip| ≥0.5 MA sample. These are offline input calculations. At exact onset **five
+points are below beta_N/l_i =4** and **four have missing EFIT**, including a
+below-proxy 2018 point (176089). Source: `E#/onset_physics/{rows,by_campaign}`.
+
+A separate table shows the **first 10 ms slice in [o−20 ms, o)** and its actual
+sample time. This window-start snapshot flags **six below-proxy points** on
+156785, 156786, 156787, 156794, 156796 and 158021, and **three missing-EFIT points**
+on 156797, 176069 and 176070. Its 2018 finite values are all above the proxy;
+that statement does not describe exact onset values. The distinction matters
+near rapid beta collapses and missing-data boundaries. Sources:
+`E#/onset_physics/{snapshot_scope,onset_scope,rows,by_campaign}`.
 
 ## Labels: physical catalog and future-onset target
 
@@ -91,23 +134,25 @@ The physical interval CSV is
 `data/events/resistive_wall_mode/extend_rwm_growth/rwm_windows.csv`, with JSON
 `attrs.evidence_tier` and `coverage_verified=false`, plus `rwm_windows.meta.json`:
 
-- **Category 1, conventional weak:** the nominal [o−20 ms, o] pre-onset window for
-  each listed n=1 or n=2 onset. CSV/readers represent intervals as half-open. The
-  20 ms extent is a prescribed pre-onset convention motivated by the millisecond
-  wall time tau_w, not a measured growth time. We do not extend a point label into
-  an assumed post-onset duration: the few milliseconds immediately after onset
-  are **category 4**, pending extent/termination evidence.
+- **Category 2, uncertain onset window:** [o−20 ms, o) for each listed n=1 or
+  n=2 point. The supplied Hanson CSVs name `ONSET_TIME` but do not define whether
+  it is growth onset, detection or threshold crossing; disk README/source and
+  paper-digest searches did not resolve that meaning. Piccione's NSTX threshold
+  definition cannot establish Hanson's DIII-D convention. Neither direction nor
+  20 ms extent therefore establishes physical presence. There are **zero
+  category-1 present intervals**; immediately post-onset time remains category 4.
+  The source search is recorded in `rwm_windows.meta.json/onset_time_provenance`.
 - **Category 0, assumed absent:** high-current Hanson time before the **first**
   listed onset's 100 ms precursor, conditional on onset-list completeness. There
   is no post-onset reset to absence and no verified absence interval.
 - **Category 4, unassessed:** precursor gaps and all physical post-onset time,
-  except later conventional weak windows. The physical state does not expire
+  except later uncertain onset windows. The physical state does not expire
   after 100 ms. Comparison time outside uncertain screen spans is category 4 too.
 - **Comparison screen spans:** unlabelled candidates for review, never primary
   negatives. The screen requires N1RMS above the whole-flat-top median +6 MAD,
   beta_N >4l_i and at least 10 ms duration. Missing inputs are not observable.
 
-The export has **558 rows on 165 shots**: 54 conventional weak, 33 assumed-absent,
+The export has **558 rows on 165 shots**: 54 uncertain onset windows, 33 assumed-absent,
 87 Hanson unassessed, 126 comparison screen and 258 comparison unassessed spans.
 Comparison spans are clipped to analysis coverage. The review reader retains
 category 0/4 rows and aligned evidence attributes; the category-only editor rejects
@@ -120,7 +165,7 @@ and random flat-top centres on n=1 Hanson shots: 90 offsets (−150 to +28 ms),
 trailing 20 ms fits, controls at least 170 ms from listed onsets. Median maximum
 N1RMS slope is **111.7/s at onsets versus 109.8/s at 7,704 controls**; slope at the
 onset itself has median **−1.75/s**. Comparable control maxima cannot validate
-physical growth extent, so the weak-window duration rests on convention.
+physical growth extent or the direction of the 20 ms uncertain window.
 Sources: `G#/{search,controls,max_growth_per_s_n1,control_max_growth_per_s_n1,
 slope_at_onset_per_s_n1}` and its per-centre CSV paths.
 
@@ -214,13 +259,23 @@ Five-split AUROC point ranges (`E#/split_sensitivity/auroc_ranges`):
 | 2014 | 0.663–0.735 | 0.311–0.527 | 0.277–0.508 |
 | 2018 | 0.819–0.848 | 0.698–0.747 | 0.647–0.706 |
 
-The forest is not distinguishable from elapsed time in AUROC in any of these
+The forest has no established AUROC advantage over elapsed time in any of these
 three **pooled** strata across the five seeds. Paired forest-minus-time point
 ranges are 0.001–0.047, −0.040 to +0.054 and −0.051 to +0.061 respectively; all
-paired 95% CIs include zero. For high-beta split 0 the difference is
+paired 95% CIs include zero, with primary seed 3 borderline at
+**0.047 [−0.0001, 0.098]**. For high-beta reference split (seed 0) the difference is
 **−0.040 [−0.120, 0.061]**. These results do not show an AUROC advantage over phase
 tracking. Per-seed paired intervals are in `E#/split_sensitivity/paired_time_by_seed`
 and the generated tables; the point ranges are in `paired_time_ranges`.
+
+For the **2014 high-beta** stratum, forest-minus-elapsed-time AUROC is negative
+on every split (**−0.255 to −0.039**); the reference split difference is
+**−0.255 [−0.422, −0.067]**. The 2014 above-proxy differences are also negative
+on every split (**−0.262 to −0.031**). This conditional ranking failure is
+consistent with onsets preceding the high-beta phase: **7/26** have no high-beta
+slice in their 100 ms forecast window. In 2018, high-beta differences range
+**−0.033 to +0.016**, with every CI including zero. Sources:
+`E#/split_sensitivity/paired_time_by_campaign`, `E#/onset_physics/by_campaign`.
 
 Leave-one-run-record-out AUROC (95% fixed-prediction shot CI;
 `E#/leave_one_run_record_out/{metrics,by_campaign/<year>/metrics}`):
@@ -232,9 +287,12 @@ Leave-one-run-record-out AUROC (95% fixed-prediction shot CI;
 | 2018 | 0.796 [0.744, 0.845] | 0.661 [0.576, 0.746] | 0.633 [0.545, 0.729] |
 
 Its AUPRC is **0.181 [0.149, 0.248]**, F1 **0.285 [0.233, 0.344]**, and alarms warn
-**8/48** onsets. The pooled high-beta shot CI is above chance; the 2014 conditional
-intervals include chance. Four fixed records cannot establish population-of-run
-performance. Source: `E#/leave_one_run_record_out/{metrics,counts}`.
+**8/48** onsets. Pooled forest-minus-elapsed-time paired AUROC differences are **0.020
+[−0.033, 0.080]** primary, **−0.021 [−0.097, 0.069]** high-beta and **−0.017
+[−0.123, 0.105]** above-proxy. Campaign high-beta differences are **−0.126
+[−0.245, 0.005]** in 2014 and **−0.070 [−0.117, −0.010]** in 2018. See
+`E#/leave_one_run_record_out/{paired_time,paired_time_by_campaign}`. Four fixed
+records cannot establish population-of-run performance. Source: `E#/leave_one_run_record_out/{metrics,counts}`.
 
 Reference split-0 scores (95% shot CIs; `E#/configs/<model>/metrics`):
 
@@ -251,16 +309,26 @@ time AUPRC is **−0.065 [−0.100, 0.016]** under the basic paired bootstrap. I
 60 scores are concentrated in 176078 (48 slices) and 176069 (12). Split-0
 broader-negative sensitivity is **AUROC 0.740 [0.668, 0.799] / AUPRC 0.065
 [0.043, 0.103]**, from identical predictions. Sources: `E#/paired/rwm-brf -
-rule-time-since-flattop/slice_auprc`, `E#/configs/rule-time-since-flattop/
+rule-elapsed-time/slice_auprc`, `E#/configs/rule-elapsed-time/
 top_score_concentration`, `E#/configs/rwm-brf/metrics/broad_{auroc,auprc}`.
 
-Primary split-0 alarms warn **9/48** onsets: **6 Detected / 22 Missed / 2 Early**
-among 30 n=1 target shots, plus 3 No target. Detection **0.188 [0.049, 0.333]**
-equals the rate-matched random-alarm reference **0.190 [0.080, 0.302]** within
-uncertainty: difference **−0.002 [−0.058, 0.052]**. The forest is no better than
-randomly placed alarms at the same rate under this reference. Median warning
-**356 ms [286, 389]** lies near the 400 ms limit, consistent with phase tracking.
-Sources: `E#/configs/rwm-brf/{counts,metrics}`.
+Five-split forest alarms warn **6–13/48** onsets: detection **0.125–0.271**,
+reference difference **−0.002 to +0.057**, median warning **135–356 ms**. No
+improvement over the approximate random reference was established (all five CIs
+include 0). The run-record holdout warns **8/48**: detection **0.167
+[0.049, 0.309]**, reference difference **0.014 [−0.025, 0.053]**, median warning
+**214 ms [140, 343]**. Warning intervals condition on detected onsets.
+Sources: `E#/split_sensitivity/alarm_ranges` and
+`E#/leave_one_run_record_out/{counts,metrics}`.
+
+The reference split (seed 0) warns **9/48** onsets: **6 Detected / 22 Missed /
+2 Early** among 30 n=1 target shots, plus 3 No target. Detection is **0.188
+[0.049, 0.333]**, approximate reference **0.190 [0.080, 0.302]**, difference
+**−0.002 [−0.058, 0.052]**, median warning **356 ms [286, 389]**. The beta_N rule
+warns **4/48** and is the only reference-split model whose detection-minus-reference
+CI excludes zero: **0.058 [0.014, 0.115]**. That limited result against an approximate
+reference, from four warnings and assumed coverage, does not validate an RWM
+sensor or operating point. Source: `E#/configs/{rwm-brf,rule-betan}/{counts,metrics}`.
 
 Hanson unexplained incidence is **8/33**, **0.242 [0.091, 0.394]**. Comparison
 alarm incidence is **19/132**, **0.144 [0.083, 0.212]** on unlabelled shots. In 2014,
@@ -287,13 +355,15 @@ per-shot results (doi:10.1088/1741-4326/ac44af).
 
 ## Limitations
 
-Negative coverage is assumed, physical weak extent conventional, and comparisons
+Negative coverage is assumed, pre-onset physical windows uncertain, and comparisons
 unlabelled. The roster is small and campaign-specific; it does not establish stable
 coverage, calibration, blind-gold performance or cross-campaign generalisation.
 Conditional masks retain phase information. Fixed-prediction shot CIs and five
-splits do not estimate population-of-run uncertainty. ZIPFIT is acausal, the screen
-and analysis-span selection retrospective, and the validated low-frequency n=1
-RWM-sensitive input is missing. A stronger study needs an approved sensor locator
+splits do not estimate population-of-run uncertainty. ZIPFIT is acausal,
+N1RMS/N2RMS are postprocessed with timing uncertainty,
+and the screen and analysis-span selection are retrospective. The validated
+low-frequency n=1 RWM-sensitive input is missing despite the isolated candidate
+fetch attempt. A stronger study needs an approved sensor locator
 validated on Hanson shots and expert review of negative coverage and termination.
 
 On figure shots 156796 and 158022, beta_N/l_i collapses about 400 ms before the
@@ -313,19 +383,26 @@ To reproduce this round's summaries without refitting/tuning, run
 `rwm_evaluate.py --rescore-saved --workers 5 --replicates 1000`, then
 `rwm_tables.py`. The evaluation script replays saved fold alarm rules, bootstraps
 every seed and campaign, pairs each forest split with the identical fixed
-elapsed-time ranks, and writes E. All preceding point scores, split-0 intervals,
-alarm outcomes and run-record scores are preserved. Sources:
+elapsed-time ranks, and writes E. Forecast point scores, reference-split intervals,
+alarm outcomes and run-record scores are preserved; the physical window categories
+are regenerated as uncertain. Sources:
 `E#/protocol/prediction_mode`, `E#/configs/<model>/predictions`,
 `E#/leave_one_run_record_out/predictions`.
 
 Large artifacts live under `$LABELER_ROOT/round4/rwm/`. The figure
 `rwm_onset_scores.{pdf,png}` shows six Hanson and two comparison shots selected by
 shot number/matching, rather than score. F records caption, source rows and
-selection. The figure remains unchanged this round. The paper table
-`table_rwm.tex` has one-line point/CI cells, labelled Tokamak-SI and Legacy blocks,
-five-split campaign ranges and run-record holdout cells. It uses a two-column-wide
-`table*` to preserve readable intervals; P records every cell's JSON source and
-its short caption. Compile it with `booktabs` in a minimal standalone document.
+selection. The figure remains unchanged this round; it illustrates scores, not
+verified physical growth extent. The main paper table `table_rwm.tex` includes
+Tokamak-SI slice TPR/FPR beside a separate Legacy block, five-split campaign ranges
+and run-record holdout cells. Its stacked point/CI cells retain readable fonts in
+a two-column-wide `table*`. Four supplements (`table_rwm_campaign_pairs.tex`,
+`table_rwm_alarms.tex`, `table_rwm_onset_actual.tex`, `table_rwm_onset_window.tex`)
+retain the full campaign pairs, all-seed alarms and explicitly sampled physics.
+Small LaTeX sources are committed under `outputs/labeler/rwm/`; compiled PDFs and
+150-dpi PNGs live under `$LABELER_ROOT/round4/rwm/`. P records each cell's source,
+artifact hashes and compilation/visual checks. Compile with `booktabs` and
+`longtable` in a minimal standalone document.
 
 ## Appendix: fix history
 
@@ -340,3 +417,10 @@ its short caption. Compile it with `booktabs` in a minimal standalone document.
   named the holdout by run record, documented matching/span asymmetry and the
   pre-onset convention, and aligned/compiled the paper table. This protocol is the
   current readout; earlier report sections are historical snapshots.
+
+- **Round 4:** added paired campaign/run-record references and five-split alarm
+  ranges; described the 2014 conditional failure and seed-3 borderline interval;
+  changed unverified pre-onset physical windows to uncertain; added onset physics
+  with explicit sampling times, documented offline input timing/rotation units,
+  and probed candidate n=1 archive amplitudes without claiming validated sensor
+  provenance. The current tables include slice TPR/FPR and labelled paired strata.
