@@ -414,7 +414,7 @@ def write_latex(record, out_dir):
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
-            r"\shortstack{High-$\beta$\\AUROC} \\"
+            r"\shortstack{High-$\beta$ conditional\\AUROC} \\"
         ),
         r"\midrule",
     ]
@@ -501,7 +501,7 @@ def write_latex(record, out_dir):
         r"shot p95. Brackets: 95\% shot-bootstrap intervals (1,000 resamples). "
         r"Ranges span five splits: high-$\beta$ AUROC "
         + split_range(ranges["pooled"]["high_beta_auroc"], 2, "--")
-        + r"; forest-minus-elapsed-time "
+        + r"; forest-minus-elapsed-time AUROC "
         + split_range(summary["paired_time_ranges"]["high_beta_auroc"], 2, "--")
         + r", with paired intervals including zero in all three pooled strata. "
         r"Leave-one-run-record-out retains four records across three dates. "
@@ -629,7 +629,7 @@ def main():
             "model",
             "fold seed",
             "primary AUROC",
-            "high-beta AUROC",
+            "high-beta conditional AUROC",
             "detection rate",
             "unlabelled alarm incidence",
         ],
