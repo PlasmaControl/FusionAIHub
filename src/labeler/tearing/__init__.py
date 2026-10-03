@@ -1,4 +1,4 @@
-"""Whole-interval tearing-mode labels, their agreement with the archives, and a detector.
+"""Whole-interval tearing-mode labels and their agreement with the lab's archives.
 
 `rule` turns a shot's n = 1 and n = 2 magnetic RMS (`\\MHD::N1RMS`, `\\MHD::N2RMS`)
 into the intervals over which a tearing mode is present. `agreement` compares those

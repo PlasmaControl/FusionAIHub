@@ -1,0 +1,311 @@
+"""Per-bin scores for tearing-mode detectors, and the shot bootstrap around them.
+
+Every detector in the benchmark is judged the same way. A shot is cut into bins of
+`BIN_MS` over its catalog window; a bin is positive where its centre is inside a mode
+interval (`label_bins`), negative elsewhere, and ignored where the label says uncertain
+or not observable. A detector gives each bin a score (`align_scores` puts a model's own
+time grid on the bins). Then:
+
+* AUROC and AUPRC are read off per-shot score histograms (`shot_stats`) on one shared
+  grid of thresholds, so a bootstrap of the shots costs a matrix product;
+* F1 is counted per shot at the threshold the detector was given (`shot_stats`), which
+  may differ by shot (a threshold chosen on each fold's own validation shots);
+* segmental F1 matches predicted to true intervals by temporal IoU
+  (`segment_counts`);
+* `bootstrap` resamples whole shots with replacement, 1000 times by default, so no
+  bin is treated as independent of its neighbours.
+
+Nothing here knows what a detector is; it takes arrays.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import numpy as np
+import pandas as pd
+
+BIN_MS = 10.0
+#: Temporal-IoU levels the segmental F1 is reported at.
+TIOUS = (0.3, 0.5, 0.7)
+#: A predicted or true stretch shorter than this (ms) is not a segment.
+MIN_SEGMENT_MS = 50.0
+#: Gaps shorter than this (ms) do not split a predicted segment.
+MERGE_GAP_MS = 50.0
+
+
+def shot_folds(shots, k: int = 5, seed: int = 0) -> dict[int, int]:
+    """`{shot: fold}`: a seeded shuffle of the sorted shots dealt out round-robin."""
+    ordered = sorted({int(s) for s in shots})
+    order = np.random.default_rng(seed).permutation(len(ordered))
+    return {ordered[i]: int(rank % k) for rank, i in enumerate(order)}
+
+
+def bin_centres(window, bin_ms: float = BIN_MS) -> np.ndarray:
+    """Centres (ms) of the bins wholly inside `window`, on an absolute grid of `bin_ms`."""
+    lo = np.ceil(window[0] / bin_ms) * bin_ms
+    hi = np.floor(window[1] / bin_ms) * bin_ms
+    if hi - lo < bin_ms:
+        return np.empty(0)
+    return np.arange(lo, hi, bin_ms) + bin_ms / 2.0
+
+
+def _inside(centres, spans) -> np.ndarray:
+    mask = np.zeros(len(centres), dtype=bool)
+    for a, b in spans:
+        mask |= (centres >= a) & (centres <= b)
+    return mask
+
+
+def label_bins(rows: pd.DataFrame, centres) -> tuple[np.ndarray, np.ndarray]:
+    """`(y, valid)` over bin `centres` from one shot's interval-table rows.
+
+    `rows` has `category`, `t_start`, `t_end` (the catalog's interval schema: 1
+    present, 2 uncertain, 3 not observable, 0 absent; a point has `t_start == t_end`).
+    A bin is positive where its centre is in a present span, ignored (`valid` False)
+    where it is in an uncertain or not-observable span, negative elsewhere.
+    """
+    span = rows[rows.t_end > rows.t_start]
+
+    def of(category):
+        kept = span[span.category == category]
+        return _inside(centres, zip(kept.t_start, kept.t_end, strict=True))
+
+    return of(1).astype(np.int8), ~(of(2) | of(3))
+
+
+def align_scores(
+    t_ms, values, centres, *, shift_ms: float = 0.0, max_gap_ms: float | None = None
+) -> np.ndarray:
+    """A model's scores on its own grid, linearly interpolated to bin `centres`.
+
+    The score stamped `t` is taken to describe `t + shift_ms` (the onset CNN's output at
+    `t` is the mode's presence at `t + 25 ms`). NaN samples are skipped. A bin whose
+    two neighbouring samples are more than 1.5 steps apart (a step is `max_gap_ms`, by
+    default the grid's median spacing) has no score (NaN), nor has one outside the
+    record.
+    """
+    t = np.asarray(t_ms, dtype=float) + shift_ms
+    v = np.asarray(values, dtype=float)
+    keep = np.isfinite(t) & np.isfinite(v)
+    t, v = t[keep], v[keep]
+    out = np.full(len(centres), np.nan)
+    if t.size < 2:
+        return out
+    step = float(np.median(np.diff(t))) if max_gap_ms is None else float(max_gap_ms)
+    inside = (centres >= t[0]) & (centres <= t[-1])
+    out[inside] = np.interp(centres[inside], t, v)
+    nearest = np.searchsorted(t, centres[inside])
+    right = np.clip(nearest, 0, t.size - 1)
+    left = np.clip(nearest - 1, 0, t.size - 1)
+    far = (t[right] - t[left]) > step * 1.5 + 1e-9
+    idx = np.flatnonzero(inside)
+    out[idx[far]] = np.nan
+    return out
+
+
+def edges_for(scores, size: int = 1024) -> np.ndarray:
+    """Thresholds for the histograms: the pooled scores' quantiles, plus both ends."""
+    s = np.asarray(scores, dtype=float)
+    s = s[np.isfinite(s)]
+    if s.size == 0:
+        raise ValueError("no finite scores")
+    q = np.quantile(s, np.linspace(0.0, 1.0, size + 1))
+    return np.unique(np.concatenate(([s.min() - 1e-9], q, [s.max() + 1e-9])))
+
+
+@dataclass
+class ShotStats:
+    """What one shot contributes to every metric (so the shots can be resampled)."""
+
+    shot: int
+    n_bins: int
+    n_pos: int
+    n_neg: int
+    pos_hist: np.ndarray
+    neg_hist: np.ndarray
+    tp: int = 0
+    fp: int = 0
+    fn: int = 0
+    seg: dict[float, tuple[int, int, int]] = field(default_factory=dict)
+
+
+def _hist(values, edges) -> np.ndarray:
+    return np.histogram(values, bins=edges)[0].astype(np.int64)
+
+
+def segments(
+    mask,
+    *,
+    bin_ms: float = BIN_MS,
+    min_ms: float = MIN_SEGMENT_MS,
+    merge_ms: float = MERGE_GAP_MS,
+) -> list[tuple[int, int]]:
+    """Half-open index runs `[a, b)` of a boolean mask: gaps of at most `merge_ms`
+    closed, runs shorter than `min_ms` dropped."""
+    m = np.asarray(mask, dtype=bool)
+    edges = np.diff(np.concatenate(([0], m.astype(np.int8), [0])))
+    runs = list(
+        zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1), strict=True)
+    )
+    gap = int(np.floor(merge_ms / bin_ms + 1e-9))
+    merged: list[list[int]] = []
+    for a, b in runs:
+        if merged and a - merged[-1][1] <= gap:
+            merged[-1][1] = int(b)
+        else:
+            merged.append([int(a), int(b)])
+    need = int(np.ceil(min_ms / bin_ms - 1e-9))
+    return [(a, b) for a, b in merged if b - a >= need]
+
+
+def segment_counts(pred, true, tiou: float, **kw) -> tuple[int, int, int]:
+    """`(tp, fp, fn)` of predicted against true segments at temporal IoU `tiou`.
+
+    Both masks are cut into segments by `segments`; each true segment is matched to at
+    most one predicted segment, the best-overlapping first, and a match needs an IoU of
+    at least `tiou`.
+    """
+    p, t = segments(pred, **kw), segments(true, **kw)
+    pairs = []
+    for i, (pa, pb) in enumerate(p):
+        for j, (ta, tb) in enumerate(t):
+            inter = min(pb, tb) - max(pa, ta)
+            if inter > 0:
+                pairs.append((inter / (max(pb, tb) - min(pa, ta)), i, j))
+    pairs.sort(reverse=True)
+    used_p, used_t, tp = set(), set(), 0
+    for iou, i, j in pairs:
+        if iou < tiou:
+            break
+        if i in used_p or j in used_t:
+            continue
+        used_p.add(i)
+        used_t.add(j)
+        tp += 1
+    return tp, len(p) - tp, len(t) - tp
+
+
+def shot_stats(
+    shot, y, valid, score, edges, threshold=None, *, tious=TIOUS
+) -> ShotStats:
+    """One shot's contribution: histograms over `edges`, counts at `threshold`.
+
+    Only bins that are `valid` and carry a finite score count. Segmental counts need
+    a `threshold`; they are made on the shot's bins in order with the others left out
+    (a bin with no score or an ignored bin is not a segment).
+    """
+    y = np.asarray(y).astype(bool)
+    valid = np.asarray(valid, dtype=bool)
+    score = np.asarray(score, dtype=float)
+    use = valid & np.isfinite(score)
+    pos, neg = score[use & y], score[use & ~y]
+    stats = ShotStats(
+        int(shot),
+        int(use.sum()),
+        len(pos),
+        len(neg),
+        _hist(pos, edges),
+        _hist(neg, edges),
+    )
+    if threshold is not None:
+        hit = np.where(use, score >= threshold, False)
+        stats.tp = int((hit & use & y).sum())
+        stats.fp = int((hit & use & ~y).sum())
+        stats.fn = int((~hit & use & y).sum())
+        for level in tious:
+            stats.seg[level] = segment_counts(hit & use, y & use, level)
+    return stats
+
+
+def auroc_auprc(pos_hist, neg_hist) -> tuple[float, float]:
+    """AUROC (ties half) and average precision from histograms, high score first."""
+    pos = np.asarray(pos_hist, dtype=float)[::-1]
+    neg = np.asarray(neg_hist, dtype=float)[::-1]
+    p, n = pos.sum(), neg.sum()
+    if p == 0 or n == 0:
+        return float("nan"), float("nan")
+    tp, fp = np.cumsum(pos), np.cumsum(neg)
+    tpr = np.concatenate(([0.0], tp / p))
+    fpr = np.concatenate(([0.0], fp / n))
+    auroc = float(np.sum((fpr[1:] - fpr[:-1]) * (tpr[1:] + tpr[:-1]) / 2.0))
+    called = tp + fp
+    precision = np.divide(tp, called, out=np.ones_like(tp), where=called > 0)
+    recall = tp / p
+    auprc = float(np.sum(np.diff(np.concatenate(([0.0], recall))) * precision))
+    return auroc, auprc
+
+
+def f1_of(tp, fp, fn) -> float:
+    denom = 2 * tp + fp + fn
+    return float(2 * tp / denom) if denom > 0 else float("nan")
+
+
+def metrics(stats: list[ShotStats], weights=None) -> dict:
+    """AUROC, AUPRC, F1 at the shots' thresholds, segmental F1, over weighted shots."""
+    w = np.ones(len(stats)) if weights is None else np.asarray(weights, dtype=float)
+    pos = (w[:, None] * np.stack([s.pos_hist for s in stats])).sum(axis=0)
+    neg = (w[:, None] * np.stack([s.neg_hist for s in stats])).sum(axis=0)
+    auroc, auprc = auroc_auprc(pos, neg)
+    tp = float((w * [s.tp for s in stats]).sum())
+    fp = float((w * [s.fp for s in stats]).sum())
+    fn = float((w * [s.fn for s in stats]).sum())
+    out = {
+        "auroc": auroc,
+        "auprc": auprc,
+        "f1": f1_of(tp, fp, fn),
+        "precision": tp / (tp + fp) if tp + fp else float("nan"),
+        "recall": tp / (tp + fn) if tp + fn else float("nan"),
+        "prevalence": float(pos.sum() / (pos.sum() + neg.sum())),
+    }
+    for level in sorted({lv for s in stats for lv in s.seg}):
+        counts = np.array([s.seg.get(level, (0, 0, 0)) for s in stats], dtype=float)
+        a, b, c = (w[:, None] * counts).sum(axis=0)
+        out[f"segf1_{level:g}"] = f1_of(a, b, c)
+    return out
+
+
+def bootstrap(
+    stats: list[ShotStats], *, n: int = 1000, seed: int = 0, level: float = 0.95
+) -> dict:
+    """Point estimates and `level` percentile intervals, resampling whole shots.
+
+    `{metric: {"value", "lo", "hi"}}`, plus `n_shots` and `replicates`. A replicate in
+    which a metric is undefined (no positive bins drawn) is left out of that metric's
+    interval, and `valid_replicates` says how many were kept.
+    """
+    if not stats:
+        raise ValueError("no shots")
+    point = metrics(stats)
+    rng = np.random.default_rng(seed)
+    draws = []
+    for _ in range(n):
+        counts = np.bincount(
+            rng.integers(0, len(stats), len(stats)), minlength=len(stats)
+        )
+        draws.append(metrics(stats, counts))
+    alpha = (1.0 - level) / 2.0 * 100.0
+    out: dict = {"n_shots": len(stats), "replicates": n}
+    for key, value in point.items():
+        boot = np.array([d[key] for d in draws], dtype=float)
+        boot = boot[np.isfinite(boot)]
+        out[key] = {
+            "value": value,
+            "lo": float(np.percentile(boot, alpha)) if boot.size else float("nan"),
+            "hi": float(np.percentile(boot, 100.0 - alpha))
+            if boot.size
+            else float("nan"),
+            "valid_replicates": int(boot.size),
+        }
+    return out
+
+
+def best_threshold(stats: list[ShotStats], edges) -> float:
+    """The edge that maximises the pooled histograms' F1 (for a validation set)."""
+    pos = np.sum([s.pos_hist for s in stats], axis=0)[::-1].cumsum()
+    neg = np.sum([s.neg_hist for s in stats], axis=0)[::-1].cumsum()
+    total = float(np.sum([s.pos_hist for s in stats]))
+    f1 = np.where(pos + neg > 0, 2 * pos / np.maximum(pos + neg + total, 1e-12), 0.0)
+    k = int(np.argmax(f1))
+    # cumulative from the top: the k-th reversed bin starts at edges[len(edges) - 2 - k]
+    return float(np.asarray(edges)[len(edges) - 2 - k])
