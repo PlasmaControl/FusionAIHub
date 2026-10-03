@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
@@ -143,7 +144,7 @@ def main():
         right.spines["top"].set_visible(False)
         ax.grid(axis="y", lw=0.35, color="#dddddd")
     fig.subplots_adjust(
-        left=0.13, right=0.86, bottom=0.11, top=0.93, wspace=0.20, hspace=0.23
+        left=0.13, right=0.86, bottom=0.11, top=0.91, wspace=0.20, hspace=0.23
     )
     fig.text(0.015, 0.52, "Held-out rwm-brf score", rotation=90, va="center")
     fig.text(0.945, 0.52, r"$\beta_N/l_i$", rotation=90, va="center", color=BETA_COLOR)
@@ -155,6 +156,16 @@ def main():
             Line2D([0], [0], color=SCORE_COLOR, lw=1, label="rwm-brf"),
             Line2D([0], [0], color=BETA_COLOR, lw=1, ls="--", label=r"$\beta_N/l_i$"),
             Line2D([0], [0], color="#222222", lw=0.7, label="n=1 onset"),
+            Patch(facecolor="#999999", alpha=0.15, label="100 ms forecast band"),
+            Line2D(
+                [0],
+                [0],
+                color=BETA_COLOR,
+                alpha=0.4,
+                lw=0.5,
+                ls=":",
+                label=r"no-wall proxy $\beta_N/l_i=4$",
+            ),
         ],
         loc="upper center",
         bbox_to_anchor=(0.5, 0.995),
@@ -190,7 +201,10 @@ def main():
             "are unlabelled comparison shots; their zero is the matched Hanson "
             "onset time, not an onset on those shots. The dotted orange line is "
             "the no-wall proxy beta_N/li=4. Examples were chosen by shot number, "
-            "not model performance; this figure does not estimate warning skill."
+            "not model performance; this figure does not estimate warning skill. "
+            "On 156796 and 158022, beta_N/li collapses about 400 ms before the "
+            "listed onset, within assumed-negative time, visibly limiting the "
+            "onset-list completeness assumption."
         ),
     }
     (OUT / "figure.json").write_text(json.dumps(metadata, indent=2) + "\n")

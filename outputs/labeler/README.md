@@ -15,9 +15,13 @@
   the SELDNet training comparison (`ae/README.md`, `ae/training/README.md`);
 - `tabpfn/`: the TabPFN-against-the-CNN study (Study A on the CNN's archived inputs, Study B on
   labelmaker's reconstructed inputs), with its own README.
-- `rwm/`: Hanson-only onset forecasting baseline, explicit weak/assumed/unlabelled tiers, primary and conditional shot-bootstrap scores, named alarm tables and paper-artifact provenance; [scope and results](../../docs/labeler/rwm_baseline.md).
-  `tables.md`), written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py` and read
-  through `docs/labeler/rwm_baseline.md`.
+- `rwm/`: Hanson-only onset forecasting baseline with explicit evidence tiers,
+  primary and conditional scores, campaign and run-day sensitivity, alarm tables,
+  and a separately sourced published NSTX reference. `evaluation.json` and
+  `tables.md` are written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py`;
+  `figure.json` records the paper figure and caption. Large prediction, figure,
+  and LaTeX artifacts live under `$LABELER_ROOT/round4/rwm/`.
+  See [scope and results](../../docs/labeler/rwm_baseline.md).
 
 In the presentation figures, blue is a model on its own archived training inputs (its
 ceiling), orange is labelmaker's reconstruction (what gets published), and violet is either
