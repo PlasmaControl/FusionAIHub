@@ -145,6 +145,54 @@ def load_labels(dataset_dir: Path, target: str, limit: int | None = None) -> lis
     return out
 
 
+def load_swap_labels(manifest_path: Path, target: str) -> tuple[list[ShotLabels], dict]:
+    """Load only the 100 training and 20 selection shots from a frozen swap."""
+    from labeler.ae.supervision import (
+        activity_targets,
+        dense_states,
+        sha256,
+        validate_split,
+    )
+    from labeler.events.review.labels import read_labels
+
+    manifest = json.loads(manifest_path.read_text())
+    for key in ("dense", "cohort"):
+        item = manifest["inputs"][key]
+        if sha256(Path(item["snapshot"])) != item["sha256"]:
+            raise ValueError(f"{key} snapshot changed since preparation")
+    validate_split(manifest["split"], set(manifest["blind_gold_shots"]))
+    if target not in ("legacy", "dense", "threeway"):
+        raise ValueError("swap target must be legacy, dense, or threeway")
+    owner = read_labels(Path(manifest["inputs"]["dense"]["snapshot"]))
+    out = []
+    for group, split in (("train", "train"), ("selection", "valid")):
+        for shot in manifest["split"][group]:
+            item = manifest["dataset"][str(shot)]
+            path = Path(item["path"])
+            if sha256(path) != item["sha256"]:
+                raise ValueError(f"shot {shot} dataset changed since preparation")
+            with np.load(path) as z:
+                active, ann, freq = z["active"], z["annotated"], z["freq_khz"]
+            y, w, ft, fw = activity_targets(
+                active, ann, freq, target, dense_states(owner[shot])
+            )
+            out.append(
+                ShotLabels(
+                    path=path,
+                    shot=str(shot),
+                    split=split,
+                    y=y,
+                    w=w,
+                    ft=ft,
+                    fw=fw,
+                    annotated=ann.astype(bool),
+                    active=active.astype(bool),
+                    freq_khz=freq,
+                )
+            )
+    return out, manifest
+
+
 # --------------------------------------------------------------------------
 # data
 
@@ -293,7 +341,11 @@ def predict_records(
     out: dict[str, dict[str, np.ndarray]] = {}
     for rec in shots:
         x = load_record(rec).to(device, non_blocking=True).float()
-        with torch.autocast(device_type=device.type, dtype=amp_dtype, enabled=device.type == "cuda"):
+        with torch.autocast(
+            device_type=device.type,
+            dtype=amp_dtype,
+            enabled=device.type == "cuda" and amp_dtype != torch.float32,
+        ):
             y = model(x)
         y = y.float()[0]
         prob = torch.sigmoid(y[:, 0]).cpu().numpy().astype(np.float64)
@@ -368,7 +420,14 @@ def atomic_write_json(path: Path, payload: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--target", choices=["threeway", "mask"], default="threeway")
+    p.add_argument(
+        "--target", choices=["threeway", "mask", "legacy", "dense"], default="threeway"
+    )
+    p.add_argument(
+        "--swap-manifest",
+        type=Path,
+        help="frozen supervision swap: 100 train / 20 selection; never the 60 valid",
+    )
     p.add_argument("--loss", choices=["sce", "bce"], default="sce")
     p.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET)
     p.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
@@ -404,17 +463,37 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--device", default="cuda")
     args = p.parse_args(argv)
 
+    if args.target in ("legacy", "dense") and args.swap_manifest is None:
+        p.error("legacy/dense require --swap-manifest to enforce clean selection")
+    if args.swap_manifest and args.limit_shots is not None:
+        p.error("a supervision swap cannot truncate the frozen shot split")
+    if args.swap_manifest and args.device == "cuda" and not torch.cuda.is_available():
+        raise SystemExit(
+            "supervision swap requires CUDA; installed torch is "
+            f"{torch.__version__} (no silent CPU fallback)"
+        )
+
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
 
     device = torch.device(args.device if torch.cuda.is_available() or args.device == "cpu" else "cpu")
     amp_dtype = torch.bfloat16
+    if args.swap_manifest and device.type == "cuda":
+        # V100 fallback: autocast float32 disables AMP, avoiding unsupported bf16.
+        if not torch.cuda.is_bf16_supported():
+            amp_dtype = torch.float32
+        total = torch.cuda.get_device_properties(device).total_memory
+        torch.cuda.set_per_process_memory_fraction(min(0.9, 10 * 1024**3 / total))
     n_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 4))
     num_workers = args.num_workers if args.num_workers is not None else max(1, n_cpus)
 
     t_start = time.time()
-    shots = load_labels(args.dataset_dir, args.target, limit=args.limit_shots)
+    swap = None
+    if args.swap_manifest:
+        shots, swap = load_swap_labels(args.swap_manifest, args.target)
+    else:
+        shots = load_labels(args.dataset_dir, args.target, limit=args.limit_shots)
     train = [s for s in shots if s.split == "train"]
     valid = [s for s in shots if s.split == "valid"]
     if not train or not valid:
@@ -492,7 +571,9 @@ def main(argv: list[str] | None = None) -> int:
             ft = batch["ft"].to(device, non_blocking=True)
             fw = batch["fw"].to(device, non_blocking=True)
             with torch.autocast(
-                device_type=device.type, dtype=amp_dtype, enabled=device.type == "cuda"
+                device_type=device.type,
+                dtype=amp_dtype,
+                enabled=device.type == "cuda" and amp_dtype != torch.float32,
             ):
                 out = model(x)
             parts = ae_loss(out.float(), y, w, ft, fw, loss_cfg)
@@ -610,7 +691,12 @@ def main(argv: list[str] | None = None) -> int:
                 "threeway: 1 on annotated&active, 0 on ~annotated&~active, weight 0 "
                 "elsewhere"
                 if args.target == "threeway"
-                else "mask: target = active (task 7a cleaned mask, notch 0.8), weight 1"
+                else (
+                    f"{args.target}: audit 10 ms activity targets expanded to native "
+                    "columns; fixed annotation&active frequency supervision"
+                    if swap
+                    else "mask: target = active (task 7a cleaned mask, notch 0.8), weight 1"
+                )
             ),
             **label_stats,
         },
@@ -622,6 +708,10 @@ def main(argv: list[str] | None = None) -> int:
             "windows_per_shot": args.windows_per_shot,
             "batch_windows": shots_per_batch * args.windows_per_shot,
             "validation": "whole 7820-frame records, one forward pass each",
+            **(
+                {"supervision_swap": swap, "selection": "20 original train shots"}
+                if swap else {}
+            ),
         },
         "history": history,
         "best_epoch": best_epoch,

@@ -1,0 +1,38 @@
+#!/bin/bash
+#SBATCH --job-name=ae-supervision-swap
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=48G
+#SBATCH --time=06:00:00
+#SBATCH --array=0-2%3
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/slurm-%A_%a.out
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/slurm-%A_%a.out
+
+set -euo pipefail
+REPO=/scratch/gpfs/nc1514/FusionAIHub-r4-aeswap
+export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/aeswap
+export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
+export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
+export LABELER_NO_FETCH=1
+export PYTHONPATH="$REPO/src"
+export OMP_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+cd "$REPO"
+trap 'bash "$LABELER_ROOT/scratch/bin/tmpsweep.sh"' EXIT
+
+# Three tasks per seed, at most three concurrent jobs. The manifest defaults
+# to one seed; prepare with --seeds 0 1 2 and submit --array=0-8%3 for three.
+TASK=${SLURM_ARRAY_TASK_ID:-0}
+SEED=$((TASK / 3))
+ARMS=(legacy dense threeway)
+ARM=${ARMS[$((TASK % 3))]}
+# The controller may authorize a CUDA-enabled Pixi environment explicitly.
+# The implementer uses the binding labelmaker environment by default.
+PIXI_ENV=${AESWAP_PIXI_ENV:-labelmaker}
+srun pixi run --frozen --no-install \
+    --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml \
+    -e "$PIXI_ENV" python -u scripts/labeler/ae_supervision_swap.py \
+    train --supervision "$ARM" --seed "$SEED"
