@@ -1,0 +1,206 @@
+{
+ "bin_ms": 50.0,
+ "posterior_threshold": 0.7,
+ "fit": {
+  "n_shots": 233,
+  "n_bins": 22222,
+  "excluded_split": "test",
+  "method": "anchored: accuracies from the bins where every indicator is valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, propensities from all bins",
+  "anchor_bins": 2557,
+  "anchor_shots": 40,
+  "all_bins_fit_for_comparison": {
+   "afrac": {
+    "acc_weight": 0.0,
+    "propensity_weight": 0.48506171926824343,
+    "implied_accuracy": 0.5
+   },
+   "prad": {
+    "acc_weight": 4.0,
+    "propensity_weight": -2.775800456808259,
+    "implied_accuracy": 0.9820137900379085
+   },
+   "tangtv": {
+    "acc_weight": 0.7401749732635409,
+    "propensity_weight": 0.6791849545155314,
+    "implied_accuracy": 0.5117547818364419
+   }
+  }
+ },
+ "structure_selection": {
+  "cv_folds": 5,
+  "rule": "simplest structure within one standard error of the best",
+  "candidates": {
+   "independent": {
+    "mean_heldout_loglik_per_bin": -2.346591415860878,
+    "folds": [
+     -2.3530683326833044,
+     -2.2977630971070244,
+     -2.4096077948741663,
+     -2.3398634624274584,
+     -2.3326543922124343
+    ]
+   },
+   "prad_tangtv": {
+    "mean_heldout_loglik_per_bin": -2.3482754954718197,
+    "folds": [
+     -2.351774386750427,
+     -2.2997022843004933,
+     -2.417538057626952,
+     -2.3476407378237947,
+     -2.3247220108574305
+    ]
+   },
+   "afrac_tangtv": {
+    "mean_heldout_loglik_per_bin": -2.344239862790673,
+    "folds": [
+     -2.349385801929694,
+     -2.2912691522121738,
+     -2.408013218762603,
+     -2.339862797485837,
+     -2.3326683435630575
+    ]
+   },
+   "afrac_prad": {
+    "mean_heldout_loglik_per_bin": -2.3490928847369488,
+    "folds": [
+     -2.365506182072631,
+     -2.2977179254655122,
+     -2.4096937978907986,
+     -2.339759844786175,
+     -2.3327866734696263
+    ]
+   },
+   "all_pairs": {
+    "mean_heldout_loglik_per_bin": -2.350856162861617,
+    "folds": [
+     -2.3627674716293203,
+     -2.300015827712904,
+     -2.416767886381166,
+     -2.347641850910524,
+     -2.3270877776741687
+    ]
+   }
+  }
+ },
+ "chosen_structure": "independent",
+ "model": {
+  "names": [
+   "afrac",
+   "prad",
+   "tangtv"
+  ],
+  "corr": [],
+  "theta": [
+   -0.6931471805599453,
+   -1.3862943611198906,
+   -1.3862943611198906,
+   0.10882176756389311,
+   0.13323820768012146,
+   -1.946607232432444,
+   0.648991205804334,
+   0.708819123217951,
+   4.0
+  ],
+  "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)"
+ },
+ "prior_logit": [
+  -0.6931471805599453,
+  -1.3862943611198906,
+  -1.3862943611198906
+ ],
+ "labelling_functions": {
+  "afrac": {
+   "acc_weight": 0.648991205804334,
+   "propensity_weight": 0.10882176756389311,
+   "implied_accuracy": 0.6567830972135764
+  },
+  "prad": {
+   "acc_weight": 0.708819123217951,
+   "propensity_weight": 0.13323820768012146,
+   "implied_accuracy": 0.6701401767218859
+  },
+  "tangtv": {
+   "acc_weight": 4.0,
+   "propensity_weight": -1.946607232432444,
+   "implied_accuracy": 0.9646631559719039
+  }
+ },
+ "state_counts_bins": {
+  "label_model": {
+   "attached": 6832,
+   "detached": 2285,
+   "marfe": 1172,
+   "uncertain": 14497
+  },
+  "rule": {
+   "attached": 11070,
+   "detached": 2897,
+   "marfe": 274,
+   "uncertain": 10545
+  }
+ },
+ "rule_vs_label_model": {
+  "bins": 24786,
+  "agreement": 0.6800209795852498,
+  "kappa": 0.48119363072936083,
+  "rows_rule_columns_label_model": {
+   "attached": {
+    "attached": 6529,
+    "detached": 7,
+    "marfe": 2,
+    "uncertain": 4532
+   },
+   "detached": {
+    "attached": 11,
+    "detached": 1484,
+    "marfe": 9,
+    "uncertain": 1393
+   },
+   "marfe": {
+    "attached": 0,
+    "detached": 4,
+    "marfe": 270,
+    "uncertain": 0
+   },
+   "uncertain": {
+    "attached": 292,
+    "detached": 790,
+    "marfe": 891,
+    "uncertain": 8572
+   }
+  }
+ },
+ "uncertain_by_threshold": {
+  "0.5": {
+   "attached": 18837,
+   "detached": 3974,
+   "marfe": 1192,
+   "uncertain": 783
+  },
+  "0.6": {
+   "attached": 11260,
+   "detached": 3733,
+   "marfe": 1192,
+   "uncertain": 8601
+  },
+  "0.7": {
+   "attached": 6848,
+   "detached": 2327,
+   "marfe": 1192,
+   "uncertain": 14419
+  },
+  "0.8": {
+   "attached": 2050,
+   "detached": 1756,
+   "marfe": 1192,
+   "uncertain": 19788
+  },
+  "0.9": {
+   "attached": 2050,
+   "detached": 1723,
+   "marfe": 1184,
+   "uncertain": 19829
+  }
+ },
+ "primary_labeler": "label_model"
+}

@@ -1,0 +1,86 @@
+{
+ "shots_requested": 81,
+ "model_record": "label_model.json",
+ "20ms": {
+  "n_shots": 81,
+  "n_bins": 21637,
+  "assessed_share": 0.7594860655358876,
+  "uncertain_share_of_assessed": 0.21797602385443923,
+  "flicker_per_s": 1.2294763053458875,
+  "pairwise": {
+   "afrac__prad": {
+    "both_vote_bins": 3528,
+    "agreement": 0.47505668934240364,
+    "kappa": -0.07423604909172929
+   },
+   "afrac__tangtv": {
+    "both_vote_bins": 3630,
+    "agreement": 0.515426997245179,
+    "kappa": 0.19623462627226942
+   },
+   "prad__tangtv": {
+    "both_vote_bins": 5925,
+    "agreement": 0.39881856540084387,
+    "kappa": 0.07374686342257639
+   }
+  },
+  "vs_50ms": {
+   "bins_certain_in_both": 12379,
+   "agreement": 0.9735035140156717,
+   "kappa": 0.9591683173064198
+  }
+ },
+ "50ms": {
+  "n_shots": 81,
+  "n_bins": 8694,
+  "assessed_share": 0.7847941108810674,
+  "uncertain_share_of_assessed": 0.22116371097757584,
+  "flicker_per_s": 0.6624012043658262,
+  "pairwise": {
+   "afrac__prad": {
+    "both_vote_bins": 1469,
+    "agreement": 0.46426140231449964,
+    "kappa": -0.08760252986171935
+   },
+   "afrac__tangtv": {
+    "both_vote_bins": 1563,
+    "agreement": 0.5124760076775432,
+    "kappa": 0.1960028514415171
+   },
+   "prad__tangtv": {
+    "both_vote_bins": 2400,
+    "agreement": 0.40875,
+    "kappa": 0.09460399293038213
+   }
+  }
+ },
+ "100ms": {
+  "n_shots": 81,
+  "n_bins": 4364,
+  "assessed_share": 0.7846012832263978,
+  "uncertain_share_of_assessed": 0.22605140186915887,
+  "flicker_per_s": 0.43773584905660395,
+  "pairwise": {
+   "afrac__prad": {
+    "both_vote_bins": 713,
+    "agreement": 0.4319775596072931,
+    "kappa": -0.13389249490511135
+   },
+   "afrac__tangtv": {
+    "both_vote_bins": 797,
+    "agreement": 0.5056461731493099,
+    "kappa": 0.17867502242821015
+   },
+   "prad__tangtv": {
+    "both_vote_bins": 1160,
+    "agreement": 0.4103448275862069,
+    "kappa": 0.0989882013604206
+   }
+  },
+  "vs_50ms": {
+   "bins_certain_in_both": 2527,
+   "agreement": 0.9671547289275821,
+   "kappa": 0.9494155100268912
+  }
+ }
+}

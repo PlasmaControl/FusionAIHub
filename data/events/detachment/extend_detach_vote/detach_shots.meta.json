@@ -1,0 +1,82 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "attached",
+    "2": "detached",
+    "3": "marfe",
+    "4": "uncertain"
+  },
+  "category": "detachment",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "coverage": "Bins where at least two of the three indicators (Afrac, Prad,div, TangTV front) are valid. Time with no row was not assessed; it is not attached. 4 (uncertain) is an assessed bin where the labeler is below its confidence threshold or every valid indicator abstains.",
+  "fit_excluded_split": "test",
+  "label_model_structure": "independent",
+  "labeler": "label_model",
+  "made_at": "2026-10-03T17:19:45+00:00",
+  "made_by": "scripts/labeler/detach_label.py",
+  "made_from": [
+    {
+      "git_sha": "41f91865",
+      "producer": "detach_vote"
+    }
+  ],
+  "n_requested_shots": 259,
+  "n_rows": 2413,
+  "n_shots": 259,
+  "per_shot_files": {
+    "axis_order": [
+      "time",
+      "rho"
+    ],
+    "classes": {
+      "0": "absent",
+      "1": "attached",
+      "2": "detached",
+      "3": "marfe",
+      "4": "uncertain"
+    },
+    "encoding": "sparse_sampled_integer_grid",
+    "label_origin": "label_model on the bin's indicator votes",
+    "path": "detach_shots/<shot>.npz",
+    "radial_mapping": "broadcast each scalar label across all 20 rho bins",
+    "rho_edges": [
+      0.0,
+      0.05,
+      0.1,
+      0.15000000000000002,
+      0.2,
+      0.25,
+      0.30000000000000004,
+      0.35000000000000003,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6000000000000001,
+      0.65,
+      0.7000000000000001,
+      0.75,
+      0.8,
+      0.8500000000000001,
+      0.9,
+      0.9500000000000001,
+      1.0
+    ],
+    "sample_interval_ms": 50.0,
+    "time_grid": "50 ms bin starts from 0 ms to the shot's last assessed bin, at least 0..5950 ms",
+    "unknown": "unknown_indices: bins not assessed; not 0"
+  },
+  "posterior_threshold": 0.7,
+  "producer": "detach_vote",
+  "schema_version": 6,
+  "shot_list": "detach_shots.csv",
+  "shot_list_sha256": "8ef3a4ca2788b869511ff63693b56ce9b161f721636c3331e526494128f261f6",
+  "table_kind": "intervals",
+  "time_units": "ms"
+}

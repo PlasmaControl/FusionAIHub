@@ -1,0 +1,65 @@
+{
+ "n_shots_with_bins": 470,
+ "n_bins": 50032,
+ "afrac": {
+  "valid_bins": 22305,
+  "shots_with_valid_bins": 219,
+  "shots_with_20_valid_bins": 219,
+  "invalid_reason_bins": {
+   "no_probes": 22221,
+   "low_power": 1807,
+   "short_reference": 1490,
+   "ramp": 1332,
+   "no_power": 426,
+   "no_density": 233,
+   "elm": 218
+  },
+  "votes": {
+   "attached": 6905,
+   "detached": 10291,
+   "marfe": 0
+  }
+ },
+ "prad": {
+  "valid_bins": 44059,
+  "shots_with_valid_bins": 461,
+  "shots_with_20_valid_bins": 455,
+  "invalid_reason_bins": {
+   "low_power": 3700,
+   "no_input_power": 1336,
+   "elm": 704,
+   "no_bolometer": 233
+  },
+  "votes": {
+   "attached": 31540,
+   "detached": 3760,
+   "marfe": 0
+  }
+ },
+ "tangtv": {
+  "valid_bins": 5942,
+  "shots_with_valid_bins": 101,
+  "shots_with_20_valid_bins": 84,
+  "invalid_reason_bins": {
+   "no_inversion": 20530,
+   "strike_on_floor": 13754,
+   "efit_missing": 5661,
+   "no_frames": 2462,
+   "strike_not_on_shelf": 1103,
+   "efit_gap": 337,
+   "dz_unphysical": 243
+  },
+  "votes": {
+   "attached": 2192,
+   "detached": 1848,
+   "marfe": 1271
+  }
+ },
+ "n_eligible_shots": 259,
+ "eligible_by_split": {
+  "train": 182,
+  "val": 23,
+  "test": 26,
+  "outside": 28
+ }
+}
