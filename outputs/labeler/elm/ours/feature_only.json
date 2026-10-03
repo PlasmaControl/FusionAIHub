@@ -1,5 +1,7 @@
 {
- "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
+ "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
+ "created": "2026-10-03T23:11:48+00:00",
+ "script_sha256": "e2fe86d6d97da0182e51c63e64f415c5cfa84a5c30f15d69017cf45a3e8328d4",
  "name": "elm-feature-only",
  "feature": "max across FS02-FS04 of within-bin max minus median log10 D-alpha on the existing 0.1ms cell-maximum input grid",
  "recipe": "one feature, logistic regression C=1; no class weighting, normalization or hyperparameter selection; inner-val F1 threshold",
@@ -668,6 +670,19 @@
  "cohort_test_shots_used": 0,
  "primary_run": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
  "primary_run_sha256": "800648123f5d445174436b0b7f9179bbe7890d0dd93fae783721778a632b3e0b",
+ "common_bin_audit": {
+  "bin_sets_equal": true,
+  "sets": {
+   "bes73": {
+    "shots": 73,
+    "common_bins": 6527
+   },
+   "all119": {
+    "shots": 119,
+    "common_bins": 11653
+   }
+  }
+ },
  "sets": {
   "primary": {
    "bes73": {
@@ -708,7 +723,33 @@
       },
       "positive_shots": 53,
       "descriptive_only": false,
-      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "endpoint_shots": {
+       "precision": 53,
+       "recall": 53,
+       "f1": 53,
+       "false_alarm_bin_rate": 72,
+       "crowd_bin_recall": 45,
+       "non_crowd_span_touch_recall": 0,
+       "absent_span_alarm_rate": 0,
+       "absent_span_alarm_rate_guard25": 0,
+       "absent_span_interior_alarm_rate_guard25": 0,
+       "auroc": 53,
+       "auprc": 53
+      },
+      "interval_eligible": {
+       "precision": true,
+       "recall": true,
+       "f1": true,
+       "false_alarm_bin_rate": true,
+       "crowd_bin_recall": true,
+       "non_crowd_span_touch_recall": false,
+       "absent_span_alarm_rate": false,
+       "absent_span_alarm_rate_guard25": false,
+       "absent_span_interior_alarm_rate_guard25": false,
+       "auroc": true,
+       "auprc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": {
        "precision": [
         0.504257108304578,
@@ -730,22 +771,10 @@
         0.7873161312222932,
         0.9416600352070221
        ],
-       "non_crowd_span_touch_recall": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
-       "absent_span_interior_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
+       "non_crowd_span_touch_recall": null,
+       "absent_span_alarm_rate": null,
+       "absent_span_alarm_rate_guard25": null,
+       "absent_span_interior_alarm_rate_guard25": null,
        "auroc": [
         0.7699606468701039,
         0.8861141423992926
@@ -843,7 +872,33 @@
       },
       "positive_shots": 86,
       "descriptive_only": false,
-      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "endpoint_shots": {
+       "precision": 86,
+       "recall": 86,
+       "f1": 86,
+       "false_alarm_bin_rate": 118,
+       "crowd_bin_recall": 76,
+       "non_crowd_span_touch_recall": 0,
+       "absent_span_alarm_rate": 0,
+       "absent_span_alarm_rate_guard25": 0,
+       "absent_span_interior_alarm_rate_guard25": 0,
+       "auroc": 86,
+       "auprc": 86
+      },
+      "interval_eligible": {
+       "precision": true,
+       "recall": true,
+       "f1": true,
+       "false_alarm_bin_rate": true,
+       "crowd_bin_recall": true,
+       "non_crowd_span_touch_recall": false,
+       "absent_span_alarm_rate": false,
+       "absent_span_alarm_rate_guard25": false,
+       "absent_span_interior_alarm_rate_guard25": false,
+       "auroc": true,
+       "auprc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": {
        "precision": [
         0.5332632247339816,
@@ -865,22 +920,10 @@
         0.7507975097585627,
         0.8937331107757274
        ],
-       "non_crowd_span_touch_recall": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
-       "absent_span_interior_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
+       "non_crowd_span_touch_recall": null,
+       "absent_span_alarm_rate": null,
+       "absent_span_alarm_rate_guard25": null,
+       "absent_span_interior_alarm_rate_guard25": null,
        "auroc": [
         0.7834832033119935,
         0.8780425132348159
@@ -980,7 +1023,33 @@
       },
       "positive_shots": 53,
       "descriptive_only": false,
-      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "endpoint_shots": {
+       "precision": 53,
+       "recall": 53,
+       "f1": 53,
+       "false_alarm_bin_rate": 71,
+       "crowd_bin_recall": 45,
+       "non_crowd_span_touch_recall": 0,
+       "absent_span_alarm_rate": 0,
+       "absent_span_alarm_rate_guard25": 0,
+       "absent_span_interior_alarm_rate_guard25": 0,
+       "auroc": 53,
+       "auprc": 53
+      },
+      "interval_eligible": {
+       "precision": true,
+       "recall": true,
+       "f1": true,
+       "false_alarm_bin_rate": true,
+       "crowd_bin_recall": true,
+       "non_crowd_span_touch_recall": false,
+       "absent_span_alarm_rate": false,
+       "absent_span_alarm_rate_guard25": false,
+       "absent_span_interior_alarm_rate_guard25": false,
+       "auroc": true,
+       "auprc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": {
        "precision": [
         0.5153090281628195,
@@ -1002,22 +1071,10 @@
         0.7994604500291282,
         0.9419634195729771
        ],
-       "non_crowd_span_touch_recall": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
-       "absent_span_interior_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
+       "non_crowd_span_touch_recall": null,
+       "absent_span_alarm_rate": null,
+       "absent_span_alarm_rate_guard25": null,
+       "absent_span_interior_alarm_rate_guard25": null,
        "auroc": [
         0.7665491792873681,
         0.8879170939646784
@@ -1115,7 +1172,33 @@
       },
       "positive_shots": 86,
       "descriptive_only": false,
-      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "endpoint_shots": {
+       "precision": 86,
+       "recall": 86,
+       "f1": 86,
+       "false_alarm_bin_rate": 118,
+       "crowd_bin_recall": 76,
+       "non_crowd_span_touch_recall": 0,
+       "absent_span_alarm_rate": 0,
+       "absent_span_alarm_rate_guard25": 0,
+       "absent_span_interior_alarm_rate_guard25": 0,
+       "auroc": 86,
+       "auprc": 86
+      },
+      "interval_eligible": {
+       "precision": true,
+       "recall": true,
+       "f1": true,
+       "false_alarm_bin_rate": true,
+       "crowd_bin_recall": true,
+       "non_crowd_span_touch_recall": false,
+       "absent_span_alarm_rate": false,
+       "absent_span_alarm_rate_guard25": false,
+       "absent_span_interior_alarm_rate_guard25": false,
+       "auroc": true,
+       "auprc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": {
        "precision": [
         0.5432919272521352,
@@ -1137,22 +1220,10 @@
         0.7588722804747404,
         0.9001940132314086
        ],
-       "non_crowd_span_touch_recall": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate": [
-        NaN,
-        NaN
-       ],
-       "absent_span_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
-       "absent_span_interior_alarm_rate_guard25": [
-        NaN,
-        NaN
-       ],
+       "non_crowd_span_touch_recall": null,
+       "absent_span_alarm_rate": null,
+       "absent_span_alarm_rate_guard25": null,
+       "absent_span_interior_alarm_rate_guard25": null,
        "auroc": [
         0.7822761340550842,
         0.8788432444786095
@@ -1213,7 +1284,5 @@
     }
    }
   }
- },
- "generation_git": "8b586d94",
- "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
+ }
 }

@@ -1,0 +1,307 @@
+{
+ "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
+ "created": "2026-10-03T22:54:59+00:00",
+ "script_sha256": "aac8842b1dea87088a2444fd58dc66ac6c02fedbbbf1c106f9247d75eccb60c5",
+ "run": "cv2",
+ "tile_ms": 4096,
+ "protocol": "Frozen fold checkpoints and fold thresholds; independent non-overlapping tiles, the last zero-padded; the primary bins of each set. Only the context seen by group normalisation differs from the reported whole-shot inference. Nothing is refitted or reselected.",
+ "serving_protocol": "Whole-shot inference: each fold model scores a shot in one pass over its zero-padded sequence; a new shot is scored by the five fold models and their mean (the saved out-of-fold trace is the single model that never saw the shot).",
+ "fold_thresholds": {
+  "0": 0.46430716186761856,
+  "1": 0.2991714844107628,
+  "2": 0.7612139040231705,
+  "3": 0.1704022791981697,
+  "4": 0.3914299350976944
+ },
+ "serving_threshold_rule": "mean of the five fold thresholds; not evaluated, because every reviewed shot lies in some fold's training set and the blind-test shots may not be used",
+ "cohort_test_shots_used": 0,
+ "sets": {
+  "bes73": {
+   "n_shots": 73,
+   "bins": 6843,
+   "methods": {
+    "elm-ours (whole shot)": {
+     "point": {
+      "auroc": 0.9413442906958666,
+      "auprc": 0.8752273777121873,
+      "f1": 0.8445549831231125,
+      "precision": 0.8256339006599513,
+      "recall": 0.8643636363636363,
+      "false_alarm_bin_rate": 0.12264842413877351
+     },
+     "ci95": {
+      "auroc": [
+       0.8977795482939129,
+       0.9721534073218661
+      ],
+      "auprc": [
+       0.7514780169503263,
+       0.9606530716814174
+      ],
+      "f1": [
+       0.7856667623548219,
+       0.8961734938617731
+      ],
+      "precision": [
+       0.7395457197632742,
+       0.8961176991683061
+      ],
+      "recall": [
+       0.7901741866205585,
+       0.9336388778515702
+      ],
+      "false_alarm_bin_rate": [
+       0.0712555720487201,
+       0.18401519131783964
+      ]
+     }
+    },
+    "elm-ours (4,096 ms tiles)": {
+     "point": {
+      "auroc": 0.9371098327521489,
+      "auprc": 0.8699004607562596,
+      "f1": 0.8331904680267443,
+      "precision": 0.7881933181965618,
+      "recall": 0.8836363636363637,
+      "false_alarm_bin_rate": 0.1595406792084046
+     },
+     "ci95": {
+      "auroc": [
+       0.8936315818438981,
+       0.9717600450398901
+      ],
+      "auprc": [
+       0.7547382102447349,
+       0.9614075935362211
+      ],
+      "f1": [
+       0.7731660591685299,
+       0.8853973249121675
+      ],
+      "precision": [
+       0.6980375781146124,
+       0.8641408092594978
+      ],
+      "recall": [
+       0.8237838684452666,
+       0.9392711586247972
+      ],
+      "false_alarm_bin_rate": [
+       0.10146137453573233,
+       0.22823814164364856
+      ]
+     }
+    }
+   },
+   "paired_whole_minus_tiled": {
+    "auroc": {
+     "value": 0.004234457943717684,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auroc": 53
+     },
+     "interval_eligible": {
+      "auroc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.00987880267780071,
+      0.024547883079514162
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "auprc": {
+     "value": 0.005326916955927685,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auprc": 53
+     },
+     "interval_eligible": {
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.02269814486301773,
+      0.05118034526911543
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "f1": {
+     "value": 0.011364515096368155,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "f1": 53
+     },
+     "interval_eligible": {
+      "f1": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.010035154278203619,
+      0.03445333093577324
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    }
+   }
+  },
+  "all119": {
+   "n_shots": 119,
+   "bins": 12409,
+   "methods": {
+    "elm-ours (whole shot)": {
+     "point": {
+      "auroc": 0.9411310567211514,
+      "auprc": 0.8770972997900133,
+      "f1": 0.8301288823156561,
+      "precision": 0.8182007496876301,
+      "recall": 0.842409948542024,
+      "false_alarm_bin_rate": 0.11271788250484184
+     },
+     "ci95": {
+      "auroc": [
+       0.9059641156290614,
+       0.9670334677878331
+      ],
+      "auprc": [
+       0.7742874201622371,
+       0.9492208894338952
+      ],
+      "f1": [
+       0.7778083334360725,
+       0.87137111165181
+      ],
+      "precision": [
+       0.7495159608852175,
+       0.8771511125786182
+      ],
+      "recall": [
+       0.7804735180057296,
+       0.8949298872565407
+      ],
+      "false_alarm_bin_rate": [
+       0.0748831989780186,
+       0.15179345482547688
+      ]
+     }
+    },
+    "elm-ours (4,096 ms tiles)": {
+     "point": {
+      "auroc": 0.9318042985736384,
+      "auprc": 0.8638605455071513,
+      "f1": 0.8141556291390728,
+      "precision": 0.7868,
+      "recall": 0.8434819897084048,
+      "false_alarm_bin_rate": 0.13763718528082633
+     },
+     "ci95": {
+      "auroc": [
+       0.8936324235039842,
+       0.960742247915963
+      ],
+      "auprc": [
+       0.760580255206583,
+       0.9388073503805805
+      ],
+      "f1": [
+       0.7585140398936283,
+       0.8570707517539868
+      ],
+      "precision": [
+       0.7102579481085076,
+       0.8529306518438363
+      ],
+      "recall": [
+       0.7826911065746325,
+       0.8943793973593169
+      ],
+      "false_alarm_bin_rate": [
+       0.09394563585859177,
+       0.18258278532853342
+      ]
+     }
+    }
+   },
+   "paired_whole_minus_tiled": {
+    "auroc": {
+     "value": 0.009326758147512937,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auroc": 86
+     },
+     "interval_eligible": {
+      "auroc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.0017049484942282698,
+      0.024379027632347394
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "auprc": {
+     "value": 0.013236754282861973,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "auprc": 86
+     },
+     "interval_eligible": {
+      "auprc": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.008182891043731665,
+      0.04668409552709141
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    },
+    "f1": {
+     "value": 0.01597325317658327,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "endpoint_shots": {
+      "f1": 86
+     },
+     "interval_eligible": {
+      "f1": true
+     },
+     "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+     "ci95": [
+      -0.0023601989278967533,
+      0.0345935958278114
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
+    }
+   }
+  }
+ },
+ "serving_threshold": 0.41730495291948316
+}

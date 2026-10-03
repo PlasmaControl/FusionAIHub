@@ -1,8 +1,8 @@
 {
- "git": "a64369c3",
- "created": "2026-10-03T22:10:28+00:00",
+ "git": "2a3ff775",
+ "created": "2026-10-03T23:02:21+00:00",
  "source_script": "scripts/labeler/elm_reference_swap.py",
- "source_script_sha256": "1d8cc45cf0edb8e5b2b13651f3a6ff10dc14a131fc68eafe4c21d373bf386d0a",
+ "source_script_sha256": "43c7c76b1d5d9a8a1a338a8a50c126e7bc0797f4096beebb67af112ab2cfd1e0",
  "run": "cv2",
  "cohort_test_shots_used": 0,
  "cohort_test_shots_used_scope": "U-Net and confirmatory DSM detection fitting, preprocessing and selection. Supplemental DSM refit, exposed scratch and source-initialized models retain upstream normalization including blind-cohort source shots 190646 and 190532; the refit and source-initialized model also inherit source-fitting exposure.",
@@ -13341,6 +13341,113 @@
       "legacy": 0.7444501104878464,
       "legacy_minus_review": 0.005432236131626134
      }
+    },
+    "auroc_change_paired": {
+     "elm-ours": {
+      "value": -0.008769602641073737,
+      "replicates": 1000,
+      "positive_shots": 6,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 6
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.044212169025323274,
+       0.028322149464951197
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm": {
+      "value": 0.030976903455269156,
+      "replicates": 1000,
+      "positive_shots": 6,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 6
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.029389112934238053,
+       0.1319887761564621
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect": {
+      "value": -0.011541570301678017,
+      "replicates": 1000,
+      "positive_shots": 6,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 6
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.06190330716459133,
+       0.15069160849296126
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect-exposed": {
+      "value": 0.014233523298638917,
+      "replicates": 1000,
+      "positive_shots": 6,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 6
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.04787073787013802,
+       0.09058742170303197
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect-init": {
+      "value": 0.005432236131626134,
+      "replicates": 1000,
+      "positive_shots": 6,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 6
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.05356152290041271,
+       0.06444805413329176
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
     }
    },
    "occupancy": {
@@ -21741,6 +21848,134 @@
       "legacy": 0.6466868823000899,
       "legacy_minus_review": 0.04341814943380906
      }
+    },
+    "auroc_change_paired": {
+     "elm-ours": {
+      "value": -0.013619522717563615,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.05863805743429434,
+       0.03251104269794702
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm": {
+      "value": 0.013472970151169439,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.04574721634801948,
+       0.10638945486984919
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect": {
+      "value": 0.004099329114918282,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.04720578066562581,
+       0.26866346008776393
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect-exposed": {
+      "value": 0.030254723686151452,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.01681742453330734,
+       0.14974662432340916
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-dsm-detect-init": {
+      "value": 0.01641441425908574,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       -0.027062534248609715,
+       0.09255394997857169
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
+     "elm-elmo": {
+      "value": 0.04341814943380906,
+      "replicates": 1000,
+      "positive_shots": 5,
+      "descriptive_only": false,
+      "endpoint_shots": {
+       "auroc": 5
+      },
+      "interval_eligible": {
+       "auroc": true
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": [
+       0.006856462294489329,
+       0.18032860262354392
+      ],
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     }
     }
    },
    "occupancy": {
@@ -29968,6 +30203,98 @@
       "legacy": 0.8921604711078396,
       "legacy_minus_review": 0.03668122357126147
      }
+    },
+    "auroc_change_paired": {
+     "elm-ours": {
+      "value": 0.032080506126175634,
+      "replicates": 1000,
+      "positive_shots": 2,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 2
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 966,
+       "undefined": 34
+      }
+     },
+     "elm-dsm": {
+      "value": 0.12364793091168602,
+      "replicates": 1000,
+      "positive_shots": 2,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 2
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 966,
+       "undefined": 34
+      }
+     },
+     "elm-dsm-detect": {
+      "value": -0.03804778563936828,
+      "replicates": 1000,
+      "positive_shots": 2,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 2
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 966,
+       "undefined": 34
+      }
+     },
+     "elm-dsm-detect-exposed": {
+      "value": 0.03312729765245048,
+      "replicates": 1000,
+      "positive_shots": 2,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 2
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 966,
+       "undefined": 34
+      }
+     },
+     "elm-dsm-detect-init": {
+      "value": 0.03668122357126147,
+      "replicates": 1000,
+      "positive_shots": 2,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 2
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 966,
+       "undefined": 34
+      }
+     }
     }
    },
    "occupancy": {
@@ -37212,6 +37539,116 @@
       "review": 0.8871639530480878,
       "legacy": 0.9209173179761415,
       "legacy_minus_review": 0.0337533649280537
+     }
+    },
+    "auroc_change_paired": {
+     "elm-ours": {
+      "value": 0.024640159270535533,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
+     },
+     "elm-dsm": {
+      "value": 0.038811056418023515,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
+     },
+     "elm-dsm-detect": {
+      "value": 0.02203396087174514,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
+     },
+     "elm-dsm-detect-exposed": {
+      "value": 0.02545507814234005,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
+     },
+     "elm-dsm-detect-init": {
+      "value": 0.022175855193651506,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
+     },
+     "elm-elmo": {
+      "value": 0.0337533649280537,
+      "replicates": 1000,
+      "positive_shots": 1,
+      "descriptive_only": true,
+      "endpoint_shots": {
+       "auroc": 1
+      },
+      "interval_eligible": {
+       "auroc": false
+      },
+      "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
+      "ci95": null,
+      "bootstrap_draw_counts": {
+       "valid": 763,
+       "undefined": 237
+      }
      }
     }
    },

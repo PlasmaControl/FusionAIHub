@@ -1,23 +1,28 @@
 \begin{table*}[t]
 \centering
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lccccc}
 \toprule
-Method & AUROC & AUPRC & F1 \\
+Method & AUROC & AUPRC & F1 & Absent-bin FPR & Absent-span alarm \\
 \midrule
-\multicolumn{4}{l}{All reviewed: 119 shots/12,409 primary bins} \\
-elm-ours & 0.941 {\scriptsize[0.906, 0.967]} & 0.877 {\scriptsize[0.774, 0.949]} & 0.830 {\scriptsize[0.778, 0.871]} \\
-elm-clock & -- & -- & 0.757 {\scriptsize[0.680, 0.827]} \\
-always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.376 {\scriptsize[0.322, 0.430]} & 0.546 {\scriptsize[0.487, 0.601]}$^{\dagger}$ \\
-elm-feature & 0.833 {\scriptsize[0.783, 0.878]} & 0.695 {\scriptsize[0.606, 0.779]} & 0.703 {\scriptsize[0.640, 0.758]} \\
+\multicolumn{6}{l}{All reviewed: 119 shots/12,409 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.906, 0.967]} & 0.877 {\scriptsize[0.774, 0.949]} & 0.830 {\scriptsize[0.778, 0.871]} & 0.113 {\scriptsize[0.075, 0.152]} & 0.596 {\scriptsize[0.478, 0.689]} \\
+elm-clock & -- & -- & 0.757 {\scriptsize[0.680, 0.827]} & 0.063 {\scriptsize[0.032, 0.100]} & 0.105 {\scriptsize[0.063, 0.168]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.376 {\scriptsize[0.322, 0.430]} & 0.546 {\scriptsize[0.487, 0.601]}$^{\dagger}$ & 1.000 {\scriptsize[1.000, 1.000]} & 1.000 {\scriptsize[1.000, 1.000]} \\
+elm-feature & 0.833 {\scriptsize[0.783, 0.878]} & 0.695 {\scriptsize[0.606, 0.779]} & 0.703 {\scriptsize[0.640, 0.758]} & 0.310 {\scriptsize[0.244, 0.386]} & -- \\
 \midrule
-\multicolumn{4}{l}{BES subset: 73 shots/6,843 primary bins} \\
-elm-ours & 0.941 {\scriptsize[0.898, 0.972]} & 0.875 {\scriptsize[0.751, 0.961]} & 0.845 {\scriptsize[0.786, 0.896]} \\
-elm-elmo & 0.918 {\scriptsize[0.877, 0.951]} & 0.833 {\scriptsize[0.753, 0.890]} & 0.842 {\scriptsize[0.789, 0.885]} \\
-elm-clock & -- & -- & 0.708 {\scriptsize[0.602, 0.800]} \\
-always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.402 {\scriptsize[0.325, 0.479]} & 0.573 {\scriptsize[0.491, 0.648]}$^{\dagger}$ \\
-elm-feature & 0.831 {\scriptsize[0.770, 0.886]} & 0.706 {\scriptsize[0.603, 0.819]} & 0.713 {\scriptsize[0.628, 0.788]} \\
+\multicolumn{6}{l}{BES subset: 73 shots/6,843 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.898, 0.972]} & 0.875 {\scriptsize[0.751, 0.961]} & 0.845 {\scriptsize[0.786, 0.896]} & 0.123 {\scriptsize[0.071, 0.184]} & 0.610 {\scriptsize[0.452, 0.742]} \\
+elm-elmo & 0.918 {\scriptsize[0.877, 0.951]} & 0.833 {\scriptsize[0.753, 0.890]} & 0.842 {\scriptsize[0.789, 0.885]} & 0.108 {\scriptsize[0.068, 0.156]} & 0.440 {\scriptsize[0.301, 0.623]} \\
+elm-clock & -- & -- & 0.708 {\scriptsize[0.602, 0.800]} & 0.091 {\scriptsize[0.039, 0.146]} & 0.110 {\scriptsize[0.053, 0.188]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.402 {\scriptsize[0.325, 0.479]} & 0.573 {\scriptsize[0.491, 0.648]}$^{\dagger}$ & 1.000 {\scriptsize[1.000, 1.000]} & 1.000 {\scriptsize[1.000, 1.000]} \\
+elm-feature & 0.831 {\scriptsize[0.770, 0.886]} & 0.706 {\scriptsize[0.603, 0.819]} & 0.713 {\scriptsize[0.628, 0.788]} & 0.382 {\scriptsize[0.282, 0.484]} & -- \\
+\midrule
+\multicolumn{6}{l}{BES subset, boundaries moved $>1$ ms from the clock: 43 present and 117 absent spans/4,125 bins} \\
+elm-ours & 0.938 {\scriptsize[0.875, 0.980]} & 0.836 {\scriptsize[0.629, 0.972]} & 0.837 {\scriptsize[0.738, 0.910]} & 0.096 {\scriptsize[0.043, 0.168]} & -- \\
+elm-elmo & 0.934 {\scriptsize[0.894, 0.965]} & 0.816 {\scriptsize[0.688, 0.909]} & 0.822 {\scriptsize[0.730, 0.884]} & 0.098 {\scriptsize[0.048, 0.163]} & -- \\
+elm-clock & -- & -- & 0.516 {\scriptsize[0.297, 0.682]} & 0.136 {\scriptsize[0.061, 0.225]} & -- \\
 \bottomrule
-\end{tabular}\caption{Primary occupancy benchmark: developmental shot-grouped CV on the 119 reviewed shots; no untouched run-day or adjudicated continuous-interval confirmation. Reviewed occupancy uses 50 ms bins wholly inside reviewed spans and signal coverage (12,409 all119; 6,843 bes73). Five folds select thresholds by inner-validation F1; brackets are 95\% intervals from 1,000 shot-bootstrap resamples. Hard calls use bin-mean probability $\geq$ threshold for elm-ours; ELM-O and the clock use any detected-span touch. Review was seeded by the clock. The secondary 60-input DSM adaptation is fragile: fold 4 selected epoch 0; thresholds range 0.021--0.482. Baselines/controls: always-present and elm-feature; ELM-O requires BES.}
+\end{tabular}\caption{Primary reviewed-occupancy benchmark: developmental shot-grouped CV on the 119 reviewed shots; a frozen-model score on the blind split awaits review of those shots. The target is ELMy-period occupancy, not onsets: 97\% of positive bins come from crowd spans and the label set has no onset trace. Scored 50 ms bins lie wholly inside reviewed spans, so bins straddling a boundary are dropped and the task is easier than whole-shot detection (12,409 all119 bins; 6,843 bes73). Labels come from review seeded by the D-alpha clock (56\% of crowd starts, 44\% of ends and 33\% of both lie within 1 ms of clock boundaries), which favours D-alpha-input models over ELM-O. Fold thresholds maximise inner-validation F1; elm-ours calls a bin on its mean probability, ELM-O and the clock on any touching detected span. FPR is the fraction of absent bins called present; alarm is the fraction of absent spans touched. Paired elm-ours minus ELM-O on bes73: AUROC +0.023 [-0.014, +0.067], AUPRC +0.043 [-0.058, +0.129], F1 +0.002 [-0.052, +0.058]; all include zero and equivalence is untested. Fold 3 (zero-based) selected epoch 2 of 25 (thresholds 0.170--0.761); four training seeds give all119 AUROC 0.924--0.949. On non-crowd-only shots (13 shots/1,003 bins) elm-ours precision is 0.298 [0.132, 0.549]. The last block keeps bes73 spans whose boundaries both moved more than 1 ms from the clock (43 of 84 present and 117 absent spans; 4,125 bins); with so few present spans its intervals are wide and the comparison inconclusive. $^{\dagger}$ marks recall $\geq0.99$. Brackets: 95\% shot-bootstrap intervals.}
 \label{tab:elm-benchmark}
 \end{table*}
