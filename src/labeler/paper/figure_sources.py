@@ -455,8 +455,10 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             f"The n=2 ridge near {frequency:.0f} kHz is consistent with a second "
             "harmonic of the n=1 ridge."
         )
-    if drawn.get("n3_unoutlined"):
-        sentences.append("n=3 is unoutlined: the NTM rule requires dominant n=1/2.")
+    if drawn.get("n3_components_unoutlined"):
+        sentences.append(
+            "Components dominated by n=3 are unoutlined; NTM requires dominant n=1/2."
+        )
     if drawn.get("sawtooth_omission_reason") == "ECE density guard":
         sentences.append(
             "Sawtooth is not assessed here because ECE is cut off in ELMy H-mode "

@@ -863,11 +863,6 @@ def draw(
                         lw=0.8,
                     )
                 )
-                if a < t1 and b > t0:
-                    elm_chip = da.text(
-                        max(a, t0) + 20, top * 1.30, "ELMs", fontsize=FONT,
-                        va="bottom", ha="left", color=INK,
-                    )  # fmt: skip
             for a, b in uncertain_elm:
                 da.add_patch(
                     Rectangle(
@@ -882,6 +877,21 @@ def draw(
                         zorder=0.5,
                     )
                 )
+            visible = [
+                (max(a, t0), min(b, t1)) for a, b in elm_spans if a < t1 and b > t0
+            ]
+            if not visible:
+                visible = [
+                    (max(a, t0), min(b, t1))
+                    for a, b in uncertain_elm
+                    if a < t1 and b > t0
+                ]
+            if visible:
+                a, _ = max(visible, key=lambda s: s[1] - s[0])
+                elm_chip = da.text(
+                    a + 20, top * 1.30, "ELMs", fontsize=FONT,
+                    va="bottom", ha="left", color=INK,
+                )  # fmt: skip
         da.set_yticks([])
         da.set_ylabel("D-alpha", rotation=0, ha="right", va="center", labelpad=3)
         regime_names = {1: "H-mode", 2: "L-mode", 3: "QH-mode", 4: "WPQH-mode"}
@@ -1078,7 +1088,7 @@ def draw(
         "n2_harmonic_consistent": harmonic["support_ms"]
         >= harmonic["minimum_support_ms"],
         "harmonic_support": harmonic,
-        "n3_unoutlined": bool(n_read is not None and "n=3" in keys),
+        "n3_components_unoutlined": sum(b.dominant_n == 3 for b in blobs_low),
         "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
         "n_map": None
         if n_read is None
@@ -1127,6 +1137,11 @@ def draw(
                     rendered_ntm[band.name][band.f > N_VIEW_KHZ].sum()
                 ),
                 "rendered_outline_pixels": int(rendered_ntm[band.name].sum()),
+                "measured_n3_outline_pixels": int(
+                    (rendered_ntm[band.name] & (band.n_map[band.rows] == 3)).sum()
+                )
+                if band.n_map is not None
+                else 0,
             }
             for band in (low, high)
         },
