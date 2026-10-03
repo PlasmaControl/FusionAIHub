@@ -5,7 +5,7 @@ image arrays (T,H,W) or (C,T,H,W) are movies: the usual bolo (48,T) is a
 diagnostic trace, not a tomographic image. TangTV corpus frames are linearly
 resampled onto a 50 Hz grid, blending adjacent exposures in prepare_data.py's
 interp1d; they are not individual native exposures. Preview channels preserve
-their corpus timestamps, decimated to at most 20 fps inside the store window,
+their corpus timestamps, decimated to at most 25 fps inside the store window,
 with one fixed grayscale scale per channel over that window.
 """
 
@@ -20,11 +20,11 @@ import numpy as np
 from PIL import Image
 
 CAMERAS = {"bolo": (80, 120), "tangtv": (240, 720), "irtv": (256, 320)}
-MAX_FPS = 20.0
+MAX_FPS = 25.0
 PERCENTILES = (1.0, 99.5)
 TANGTV_SAMPLING_NOTE = (
     "Corpus 50 Hz frames, linearly resampled by blending adjacent exposures "
-    "(prepare_data.py interp1d); previews decimated to at most 20 fps."
+    "(prepare_data.py interp1d)."
 )
 # Active input_key order in data/config/modalities/modalities.yaml. IRTV declares
 # seven output slots but only SIX active nodes; PERI75R0 is commented out. Do not
@@ -81,9 +81,16 @@ def frame_indices(times, max_fps=MAX_FPS) -> np.ndarray:
         return np.array([], dtype=int)
     if np.any(np.diff(times[finite]) <= 0):
         raise ValueError("camera clock must be strictly increasing")
+    # _layout casts float32 corpus clocks to float64. Allow only their original
+    # quantization error; otherwise some intended 40 ms steps become 60 ms.
+    spacing = 1 / max_fps
+    tolerance = min(
+        spacing * 0.001,
+        max(1e-9, 2 * np.finfo(np.float32).eps * max(1, np.max(np.abs(times[finite])))),
+    )
     kept = [int(finite[0])]
     for i in finite[1:]:
-        if times[i] - times[kept[-1]] >= 1 / max_fps - 1e-9:
+        if times[i] - times[kept[-1]] >= spacing - tolerance:
             kept.append(int(i))
     return np.asarray(kept, dtype=int)
 
@@ -213,6 +220,7 @@ def meta(path) -> dict:
     with h5py.File(path, "r") as store:
         if "videos" not in store:
             return {"cameras": []}
+        max_fps = float(store["videos"].attrs.get("max_fps", MAX_FPS))
         lo = float(store.attrs["t0_ms"])
         hi = lo + float(store.attrs["dt_ms"]) * int(store.attrs["n"])
         for camera in CAMERAS:
@@ -220,10 +228,11 @@ def meta(path) -> dict:
             channels = []
             for key in sorted(group, key=int):
                 frames = group[key]
+                times = frames["times_ms"][:]
                 channels.append(
                     {
                         **view(camera, int(key)),
-                        "times_ms": frames["times_ms"][:].tolist(),
+                        "times_ms": times.tolist(),
                         "shape": list(frames["frames"].shape[1:]),
                         "scale": [float(frames.attrs[n]) for n in ("z_lo", "z_hi")],
                     }
@@ -242,6 +251,15 @@ def meta(path) -> dict:
                 )
             if default is None:
                 default = next(iter(in_window or channels), None)
+            gaps = [
+                np.diff(ch["times_ms"]) for ch in channels if len(ch["times_ms"]) > 1
+            ]
+            cadence = (
+                f"Median preview spacing {np.median(np.concatenate(gaps)):.1f} ms "
+                f"({1000 / np.median(np.concatenate(gaps)):.1f} fps)."
+                if gaps
+                else f"Previews decimated to at most {max_fps:g} fps."
+            )
             cameras.append(
                 {
                     "name": camera,
@@ -259,8 +277,10 @@ def meta(path) -> dict:
                     "sampling_note": (
                         TANGTV_SAMPLING_NOTE
                         if camera == "tangtv"
-                        else "Corpus frame timestamps; previews decimated to at most 20 fps."
-                    ),
+                        else "Corpus frame timestamps."
+                    )
+                    + " "
+                    + cadence,
                     **(
                         {
                             "inactive_node": "\\IRTV::TOP.IRTV:PERI75R0:DIGITAL_CAM:DIGITAL_RAW",
@@ -271,7 +291,7 @@ def meta(path) -> dict:
                     ),
                 }
             )
-    return {"cameras": cameras, "max_fps": MAX_FPS}
+    return {"cameras": cameras, "max_fps": max_fps}
 
 
 def nearest_index(times, t_ms: float) -> int:

@@ -8,7 +8,34 @@ import numpy as np
 import pandas as pd
 
 from labeler.config import Paths
-from labeler.events.review import producer, video
+from labeler.events.review import producer, recipe, video
+
+
+def test_method_record_resolves_within_repository(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    monkeypatch.delenv("LABELER_DETACHMENT_METHOD", raising=False)
+    path = recipe.sources(tmp_path / "labels.csv")["method_record"]
+    assert path == Path(__file__).resolve().parents[2] / "docs/labeler/detachment.md"
+    assert path.is_file()
+
+
+def test_missing_method_override_fails_loudly(monkeypatch, tmp_path):
+    import pytest
+
+    missing = tmp_path / "missing.md"
+    monkeypatch.setenv("LABELER_DETACHMENT_METHOD", str(missing))
+    with pytest.raises(FileNotFoundError, match="method record"):
+        recipe.load(tmp_path / "labels.csv")
+
+
+def test_method_override_is_preserved(monkeypatch, tmp_path):
+    method = tmp_path / "method.md"
+    method.write_text("Producer-owned definitions")
+    monkeypatch.setenv("LABELER_DETACHMENT_METHOD", str(method))
+    result = recipe.load(tmp_path / "labels.csv")
+    assert result["documentation"] == method.read_text()
+    assert result["sources"]["method_record"]["path"] == str(method)
 
 
 def test_recipe_metadata_is_frozen_and_invalidates_resume(tmp_path):

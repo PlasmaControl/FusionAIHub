@@ -11,7 +11,7 @@ from ...config import sha256_of
 
 def sources(labels_path):
     root = Path(labels_path).parent
-    worktree = Path(__file__).resolve().parents[4].with_name("FusionAIHub-r4-detach")
+    repository = Path(__file__).resolve().parent.parents[3]
     return {
         "recipe": Path(
             os.environ.get(
@@ -22,7 +22,7 @@ def sources(labels_path):
         "method_record": Path(
             os.environ.get(
                 "LABELER_DETACHMENT_METHOD",
-                str(worktree / "docs/labeler/detachment.md"),
+                str(repository / "docs/labeler/detachment.md"),
             )
         ),
     }
@@ -35,6 +35,11 @@ def load(labels_path):
     never a UI-authored threshold or evidence gate. Missing records stay explicit.
     """
     paths = sources(labels_path)
+    if not paths["method_record"].is_file():
+        raise FileNotFoundError(
+            f"Detachment method record missing: {paths['method_record']}. "
+            "Restore docs/labeler/detachment.md or set LABELER_DETACHMENT_METHOD."
+        )
     result = {"record": {}, "documentation": "", "sources": {}}
     for key, path in paths.items():
         result["sources"][key] = {

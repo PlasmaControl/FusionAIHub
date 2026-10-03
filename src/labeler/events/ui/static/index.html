@@ -32,6 +32,7 @@
       <label for="video-time">Time (ms)</label>
       <input id="video-time" type="range" step="any" aria-label="Camera time in milliseconds">
       <output id="video-clock" for="video-time"></output>
+      <label id="blind-control" hidden><input id="blind-mode" type="checkbox"> Blind mode</label>
     </div>
     <p id="video-context">Target: lower outer divertor leg. <span id="video-geometry"></span></p>
     <div id="video-cameras"></div>
@@ -51,7 +52,7 @@
   <canvas id="axis-row" aria-hidden="true"></canvas>
 </main>
 <footer id="bottom">
-  <div class="track"><span class="name">Source</span><canvas id="source-track"></canvas></div>
+  <div class="track" id="source-lane"><span class="name">Source</span><canvas id="source-track"></canvas></div>
   <div class="track"><span class="name" id="individual-lane-name" title="Legacy unspecified spans also appear here">Label</span><canvas id="label-track" data-lane="0" aria-label="Individual and unspecified annotations"></canvas></div>
   <div class="track" id="crowd-lane" hidden><span class="name">Crowd</span><canvas id="crowd-track" data-lane="1" aria-label="Crowd annotations"></canvas></div>
   <div id="controls">
@@ -68,7 +69,7 @@
     <button id="save" class="primary" type="button">Save <kbd>S</kbd></button>
     <button id="next" type="button">Next <span id="next-shot"></span> <kbd>K</kbd></button>
     <button id="revert" type="button">Revert <kbd>R</kbd></button>
-    <button id="start-blank" type="button" hidden title="Clear the editable lane; Source remains visible. Undo restores your draft.">Start blank</button>
+    <button id="start-blank" type="button" hidden title="Clear Individual/unspecified annotations; preserve Crowd. Undo restores your draft.">Start blank</button>
     <button id="show-versions" type="button" hidden>History <kbd>H</kbd></button>
   </div>
   <nav id="queue" aria-label="Shots"></nav>
@@ -103,18 +104,23 @@
   </table>
   <section id="detachment-help" hidden>
     <h3>Detachment: lower outer divertor leg</h3>
-    <p>Review the lower outer leg using the producer’s EFIT shelf gate. Without DRSEP, the shelf gate does not establish magnetic topology. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at ≤20 fps.</p>
+    <p>Review the lower outer leg using the camera and diagnostic context. The EFIT shelf gate is a producer DZ requirement; without DRSEP it does not establish magnetic topology. D-alpha chord locations are not recorded. TangTV corpus images are 50 Hz linear resamples: blends of adjacent exposures, previewed at 40 ms spacing after rebuilding.</p>
     <dl>
       <dt>Attached</dt><dd>Emission peaked at the target strike point.</dd>
-      <dt>Detached</dt><dd>Emission peak lifted off the target along the leg toward the X-point, with target D-alpha or Te rollover.</dd>
-      <dt>MARFE</dt><dd>Localized bright radiation at or above the X-point, or on the inner wall.</dd>
-      <dt>Uncertain</dt><dd>The reviewer cannot decide: view blocked, shelf gate invalid, or evidence conflicts.</dd>
+      <dt>Detached</dt><dd>Front lifted toward the X-point, with target ion-flux (Afrac/Jsat) rollover or low target Te.</dd>
+      <dt>MARFE</dt><dd>Localized radiation inside the separatrix near/above the X-point (high-field side), persisting over several frames.</dd>
+      <dt>Uncertain</dt><dd>The reviewer cannot decide: view blocked or evidence conflicts.</dd>
       <dt>Unmarked</dt><dd>Not reviewed.</dd>
     </dl>
-    <p>The Individual lane starts from the producer label: reviewers correct suggestions. Start blank clears that lane while keeping Source visible; this is not blind review. MARFE has its own exclusive stage. Missing evidence never means attached. Grey means valid abstention; hatching means invalid evidence.</p>
+    <p>The default Individual lane starts from the primary producer suggestion. Start blank clears only that lane; Crowd is preserved and Undo restores the draft. Blind mode hides Source, producer strips, reading and recipe; use Start blank to remove the initial suggestion before an independent review. Prior exposure to suggestions can bias agreement. MARFE has its own exclusive stage. Missing evidence never means attached. Grey means valid abstention; hatching means invalid evidence.</p>
     <h3>What the machine label means</h3>
     <pre id="detachment-machine-help">Open a shot to read its stored producer recipe.</pre>
   </section>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+<dialog id="camera-enlarged" aria-label="Enlarged camera frame">
+  <img id="camera-enlarged-image" alt="Camera frame">
+  <p id="camera-enlarged-caption"></p>
   <form method="dialog"><button>Close</button></form>
 </dialog>
 <dialog id="versions" aria-labelledby="versions-title">

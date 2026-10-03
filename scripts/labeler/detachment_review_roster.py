@@ -42,19 +42,8 @@ REPO = Path(__file__).resolve().parents[2]
 SUMMARY = REPO / "docs/labeler/results/detachment_review_queue.json"
 
 
-def write_recipe_help(labels_path):
-    """Update the docs' machine block from the same read-only interpretation."""
-    document = REPO / "docs/labeler/detachment_review.md"
-    if not document.is_file():
-        return
-    before, separator, rest = document.read_text().partition(
-        "<!-- MACHINE_RECIPE_START -->"
-    )
-    if not separator:
-        return
-    _, end, after = rest.partition("<!-- MACHINE_RECIPE_END -->")
-    if not end:
-        raise ValueError("missing machine-recipe end marker")
+def write_recipe_help(labels_path, out):
+    """Write the producer-owned recipe snapshot beside the delivery outputs."""
     frozen = recipe.load(labels_path)
     text = frozen["documentation"] or json.dumps(frozen["record"], indent=2)
     sources = "\n".join(
@@ -70,7 +59,9 @@ def write_recipe_help(labels_path):
         + sources
         + "\n\n</details>\n"
     )
-    document.write_text(before + separator + block + end + after)
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "producer_recipe.md").write_text("# Producer recipe snapshot\n" + block)
 
 
 def label_keys(keys):
@@ -575,7 +566,13 @@ def queue_records(records, producer, cohort, include_no_video=False, reserved_sh
             + (["producer_labels_or_votes"] if shot in labelled else [])
         )
         queue.append(record)
-    queue.sort(key=lambda record: (not record["camera_available"], record["shot"]))
+    queue.sort(
+        key=lambda record: (
+            not record["camera_available"],
+            not record.get("camera_geometry_eligible", False),
+            record["shot"],
+        )
+    )
     return queue, sorted(blind & candidates)
 
 
@@ -621,6 +618,52 @@ def roster_frame(queue, roster_path, producer_roster=None):
         else:
             output.append([shot, "unverified", "false", "", "", "queue: " + note])
     return pd.DataFrame(output, columns=rosters.ROSTER_COLUMNS)
+
+
+def reorder_frozen_queue(out, record_path):
+    """Reorder the delivered roster from its frozen scan; never read the producer."""
+    scan_path = out / "corpus_scan.json"
+    roster_path = out / "tables/detachment/shots.csv"
+    scan = json.loads(scan_path.read_text())
+    cohort_path = REPO / "data/events/catalog/cohort.csv"
+    if scan["cohort_sha256"] != sha256_of(cohort_path):
+        raise ValueError("cohort changed since frozen scan")
+    frame = rosters.read_roster(roster_path)
+    before = sha256_of(roster_path)
+    records = {int(r["shot"]): r for r in scan["records"]}
+    blind = set(pd.read_csv(cohort_path).query("split == 'test'").shot)
+    if set(frame.shot) & blind:
+        raise ValueError("delivered queue contains blind cohort shots")
+    frame = frame.assign(
+        _camera=[bool(records[int(s)]["lower_channels"]) for s in frame.shot],
+        _shelf=[
+            records[int(s)].get("camera_geometry_eligible", False) for s in frame.shot
+        ],
+    ).sort_values(["_camera", "_shelf", "shot"], ascending=[False, False, True])
+    covered = frame.loc[frame._shelf, "shot"].astype(int).tolist()
+    order = frame.shot.astype(int).tolist()
+    rosters.write_roster(
+        frame.drop(columns=["_camera", "_shelf"]), roster_path, keep_order=True
+    )
+    record = {
+        "mode": "frozen queue order only; producer not reread; stores unchanged",
+        "script_sha256": sha256_of(Path(__file__)),
+        "scan": str(scan_path),
+        "scan_sha256": sha256_of(scan_path),
+        "roster": str(roster_path),
+        "before_sha256": before,
+        "after_sha256": sha256_of(roster_path),
+        "queue_count": len(order),
+        "shelf_covered_count": len(covered),
+        "shelf_covered_shots": covered,
+        "queue_shots": order,
+        "shelf_covered_first": order[: len(covered)] == covered,
+        "blind_cohort_overlap": sorted(set(order) & blind),
+        "store_rebuilds": 0,
+    }
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    record_path.write_text(json.dumps(record, indent=2) + "\n")
+    return record
 
 
 def context_summary(panel_metadata, producer):
@@ -713,6 +756,8 @@ def build_store(record, paths, indicators, resume=False):
                         meta["hlines"] = recipe.guides(
                             frozen["record"], panel["indicator"]
                         )
+                        if panel["indicator"] == "prad":
+                            meta["hlines"] = sorted(set(meta["hlines"]) | {1.0})
                         group.attrs["meta"] = json.dumps(meta)
                     source.attrs["params"] = json.dumps(params)
                 current = refreshed_recipe = True
@@ -781,6 +826,11 @@ def main():
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--build", action="store_true")
     parser.add_argument(
+        "--reorder-only",
+        action="store_true",
+        help="sort the existing delivery from its frozen scan; do not read producer inputs",
+    )
+    parser.add_argument(
         "--rebuild-existing",
         action="store_true",
         help="also repair all nonblind prior isolated stores",
@@ -821,13 +871,23 @@ def main():
     )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.reorder_only:
+        if args.build:
+            parser.error("--reorder-only cannot be combined with --build")
+        record = reorder_frozen_queue(args.out, args.record)
+        print(
+            json.dumps(
+                {
+                    k: record[k]
+                    for k in ("queue_count", "shelf_covered_count", "store_rebuilds")
+                }
+            )
+        )
+        return
     original_camera = original_candidates(args.out, args.original_roster)
     original = Paths.from_env()
     producer_root = args.producer_root or original.root / "round4/detach"
-    producer_tables = (
-        args.producer_tables
-        or REPO.with_name("FusionAIHub-r4-detach") / "data/events/detachment"
-    )
+    producer_tables = args.producer_tables or REPO / "data/events/detachment"
     producer_roster = args.producer_roster or producer_tables / "shots.csv"
     producer_labels = args.producer_labels or producer_root / "labels_bins.csv.gz"
     producer_inputs = [
@@ -844,7 +904,7 @@ def main():
     os.environ["LABELER_DETACHMENT_INDICATORS"] = str(indicators)
     os.environ["LABELER_DETACHMENT_LABELS"] = str(producer_labels)
     os.environ["LABELER_DETACHMENT_CACHE_ROOT"] = str(producer_root / "cache")
-    write_recipe_help(producer_labels)
+    write_recipe_help(producer_labels, args.out)
     cohort_path, scan_path = (
         REPO / "data/events/catalog/cohort.csv",
         args.out / "corpus_scan.json",
@@ -966,7 +1026,8 @@ def main():
             "previews inside the plasma window; exclude cohort test, explicit "
             "split=test, producer holdout=true and retained UI holdout shots; "
             "camera availability is separate "
-            "from EFIT shelf gate; camera shots first; "
+            "from EFIT shelf gate; camera shots with shelf coverage first, "
+            "then remaining camera shots; "
             + (
                 "flag no-video shots last"
                 if args.include_no_video

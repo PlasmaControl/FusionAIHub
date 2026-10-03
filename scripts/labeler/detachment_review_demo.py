@@ -8,6 +8,7 @@ free loopback port and is stopped in finally. All outputs stay under --out.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -17,6 +18,7 @@ import threading
 import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from unittest.mock import patch
 
 import h5py
 import pandas as pd
@@ -99,6 +101,8 @@ def provenance():
                 "src/labeler/events/ui/static/style.css",
                 "src/labeler/events/ui/static/index.html",
                 "tests/labeler/review_browser.mjs",
+                "docs/labeler/detachment.md",
+                "docs/labeler/detachment_review.md",
             ]
         },
     }
@@ -166,11 +170,16 @@ def verify(out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--shot", type=int, default=190102)
+    parser.add_argument("--shot", type=int, default=200977)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--indicator-root", type=Path)
     parser.add_argument("--producer-labels", type=Path)
     parser.add_argument("--capture-time-ms", type=float)
+    parser.add_argument(
+        "--frozen-from",
+        type=Path,
+        help="copy and serve an existing demo snapshot; prohibit all store builds",
+    )
     parser.add_argument(
         "--verify",
         action="store_true",
@@ -205,8 +214,27 @@ def main():
     )
     paths = Paths(root=out, corpus=original.corpus, label_tables=out / "tables")
     split = "producer_external" if match.empty else str(match.split.iloc[0])
-    window = detachment.plasma_window(args.shot, original)
+    frozen_store = (
+        args.frozen_from / "spectrograms/detachment" / f"{args.shot}.h5"
+        if args.frozen_from
+        else None
+    )
+    window = (
+        rows.meta(frozen_store)["t_range"]
+        if frozen_store
+        else detachment.plasma_window(args.shot, original)
+    )
     event = paths.label_tables / "detachment"
+    if args.frozen_from:
+        if args.frozen_from.resolve() == out:
+            raise ValueError("frozen demonstration must use a separate --out")
+        shutil.copytree(
+            args.frozen_from / "tables/detachment", event, dirs_exist_ok=True
+        )
+        pointer = event / "review/source.json"
+        frozen_source = json.loads(pointer.read_text())
+        frozen_source["table"] = str(event / "review/suggestions.csv")
+        pointer.write_text(json.dumps(frozen_source, indent=2) + "\n")
     event.mkdir(parents=True, exist_ok=True)
     roster = event / "shots.csv"
     if roster.is_file():
@@ -220,13 +248,25 @@ def main():
     overlay = pd.read_csv(roster, dtype=str, keep_default_na=False)
     reserved = set(cohort.loc[cohort.split.eq("test"), "shot"].astype(int))
     reserved.update(overlay.loc[overlay.holdout.eq("true"), "shot"].astype(int))
-    producer_snapshot = snapshot_suggestions(
-        os.environ["LABELER_DETACHMENT_LABELS"],
-        overlay.shot.astype(int),
-        event,
-        reserved_shots=reserved,
-        indicator_root=os.environ["LABELER_DETACHMENT_INDICATORS"],
-        windows={args.shot: list(window) if window else None},
+    if args.shot in reserved:
+        raise ValueError("demo shot is a reserved holdout")
+    producer_snapshot = (
+        {
+            "mode": "frozen snapshot; no producer reread or store rebuild",
+            "source": str(args.frozen_from),
+            "source_sha256": sha256_of(
+                args.frozen_from / "tables/detachment/review/source.json"
+            ),
+        }
+        if args.frozen_from
+        else snapshot_suggestions(
+            os.environ["LABELER_DETACHMENT_LABELS"],
+            overlay.shot.astype(int),
+            event,
+            reserved_shots=reserved,
+            indicator_root=os.environ["LABELER_DETACHMENT_INDICATORS"],
+            windows={args.shot: list(window) if window else None},
+        )
     )
     source_shapes = {}
     with h5py.File(paths.corpus_file(args.shot), "r") as source:
@@ -238,7 +278,12 @@ def main():
                     if key in source[name]
                 }
     started = time.monotonic()
-    store = build.build("detachment", args.shot, paths, force=True)
+    if frozen_store:
+        store = paths.spectrogram_file("detachment", args.shot)
+        store.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(frozen_store, store)
+    else:
+        store = build.build("detachment", args.shot, paths, force=True)
     manifest = video.meta(store)
     record = {
         **provenance(),
@@ -252,6 +297,9 @@ def main():
         "source_shapes": source_shapes,
         "store": str(store),
         "store_bytes": store.stat().st_size,
+        "store_sha256": sha256_of(store),
+        "frozen_store_sha256": sha256_of(frozen_store) if frozen_store else None,
+        "store_rebuilt": not bool(frozen_store),
         "build_seconds": time.monotonic() - started,
         "rows": rows.meta(store),
         "video": manifest,
@@ -283,6 +331,25 @@ def main():
             access_log=False,
         )
     )
+    frozen_guards = contextlib.ExitStack()
+    if frozen_store:
+        current = build.current
+        frozen_guards.enter_context(
+            patch.object(
+                build,
+                "current",
+                side_effect=lambda path, event: (
+                    path.is_file() if event == "detachment" else current(path, event)
+                ),
+            )
+        )
+        frozen_guards.enter_context(
+            patch.object(
+                build,
+                "build",
+                side_effect=RuntimeError("Frozen demo prohibits rebuilding"),
+            )
+        )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
     try:
@@ -322,16 +389,13 @@ def main():
             json.loads(result.stdout.splitlines()[-1]) if result.stdout.strip() else []
         )
         record["screenshot"] = str(png) if png.is_file() else None
-        record["layout_screenshots"] = {
-            size: str(png.with_name(f"{png.stem}-{size}.png"))
-            for size in ("1366x768", "1400x900")
-        }
+        record["screenshot_viewport"] = [1366, 768]
         record["browser_stderr_tail"] = result.stderr[-2000:]
         evidence.write_text(json.dumps(record, indent=2) + "\n")
         if (
             result.returncode
             or len(record["browser_checks"])
-            != (28 + 2 * any(len(c["channels"]) > 1 for c in manifest["cameras"]))
+            != (34 + 2 * any(len(c["channels"]) > 1 for c in manifest["cameras"]))
             or not {
                 "camera, full diagnostic, time axis and annotations fit at 1366x768",
                 "camera, full diagnostic, time axis and annotations fit at 1400x900",
@@ -344,6 +408,7 @@ def main():
     finally:
         server.should_exit = True
         thread.join(10)
+        frozen_guards.close()
         record["server_stopped"] = not thread.is_alive()
         evidence.write_text(json.dumps(record, indent=2) + "\n")
     print(

@@ -229,6 +229,7 @@ const S = {
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
   video: null, // camera cards, selected time and playback; detachment only
+  blind: false, // hide producer context; Start blank separately clears suggestions
   label: null, // the label being edited, always normalised
   selected: -1,
   view: [0, 1], // the ms on screen
@@ -411,6 +412,14 @@ function revert() {
   edit(source.window, source.intervals, source.iscrowd);
 }
 
+/** Clear only Individual/unspecified annotations, retaining the Crowd lane. */
+function startBlank() {
+  if (stillOpening() || !S.meta) return;
+  const crowd = S.label.intervals.filter((_, i) => S.label.iscrowd?.[i] === 1);
+  S.selected = -1;
+  edit(S.label.window, crowd, crowd.map(() => 1));
+}
+
 function removeSelected() {
   if (stillOpening()) return;
   if (S.selected < 0) return;
@@ -484,6 +493,7 @@ async function boot() {
   S.name = picked() || stored("labeler:name") || "";
   $("reviewer-name").value = S.name;
   S.showMasks = stored("labeler:masks") !== "hidden";
+  S.blind = stored("labeler:detachment-blind") === "true";
   wire();
   try {
     S.api = (await (await api("/api/version")).json()).api;
@@ -884,9 +894,14 @@ function drawRows() {
     if (row.kind === "image") drawTokeye(g, row, w, h, false);
     g.restore();
     drawGutter(g, row, range, h);
-    if (S.event === "detachment" && row.title === "Afrac") {
-      g.font = FONT; g.fillStyle = T.muted;
-      g.fillText("Uncalibrated; self-reference (0.90 quantile)", GUTTER + 5, 13);
+    const note = S.event === "detachment" && indicatorNote(row, S.video?.time);
+    if (note) {
+      g.font = FONT; g.textAlign = "left";
+      const width = w - GUTTER - RIGHT - 10;
+      g.fillStyle = T.panel;
+      g.fillRect(GUTTER + 3, 1, Math.min(width, g.measureText(note).width + 4), 15);
+      g.fillStyle = T.muted;
+      g.fillText(note, GUTTER + 5, 13, width);
     }
     g.fillStyle = T.rule;
     g.fillRect(0, h - 1, w, 1);
@@ -1004,12 +1019,26 @@ function bitmap(row, data, i) {
 }
 
 /** A trace row's y range over the columns on screen, its dashed lines included. */
+function traceGuides(row) {
+  const metadata = S.meta.params?.panel_metadata?.[row.name];
+  return metadata?.indicator === "prad" ? [...new Set([...row.hlines, 1])] : row.hlines;
+}
+
+/** Report stored Afrac methods verbatim; never invent their calibration recipe. */
+function indicatorNote(row, time) {
+  const metadata = S.meta.params?.panel_metadata?.[row.name];
+  if (metadata?.indicator === "prad") return "f_div > 1: check heating-power denominator and radiation estimate";
+  if (metadata?.indicator !== "afrac") return "";
+  const i = metadata.bin_start_ms?.findIndex((start, i) => start <= time && time < metadata.bin_end_ms[i]) ?? -1;
+  return `Afrac method: ${metadata.afrac_method?.[i] || "not recorded at cursor"}`;
+}
+
 function traceRange(row, values) {
   const n = S.data.n;
   const step = (S.data.t1 - S.data.t0) / n;
   const j0 = clamp(Math.floor((S.view[0] - S.data.t0) / step), 0, n);
   const j1 = clamp(Math.ceil((S.view[1] - S.data.t0) / step), 0, n);
-  let [lo, hi] = [Math.min(Infinity, ...row.hlines), Math.max(-Infinity, ...row.hlines)];
+  let [lo, hi] = [Math.min(Infinity, ...traceGuides(row)), Math.max(-Infinity, ...traceGuides(row))];
   for (let p = 0; p < 2 * row.n_channels; p++) {
     for (let j = j0; j < j1; j++) {
       const v = values[p * n + j];
@@ -1029,7 +1058,7 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
   g.lineWidth = 1;
   g.strokeStyle = T.muted;
   g.setLineDash([4, 3]);
-  for (const v of row.hlines) {
+  for (const v of traceGuides(row)) {
     g.beginPath();
     g.moveTo(0, y(v));
     g.lineTo(w, y(v));
@@ -1051,6 +1080,10 @@ function drawTrace(g, row, values, [lo, hi], w, h) {
       if (pen) g.lineTo(x, y(low));
       else g.moveTo(x, y(low));
       g.lineTo(x, y(high));
+      if (S.meta.params?.panel_metadata?.[row.name]?.indicator === "prad" && high > 1) {
+        g.fillStyle = "#d55e00";
+        g.fillRect(x - 2, y(high) - 2, 4, 4);
+      }
       pen = true;
     }
     g.stroke();
@@ -1684,6 +1717,7 @@ function cancelVideoFrame(card) {
 
 function clearVideo() {
   pauseVideo();
+  closeDialog($("camera-enlarged"));
   for (const card of S.video?.cards || []) {
     card.abort?.abort();
     if (card.url) URL.revokeObjectURL(card.url);
@@ -1697,6 +1731,7 @@ function clearVideo() {
 
 function buildVideo() {
   $("start-blank").hidden = S.event !== "detachment";
+  showBlindMode();
   if (S.event !== "detachment" || !S.meta?.video || S.api < 9) return;
   const cards = [];
   for (const camera of S.meta.video.cameras) {
@@ -1733,6 +1768,14 @@ function buildVideo() {
       caption.append(select);
       card.img = document.createElement("img");
       card.img.alt = `${camera.name} camera frame`;
+      figure.addEventListener("click", event => {
+        if (event.target === card.img) enlargeCamera(card);
+      });
+      figure.addEventListener("keydown", event => {
+        if (event.target === card.img && ["Enter", " "].includes(event.key)) {
+          event.preventDefault(); enlargeCamera(card);
+        }
+      });
       figure.append(card.img);
     }
     figure.append(note);
@@ -1762,7 +1805,9 @@ function buildVideo() {
 
 function videoTimes() {
   const [lo, hi] = S.meta.t_range;
-  S.video.times = [...new Set(S.video.cards.flatMap(c => c.channel?.times_ms || []))]
+  const primary = S.video.cards.find(c => c.camera.name === "tangtv" && c.channel) ||
+    S.video.cards.find(c => c.channel);
+  S.video.times = [...new Set(primary?.channel.times_ms || [])]
     .filter(t => t >= lo && t <= hi).sort((a, b) => a - b);
 }
 
@@ -1771,7 +1816,9 @@ async function seekVideo(t, playbackEpoch = null) {
   if (!v || !Number.isFinite(Number(t)) || pendingNavigation()) return false;
   if (playbackEpoch == null && v.playing) pauseVideo();
   const seq = ++v.seekSeq;
-  const time = clamp(Number(t), ...S.meta.t_range);
+  const requested = clamp(Number(t), ...S.meta.t_range);
+  const time = v.times.reduce((best, frame) =>
+    Math.abs(frame - requested) < Math.abs(best - requested) ? frame : best, v.times[0] ?? requested);
   const current = () => S.video === v && seq === v.seekSeq &&
     (playbackEpoch == null || (v.playing && v.epoch === playbackEpoch));
   const commit = () => {
@@ -1781,6 +1828,7 @@ async function seekVideo(t, playbackEpoch = null) {
     $("video-play").disabled = !v.times.length;
     showVideoGeometry(time);
     drawProducerStrips();
+    render();
     showVideoCursor();
   };
   const cards = v.cards.filter(c => c.channel);
@@ -1854,7 +1902,7 @@ function buildProducerStrips() {
     [recipe?.documentation, recipe?.record && Object.keys(recipe.record).length ?
       JSON.stringify(recipe.record, null, 2) : ""].filter(Boolean).join("\n\n") ||
     "Producer interpretation record unavailable; inspect the stored votes and reasons.";
-  $("detachment-strips").hidden = false;
+  $("detachment-strips").hidden = S.blind;
   $("detachment-lanes").replaceChildren(...PRODUCER_LANES.map(([key, title]) => {
     const canvas = document.createElement("canvas");
     canvas.dataset.producerLane = key;
@@ -1866,7 +1914,7 @@ function buildProducerStrips() {
 }
 
 function drawProducerStrips() {
-  if (S.event !== "detachment" || !S.video) return;
+  if (S.event !== "detachment" || !S.video || S.blind) return;
   const data = S.meta?.params?.detachment_producer;
   const canvases = $("detachment-lanes").children;
   PRODUCER_LANES.forEach(([key, title], lane) => {
@@ -1940,6 +1988,8 @@ function loadVideoFrame(card, time, current, playback) {
       img.alt = `${card.camera.name}: ${view} at ${actual.toFixed(1)} ms`;
       img.dataset.frameTime = actual;
       img.dataset.channel = channel;
+      img.tabIndex = 0;
+      img.title = "Click or press Enter to enlarge this frame";
       card.staged = { card, img, url, key,
         note: note.replace(times[right].toFixed(1), actual.toFixed(1)) };
       url = null;
@@ -1967,6 +2017,23 @@ function showVideoCursor() {
   if (!S.video || !S.meta) return;
   const axis = $("axis-row").getBoundingClientRect();
   showCursor(axis.left + px(S.video.time));
+}
+
+function enlargeCamera(card) {
+  if (!card.url || card.figure.getAttribute("aria-busy") === "true") return;
+  pauseVideo();
+  $("camera-enlarged-image").src = card.img.src;
+  $("camera-enlarged-image").alt = card.img.alt;
+  $("camera-enlarged-caption").textContent = card.note.textContent;
+  $("camera-enlarged").showModal();
+}
+
+function showBlindMode() {
+  const active = S.event === "detachment" && S.blind;
+  $("blind-control").hidden = S.event !== "detachment";
+  $("blind-mode").checked = S.blind;
+  for (const id of ["source-lane", "detachment-strips", "detachment-details", "detachment-machine-help"])
+    $(id).hidden = active;
 }
 
 async function playVideo() {
@@ -2266,7 +2333,12 @@ function wire() {
     seekVideo(requested);
   });
   $("video-play").addEventListener("click", playVideo);
-  $("start-blank").addEventListener("click", () => edit(S.label.window, []));
+  $("start-blank").addEventListener("click", startBlank);
+  $("blind-mode").addEventListener("change", () => {
+    S.blind = $("blind-mode").checked;
+    store("labeler:detachment-blind", String(S.blind));
+    showBlindMode(); sizeCanvases(); render();
+  });
   $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);

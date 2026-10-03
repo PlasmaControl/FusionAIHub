@@ -72,6 +72,32 @@ def test_video_slider_playback_clicks_and_labels(
     frame["start_ms"] -= 100
     frame.to_csv(producer_labels, index=False)
     monkeypatch.setenv("LABELER_DETACHMENT_LABELS", str(producer_labels))
+    indicators = tmp_path / "indicators"
+    indicators.mkdir()
+    np.savez(
+        indicators / "170815.npz",
+        **{
+            name: frame[name].to_numpy(
+                dtype=str
+                if name.endswith("_reason") or name == "tangtv_source"
+                else None
+            )
+            for name in frame.columns
+            if name.endswith(("_valid", "_vote", "_reason"))
+            or name in ("start_ms", "tangtv_source")
+        },
+        afrac_value=[0.9, 0.5, 0.4, 0.6, np.nan],
+        afrac_method=[
+            "eldon_pre_puff_LH",
+            "local_proxy",
+            "local_proxy",
+            "local_proxy",
+            "none",
+        ],
+        prad_value=[0.2, 1.8, 0.5, 0.7, np.nan],
+        tangtv_value=[0.1, 0.5, 1.2, 0.7, np.nan],
+    )
+    monkeypatch.setenv("LABELER_DETACHMENT_INDICATORS", str(indicators))
     build.build("detachment", 170815, paths)
     result = subprocess.run(
         [
@@ -92,12 +118,12 @@ def test_video_slider_playback_clicks_and_labels(
     checks = json.loads(result.stdout.splitlines()[-1])
     expected = {
         "detachment": (
-            30,
+            36,
             {
                 "human camera protocol and stored machine recipe are separate",
                 "camera, full diagnostic, time axis and annotations fit at 1366x768",
                 "camera, full diagnostic, time axis and annotations fit at 1400x900",
-                "start blank clears suggestions and undo restores the editable lane",
+                "start blank resets selection, preserves Crowd flags, permits category change and Undo",
                 "detached labels are saved on the usual timeline",
                 "no script error",
             },

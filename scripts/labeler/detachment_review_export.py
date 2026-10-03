@@ -1,4 +1,8 @@
-"""Export real camera frames and producer detachment timelines for the paper.
+"""Optional diagnostic export of camera frames and producer timelines.
+
+This raw-camera review figure is excluded from the paper. The producer's views
+figure with EFIT overlays is the appendix figure; a browser screenshot of 200977
+illustrates the review tool.
 
 The 6.75-inch width is intended for two ICML columns without further scaling.
 All text is at least 7 pt; only the camera pixels are rasterized in the PDF.
@@ -33,7 +37,7 @@ REPO = Path(__file__).resolve().parents[2]
 LABELER_ROOT = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
 )
-PRODUCER = Path("/scratch/gpfs/nc1514/FusionAIHub-r4-detach")
+PRODUCER = REPO
 STATE_NAMES = {
     0: "unassessed",
     1: "attached",
@@ -307,6 +311,17 @@ def stripe(ax, starts, codes, y, *, valid=None):
         )
 
 
+def radiation_note(bins):
+    """Qualify the ratio only when a valid displayed bin actually exceeds one."""
+    above = (
+        bins["prad_valid"] & np.isfinite(bins["prad_value"]) & (bins["prad_value"] > 1)
+    )
+    text = "f_div = Prad,div / P_in"
+    if above.any():
+        text += "; orange points >1: check heating-power denominator."
+    return text
+
+
 def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation):
     plt.rcParams.update(
         {
@@ -473,7 +488,7 @@ def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation)
     fig.text(
         0.04,
         0.078,
-        "f_div = Prad,div / P_in; orange points >1: check heating-power denominator.",
+        radiation_note(bins),
         fontsize=7,
     )
     fig.text(0.04, 0.055, source_text + "; producer validity gates apply.", fontsize=7)
@@ -512,7 +527,7 @@ def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation)
     )
     if minimum_font < MIN_FONT_PT:
         raise ValueError(f"figure font below paper minimum: {minimum_font}")
-    base = out / f"detachment_review_{shot}_paper"
+    base = out / f"detachment_review_{shot}_diagnostic"
     fig.savefig(base.with_suffix(".pdf"))
     fig.savefig(base.with_suffix(".png"), dpi=150)
     plt.close(fig)
@@ -521,7 +536,8 @@ def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation)
         "png": str(base.with_suffix(".png")),
         "width_inches": WIDTH_IN,
         "height_inches": HEIGHT_IN,
-        "intended_use": "ICML two-column width (6.75 inches), without further scaling",
+        "intended_use": "Optional diagnostic export; excluded from paper",
+        "radiation_footnote": radiation_note(bins),
         "minimum_font_pt": minimum_font,
         "legend_to_afrac_gap_pt": legend_trace_gap,
         "minimum_gap_between_traces_pt": min(trace_gaps),
@@ -542,7 +558,7 @@ def plot_figure(bins, frames, frame_records, shot, channel, out, interpretation)
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--shot", type=int, default=190212)
+    parser.add_argument("--shot", type=int, default=200977)
     parser.add_argument("--out", type=Path, default=LABELER_ROOT / "round4/detach-ui")
     parser.add_argument(
         "--producer-root", type=Path, default=LABELER_ROOT / "round4/detach"
@@ -581,7 +597,9 @@ def main():
     inversion_audit = []
     if args.prefer_inversion and args.times_ms is None:
         args.shot, args.times_ms, inversion_audit = inversion_example(args)
-    producer_method = args.producer_worktree / "docs/labeler/detachment.md"
+    producer_method = recipe.sources(args.producer_root / "labels_bins.csv.gz")[
+        "method_record"
+    ]
     bins_path = args.producer_root / "bins" / f"{args.shot}.npz"
     labels_path = args.producer_root / "labels_bins.csv.gz"
     interpretation = recipe.load(labels_path)
@@ -653,7 +671,7 @@ def main():
             else f"channel {args.channel}",
             "grayscale_limits": scale,
             "scale_percentiles": [1.0, 99.5],
-            "sampling": "50 Hz corpus linear blends; review-store previews at most 20 fps",
+            "sampling": "50 Hz corpus linear blends; spacing from the selected stored clock",
             "selection": "explicit requested times or selected inversion states"
             if args.times_ms
             else "middle of longest camera-covered run of each present label state (up to three); unpublished shots use three coverage times",
@@ -708,7 +726,7 @@ def main():
     }
     for kind in ("pdf", "png"):
         record["figure"][f"{kind}_sha256"] = sha256_of(Path(figure[kind]))
-    evidence = args.out / f"detachment_review_{args.shot}_paper.json"
+    evidence = args.out / f"detachment_review_{args.shot}_diagnostic.json"
     evidence.write_text(json.dumps(record, indent=2) + "\n")
     if args.evidence:
         args.evidence.parent.mkdir(parents=True, exist_ok=True)

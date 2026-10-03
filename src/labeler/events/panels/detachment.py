@@ -59,8 +59,8 @@ TRACES = (
 )
 CSV_INDICATORS = (
     ("afrac", "Afrac", "dimensionless"),
-    ("prad_div", "Divertor radiated power", "MW"),
-    ("tangtv_front_height", "TangTV front height", "m"),
+    ("prad_div", "f_div = Prad,div / P_in", "dimensionless"),
+    ("tangtv_front_height", "TangTV normalized front DZ", "dimensionless"),
 )
 BIN_INDICATORS = (
     ("afrac", "Afrac", "dimensionless"),
@@ -189,6 +189,12 @@ def indicator_panels(shot, paths, t_range=None):
                         raise ValueError(f"{key}: shape disagrees with clock")
                     metadata[suffix] = values[keep].tolist()
             hlines = recipe.guides(interpretation["record"], indicator)
+            if indicator == "prad":
+                hlines = sorted(set(hlines) | {1.0})
+                metadata["caveat"] = (
+                    "f_div > 1: check the heating-power denominator and "
+                    "radiated-power estimate before interpreting this ratio."
+                )
             metadata["recipe_sources"] = interpretation["sources"]
             if indicator == "afrac":
                 if "afrac_method" in data:
@@ -519,8 +525,12 @@ def _context_panel(
     if preplasma_baseline:
         before = int(np.searchsorted(x, 0.0))
         if before:
-            _, means, _ = _block_means(data, x, ids, 0, before, before)
-            offsets = means[:, 0]
+            # One channel at a time bounds memory even for long native clocks.
+            for c, channel in enumerate(ids):
+                native = np.asarray(data[channel, :before], dtype=float)
+                finite = native[np.isfinite(native)]
+                if finite.size:
+                    offsets[c] = np.median(finite)
         y -= np.where(np.isfinite(offsets), offsets, 0)[:, None]
     live = np.isfinite(y).any(axis=1)
     if positive_chords:
@@ -549,7 +559,7 @@ def _context_panel(
             float(offsets[c]) if np.isfinite(offsets[c]) else None for c in selected
         ]
         metadata["baseline_policy"] = (
-            "Subtract each channel's finite native-sample mean over t < 0; "
+            "Subtract each channel's finite native-sample median over t < 0; "
             "without pre-plasma samples the offset is uncorrected."
         )
     if positive_chords:

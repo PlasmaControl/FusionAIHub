@@ -102,7 +102,7 @@ def load(shot, paths, window_ms=None):
         "tangtv_source": [],
         "confidence": [],
         "label_available": False,
-        "note": "Unverified producer suggestions; label model primary, rule fallback.",
+        "note": "Unverified primary producer suggestion, with rule comparison.",
     }
     if not path.is_file():
         result["source_suppressed"] = True

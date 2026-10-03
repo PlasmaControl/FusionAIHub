@@ -2,12 +2,39 @@
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import h5py
 import numpy as np
 import pytest
 
 from labeler.config import Paths
 from labeler.events.panels import detachment
+
+
+@pytest.mark.parametrize(
+    "values,valid,warn",
+    [
+        ([0.2, 0.54], [True, True], False),
+        ([0.2, 1.88], [True, True], True),
+        ([0.2, 1.88], [True, False], False),
+    ],
+)
+def test_radiation_export_note_only_warns_for_valid_ratios_above_one(
+    values, valid, warn
+):
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "scripts/labeler/detachment_review_export.py"
+    )
+    spec = importlib.util.spec_from_file_location("review_export", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    note = module.radiation_note(
+        {"prad_value": np.array(values), "prad_valid": np.array(valid)}
+    )
+    assert ("orange points >1" in note) is warn
 
 
 def _paths(tmp_path):
@@ -32,20 +59,21 @@ def _corpus(paths, groups):
     return path
 
 
-def test_gas_subtracts_finite_preplasma_channel_means_without_a_threshold(tmp_path):
+def test_gas_subtracts_preplasma_median_despite_prefill_outliers(tmp_path):
     paths = _paths(tmp_path)
     _corpus(
         paths,
         {
             "gas_flow": (
-                [-0.002, -0.001, 0, 0.001, 0.002],
-                [[150, 164, 157, 157, 157], [10, 14, 12, 32, 12]],
+                [-0.004, -0.003, -0.002, -0.001, 0, 0.001, 0.002],
+                [[157, 157, np.nan, 900, 157, 157, 157], [12, 12, 12, 100, 12, 32, 12]],
             )
         },
     )
     panel = detachment.panels(170815, paths=paths)[0]
     np.testing.assert_allclose(panel.y, [[0, 0, 0], [0, 20, 0]])
     assert panel.metadata["preplasma_baseline"] == [157, 12]
+    assert "median over t < 0" in panel.metadata["baseline_policy"]
 
 
 def test_gas_without_preplasma_samples_is_flagged_as_uncorrected(tmp_path):
@@ -97,6 +125,21 @@ def test_default_legacy_csv_is_used_when_bin_file_is_absent(tmp_path, monkeypatc
     panel = detachment.indicator_panels(170815, paths)[0]
     assert panel.metadata["source"] == str(path)
     np.testing.assert_allclose(panel.y, [[0.4, 0.9]])
+
+
+def test_legacy_csv_indicators_have_ratio_units(tmp_path, monkeypatch):
+    monkeypatch.delenv("LABELER_DETACHMENT_INDICATORS", raising=False)
+    paths = _paths(tmp_path)
+    path = paths.root / "round4/detach/indicators/170815.csv"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        "t_ms,prad_div,prad_div_valid,tangtv_front_height,tangtv_front_height_valid\n"
+        "0,0.2,1,0.4,1\n50,1.2,1,0.8,1\n"
+    )
+    prad, tangtv = detachment.indicator_panels(170815, paths)
+    assert prad.ylabel == tangtv.ylabel == "dimensionless"
+    assert prad.hlines == [1.0]
+    assert "denominator" in prad.metadata["caveat"]
 
 
 @pytest.mark.parametrize(

@@ -39,7 +39,11 @@ def corpus(paths, shot=170815):
 
 
 def test_frame_decimation_preserves_corpus_times_and_rejects_bad_clocks():
-    assert video.frame_indices(np.arange(13) * 0.02).tolist() == [0, 3, 6, 9, 12]
+    assert video.frame_indices(np.arange(13) * 0.02).tolist() == list(range(0, 13, 2))
+    previews = np.arange(51)[video.frame_indices(np.arange(51) * 0.02)] * 20
+    assert all(
+        np.any((previews >= t) & (previews < t + 50)) for t in range(0, 1000, 50)
+    )
     assert video.frame_indices([0, np.nan, 0.05, 0.1]).tolist() == [0, 2, 3]
     assert not len(video.frame_indices([0]))
     for clock in ([0, 0], [0.1, 0]):
@@ -47,6 +51,12 @@ def test_frame_decimation_preserves_corpus_times_and_rejects_bad_clocks():
             video.frame_indices(clock)
     with pytest.raises(ValueError, match="positive"):
         video.frame_indices([0, 1], max_fps=0)
+
+
+def test_preview_spacing_tolerates_quantized_float32_corpus_clock():
+    clock = (19 + np.arange(51) * 0.02).astype(np.float32).astype(float)
+    indices = video.frame_indices(clock)
+    assert indices.tolist() == list(range(0, 51, 2))
 
 
 def test_builder_extracts_frames_fixed_scale_stubs_and_movie_only_shots(tmp_path):
@@ -59,7 +69,7 @@ def test_builder_extracts_frames_fixed_scale_stubs_and_movie_only_shots(tmp_path
     assert not irtv["channels"] and "stub" in irtv["reason"]
     assert len(tangtv["channels"]) == 1  # all-NaN channel omitted
     channel = tangtv["channels"][0]
-    np.testing.assert_allclose(channel["times_ms"], [0, 60, 120, 180, 240])
+    np.testing.assert_allclose(channel["times_ms"], np.arange(0, 241, 40))
     assert channel["shape"] == [4, 6]
     with h5py.File(path) as store:
         assert store["videos/tangtv/0/frames"].chunks == (1, 4, 6)
@@ -96,7 +106,7 @@ def test_external_producer_shot_is_trimmed_to_cached_current_window(
     path = build.build("detachment", 170815, paths)
     assert rows.meta(path)["t_range"] == [60, 180]
     np.testing.assert_allclose(
-        video.meta(path)["cameras"][1]["channels"][0]["times_ms"], [60, 120, 180]
+        video.meta(path)["cameras"][1]["channels"][0]["times_ms"], [80, 120, 160]
     )
     with h5py.File(path) as store:
         assert json.loads(store.attrs["params"])["plasma_window_source"] == (
@@ -175,8 +185,10 @@ def test_panel_sampling_and_indicator_validity(tmp_path, monkeypatch):
     built = panels.panels(170815, paths=paths)
     by_title = {p.title: p for p in built}
     assert np.isnan(by_title["Afrac"].y[0, 1])
-    assert np.isnan(by_title["TangTV front height (source not recorded)"].y[0, 1])
-    assert "Divertor radiated power" not in by_title  # no validity mask
+    assert np.isnan(
+        by_title["TangTV normalized front DZ (source not recorded)"].y[0, 1]
+    )
+    assert "f_div = Prad,div / P_in" not in by_title  # no validity mask
     assert not any(
         "Langmuir" in title or "Bolometer raw" in title for title in by_title
     )
@@ -265,9 +277,9 @@ def test_video_store_drops_frames_outside_the_plasma_window(tmp_path):
     path = paths.spectrogram_file("detachment", 170815)
     rows.write(path, Grid(40, 20, 6), [], video_corpus=source)
     channel = video.meta(path)["cameras"][1]["channels"][0]
-    np.testing.assert_allclose(channel["times_ms"], [60, 120])
+    np.testing.assert_allclose(channel["times_ms"], [40, 80, 120, 160])
     with h5py.File(path) as store:
-        assert store["videos/tangtv/0/source_indices"][:].tolist() == [3, 6]
+        assert store["videos/tangtv/0/source_indices"][:].tolist() == [2, 4, 6, 8]
 
 
 def test_tangtv_manifest_describes_linear_resampling_instead_of_native_exposures(
@@ -279,6 +291,19 @@ def test_tangtv_manifest_describes_linear_resampling_instead_of_native_exposures
     note = manifest["cameras"][1]["sampling_note"]
     assert "50 Hz" in note and "linear" in note
     assert "adjacent exposures" in note
+
+
+def test_frozen_preview_manifest_reports_stored_cadence_not_new_defaults(tmp_path):
+    paths = Paths(root=tmp_path, corpus=tmp_path / "corpus")
+    corpus(paths)
+    path = build.build("detachment", 170815, paths)
+    with h5py.File(path, "r+") as store:
+        store["videos"].attrs["max_fps"] = 20.0
+        store["videos/tangtv/0/times_ms"][:] = np.arange(7) * 60.0
+    manifest = video.meta(path)
+    assert manifest["max_fps"] == 20.0
+    note = manifest["cameras"][1]["sampling_note"]
+    assert "60.0 ms" in note and "16.7 fps" in note
 
 
 def test_actual_detach_bin_schema_keeps_gates_and_dimensionless_ratios(
@@ -374,7 +399,7 @@ def test_frame_endpoint_auth_roster_missing_cameras_and_detachment_save(tmp_path
             response.status_code == 200
             and response.headers["content-type"] == "image/png"
         )
-        assert float(response.headers["x-frame-time-ms"]) == pytest.approx(120)
+        assert float(response.headers["x-frame-time-ms"]) == pytest.approx(80)
         assert Image.open(io.BytesIO(response.content)).size == (6, 4)
         assert client.get(base + "&t_ms=nan").status_code == 400
         assert client.get(base + "&channel=1").status_code == 404

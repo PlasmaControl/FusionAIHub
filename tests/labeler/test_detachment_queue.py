@@ -28,6 +28,74 @@ def roster_module():
     return module
 
 
+def test_queue_prioritizes_camera_shelf_coverage_over_shot_number():
+    records = [
+        {"shot": 190001, "lower_channels": [{}], "camera_geometry_eligible": False},
+        {"shot": 200977, "lower_channels": [{}], "camera_geometry_eligible": True},
+    ]
+    cohort = pd.DataFrame({"shot": [190001, 200977], "split": ["train", "val"]})
+    queue, excluded = roster_module().queue_records(
+        records, {"shots": [], "explicit_test_shots": []}, cohort
+    )
+    assert [r["shot"] for r in queue] == [200977, 190001]
+    assert not excluded
+
+
+def test_recipe_snapshot_is_written_under_output(tmp_path, monkeypatch):
+    module = roster_module()
+    method = tmp_path / "method.md"
+    method.write_text("Producer definitions")
+    out = tmp_path / "out"
+    monkeypatch.setenv("LABELER_DETACHMENT_METHOD", str(method))
+    module.write_recipe_help(tmp_path / "labels.csv", out)
+    assert "Producer definitions" in (out / "producer_recipe.md").read_text()
+
+
+def test_reordering_frozen_queue_preserves_curation_and_does_not_read_producer(
+    tmp_path, monkeypatch
+):
+    from labeler.config import sha256_of
+
+    module = roster_module()
+    repo = tmp_path / "repo"
+    cohort = repo / "data/events/catalog/cohort.csv"
+    cohort.parent.mkdir(parents=True)
+    cohort.write_text("shot,split\n190001,train\n200977,val\n")
+    monkeypatch.setattr(module, "REPO", repo)
+    event = tmp_path / "out/tables/detachment"
+    event.mkdir(parents=True)
+    (event / "shots.csv").write_text(
+        "shot,tier,holdout,reviewers,verified_on,notes\n"
+        "190001,unverified,false,Alice,2026-10-03,keep this note\n"
+        "200977,gold,false,Bob,2026-10-03,reviewed\n"
+    )
+    (tmp_path / "out/corpus_scan.json").write_text(
+        json.dumps(
+            {
+                "cohort_sha256": sha256_of(cohort),
+                "records": [
+                    {
+                        "shot": 190001,
+                        "lower_channels": [{}],
+                        "camera_geometry_eligible": False,
+                    },
+                    {
+                        "shot": 200977,
+                        "lower_channels": [{}],
+                        "camera_geometry_eligible": True,
+                    },
+                ],
+            }
+        )
+    )
+    record = module.reorder_frozen_queue(tmp_path / "out", tmp_path / "order.json")
+    result = rosters.read_roster(event / "shots.csv")
+    assert result.shot.tolist() == [200977, 190001]
+    assert result.iloc[0].reviewers == "Bob"
+    assert result.iloc[1].notes == "keep this note"
+    assert record["shelf_covered_first"] and record["store_rebuilds"] == 0
+
+
 def test_delivered_source_clips_to_window_and_retains_original_bin_bounds(tmp_path):
     source = tmp_path / "labels.csv"
     pd.DataFrame(

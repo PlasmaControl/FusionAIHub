@@ -1319,7 +1319,10 @@ async function detachmentCameras(shot = 170815, demo = false) {
     Array.from($("detachment-lanes").children).every(c => c.width > 0 && c.height > 0)`));
   check("human camera protocol and stored machine recipe are separate", await js(`
     $("detachment-help").textContent.includes("target strike point") &&
-    $("detachment-help").textContent.includes("Te rollover") &&
+    $("detachment-help").textContent.includes("ion-flux (Afrac/Jsat) rollover or low target Te") &&
+    $("detachment-help").textContent.includes("inside the separatrix") &&
+    $("detachment-help").textContent.includes("D-alpha chord locations are not recorded") &&
+    !$("detachment-help").textContent.includes("shelf gate invalid") &&
     $("detachment-help").textContent.includes("Not reviewed") &&
     $("detachment-machine-help").textContent.length > 0 &&
     $("detachment-caveats").textContent.includes("Uncalibrated")`));
@@ -1329,7 +1332,7 @@ async function detachmentCameras(shot = 170815, demo = false) {
         const name = S.meta.params.panel_metadata[row.name].indicator;
         const values = S.meta.params.detachment_producer.recipe.record.thresholds?.[name] || {};
         const expected = [...new Set(Object.values(values).filter(v => typeof v === "number"))].sort((a,b) => a-b);
-        return same(row.hlines || [], expected);
+        return same(traceGuides(row), name === "prad" ? [...new Set([...expected, 1])].sort((a,b) => a-b) : expected);
       })`));
     check("real-shot density uses line-density context before local Thomson", await js(`
       S.meta.rows.some(row => row.title.includes("CO2") && row.title.includes("density")) &&
@@ -1381,13 +1384,61 @@ async function detachmentCameras(shot = 170815, demo = false) {
       c.img.alt.includes(c.channel.view_name) &&
       c.figure.getAttribute("aria-busy") === "false" &&
       c.note.textContent.includes(c.channel.view_name))`));
+  await js(`seekVideo(${middle} + 3)`);
+  await until(`S.video.cards.filter(c => c.channel).every(c => c.figure.getAttribute("aria-busy") === "false")`);
+  check("cursor snaps arbitrary slider times to the displayed TangTV frame", await js(`
+    S.video.time === Number(S.video.cards.find(c => c.camera.name === "tangtv").img.dataset.frameTime)`));
+  check("Afrac caveat uses each stored bin method and draws to the right of the gutter", await js(`(() => {
+    const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "afrac");
+    if (!row) return false;
+    const metadata = S.meta.params.panel_metadata[row.name], original = {...metadata};
+    Object.assign(metadata, {bin_start_ms: [0,50], bin_end_ms: [50,100],
+      afrac_method: ["local_proxy", "eldon_pre_puff_LH"]});
+    const notes = [indicatorNote(row, 25), indicatorNote(row, 75)];
+    Object.assign(metadata, original);
+    const canvas = $("rows").children[S.meta.rows.indexOf(row)], g = canvas.getContext("2d");
+    const fillText = g.fillText, drawn = [];
+    g.fillText = function(text, x, y, ...args) {
+      if (String(text).startsWith("Afrac method:")) drawn.push({text, x, align: this.textAlign});
+      return fillText.call(this, text, x, y, ...args);
+    };
+    drawRows(); g.fillText = fillText;
+    return notes[0].includes("local_proxy") && !notes[0].includes("eldon") &&
+      notes[1].includes("eldon_pre_puff_LH") && !notes[1].includes("local_proxy") &&
+      drawn.length === 1 && drawn[0].align === "left" && drawn[0].x > GUTTER;
+  })()`));
+  check("f_div has a physical reference at one and a visible denominator caveat", await js(`(() => {
+    const row = S.meta.rows.find(row => S.meta.params.panel_metadata?.[row.name]?.indicator === "prad");
+    return Boolean(row) && traceGuides(row).includes(1) && indicatorNote(row).includes("f_div > 1");
+  })()`));
+  await js(`S.video.cards.find(c => c.channel).img.click()`);
+  check("camera opens an enlarged view of the same frame", await js(`
+    $("camera-enlarged").open && $("camera-enlarged-image").src === S.video.cards.find(c => c.channel).img.src &&
+    $("camera-enlarged-caption").textContent === S.video.cards.find(c => c.channel).note.textContent`));
+  await js(`$("camera-enlarged").close(); window.beforeBlind = JSON.stringify(S.label); $("blind-mode").click()`);
+  check("blind mode hides Source, producer strips, reading and recipe without changing labels", await js(`
+    $("source-lane").hidden && $("detachment-strips").hidden && $("detachment-details").hidden &&
+    $("detachment-machine-help").hidden && JSON.stringify(S.label) === window.beforeBlind`));
+  await js(`$("blind-mode").click()`);
+  check("leaving blind mode restores producer context", await js(`
+    !$("source-lane").hidden && !$("detachment-strips").hidden && !$("detachment-details").hidden`));
   check("detached and uncertain use distinct colour-blind-safe blue and orange", await js(`
     categoryColour(2) === "#0072b2" && categoryColour(4) === "#d55e00"`));
-  check("start blank clears suggestions and undo restores the editable lane", await js(`(() => {
-    const before = JSON.stringify(S.label), source = JSON.stringify(S.meta.source);
+  check("start blank resets selection, preserves Crowd flags, permits category change and Undo", await js(`(() => {
+    const source = JSON.stringify(S.meta.source), category = S.category;
+    const [lo, hi] = S.label.window;
+    edit(S.label.window, [...S.label.intervals, [lo, hi, 3]],
+      [...S.label.intervals.map((_, i) => S.label.iscrowd?.[i] ?? null), 1]);
+    const before = JSON.stringify(S.label);
+    S.selected = S.label.intervals.findIndex((_, i) => S.label.iscrowd?.[i] !== 1);
     $("start-blank").click();
-    const cleared = !S.label.intervals.length && JSON.stringify(S.meta.source) === source;
-    undo(); return cleared && JSON.stringify(S.label) === before;
+    const cleared = S.selected === -1 && same(S.label.intervals, [[lo, hi, 3]]) &&
+      same(S.label.iscrowd, [1]) && JSON.stringify(S.meta.source) === source;
+    setCategory(2);
+    const unchanged = same(S.label.intervals, [[lo, hi, 3]]) && same(S.label.iscrowd, [1]);
+    undo(); const restored = JSON.stringify(S.label) === before;
+    undo(); S.category = category; renderSwatches();
+    return cleared && unchanged && restored;
   })()`));
   for (const [width, height] of [[1366,768], [1400,900]]) {
     await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
@@ -1407,10 +1458,6 @@ async function detachmentCameras(shot = 170815, demo = false) {
     })()`);
     check(`camera, full diagnostic, time axis and annotations fit at ${width}x${height}`,
       layout.cameraVisible && layout.diagnosticVisible && layout.axisVisible && layout.annotationVisible, layout);
-    if (demo && CASE) {
-      const screenshot = await send("Page.captureScreenshot", {format: "png"});
-      writeFileSync(CASE.replace(/\.png$/, `-${width}x${height}.png`), Buffer.from(screenshot.data, "base64"));
-    }
     await js(`$("detachment-details").open = true;`);
     await sleep(50);
     check(`expanded details leave a diagnostic row at ${width}x${height}`, await js(`
@@ -1521,14 +1568,10 @@ async function detachmentCameras(shot = 170815, demo = false) {
       await seekVideo(time);
     })()`);
     await until(`S.video.cards.filter(c => c.channel).every(c => c.img.complete)`);
-    check("evidence and paper capture use a delivered lower-divertor view", await js(`
+    check("review-tool illustration uses a delivered lower-divertor view", await js(`
       S.video.cards.find(c => c.camera.name === "tangtv").channel.region === "lower divertor"`));
-    await js(`(() => {
-      const i = S.meta.rows.findIndex(row => row.title === "Gas flow");
-      if (i >= 0) $("top").scrollTop += $("rows").children[i].getBoundingClientRect().top -
-        $("top").getBoundingClientRect().top - $("video-panel").offsetHeight;
-      showVideoCursor(); $("hover-cursor").hidden = true;
-    })()`);
+    await send("Emulation.setDeviceMetricsOverride", { width: 1366, height: 768, deviceScaleFactor: 1, mobile: false });
+    await js(`$("top").scrollTop = 0; showVideoCursor(); $("hover-cursor").hidden = true;`);
     await sleep(100);
     const screenshot = await send("Page.captureScreenshot", {format: "png"});
     writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
