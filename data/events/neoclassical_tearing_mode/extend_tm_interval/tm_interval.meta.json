@@ -1,0 +1,90 @@
+{
+  "absent": "the rest of the shot's catalog window; ramp-up uncertain where the rule fires in it; stretches the record did not cover not observable",
+  "categories": {
+    "0": "absent",
+    "1": "present",
+    "2": "uncertain",
+    "3": "not_observable"
+  },
+  "category": "neoclassical_tearing_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence",
+    "attrs"
+  ],
+  "counts": {
+    "intervals_by_end": {
+      "decay": 187,
+      "locked": 84,
+      "plasma_end": 2
+    },
+    "intervals_by_n": {
+      "1": 199,
+      "2": 74
+    },
+    "median_duration_ms": 698.9999999999998,
+    "n_intervals": 273,
+    "n_locked": 84,
+    "n_onset_points": 271,
+    "n_with_m": 11,
+    "n_without_observed_onset": 2,
+    "shots_with_not_observable": 39,
+    "shots_with_ramp_up_uncertain": 0
+  },
+  "crowd": "span rows iscrowd 1 (the whole interval), onset point rows iscrowd 0; t_start == t_end marks a point",
+  "git_sha": "536aa28",
+  "locked": {
+    "intervals_without_a_frequency_record_shots": [],
+    "rule": "labeler.tearing.rule.frequency_locks / apply_locking: the mode's frequency falls to <= 1 kHz for 20 ms after >= 1.5 kHz, within the interval's last 150 ms or 100 ms after it; set only when true",
+    "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz)"
+  },
+  "m": {
+    "rule": "labeler.tearing.surface.supported_m: m is recorded (with efit_tree efit01) only when the interval's median q profile inside rho 0.95 has exactly one rational surface m / n with m > n; otherwise m is left empty (no radial evidence, ECE or the poloidal array, is used)",
+    "signal": "qpsi_EFIT01 (the shot's feature file), offline EFIT01"
+  },
+  "made_at": "2026-10-03T14:36:07+00:00",
+  "made_by": "scripts/labeler/tm_label.py",
+  "missing_signal_shots": [],
+  "n_labelled_shots": 500,
+  "n_missing_signal_shots": 0,
+  "n_requested_shots": 500,
+  "n_rows": 1323,
+  "n_shots": 500,
+  "n_shots_with_a_mode": 193,
+  "plasma_start": "labeler.events.spans.plasma_start: the rule runs from the time Ip reaches its flat-top fraction; each shot's start is in $LABELER_ROOT/round4/tm/labels/plasma_start_<set>.json",
+  "rule": {
+    "n1": {
+      "harmonic_ratio": null,
+      "hold_ms": 50.0,
+      "merge_gap_ms": 50.0,
+      "min_duty": 0.5,
+      "n": 1,
+      "onset_g": 12.0,
+      "onset_margin_ms": 20.0,
+      "release_floor_g": 1.0,
+      "release_fraction": 0.1,
+      "smooth_ms": 5.0
+    },
+    "n2": {
+      "harmonic_ratio": 0.4,
+      "hold_ms": 50.0,
+      "merge_gap_ms": 50.0,
+      "min_duty": 0.5,
+      "n": 2,
+      "onset_g": 6.0,
+      "onset_margin_ms": 20.0,
+      "release_floor_g": 1.0,
+      "release_fraction": 0.1,
+      "smooth_ms": 5.0
+    }
+  },
+  "rule_doc": "docs/labeler/tearing_detection.md; labeler.tearing.rule",
+  "schema_version": 6,
+  "shots": "cohort",
+  "signals": "\\MHD::N1RMS, \\MHD::N2RMS (tree mhd, gauss, 1 kHz), fetched",
+  "table_kind": "intervals",
+  "time_units": "ms"
+}
