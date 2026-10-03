@@ -601,10 +601,14 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     if sources:
         sentences.append("; ".join(sources) + ".")
     if tagged is None or tagged.get(mt.AE):
-        sentences.append(
-            "Pink: AE time overlap in detector band ≥80 kHz; tint follows "
-            "the detector's 25 ms bins."
+        ae = records.get(mt.AE) or {}
+        bin_ms = ae.get(
+            "temporal_bin_ms", 25 if ae.get("what", "").startswith("ae-ours") else None
         )
+        text = "Pink: AE time overlap in detector band ≥80 kHz"
+        if bin_ms is not None and ae.get("tier") == lf.GENERATED:
+            text += f"; tint follows the detector's {bin_ms:g} ms bins"
+        sentences.append(text + ".")
     sentences.append("n measured ≤30 kHz.")
     if tagged is None or tagged.get(mt.NTM):
         sentences.append("NTM outlines require dominant and pixel n=1/2.")

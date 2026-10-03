@@ -1325,11 +1325,18 @@ def track_record(track: lf.Track, window=None) -> dict | None:
     )
     state_rows = figure_sources.state_intervals(track, window or (-math.inf, math.inf))
     ae_threshold = figure_sources.AE_THRESHOLD
+    ae_bin_ms = (
+        25.0
+        if track.spec.key == mode_tags.AE and (track.source.what.startswith("ae-ours"))
+        else None
+    )
     if track.spec.key == mode_tags.AE and track.source.run is not None:
         from labeler.paper.shots import Model
+        from labeler.scoring.frames import FRAME_MS
 
         model = "CO2 xpower frame model (80-250 kHz)"
         ae_threshold = Model.load(Path(track.file), {}).threshold
+        ae_bin_ms = FRAME_MS
     return {
         "tier": track.source.tier,
         "title": track.spec.title,
@@ -1354,6 +1361,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
             else None
         ),
         "primary_bars": meta.get("bar"),
+        "temporal_bin_ms": ae_bin_ms,
         "metadata": str(metadata) if metadata.is_file() else None,
         "metadata_sha256": sha256_of(metadata) if metadata.is_file() else None,
         "states": track.spec.states,

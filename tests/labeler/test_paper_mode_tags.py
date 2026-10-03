@@ -237,3 +237,15 @@ def test_ntm_projection_excludes_measured_n_three_in_a_dominant_n_one_blob():
     shown = mt.tag_mask(found, mt.NTM, lit.shape, t, f, spans[mt.NTM], n_map=n)
     assert shown.sum() == 8
     assert not shown[n == 3].any()
+
+
+def test_ntm_component_has_no_tag_if_only_n_three_overlaps_the_label():
+    f, t = _grid(4)
+    lit = np.zeros((ROWS, 4), bool)
+    lit[10:13] = True
+    n = np.full(lit.shape, np.nan)
+    n[10:13, :3] = 1
+    n[10:13, 3] = 3
+    found = mt.tag_blobs(mt.blobs(lit, t, f), {mt.NTM: [(3, 4)]}, t, f, n)
+    assert found[0].dominant_n == 1
+    assert found[0].tags == ()

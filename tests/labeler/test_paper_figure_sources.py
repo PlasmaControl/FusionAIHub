@@ -483,3 +483,21 @@ def test_caption_discloses_ae_bins_and_data_derived_late_band():
     assert "25 ms bins" in text
     assert "105–125 kHz" in text
     assert "170–250" not in text
+
+
+def test_caption_uses_the_fallback_detectors_recorded_bin_duration():
+    record = {
+        "tier": fs.lf.GENERATED,
+        "what": "frame detector",
+        "title": "AE",
+        "temporal_bin_ms": 10,
+    }
+    text = fs.caption(
+        42,
+        {fs.mt.AE: record},
+        {
+            "blobs": {"tagged": {fs.mt.AE: 1, fs.mt.NTM: 0}},
+        },
+    )
+    assert "10 ms bins" in text
+    assert "25 ms bins" not in text

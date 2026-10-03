@@ -205,6 +205,8 @@ def tag_blobs(
             if event == NTM and dominant not in (1, 2):
                 continue
             eligible = columns[event][cc] & (f_khz[rr] >= lo) & (f_khz[rr] < hi)
+            if event == NTM:
+                eligible &= np.isin(n_map[rr, cc], (1, 2))
             if eligible.any():
                 tags.append(event)
         out.append(
