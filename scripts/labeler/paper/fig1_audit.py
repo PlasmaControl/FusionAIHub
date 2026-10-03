@@ -7,6 +7,7 @@ All checks use recorded sources and pixel audits; no training or fetching.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -35,6 +36,9 @@ def rebuild_primary(record):
     source = record["drawn"]["sawtooth_crashes"]["source"]
     if Path(source).exists():
         cmd.extend(["--sawtooth-source", source])
+    evidence = record["drawn"]["sawtooth_crashes"].get("evidence_source")
+    if evidence:
+        cmd.extend(["--sawtooth-evidence", evidence])
     subprocess.run(cmd, check=True)
     after = {str(p): sha256_of(p) for p in files}
     assert before == after, "primary rebuild changed PDF/PNG bytes"
@@ -52,11 +56,21 @@ def main():
     parser.add_argument("--rebuild-primary", action="store_true")
     args = parser.parse_args()
     audited, checked_sources, labels = [], {}, set()
+    render_commits = set()
     for shot in SHOTS:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
         assert record["split"] in ("train", "val"), f"blind shot {shot}"
         drawn = record["drawn"]
+        render_commits.add(record["git"])
+        for path, digest in record["render_code_sha256"].items():
+            committed = subprocess.check_output(
+                ["git", "show", f"{record['git']}:{path}"]
+            )
+            assert hashlib.sha256(committed).hexdigest() == digest
+            assert sha256_of(Path(path)) == digest
+        for path, digest in drawn["figure_sha256"].items():
+            assert sha256_of(Path(path)) == digest, f"changed figure {path}"
         for band in drawn["projection_audit"].values():
             for event in band.values():
                 assert event["outside_present"] == event["outside_band"] == 0
@@ -70,7 +84,21 @@ def main():
         assert drawn["sawtooth_strip_shown"] == bool(shown)
         if shot == 201978:
             assert record["window_ms"] == [1500, 3300]
-            assert not drawn["sawtooth_track_shown"]
+        assert drawn["sawtooth_track_shown"]
+        assert drawn["catalog_sawtooth_frame_model_shown"] is False
+        saw = record["tracks"]["sawtooth_oscillation"]
+        assert saw["state_intervals_ms"]
+        assert saw["sha256"] == crashes["files"][0]["sha256"]
+        if Path(saw["path"]).suffix == ".json":
+            physics = json.loads(Path(saw["path"]).read_text())
+            expected = []
+            for row in physics["states"]:
+                a = max(row["start_s"] * 1000, record["window_ms"][0])
+                b = min(row["end_s"] * 1000, record["window_ms"][1])
+                if b > a:
+                    expected.append({"start_ms": a, "end_ms": b, "state": row["state"]})
+            assert saw["state_intervals_ms"] == expected
+            assert saw["density_guard"] == physics.get("density_guard")
         for t in drawn["elm_peak_times_ms"]:
             assert not any(a <= t < b for a, b in drawn["elm_uncertain_spans_ms"])
         caption_file = args.records / f"{shot}.caption.tex"
@@ -92,7 +120,7 @@ def main():
         )
         label = re.search(r"\\label\{([^}]+)\}", caption)[1]
         assert label not in labels
-        assert (label == "fig:interpreter") == (shot == 201978)
+        assert label == f"fig:interpreter-{shot}"
         labels.add(label)
         assert sha256_of(caption_file) == record["caption"]["sha256"]
         layout = record["print_layout"]
@@ -148,12 +176,31 @@ def main():
                 "unmeasured_ntm_pixels": 0,
                 "regimes_shown": drawn["regimes_shown"],
                 "harmonic_support": drawn["harmonic_support"],
+                "render_source_commit": record["git"],
+                "sawtooth_source": crashes["files"],
+                "sawtooth_states": saw["state_intervals_ms"],
+                "sawtooth_state_duration_ms": {
+                    state: sum(
+                        r["end_ms"] - r["start_ms"]
+                        for r in saw["state_intervals_ms"]
+                        if r["state"] == state
+                    )
+                    for state in ("present", "absent", "uncertain", "unassessed")
+                },
+                "sawtooth_density_proxy": saw["density_guard"],
+                "late_untagged_high_frequency": drawn["late_untagged_high_frequency"],
                 "pdf_size_in": [width, height],
                 "figure_sha256": {p: sha256_of(Path(p)) for p in drawn["figure"]},
             }
         )
     primary = json.loads((args.records / "201978.json").read_text())
+    assert len(render_commits) == 1, "all six renders must use the same source commit"
     reproducibility = rebuild_primary(primary) if args.rebuild_primary else None
+    for shot in SHOTS:
+        file = args.records / f"{shot}.json"
+        record = json.loads(file.read_text())
+        external = Path(record["caption"]["path"]).parent / "fig_interpreter.json"
+        assert external.read_bytes() == file.read_bytes()
     args.out.write_text(
         json.dumps(
             {

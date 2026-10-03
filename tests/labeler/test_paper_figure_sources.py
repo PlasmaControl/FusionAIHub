@@ -208,7 +208,7 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     assert len(text.split()) <= 150
     assert "regime:" in text
     assert "Ticks" not in text
-    assert ("failed" in text) == (tier == fs.lf.GENERATED)
+    assert ("unverified" in text) == (tier == fs.lf.GENERATED)
     assert "consistent with a second harmonic" in text
     assert "near 15 kHz" in text
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
@@ -312,5 +312,44 @@ def test_harmonic_support_follows_ridges_outside_the_primary_shots_bands():
     assert got["n1_median_khz"] == 11
     assert got["n2_median_khz"] == 22
     text = fs.caption(42, {}, {"harmonic_support": got, "sawtooth_strip_shown": False})
-    assert "near 20 kHz" in text  # recorded 5-kHz prose precision
+    assert "near 22 kHz" in text
     assert "near 15 kHz" not in text
+
+
+@pytest.mark.parametrize(
+    "frequencies,expected_ms", [([3.42, 6.16], 0), ([20, 41.8], 200)]
+)
+def test_harmonic_support_uses_relative_ratio_error(frequencies, expected_ms):
+    n = np.array([[1, 1], [2, 2]])
+    got = fs.harmonic_support(n, np.ones((2, 2), bool), [0, 100], frequencies)
+    assert got["support_ms"] == expected_ms
+
+
+def test_harmonic_caption_requires_minimum_sampled_support():
+    got = fs.harmonic_support(
+        np.array([[1, 1], [2, 2]]), np.ones((2, 2), bool), [0, 10], [8, 16]
+    )
+    assert "harmonic" not in fs.caption(42, {}, {"harmonic_support": got})
+
+
+def test_sawtooth_caption_uses_window_states_and_qualified_proxy():
+    record = {
+        "state_intervals_ms": [
+            {"start_ms": 1500, "end_ms": 2291, "state": "absent"},
+            {"start_ms": 2291, "end_ms": 2301, "state": "uncertain"},
+            {"start_ms": 2301, "end_ms": 2309, "state": "absent"},
+            {"start_ms": 2309, "end_ms": 3300, "state": "unassessed"},
+        ],
+        "density_guard": {"cutoff_proxy": True, "status": "fixed_bt_missing"},
+    }
+    text = fs.sawtooth_caption(record)
+    assert "absent to 2.29 s" in text
+    assert "uncertain" in text
+    assert "unassessed from 2.31 s" in text
+    assert "conservative density proxy" in text
+    assert "no Bt available" in text
+    assert "is cut off" not in text
+    record["state_intervals_ms"] = [
+        {"start_ms": 1500, "end_ms": 3300, "state": "absent"}
+    ]
+    assert fs.sawtooth_caption(record) == "Sawtooth absent throughout."

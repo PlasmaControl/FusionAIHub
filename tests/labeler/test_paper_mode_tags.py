@@ -86,7 +86,7 @@ def test_a_blob_is_tagged_by_the_label_over_it_in_its_band():
         round(b.f_khz): b.tags
         for b in mt.tag_blobs(found, spans, t, f, n_map=np.ones(lit.shape))
     }
-    assert tagged == {101: (mt.AE,), 11: (mt.NTM,)}  # AE only above 60 kHz
+    assert tagged == {101: (mt.AE,), 11: (mt.NTM,)}  # AE only above 80 kHz
 
 
 def test_sawtooth_is_not_a_rotating_mode_tag():
@@ -139,19 +139,19 @@ def test_spans_are_merged_where_they_touch():
     assert mt.overlap_ms(4.0, 25.0, [(0.0, 9.0), (20.0, 30.0)]) == 10.0
 
 
-def test_projection_clips_absent_gaps_and_both_sides_of_60_khz():
+def test_projection_clips_absent_gaps_and_both_event_band_edges():
     f, t = _grid(20)
     lit = np.zeros((ROWS, 20), bool)
-    lit[110:124, :] = True  # 55-61.5 kHz: crosses both fold and tag boundary
+    lit[110:164, :] = True  # 55-81.5 kHz: crosses fold and both event boundaries
     spans = {mt.AE: [(2.0, 8.0), (12.0, 18.0)], mt.NTM: [(4.0, 16.0)]}
     found = mt.tag_blobs(mt.blobs(lit, t, f), spans, t, f, np.ones(lit.shape))
     ae = mt.tag_mask(found, mt.AE, lit.shape, t, f, spans[mt.AE])
     ntm = mt.tag_mask(
         found, mt.NTM, lit.shape, t, f, spans[mt.NTM], n_map=np.ones(lit.shape)
     )
-    assert ae.sum() == 48  # four rows >=60, twelve present columns
+    assert ae.sum() == 48  # four rows >=80, twelve present columns
     assert ntm.sum() == 120  # ten rows 55-59.5, twelve present columns
-    assert not ae[f < 60].any()
+    assert not ae[f < 80].any()
     assert not ae[:, 8:12].any()
     assert not ae[:, 18:].any()  # end is exclusive
     assert not ntm[f >= 60].any()

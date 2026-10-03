@@ -13,7 +13,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
   components), the toroidal-n view (the review page's n map, gated by the same
   mask) in place of the 0-30 kHz band. Highlights intersect PRESENT label
-  times with AE >=60 kHz or NTM <60 kHz; NTM requires dominant measured n=1/2.
+  times with AE >=80 kHz or NTM <60 kHz; NTM requires dominant measured n=1/2.
   Optional ECE-verified, ELM-vetoed sawtooth crashes appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
   it, and the confinement regimes shade it;
@@ -34,8 +34,8 @@ errors. Curated four-class regimes win; otherwise the D-alpha L-H table is
 used, never the H-mode frame model. --sawtooth-source accepts read-only physics
 JSONs, a JSON directory or cohort CSV shards; --sawtooth-evidence supplies full
 JSON evidence for the reduced cohort CSV schema. Track and ticks share the
-same source when --show-sawtooth is enabled. --ae-labels accepts isolated
-paper-model inference predictions. The primary omits sawtooth (ECE density guard).
+same source whenever a physics source is supplied. --ae-labels accepts isolated
+paper-model inference predictions. The catalog sawtooth frame model is not shown.
 """
 
 from __future__ import annotations
@@ -93,8 +93,8 @@ IMAGE_COLUMNS = 3000
 #: The ELM peaks: D-alpha less its running median, over this many MADs.
 ELM_WINDOW = 25
 ELM_MADS = 4.0
-#: Blue, cyan and blue-green (no event pink/orange/yellow); other n are grey.
-N_COLOURS = {1: "#0072B2", 2: "#56B4E9", 3: "#009E73"}
+#: Okabe-Ito blue, bluish-green and yellow; other n is purple, at full colour.
+N_COLOURS = {1: "#0072B2", 2: "#009E73", 3: "#F0E442"}
 N_OTHER = "#8C6BB1"
 EVENT_COLOURS = {
     mode_tags.AE: "#CC79A7",
@@ -108,7 +108,7 @@ EVENT_NAMES = {
     mode_tags.SAWTOOTH: "sawtooth",
     "edge_localized_mode": "ELMs",
 }
-TIER_NAMES = {lf.SILVER: "expert", lf.LEGACY: "legacy", lf.GENERATED: "detector"}
+TIER_NAMES = {lf.SILVER: "expert", lf.LEGACY: "imported", lf.GENERATED: "detector"}
 #: The confinement regimes, in grey: darker is better confined.
 REGIME_GREYS = {1: "#3c3c3c", 2: "#bdbdbd", 3: "#6e6e6e", 4: "#8a8a8a", 5: "#d0d0d0"}
 ABSENT_GREY = "#e4e4e4"
@@ -121,7 +121,7 @@ HEADINGS = {
             "clip to label times and band"
         ),
     ),
-    "h_lab": ("Labels and suggestions; source at right",),
+    "h_lab": ("Labels; source at right",),
 }
 INK = "#222222"
 BAR = (0.12, 0.76)
@@ -504,18 +504,21 @@ def clear_of(fixed, moved: list) -> None:
             text.set_x(inv.transform((box.x1, box.y0))[0] + 15.0)
 
 
-def leader(ax, text, xy, position, colour):
+def leader(ax, text, xy):
+    """A short neutral arrow next to a structure, never a coloured ridge."""
+    left, right = ax.get_xlim()
+    align_right = xy[0] > left + 0.55 * (right - left)
     ax.annotate(
         text,
         xy=xy,
-        xytext=position,
-        textcoords="axes fraction",
+        xytext=(-6 if align_right else 6, 10),
+        textcoords="offset points",
         fontsize=FONT,
         color="white",
-        ha="left",
+        ha="right" if align_right else "left",
         va="center",
         bbox={"fc": "black", "ec": "none", "alpha": 0.8, "pad": 1.2},
-        arrowprops={"arrowstyle": "-", "color": colour, "lw": 0.8},
+        arrowprops={"arrowstyle": "->", "color": "white", "lw": 0.7},
         zorder=9,
         annotation_clip=False,
     )
@@ -687,7 +690,7 @@ def draw(
             height_ratios=heights,
             hspace=0.0,
             left=0.14,
-            right=0.895,
+            right=0.82,
             top=0.985,
             bottom=0.12,
         )
@@ -756,7 +759,7 @@ def draw(
         )
         ax["nbi"].set_ylim(bottom=0)
 
-        # ---- processed: the mask times the spectrogram, the n view below 30 kHz
+        # ---- processed: binary coherent mask, with measured n below 30 kHz
         draw_processed(ax["pr_hi"], high)
         draw_processed(ax["pr_lo"], low)
         keys = []
@@ -789,12 +792,10 @@ def draw(
             i = len(rr) // 2
             leader(
                 ax["pr_hi"],
-                "AE prediction"
+                "AE detector"
                 if by_key[mode_tags.AE].source.tier == lf.GENERATED
                 else "AE interval",
                 (high.t[cc[i]], high.f[rr[i]]),
-                (0.55, 0.88),
-                EVENT_COLOURS[mode_tags.AE],
             )
         ntm_n1 = [b for b in blobs_low if mode_tags.NTM in b.tags and b.dominant_n == 1]
         if ntm_n1:
@@ -807,12 +808,10 @@ def draw(
                 i = np.flatnonzero(keep)[len(np.flatnonzero(keep)) // 2]
                 leader(
                     ax["pr_lo"],
-                    "n=1 mode; NTM prediction"
+                    "n=1; NTM detector"
                     if by_key[mode_tags.NTM].source.tier == lf.GENERATED
                     else "n=1 mode; NTM label",
                     (low.t[cc[i]], low.all_f[rr[i]]),
-                    (0.53, 0.88),
-                    EVENT_COLOURS[mode_tags.NTM],
                 )
         strip = ax["crashes"]
         strip.set_facecolor("#222222")
@@ -898,13 +897,23 @@ def draw(
         shown = set()
         regime_texts = []
         for r in by_key["confinement"].rows:
-            if r.category in regime_names:
-                da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[r.category],
+            category = r.category
+            # The L-H detector's pre-transition interval is explicitly a low
+            # confinement cue; retain its binary H-mode categories in the track.
+            if by_key["confinement"].spec.title == "H-mode" and category == ABSENT:
+                later_h = any(
+                    h.category == PRESENT and h.t_start >= r.t_end - 1e-6
+                    for h in by_key["confinement"].rows
+                )
+                if later_h:
+                    category = 2
+            if category in regime_names:
+                da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
-                if r.t_end > t0 and r.t_start < t1 and r.category not in shown:
-                    shown.add(r.category)
+                if r.t_end > t0 and r.t_start < t1 and category not in shown:
+                    shown.add(category)
                     regime_texts.append(
-                        da.text(max(r.t_start, t0) + 20, 0.94, regime_names[r.category],
+                        da.text(max(r.t_start, t0) + 20, 0.94, regime_names[category],
                                 transform=da.get_xaxis_transform(), fontsize=FONT,
                                 color="#444444", va="top", ha="left")
                     )  # fmt: skip
@@ -923,7 +932,7 @@ def draw(
             a.set_ylabel(titles[key], rotation=0, ha="right", va="center", labelpad=3)
             tier = "" if track.source is None else TIER_NAMES[track.source.tier]
             if key == mode_tags.NTM and tier == "detector":
-                tier = "unverified"  # The caption explains the magnetic suggestion.
+                tier = "detector (unverified)"
             a.text(1.008, 0.5, tier, transform=a.transAxes, fontsize=FONT,
                    va="center", ha="left", color="#444444")  # fmt: skip
         track_axes[-1].tick_params(labelbottom=True, bottom=True)
@@ -941,7 +950,7 @@ def draw(
 
         pos = ax["h_proc"].get_position()
         event_handles = [
-            Patch(fc=EVENT_COLOURS[mode_tags.AE], alpha=0.65, label="AE ≥60 kHz"),
+            Patch(fc=EVENT_COLOURS[mode_tags.AE], alpha=0.65, label="AE ≥80 kHz"),
             Line2D(
                 [], [], color=EVENT_COLOURS[mode_tags.NTM], ls="-", label="NTM <60 kHz"
             ),
@@ -1028,7 +1037,7 @@ def draw(
                     marker="o",
                     ms=3,
                     markerfacecolor="white",
-                    label="expert crowd interval",
+                    label="expert ELM interval (one span for many ELMs)",
                 )
             ],
             loc="lower center",
@@ -1042,15 +1051,26 @@ def draw(
         e: sum(e in b.tags for b in blobs_high + blobs_low)
         for e in (mode_tags.AE, mode_tags.NTM, mode_tags.SAWTOOTH)
     }
-    track_records = {t.spec.key: track_record(t) for t in tracks}
+    track_records = {t.spec.key: track_record(t, (t0, t1)) for t in tracks}
     if show_sawtooth:
         track_records[mode_tags.SAWTOOTH]["source_files"] = crash_record["files"]
-    if show_sawtooth and crash_source is not None:
-        track_records[mode_tags.SAWTOOTH]["path"] = str(crash_source)
-        track_records[mode_tags.SAWTOOTH]["sha256"] = crash_record.get("sha256")
+    late_absent = np.zeros(len(high.t), bool)
+    active_ends = [b for a, b in spans[mode_tags.AE] if a < t1 and b > t0]
+    if active_ends:
+        late_absent = high.t >= max(active_ends)
+        late_absent &= mode_tags.present_columns(
+            high.t,
+            [
+                (r.t_start, r.t_end)
+                for r in by_key[mode_tags.AE].rows
+                if r.category == ABSENT
+            ],
+        )
+    late_pixels = high.lit & (high.f >= 170)[:, None] & late_absent[None, :]
     return {
         "tracks": track_records,
         "figure": [str(p) for p in paths_out],
+        "figure_sha256": {str(p): sha256_of(p) for p in paths_out},
         "blobs": {
             "wide_above_fold": len(blobs_high),
             "zoom_below_fold": len(blobs_low),
@@ -1070,18 +1090,17 @@ def draw(
         ],
         "sawtooth_strip_shown": bool(len(crashes)),
         "sawtooth_track_shown": show_sawtooth,
-        "sawtooth_omission_reason": (
-            "ECE density guard"
-            if candidate.shot == 201978 and not show_sawtooth
-            else "optional source track omitted"
-            if not show_sawtooth
-            else None
-        ),
-        "view_description": (
-            "follow the AE cascade, H-mode transition, ELM onset and low-frequency ridges"
-            if candidate.shot == 201978
-            else "follow aligned signals, modes and intervals"
-        ),
+        "catalog_sawtooth_frame_model_shown": False,
+        "late_untagged_high_frequency": {
+            "band_khz": [170, 250],
+            "pixels": int(late_pixels.sum()),
+            "first_time_ms": float(high.t[np.flatnonzero(late_pixels.any(0))[0]]),
+            "last_time_ms": float(high.t[np.flatnonzero(late_pixels.any(0))[-1]]),
+            "columns": int(late_pixels.any(0).sum()),
+            "reason": "AE detector absent; time coincidence is required",
+        }
+        if late_pixels.any()
+        else None,
         "n2_harmonic_consistent": harmonic["support_ms"]
         >= harmonic["minimum_support_ms"],
         "harmonic_support": harmonic,
@@ -1151,15 +1170,14 @@ def draw(
 
 
 def draw_n_view(ax, read) -> list[int]:
-    """Accessible remap over 0-30 kHz; every unkeyed n is grey."""
+    """Full-colour hues over 0-30 kHz; brightness never encodes n."""
     modes = read.meta["modes"]
     palette = np.array([to_rgb(N_COLOURS.get(n, N_OTHER)) for n in modes["n"]])
     codes = read.values.astype(np.int64)
     t0, t1, f0, f1 = read.extent
     keep = round((min(f1, N_VIEW_KHZ) - f0) / (f1 - f0) * codes.shape[0])
     lit = codes[:keep] >= len(modes["n"])  # level 0: no mode, left clear
-    brightness = 0.3 + 0.7 * (codes[:keep] // len(palette)) / (modes["levels"] - 1)
-    rgb = palette[codes[:keep] % len(palette)] * brightness[..., None]
+    rgb = palette[codes[:keep] % len(palette)]
     rgba = np.concatenate([rgb, lit[..., None]], axis=-1)
     ax.imshow(
         rgba,
@@ -1173,7 +1191,7 @@ def draw_n_view(ax, read) -> list[int]:
 
 
 def n_seen(read) -> list[int]:
-    """Every coloured n drawn, however small its share; all others are grey."""
+    """Every keyed n drawn, however small its share; all others are purple."""
     modes = read.meta["modes"]
     k = len(modes["n"])
     codes = read.values.astype(np.int64)
@@ -1204,13 +1222,37 @@ def save_figure(fig: Figure, stem: Path, png_dpi: int = DPI_PNG) -> list[Path]:
 # ------------------------------------------------------------------------ main
 
 
-def track_record(track: lf.Track) -> dict | None:
+def track_record(track: lf.Track, window=None) -> dict | None:
     if track.source is None:
         return None
     present = present_spans(track)
     metadata = Path(track.file).with_suffix(".meta.json")
     meta = json.loads(metadata.read_text()) if metadata.is_file() else {}
     model = meta.get("method", track.source.what)
+    physics = (
+        json.loads(Path(track.file).read_text())
+        if track.spec.key == mode_tags.SAWTOOTH and Path(track.file).suffix == ".json"
+        else {}
+    )
+    codes = {
+        ABSENT: "absent",
+        PRESENT: "present",
+        UNCERTAIN: "uncertain",
+        NOT_OBSERVABLE: "unassessed",
+    }
+    state_rows = []
+    for r in track.rows:
+        a, b = r.t_start, r.t_end
+        if window is not None:
+            a, b = max(a, window[0]), min(b, window[1])
+        if b > a:
+            state_rows.append(
+                {
+                    "start_ms": a,
+                    "end_ms": b,
+                    "state": codes.get(r.category, str(r.category)),
+                }
+            )
     ae_threshold = figure_sources.AE_THRESHOLD
     if track.spec.key == mode_tags.AE and track.source.run is not None:
         from labeler.paper.shots import Model
@@ -1244,6 +1286,8 @@ def track_record(track: lf.Track) -> dict | None:
         "metadata": str(metadata) if metadata.is_file() else None,
         "metadata_sha256": sha256_of(metadata) if metadata.is_file() else None,
         "states": track.spec.states,
+        "state_intervals_ms": state_rows,
+        "density_guard": physics.get("density_guard"),
         "present_spans_ms": [[round(a, 1), round(b, 1)] for a, b in present],
     }
 
@@ -1252,7 +1296,7 @@ def draft_caption(shot: int, records, drawn) -> str:
     text = figure_sources.caption(shot, records, drawn)
     text = re.sub(r"\bn=([0-9/]+)", r"$n=\1$", text)
     text = text.replace("≥", r"$\geq$").replace("<60", "$<60$")
-    label = "fig:interpreter" if shot == 201978 else f"fig:interpreter-{shot}"
+    label = f"fig:interpreter-{shot}"
     return f"\\caption{{{text}}}\n\\label{{{label}}}\n"
 
 
@@ -1286,7 +1330,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--show-sawtooth",
         action="store_true",
-        help="show physics categories and verified ticks for a suitable later shot",
+        help="show local crash evidence even without a supplied physics source",
     )
     parser.add_argument(
         "--sawtooth-evidence",
@@ -1327,7 +1371,11 @@ def main(argv=None) -> int:
     ):
         raise SystemExit("sawtooth track and crashes must use the same source")
     tracks, co2 = shot_tracks(
-        paths, candidate, saw_source, args.ae_labels, args.show_sawtooth
+        paths,
+        candidate,
+        saw_source,
+        args.ae_labels,
+        args.show_sawtooth or saw_source is not None,
     )
     out.mkdir(parents=True, exist_ok=True)
     drawn = draw(
@@ -1398,6 +1446,8 @@ def main(argv=None) -> int:
             "projection_audit_rule": "enumerate projected coordinates against "
             "raw, end-exclusive intervals; independent of present_columns",
             "n_palette": N_COLOURS,
+            "n_brightness_rule": "constant full colour for every measured n pixel",
+            "raw_normalisation": "3rd/99.8th percentiles separately in each band",
             "unkeyed_n_colour": N_OTHER,
             "bands_khz": {
                 k: [lo, None if math.isinf(hi) else hi]
@@ -1434,6 +1484,14 @@ def main(argv=None) -> int:
         "caption": {"path": str(caption_file), "sha256": sha256_of(caption_file)},
         "drawn": drawn,
         "git": git_sha(),
+        "render_code_sha256": {
+            p: sha256_of(Path(p))
+            for p in (
+                "scripts/labeler/paper/fig_interpreter_tokeye.py",
+                "src/labeler/paper/figure_sources.py",
+                "src/labeler/paper/mode_tags.py",
+            )
+        },
     }
     with atomic_path(out / f"{STEM}.json") as tmp:
         Path(tmp).write_text(json.dumps(record, indent=1) + "\n")

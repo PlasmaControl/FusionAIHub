@@ -358,13 +358,13 @@ def harmonic_support(n_map, mask, times, frequencies):
     """Coincident measured n=1/n=2 ridges at a 2:1 frequency ratio.
 
     This is a plotted-frequency inference, not independent island confirmation.
-    Require a 2:1 match within 1.2 kHz and at least 50 ms of sampled support.
+    Require |f2/f1 - 2| <= 0.1 and at least 50 ms of sampled support.
     """
     t, f = np.asarray(times), np.asarray(frequencies)
     result = {
-        "frequency_tolerance_khz": 1.2,
+        "frequency_ratio_tolerance": 0.1,
         "minimum_support_ms": 50.0,
-        "caption_frequency_step_khz": 5.0,
+        "caption_frequency_step_khz": 1.0,
         "ridge_rule": "per-column pixel-weighted frequency of each measured n",
         "support_ms": 0.0,
     }
@@ -378,7 +378,8 @@ def harmonic_support(n_map, mask, times, frequencies):
         means.append((measured * f[:, None]).sum(axis=0) / np.maximum(count, 1))
     f1, f2 = means
     common = (counts[0] > 0) & (counts[1] > 0) & (f1 > 0)
-    common &= np.abs(f2 - 2 * f1) <= 1.2
+    ratio = np.divide(f2, f1, out=np.zeros_like(f1), where=common)
+    common &= np.abs(ratio - 2) <= 0.1
     dt = float(np.median(np.diff(t))) if len(t) > 1 else 0
     result["support_ms"] = float(common.sum() * dt)
     if common.any():
@@ -387,6 +388,38 @@ def harmonic_support(n_map, mask, times, frequencies):
             n2_median_khz=float(np.median(f2[common])),
         )
     return result
+
+
+def sawtooth_caption(record: dict) -> str:
+    """Summarise displayed physics states without equating a proxy to cutoff."""
+    rows = record.get("state_intervals_ms", [])
+    if not rows:
+        return "Sawtooth unassessed."
+    states = {r["state"] for r in rows}
+    if len(states) == 1:
+        text = f"Sawtooth {rows[0]['state']} throughout"
+    else:
+        first = rows[0]
+        text = f"Sawtooth {first['state']} to {first['end_ms'] / 1000:.2f} s"
+        if "uncertain" in states and first["state"] != "uncertain":
+            text += "; uncertain intervals"
+        blanks = [r for r in rows if r["state"] == "unassessed"]
+        if blanks and first["state"] != "unassessed":
+            start = blanks[0]["start_ms"]
+            duration = sum(r["end_ms"] - r["start_ms"] for r in blanks)
+            remaining = rows[-1]["end_ms"] - start
+            if duration >= 0.5 * remaining:
+                text += f"; mostly unassessed from {start / 1000:.2f} s"
+            else:
+                text += "; intermittently unassessed"
+        elif "present" in states and first["state"] != "present":
+            text += "; later present"
+    guard = record.get("density_guard") or {}
+    if "unassessed" in states and guard.get("cutoff_proxy"):
+        text += ", where a conservative density proxy limits ECE observability"
+        if "bt_missing" in guard.get("status", "").lower():
+            text += " (no Bt available)"
+    return text + "."
 
 
 def caption(shot: int, records: dict, drawn: dict) -> str:
@@ -399,15 +432,15 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         ("confinement", "regime"),
         ("edge_localized_mode", "ELMs"),
     ):
-        if key == mt.SAWTOOTH and key not in records:
+        if key == mt.SAWTOOTH:
             continue
         record = records.get(key)
         if record is None:
             description = "unassessed"
         elif record["tier"] == lf.SILVER:
-            description = "expert review"
+            description = "expert"
         elif record["tier"] == lf.LEGACY:
-            description = "imported intervals"
+            description = "imported"
         elif key == mt.AE:
             description = (
                 "neural interferometer detector"
@@ -415,18 +448,15 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
                 else "interferometer frame detector"
             )
             if record["what"].startswith("ae-ours"):
-                description += f" (p≥{AE_THRESHOLD})"
+                description += (
+                    f" (p≥{AE_THRESHOLD}; training targets used TokEye's mask)"
+                )
             elif record.get("decision_threshold") is not None:
                 description += f" (p≥{record['decision_threshold']})"
         elif key == mt.NTM:
-            bars = record.get("primary_bars") or {}
-            failed = any(v is False for v in bars.values())
-            description = "unverified magnetic suggestion (shared inputs"
-            description += "; failed acceptance)" if failed else ")"
-        elif key == mt.SAWTOOTH:
-            description = "physics detector states"
+            description = "magnetic detector (unverified; shared inputs)"
         elif key == "confinement":
-            description = "D-alpha transition detector"
+            description = "D-alpha detector"
             if drawn.get("regimes_shown") == []:
                 description += " (uncertain here)"
         else:
@@ -435,41 +465,38 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             name = record["title"]
         sources.append(f"{name}: {description}")
     sentences = [
-        "TokEye is a U-Net that segments coherent modes in the spectrogram.",
-        f"DIII-D shot {shot}: "
-        + drawn.get("view_description", "follow aligned signals, modes and intervals")
-        + ".",
+        (
+            f"DIII-D shot {shot}. Raw bands normalised separately; "
+            "TokEye's U-Net extracts coherent modes."
+        ),
         "; ".join(sources) + ".",
         (
-            "AE tint (≥60 kHz) and NTM outlines (<60 kHz) indicate time/band coincidence; "
-            "n is measured only below 30 kHz."
+            "Pink ≥80 kHz: AE time/band overlap; n measured ≤30 kHz. "
+            "NTM outlines here require dominant n=1 or 2."
         ),
     ]
     harmonic = drawn.get("harmonic_support", {})
     if harmonic.get("support_ms", 0) >= harmonic.get("minimum_support_ms", 50):
-        # "Near" is a coarse ridge description, not a precision frequency
-        # measurement. Apply the same recorded 5-kHz rounding on every shot.
-        step = harmonic.get("caption_frequency_step_khz", 5.0)
+        step = harmonic.get("caption_frequency_step_khz", 1.0)
         frequency = round(harmonic["n2_median_khz"] / step) * step
         sentences.append(
             f"The n=2 ridge near {frequency:.0f} kHz is consistent with a second "
-            "harmonic of the n=1 ridge."
+            "harmonic of n=1."
         )
-    if drawn.get("n3_components_unoutlined"):
+    if records.get(mt.SAWTOOTH):
+        sentences.append(sawtooth_caption(records[mt.SAWTOOTH]))
+    if drawn.get("catalog_sawtooth_frame_model_shown") is False:
+        sentences.append("Catalog generated sawtooth frame model not shown.")
+    if drawn.get("late_untagged_high_frequency"):
         sentences.append(
-            "Components dominated by n=3 are unoutlined; "
-            "NTM requires dominant n=1 or n=2."
-        )
-    if drawn.get("sawtooth_omission_reason") == "ECE density guard":
-        sentences.append(
-            "Sawtooth is not assessed here because ECE is cut off in ELMy H-mode "
-            "(density guard)."
+            "Late 170–250 kHz lines stay untagged where AE detector is absent."
         )
     if drawn.get("sawtooth_strip_shown"):
         sentences.append("Ticks exclude crashes within 5 ms of D-alpha peaks.")
     sentences.append(
-        "Hatching: uncertain; blank: unassessed / unobservable; "
-        "circles: expert crowd intervals; triangles: D-alpha peaks."
+        "Hatching: uncertain; blank: unassessed/unobservable; "
+        "circles: expert ELM interval (one span for many ELMs); "
+        "triangles: D-alpha peaks from a threshold (not annotated)."
     )
     text = " ".join(sentences)
     if len(text.split()) > 150:

@@ -36,10 +36,10 @@ AE = "alfven_eigenmode"
 NTM = "neoclassical_tearing_mode"
 SAWTOOTH = "sawtooth_oscillation"
 #: The band (kHz, lower edge included, upper edge excluded) each event's tag
-#: contains every highlighted pixel: AE >=60 kHz, NTM/sawtooth <60 kHz.
+#: contains every highlighted pixel: AE >=80 kHz, NTM/sawtooth <60 kHz.
 SPLIT_KHZ = 60.0
 BANDS = {
-    AE: (SPLIT_KHZ, math.inf),
+    AE: (80.0, math.inf),
     NTM: (0.0, SPLIT_KHZ),
     SAWTOOTH: (0.0, SPLIT_KHZ),
 }
@@ -225,7 +225,7 @@ def tag_blobs(
 def tag_mask(found, event, shape, t_ms, f_khz, spans, *, n_map=None) -> np.ndarray:
     """Only tagged component pixels inside PRESENT times AND the event band.
 
-    A component crossing 60 kHz is split at pixel level; a component crossing
+    A component crossing an event-band edge is split at pixel level; one crossing
     an absent interval is split in time, regardless of its overall coverage.
     The 55 kHz display fold has no role in this decision.
     """
