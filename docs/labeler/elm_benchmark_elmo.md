@@ -138,7 +138,8 @@ and a `labeled_elm_events_long_windows_20220527.hdf5`, and the second is not the
 file above.
 
 Our own ELM labels are the other truth: `data/events/edge_localized_mode/` holds
-Hiro's `wpqh_elm_hiro` onset pickles (breakthrough ELMs of the WPQH experiments, in
+the legacy onset table's `wpqh_elm_hiro` source pickles (Hiro Farre Josep Kaga's
+breakthrough ELM annotations of the WPQH experiments, in
 the format table as 50 ms bins) and the review labels, where a span is one ELM
 (`iscrowd` 0) or a crowd, an ELMing period whose single ELMs are not separated
 (`iscrowd` 1).

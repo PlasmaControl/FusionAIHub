@@ -1,0 +1,38 @@
+{
+ "metadata": {
+  "elm_ours_parameters": 401714,
+  "cohort_split_counts": {
+   "train": 400,
+   "val": 50,
+   "test": 50
+  },
+  "reviewed_split_counts": {
+   "train": 69,
+   "val": 50
+  },
+  "cohort_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/cohort.csv",
+  "cohort_sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda"
+ },
+ "sources": {
+  "ours": {
+   "path": "outputs/labeler/elm/ours/evaluation.json",
+   "sha256": "8a8e78f0774c5481fb051a231316a7db07d9178430c562ca78d0f9c0ed29442e"
+  },
+  "dsm": {
+   "path": "outputs/labeler/elm/dsm/evaluation.json",
+   "sha256": "9f2861cc223f84632c3349ade2f55b36c400193bba2000d49b6f8bcefaa11341"
+  },
+  "swap": {
+   "path": "outputs/labeler/elm/swap/evaluation.json",
+   "sha256": "6b28194d408f451d0f2cc2954b8f4343b931ed49b6545ec6f2ddd9befcc42941"
+  },
+  "repeats": {
+   "path": "outputs/labeler/elm/ours/seed_repeats.json",
+   "sha256": "e6ee2db136a922f74f0563ac57590129e541b9061750ad203341bf02675b9f04"
+  }
+ },
+ "artifacts": {
+  "docs/labeler/elm_ours.md": "5b5d9df123b4c5eea34b2c4f4b512d613cf51b96f362afd0d839d0029959dd27",
+  "data/events/edge_localized_mode/README.md": "6f1f10c9be2e08461f147a6cef27ea10ddd3b21af773bd6bbbbd171cd70811b7"
+ }
+}

@@ -1,0 +1,5398 @@
+{
+  "producer": "scripts/labeler/elm_input_metadata_audit.py",
+  "source_sha256": "15d97e2ff16de32a9cfe8188ba067333d1e2bde3f88c93002b9df2d996d560cd",
+  "scope": "offline source metadata only; no network calls",
+  "reviewed_shots": [
+    185857,
+    185866,
+    185945,
+    185961,
+    186013,
+    186093,
+    186427,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187105,
+    187196,
+    187328,
+    189004,
+    189044,
+    189061,
+    189272,
+    189324,
+    189559,
+    189688,
+    189741,
+    189885,
+    190094,
+    190177,
+    190218,
+    190300,
+    190335,
+    190637,
+    190643,
+    190695,
+    190790,
+    190991,
+    191326,
+    191382,
+    191470,
+    191677,
+    192003,
+    192010,
+    192015,
+    192148,
+    192226,
+    192229,
+    192232,
+    192425,
+    192432,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    193276,
+    194155,
+    194160,
+    194445,
+    194600,
+    194608,
+    195016,
+    195024,
+    195066,
+    195102,
+    195103,
+    195111,
+    195186,
+    195263,
+    195279,
+    195646,
+    195786,
+    195959,
+    196332,
+    196405,
+    196541,
+    198806,
+    198899,
+    198971,
+    199087,
+    199789,
+    199790,
+    199909,
+    199921,
+    200127,
+    200198,
+    200320,
+    200385,
+    200427,
+    200636,
+    200917,
+    200954,
+    200990,
+    201270,
+    201395,
+    201447,
+    201494,
+    201707,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203521,
+    203576,
+    203629,
+    203719,
+    203764,
+    203778,
+    203941,
+    203959,
+    204233,
+    204240,
+    204243,
+    204256,
+    204530,
+    204560,
+    204937
+  ],
+  "n_shots": 119,
+  "shots_without_fast_ordinate_units": [
+    185857,
+    185866,
+    185945,
+    185961,
+    186013,
+    186093,
+    186427,
+    186569,
+    186636,
+    186945,
+    187035,
+    187076,
+    187105,
+    187196,
+    187328,
+    189004,
+    189044,
+    189061,
+    189272,
+    189324,
+    189559,
+    189688,
+    189741,
+    189885,
+    190094,
+    190177,
+    190218,
+    190300,
+    190335,
+    190637,
+    190643,
+    190695,
+    190790,
+    190991,
+    191326,
+    191382,
+    191470,
+    191677,
+    192003,
+    192010,
+    192015,
+    192148,
+    192226,
+    192229,
+    192232,
+    192425,
+    192432,
+    192721,
+    192732,
+    192751,
+    192914,
+    193008,
+    193022,
+    193075,
+    193276,
+    194155,
+    194160,
+    194445,
+    194600,
+    194608,
+    195016,
+    195024,
+    195066,
+    195102,
+    195103,
+    195111,
+    195186,
+    195263,
+    195279,
+    195646,
+    195786,
+    195959,
+    196332,
+    196405,
+    196541,
+    198806,
+    198899,
+    198971,
+    199087,
+    199789,
+    199790,
+    199909,
+    199921,
+    200127,
+    200198,
+    200320,
+    200385,
+    200427,
+    200636,
+    200917,
+    200954,
+    200990,
+    201270,
+    201395,
+    201447,
+    201494,
+    201707,
+    201973,
+    201978,
+    203012,
+    203041,
+    203132,
+    203187,
+    203470,
+    203521,
+    203576,
+    203629,
+    203719,
+    203764,
+    203778,
+    203941,
+    203959,
+    204233,
+    204240,
+    204243,
+    204256,
+    204530,
+    204560,
+    204937
+  ],
+  "decision": "Fast physical ordinate units remain unverified. Remove the unsupported m^-2 declaration; retain the input divisor 1e14 in native ordinate units, with no numerical rescaling. Slow CO2 is a separate record and cannot establish the fast-channel units.",
+  "fetch_metadata_loss": {
+    "fetch_script": "scripts/labeler/elmo_fetch.py",
+    "legacy_cache_fields": [
+      "t_int_ms",
+      "interferometer",
+      "t_fs_ms",
+      "filterscopes"
+    ],
+    "shared_fetch_wrapper": "src/labeler/events/verify.py:fdp_signal",
+    "wrapper_metadata": "time units retained; source ordinate units absent"
+  },
+  "inspected_staged_sources": [
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/185808_fast.h5",
+      "exists": false
+    },
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/185808_slow.h5",
+      "exists": true,
+      "fast_chord_groups": [],
+      "separate_slow_diagnostic_metadata": {
+        "group": {
+          "CLASS": "GROUP",
+          "TITLE": null,
+          "VERSION": "1.0",
+          "axis0_variety": "regular",
+          "axis1_variety": "regular",
+          "block0_items_variety": "regular",
+          "encoding": "UTF-8",
+          "end_time_ms": 8499.3173828125,
+          "errors": "strict",
+          "missing_channels": null,
+          "nblocks": 1,
+          "ndim": 2,
+          "pandas_type": "frame",
+          "pandas_version": "0.15.2",
+          "r_coordinates": "N.",
+          "sampling_frequency_kHz": 1.0,
+          "start_time_ms": -1497.6820068359375,
+          "z_coordinates": "N."
+        },
+        "datasets": {
+          "axis0": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "string",
+            "name": "N.",
+            "transposed": 1
+          },
+          "axis1": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "float",
+            "name": "Time [ms]",
+            "transposed": 1
+          },
+          "block0_items": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "string",
+            "name": "N.",
+            "transposed": 1
+          },
+          "block0_values": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "transposed": 1
+          }
+        },
+        "fast_ordinate_unit_evidence": false
+      }
+    },
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/190643_fast.h5",
+      "exists": false
+    },
+    {
+      "path": "/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files/190643_slow.h5",
+      "exists": true,
+      "fast_chord_groups": [],
+      "separate_slow_diagnostic_metadata": {
+        "group": {
+          "CLASS": "GROUP",
+          "TITLE": null,
+          "VERSION": "1.0",
+          "axis0_variety": "regular",
+          "axis1_variety": "regular",
+          "block0_items_variety": "regular",
+          "encoding": "UTF-8",
+          "end_time_ms": 8499.3173828125,
+          "errors": "strict",
+          "missing_channels": null,
+          "nblocks": 1,
+          "ndim": 2,
+          "pandas_type": "frame",
+          "pandas_version": "0.15.2",
+          "r_coordinates": "N.",
+          "sampling_frequency_kHz": 1.0,
+          "start_time_ms": -1497.6820068359375,
+          "z_coordinates": "N."
+        },
+        "datasets": {
+          "axis0": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "string",
+            "name": "N.",
+            "transposed": 1
+          },
+          "axis1": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "float",
+            "name": "Time [ms]",
+            "transposed": 1
+          },
+          "block0_items": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "kind": "string",
+            "name": "N.",
+            "transposed": 1
+          },
+          "block0_values": {
+            "CLASS": "ARRAY",
+            "FLAVOR": "numpy",
+            "TITLE": null,
+            "VERSION": "2.4",
+            "transposed": 1
+          }
+        },
+        "fast_ordinate_unit_evidence": false
+      }
+    }
+  ],
+  "records": {
+    "185857": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/185857.npz",
+        "sha256": "4ee5c219d515dc16972ba7605e8ae7ca965378ff4e374fb3c360a672fc07a9e8"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/185857.npy",
+        "sha256_before": "6001bfac37170316d955ee9ae3055f1da4dcb02bc8e2c77c6e8f3b0965ede028",
+        "sha256_after": "6001bfac37170316d955ee9ae3055f1da4dcb02bc8e2c77c6e8f3b0965ede028",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "185866": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/185866.npz",
+        "sha256": "3888a6f3e1d6353278698f77524e7a3fb5c0b91926226074e3cd72d3b48f3189"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/185866.npy",
+        "sha256_before": "f1e0630030641c9bd491947d95892996293951f5471fa030e780cae975b8f6ac",
+        "sha256_after": "f1e0630030641c9bd491947d95892996293951f5471fa030e780cae975b8f6ac",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "185945": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/185945.npz",
+        "sha256": "1dd0188ad2d77dcd4125abb211e49afa6bbbbd78edbe833edcab9e0436a53dbc"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/185945.npy",
+        "sha256_before": "7afc3a4a8d9a9f340dbdac2d3f09327ead87d8643299a62455ea2e3bbfb2cf8e",
+        "sha256_after": "7afc3a4a8d9a9f340dbdac2d3f09327ead87d8643299a62455ea2e3bbfb2cf8e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "185961": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/185961.npz",
+        "sha256": "6da6b72db73d7acfcf77ea97dfeffe25190d6d501954568825897583ad2c9919"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/185961.npy",
+        "sha256_before": "f948c556dc6629d83415340ee8a75581795a5419c50369dd809fc53f7fdc690e",
+        "sha256_after": "f948c556dc6629d83415340ee8a75581795a5419c50369dd809fc53f7fdc690e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186013": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186013.npz",
+        "sha256": "f46365ab85da279c7d43d28883ece35fa9b585a4b04071be9735ec3717b9c745"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186013.npy",
+        "sha256_before": "e9bb55ae4a72533555b6ad4bcb04106e9351b7262b8bbfaad66ffccbd084a56f",
+        "sha256_after": "e9bb55ae4a72533555b6ad4bcb04106e9351b7262b8bbfaad66ffccbd084a56f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186093": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186093.npz",
+        "sha256": "97a5317dde14d451b979e940ad538ca361fbc427ce112a806b80c66495288e03"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186093.npy",
+        "sha256_before": "e736864f3585d74b806e0ef1bfbee1d58966392e2cf3effe1bae2e76ce595185",
+        "sha256_after": "e736864f3585d74b806e0ef1bfbee1d58966392e2cf3effe1bae2e76ce595185",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186427": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186427.npz",
+        "sha256": "b545125cd5cae0ee040d8c446c48ff21509e87608a5704426980a14654193f50"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186427.npy",
+        "sha256_before": "abed7fe2b142cff913a5f2e0b1e22b576a18990329e38a94053d83caa5c0c5e9",
+        "sha256_after": "abed7fe2b142cff913a5f2e0b1e22b576a18990329e38a94053d83caa5c0c5e9",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186569": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186569.npz",
+        "sha256": "826605ee04244aa8fe4c1165043d67dbe49f3d3fb83ffbfd752947093a342637"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186569.npy",
+        "sha256_before": "5c6d432cbe1c1f20804fe84e9991d75da6e08125d0fb29fe210a679602f270fe",
+        "sha256_after": "5c6d432cbe1c1f20804fe84e9991d75da6e08125d0fb29fe210a679602f270fe",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186636": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186636.npz",
+        "sha256": "464a4f515b0a816214e3df93e7f64b78f1d3a307d3281cd4337bfb588a8c20cc"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186636.npy",
+        "sha256_before": "e04a1d59c0140943186d5d2876e5ec469aa60a760d003510beee8684c77b7d5b",
+        "sha256_after": "e04a1d59c0140943186d5d2876e5ec469aa60a760d003510beee8684c77b7d5b",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "186945": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/186945.npz",
+        "sha256": "fa0cb039acf701a333c80ba51b40b84bd79c4bcc865e34bae3d619fafff9abea"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/186945.npy",
+        "sha256_before": "7c81e193cba838a7e04c895db788d7a06def382b49bc8227cd816a37a9a98d74",
+        "sha256_after": "7c81e193cba838a7e04c895db788d7a06def382b49bc8227cd816a37a9a98d74",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "187035": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/187035.npz",
+        "sha256": "b50662b4d0db7649314fcdc940b364fa3b05a172822f2b2167a29cc10cfa1e01"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/187035.npy",
+        "sha256_before": "777b7169dfdb86a08ad50985f3c71d3ffb5dc5c43f8381541a4ac607800bd3a3",
+        "sha256_after": "777b7169dfdb86a08ad50985f3c71d3ffb5dc5c43f8381541a4ac607800bd3a3",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "187076": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/187076.npz",
+        "sha256": "36c35451f3cb2b9bc87db78f7ca7ed437384a6fd7c070a564c8ea650a7c64f2a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/187076.npy",
+        "sha256_before": "6a76818cc84a2518e4f413a893ceb1b417946546f274ed513e8c6d140a478e92",
+        "sha256_after": "6a76818cc84a2518e4f413a893ceb1b417946546f274ed513e8c6d140a478e92",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "187105": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/187105.npz",
+        "sha256": "7c86c0ab8711c89b438dd185376c87faf1efd4a9773f699b94ee67542bf05be2"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/187105.npy",
+        "sha256_before": "f56723cc840f3af78c911734409853abb8bc153f5c43809df5bf4f424117b605",
+        "sha256_after": "f56723cc840f3af78c911734409853abb8bc153f5c43809df5bf4f424117b605",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "187196": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/187196.npz",
+        "sha256": "cf42b7eb3c05faca9bd76677aefd326c997fea882dbe6c65463f3ab120df0a78"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/187196.npy",
+        "sha256_before": "8f551a1530054b80c66c04d8469c4828f93f6371f51f52c7095684c20cfa4be6",
+        "sha256_after": "8f551a1530054b80c66c04d8469c4828f93f6371f51f52c7095684c20cfa4be6",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "187328": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/187328.npz",
+        "sha256": "ccd731032a59dd4134b7bf84a04a341a02827dc7a1cbf9e4fed8ad4b8350f066"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/187328.npy",
+        "sha256_before": "6b21a694f4748c51837b9c9d2a7a4fb747ce7e5d543441a236f23fa2cd24c51d",
+        "sha256_after": "6b21a694f4748c51837b9c9d2a7a4fb747ce7e5d543441a236f23fa2cd24c51d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189004": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189004.npz",
+        "sha256": "a6b5ded6894ba00a2fcf1cafe045eeef4912a507d909382b8f8da94ae842490b"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189004.npy",
+        "sha256_before": "2250f5eba846808d32c3e783196eb82622d64e556d21bfbfb80dd01c783b3c8a",
+        "sha256_after": "2250f5eba846808d32c3e783196eb82622d64e556d21bfbfb80dd01c783b3c8a",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189044": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189044.npz",
+        "sha256": "8edc8fb4def16b69b682c38896f0af80ab6a3af9c717dece0c2a1535fa81d542"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189044.npy",
+        "sha256_before": "52c2da0ffd3178a7f66576da9ab6dde996e997208dd7ea6478d56d3c62558b7e",
+        "sha256_after": "52c2da0ffd3178a7f66576da9ab6dde996e997208dd7ea6478d56d3c62558b7e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189061": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189061.npz",
+        "sha256": "54431d019b394773bd921ebed743c1316dbdcb9fb223a365112a8da6aa9075ee"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189061.npy",
+        "sha256_before": "28f92ca0e51a97f38806c74c6f157a1c080eda5e0846bc8379069b23d062904e",
+        "sha256_after": "28f92ca0e51a97f38806c74c6f157a1c080eda5e0846bc8379069b23d062904e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189272": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189272.npz",
+        "sha256": "5a655c55ca23c8de8864859e97c40532326c8d5d63506e051bbf7a0c1f910ec1"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189272.npy",
+        "sha256_before": "42b0ed817e94ffa052449487722b783ae388d9e0bcada6c4ddb11d14f4cdee05",
+        "sha256_after": "42b0ed817e94ffa052449487722b783ae388d9e0bcada6c4ddb11d14f4cdee05",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189324": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189324.npz",
+        "sha256": "b2bfdc2210c12097486fd2e2db4445af8f37f338815ebca1e7ae2f47a73b06a1"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189324.npy",
+        "sha256_before": "964cc3274455afec91b6550b34918b670c862c99d9c5d62e09d96df7c2bd5bcb",
+        "sha256_after": "964cc3274455afec91b6550b34918b670c862c99d9c5d62e09d96df7c2bd5bcb",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189559": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189559.npz",
+        "sha256": "a8929558251537ca822ea522a7975cb40daac27387fb37ba5029754fbc375a6b"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189559.npy",
+        "sha256_before": "7b362139e99235b4e489b411d6348ce3545080f2a8e13fef4826dac3a61a63c5",
+        "sha256_after": "7b362139e99235b4e489b411d6348ce3545080f2a8e13fef4826dac3a61a63c5",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189688": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189688.npz",
+        "sha256": "63a5209234f7d1691cb1b0c2d62249a1bf30b8bb4fed9bf3bf93297e4012b352"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189688.npy",
+        "sha256_before": "e9defa97d074ac1889e62cba217d66a03c02a29580f44b9024105220455944e7",
+        "sha256_after": "e9defa97d074ac1889e62cba217d66a03c02a29580f44b9024105220455944e7",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189741": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189741.npz",
+        "sha256": "4e069b84f19236f8e3216b1eaed6adf1c1b4df8f0c77eda619da7272741eaa9b"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189741.npy",
+        "sha256_before": "bc25319461034b8392fa9725fa6129ed3bcb2b8d7dbc17c132996f20c06f9ad6",
+        "sha256_after": "bc25319461034b8392fa9725fa6129ed3bcb2b8d7dbc17c132996f20c06f9ad6",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "189885": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/189885.npz",
+        "sha256": "1e86dddcfc8c92bc08c246658eccc0a7d759dbcf74d2da45eb2f07fbc2c68609"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/189885.npy",
+        "sha256_before": "7c293f42811ac8a535eed4597dfc8dd9d9941a00df3e1b07a101aa5e8e1b3162",
+        "sha256_after": "7c293f42811ac8a535eed4597dfc8dd9d9941a00df3e1b07a101aa5e8e1b3162",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190094": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190094.npz",
+        "sha256": "2a3c20e2c2d2a8dd198afcd3868bd80cbaaea964d1e40ee8b6708d4ed9c873ba"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190094.npy",
+        "sha256_before": "b0c6cf16de3d1cce8ba727ebb4f2ca1895ef10e62a1cc72aaa5a26860ae4c8dc",
+        "sha256_after": "b0c6cf16de3d1cce8ba727ebb4f2ca1895ef10e62a1cc72aaa5a26860ae4c8dc",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190177": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190177.npz",
+        "sha256": "bdd61ae48427e872f5f4c6518fa2050d5f79de7211e0e2c16ecf2358321dc9ce"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190177.npy",
+        "sha256_before": "9a86e7f7068b02188b593e33378306dbbaac305ad926b5500dd9b5572028f9a8",
+        "sha256_after": "9a86e7f7068b02188b593e33378306dbbaac305ad926b5500dd9b5572028f9a8",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190218": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190218.npz",
+        "sha256": "0d21514ddb777503ebfcb522772317288f7c9c3d93cc1dc7594b7718f6553ef0"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190218.npy",
+        "sha256_before": "76de8d98322498767a0fadb730de26f921ae2cab7bd8eba4d80878797b72e696",
+        "sha256_after": "76de8d98322498767a0fadb730de26f921ae2cab7bd8eba4d80878797b72e696",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190300": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190300.npz",
+        "sha256": "287abd59ecd4f58b6e790eed2de4f7b1c649bcefedf4091ba995dfe503d61f91"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190300.npy",
+        "sha256_before": "f93782323339f0bf30d9ba50932d8b351b003201aaf00492b1e4e86300be32c5",
+        "sha256_after": "f93782323339f0bf30d9ba50932d8b351b003201aaf00492b1e4e86300be32c5",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190335": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190335.npz",
+        "sha256": "1a38ae1394a778b8c2447d320d6f4800f3c4b956270b6a9815578ddf2fa2795a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190335.npy",
+        "sha256_before": "5b1954eea0fbd5e9538b7525c006c856c45b005b3941f718e0c52d9869d1163e",
+        "sha256_after": "5b1954eea0fbd5e9538b7525c006c856c45b005b3941f718e0c52d9869d1163e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190637": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190637.npz",
+        "sha256": "e7aafaf1b1ca971c90b628c24a3b605ceb63d9a2e0ed96d8f3382de3f52b4a46"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190637.npy",
+        "sha256_before": "ccb817b527425284066bea2b31b82e70b45de8a7956e660e17a05f04043ca1fa",
+        "sha256_after": "ccb817b527425284066bea2b31b82e70b45de8a7956e660e17a05f04043ca1fa",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190643": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190643.npz",
+        "sha256": "707d8832ea0844607123adbcd6aaeb6651593482a1355221e4a2a5fe045e3a76"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190643.npy",
+        "sha256_before": "268ec81a223d7cb80d3ac8da4b45228e47d415012b473bfbf29e2c5abccdfc58",
+        "sha256_after": "268ec81a223d7cb80d3ac8da4b45228e47d415012b473bfbf29e2c5abccdfc58",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190695": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190695.npz",
+        "sha256": "77121ad5dce5503185b37236ee13e4d4fd43a5b270e110654577cffce1bbfe85"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190695.npy",
+        "sha256_before": "12c669731745308b73c8918f8713a96c37d50cfb1f8ce986a368a0c788cc347b",
+        "sha256_after": "12c669731745308b73c8918f8713a96c37d50cfb1f8ce986a368a0c788cc347b",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190790": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190790.npz",
+        "sha256": "7e22343da97eb10cb58bfc08c042656fc88f7e4349ae03330c225822faf9995f"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190790.npy",
+        "sha256_before": "e1336af294e40575f93402fb8664bb963bc564cf7166458228f0412d34e2c5fa",
+        "sha256_after": "e1336af294e40575f93402fb8664bb963bc564cf7166458228f0412d34e2c5fa",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "190991": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/190991.npz",
+        "sha256": "d8b9560c6e42211db89233cd994fd9ee91373223a689a891bacc4f357fd7856e"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/190991.npy",
+        "sha256_before": "724a8e3ea77fca660fee9a3e6715bf290b3fc1ce173fb5454d36585f21e7647f",
+        "sha256_after": "724a8e3ea77fca660fee9a3e6715bf290b3fc1ce173fb5454d36585f21e7647f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "191326": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/191326.npz",
+        "sha256": "1f3f80a56bbd7d6540db9a55ce27945e5c1777eb2aa0b4021b18ff04a55dff58"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/191326.npy",
+        "sha256_before": "aa7141203cc0c281a4b431120fcd81c09019a1316cbaf38cc685c3b7c870eabc",
+        "sha256_after": "aa7141203cc0c281a4b431120fcd81c09019a1316cbaf38cc685c3b7c870eabc",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "191382": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/191382.npz",
+        "sha256": "ca6edf93daf42d93d435a8d89260355efcb80e4de7f821ab7b8d206909c28a18"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/191382.npy",
+        "sha256_before": "dbdcc6b14e6273fcdd6d9a995b2f82f3a63275e83f82ecfd8ec255f6681629a1",
+        "sha256_after": "dbdcc6b14e6273fcdd6d9a995b2f82f3a63275e83f82ecfd8ec255f6681629a1",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "191470": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/191470.npz",
+        "sha256": "1be32426746c2806d9d781633bdd71f9df9c6fa99c821a0ce61b4f59b8b3e5c4"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/191470.npy",
+        "sha256_before": "03f59ad04922e9e0793a2628ada940722bda1803e55210d2cde4c20df30c4477",
+        "sha256_after": "03f59ad04922e9e0793a2628ada940722bda1803e55210d2cde4c20df30c4477",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "191677": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/191677.npz",
+        "sha256": "16113b4e114eb04f3962e5e1ccad6e7e1b7544c40440dae6416cdf80f78f7295"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/191677.npy",
+        "sha256_before": "7bf3346181e277dfc61e75e083a189fc18b48f18d1c23cdd45cc1f49f1a4662d",
+        "sha256_after": "7bf3346181e277dfc61e75e083a189fc18b48f18d1c23cdd45cc1f49f1a4662d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192003": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192003.npz",
+        "sha256": "22d1d973a5ec3cbd2c21068a80c9dca98dfb9334473f2fac32eb4598a517977d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192003.npy",
+        "sha256_before": "7ee81912d0d424b5d5e17029141660a0a1f0ede60434f50f51c28b572280a5c6",
+        "sha256_after": "7ee81912d0d424b5d5e17029141660a0a1f0ede60434f50f51c28b572280a5c6",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192010": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192010.npz",
+        "sha256": "c040049f07bd9dce80e3c27221f9bd4819148fb056557474bf68dac7c879e62d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192010.npy",
+        "sha256_before": "fd052a1f9e7c6c22f61ad3f5504cfd45501165c77f6887663972f9712fa9a1cd",
+        "sha256_after": "fd052a1f9e7c6c22f61ad3f5504cfd45501165c77f6887663972f9712fa9a1cd",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192015": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192015.npz",
+        "sha256": "39d65f5406a40c55bf1a937ba0b1a699263a9128fb7a3da3dc1092e428b09a25"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192015.npy",
+        "sha256_before": "b6411e2d52c9d37fe041e87d9ad504751f3a9acc9775e3ddd1acce20e59b6701",
+        "sha256_after": "b6411e2d52c9d37fe041e87d9ad504751f3a9acc9775e3ddd1acce20e59b6701",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192148": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192148.npz",
+        "sha256": "6ad540035e8aaf79bbc50f902ea19c3cd2e447138736596bf281ec89ee69443a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192148.npy",
+        "sha256_before": "6e4df0ced2f5be0486722829635a194172472635a415ca01cb2ca084daf41a4e",
+        "sha256_after": "6e4df0ced2f5be0486722829635a194172472635a415ca01cb2ca084daf41a4e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192226": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192226.npz",
+        "sha256": "06189355f88a7d605676158d8ca4699176805d5b448ac29928dede7447dd9d8a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192226.npy",
+        "sha256_before": "e00e7d0dac270e7652eda05675106e24dd088ace4ef267c6f9bf44323be70bde",
+        "sha256_after": "e00e7d0dac270e7652eda05675106e24dd088ace4ef267c6f9bf44323be70bde",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192229": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192229.npz",
+        "sha256": "40c7cdcc51355e3ab7d14605c0c06765e2bb2ada7d2ed3f3dc4173f3fce4a6f7"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192229.npy",
+        "sha256_before": "0f39a927b321d60ca6d636660997e7a990f2ee8a3793e5466880f21a976aac3a",
+        "sha256_after": "0f39a927b321d60ca6d636660997e7a990f2ee8a3793e5466880f21a976aac3a",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192232": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192232.npz",
+        "sha256": "404cdf04d7a82e6f035fcb464c9fe4e4a8808dd8f597a5ca6c984290cc843b27"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192232.npy",
+        "sha256_before": "6cd1234b7061e6117f3c80a07a382e7f77daed824923bb1c090b3275381f745b",
+        "sha256_after": "6cd1234b7061e6117f3c80a07a382e7f77daed824923bb1c090b3275381f745b",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192425": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192425.npz",
+        "sha256": "b2781bbbcd3e07097cee4a6c60615b6d0749d4807c15b539255915f5e82ccb39"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192425.npy",
+        "sha256_before": "3ed43ab29a52902f2ab7df3dcbe856e41d88e77dab4d02e8c8484d34fea92b05",
+        "sha256_after": "3ed43ab29a52902f2ab7df3dcbe856e41d88e77dab4d02e8c8484d34fea92b05",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192432": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192432.npz",
+        "sha256": "5b123f2994c4a165a5e312b67f332945aadfdfd9dd190af73f5545ead8cde883"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192432.npy",
+        "sha256_before": "f28dc7629da4ec9f610a5cf19cc62c026ec88c19560b02981b9d5c182b328c90",
+        "sha256_after": "f28dc7629da4ec9f610a5cf19cc62c026ec88c19560b02981b9d5c182b328c90",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192721": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192721.npz",
+        "sha256": "dd3d65ca53e0e99eb7afca9dff7541f6ac0c7ca9e9e45d199a597b6593d36e73"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192721.npy",
+        "sha256_before": "edc1ef12d083e60483467df4f8d27fb9d077dbe325b00bcc1af96f5c32864ce8",
+        "sha256_after": "edc1ef12d083e60483467df4f8d27fb9d077dbe325b00bcc1af96f5c32864ce8",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192732": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192732.npz",
+        "sha256": "51f6a7962b290210d9f8fd31db7f1670e64c739f43452844a7ce459b979b67b9"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192732.npy",
+        "sha256_before": "af89224295b089b9f08e32d4d6da5c59f84aa6e1764506676408ee14412d25ba",
+        "sha256_after": "af89224295b089b9f08e32d4d6da5c59f84aa6e1764506676408ee14412d25ba",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192751": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192751.npz",
+        "sha256": "ee5ea225ba583004d5801f57b202a33af1f2d3662b0dfe3b4a2cf283fd505c71"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192751.npy",
+        "sha256_before": "94a7aeaa837163a86fb469e045deddf274514f206ae90db9a0ad3d5fbccb071e",
+        "sha256_after": "94a7aeaa837163a86fb469e045deddf274514f206ae90db9a0ad3d5fbccb071e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "192914": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/192914.npz",
+        "sha256": "1debc63d413ef2d9e748644451634cbccf0cdaa87a0e931ea169bed6f450dfea"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/192914.npy",
+        "sha256_before": "7a52cbbe12c6906625a63f31211cacbe72b12528e01ecb9ec584a36292a60ea1",
+        "sha256_after": "7a52cbbe12c6906625a63f31211cacbe72b12528e01ecb9ec584a36292a60ea1",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "193008": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/193008.npz",
+        "sha256": "cf839ef4feeda2ccb6ae66bbec477b8bc4871abc31a1fc382e94665dbb3f2f94"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/193008.npy",
+        "sha256_before": "f299dca5d05c57ce474ab04aacec6ca1cd67fe78080d539cdfb25311acf4ef1d",
+        "sha256_after": "f299dca5d05c57ce474ab04aacec6ca1cd67fe78080d539cdfb25311acf4ef1d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "193022": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/193022.npz",
+        "sha256": "a20cd44fb648b00b77488f86119ca1ca39ce993f0dae763fbdcabbdca87d46d4"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/193022.npy",
+        "sha256_before": "cff8b0ca4e94b87a0ae7053b80d86bec9bcce9d148924585dee239e08b661b59",
+        "sha256_after": "cff8b0ca4e94b87a0ae7053b80d86bec9bcce9d148924585dee239e08b661b59",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "193075": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/193075.npz",
+        "sha256": "4a8f26b78866685e27e58b874ee66db619d98b7ac9c677780d9fdcf547ec09ac"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/193075.npy",
+        "sha256_before": "676c2ed31dfab673ca963fad554b737b9e3555976e047746504a39cf93f551a5",
+        "sha256_after": "676c2ed31dfab673ca963fad554b737b9e3555976e047746504a39cf93f551a5",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "193276": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/193276.npz",
+        "sha256": "5bbe882063415ba4360643fd153741a86ad00bc399a4e7c242dddaa9aa23f946"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/193276.npy",
+        "sha256_before": "c7c2fd7b12879d18c5cbfc878fa7b1981d902a69ea2c34746fb999ea2357787f",
+        "sha256_after": "c7c2fd7b12879d18c5cbfc878fa7b1981d902a69ea2c34746fb999ea2357787f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "194155": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/194155.npz",
+        "sha256": "9d59a22abf293a52d29364311545a4f174d17428b19ad2b46e551d47da41c0b9"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/194155.npy",
+        "sha256_before": "280c2cf8ef0e3e78296d45969348eb30bcaad7053303defd7c9cd9b7777c4e06",
+        "sha256_after": "280c2cf8ef0e3e78296d45969348eb30bcaad7053303defd7c9cd9b7777c4e06",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "194160": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/194160.npz",
+        "sha256": "db10df5e7dd158e7abf9994776ec503be0429685cd87db89bbef61a7af489164"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/194160.npy",
+        "sha256_before": "fba68216845b6227284bd1e05b079901709e0c66cf9a54edcae0b226d4b15fef",
+        "sha256_after": "fba68216845b6227284bd1e05b079901709e0c66cf9a54edcae0b226d4b15fef",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "194445": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/194445.npz",
+        "sha256": "e0fd45bb058a1d5ddc155bb58f1c494d32af7e245f0e2e38b5986df0cca18bff"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/194445.npy",
+        "sha256_before": "3b82772a1ca7ca5a90cda500c59bbf7a51840fc4a52d4fb2371291ca1adce06d",
+        "sha256_after": "3b82772a1ca7ca5a90cda500c59bbf7a51840fc4a52d4fb2371291ca1adce06d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "194600": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/194600.npz",
+        "sha256": "1ba33aafa05c69b359af76507dfd23f4162619eb85c6ee47d340bfacf7169f52"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/194600.npy",
+        "sha256_before": "8d7a0d6a8ac85494bfc06983c6828bb9f3199079c447e53de9381de09360f89f",
+        "sha256_after": "8d7a0d6a8ac85494bfc06983c6828bb9f3199079c447e53de9381de09360f89f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "194608": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/194608.npz",
+        "sha256": "5a55d4b7ec9a1297a563b666db883357b5265f127ec0cd8256a3285ffc3a0674"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/194608.npy",
+        "sha256_before": "6949c69120d62cc64873826bce3780b16ee2db5b1f457c3d2dedbaa882fbf04b",
+        "sha256_after": "6949c69120d62cc64873826bce3780b16ee2db5b1f457c3d2dedbaa882fbf04b",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195016": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195016.npz",
+        "sha256": "2c94d5d33c5ee0ead21b1c83a8b883367648aea03a55bd0e5474d520c6799a97"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195016.npy",
+        "sha256_before": "9e2d8aace9f0c2a71f64c35bfa9c30472421394d5adf12fb12d3059823ccc151",
+        "sha256_after": "9e2d8aace9f0c2a71f64c35bfa9c30472421394d5adf12fb12d3059823ccc151",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195024": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195024.npz",
+        "sha256": "933bf4c01592edf37eacdfaea1aebaec47cfd84fa525dad7f8076feea50dd29f"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195024.npy",
+        "sha256_before": "74c6662b38113c49d6ddbbcdf6e12fdadf7ad67955f2f10f403567ede0b34214",
+        "sha256_after": "74c6662b38113c49d6ddbbcdf6e12fdadf7ad67955f2f10f403567ede0b34214",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195066": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195066.npz",
+        "sha256": "86ed730920fc8dfecc25ca06cd46feddf60cbf14212b77da06b95964293b2d70"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195066.npy",
+        "sha256_before": "8db361686979b9cbb89de54f2af626eff66ace9d9600016ee4f4d3931fa31a23",
+        "sha256_after": "8db361686979b9cbb89de54f2af626eff66ace9d9600016ee4f4d3931fa31a23",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195102": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195102.npz",
+        "sha256": "a7f2213d9322c4e1730764af8e8d8ef9370f3b33c86e23a16fd724453cf8be5e"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195102.npy",
+        "sha256_before": "c8e26e71c3ee4fc76875decb78decca80e3b7228e838aa9b8292cade669df329",
+        "sha256_after": "c8e26e71c3ee4fc76875decb78decca80e3b7228e838aa9b8292cade669df329",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195103": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195103.npz",
+        "sha256": "e536ddb313bc2871a31886d5bfb3b73ec849af7cde91a7354e12e20adbf8e5a8"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195103.npy",
+        "sha256_before": "e7f05956abf6e063d57879ca08e6937997d02b05fb55951a13f134f2a4fee7ad",
+        "sha256_after": "e7f05956abf6e063d57879ca08e6937997d02b05fb55951a13f134f2a4fee7ad",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195111": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195111.npz",
+        "sha256": "a325e607f350526db1d816105cb15f36ed2a93a1e89106dad6b0d603c3ba96c8"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195111.npy",
+        "sha256_before": "3c3a272934041d6d1f9e27d60b6abe3d45fb5d9cecdd0094fe66bc99192da321",
+        "sha256_after": "3c3a272934041d6d1f9e27d60b6abe3d45fb5d9cecdd0094fe66bc99192da321",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195186": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195186.npz",
+        "sha256": "465997918c24f814271f56981853ecabdbddefa67bce412bd923fa07e790cf1f"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195186.npy",
+        "sha256_before": "aa37a4dc0682ba5930759ae5c43f24b6713264cf4b31dd79c9809e28d68ab947",
+        "sha256_after": "aa37a4dc0682ba5930759ae5c43f24b6713264cf4b31dd79c9809e28d68ab947",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195263": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195263.npz",
+        "sha256": "042e21c8691dd64864787f49d6c8928d70e9d0bf267a109eef230920983f9560"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195263.npy",
+        "sha256_before": "2ac367da5c9bd505bb057db5492c1baddab4fd8072b8e5084e348fc5e62c0c0f",
+        "sha256_after": "2ac367da5c9bd505bb057db5492c1baddab4fd8072b8e5084e348fc5e62c0c0f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195279": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195279.npz",
+        "sha256": "27dfe43236fcd3c4278fd9e51ca46aefb27fa63246587c6d2059957f62794917"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195279.npy",
+        "sha256_before": "b0f3b884515d017ed1a3254494050022369784246b0e4e9972408c85d0a13802",
+        "sha256_after": "b0f3b884515d017ed1a3254494050022369784246b0e4e9972408c85d0a13802",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195646": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195646.npz",
+        "sha256": "da784b236fdc3a23745d81bade0081c46d1acfbe5d2044226e8ea3b417710d00"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195646.npy",
+        "sha256_before": "540b3cb516648a083121f9cdfbf09318d725f090bf1017c516304cdecd189a52",
+        "sha256_after": "540b3cb516648a083121f9cdfbf09318d725f090bf1017c516304cdecd189a52",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195786": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195786.npz",
+        "sha256": "e9671951974b3bc45567cd782a1eeb7410761a7d7098bd315f079a7588b352ac"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195786.npy",
+        "sha256_before": "95925d67efb98223ef5db11934515d1719a8b32f315ab39309624400a9dfe7b5",
+        "sha256_after": "95925d67efb98223ef5db11934515d1719a8b32f315ab39309624400a9dfe7b5",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "195959": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/195959.npz",
+        "sha256": "1df7ce2d738d08c54c22d4dff1df477c70abe2a6e052bf89222a2d6f7da5fa21"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/195959.npy",
+        "sha256_before": "25788c46d58605e79190f91c791e694929f2fa422266cace065ee0ec634e8d76",
+        "sha256_after": "25788c46d58605e79190f91c791e694929f2fa422266cace065ee0ec634e8d76",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "196332": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/196332.npz",
+        "sha256": "807b6dd95a807fcfe8e4b4fd102af36b5432a6fda0779299177508ab115705f1"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/196332.npy",
+        "sha256_before": "a2abd0fa8fd35e95c76c1f2b3321e888694320156005042c1950bc2865d5749d",
+        "sha256_after": "a2abd0fa8fd35e95c76c1f2b3321e888694320156005042c1950bc2865d5749d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "196405": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/196405.npz",
+        "sha256": "df3e4f6c465de02c4b6bfaba57738fe53fc8ff98d0efa89ff1b4f4dacccfcf8d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/196405.npy",
+        "sha256_before": "1d9449f7428df47257b482e0c67cdd0f6159c8eb4f874f6ce9e7a5cbecdbb33a",
+        "sha256_after": "1d9449f7428df47257b482e0c67cdd0f6159c8eb4f874f6ce9e7a5cbecdbb33a",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "196541": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/196541.npz",
+        "sha256": "fda2dd9979357fbd482a05d40307d2923952149ca94099aaa810d926820ec045"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/196541.npy",
+        "sha256_before": "216c24e86357f99af3831ebbeed5f98b99d99659cce8ca4c9bf04481cb2919f4",
+        "sha256_after": "216c24e86357f99af3831ebbeed5f98b99d99659cce8ca4c9bf04481cb2919f4",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "198806": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/198806.npz",
+        "sha256": "77ad928adb70b3a6b4d0d93157415b2572503469be70019a311bfb2f795f0612"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/198806.npy",
+        "sha256_before": "be436ce3dfe82885661bf10e3196cb1cf87a7aa7b1b4fbfde367559ec989dbeb",
+        "sha256_after": "be436ce3dfe82885661bf10e3196cb1cf87a7aa7b1b4fbfde367559ec989dbeb",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "198899": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/198899.npz",
+        "sha256": "7f423b3c2c1ae2c6ebf6e0f5971d74574bd03872b621bab5a14d17a1cf4d20bc"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/198899.npy",
+        "sha256_before": "8a565f094e847dd88273ec368495b35009e17c4fe835d704e07121889b8a5a53",
+        "sha256_after": "8a565f094e847dd88273ec368495b35009e17c4fe835d704e07121889b8a5a53",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "198971": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/198971.npz",
+        "sha256": "6d33d99b8413812ad1505ddf7ae40bc7292a9a03d6f19e43cedd1b61fbcf88e6"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/198971.npy",
+        "sha256_before": "923b81cea24be40dead8399c55ba5e63e7a4a06867f742120d9da35c5700c0ab",
+        "sha256_after": "923b81cea24be40dead8399c55ba5e63e7a4a06867f742120d9da35c5700c0ab",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "199087": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/199087.npz",
+        "sha256": "a90ebc4fffcb3d17987d994012c7a08dcd012b5ba2ea31e30badbc2f0b6fb032"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/199087.npy",
+        "sha256_before": "4667a2df0b7dfdad6b3b1be26c25090e69689fbcd94f66631eda99a4c98ce299",
+        "sha256_after": "4667a2df0b7dfdad6b3b1be26c25090e69689fbcd94f66631eda99a4c98ce299",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "199789": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/199789.npz",
+        "sha256": "2c12e85627bd4de668311bf3268ba502c6ff51df3b9ec20d2ec57c7f1a8c6f9d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/199789.npy",
+        "sha256_before": "d4e4ff0773e813b6e3859904a669eca05e5a695bb4f7b24dc8c6c4d985cacae3",
+        "sha256_after": "d4e4ff0773e813b6e3859904a669eca05e5a695bb4f7b24dc8c6c4d985cacae3",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "199790": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/199790.npz",
+        "sha256": "f5d4fb8dd95fa2a1c90a22fa3418f3cc194d3b9488cd89ba8df3ed4cc599d914"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/199790.npy",
+        "sha256_before": "34c98a8ed2ffc9123f3a6d765700b1bd9f68c6375941087ea9b43ba966e9ccf1",
+        "sha256_after": "34c98a8ed2ffc9123f3a6d765700b1bd9f68c6375941087ea9b43ba966e9ccf1",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "199909": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/199909.npz",
+        "sha256": "9110d00e2359526256df5c6adf3fbad99ecb900442e57ba33c4c0ee516a3a7b4"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/199909.npy",
+        "sha256_before": "dc60e6e9b8ac5e40e06de077b4791d94c7453faad70520bd87ef984259b0712d",
+        "sha256_after": "dc60e6e9b8ac5e40e06de077b4791d94c7453faad70520bd87ef984259b0712d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "199921": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/199921.npz",
+        "sha256": "2c56bd0a48cbca35bc8c5885300eaeba09e11cd3ba795b43374317abe7b2718f"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/199921.npy",
+        "sha256_before": "1faf89721f4bb9bec4076a3390b88293f4f5a1674985026b0e9b35d1a2948270",
+        "sha256_after": "1faf89721f4bb9bec4076a3390b88293f4f5a1674985026b0e9b35d1a2948270",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200127": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200127.npz",
+        "sha256": "468b8cdf54fee8ec0fa945a137d9e30c5a60dcb30471ff5e641c0f0ec2694fc7"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200127.npy",
+        "sha256_before": "8a1da257abb8bb0ae808188ecac4375f95c740009d53b7666b16edf57b4ce26f",
+        "sha256_after": "8a1da257abb8bb0ae808188ecac4375f95c740009d53b7666b16edf57b4ce26f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200198": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200198.npz",
+        "sha256": "bc962c55f04cc3e3179440acd02592d78d509bb2f87386586c541ec9925a161b"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200198.npy",
+        "sha256_before": "947223d48384af460bdd738ccc39bfc65d2517feaf68747c03a23d1bc7bdeae8",
+        "sha256_after": "947223d48384af460bdd738ccc39bfc65d2517feaf68747c03a23d1bc7bdeae8",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200320": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200320.npz",
+        "sha256": "59c6aaecb5450a70715c899e644d6401c45637acde38e5424f06bc28f3a89170"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200320.npy",
+        "sha256_before": "a88fc564c129f378fe96ecf48392e7227d4321e6967438a133071c17c4209c30",
+        "sha256_after": "a88fc564c129f378fe96ecf48392e7227d4321e6967438a133071c17c4209c30",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200385": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200385.npz",
+        "sha256": "9d3f068cf3e93e0688065731087dc8becc070fe11c2643c528591fb6ddb8b377"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200385.npy",
+        "sha256_before": "5d225d49986ebb3967ac0ebcfb4e593a9ac95095dd85d21c4b401d9e5b0bf63d",
+        "sha256_after": "5d225d49986ebb3967ac0ebcfb4e593a9ac95095dd85d21c4b401d9e5b0bf63d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200427": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200427.npz",
+        "sha256": "8f8df8964127f424c22cffafb9990a71a7294f18251c22559671c57b48842a67"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200427.npy",
+        "sha256_before": "f5f03c34558a6272f389d4d370ad560710f0717e4c6ec5dfc20ec238816cef1b",
+        "sha256_after": "f5f03c34558a6272f389d4d370ad560710f0717e4c6ec5dfc20ec238816cef1b",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200636": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200636.npz",
+        "sha256": "8c5fe1f940249374f8f55f6aa4cb01d2cf15693d678cd853e044b6d90805532a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200636.npy",
+        "sha256_before": "2f54e9cabfaf575f6e47ba24f4f3b4e9fed836349a718ef5132a48d7f59a28a0",
+        "sha256_after": "2f54e9cabfaf575f6e47ba24f4f3b4e9fed836349a718ef5132a48d7f59a28a0",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200917": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200917.npz",
+        "sha256": "37879f4115c866d371ba432c96cc7224e1f5e4bc8e67265247e48cda21e254af"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200917.npy",
+        "sha256_before": "c42fa6bf4ada8763ff1cc531521dc44e2ad8090c8b716327ea6e1df3c9652483",
+        "sha256_after": "c42fa6bf4ada8763ff1cc531521dc44e2ad8090c8b716327ea6e1df3c9652483",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200954": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200954.npz",
+        "sha256": "0b3b22a3ed229ee25655ef97b9b6328ad7f38d9551028c087c2d70574c2a96a5"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200954.npy",
+        "sha256_before": "cf2b4dd4a5001ac9ba9af8a8c88569881e542b41dbc9eeb4eb58b0f1eaa6b6ca",
+        "sha256_after": "cf2b4dd4a5001ac9ba9af8a8c88569881e542b41dbc9eeb4eb58b0f1eaa6b6ca",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "200990": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/200990.npz",
+        "sha256": "b1dc82196ec580d0592bb2e7a4e696bcca1a0c12927e95bcb4a11828318761cb"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/200990.npy",
+        "sha256_before": "d64831e7a13f96ad4dcae5f846d064317658f89d8534e3d73ac36b2f46c471d0",
+        "sha256_after": "d64831e7a13f96ad4dcae5f846d064317658f89d8534e3d73ac36b2f46c471d0",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201270": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201270.npz",
+        "sha256": "3e3b345bfc325bd493fa22f6c1f13ab96e201212cd92930b47e1c26bc9606ea3"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201270.npy",
+        "sha256_before": "10e523aa1ff39bf1538e938fcf5a158ed54ce9475fd712f6e95c62354aaa5a33",
+        "sha256_after": "10e523aa1ff39bf1538e938fcf5a158ed54ce9475fd712f6e95c62354aaa5a33",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201395": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201395.npz",
+        "sha256": "b88c98b944266c408b9b3a8f1ff12908d5bfecb7d20c728d24fc3217bcd66374"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201395.npy",
+        "sha256_before": "15cc2a802afc99beeb247798d6ee876fb3ade8bf13e1a71aab68d557a1159b20",
+        "sha256_after": "15cc2a802afc99beeb247798d6ee876fb3ade8bf13e1a71aab68d557a1159b20",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201447": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201447.npz",
+        "sha256": "fb6e24aac08b1db1969a474c00f9663f495d3a2726983067f6d7781924259e3a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201447.npy",
+        "sha256_before": "c55c77073535de8e86fe5604e4d8580c5f6b1af7cdc8494154e54cdcf3e7eeea",
+        "sha256_after": "c55c77073535de8e86fe5604e4d8580c5f6b1af7cdc8494154e54cdcf3e7eeea",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201494": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201494.npz",
+        "sha256": "d2bab8effd03bdd173c5f41c93813f170973044315ee60c6425dae650daf2af4"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201494.npy",
+        "sha256_before": "20b79ac05d47bcf6396d5b09c5eddbe94e85901e9089e173a3f5abfa3d178e62",
+        "sha256_after": "20b79ac05d47bcf6396d5b09c5eddbe94e85901e9089e173a3f5abfa3d178e62",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201707": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201707.npz",
+        "sha256": "7fc69c42a420956b51770dfa8bceb418eaf4a35668cfa83d4ab83e9f50020442"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201707.npy",
+        "sha256_before": "4dc4daee48a2ff82a239363693ffbebdcc979b294d75cec886676e65b7452914",
+        "sha256_after": "4dc4daee48a2ff82a239363693ffbebdcc979b294d75cec886676e65b7452914",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201973": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201973.npz",
+        "sha256": "3e0c971644a32542b8ffd360c98de1b3e7b58513c619ec1874979e98058ab580"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201973.npy",
+        "sha256_before": "b876844d4b965afbdbabaa77a3529f1cf083759e571e6f68204a8743f998ee5c",
+        "sha256_after": "b876844d4b965afbdbabaa77a3529f1cf083759e571e6f68204a8743f998ee5c",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "201978": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/201978.npz",
+        "sha256": "034acb33617e2ce4b7aecc164bf014cf648622357dc5bf937a7753d7bb103bc9"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/201978.npy",
+        "sha256_before": "e85df8a813890090e57ce80c619cefdf6d7630379b85bbf9856ad99e5af425aa",
+        "sha256_after": "e85df8a813890090e57ce80c619cefdf6d7630379b85bbf9856ad99e5af425aa",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203012": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203012.npz",
+        "sha256": "d97e245b26f76274c335cc1a6e7c448e2e4b2e534cc787b9fdb5b5c05ee5832d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203012.npy",
+        "sha256_before": "30edfcb455c9fba8fe6d899f2b0ad787639cffa44e93d0d1332a70ecc5c17cd4",
+        "sha256_after": "30edfcb455c9fba8fe6d899f2b0ad787639cffa44e93d0d1332a70ecc5c17cd4",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203041": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203041.npz",
+        "sha256": "c296bff27c96e221d2604ed56ae20d5048eee2f64242ca773f7929472821100a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203041.npy",
+        "sha256_before": "b1b2389679dbf3e542dfbae27ef8f423f67c1ef559525ca7453222cc987eddba",
+        "sha256_after": "b1b2389679dbf3e542dfbae27ef8f423f67c1ef559525ca7453222cc987eddba",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203132": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203132.npz",
+        "sha256": "6e66f95daa0020808cfaf074dc59580b56dbdbcdde405c59d6bcf540ca064ae5"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203132.npy",
+        "sha256_before": "d26f6332b80216ece55d4425602a2258ba1306faf49f9016b92c99cc20d872ec",
+        "sha256_after": "d26f6332b80216ece55d4425602a2258ba1306faf49f9016b92c99cc20d872ec",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203187": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203187.npz",
+        "sha256": "ea313bfd69ca2fb256978c916203c7a113f4bae380e135834c3a042f263bba77"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203187.npy",
+        "sha256_before": "4701da3f034f327553d11932c5d2cfbe0dfbc026ab08cc42ad5943887afcfa81",
+        "sha256_after": "4701da3f034f327553d11932c5d2cfbe0dfbc026ab08cc42ad5943887afcfa81",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203470": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203470.npz",
+        "sha256": "7c0503f52643f584d12c7592817386db5f04f1a94e4620fead17987c33dd1b88"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203470.npy",
+        "sha256_before": "24329a5848033ebf1acfb105272a5e4632ac6d01ebab0b2263c1e7cfec90b53d",
+        "sha256_after": "24329a5848033ebf1acfb105272a5e4632ac6d01ebab0b2263c1e7cfec90b53d",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203521": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203521.npz",
+        "sha256": "cfdc36bb3d61737ce5ef0448656ca4e8d07a674175bdd3c18fb2fb7b0e9f101f"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203521.npy",
+        "sha256_before": "d87f98adf8cc167a00dda9751e4ed08007ca0807f1dee8fe9b51ab82d8d10e31",
+        "sha256_after": "d87f98adf8cc167a00dda9751e4ed08007ca0807f1dee8fe9b51ab82d8d10e31",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203576": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203576.npz",
+        "sha256": "e14240e6a2212f60d79fed632a9f5fb04c2cd66f538e60fde421c5554ea3e2b4"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203576.npy",
+        "sha256_before": "ad80e5140619a6e34319da22ad6045fb6825cb4df96991f73f092246373682c0",
+        "sha256_after": "ad80e5140619a6e34319da22ad6045fb6825cb4df96991f73f092246373682c0",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203629": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203629.npz",
+        "sha256": "477fd0a8188f091c63f811acfc549f14166fdb2ae3490d84be94572d658509e5"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203629.npy",
+        "sha256_before": "a4c3d7a763aea2e1adb104a493f59bc357790f7150c0feee7bc458d0cd7c1220",
+        "sha256_after": "a4c3d7a763aea2e1adb104a493f59bc357790f7150c0feee7bc458d0cd7c1220",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203719": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203719.npz",
+        "sha256": "94f932fab2662eebc334acb3df77aeb6ece99ce14f26c0782704b67a71a5bc69"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203719.npy",
+        "sha256_before": "43e0fb30a7183eae595b9e48d88b97b7cbd5884fc2c2590db5d931e7117252b9",
+        "sha256_after": "43e0fb30a7183eae595b9e48d88b97b7cbd5884fc2c2590db5d931e7117252b9",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203764": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203764.npz",
+        "sha256": "703438459c50781ca50b2958e2fb20496711b7ad9243b65e71c7ff090b21072b"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203764.npy",
+        "sha256_before": "8fa2632842ad54b4c3658ce170d47420b5be207290b352b9c408061fccc6edc2",
+        "sha256_after": "8fa2632842ad54b4c3658ce170d47420b5be207290b352b9c408061fccc6edc2",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203778": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203778.npz",
+        "sha256": "bf74d00df504e8237ab90d2c5f2b103587e3926adc0b6750daf1f07ed78a6f7a"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203778.npy",
+        "sha256_before": "07e61656b6eca319fcedaa0f5eb4ea9f3b93c54a48f41e233fef5fe9cf4f8c63",
+        "sha256_after": "07e61656b6eca319fcedaa0f5eb4ea9f3b93c54a48f41e233fef5fe9cf4f8c63",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203941": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203941.npz",
+        "sha256": "53ab6c854faba8d7b9d8b3208977888356b6e132cf93440236771bb6cef94743"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203941.npy",
+        "sha256_before": "fb03d2d3994e989f642c4b56c4b6aabdec7f69d4d1807ee75fc0d7673c03f2ba",
+        "sha256_after": "fb03d2d3994e989f642c4b56c4b6aabdec7f69d4d1807ee75fc0d7673c03f2ba",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "203959": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/203959.npz",
+        "sha256": "a8f9fb67e3fff0dcb5b4cfbf968ad2ddf89c011cd6fb9e1c7029404087a17d88"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/203959.npy",
+        "sha256_before": "0bc1cbf04a9d25da8041e5aa00d5a3cc49d995bfb4802502d4e4347eeb4ec3c0",
+        "sha256_after": "0bc1cbf04a9d25da8041e5aa00d5a3cc49d995bfb4802502d4e4347eeb4ec3c0",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204233": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204233.npz",
+        "sha256": "212889f87569340508aae7fd87eb3754894a519c380c73242d82dbfba66d0874"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204233.npy",
+        "sha256_before": "e0ac7f41eb0b8ff6e4a0fdf835726b487a60ca1eb60c15a60d6012191fa2576f",
+        "sha256_after": "e0ac7f41eb0b8ff6e4a0fdf835726b487a60ca1eb60c15a60d6012191fa2576f",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204240": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204240.npz",
+        "sha256": "351a05de545d531798c8967a7ae034cc163c54d793939ac9fb300b2c0c4a548d"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204240.npy",
+        "sha256_before": "590e001aedbaaa90def3db4f1d0448e70d8dbac2a09e76c2a52b87bd92771dae",
+        "sha256_after": "590e001aedbaaa90def3db4f1d0448e70d8dbac2a09e76c2a52b87bd92771dae",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204243": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204243.npz",
+        "sha256": "5b5b54a2f8a8ece436a187bbfbbaad54702ec5e6ab7b6d6c8ff0283f9e227006"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204243.npy",
+        "sha256_before": "4742913b10de51eea6e57272b56d81e2ebe508eb317292876097b6fee344f76c",
+        "sha256_after": "4742913b10de51eea6e57272b56d81e2ebe508eb317292876097b6fee344f76c",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204256": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204256.npz",
+        "sha256": "17b13c6771981337232182501302c4130fc93d5daef23b9d8e17cf7b2a145b53"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204256.npy",
+        "sha256_before": "9b8d31116c52b9d52410c12a35524effe86ca3b0f6de156a8c6c7330a3fbe16e",
+        "sha256_after": "9b8d31116c52b9d52410c12a35524effe86ca3b0f6de156a8c6c7330a3fbe16e",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204530": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204530.npz",
+        "sha256": "3b754003eb705139d57a510dbb1a91a34b8e880f18557f57b1b4dbfeef0c771c"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204530.npy",
+        "sha256_before": "14bf81a691c3c1957267f7b3bf4d69aede7db0cfec8773e00a38895139c46dc3",
+        "sha256_after": "14bf81a691c3c1957267f7b3bf4d69aede7db0cfec8773e00a38895139c46dc3",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204560": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204560.npz",
+        "sha256": "6120301c1a91a059b261f673088e624f7e8c629a827345d04385e0ebbf504f94"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204560.npy",
+        "sha256_before": "87cf78a305dbe2978b144d67815a52b97846e350a296c04a78e2cafada84c466",
+        "sha256_after": "87cf78a305dbe2978b144d67815a52b97846e350a296c04a78e2cafada84c466",
+        "numerical_bytes_unchanged": true
+      }
+    },
+    "204937": {
+      "source_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/signals/204937.npz",
+        "sha256": "de205bcabc09d489271e23e0fcee042cc008a50ff4104eb8833c08e23139178c"
+      },
+      "interferometer": {
+        "tree": "bci",
+        "channels": [
+          "\\BCI::DENV2F",
+          "\\BCI::DENV3F"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent",
+        "input_divisor_native_units": 100000000000000.0,
+        "physical_rescaling_applied": false
+      },
+      "filterscopes": {
+        "tree": "SPECTROSCOPY",
+        "channels": [
+          "\\SPECTROSCOPY::FS02",
+          "\\SPECTROSCOPY::FS03",
+          "\\SPECTROSCOPY::FS04"
+        ],
+        "time_units": "ms",
+        "ordinate_units": [
+          null,
+          null,
+          null
+        ],
+        "unit_status": "unverified: source ordinate metadata absent"
+      },
+      "prepared_record": {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/inputs/204937.npy",
+        "sha256_before": "5b53358bb175c4875a1b876eb7d5f9a7b1f616dbd7f6475dcf9a1f6369073af5",
+        "sha256_after": "5b53358bb175c4875a1b876eb7d5f9a7b1f616dbd7f6475dcf9a1f6369073af5",
+        "numerical_bytes_unchanged": true
+      }
+    }
+  }
+}

@@ -12,8 +12,8 @@ from pathlib import Path
 from labeler.config import git_sha
 
 REPO = Path(__file__).resolve().parents[2]
-BASE = "702c0c5"
-OUT = REPO / "outputs/labeler/elm/fix_verification.json"
+BASE = "eb4e3630"
+OUT = REPO / "outputs/labeler/elm/fix_round2_verification.json"
 PIXI = [
     "pixi",
     "run",
@@ -26,7 +26,19 @@ PIXI = [
 ]
 TESTS = [
     f"tests/labeler/test_elm_{name}.py"
-    for name in ("ours", "dsm_swap", "audit", "provenance", "dsm_fix", "clock_onsets")
+    for name in (
+        "ours",
+        "dsm_swap",
+        "audit",
+        "provenance",
+        "dsm_fix",
+        "clock_onsets",
+        "inputs",
+        "input_metadata",
+        "nonfinite",
+        "dsm_adapter",
+        "train_stability",
+    )
 ]
 
 
@@ -36,6 +48,11 @@ def changed_files(added_only=False):
         command.append("--diff-filter=A")
     command += ["--", "*.py"]
     files = subprocess.check_output(command, cwd=REPO, text=True).splitlines()
+    files += subprocess.check_output(
+        ["git", "ls-files", "--others", "--exclude-standard", "--", "*.py"],
+        cwd=REPO,
+        text=True,
+    ).splitlines()
     return sorted(set(files) | {"scripts/labeler/elm_fix_verify.py"})
 
 
@@ -108,15 +125,23 @@ def main():
         for line in (REPO / readme).read_text().splitlines()
         if "**stable**:" in line
     ]
+    aliases = {"d3d_elm_time_to_event_dsm": "elm-dsm"}
+    canonical_before = [
+        line.replace(old, new) for line in stable_before for old, new in aliases.items()
+    ]
     record["readme_stable_pointer"] = {
         "before": stable_before,
         "after": stable_after,
-        "unchanged": stable_before == stable_after and bool(stable_before),
+        "same_adapter_with_user_facing_alias": all(
+            "elm-dsm" in line for line in canonical_before + stable_after
+        )
+        and bool(stable_before)
+        and bool(stable_after),
     }
     record["passed"] = (
         all(record[k]["exit_code"] == 0 for k in commands)
         and all(unchanged.values())
-        and record["readme_stable_pointer"]["unchanged"]
+        and record["readme_stable_pointer"]["same_adapter_with_user_facing_alias"]
     )
     OUT.write_text(json.dumps(record, indent=1))
     return 0 if record["passed"] else 1

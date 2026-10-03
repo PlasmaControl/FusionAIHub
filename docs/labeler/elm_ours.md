@@ -1,373 +1,294 @@
-# ELM detection and reference audit
+# ELM occupancy detection: current protocol
 
-`elm-ours` and ELM-O have **similar point estimates; no significant difference detected**
-on the BES subset. This is an interval-occupancy evaluation against reviewed annotations,
-not a verified count of individual physical ELMs. The legacy audit separately measures
-onset-bin presence, full-coverage interval agreement, and proximity to reviewed span starts.
+## What is measured
 
-The elm-ours and DSM detection heads use pooled shot-grouped out-of-fold predictions;
-the initialized DSM variant retains a pretrained embedding with source-shot overlap
-described below. The survival refit is pretrained; clock/ELM-O are rules. Brackets are
-95 % percentile intervals from 1,000 shot-bootstrap resamples, with shared draws for
-comparisons. No cohort test shot is used for this stream's detector training or tuning.
-Sources are relative to `outputs/labeler/elm/`: **O** = `ours/evaluation.json`,
-**D** = `dsm/evaluation.json`, **S** = `swap/evaluation.json`, **P** =
-`dsm/prefetch_evaluation.json`, **H** = `training_history.json`. The producing scripts are
-committed under `scripts/labeler/`; the source revisions and content hashes are recorded.
+The task is to detect reviewed ELM-present time from DIII-D diagnostics. The
+reference is interval occupancy, including crowds, rather than independently
+verified individual physical ELMs. A separate reference swap compares the same
+predictions with legacy onset bins and an occupancy conversion of that source.
 
-## Primary benchmark
+## Data and splits
 
-The two primary sets use 50 ms bins wholly inside one reviewed absent, non-crowd present
-or crowd span and analysed time. `all119` uses fetched-signal coverage: 119
-shots/12,409 bins. `bes73` uses ELM-O's analysed chunks:
-73 shots/6,843 bins. The latter provides an identical-bin
-comparison; ELM-O requires BES. Its AUROC/AUPRC are rank metrics from the saved nested eta
-sweep, with unhit bins tied below all hit bins. The clock has only hard calls and seeded
-the review, so it is not independent. (O: `sets.{all119,bes73}.{n_shots,bins}`.)
+The fixed cohort contains 400 train, 50 val, 50 test. The 119 reviewed shots contain 69 train, 50 val; these counts are recorded in `outputs/labeler/elm/protocol.json:metadata`.
+No cohort blind-test shot enters new detector fitting, checkpoint selection or
+threshold selection. Primary all119 bins use fetched filterscope/interferometer
+coverage. The BES subset uses ELM-O chunks; common DSM panels additionally require
+both offline-risk and detection rows. All methods within a panel use identical
+shots and bins. Sources: `outputs/labeler/elm/ours/evaluation.json:sets` and
+`outputs/labeler/elm/dsm/evaluation.json:sets`.
 
-| set | method | auroc | auprc | f1 |
-|---|---|---|---|---|
-| all119 | `elm-ours` | 0.941 [0.906, 0.967] | 0.877 [0.774, 0.949] | 0.830 [0.778, 0.871] |
-| all119 | ELM clock | -- | -- | 0.757 [0.680, 0.827] |
-| all119 | Always-present rule | 0.500 [0.500, 0.500] | 0.376 [0.322, 0.430] | degenerate (recall ≥ 0.99) |
-| bes73 | `elm-ours` | 0.941 [0.898, 0.972] | 0.875 [0.751, 0.961] | 0.845 [0.786, 0.896] |
-| bes73 | ELM-O | 0.918 [0.877, 0.951] | 0.833 [0.753, 0.890] | 0.842 [0.789, 0.885] |
-| bes73 | ELM clock | -- | -- | 0.708 [0.602, 0.800] |
-| bes73 | Always-present rule | 0.500 [0.500, 0.500] | 0.402 [0.325, 0.479] | degenerate (recall ≥ 0.99) |
+Five outer folds group entire physical shots. Each outer training side reserves
+14 inner-validation shots for checkpoint and threshold selection. Fixed
+partitions and every shot list are in `ours/seed_repeats.json:folds` and the
+large run records under `$LABELER_ROOT/round4/elm/cv/`. The original partition
+seed is 20261003; three repeats change only training randomness.
 
-Source: O: `sets.<set>.methods.<method>.{point,ci95}`. F1 is marked degenerate when
-recall ≥ 0.99; numeric results remain in JSON.
+## Models and inputs
 
-On `bes73`, elm-ours minus ELM-O is F1 +0.002 [-0.052, 0.058], AUROC +0.023
-[-0.014, 0.067], AUPRC +0.043 [-0.058, 0.129]. No equivalence test was performed.
-Against the clock, paired F1 is +0.137 [0.048, 0.233] on `bes73` and +0.073
-[-0.003, 0.151] on `all119`; the latter interval includes zero. (O:
-`sets.<set>.paired["elm-ours - elm-elmo: <metric>"]` and
-`sets.<set>.paired["elm-ours - elm-clock: f1"]`.)
+- **elm-ours:** a 1D U-Net with 401,714 parameters. It uses FS02–FS04 D-alpha,
+  DENV2F/DENV3F fast density and a validity mask; no BES. Samples are reduced to
+  0.1 ms cells (filterscope maximum, density mean), with log D-alpha level,
+  0.5 s median contrast, density and 0.2 s high-pass channels. FS01 was not
+  fetched or evaluated. See `src/labeler/elm/inputs.py` for scaling and source
+  ordinate provenance; no speculative density rescaling is applied.
+- **ELM-O:** the paper reimplementation, requiring BES, with hard-call eta 0.997.
+  Its rank scores use the saved nested eta sweep on the same evaluated bins.
+- **elm-clock:** the original rule that seeded the review; this reference is
+  therefore dependent on the clock. The clock has no continuous rank score.
+- **elm-dsm refit:** a 60-column survival refit, compared as an offline forward-risk
+  score. **elm-dsm detection** trains one occupancy logit from scratch; **elm-dsm
+  detection init** initializes its embedding from the refit. All variants share
+  the upstream preprocessing, not just the survival and initialized variants.
+- **Always-present:** the trivial baseline, retained in every table.
 
-## Non-crowd present spans and annotation disagreements
+Every DSM variant has **no D-alpha input (pcphd02/03 mean-filled); 50 ms-mean
+serving of a 1 ms-trained model; CO2 missing on 75/119**. The survival refit is an
+**offline risk score with 25 ms centered-NBI lookahead (not a causal forecast)**.
+The 1 ms training describes the source survival refit; detection heads are
+refitted on the reviewed 50 ms-mean rows.
+All DSM variants use upstream normalization constants computed **before the
+upstream split**, including blind-cohort source shots **190646 and 190532**.
+This is feature-statistics exposure, separate from reviewed-label leakage. The
+scratch detection variant inherits it too. Sources:
+`dsm/evaluation.json:model_context`, `row_diagnostics`; source notebook
+`/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4406`.
 
-`iscrowd=0` identifies **non-crowd present spans**, not verified single ELMs. Their
-120 durations range 1–497 ms; median
-54.5 ms, interquartile range 42–98.25 ms,
-90th percentile 205.3 ms. 30 exceed 100 ms and
-14 exceed 200 ms. 108 of 125 possible
-non-crowd interior bins come from spans longer than 100 ms. Only
-47 spans contribute scored bins; only
-2 starts fall inside them. Durations and
-per-span IDs are recorded, so the long annotations can be inspected. (O: `label_audit`,
-`sets.all119.non_crowd_bin_audit`.)
+Physical-shot fitting, selection and normalization membership is retained in
+`src/labeler/models/d3d_elm_time_to_event_dsm/training_membership.json`. The
+adapter's exposed-shot membership prevents general validation from labelling
+these shots held out. DSM source-validation scores used for early stopping are
+validation evidence. These supplemental models do not certify blind-cohort
+isolation. The serving risk scale is poorly calibrated, and out-of-filter rows
+are clipped to normalized ±10 instead of being discarded.
 
-| set | method | crowd_bin_recall | non_crowd_span_touch_recall | absent_span_alarm_rate |
-|---|---|---|---|---|
-| all119 | `elm-ours` | 0.851 [0.789, 0.903] | 0.683 [0.379, 0.834] | 0.596 [0.478, 0.689] |
-| all119 | ELM clock | 0.680 [0.581, 0.789] | 0.233 [0.122, 0.521] | 0.105 [0.063, 0.168] |
-| all119 | Always-present rule | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] |
-| bes73 | `elm-ours` | 0.877 [0.805, 0.942] | 0.699 [0.277, 0.871] | 0.610 [0.452, 0.742] |
-| bes73 | ELM-O | 0.852 [0.788, 0.901] | 0.634 [0.267, 0.859] | 0.440 [0.301, 0.623] |
-| bes73 | ELM clock | 0.628 [0.492, 0.771] | 0.215 [0.090, 0.631] | 0.110 [0.053, 0.188] |
-| bes73 | Always-present rule | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] | 1.000 [1.000, 1.000] |
+## Training and metrics
 
-Source: O: `sets.<set>.methods.<method>.{point,ci95}`. A touch is any overlap with a
-detected interval on a span with at least half its length analysed. It is not a
-millisecond onset match. The former “68 % single-ELM recall” is 82
-of 120 non-crowd present spans touched (0.683), with no
-single-ELM inference. On `bes73`, the absent-span alarm rate is 0.610 for elm-ours versus
-0.440 for ELM-O (CIs above); elm-ours is more permissive by this measure. Detector-positive
-absent spans are **annotation disagreements**. The earlier ELM-O inspection of a small
-selected subset does not establish how many are physical ELMs, and no expert audit was
-added here. No lower/upper bound on physical detection quality is inferred.
-(O: `sets.all119.methods.elm-ours.counts`,
-`sets.bes73.methods.{elm-ours,elm-elmo}.point.absent_span_alarm_rate`.)
+elm-ours trains 25 epochs per fold, 40 iterations per epoch, batch 16, 4096 ms
+crops, learning rate 0.002, weight decay 0.01 and dropout 0.1. Masked event loss
+uses present/crowd versus absent milliseconds; uncertain, unobservable and
+unlabelled time is ignored. The existing auxiliary span-start loss remains in
+the checkpoints, but the onset head is **dropped from paper outputs**, with no
+onset retraining: span starts are not adjudicated physical onsets and its
+agreement was weak. Only occupancy scores and detections are plotted/reported.
+Checkpoint selection maximizes finite inner-validation AUPRC; an all-NaN
+history now raises a clear error instead of returning an undefined best row.
 
-## Span-start timing, separate from interval occupancy
+A scored 50 ms cell lies wholly inside one known reviewed span and analysed
+time; the span must have at least half its duration analysed. Scores are pooled
+bin AUROC, average precision (AUPRC), precision, recall and F1. elm-ours bin
+scores average the occupancy trace; thresholds maximize inner-validation F1.
+Detected runs use a centered 50 ms moving mean. Non-crowd touch recall and absent
+touch rates count any interval overlap and do not establish onset accuracy.
+Intervals are 95% percentile physical-shot bootstraps with 1000 shared draws;
+paired differences use identical draws. † marks recall ≥0.99; numeric F1 and
+intervals remain visible, with precision/recall beside them.
 
-The onset head was trained on Gaussians at reviewed non-crowd span starts. These starts
-are not independently verified ELM onset times; the crowd annotations have no individual
-ELM timing. Treat the following as diagnostic **span-start timing agreement**.
-Each detection is matched at most once within analysed coverage. Unmatched detections
-count as false positives only in reviewed absent/non-crowd time; crowd, uncertain and
-unlabelled time is ignored. The onset-head threshold is chosen on inner-validation
-shots. This scoring mask explains why only a subset of retained clock points enters
-the timing precision denominator. (O: `sets.<set>.onset`;
-`labeler.elm.methods.onset_counts`, `labeler.elm.onset.match`.)
+## Results
 
-The clock comparator now uses genuine peak-picker point times, restricted to the original
-saved clock present periods. Its original channel and unchanged picker were verified for
-all 119 shots; 24,341 points are retained. Period boundaries
-are never substituted for peaks. Current signal hashes are recorded, but historical
-input identity cannot be proved without contemporaneous signal hashes. The review remains
-dependent on the clock. (O: `clock_onset_source`.)
+### Primary reviewed bins
 
-| all119 method | tolerance | span-start precision | span-start recall | span-start F1 |
-|---|---|---|---|---|
-| elm-ours | ±5 ms | 0.032 [0.011, 0.061] | 0.075 [0.027, 0.171] | 0.045 [0.016, 0.083] |
-| elm-ours | ±10 ms | 0.050 [0.019, 0.089] | 0.117 [0.050, 0.245] | 0.070 [0.030, 0.121] |
-| elm-clock | ±5 ms | 0.001 [0.000, 0.002] | 0.025 [0.000, 0.078] | 0.001 [0.000, 0.004] |
-| elm-clock | ±10 ms | 0.005 [0.003, 0.013] | 0.183 [0.092, 0.423] | 0.011 [0.005, 0.025] |
+All reviewed shots: 119 shots/12,409 bins. BES subset, ELM-O chunks: 73 shots/6,843 bins.
 
-Source: O: `sets.all119.onset.<method>.tol_<k>ms.{point,ci95,counts}`. The elm-ours
-head has weak agreement with span starts; these numbers do not establish physical onset
-accuracy. The clock's formerly reported boundary F1 is superseded.
-
-## DSM refit, limited inputs (60 of the original 124)
-
-The stable identifier `elm-dsm` means **DSM refit, limited inputs (60 of the original
-124)** throughout the JSON display names and paper tables. It is the labeler's refit,
-not the original full-input checkpoint. Its survival training used Hiro's onsets via
-`elm_survival_labels.pkl` and the `wpqh_elm_hiro` survival-row split: it is the
-**legacy-trained method**, analogous to the AE audit's RCN/LSTM. The detection and
-initialized detection variants retain the same limited inputs/embedding and replace
-the survival heads with one logit trained on reviewed interval occupancy.
-(D: `display_name`, `model_context`, `method_display_names`; S: `legacy_trained_method`.)
-
-On its own survival target, the refit has AUROC 0.758/0.764/0.770/0.777 at
-5/10/20/50 ms on 82 phase records from 80 physical shots/142,745 rows, agreeing with
-its recorded fit. The source key `test` was used for early stopping, so this is
-**validation evidence**, not untouched held-out evidence. Source IDs are `<shot>_<phase>`;
-the previous integer rendering hid physical-shot overlap. Source training has 327 phase
-records from 300 shots; 15 physical shots cross its train/validation split. The own-target
-bootstrap now groups all phases of each physical shot. (D: `own_target.{phase_records,
-shots,rows,horizons,selection_role,split_phase_records,split_physical_shot_counts,
-physical_shots_in_both_split_sides,bootstrap_unit}`.)
-
-The prior refit's source training includes reviewed shots 190637, 190643, 192721,
-192751 and 196541; source validation includes 190643. It also includes cohort blind-test
-shot 190646 in training and 190532 in early-stopping validation. No new detector fit or
-threshold selection uses those blind-test shots, but the fixed DSM baseline and initialized
-detection variant inherit this pretraining. Their comparisons are supplemental and cannot
-certify isolation from the blind cohort. The initialized variant holds out reviewed labels
-from detection refitting, not all prior shot exposure. (D:
-`own_target.{reviewed_shot_ids_in_published_split,cohort_physical_shot_overlap,overlap_scope}`;
-`dsm/own_target_correction.json:correction`.)
-
-Ip/Bt missing on 104 review shots before this fix were fetched into
-`$LABELER_ROOT/round4/elm/dsm/fetched_features/`, leaving production stores read-only.
-Fetch used one worker with `--pace 1`, and stopped on no auth error. Serving diagnostics
-and row fingerprints invalidate stale caches; rescore refuses mismatched saved rows.
-The photodiodes are mean-filled **on every shot**; CO2 remains absent on its recorded
-subset. (P: `row_diagnostics.missing_features`; D: `row_diagnostics.missing_features`;
-`dsm/fetch.json` and `dsm/fetch_part1.json`.)
-
-DSM comparisons additionally require its forecast and detection rows, and are cut to
-those rows' analysed coverage. These common sets contain
-119 shots/11,653 bins and
-73 BES shots/6,527 bins; each method is rescored on the identical
-bins. ELM-O's sweep scores are now available on the common BES bins. (D:
-`sets.<set>.{n_shots,bins,bins_before_restriction,bins_without_rows}`.)
-
-| set | method | auroc | auprc | f1 |
-|---|---|---|---|---|
-| all119 common | `elm-ours` | 0.939 [0.901, 0.966] | 0.878 [0.775, 0.951] | 0.834 [0.782, 0.875] |
-| all119 common | ELM clock | -- | -- | 0.759 [0.683, 0.829] |
-| all119 common | DSM refit, limited inputs (60 of the original 124) | 0.777 [0.730, 0.824] | 0.662 [0.592, 0.736] | 0.627 [0.559, 0.692] |
-| all119 common | DSM refit, limited inputs (60 of the original 124), detection | 0.850 [0.802, 0.895] | 0.761 [0.671, 0.834] | 0.743 [0.680, 0.798] |
-| all119 common | DSM refit, limited inputs (60 of the original 124), detection init | 0.863 [0.817, 0.905] | 0.792 [0.710, 0.857] | 0.738 [0.675, 0.793] |
-| all119 common | Always-present rule | 0.500 [0.500, 0.500] | 0.391 [0.332, 0.450] | degenerate (recall ≥ 0.99) |
-| bes73 common | `elm-ours` | 0.939 [0.893, 0.972] | 0.876 [0.752, 0.962] | 0.848 [0.790, 0.899] |
-| bes73 common | ELM-O | 0.914 [0.869, 0.948] | 0.833 [0.755, 0.892] | 0.841 [0.786, 0.885] |
-| bes73 common | ELM clock | -- | -- | 0.714 [0.610, 0.806] |
-| bes73 common | DSM refit, limited inputs (60 of the original 124) | 0.715 [0.633, 0.794] | 0.631 [0.536, 0.730] | 0.591 [0.504, 0.674] |
-| bes73 common | DSM refit, limited inputs (60 of the original 124), detection | 0.843 [0.788, 0.892] | 0.750 [0.648, 0.845] | 0.762 [0.681, 0.826] |
-| bes73 common | DSM refit, limited inputs (60 of the original 124), detection init | 0.853 [0.796, 0.900] | 0.779 [0.681, 0.860] | 0.749 [0.671, 0.811] |
-| bes73 common | Always-present rule | 0.500 [0.500, 0.500] | 0.417 [0.336, 0.500] | degenerate (recall ≥ 0.99) |
-
-Source: D: `sets.<set>.methods.<method>.{point,ci95}`. These are measured comparisons
-under the recorded serving conditions; input restriction and architecture differences
-cannot be separated causally, and this is not a lower bound for the original model.
-
-The risk scale collapses under transfer: prefetch fold thresholds were
-4.10478e-06, 0.000463477, 0.000841796, 0.0016784, 0.0625769; after fetching they are 4.98688e-07, 0.000623552, 8.92347e-07, 0.0021375, 0.0152994.
-The share of usable rows outside the training filter was
-22.658% before and
-22.658% after. Rows are retained with normalized inputs clipped
-to ±10 rather than removed, a deviation from the original training filter. Quantiles of
-all survival horizons and scored forecast-bin risks are in JSON. After fetching, the
-50 ms risk median is 5.25614e-6 across usable rows, and 7.36273e-5 across `all119`
-scored forecast bins (95th percentile 0.284456). AUROC remains a ranking
-measure even when the probability scale is poorly calibrated; threshold-dependent F1
-with recall ≥ 0.99 is marked **degenerate**. (P/D: `published_thresholds[].threshold`,
-`row_diagnostics.{usable_rows,outside_training_filter_usable_rows,outside_training_filter_usable_row_share,risk_quantiles_usable_rows}`;
-D: `sets.<set>.risk_quantiles_scored_forecast_bins`.)
-
-The committed evaluator was run without `--rescore`, writing `evaluation_trained.json`
-and `fits.json` directly; a following rescore reproduced all recorded scientific results
-exactly (`dsm/reproducibility.json:exact_results_reproduced`). Prefetch metrics are retained
-for comparison. This supersedes the old scratch-created fit provenance.
-The later phase-ID correction recomputed only source validation intervals and metadata,
-preserving the original fit/rescore snapshots and every reviewed-bin result. Both records
-received the same correction; this was not a new fit.
-(`dsm/own_target_correction.json:correction`, `dsm/reproducibility.json:verification_scope`.)
-
-## Reference swap: overlap first
-
-Hiro's onset table covers 8 of the reviewed shots:
-189885, 190637, 190643, 192721, 192732, 192751, 196541, 200385. The shot-level truth
-covers 5 reviewed shots and cannot localize bins; Smith's
-independent BES windows cover 0. The onset table's grid alignment is
-checked. (S: `overlap`.)
-
-The AE-style coverage audit takes **all legacy-covered 50 ms cells intersecting the
-review window**, without DSM or diagnostic coverage restrictions. A review state is
-assigned by time occupancy ≥25 ms per cell; present is the union of crowd/non-crowd
-annotations. Ties prefer present, then absent. Unknown review states are counted
-separately. The legacy's binary rows already represent bins holding original onset
-samples and align to this grid. Neither comparison measures independent physical ELM
-omissions. (S: `conversion`, `interval_audit.definition`.)
-
-| audit | legacy-covered bins | known review bins | legacy-positive bins | M | P |
+| Set | Method | AUROC | AUPRC | F1 | Precision / recall |
 |---|---|---|---|---|---|
-| All-covered majority | 837 | 782 | 196 | 60 | 14 |
-| Interior benchmark + DSM rows | 641 | 641 | 111 | 40 | 4 |
+| all119 | elm-ours | 0.941 [0.906, 0.967] | 0.877 [0.774, 0.949] | 0.830 [0.778, 0.871] | 0.818 / 0.842 |
+| all119 | elm-clock | -- | -- | 0.757 [0.680, 0.827] | 0.866 / 0.673 |
+| all119 | Always-present | 0.500 [0.500, 0.500] | 0.376 [0.322, 0.430] | 0.546 [0.487, 0.601]† | 0.376 / 1.000 |
+| bes73 | elm-ours | 0.941 [0.898, 0.972] | 0.875 [0.751, 0.961] | 0.845 [0.786, 0.896] | 0.826 / 0.864 |
+| bes73 | elm-clock | -- | -- | 0.708 [0.602, 0.800] | 0.822 / 0.621 |
+| bes73 | ELM-O | 0.918 [0.877, 0.951] | 0.833 [0.753, 0.890] | 0.842 [0.789, 0.885] | 0.840 / 0.844 |
+| bes73 | Always-present | 0.500 [0.500, 0.500] | 0.402 [0.325, 0.479] | 0.573 [0.491, 0.648]† | 0.402 / 1.000 |
 
-Source: S: `interval_audit.{legacy_covered_bins,legacy_present_bins,known_review_majority}`,
-`swap.overlap.finding_1`. M is reviewed interval-majority present / legacy onset-bin
-absent; P is legacy-positive / reviewed-majority absent. The restricted scored-bin
-comparison is a **deviation from the AE audit**, retained for comparable detector
-metrics. Boundary exclusion changes the audit count.
+Source: `outputs/labeler/elm/ours/evaluation.json:sets.<set>.methods`.
+The BES comparison has similar point estimates and no significant difference
+detected; this is not an equivalence result. Paired differences and intervals
+are in the same record's `paired` fields.
 
-The full audit excludes 53 review-uncertain cells, including
-47 legacy-positive cells, plus 2 mixed/unlabelled
-cells (legacy-positive 0) and
-0 not-observable cells. Every excluded cell is listed by shot/time/state in
-`interval_audit.excluded_review_states.<state>.bin_list`; none is treated as absent.
+### Common DSM bins
 
-**Shot 192751** is explicitly recorded at `interval_audit.per_shot["192751"]`.
-Its full legacy-positive extent is 1750–5100 ms; the shot-level truth says it has ELMs.
-The review contains an **uncertain crowd at 2478–5115 ms**, not a verified negative
-throughout this period. The full audit has 52 legacy-positive cells on it,
-47 in uncertain review time; the remaining
-5 fall in majority-absent cells. The restricted table contains
-4 such cells. This shot cannot support the earlier claim that the legacy
-adds almost no ELMs. (S: that per-shot record,
-`overlap.shot_level_ground_truth.values_on_overlap["192751"]`,
-`swap.overlap.finding_1.per_shot["192751"]`.)
+All reviewed shots: 119 shots/11,653 bins. BES subset, ELM-O chunks: 73 shots/6,527 bins.
 
-### Original onsets near reviewed starts
+| Set | Method | AUROC | AUPRC | F1 | Precision / recall |
+|---|---|---|---|---|---|
+| all119 | elm-ours | 0.939 [0.901, 0.966] | 0.878 [0.775, 0.951] | 0.834 [0.782, 0.875] | 0.820 / 0.848 |
+| all119 | elm-dsm refit | 0.777 [0.730, 0.824] | 0.662 [0.592, 0.736] | 0.627 [0.559, 0.692] | 0.569 / 0.698 |
+| all119 | elm-dsm detection | 0.850 [0.802, 0.895] | 0.761 [0.671, 0.834] | 0.743 [0.680, 0.798] | 0.668 / 0.837 |
+| all119 | elm-dsm detection init | 0.863 [0.817, 0.905] | 0.792 [0.710, 0.857] | 0.738 [0.675, 0.793] | 0.673 / 0.818 |
+| all119 | elm-clock | -- | -- | 0.759 [0.683, 0.829] | 0.869 / 0.674 |
+| all119 | Always-present | 0.500 [0.500, 0.500] | 0.391 [0.332, 0.450] | 0.562 [0.499, 0.621]† | 0.391 / 1.000 |
+| bes73 | elm-ours | 0.939 [0.893, 0.972] | 0.876 [0.752, 0.962] | 0.848 [0.790, 0.899] | 0.827 / 0.871 |
+| bes73 | elm-dsm refit | 0.715 [0.633, 0.794] | 0.631 [0.536, 0.730] | 0.591 [0.504, 0.674] | 0.520 / 0.686 |
+| bes73 | elm-dsm detection | 0.843 [0.788, 0.892] | 0.750 [0.648, 0.845] | 0.762 [0.681, 0.826] | 0.668 / 0.888 |
+| bes73 | elm-dsm detection init | 0.853 [0.796, 0.900] | 0.779 [0.681, 0.860] | 0.749 [0.671, 0.811] | 0.663 / 0.861 |
+| bes73 | ELM-O | 0.914 [0.869, 0.948] | 0.833 [0.755, 0.892] | 0.841 [0.786, 0.885] | 0.839 / 0.843 |
+| bes73 | elm-clock | -- | -- | 0.714 [0.610, 0.806] | 0.828 / 0.627 |
+| bes73 | Always-present | 0.500 [0.500, 0.500] | 0.417 [0.336, 0.500] | 0.588 [0.502, 0.666]† | 0.417 / 1.000 |
 
-Original positive 1 ms onset samples are read from the two `elm_labels_dict` pickles;
-their binned truth is checked against the legacy table. The separate question is: is
-there a legacy onset within inclusive ±k ms of **each reviewed span start**? This is a
-per-annotation proximity query; a legacy onset can serve more than one start. Crowd
-starts are not the crowd's individual ELMs. No independent onset adjudication was added.
-(S: `onset_agreement.{definition,source_files,per_shot}`.)
+Source: `outputs/labeler/elm/dsm/evaluation.json:sets.<set>.methods`.
+Input availability, architecture and objective differ together; their effects
+cannot be separated causally. In-sample DSM source exposure is disclosed below.
 
-| kind | tolerance | matched starts / reviewed spans | share [95 % CI] |
+### Absent-span boundary sensitivity
+
+| Set | Method | Raw | 25 ms guard, same denominator | Nonempty interiors |
+|---|---|---|---|---|
+| all119 | elm-ours | 0.596 [0.478, 0.689] | 0.427 [0.343, 0.495] | 0.466 [0.366, 0.551] |
+| bes73 | elm-ours | 0.610 [0.452, 0.742] | 0.436 [0.351, 0.511] | 0.490 [0.369, 0.610] |
+| bes73 | ELM-O | 0.440 [0.301, 0.623] | 0.307 [0.200, 0.444] | 0.345 [0.240, 0.468] |
+
+The all119 raw denominator is 342 absent spans; 29 have no interior after removing 25 ms at both edges. The guarded share retains the raw denominator; the final column uses only nonempty interiors. Centered 50 ms smoothing can spill detected runs across annotation edges, particularly short inter-ELM gaps. A boundary touch can trigger the raw metric without an interior alarm. Sources: `ours/evaluation.json:span_alarm_definition` and `sets.<set>.methods.<method>.{point,ci95,counts}`.
+
+
+### Seed stability
+
+Three new full five-fold CV runs retain the original outer and inner shot
+partitions and all hyperparameters. Checkpoints and thresholds are selected
+independently within each fixed inner-validation fold. All four runs are
+reported; no best seed is selected. Shot intervals quantify sampling uncertainty;
+the seed range/SD quantify training variability and are not confidence intervals.
+
+| Training seed | all119 AUROC | all119 AUPRC | all119 F1 |
 |---|---|---|---|
-| non-crowd present | ±5 ms | 8 / 64 | 0.125 [0.040, 0.322] |
-| crowd | ±5 ms | 2 / 3 | 0.667 [0.000, 1.000] |
-| non-crowd present | ±10 ms | 13 / 64 | 0.203 [0.040, 0.429] |
-| crowd | ±10 ms | 2 / 3 | 0.667 [0.000, 1.000] |
-| non-crowd present | ±50 ms | 40 / 64 | 0.625 [0.070, 0.892] |
-| crowd | ±50 ms | 3 / 3 | 1.000 [1.000, 1.000] |
+| 20261003 | 0.941 [0.906, 0.967] | 0.877 [0.774, 0.949] | 0.830 [0.778, 0.871] |
+| 20261004 | 0.949 [0.923, 0.971] | 0.913 [0.852, 0.955] | 0.841 [0.787, 0.884] |
+| 20261005 | 0.941 [0.907, 0.967] | 0.897 [0.825, 0.944] | 0.815 [0.753, 0.864] |
+| 20261006 | 0.924 [0.885, 0.957] | 0.858 [0.756, 0.929] | 0.820 [0.764, 0.865] |
 
-Source: S: `onset_agreement.summary.tol_<k>ms.<kind>`. The former “61 % single-ELM
-bins missed” claim is dropped. M/P quantify onset-bin versus interval occupancy; the
-start table gives a separately defined event-proximity statistic, not verified ELM recall.
+| Set | Metric | Three new seeds: min–max | Sample SD |
+|---|---|---|---|
+| bes73 | auroc | 0.931–0.955 | 0.014 |
+| bes73 | auprc | 0.842–0.921 | 0.044 |
+| bes73 | f1 | 0.830–0.854 | 0.014 |
+| all119 | auroc | 0.924–0.949 | 0.013 |
+| all119 | auprc | 0.858–0.913 | 0.028 |
+| all119 | f1 | 0.815–0.841 | 0.014 |
 
-### Identical predictions under both references
+Source: `outputs/labeler/elm/ours/seed_repeats.json:{results,seed_ranges}`;
+each entry points to its large evaluation, run record, hashes, selected epochs
+and fold thresholds. All predictions remain out of fold by physical shot.
 
-| set | method | AUROC review | AUROC legacy | F1 review | F1 legacy |
+## Reference-swap protocol and results
+
+The **legacy onset table** uses Hiro Farre Josep Kaga's `wpqh_elm_hiro`
+annotations, compiled into 50 ms bins by `scripts/labeler/labels_format.py` and
+the category formatter (`labeler.events.source_formatters`), as described in
+`data/events/README.md`. It overlaps eight reviewed shots: 189885, 190637, 190643,
+192721, 192732, 192751, 196541 and 200385; seven have BES/ELM-O chunks.
+The all-covered audit includes every legacy-covered cell intersecting the
+review window, assigning review state by ≥25 ms occupancy. Unknown review time
+is listed separately. The ranking sets require complete known-span interior
+bins and DSM rows, a restriction relative to the all-covered audit.
+
+**Finding 1** is agreement of legacy reference with reviewed occupancy:
+M = reviewed-present/legacy-absent; P = legacy-present/reviewed-absent.
+The onset version is retained. Occupancy references merge legacy-positive
+50 ms intervals whose intervening gaps are ≤τ, at τ=100/200/300 ms. Missing
+legacy coverage is never bridged. No margin extends beyond first/last positive
+intervals, and no τ is chosen on performance. These are target-definition
+sensitivities, not counts of independently verified missing or false ELMs.
+
+| Reference | Known bins | M | P | Legacy recall | Legacy F1 |
 |---|---|---|---|---|---|
-| overlap | `elm-ours` | 0.963 [0.832, 0.995] | 0.955 [0.834, 0.988] | 0.720 [0.327, 0.904] | 0.614 [0.219, 0.788] |
-| overlap | DSM refit, limited inputs (60 of the original 124) | 0.815 [0.645, 0.923] | 0.846 [0.725, 0.941] | degenerate (recall ≥ 0.99) | degenerate (recall ≥ 0.99) |
-| overlap | DSM refit, limited inputs (60 of the original 124), detection | 0.761 [0.644, 0.907] | 0.776 [0.648, 0.941] | 0.367 [0.124, 0.561] | 0.312 [0.079, 0.505] |
-| overlap | DSM refit, limited inputs (60 of the original 124), detection init | 0.739 [0.639, 0.892] | 0.744 [0.617, 0.910] | 0.350 [0.115, 0.534] | 0.296 [0.073, 0.482] |
-| overlap | ELM clock | -- | -- | 0.430 [0.108, 0.659] | 0.406 [0.131, 0.635] |
-| overlap | Always-present rule | 0.500 | 0.500 | degenerate (recall ≥ 0.99) | degenerate (recall ≥ 0.99) |
-| overlap_bes | `elm-ours` | 0.965 [0.804, 0.998] | 0.951 [0.813, 0.990] | 0.737 [0.240, 0.933] | 0.654 [0.200, 0.832] |
-| overlap_bes | ELM-O | 0.603 [0.375, 0.947] | 0.647 [0.399, 0.971] | 0.474 [0.042, 0.894] | 0.535 [0.081, 0.919] |
-| overlap_bes | DSM refit, limited inputs (60 of the original 124) | 0.821 [0.692, 0.938] | 0.834 [0.724, 0.969] | degenerate (recall ≥ 0.99) | degenerate (recall ≥ 0.99) |
-| overlap_bes | DSM refit, limited inputs (60 of the original 124), detection | 0.716 [0.564, 0.908] | 0.746 [0.598, 0.947] | 0.340 [0.062, 0.563] | 0.315 [0.056, 0.528] |
-| overlap_bes | DSM refit, limited inputs (60 of the original 124), detection init | 0.699 [0.582, 0.887] | 0.715 [0.575, 0.910] | 0.325 [0.061, 0.526] | 0.300 [0.054, 0.502] |
-| overlap_bes | ELM clock | -- | -- | 0.388 [0.027, 0.639] | 0.382 [0.069, 0.621] |
-| overlap_bes | Always-present rule | 0.500 | 0.500 | degenerate (recall ≥ 0.99) | degenerate (recall ≥ 0.99) |
+| Onset bins | 782 | 60 | 14 | 0.692 [0.443, 0.813] | 0.785 [0.568, 0.873] |
+| Occupancy τ=100 ms | 782 | 37 | 49 | 0.810 [0.508, 0.938] | 0.786 [0.536, 0.926] |
+| Occupancy τ=200 ms | 782 | 34 | 60 | 0.826 [0.512, 0.946] | 0.774 [0.527, 0.926] |
+| Occupancy τ=300 ms | 782 | 33 | 65 | 0.831 [0.525, 0.950] | 0.768 [0.524, 0.921] |
 
-Source: S: `swap.<set>.{reviewed,legacy}.methods.<method>.{point,ci95}`. The restricted
-sets have 8 shots/641 bins and
-7 BES shots/526 bins. Every score/call is unchanged
-between references; only the reference changes. CIs are shot-bootstrap intervals, not
-seed variability, and this overlap offers little precision.
+Sources: `swap/evaluation.json:interval_audit.known_review_majority` and
+`interval_audit_occupancy.gap_<tau>ms.known_review_majority`. Uncertain positives
+on shot 192751 remain unknown rather than being treated as reviewed absent.
 
-On `overlap`, AUROC order is unchanged: review `elm-ours > elm-dsm > elm-dsm-detect > elm-dsm-detect-init`; legacy `elm-ours > elm-dsm > elm-dsm-detect > elm-dsm-detect-init`. The leading method is `elm-ours` / `elm-ours`. F1 pair reversals are exactly `elm-clock` / `elm-dsm`. The legacy-trained DSM refit AUROC is 0.815 against review and 0.846 against legacy (change +0.031). (S: `swap.overlap.{reviewed,legacy}.ranking`, `swap.overlap.comparison.{order_flips,auroc_changes}`.)
+**Finding 2** rescored identical saved predictions/calls under each reference;
+thresholds were not selected again. The review order and every reference's
+pair reversals are in `swap.<set>.{reviewed,legacy}.ranking`, `comparison`, and
+`occupancy.gap_<tau>ms.{legacy.ranking,comparison}`. The reference orders are:
 
-On `overlap_bes`, AUROC order is unchanged: review `elm-ours > elm-dsm > elm-dsm-detect > elm-dsm-detect-init > elm-elmo`; legacy `elm-ours > elm-dsm > elm-dsm-detect > elm-dsm-detect-init > elm-elmo`. The leading method is `elm-ours` / `elm-ours`. F1 pair reversals are exactly `elm-clock` / `elm-dsm`. The legacy-trained DSM refit AUROC is 0.821 against review and 0.834 against legacy (change +0.013). (S: `swap.overlap_bes.{reviewed,legacy}.ranking`, `swap.overlap_bes.comparison.{order_flips,auroc_changes}`.)
+| Set | Reference | M / P | Recall | AUROC order | F1 order |
+|---|---|---|---|---|---|
+| overlap | Onset bins | 40 / 4 | 0.728 [0.413, 0.837] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init | elm-ours > elm-clock > elm-dsm refit > elm-dsm detection > elm-dsm detection init |
+| overlap | Occupancy τ=100 ms | 20 / 13 | 0.864 [0.491, 0.960] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init | elm-ours > elm-clock > elm-dsm refit > elm-dsm detection > elm-dsm detection init |
+| overlap | Occupancy τ=200 ms | 19 / 18 | 0.871 [0.514, 0.966] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init | elm-ours > elm-dsm refit > elm-clock > elm-dsm detection > elm-dsm detection init |
+| overlap | Occupancy τ=300 ms | 18 / 23 | 0.878 [0.531, 0.970] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init | elm-ours > elm-dsm refit > elm-clock > elm-dsm detection > elm-dsm detection init |
+| overlap_bes | Onset bins | 32 / 4 | 0.761 [0.452, 0.882] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init > ELM-O | elm-ours > ELM-O > elm-clock > elm-dsm refit > elm-dsm detection > elm-dsm detection init |
+| overlap_bes | Occupancy τ=100 ms | 13 / 13 | 0.903 [0.524, 0.974] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init > ELM-O | elm-ours > ELM-O > elm-dsm refit > elm-clock > elm-dsm detection > elm-dsm detection init |
+| overlap_bes | Occupancy τ=200 ms | 12 / 18 | 0.910 [0.571, 0.981] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init > ELM-O | elm-ours > elm-dsm refit > ELM-O > elm-clock > elm-dsm detection > elm-dsm detection init |
+| overlap_bes | Occupancy τ=300 ms | 11 / 23 | 0.918 [0.595, 0.982] | elm-ours > elm-dsm refit > elm-dsm detection > elm-dsm detection init > ELM-O | elm-ours > elm-dsm refit > ELM-O > elm-dsm detection > elm-clock > elm-dsm detection init |
 
-The preserved prefetch swap also records the original legacy-trained DSM increase
-0.821 → 0.851 on the eight-shot overlap. Its AUROC order and leader stayed unchanged;
-weaker F1 methods reordered: on eight shots, clock/DSM survival refit,
-clock/DSM detection, and clock/DSM initialized detection; on seven BES shots,
-clock/DSM survival refit and DSM detection/ELM-O. Source:
-`swap/prefetch_evaluation.json:swap.<set>.comparison.order_flips.f1`. Postfetch
-statements above use the current record. These finite-sample results neither establish
-invariance to reference choice nor demonstrate the AE audit's leader reversal.
+The DSM refit trained on **190637, 190643, 192721, 192751 and 196541**,
+five of the eight overlap shots. Its refit row and initialized embedding are
+marked **in-sample with respect to source fitting**, even though reviewed-label
+threshold selection is out of fold. The three-source-unexposed-shot analysis
+(189885, 192732, 200385) is separately reported at
+`swap.overlap_dsm_heldout` and `swap.overlap_bes_dsm_heldout`, under every
+reference. Upstream feature-statistics exposure remains disclosed; these are
+not a new blindly isolated DSM fit. The small overlap gives broad intervals.
+Numerical AUROC/F1 with intervals and precision/recall for all variants are in
+the committed swap tables; no high-recall F1 is hidden.
 
-Detector-derived clock/ELM-O proxy swaps remain auxiliary, with the producer excluded;
-they are dependent references. Their exact orders/pairs are
-S: `proxy.<name>.{reviewed,proxy}.ranking` and `proxy.<name>.comparison.order_flips`.
+## Limitations
 
-## Model, training, provenance and limitations
+- The annotations differ between shots: 33 shots mark non-crowd/per-ELM spans,
+  while 76 mark whole ELMing periods as crowds. Short absent gaps between
+  per-ELM spans and sustained crowd occupancy are different targets. Their
+  starts are not verified physical ELM onsets. Source: `ours/evaluation.json:
+  annotation_modes`.
+- The clock seeded the review; clock scores and detector-derived proxies are
+  dependent-reference diagnostics. Raw absent-span touches are annotation
+  disagreements, not verified physical false alarms or annotation errors.
+- Shot CV does not group run days. Earlier development runs had outer-fold
+  predictions, so these results are development estimates. Same-day exposure
+  and historical provenance are recorded in `training_history.json`.
+- GroupNorm sees crops during training and whole shots during inference;
+  no separate effect-size study was performed. Three seed repeats do not
+  replace run-day validation or expert event adjudication.
+- DSM diagnostics, serving resolution, noncausal NBI preprocessing,
+  source normalization exposure, in-sample swap shots and poor calibration
+  limit interpretation.
+- The offline source-metadata audit cannot verify physical ordinate units for
+  DENV2F/DENV3F on any reviewed shot: the original fast-channel cache discarded
+  them, and accessible offline source files do not retain them. The unsupported
+  m⁻² declaration is removed. The scale is **10¹⁴ native source-ordinate units
+  (physical units unverified)**, with no numerical rescaling. Source paths,
+  channel names, cache/array hashes and metadata sidecars are preserved in
+  `density_units.json`; no network fetch was authorized for this round.
 
-- Inputs use **FS02–FS04**, rather than the brief's FS01–FS04, because this run reused
-  the already fetched ELM-O signal store, which contains those three channels. FS01 was
-  not fetched or evaluated; it is not claimed unavailable on every reviewed shot.
-  The other inputs are the two fast density chords and validity mask, with no BES.
-- The event model is the committed 1D U-Net. Saved `cv2` folds/thresholds/checkpoints
-  are unchanged by this fix. F1 thresholds use each fold's inner-validation shots.
-- Shot grouping prevents the same shot crossing a fold; it does **not** prevent run-day
-  correlations. H: `same_day_outer_fold_audit` records the number of days crossing folds and
-  actual examples. The two examples in the review happened to share folds, but other
-  same-day shots do cross them. No run-day CV or second seed was trained in this fix.
-- GroupNorm is trained on 4,096 ms crops and inferred on whole shots; its time-dependent
-  normalization statistics can differ. No effect-size or equivalence test was run.
-- Earlier runs are disclosed in H: `runs.smoke` and `runs.cv1`: `smoke` completed only
-  fold 0 with two epochs/five iterations/batch eight; `cv1` saved 40 fold-0 epochs,
-  entered fold 1 without completing it, and has no recoverable full configuration.
-  Both contain held-out fold-0 predictions. Artifacts do not establish whether those
-  predictions affected the final settings, so the final CV is a development estimate,
-  not an untouched confirmatory experiment. Only `cv2` metrics are reported.
-- `cv2/run.json` now identifies the producing training code as commit `0d16c19`, with
-  explicit retrospective provenance and SHA256 hashes of labels, cohort, prepared
-  inputs, fold records, checkpoints and predictions. These hashes describe bytes
-  observed during the fix; no contemporaneous training snapshot was saved. New runs
-  capture provenance automatically. Partial `--only` updates merge compatible complete
-  fold records and refuse incompatible settings/inputs/code.
-- Reviewed span starts, clock independence, missing DSM photodiodes/CO2, transferred risk
-  calibration, and the small legacy overlap remain limitations. No labels were changed.
+## Artifacts and reproduction
 
-Source: O: `train_record`, `config`, `event_thresholds`, `onset_thresholds`; H:
-`runs`, `same_day_outer_fold_audit`; `$LABELER_ROOT/round4/elm/cv/cv2/run.json:provenance`.
+Committed tables: `outputs/labeler/elm/table_elm_benchmark.tex` and
+`outputs/labeler/elm/swap/table_elm_*.tex`. Large PDF/150 dpi PNG examples and
+table copies live under `$LABELER_ROOT/round4/elm/`; `figures/fig_elm_examples.json`
+specifies the selection rule, windows, source units and per-panel fold thresholds.
+Non-crowd shading and clock bars have distinct colors. Use the figure at its
+recorded two-column width. Source/table hashes are in `tables.json`.
 
-## Paper artifacts and reproduction
+Run CPU Python through the mandated pixi wrapper with this worktree's PYTHONPATH,
+LABELER_ROOT, LABELER_LABEL_TABLES, LABELER_NO_FETCH=1 and the ELM TMPDIR. Arguments:
 
-`$LABELER_ROOT/round4/elm/table_elm_benchmark.tex` has primary and common-bin panels for
-both all-reviewed and BES subsets; `table_elm_swap.tex` has both overlap panels. Captions
-state shot/bin counts, interval construction, thresholds, dependence, DSM limitations
-and high-recall F1 degeneracy. `outputs/labeler/elm/tables.json` records source paths and
-hashes. Example files are `$LABELER_ROOT/round4/elm/figures/fig_elm_examples.{pdf,png,json}`.
-They show rule-picked shots 195111 and 200427 at seven-inch two-column placement, with
-restored log10 D-alpha (a.u.) and the 2690–2760 ms non-crowd annotation at the D-alpha
-drop explicitly marked. No verified ELM or L-H identification is inferred. The PNG was
-visually inspected. The complete caption/windows/axis details are in the figure JSON:
-`round4/elm/figures/fig_elm_examples.json:{shots,panels,size_inches,caption}`.
-
-Run from this worktree with the environment required by `implementer-rules.md`:
-
-```bash
-python scripts/labeler/elm_run_provenance.py --run cv2 --revision 0d16c19 \
-  --evidence "Original run trained the working tree first committed at 0d16c19" \
-  --history-json outputs/labeler/elm/training_history.json
-# Authorized DIII-D fetch: pixi/fdp wrapper, TMPDIR=scratch/tmp-fetch
-python scripts/labeler/elm_dsm_fetch.py --workers 1 --pace 1
-python scripts/labeler/elm_dsm_evaluate.py --run cv2
-python scripts/labeler/elm_dsm_evaluate.py --run cv2 --rescore
-python scripts/labeler/elm_ours_evaluate.py --run cv2
-python scripts/labeler/elm_reference_swap.py --run cv2
-python scripts/labeler/elm_paper_tables.py
-python scripts/labeler/elm_example_figure.py --run cv2
+```text
+scripts/labeler/elm_ours_evaluate.py --run cv2
+scripts/labeler/elm_dsm_evaluate.py --run cv2 --rescore --refresh-report
+scripts/labeler/elm_reference_swap.py --run cv2
+scripts/labeler/elm_seed_repeats.py --aggregate
+scripts/labeler/elm_round2_records.py
+scripts/labeler/elm_paper_tables.py
+scripts/labeler/elm_example_figure.py --run cv2
+scripts/labeler/elm_protocol.py
+scripts/labeler/elm_fix_verify.py
 ```
 
-The `python` lines are arguments to mandated pixi execution, not bare interpreter
-commands. GPU training uses the prescribed CUDA environment; no retraining of elm-ours
-was performed. Covering tests and Ruff checks are recorded in the fix-round report.
-README `stable` pointers are unchanged.
+Seed training uses `elm_seed_repeats.py --train` in the prescribed CUDA venv,
+CUDA_VISIBLE_DEVICES=0 with modest resources. Tests use only covering files via
+the required pt.sh wrapper; scoped Ruff and format checks are recorded in
+`fix_round2_verification.json`. No labels or production stores are modified.
+
+## Appendix: fix history
+
+Round one corrected physical DSM phase IDs, source-shot overlap, onset-proximity
+interpretation, diagnostic fetching and fit/rescore provenance. Round two adds
+occupancy references, explicit DSM exposures/serving conditions, visible high-recall
+F1, guarded alarm rates, three seeds, adapter membership and current-state artifacts.
+Superseded DSM snapshots are archived outside git with hashes at
+`round2_records.json:archived_records`; one current consolidated DSM record remains.
+The complete chronological history is in the stream's round-four report, not this
+protocol. Earlier elm-ours cv2 provenance is retrospective; new repeats capture
+provenance automatically. No external reviewer score is claimed here.

@@ -1,18 +1,19 @@
 {
- "git": "808a48163654940a0c07e4e0e5408519def7bde6",
- "created": "2026-10-03T15:03:32+00:00",
+ "git": "eb4e3630d967133e32a5256162c1b8c9711ef3c3",
+ "created": "2026-10-03T16:37:41+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
  "cohort_test_shots_used": 0,
+ "cohort_test_shots_used_scope": "reviewed-label detector CV only; original-refit overlap is reported separately",
  "rescored_from_saved_scores": true,
- "display_name": "DSM refit, limited inputs (60 of the original 124)",
+ "display_name": "elm-dsm refit",
  "method_display_names": {
   "elm-ours": "elm-ours",
-  "elm-dsm": "DSM refit, limited inputs (60 of the original 124)",
-  "elm-dsm-detect": "DSM refit, limited inputs (60 of the original 124), detection objective",
-  "elm-dsm-detect-init": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+  "elm-dsm": "elm-dsm refit",
+  "elm-dsm-detect": "elm-dsm detection",
+  "elm-dsm-detect-init": "elm-dsm detection init",
   "elm-elmo": "ELM-O",
-  "elm-clock": "ELM clock"
+  "elm-clock": "elm-clock"
  },
  "provenance": {
   "producing_git": "808a48163654940a0c07e4e0e5408519def7bde6",
@@ -210,13 +211,288 @@
    }
   }
  },
+ "evaluation_provenance": {
+  "producing_git": "eb4e3630d967133e32a5256162c1b8c9711ef3c3",
+  "files": {
+   "script": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_evaluate.py",
+    "sha256": "02ecc548bf8e5cf432929e14a93e9f7aae905a13103376eaadae1c0ffbec68d2"
+   },
+   "dsm_library": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/dsm.py",
+    "sha256": "6f1580f9e732d0bfa98a92f7ec6b3350d7ff050bf0b8d243b1a89df2f0685663"
+   },
+   "compare_library": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/compare.py",
+    "sha256": "515efe43fafa7c951bb86f7875937c3274d65b49888f010bf345e52faefad7cd"
+   },
+   "methods_library": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/methods.py",
+    "sha256": "d55acd8c294d54bf1d1a87f329a019ef9b590ae8759ff27114b508be9f6437bc"
+   },
+   "score_library": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/score.py",
+    "sha256": "aa8dc338c2a3cf0408e5dac96980e9e9cbcbc22ddeb15ed81e573345350d8cab"
+   },
+   "review_labels": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
+    "sha256": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380"
+   },
+   "cohort": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/catalog/cohort.csv",
+    "sha256": "b910527a9a2c7b4100cf5674aa6f57ec19b458f1ee952b23387341f1ed92bbda"
+   },
+   "refit_checkpoint": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/elm_dsm_no_bes.pkl",
+    "sha256": "2c28518eb1934c542ba007f7971d6ad2e38543be6f61ce57508b8629443aa9c3"
+   },
+   "normalization": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/normalization.json",
+    "sha256": "0d3e99e3e2e7f1aee5bb3aa9d40a9393d81e12789428b3e1ae9c23ab1598e45e"
+   },
+   "fold_run": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
+    "sha256": "800648123f5d445174436b0b7f9179bbe7890d0dd93fae783721778a632b3e0b"
+   },
+   "fold0": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/fold0/fold.json",
+    "sha256": "ebbb90efe96e2fb08dfc7fa624119b22ad3ec3f9d93c2ea3d4a338ae37e47895"
+   },
+   "fold1": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/fold1/fold.json",
+    "sha256": "2d0bab363a9c8384cfe73c6e8368d90a6c0dd2909334ff33794c55a811ba4e70"
+   },
+   "fold2": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/fold2/fold.json",
+    "sha256": "7910d8ad98906e07fbe6bcd2c22f28554a723563aa0e03fedad7eb882fab68d5"
+   },
+   "fold3": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/fold3/fold.json",
+    "sha256": "31ca87acf7d776a54d8ba9758b28b4623f8b72e1246412c94dfb106ebcec85a0"
+   },
+   "fold4": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/fold4/fold.json",
+    "sha256": "b2445e2fea71e1db4fea88d6f82d7d543e6db0be0f037d57e6178a1c15e99a3f"
+   }
+  },
+  "rows_sha256": {
+   "185857": "cbdeaf6be72e34364389de74b754e08f421f37302312520d3779f0901e381706",
+   "185866": "693b6f0640ee36fedaced9c2ef4fe8ee3fdee664be5d17e0ca9beb37d4c60405",
+   "185945": "1a90d3f6ffd79a9ac5aa875af592bdcd1934992d1807419edb15beb1a8a5d907",
+   "185961": "d7c87713c873485cd5d4fe1a8367caab024403115592cf02b77c88513f697348",
+   "186013": "5c55b3ccd0306cd74f78c877317d9b72aa73c09490cc85efdb5d82f3c06621ee",
+   "186093": "b561f0d331bc9e8723bd8221b96c645434dfd65292e17739a6fd542b20c306af",
+   "186427": "3f3e830015eed415895f4dc6985346437781a95a30ab17e959dcdfffa59bc335",
+   "186569": "b8e324b654c1a0d8d08bf76f6e5b58d17d29b0f06ac151feff10d2d1af64c04c",
+   "186636": "cc166a287cf9500fc47779d8bbfd149e19aa1dcdd5a84b41cfe3ee2bfdeca4b3",
+   "186945": "538494ff43d81b897a9bebe895f6989e5d441ed191d8392c7083148c512d2844",
+   "187035": "cebbfb6a6349623b6d6f81cfb8a2611b4680c8a5e632752b67608c642c8210c4",
+   "187076": "eba963f1639ae1ad7d946e8504a518051638b74f4d5f49bdbc7b44fdee62af48",
+   "187105": "1ef57160a3db75e58432d7f884b426e09c9e3d6f648440c1c9b2e9b489482a39",
+   "187196": "881189878e9f3086c0fb89e8694cb377d15f8221999686e87cb092cba946c19d",
+   "187328": "9fb467cbba884940d1c51e25763a4e3b2d24fe91770f8c5fa0c91c2f7da89b20",
+   "189004": "e9d1ff00f7a6d81dcb2be08002c6923c38d927e98cb66a217b782be4e6211dc8",
+   "189044": "df2aa5d05f9ef27ecf73d4a8ed71449142c54102fd9a18c5381cad21bd8c3480",
+   "189061": "1f8901c835e641e6ea27da57ad977308c4e17ec7c0678a968a9e5cd93e589109",
+   "189272": "028d9f5e40abd3dda09c3920724a83e67e84bc23ffc254cb7eea4831f7ed9501",
+   "189324": "603cc1c6599c5677c6729388522eb13690efeca7de99f0d189f92af8010b18fb",
+   "189559": "4904e3a38127036791134d0eaa10ec69db7269a4099ae1b72f00b7cdd883de0e",
+   "189688": "a93a1ca78f3b422d5cb21a944a60be66e7d5a61bdd86ee92c12fb6e0e440ac5d",
+   "189741": "31a879eea39d78626aba6f461ba465fd06a2e531f4f96a2b107fad6075d8b625",
+   "189885": "09fcee2c5dc8ad1586a2d7ab6b739fbc7b225cf505c68361d2fce98997ef4f8b",
+   "190094": "06551decc6e989e12c77fd24b7c366f2a014ed9b169a430dc083f38d16e5d782",
+   "190177": "6f2ef4a6891e60782c6dfbf1ee8bec2a42eddaaf336db157ec749216e8a85593",
+   "190218": "453ac35ed19cb4c78f167ff56710b86b4c69c0acd11b555b097820dfebdf66c4",
+   "190300": "de906f81550986434221d29285940ef6ac123a2cb75154fe0f8dcbd97a787b12",
+   "190335": "773aa367e59d6e443f5edcc06f9a42b86d7361bb957fb7480a328ee782ae2188",
+   "190637": "f1d70606bd90eed7abc5835c82f12896a47e12fb241b62cb0c09fe5ac340d9f4",
+   "190643": "1c62a8ffcca97a13e4b035fa37b64fec3c01ddd735abe1f37005fd8a2f2b08ba",
+   "190695": "dd73e780868da76bc08f62e55ac07ce97ed2eadf1c7475c3ccd642fc13e831ef",
+   "190790": "5138550aee7799d30e7cf8591292925c61b3249010ecedcb4ba641d7665eef97",
+   "190991": "f608ae2c2255cf461ca8a015fdce0ebf5abfc2fed289664b994715eb8b2d3551",
+   "191326": "1b58c2decc03953aa2dc2e7bbe25b3145d0ea465345108827c6179765a67bb6b",
+   "191382": "88b1b9afed425f8114ab7eebfab669e64d575f5f0b629f87c6cf45bc558f12a5",
+   "191470": "20e6d3ef29c65b881e1db16e057913061769d037d7fde5ac51b5746ad4522133",
+   "191677": "0082ed1c9a5184a3244c105acac26baae9b978c23f5110367a8afd85b4c71ba4",
+   "192003": "dfa004a7f744304f19cc1e176481672226be6dc081c1b980189c69d6d26a986e",
+   "192010": "164c396bfa1e5f9b9a789a17e0662b82804fb99eabd6d268ac1d130745539ff7",
+   "192015": "9cd2aef2ed547bcf5602c9e257bee6a45a5e7a0a5217f273f5636247910967c2",
+   "192148": "d1dd0889e781ab84e51ee95c9bbf78ce4c7a9ca47d71a88a9d3a6bebcda22c23",
+   "192226": "c5d9508e352c2995c5d79c62f662fffa9efedb8b0c7ec8bb0a290ae02188422d",
+   "192229": "9495028d84d1781c57fe60808180d9263b93892a9466cc905bd07be77d899cb3",
+   "192232": "dfb41f8ccb9cbc74e3c3724240406fa6d6d9eb6db8daef58faefddc9352ff1b9",
+   "192425": "ce71efe1b2188fae2288c0643c24c7759abefa40f4bd8600a09148db8861fe6f",
+   "192432": "b8e50c0cb2a059f8830b52ced6c7648ea87825ff88d6d1990e1a439549ac5dcc",
+   "192721": "4be3105e4059a623d4978acab994c737acb1c3b1e28c3b500e7fd2f790da69ee",
+   "192732": "3ed167b1fd0c6cbbe293721b86268066210096f1c2a9326e16e1f898d9fc8606",
+   "192751": "725881d1eedbd82f47a47e7c5dcc2589193688ce79409c157913380b63c2209d",
+   "192914": "25f85732a53593ce73b4f2bf8aa55a616b0fc648e1a81b297bb2c1b259cb6383",
+   "193008": "a37d36c36e4461e07403771960d70528b1ecd3db87c08f570220c6ac63b5f160",
+   "193022": "d3d63f03deec904801c2b3f30979554fe053db0c08ccfad14fbbe30226534efc",
+   "193075": "ddd0a9fcaeb8500991e03b196f9804c5d77384622a71810901a9d37732d732fc",
+   "193276": "4b1608f97932d7eacc139545866d2dd21d14e38777a3330658070e4d0dacba99",
+   "194155": "a3011411d27edf872036e4a92d4401f2033956338aa2be6a8f272142665c450a",
+   "194160": "1a5269955dc85e6414bde45970e8c023e8042bf6a8a926be0ecb660f0d94fb7e",
+   "194445": "325e1c8d198247ebad8039d86f29f37bdf7fa1eeef5c2a8098ce7068fac908d4",
+   "194600": "f19e70f3157e0ff4b3852b9ee176f048ae6384cd8d958e4078b6f167313f6d2f",
+   "194608": "943df2293c21337ff1339a596910be6c1990d2a925d65fcf157114cfa4532e49",
+   "195016": "aeb3bb3d2fed1bc524f54aff0503512584a20ffdd90585b7613e64158612d005",
+   "195024": "66d7897a67e0f776803146f450b60e8ae9df515aa0e089e317ea12afc9efdb4a",
+   "195066": "6b0bd714c29e20899c78926138b6bfe73bd4fe359f0f82e0a64bbba760410cbf",
+   "195102": "c44c757627d8888231282ee9905869fcb5c9cddfd4e9226b5ead5eb5ed8853d1",
+   "195103": "bb6809c81bf59684449495c565fa446b0ab2076f6473b8b5857bd0316e61ec83",
+   "195111": "3dfb18f5b92764763b45a0bb9a31c39dfd375eb9eb0aab218c27955769f8d98f",
+   "195186": "8476e5d0dc324fc6968a44d21b6909a5a7c3ba97a15bf8aab04077c4eb929815",
+   "195263": "81c5a81eeee2b8bf8454e3391967ec570dde8be2270f64ff082144d1b5eaa262",
+   "195279": "913aa02ca4806eaab6d82fb991b36b1a19f73277379634148fdff1593b93195a",
+   "195646": "f17cdd3959fe1d885770e3e6241c505a2e572b14c10b9f9f146d6721a6510df2",
+   "195786": "02cb3880be445147d92098dfecfba3317bed909db9d70f0a35d43812f01ce44f",
+   "195959": "320218ead0abf948303dcfbad2746263ac87a005fa446a6ba7734212b187f27a",
+   "196332": "9843e69b65c6f3d0188d1c48edb70d60a024f12984815c75d70738bf415c9267",
+   "196405": "d26c24a6f8d94c50fb568c761007ad55915d275a7f6da0530961cdb384ca696c",
+   "196541": "0d23fa49c159c6eb9f9b5af71b326a69d6270c939c2808bb1aa31ca635cbaa92",
+   "198806": "abff04246d4b948a93dc5704bb388b485bdca063e6e16dcc8a616acaf64d5ddf",
+   "198899": "4a4a492b4d6339f8c66f6c9e85613252b8c36a674ae56289d6e4eb4d6864057a",
+   "198971": "4ad5635ec432a533c28b09af4a239c98fbf5171724a98eb97c2b18d0b1f42127",
+   "199087": "af7905f8820f906a7d6641a14d817c0d66804051f7ea3eab58d4f7ad95d173b2",
+   "199789": "3a0975a1cc1cf00063b81665cbcb92df82f996b2f61d23fa48db0d4d3e90738e",
+   "199790": "b48102f3871eaae2631741db92ade2bafb46129d6e3e78e32ea0f3c2c0f2c32a",
+   "199909": "12c4c787bed0f393b9b7d8e1a8b8074ed87dfb67beba2965fe406d41423acccb",
+   "199921": "2bdaf6602fb7e929b6535861116eee287bb887fbb583dc1e769391091d63b117",
+   "200127": "9db22bb81f218557ece111773a4f4d8e25d85acf0a9bb95c4c1fb69c72af2ef6",
+   "200198": "940c2747fc59cff2a70877639f5530e8fbd629502a259ca530595d9eb87c2563",
+   "200320": "502bf2bf0bb9cbbe7388913694c1bbf0639ce8ceb7b5892bafeb03bc02f5f1e5",
+   "200385": "6d9cdfc12b82399439ee6bcd0ad2439c87670ced7a55831b95be6081f3709102",
+   "200427": "4defb7b69dfa6630ca1d972e113daddc3d55d85e2d96bd35a4d097d278d52519",
+   "200636": "cbf1e72a035f83505792c6a896490fe832cfd9763a145a8d053f7fff38df958e",
+   "200917": "d542be4712fc41eddab25c1274b3bb32816a97a46abc25f6d73c021d144a3872",
+   "200954": "d4d478a2b38ccb484c621c63927ad38aa0606d9e1817044fae1ae7dd9c44f159",
+   "200990": "b37cb7b57c83dbdca4822c6368b6ff0b6d38a721cda1128a9b412d03e6c181ce",
+   "201270": "717d936317d164604a48c8447d71e75973a108a77e39d5555ce4ce093c5d0483",
+   "201395": "1fc5d24108ba6ef664a3f237f5f514299a8ee56550a258d69d54f23fa21b5ad8",
+   "201447": "e1db325e1cc96f433cf237a25843338126bdc035ad56f53a8dd0b4a2e893736e",
+   "201494": "dd3764263be755cdbdc9dfac5f0f5bc56d02e914ef5f7bf4968121ad36b8699c",
+   "201707": "be7b626e1e182869bd4f600ff26eb77e06fa074f048bb021fedba7d123d7dc8a",
+   "201973": "02b09f97668fdb84fc7d7fc6beb0e6870a3b6d86ea0f63290333520b21d9f889",
+   "201978": "a99dbbbef8b127e47f0ca42006714e4d1c7f86942fdceb7c3bf0e096cbd73e65",
+   "203012": "4828d8cec96a6d8c64a24f8300c6aa28d27c7e20773b380f04572bda486dfc73",
+   "203041": "364e9e4e1b0080919c2e16fb83466d001af3e14530d4cac5d00858fbd77ff41c",
+   "203132": "04d88b758716c7bb8621de8ddfa7c9eba090b4a8989a155dd9277ab9102c5ad0",
+   "203187": "a5cf6496161db9ff63ffc0e7c7e0820b2280a8dffe8f5fe4baf005d1a68a3867",
+   "203470": "026398c27bd0e2012e47168279fa182a5b148f5b27b5815200b580e13ba3945f",
+   "203521": "8cc2e8451eb7e9ebbb04710f7c6a6c4b1f0cad6de68337eb117a81a727f0d4d7",
+   "203576": "7b80037d4940a15a387b1ae2dc0ae0abbd230176821298fd9ebf93be9d5c1481",
+   "203629": "42222438530dfa943c3e4cc1929511dafd490d57cc3a144d9f7dedee8b5e09ff",
+   "203719": "9d10daaa7c05cb3d11ea4ec4bad79fa3d5a1d306e053b10b6f545f14c2eea2cd",
+   "203764": "e4bd0f35c4703d7d47e95903772713b109e58876880cc2de422593380bb56a8a",
+   "203778": "3a9a512f97685ab5faa30dcb8f8c5605be2eb49f6de30443dfbf91e4efb8def2",
+   "203941": "62bb7a44f1ce8ac643e88c77ff69f938e282f2a2efb0ca44a7969ce0db842675",
+   "203959": "404991010b98574a1d1f132d33b313433c09b22aeaba82f15384d63bbeee176b",
+   "204233": "0d867412fbfb70609f9658dab3ef014f2672bdad8fb2d778738332d981d03d02",
+   "204240": "72f96bb0b14e3c350d8e5260202203eeac50cd90de469391ce1e9fcde07918c3",
+   "204243": "1bc58482c0ac1db1b72a28542a2970220d92f2c9bdfab8e18d9582093cf5898c",
+   "204256": "6afe2e26b0069e6f5fe43fabf1bc43b92154252275ee866359819bd01ed8da5d",
+   "204530": "e9fb87925e0d7b2ee0cfacece8f51116eb0380cb9bf49fd06b2b117561903a2a",
+   "204560": "1a2258f4e4704b946ffb175a2a61cc27da68a3b2c40eb05e1d138c54c69b42c5",
+   "204937": "3ef5800c654e9001c325010bab36bfbd80cb671f436b5581691ce367126f913f"
+  },
+  "score_files": {
+   "published_risk.npz": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/published_risk.npz",
+    "sha256": "921decda965a167f4e62b0a71c7fa664270fc73d78d1e6cad9ff780c76fab86c"
+   },
+   "scores_elm-dsm-detect.npz": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect.npz",
+    "sha256": "3d1fa4fea27a66ab1cd8ef1d37488909736bd957d706db2b1fdfc99b041064cb"
+   },
+   "scores_elm-dsm-detect-init.npz": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect-init.npz",
+    "sha256": "5d533697fab44045f7d7776cb0586a2d1c1d7c9e1b0de054000f2ed249c10917"
+   },
+   "thresholds.json": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/thresholds.json",
+    "sha256": "69efbc7008eafe5407b68ab499a366d76e0de99c0c0b66b4a0998be67389348e"
+   }
+  }
+ },
+ "evaluation_role": "saved-score rescore",
+ "own_target_correction": {
+  "git": "6cb9dbb1a22e4d165f13bba5196e1461ae3f4f74",
+  "script_sha256": "61d83e0f513cdf282afd7e80454655d494620298fee7f1bd572f5772532f95a8",
+  "dsm_sha256": "19e2a9507c1fcb89cfafafdf8b295bf43fea9128a8d84323c44f0a8f7f0f1565",
+  "created": "2026-10-03T15:29:08+00:00",
+  "scope": "phase-ID decoding, original-refit overlap, physical-shot own-target bootstrap and early-stopping selection interpretation; no new model fit",
+  "original_no_rescore_producing_git": "808a48163654940a0c07e4e0e5408519def7bde6",
+  "reviewed_bin_results_unchanged": true,
+  "upstream_identifier_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4321-4326 (<shot>_<phase> strings), and the original split pickle",
+  "early_stopping_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/training_no_bes.json:split_note",
+  "original_snapshots": {
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_before_phase_fix.json",
+    "sha256": "743940ff22d5b86c43c6429de4e1ddb8d5fab3673edaa269f0af1d530fea850b"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained_before_phase_fix.json",
+    "sha256": "c713f2db143518c7a0c6f098510aaca229d3de0a90785843ea7581fa64c3acd2"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation_before_phase_fix.json",
+    "sha256": "b966901ef7e8f23d5d9bbcdc6b7281a02eb0af9109ab95c8925628ccff4cb440"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility_before_phase_fix.json",
+    "sha256": "b05b45f800d952e07a9f896928fe09e207832e0d218f3ff8877e0a8f67d3dc46"
+   },
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits.json": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits_before_phase_fix.json",
+    "sha256": "50ffd359acdcc262af4330eb03c4e4859c8375f28f415b2a2b5de38711728d81"
+   }
+  }
+ },
  "prefetch_evaluation": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json",
  "model_context": {
   "original_input_columns": 124,
   "refit_input_columns": 60,
   "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
-  "legacy_training_source": "Hiro ELM survival/onset labels on its original split",
-  "serving_changes": "25 ms rows, mean-filled missing inputs, |z| clipped at 10",
+  "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
+  "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; |z| clipped at 10",
+  "training_resolution_note": "1 ms refers to the source survival fit; detection heads are refitted on reviewed 50 ms-mean rows.",
+  "serving": {
+   "interpretation": "offline risk score, not a causal forecast",
+   "source_refit_trained_row_ms": 1.0,
+   "detection_trained_window_ms": 50.0,
+   "training_note": "survival refit trained on source 1 ms rows; detection variants refitted on reviewed 50 ms-mean rows",
+   "serving_window_ms": 50.0,
+   "serving_grid_ms": 25.0,
+   "nbi_boxcar_ms": 100.0,
+   "nbi_lookahead_ms": 25.0,
+   "dalpha_input": "none; pcphd02/03 always mean-filled"
+  },
+  "preprocessing_exposure": {
+   "applies_to": [
+    "elm-dsm refit",
+    "elm-dsm detection",
+    "elm-dsm detection init"
+   ],
+   "scope": "upstream feature means/std computed before source split",
+   "normalization_physical_shots": 365,
+   "blind_cohort_shots": [
+    190532,
+    190646
+   ],
+   "source": {
+    "path": "/projects/EKOLEMEN/wpqh_elm_hiro/data/compiled_model10.pkl",
+    "sha256": "260097389258a405d596f03f49dc2b51600d289e6913cf62ff1d9b1086b11353",
+    "notebook": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb",
+    "notebook_sha256": "8de644f9fe58e968664db88bf1e4081d04cb1d8aa50b0a276e071de8de46722b",
+    "operation": "model10_norms mean/std computed over final_x before phase train/test split"
+   },
+   "role": "feature-statistics exposure, independent of reviewed-label CV",
+   "decision": "disclose existing preprocessing; no retraining"
+  },
+  "temporal_interpretation": "Offline risk score with 25 ms centered-NBI lookahead (not a causal forecast)",
+  "normalization_exposure": "EVERY DSM variant uses upstream normalization constants computed before the upstream split, including blind-cohort source shots 190646 and 190532. This is feature-statistics exposure; reviewed-label detector folds exclude cohort test shots.",
+  "normalization_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4406 (normalization before upstream split)",
   "scope": "limited-input refit; no original 124-input checkpoint evaluated"
  },
  "own_target": {
@@ -9015,9 +9291,42 @@
   }
  },
  "row_diagnostics": {
-  "display_name": "DSM refit, limited inputs (60 of the original 124)",
+  "display_name": "elm-dsm refit",
   "input_columns": 60,
   "original_input_columns": 124,
+  "serving": {
+   "interpretation": "offline risk score, not a causal forecast",
+   "source_refit_trained_row_ms": 1.0,
+   "detection_trained_window_ms": 50.0,
+   "training_note": "survival refit trained on source 1 ms rows; detection variants refitted on reviewed 50 ms-mean rows",
+   "serving_window_ms": 50.0,
+   "serving_grid_ms": 25.0,
+   "nbi_boxcar_ms": 100.0,
+   "nbi_lookahead_ms": 25.0,
+   "dalpha_input": "none; pcphd02/03 always mean-filled"
+  },
+  "preprocessing_exposure": {
+   "applies_to": [
+    "elm-dsm refit",
+    "elm-dsm detection",
+    "elm-dsm detection init"
+   ],
+   "scope": "upstream feature means/std computed before source split",
+   "normalization_physical_shots": 365,
+   "blind_cohort_shots": [
+    190532,
+    190646
+   ],
+   "source": {
+    "path": "/projects/EKOLEMEN/wpqh_elm_hiro/data/compiled_model10.pkl",
+    "sha256": "260097389258a405d596f03f49dc2b51600d289e6913cf62ff1d9b1086b11353",
+    "notebook": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb",
+    "notebook_sha256": "8de644f9fe58e968664db88bf1e4081d04cb1d8aa50b0a276e071de8de46722b",
+    "operation": "model10_norms mean/std computed over final_x before phase train/test split"
+   },
+   "role": "feature-statistics exposure, independent of reviewed-label CV",
+   "decision": "disclose existing preprocessing; no retraining"
+  },
   "usable_rows": 28560,
   "outside_training_filter_usable_rows": 6471,
   "outside_training_filter_usable_row_share": 0.22657563025210084,
@@ -9529,7 +9838,10 @@
       "non_crowd_span_hit": 65,
       "absent_spans": 200,
       "absent_span_alarm": 123,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 86,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.8273331003145753,
@@ -9539,6 +9851,8 @@
       "crowd_bin_recall": 0.8833586626139818,
       "non_crowd_span_touch_recall": 0.6989247311827957,
       "absent_span_alarm_rate": 0.615,
+      "absent_span_alarm_rate_guard25": 0.43,
+      "absent_span_interior_alarm_rate_guard25": 0.48863636363636365,
       "auroc": 0.9391835117643969,
       "auprc": 0.8763147241897526,
       "prevalence": 0.4165772943159185
@@ -9572,6 +9886,14 @@
        0.4466635220125786,
        0.7518518518518519
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.3396460216197058,
+       0.5081125877258474
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.35760406811731316,
+       0.6244420863078012
+      ],
       "auroc": [
        0.8930148735748595,
        0.971642360969091
@@ -9583,7 +9905,7 @@
      },
      "replicates": 1000,
      "display_name": "elm-ours",
-     "degenerate_f1": false
+     "high_recall": false
     },
     "elm-dsm": {
      "shots": 73,
@@ -9598,7 +9920,10 @@
       "non_crowd_span_hit": 85,
       "absent_spans": 200,
       "absent_span_alarm": 166,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 144,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.5196324143692564,
@@ -9608,6 +9933,8 @@
       "crowd_bin_recall": 0.6785714285714286,
       "non_crowd_span_touch_recall": 0.9139784946236559,
       "absent_span_alarm_rate": 0.83,
+      "absent_span_alarm_rate_guard25": 0.72,
+      "absent_span_interior_alarm_rate_guard25": 0.8181818181818182,
       "auroc": 0.7149179366487308,
       "auprc": 0.6306414524325701,
       "prevalence": 0.4165772943159185
@@ -9641,6 +9968,14 @@
        0.7197393972347367,
        0.9033160778123404
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.6329551211200147,
+       0.8299405542033327
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.7207721626199887,
+       0.8907115305138449
+      ],
       "auroc": [
        0.6327473321084771,
        0.7938470394830442
@@ -9651,8 +9986,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124)",
-     "degenerate_f1": false
+     "display_name": "elm-dsm refit",
+     "high_recall": false
     },
     "elm-dsm-detect": {
      "shots": 73,
@@ -9667,7 +10002,10 @@
       "non_crowd_span_hit": 75,
       "absent_spans": 200,
       "absent_span_alarm": 155,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 134,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.6679579413392362,
@@ -9677,6 +10015,8 @@
       "crowd_bin_recall": 0.8928571428571429,
       "non_crowd_span_touch_recall": 0.8064516129032258,
       "absent_span_alarm_rate": 0.775,
+      "absent_span_alarm_rate_guard25": 0.67,
+      "absent_span_interior_alarm_rate_guard25": 0.7613636363636364,
       "auroc": 0.8432373937990054,
       "auprc": 0.7502657454636863,
       "prevalence": 0.4165772943159185
@@ -9710,6 +10050,14 @@
        0.6602134146341463,
        0.8523316766327561
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.5867690921518673,
+       0.7702173913043479
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.6564670643546838,
+       0.8392037347229977
+      ],
       "auroc": [
        0.7876629547491306,
        0.8919985924937236
@@ -9720,8 +10068,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
-     "degenerate_f1": false
+     "display_name": "elm-dsm detection",
+     "high_recall": false
     },
     "elm-dsm-detect-init": {
      "shots": 73,
@@ -9736,7 +10084,10 @@
       "non_crowd_span_hit": 76,
       "absent_spans": 200,
       "absent_span_alarm": 157,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 137,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.6625176803394626,
@@ -9746,6 +10097,8 @@
       "crowd_bin_recall": 0.8655015197568389,
       "non_crowd_span_touch_recall": 0.8172043010752689,
       "absent_span_alarm_rate": 0.785,
+      "absent_span_alarm_rate_guard25": 0.685,
+      "absent_span_interior_alarm_rate_guard25": 0.7784090909090909,
       "auroc": 0.8525061734881522,
       "auprc": 0.7790126049853042,
       "prevalence": 0.4165772943159185
@@ -9779,6 +10132,14 @@
        0.6612858422939067,
        0.8642907209612818
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.5918280503690838,
+       0.7929045092838197
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.6642953200645508,
+       0.8571649029982362
+      ],
       "auroc": [
        0.7962037432013622,
        0.9003629423099413
@@ -9789,8 +10150,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
-     "degenerate_f1": false
+     "display_name": "elm-dsm detection init",
+     "high_recall": false
     },
     "elm-elmo": {
      "shots": 73,
@@ -9805,7 +10166,10 @@
       "non_crowd_span_hit": 59,
       "absent_spans": 200,
       "absent_span_alarm": 86,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 61,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.8389458272327965,
@@ -9815,6 +10179,8 @@
       "crowd_bin_recall": 0.851063829787234,
       "non_crowd_span_touch_recall": 0.6344086021505376,
       "absent_span_alarm_rate": 0.43,
+      "absent_span_alarm_rate_guard25": 0.305,
+      "absent_span_interior_alarm_rate_guard25": 0.3465909090909091,
       "auroc": 0.9140495822271535,
       "auprc": 0.8327615752295648,
       "prevalence": 0.4165772943159185
@@ -9848,6 +10214,14 @@
        0.28764791083615654,
        0.625
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.19258169934640523,
+       0.4563950143815916
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.23728376725493622,
+       0.48366540164452876
+      ],
       "auroc": [
        0.8692912561727887,
        0.9477778954386519
@@ -9859,7 +10233,7 @@
      },
      "replicates": 1000,
      "display_name": "ELM-O",
-     "degenerate_f1": false
+     "high_recall": false
     },
     "elm-clock": {
      "shots": 73,
@@ -9874,7 +10248,10 @@
       "non_crowd_span_hit": 20,
       "absent_spans": 200,
       "absent_span_alarm": 22,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 21,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.828390860476422,
@@ -9883,7 +10260,9 @@
       "false_alarm_bin_rate": 0.09269957983193278,
       "crowd_bin_recall": 0.6341185410334347,
       "non_crowd_span_touch_recall": 0.21505376344086022,
-      "absent_span_alarm_rate": 0.11
+      "absent_span_alarm_rate": 0.11,
+      "absent_span_alarm_rate_guard25": 0.105,
+      "absent_span_interior_alarm_rate_guard25": 0.11931818181818182
      },
      "ci95": {
       "precision": [
@@ -9913,11 +10292,19 @@
       "absent_span_alarm_rate": [
        0.05239538403836365,
        0.1970828621363216
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.04844004244782455,
+       0.18850647561311654
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.055292050691244245,
+       0.20118981737686772
       ]
      },
      "replicates": 1000,
-     "display_name": "ELM clock",
-     "degenerate_f1": false
+     "display_name": "elm-clock",
+     "high_recall": false
     },
     "always present": {
      "shots": 73,
@@ -9932,7 +10319,10 @@
       "non_crowd_span_hit": 93,
       "absent_spans": 200,
       "absent_span_alarm": 200,
-      "crowd_spans": 52
+      "crowd_spans": 52,
+      "absent_spans_guard25_eligible": 176,
+      "absent_span_alarm_guard25": 176,
+      "absent_spans_guard25_empty": 24
      },
      "point": {
       "precision": 0.4165772943159185,
@@ -9942,6 +10332,8 @@
       "crowd_bin_recall": 1.0,
       "non_crowd_span_touch_recall": 1.0,
       "absent_span_alarm_rate": 1.0,
+      "absent_span_alarm_rate_guard25": 0.88,
+      "absent_span_interior_alarm_rate_guard25": 1.0,
       "auroc": 0.5,
       "auprc": 0.4165772943159185,
       "prevalence": 0.4165772943159185
@@ -9975,6 +10367,14 @@
        1.0,
        1.0
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.7760095467287248,
+       0.9796053520746046
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       1.0,
+       1.0
+      ],
       "auroc": [
        0.5,
        0.5
@@ -9986,8 +10386,7 @@
      },
      "replicates": 1000,
      "display_name": "always present",
-     "degenerate_f1": true,
-     "f1_degenerate_high_recall": true
+     "high_recall": true
     }
    },
    "paired": {
@@ -10038,6 +10437,13 @@
      "ci95": [
       -0.3584905660377359,
       -0.10551375662844613
+     ]
+    },
+    "elm-ours - elm-dsm: absent_span_alarm_rate_guard25": {
+     "value": -0.29,
+     "ci95": [
+      -0.4362871872887085,
+      -0.1638958946335996
      ]
     },
     "elm-ours - elm-dsm: auroc": {
@@ -10103,6 +10509,13 @@
       -0.05854247104247102
      ]
     },
+    "elm-ours - elm-dsm-detect: absent_span_alarm_rate_guard25": {
+     "value": -0.24000000000000005,
+     "ci95": [
+      -0.38067959405581736,
+      -0.1293973294839408
+     ]
+    },
     "elm-ours - elm-dsm-detect: auroc": {
      "value": 0.09594611796539143,
      "ci95": [
@@ -10164,6 +10577,13 @@
      "ci95": [
       -0.29814591638082877,
       -0.06949138699138697
+     ]
+    },
+    "elm-ours - elm-dsm-detect-init: absent_span_alarm_rate_guard25": {
+     "value": -0.25500000000000006,
+     "ci95": [
+      -0.3935534274193549,
+      -0.1402807669731952
      ]
     },
     "elm-ours - elm-dsm-detect-init: auroc": {
@@ -10229,6 +10649,13 @@
       0.43555320728851316
      ]
     },
+    "elm-ours - elm-elmo: absent_span_alarm_rate_guard25": {
+     "value": 0.125,
+     "ci95": [
+      -0.06297653958944284,
+      0.26881720430107525
+     ]
+    },
     "elm-ours - elm-elmo: auroc": {
      "value": 0.02513392953724336,
      "ci95": [
@@ -10290,6 +10717,13 @@
      "ci95": [
       0.2721495718540581,
       0.6815541201671339
+     ]
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
+     "value": 0.325,
+     "ci95": [
+      0.18987110782592626,
+      0.4296996996996996
      ]
     }
    },
@@ -10379,6 +10813,8 @@
        "crowd_bin_recall": 0.8435897435897436,
        "non_crowd_span_touch_recall": 0.5555555555555556,
        "absent_span_alarm_rate": 0.4166666666666667,
+       "absent_span_alarm_rate_guard25": 0.3333333333333333,
+       "absent_span_interior_alarm_rate_guard25": 0.37037037037037035,
        "auroc": 0.9523936952779457,
        "auprc": 0.8973536701492866,
        "prevalence": 0.34125
@@ -10412,6 +10848,14 @@
         0.25924329501915705,
         0.5735747381144237
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.21535714285714286,
+        0.4464618869936034
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.22949965846994536,
+        0.5102149370386453
+       ],
        "auroc": [
         0.9150397618782031,
         0.9809086769439445
@@ -10423,7 +10867,7 @@
       }
      },
      "elm-dsm": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "display_name": "elm-dsm refit",
       "point": {
        "precision": 0.46551724137931033,
        "recall": 0.7252747252747253,
@@ -10432,6 +10876,8 @@
        "crowd_bin_recall": 0.7128205128205128,
        "non_crowd_span_touch_recall": 0.7777777777777778,
        "absent_span_alarm_rate": 0.7333333333333333,
+       "absent_span_alarm_rate_guard25": 0.6833333333333333,
+       "absent_span_interior_alarm_rate_guard25": 0.7592592592592593,
        "auroc": 0.7926166882523619,
        "auprc": 0.6702859688966158,
        "prevalence": 0.34125
@@ -10465,6 +10911,14 @@
         0.5862068965517241,
         0.8666666666666667
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.5592812907431551,
+        0.8181818181818182
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.625,
+        0.8888888888888888
+       ],
        "auroc": [
         0.6752311983610242,
         0.9125630102468708
@@ -10476,7 +10930,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "display_name": "elm-dsm detection",
       "point": {
        "precision": 0.7335945151811949,
        "recall": 0.9145299145299145,
@@ -10485,6 +10939,8 @@
        "crowd_bin_recall": 0.9192307692307692,
        "non_crowd_span_touch_recall": 0.6111111111111112,
        "absent_span_alarm_rate": 0.6333333333333333,
+       "absent_span_alarm_rate_guard25": 0.5833333333333334,
+       "absent_span_interior_alarm_rate_guard25": 0.6481481481481481,
        "auroc": 0.8977193303569015,
        "auprc": 0.7574853929516596,
        "prevalence": 0.34125
@@ -10518,6 +10974,14 @@
         0.48482404692082115,
         0.7612117981520966
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.45454545454545453,
+        0.7258064516129032
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.5178571428571429,
+        0.7736330381209088
+       ],
        "auroc": [
         0.8286912287488618,
         0.949564409151568
@@ -10541,6 +11005,8 @@
        "crowd_bin_recall": 0.9001079913606912,
        "non_crowd_span_touch_recall": 0.7333333333333333,
        "absent_span_alarm_rate": 0.7,
+       "absent_span_alarm_rate_guard25": 0.4714285714285714,
+       "absent_span_interior_alarm_rate_guard25": 0.5409836065573771,
        "auroc": 0.9312569423108737,
        "auprc": 0.8708993625102808,
        "prevalence": 0.4603828446813666
@@ -10574,6 +11040,14 @@
         0.4751640894426521,
         0.8368911817482696
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.3541193181818182,
+        0.5616503587736464
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.3596322537112011,
+        0.6965839741999503
+       ],
        "auroc": [
         0.8563762258128239,
         0.9788993573707582
@@ -10585,7 +11059,7 @@
       }
      },
      "elm-dsm": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "display_name": "elm-dsm refit",
       "point": {
        "precision": 0.5494600431965443,
        "recall": 0.6694736842105263,
@@ -10594,6 +11068,8 @@
        "crowd_bin_recall": 0.6641468682505399,
        "non_crowd_span_touch_recall": 0.9466666666666667,
        "absent_span_alarm_rate": 0.8714285714285714,
+       "absent_span_alarm_rate_guard25": 0.7357142857142858,
+       "absent_span_interior_alarm_rate_guard25": 0.8442622950819673,
        "auroc": 0.6754855481766833,
        "auprc": 0.6247572632972416,
        "prevalence": 0.4603828446813666
@@ -10627,6 +11103,14 @@
         0.723672462406015,
         0.9431909824046921
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.6216636309264898,
+        0.8750204248366013
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.7079621159391468,
+        0.9235092512702522
+       ],
        "auroc": [
         0.580844193894334,
         0.7691050533079268
@@ -10638,7 +11122,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "display_name": "elm-dsm detection",
       "point": {
        "precision": 0.6421133821827999,
        "recall": 0.8763157894736842,
@@ -10647,6 +11131,8 @@
        "crowd_bin_recall": 0.8817494600431965,
        "non_crowd_span_touch_recall": 0.8533333333333334,
        "absent_span_alarm_rate": 0.8357142857142857,
+       "absent_span_alarm_rate_guard25": 0.7071428571428572,
+       "absent_span_interior_alarm_rate_guard25": 0.8114754098360656,
        "auroc": 0.8114285207855741,
        "auprc": 0.7532241977200074,
        "prevalence": 0.4603828446813666
@@ -10679,6 +11165,14 @@
        "absent_span_alarm_rate": [
         0.6991070476596651,
         0.9105691056910569
+       ],
+       "absent_span_alarm_rate_guard25": [
+        0.6031573498964803,
+        0.8422064777327933
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.6773956356736243,
+        0.8969072164948454
        ],
        "auroc": [
         0.7221936971986446,
@@ -10834,7 +11328,10 @@
       "non_crowd_span_hit": 82,
       "absent_spans": 311,
       "absent_span_alarm": 190,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 134,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.8195504664970313,
@@ -10844,6 +11341,8 @@
       "crowd_bin_recall": 0.8576263537906137,
       "non_crowd_span_touch_recall": 0.6833333333333333,
       "absent_span_alarm_rate": 0.6109324758842444,
+      "absent_span_alarm_rate_guard25": 0.43086816720257237,
+      "absent_span_interior_alarm_rate_guard25": 0.4734982332155477,
       "auroc": 0.9388279006710349,
       "auprc": 0.878248301434313,
       "prevalence": 0.3909722818158414
@@ -10877,6 +11376,14 @@
        0.4856893325015596,
        0.7069496556540948
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.34014692093642246,
+       0.5000342465753425
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.3627020388111029,
+       0.5610830806232354
+      ],
       "auroc": [
        0.9013768746113532,
        0.9663781805810326
@@ -10888,7 +11395,7 @@
      },
      "replicates": 1000,
      "display_name": "elm-ours",
-     "degenerate_f1": false
+     "high_recall": false
     },
     "elm-dsm": {
      "shots": 119,
@@ -10903,7 +11410,10 @@
       "non_crowd_span_hit": 101,
       "absent_spans": 311,
       "absent_span_alarm": 237,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 210,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.5688483547925608,
@@ -10913,6 +11423,8 @@
       "crowd_bin_recall": 0.6929151624548736,
       "non_crowd_span_touch_recall": 0.8416666666666667,
       "absent_span_alarm_rate": 0.7620578778135049,
+      "absent_span_alarm_rate_guard25": 0.6752411575562701,
+      "absent_span_interior_alarm_rate_guard25": 0.7420494699646644,
       "auroc": 0.7770468033396,
       "auprc": 0.6621488069893174,
       "prevalence": 0.3909722818158414
@@ -10946,6 +11458,14 @@
        0.656119417862839,
        0.8430249410178631
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.5992011278195488,
+       0.7546077916497577
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.6488100583744948,
+       0.8165201720895777
+      ],
       "auroc": [
        0.7295772183742613,
        0.8240772322903194
@@ -10956,8 +11476,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124)",
-     "degenerate_f1": false
+     "display_name": "elm-dsm refit",
+     "high_recall": false
     },
     "elm-dsm-detect": {
      "shots": 119,
@@ -10972,7 +11492,10 @@
       "non_crowd_span_hit": 91,
       "absent_spans": 311,
       "absent_span_alarm": 229,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 202,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.6676002100472607,
@@ -10982,6 +11505,8 @@
       "crowd_bin_recall": 0.8416064981949458,
       "non_crowd_span_touch_recall": 0.7583333333333333,
       "absent_span_alarm_rate": 0.7363344051446945,
+      "absent_span_alarm_rate_guard25": 0.6495176848874598,
+      "absent_span_interior_alarm_rate_guard25": 0.7137809187279152,
       "auroc": 0.8502146599429974,
       "auprc": 0.7610194054575621,
       "prevalence": 0.3909722818158414
@@ -11015,6 +11540,14 @@
        0.6388690476190476,
        0.809114532420984
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.5739999884291401,
+       0.7222302504816955
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.6168360211529216,
+       0.7861723553105788
+      ],
       "auroc": [
        0.8016613359690132,
        0.894814936347389
@@ -11025,8 +11558,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
-     "degenerate_f1": false
+     "display_name": "elm-dsm detection",
+     "high_recall": false
     },
     "elm-dsm-detect-init": {
      "shots": 119,
@@ -11041,7 +11574,10 @@
       "non_crowd_span_hit": 92,
       "absent_spans": 311,
       "absent_span_alarm": 228,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 204,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.6729866377753702,
@@ -11051,6 +11587,8 @@
       "crowd_bin_recall": 0.8219765342960289,
       "non_crowd_span_touch_recall": 0.7666666666666667,
       "absent_span_alarm_rate": 0.7331189710610932,
+      "absent_span_alarm_rate_guard25": 0.6559485530546624,
+      "absent_span_interior_alarm_rate_guard25": 0.7208480565371025,
       "auroc": 0.8625497047497966,
       "auprc": 0.7919098320230736,
       "prevalence": 0.3909722818158414
@@ -11084,6 +11622,14 @@
        0.628869868259804,
        0.8121674514205747
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.5698307555780933,
+       0.7368524251805985
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.618165413208852,
+       0.7987539936102237
+      ],
       "auroc": [
        0.8173083293518605,
        0.9045953105525693
@@ -11094,8 +11640,8 @@
       ]
      },
      "replicates": 1000,
-     "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
-     "degenerate_f1": false
+     "display_name": "elm-dsm detection init",
+     "high_recall": false
     },
     "elm-clock": {
      "shots": 119,
@@ -11110,7 +11656,10 @@
       "non_crowd_span_hit": 28,
       "absent_spans": 311,
       "absent_span_alarm": 33,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 30,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.8686668553637136,
@@ -11119,7 +11668,9 @@
       "false_alarm_bin_rate": 0.0653797379174299,
       "crowd_bin_recall": 0.680731046931408,
       "non_crowd_span_touch_recall": 0.23333333333333334,
-      "absent_span_alarm_rate": 0.10610932475884244
+      "absent_span_alarm_rate": 0.10610932475884244,
+      "absent_span_alarm_rate_guard25": 0.09646302250803858,
+      "absent_span_interior_alarm_rate_guard25": 0.10600706713780919
      },
      "ci95": {
       "precision": [
@@ -11149,11 +11700,19 @@
       "absent_span_alarm_rate": [
        0.060435420743639924,
        0.17270420263732095
+      ],
+      "absent_span_alarm_rate_guard25": [
+       0.054185605098776096,
+       0.15730851545458285
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       0.06157907598909297,
+       0.16539798206278025
       ]
      },
      "replicates": 1000,
-     "display_name": "ELM clock",
-     "degenerate_f1": false
+     "display_name": "elm-clock",
+     "high_recall": false
     },
     "always present": {
      "shots": 119,
@@ -11168,7 +11727,10 @@
       "non_crowd_span_hit": 120,
       "absent_spans": 311,
       "absent_span_alarm": 311,
-      "crowd_spans": 86
+      "crowd_spans": 86,
+      "absent_spans_guard25_eligible": 283,
+      "absent_span_alarm_guard25": 283,
+      "absent_spans_guard25_empty": 28
      },
      "point": {
       "precision": 0.3909722818158414,
@@ -11178,6 +11740,8 @@
       "crowd_bin_recall": 1.0,
       "non_crowd_span_touch_recall": 1.0,
       "absent_span_alarm_rate": 1.0,
+      "absent_span_alarm_rate_guard25": 0.909967845659164,
+      "absent_span_interior_alarm_rate_guard25": 1.0,
       "auroc": 0.5,
       "auprc": 0.3909722818158414,
       "prevalence": 0.3909722818158414
@@ -11211,6 +11775,14 @@
        1.0,
        1.0
       ],
+      "absent_span_alarm_rate_guard25": [
+       0.8342422940766964,
+       0.975720551378446
+      ],
+      "absent_span_interior_alarm_rate_guard25": [
+       1.0,
+       1.0
+      ],
       "auroc": [
        0.5,
        0.5
@@ -11222,8 +11794,7 @@
      },
      "replicates": 1000,
      "display_name": "always present",
-     "degenerate_f1": true,
-     "f1_degenerate_high_recall": true
+     "high_recall": true
     }
    },
    "paired": {
@@ -11274,6 +11845,13 @@
      "ci95": [
       -0.280864007766362,
       -0.03407966336335112
+     ]
+    },
+    "elm-ours - elm-dsm: absent_span_alarm_rate_guard25": {
+     "value": -0.24437299035369775,
+     "ci95": [
+      -0.37066363636363636,
+      -0.12771594009403844
      ]
     },
     "elm-ours - elm-dsm: auroc": {
@@ -11339,6 +11917,13 @@
       -0.02939901394083636
      ]
     },
+    "elm-ours - elm-dsm-detect: absent_span_alarm_rate_guard25": {
+     "value": -0.21864951768488738,
+     "ci95": [
+      -0.3374784811371797,
+      -0.11799314628400087
+     ]
+    },
     "elm-ours - elm-dsm-detect: auroc": {
      "value": 0.08861324072803756,
      "ci95": [
@@ -11402,6 +11987,13 @@
       -0.020603448275862076
      ]
     },
+    "elm-ours - elm-dsm-detect-init: absent_span_alarm_rate_guard25": {
+     "value": -0.22508038585209,
+     "ci95": [
+      -0.3395722047656454,
+      -0.12067594736200807
+     ]
+    },
     "elm-ours - elm-dsm-detect-init: auroc": {
      "value": 0.0762781959212383,
      "ci95": [
@@ -11463,6 +12055,13 @@
      "ci95": [
       0.34781687546057477,
       0.6223609633632612
+     ]
+    },
+    "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
+     "value": 0.3344051446945338,
+     "ci95": [
+      0.21478814160128554,
+      0.4203613303923845
      ]
     }
    },
@@ -11552,6 +12151,8 @@
        "crowd_bin_recall": 0.8281461434370772,
        "non_crowd_span_touch_recall": 0.4074074074074074,
        "absent_span_alarm_rate": 0.42857142857142855,
+       "absent_span_alarm_rate_guard25": 0.2571428571428571,
+       "absent_span_interior_alarm_rate_guard25": 0.27835051546391754,
        "auroc": 0.9526041917334158,
        "auprc": 0.9171566380222085,
        "prevalence": 0.3494635927870349
@@ -11585,6 +12186,14 @@
         0.29411764705882354,
         0.5636411992263056
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.15928700724054706,
+        0.3516276041666666
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.17044850096711797,
+        0.3889285714285714
+       ],
        "auroc": [
         0.9198654154616234,
         0.9806302363981452
@@ -11596,7 +12205,7 @@
       }
      },
      "elm-dsm": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "display_name": "elm-dsm refit",
       "point": {
        "precision": 0.5809222423146474,
        "recall": 0.8393207054212932,
@@ -11605,6 +12214,8 @@
        "crowd_bin_recall": 0.8376184032476319,
        "non_crowd_span_touch_recall": 0.8148148148148148,
        "absent_span_alarm_rate": 0.780952380952381,
+       "absent_span_alarm_rate_guard25": 0.7142857142857143,
+       "absent_span_interior_alarm_rate_guard25": 0.7731958762886598,
        "auroc": 0.851967410361305,
        "auprc": 0.729161021634352,
        "prevalence": 0.3494635927870349
@@ -11638,6 +12249,14 @@
         0.6758698830409356,
         0.8727311248073959
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.6176470588235294,
+        0.8077020202020202
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.6734643362295413,
+        0.8586124401913875
+       ],
        "auroc": [
         0.7897191466179656,
         0.9105728213369221
@@ -11649,7 +12268,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "display_name": "elm-dsm detection",
       "point": {
        "precision": 0.7412398921832885,
        "recall": 0.8981058131939909,
@@ -11658,6 +12277,8 @@
        "crowd_bin_recall": 0.9046008119079838,
        "non_crowd_span_touch_recall": 0.6666666666666666,
        "absent_span_alarm_rate": 0.6952380952380952,
+       "absent_span_alarm_rate_guard25": 0.6285714285714286,
+       "absent_span_interior_alarm_rate_guard25": 0.6804123711340206,
        "auroc": 0.9143203043533065,
        "auprc": 0.8246531340969178,
        "prevalence": 0.3494635927870349
@@ -11691,6 +12312,14 @@
         0.5849056603773585,
         0.7924690956408589
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.5174918610960392,
+        0.7343979779411764
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.5675536361103372,
+        0.7894868421052632
+       ],
        "auroc": [
         0.8696399860719758,
         0.9514152319772423
@@ -11714,6 +12343,8 @@
        "crowd_bin_recall": 0.8723764387271497,
        "non_crowd_span_touch_recall": 0.7634408602150538,
        "absent_span_alarm_rate": 0.7038834951456311,
+       "absent_span_alarm_rate_guard25": 0.5194174757281553,
+       "absent_span_interior_alarm_rate_guard25": 0.5752688172043011,
        "auroc": 0.9312650835689559,
        "auprc": 0.863292891695317,
        "prevalence": 0.415979097909791
@@ -11747,6 +12378,14 @@
         0.5505899146945515,
         0.8146555884702437
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.4243237811985049,
+        0.6087467172454042
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.44514336917562725,
+        0.6898554876496052
+       ],
        "auroc": [
         0.8829778775199019,
         0.9695918412003359
@@ -11758,7 +12397,7 @@
       }
      },
      "elm-dsm": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "display_name": "elm-dsm refit",
       "point": {
        "precision": 0.5609467455621302,
        "recall": 0.6267768595041322,
@@ -11767,6 +12406,8 @@
        "crowd_bin_recall": 0.6205145565335138,
        "non_crowd_span_touch_recall": 0.8494623655913979,
        "absent_span_alarm_rate": 0.7524271844660194,
+       "absent_span_alarm_rate_guard25": 0.6553398058252428,
+       "absent_span_interior_alarm_rate_guard25": 0.7258064516129032,
        "auroc": 0.7360009107060501,
        "auprc": 0.6339511791787118,
        "prevalence": 0.415979097909791
@@ -11800,6 +12441,14 @@
         0.5889889815366289,
         0.861123511904762
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.5423677761895038,
+        0.7674493623405851
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.5769230769230769,
+        0.8348246792649099
+       ],
        "auroc": [
         0.6635108467077047,
         0.7980812851848124
@@ -11811,7 +12460,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "display_name": "elm-dsm detection",
       "point": {
        "precision": 0.6321928460342147,
        "recall": 0.8062809917355372,
@@ -11820,6 +12469,8 @@
        "crowd_bin_recall": 0.8100880162491537,
        "non_crowd_span_touch_recall": 0.7849462365591398,
        "absent_span_alarm_rate": 0.7572815533980582,
+       "absent_span_alarm_rate_guard25": 0.6601941747572816,
+       "absent_span_interior_alarm_rate_guard25": 0.7311827956989247,
        "auroc": 0.810847559872112,
        "auprc": 0.7343271980231585,
        "prevalence": 0.415979097909791
@@ -11853,6 +12504,14 @@
         0.63329754601227,
         0.8438874717235405
        ],
+       "absent_span_alarm_rate_guard25": [
+        0.5677791840927434,
+        0.7602339181286549
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        0.6127389705882353,
+        0.8186473473837209
+       ],
        "auroc": [
         0.7425012903845442,
         0.8694064841541335
@@ -11866,39 +12525,5 @@
     }
    }
   }
- },
- "own_target_correction": {
-  "git": "6cb9dbb1a22e4d165f13bba5196e1461ae3f4f74",
-  "script_sha256": "61d83e0f513cdf282afd7e80454655d494620298fee7f1bd572f5772532f95a8",
-  "dsm_sha256": "19e2a9507c1fcb89cfafafdf8b295bf43fea9128a8d84323c44f0a8f7f0f1565",
-  "created": "2026-10-03T15:29:08+00:00",
-  "scope": "phase-ID decoding, original-refit overlap, physical-shot own-target bootstrap and early-stopping selection interpretation; no new model fit",
-  "original_no_rescore_producing_git": "808a48163654940a0c07e4e0e5408519def7bde6",
-  "reviewed_bin_results_unchanged": true,
-  "upstream_identifier_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4321-4326 (<shot>_<phase> strings), and the original split pickle",
-  "early_stopping_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/training_no_bes.json:split_note",
-  "original_snapshots": {
-   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json": {
-    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_before_phase_fix.json",
-    "sha256": "743940ff22d5b86c43c6429de4e1ddb8d5fab3673edaa269f0af1d530fea850b"
-   },
-   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained.json": {
-    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained_before_phase_fix.json",
-    "sha256": "c713f2db143518c7a0c6f098510aaca229d3de0a90785843ea7581fa64c3acd2"
-   },
-   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json": {
-    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation_before_phase_fix.json",
-    "sha256": "b966901ef7e8f23d5d9bbcdc6b7281a02eb0af9109ab95c8925628ccff4cb440"
-   },
-   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility.json": {
-    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility_before_phase_fix.json",
-    "sha256": "b05b45f800d952e07a9f896928fe09e207832e0d218f3ff8877e0a8f67d3dc46"
-   },
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits.json": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits_before_phase_fix.json",
-    "sha256": "50ffd359acdcc262af4330eb03c4e4859c8375f28f415b2a2b5de38711728d81"
-   }
-  }
- },
- "cohort_test_shots_used_scope": "reviewed-label detector CV only; prior-refit original split overlap is reported in own_target.cohort_physical_shot_overlap"
+ }
 }

@@ -15,7 +15,7 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 
 **Dataset File(s)**: `elm_labels_dict.pkl`, `elm_labels_dict_wpqh.pkl`, `elm_survival_labels.pkl`, `elm_survival_labels_wpqh.pkl`
 
-**Author**:
+**Author**: Hiro Farre Josep Kaga
 
 **Description**: The original `wpqh_elm_hiro` label pickles are now in `raw/`. The separate D-alpha clock described above remains a producer.
 
@@ -37,81 +37,57 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 
 **Author**:
 
-**Description**: The DSM forecast was fitted by labelmaker on the ELM-survival rows of the `wpqh_elm_hiro` project (629,023 rows, 60 non-BES columns), because upstream's graphs need 64 BES channels the corpus fills on 2 of 24 sampled shots.
+**Description**: The elm-dsm survival refit uses the ELM-survival rows of `wpqh_elm_hiro` with 60 non-BES columns. Its served output is an offline risk score with centered-NBI lookahead; see the current protocol for input, normalization and physical-shot exposure.
 
 **Publications**:
 
 ## Models
-**stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (forecast, not a detector)
+
+**stable**: elm-dsm | 2026_09_06 (offline risk score)
 
 **latest**: elm-ours | 2026_10_03
 
 **all**:
 
-- elm-ours | 2026_10_03 | AUROC: 0.941 | AUPRC: 0.877 | F1: 0.830 | absent-span alarm rate: 0.596 (119 shots/12,409 50 ms bins (primary reviewed bins); 1D U-Net on FS02-FS04 D-alpha and density, no BES; 5-fold shot-grouped CV)
-- d3d_elm_time_to_event_dsm | 2026_10_03 | AUROC: 0.777 | AUPRC: 0.662 | F1: 0.627 | absent-span alarm rate: 0.762 (119 shots/11,653 50 ms bins (common DSM rows); DSM refit, limited inputs (60 of the original 124); survival forecast read as a detector)
-- elm-dsm-detect | 2026_10_03 | AUROC: 0.850 | AUPRC: 0.761 | F1: 0.743 | absent-span alarm rate: 0.736 (119 shots/11,653 50 ms bins (common DSM rows); DSM refit, limited inputs (60 of the original 124), detection objective)
-- elm_clock | 2026_10_03 | AUROC: -- | AUPRC: -- | F1: 0.757 | absent-span alarm rate: 0.105 (119 shots/12,409 50 ms bins (primary reviewed bins); rule; the review started from this clock)
-- elmo | 2026_10_03 | AUROC: 0.918 | AUPRC: 0.833 | F1: 0.842 | absent-span alarm rate: 0.440 (73 shots/6,843 50 ms bins (primary reviewed bins); ELM-O, O'Shea et al. 2023 reimplementation, eta 0.997; requires BES)
+- elm-ours | AUROC: 0.941 [0.906, 0.967]; AUPRC: 0.877 [0.774, 0.949]; F1: 0.830 [0.778, 0.871] (119 shots/12,409 50 ms bins; all reviewed shots)
+- ELM-O | AUROC: 0.918 [0.877, 0.951]; AUPRC: 0.833 [0.753, 0.890]; F1: 0.842 [0.789, 0.885] (73 shots/6,843 50 ms bins; BES subset, ELM-O chunks)
+- elm-clock | AUROC: --; AUPRC: --; F1: 0.757 [0.680, 0.827] (119 shots/12,409 50 ms bins; all reviewed shots)
+- elm-dsm refit | AUROC: 0.777 [0.730, 0.824]; AUPRC: 0.662 [0.592, 0.736]; F1: 0.627 [0.559, 0.692] (119 shots/11,653 50 ms bins; all reviewed shots)
+- elm-dsm detection | AUROC: 0.850 [0.802, 0.895]; AUPRC: 0.761 [0.671, 0.834]; F1: 0.743 [0.680, 0.798] (119 shots/11,653 50 ms bins; all reviewed shots)
+- elm-dsm detection init | AUROC: 0.863 [0.817, 0.905]; AUPRC: 0.792 [0.710, 0.857]; F1: 0.738 [0.675, 0.793] (119 shots/11,653 50 ms bins; all reviewed shots)
+- Always-present | AUROC: 0.500 [0.500, 0.500]; AUPRC: 0.376 [0.322, 0.430]; F1: 0.546 [0.487, 0.601]† (119 shots/12,409 50 ms bins; all reviewed shots)
 
-`elm-ours` has AUROC 0.941 [0.906, 0.967], AUPRC 0.877 [0.774, 0.949]
-and F1 0.830 [0.778, 0.871] on the 119-shot primary set. On the 73-shot BES
-set (6,843 identical bins), elm-ours and ELM-O have similar point estimates;
-no significant difference detected: F1 0.845 versus 0.842, paired difference
-+0.002 [-0.052, 0.058]. Their absent-span alarm rates are 0.610 versus 0.440.
-Detector-positive absent spans are annotation disagreements, not verified label
-errors. Non-crowd present spans are not verified single ELMs, and a detected
-interval touching one is not an onset match. The onset head's agreement with span
-starts is weak; those starts are not independently verified millisecond ELM times.
-The all119 F1 difference from the clock is +0.073 [-0.003, 0.151].
-Sources: `outputs/labeler/elm/ours/evaluation.json:sets.<set>.methods` and `paired`.
+Brackets are 95% shot-bootstrap intervals; † marks recall ≥0.99. Always-present precision equals prevalence and recall is 1; full numeric precision/recall and intervals are in the tables and protocol.
 
-The limited-input DSM refit was trained on Hiro's legacy onset/survival source;
-its detection variants use the reviewed intervals. Ip/Bt were fetched for the
-reviewed shots missing them. The photodiodes are mean-filled on every shot,
-and CO2 remains missing on 75 shots. Source: `outputs/labeler/elm/dsm/evaluation.json:
-model_context`, `row_diagnostics` and `sets.all119.methods`.
+All detector fits use five physical-shot-grouped folds and exclude cohort blind-test shots from new fitting/selection. ELM-O needs BES; elm-clock seeded the review. Primary and common DSM bin sets differ and are labelled separately. Sources: `outputs/labeler/elm/{ours,dsm}/evaluation.json:sets`.
 
-Reference audit: Hiro's table overlaps 8 reviewed shots. The full majority audit
-covers 837 bins, with M = 60 and P = 14 on 782 known-review bins; 53 review-uncertain
-bins include 47 legacy-positive bins, and 2 mixed/unlabelled bins are listed separately.
-The restricted detector swap uses 641 interior bins with DSM rows (M = 40, P = 4),
-a deviation from the AE audit. These are interval-occupancy versus onset-bin
-comparisons. AUROC ordering and the leading method are unchanged; weaker methods
-reorder on F1: exactly the clock/DSM survival-refit pair on both the 8-shot set
-and the 7-shot BES subset. Source: `outputs/labeler/elm/swap/evaluation.json:
-interval_audit`, `swap.<set>.comparison.order_flips`. Earlier prefetch pairs are
-preserved separately. Full protocol, intervals, input limitations and artifact
-paths: [elm_ours.md](../../../docs/labeler/elm_ours.md).
+Raw / 25 ms edge-guarded absent-span touch rates (same denominator):
 
-The fixed DSM refit and initialized detection variant retain prior source-shot
-exposure: five reviewed shots were in source training, one in source validation;
-cohort blind-test shot 190646 was in source training and 190532 in early-stopping
-validation. New detector fits and threshold selection exclude cohort test shots.
-These DSM comparisons are supplemental; the source validation scores are not an
-untouched held-out evaluation. Physical-shot overlap and grouping are recorded in
-`outputs/labeler/elm/dsm/evaluation.json:own_target` and described in the linked protocol.
+- elm-ours, all119: 0.596 [0.478, 0.689] / 0.427 [0.343, 0.495]
+- elm-ours, bes73: 0.610 [0.452, 0.742] / 0.436 [0.351, 0.511]
+- ELM-O, bes73: 0.440 [0.301, 0.623] / 0.307 [0.200, 0.444]
 
-ELM-O's hard calls use eta 0.997 and BES threshold 1 V; AUROC/AUPRC come from the
-nested eta sweep on the stated bins. The earlier inspection of selected worst
-absent spans did not count independently verified physical ELMs. On David Smith's
-separate labelled windows the reimplementation reproduces the reported precision
-and recall; this is a different evaluation from the reviewed-span benchmark.
-Protocol and sources: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
+Centered 50 ms smoothing can spill detected runs across span edges. Short empty guarded interiors are counted separately; the protocol also gives the rate restricted to nonempty interiors. These are annotation disagreements, not independently verified physical false alarms. The occupancy target differs between 33 per-ELM/non-crowd-annotated shots and 76 crowd-annotated shots. The unsupported onset head is dropped from paper outputs; checkpoints retain its auxiliary training loss.
+
+Every elm-dsm variant has no D-alpha input (pcphd02/03 mean-filled); 50 ms-mean serving of a 1 ms-trained model; CO2 missing on 75/119. The 1 ms training describes the source survival refit; detection heads train on reviewed 50 ms-mean rows. The refit is an offline risk score with 25 ms centered-NBI lookahead (not a causal forecast). Every variant, including scratch detection, uses upstream normalization constants computed before the upstream split, including blind-cohort source shots 190646 and 190532 (feature-statistics exposure). Refit and initialized detection also inherit source fitting; five overlap shots (190637,190643,192721,192751,196541) are in-sample. Physical membership is propagated to the adapter so exposed shots are not called held out. Source: `dsm/evaluation.json:model_context,own_target`.
+
+The legacy onset table uses Hiro Farre Josep Kaga annotations, compiled by labels_format.py/source_formatters, and overlaps eight reviewed shots. The swap reports onset bins beside occupancy conversion at 100/200/300 ms gap tolerances, with M/P/recall and rankings under every reference. A separate three-shot DSM-source-unexposed analysis retains the normalization disclosure. Three full new-seed CV repeats report spread without choosing a best seed. Sources: `swap/evaluation.json` and `ours/seed_repeats.json`.
+
+Current protocol, all intervals, seed results, limitations and artifacts: [elm_ours.md](../../../docs/labeler/elm_ours.md). ELM-O's independent BES-window benchmark is described in [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md).
 
 ## Inputs
-**d3d_elm_time_to_event_dsm**:
+**elm-dsm** (internal adapter slug `d3d_elm_time_to_event_dsm`):
 - `ip`, `bt`, `gas`, `pinj`, `tinj`, `ech`
 - `co2_density_slow` `r0`, `v1`, `v2`, `v3`
 - `ece_slow` (48 ch)
 - `pcphd02`, `pcphd03` (always mean-filled)
 
-**elm_clock**:
+**elm-clock**:
 - `D-alpha FS01..FS08` (first finite channel)
 - `CO2 density R0`, `pinj_total` (L-mode gate, `dalpha_lh`)
 - `Ip` (plasma start)
 
-**elmo**:
+**ELM-O**:
 - `interferometer` chords `DENV2F`, `DENV3F` (`\BCI::`, 100 kS/s)
 - `filterscopes` FS02, FS03, FS04 (`\SPECTROSCOPY::`, 50 kS/s)
 - `BES` (64 ch; 500 kS/s in the corpus, 1 MS/s in Smith's windows)
@@ -125,7 +101,7 @@ Protocol and sources: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmar
 - `D-alpha FS` (the ELM spans' channel)
 
 ## Method
-The detector is `elm_clock` over the eight real D-alpha filterscope channels
+The elm-clock detector reads the eight real D-alpha filterscope channels
 (10 kHz): each min-max-normalized filterscope signal is smoothed (0.64 ms) and
 peaks are picked with prominence 0.03 and a minimum separation of 3 ms
 (`elmcycle.detect_elms`, ported). A candidate is accepted only if its
@@ -134,14 +110,24 @@ signal humps without verifying their physical origin. Each accepted burst is a p
 `elm`; the clock also writes `elm_free` intervals (rate < 5 Hz over a 100 ms window
 for >= 50 ms) and the ELM rate. Coverage is the D-alpha span actually processed.
 
-`d3d_elm_time_to_event_dsm` writes **forecasts** - the probability of an ELM within
-5, 10, 20 and 50 ms - and a forecast is never reported as an observed event.
+elm-dsm writes offline risk scores for an ELM within 5, 10, 20 and 50 ms.
+Centered NBI preprocessing includes 25 ms lookahead, so these are not causal
+forecasts and do not report observed events. Every variant uses upstream
+normalization constants computed before its split, including blind-cohort
+source shots 190646 and 190532.
 
 Known gap: a narrow ELM riding on a broad D-alpha hump measures wide and is dropped.
 
 Benchmark: the rule-based ELM-O detector (O'Shea et al. 2023: interferometers, filterscopes and BES, no learning) is the benchmark for these labels. It was re-implemented from the paper (the public code has no licence) and scored on David Smith's labelled windows and on the reviewed ELM spans, non-crowd present spans and crowd spans apart: [elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md). It needs BES, which 73 of the 119 review shots have in the corpus.
 
-`elm-ours` (`labeler.elm`) is a 1D U-Net (PhaseNet / U-Time kind, 401,714 parameters) that reads the filterscopes and the line density, not BES, and writes per millisecond the probability of ELMy time and a second head trained on reviewed non-crowd span starts. Those starts are not verified physical ELM onsets. It is trained on the reviewed spans (present, crowds included, against absent) with five shot-grouped folds over the 119 review shots, so every shot has one out-of-fold prediction.
+`elm-ours` (`labeler.elm`) is a 1D U-Net (401,714 parameters) that reads
+filterscopes and fast density without BES and writes per-millisecond occupancy
+probability. It uses five shot-grouped folds over the 119 reviewed shots,
+with three additional training-seed repeats on the same partitions. The
+auxiliary span-start head is dropped from paper outputs; the existing
+checkpoints retain its loss. Fast-density values retain their numerical scale;
+physical ordinate units were not retained in the original source cache and are
+explicitly unverified, rather than speculatively rescaled.
 
 ## Alias
 edge localized mode, edge localised mode, elm, elms, elmy, elming

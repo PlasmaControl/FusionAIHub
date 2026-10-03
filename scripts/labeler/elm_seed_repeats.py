@@ -64,6 +64,16 @@ def check_partitions(source_dir, repeat_dir):
         k: v for k, v in repeat["config"].items() if k != "seed"
     }:
         raise ValueError(f"changed training hyperparameters: {repeat_dir}")
+    first_data, next_data = (
+        record["provenance"]["data"] for record in (source, repeat)
+    )
+    for key in ("reviewed_labels", "cohort"):
+        if first_data[key]["sha256"] != next_data[key]["sha256"]:
+            raise ValueError(f"changed {key} content: {repeat_dir}")
+    if {row["shot"]: row["sha256"] for row in first_data["inputs"]} != {
+        row["shot"]: row["sha256"] for row in next_data["inputs"]
+    }:
+        raise ValueError(f"changed prepared-input content: {repeat_dir}")
     for first, second in zip(folds_from(source_dir), folds_from(repeat_dir)):
         for key in ("train", "inner_val", "test"):
             if first[key] != second[key]:
@@ -178,6 +188,39 @@ def aggregate(args, root, source_dir):
         if set_definitions is not None and definitions != set_definitions:
             raise ValueError(f"changed evaluation shots or bins: {name}")
         set_definitions = definitions
+        fold_records = folds_from(repeat_dir)
+        selection = []
+        for fold in fold_records:
+            selection.append(
+                {
+                    "fold": fold["fold"],
+                    "best": fold["best"],
+                    "nonfinite_validation_epochs": {
+                        metric: sum(
+                            not np.isfinite(row[metric]) for row in fold["history"]
+                        )
+                        for metric in (
+                            "val_auprc",
+                            "val_auroc",
+                            "val_f1",
+                            "val_threshold",
+                        )
+                    },
+                    "validation_history": [
+                        {
+                            field: row[field]
+                            for field in (
+                                "epoch",
+                                "val_auprc",
+                                "val_auroc",
+                                "val_f1",
+                                "val_threshold",
+                            )
+                        }
+                        for row in fold["history"]
+                    ],
+                }
+            )
         results.append(
             {
                 "run": name,
@@ -189,12 +232,16 @@ def aggregate(args, root, source_dir):
                 "training_code": run["provenance"]["code"],
                 "evaluation": str(eval_dir / "evaluation.json"),
                 "evaluation_sha256": sha256_of(eval_dir / "evaluation.json"),
+                "evaluation_sources": read_record(
+                    eval_dir / "evaluation_provenance.json"
+                )["sources"],
                 "selected_epochs": [
                     row["best"]["epoch"] for row in run["fold_records"]
                 ],
+                "fold_selection": selection,
                 "training_seconds": sum(
                     epoch["seconds"]
-                    for fold in folds_from(repeat_dir)
+                    for fold in fold_records
                     for epoch in fold["history"]
                 ),
                 "event_thresholds": evaluation["event_thresholds"],
@@ -239,6 +286,7 @@ def aggregate(args, root, source_dir):
         ],
         "cohort_test_shots_used": cohort_splits["test"],
         "cohort_split_counts": dict(cohort_splits),
+        "input_content_matches_source": True,
         "sets": set_definitions,
         "ci_method": "95% percentile shot bootstrap, 1000 replicates per run; "
         "seed spread is reported separately and is not a CI.",
