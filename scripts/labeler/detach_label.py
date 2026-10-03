@@ -433,9 +433,14 @@ def main() -> None:
     for key in work.columns:
         if key.startswith(("aux_", "afrac_", "prad_", "tangtv_")) or key == "split":
             labelled[key] = work[key].to_numpy()
-    labelled["confidence"] = labelled[
-        ["post_attached", "post_detached", "post_marfe"]
-    ].max(axis=1)
+    # the posterior of the state the bin ended up with (a bin the despeckle pass
+    # moved into its neighbours' state keeps its own, low, posterior of that state)
+    post = labelled[["post_attached", "post_detached", "post_marfe"]].to_numpy()
+    final = labelled.state_lm.to_numpy()
+    certain = np.isin(final, core.VOTE_STATES)
+    labelled["confidence"] = np.where(
+        certain, post[np.arange(len(post)), np.clip(final - 1, 0, 2)], np.nan
+    )
     labelled[labelled.assessed].to_csv(root() / "labels_bins.csv.gz", index=False)
 
     lm_state = labelled.state_lm.to_numpy()

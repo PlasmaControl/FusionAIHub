@@ -77,7 +77,7 @@ EFIT_SENTINELS = (-0.89, -9.99, 0.0)
 
 # --- Common ------------------------------------------------------------------------
 #: A fine-grid sample belongs to an ELM when the divertor D-alpha rises this many
-#: robust sigmas over its low-passed baseline; the bins an ELM touches are dropped
+#: robust sigmas over its low-passed baseline; the samples inside ELMs are dropped
 #: from Afrac and Prad (Eldon 2017's detector; Leonard 2018: analyse between ELMs).
 ELM_SIGMA = 4.0
 #: ... and by at least this fraction of the baseline itself: a quiet, noisy D-alpha
@@ -89,5 +89,3 @@ ELM_MIN_REL_RISE = 0.5
 MAX_ELM_FRACTION = 0.8
 #: |dIp/dt| above this (MA/s) is a ramp: Afrac's model is not valid (Eldon 2022).
 RAMP_DIP_MAX_MA_PER_S = 1.0
-#: The attached baseline must be at least this long (ms) to fit a reference level.
-MIN_BASELINE_MS = 300.0
