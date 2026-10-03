@@ -19,6 +19,65 @@ def metric_cell(metric: dict, *, latex: bool = False) -> str:
     return text
 
 
+def interpretation(record: dict) -> list[str]:
+    """Describe supervision effects and clean-selection rankings from saved scores."""
+    lines = ["", "## Interpretation", ""]
+    for cohort, label in (("all_60", "60 shots"), ("fair_19", "shared 19 shots")):
+        for reference, result in record["results"][cohort]["references"].items():
+            summary = result["seed_summary"]
+            # Group insertion order determines the stored subtraction direction.
+            pairs = summary["paired_differences"]
+            key = "ae-ours-dense minus ae-ours-legacy"
+            reverse = key not in pairs
+            if reverse:
+                key = "ae-ours-legacy minus ae-ours-dense"
+            effects = []
+            for metric in ("auroc", "auprc", "f1"):
+                score = dict(pairs[key][metric])
+                if reverse:
+                    score["mean"] = -score["mean"]
+                    if score["ci95"] is not None:
+                        lo, hi = score["ci95"]
+                        score["ci95"] = [-hi, -lo]
+                effects.append(f"{metric.upper()} {metric_cell(score)}")
+            lines += [
+                f"Dense-supervised minus legacy-supervised ae-ours on the {label}, "
+                f"against {reference}: " + "; ".join(effects) + ".",
+                "",
+            ]
+    fair = record["results"]["fair_19"]["references"]
+    for reference, result in fair.items():
+        methods = result["seed_summary"]["methods"]
+        for metric in ("auroc", "auprc", "f1"):
+            ranked = sorted(
+                methods, key=lambda n: methods[n][metric]["mean"], reverse=True
+            )
+            lines += [
+                f"On the shared 19 shots against {reference}, the {metric.upper()} "
+                "point-estimate ranking is "
+                + " > ".join(
+                    f"{name} ({methods[name][metric]['mean']:.3f})" for name in ranked
+                )
+                + ".",
+                "",
+            ]
+    lines += [
+        (
+            "These rankings use clean selection for every ae-ours arm. Their "
+            "paired intervals above determine which gaps remain uncertain; a "
+            "point-estimate ordering alone does not establish a difference. "
+            "F1 also reflects calibration against each model's training target. "
+            "Garcia probabilities come from fixed saved models, with thresholds "
+            "calibrated on the six available selection shots. This experiment "
+            "isolates supervision within ae-ours and resolves "
+            "its selection overlap, while comparisons across architectures retain "
+            "different training recipes."
+        ),
+        "",
+    ]
+    return lines
+
+
 def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
     """Keep numeric doc, README and LaTeX content tied to the saved JSON."""
     doc = [
@@ -227,6 +286,7 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
                     )
                     + " |"
                 )
+    doc += interpretation(record)
     doc += [
         "",
         "## Reproduction",
