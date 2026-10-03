@@ -205,7 +205,7 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 
 ### Split sensitivity — rwm-brf (fixed hyperparameters)
 
-| model | fold seed | primary AUROC | high-beta AUROC | detection rate | unlabelled alarm incidence |
+| model | fold seed | primary AUROC | high-beta conditional AUROC | detection rate | unlabelled alarm incidence |
 |---|---|---|---|---|---|
 | rwm-brf | 0 | 0.760 | 0.602 | 0.188 | 0.144 |
 | rwm-brf | 1 | 0.787 | 0.651 | 0.167 | 0.280 |
