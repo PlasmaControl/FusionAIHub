@@ -1,6 +1,6 @@
 #!/bin/bash
 # Poll a submitted array, moving >30-minute pending tasks to shared GPU 0.
-# Usage: bash scripts/labeler/ae_supervision_swap_watch.sh JOB_ID SUBMIT_ISO_TIME
+# Usage: bash scripts/labeler/ae_supervision_swap_watch.sh JOB_ID SUBMIT_ISO_TIME [HEAD_PID]
 set -euo pipefail
 JOB_ID=${1:?array job ID required}
 DEADLINE=$(( $(date -d "${2:?submit timestamp required}" +%s) + 1800 ))
@@ -13,12 +13,23 @@ OUT="$LABELER_ROOT/round4/aeswap"
 PYTHON=${AESWAP_PYTHON:-$LABELER_ROOT/envs/phase3/bin/python}
 cd "$REPO"
 ARMS=(legacy dense threeway)
-HEAD_PID=
+HEAD_PID=${3:-}
+HEAD_EXTERNAL=0
 FALLBACK_STARTED=0
+if [[ -n $HEAD_PID ]]; then
+    HEAD_EXTERNAL=1
+    FALLBACK_STARTED=1
+fi
+
+read_queue() {
+    # Query the user queue: a finished array may no longer be a valid job ID.
+    squeue -h -r -u "$(id -un)" -o '%i %t %R' | \
+        awk -v id="$JOB_ID" '$1 == id || index($1, id "_") == 1'
+}
 
 while true; do
     date -Is
-    QUEUE=$(squeue -h -r -j "$JOB_ID" -o '%i %t %R')
+    QUEUE=$(read_queue)
     echo "$QUEUE"
     COMPLETE=0
     for TASK in {0..8}; do
@@ -30,7 +41,9 @@ while true; do
     done
     echo "completed $COMPLETE / 9"
     if (( COMPLETE == 9 )); then
-        [[ -z $HEAD_PID ]] || wait "$HEAD_PID"
+        if [[ -n $HEAD_PID && $HEAD_EXTERNAL == 0 ]]; then
+            wait "$HEAD_PID"
+        fi
         exit 0
     fi
     if (( FALLBACK_STARTED == 0 && $(date +%s) > DEADLINE )); then
@@ -51,13 +64,13 @@ while true; do
         FALLBACK_TASKS=()
         for ID in "${PENDING[@]}"; do
             # Restrict cancellation to pending state, avoiding a start-time race.
-            STATE=$(squeue -h -r -j "$JOB_ID" -o '%i %t' | \
+            STATE=$(read_queue | \
                 awk -v id="$ID" '$1 == id {print $2}')
             if [[ $STATE == PD ]]; then
                 scancel -t PENDING "$ID"
                 sleep 1
             fi
-            STATE=$(squeue -h -r -j "$JOB_ID" -o '%i %t' | \
+            STATE=$(read_queue | \
                 awk -v id="$ID" '$1 == id {print $2}')
             if [[ -z $STATE ]]; then
                 FALLBACK_TASKS+=("${ID##*_}")
@@ -85,7 +98,9 @@ while true; do
         fi
     fi
     if [[ -n $HEAD_PID ]] && ! kill -0 "$HEAD_PID" 2>/dev/null; then
-        wait "$HEAD_PID" || exit 1
+        if (( HEAD_EXTERNAL == 0 )); then
+            wait "$HEAD_PID" || exit 1
+        fi
         HEAD_PID=
     fi
     if [[ -z $QUEUE && -z $HEAD_PID ]]; then
