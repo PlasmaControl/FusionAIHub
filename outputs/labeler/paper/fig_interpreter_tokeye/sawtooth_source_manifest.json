@@ -1,0 +1,47 @@
+{
+ "selected_at_utc": "2026-10-03T17:43:06.039235+00:00",
+ "original_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+ "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
+ "completion_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/cohort_labels.json",
+ "completion_sha256": "79a2c18ed4aae29ba2f08aa8caaeff0c74c23cf7a24b4b150b6aa943500f10c4",
+ "completion_requested_count": 500,
+ "files": [
+  {
+   "shot": 201978,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/201978.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201978.json",
+   "sha256": "b659e2927436add70947e1274e0912ad3e8f5b1764f53355bd9e904ee4b799ba"
+  },
+  {
+   "shot": 201973,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/201973.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
+   "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73"
+  },
+  {
+   "shot": 203187,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/203187.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json",
+   "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c"
+  },
+  {
+   "shot": 186636,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/186636.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/186636.json",
+   "sha256": "1f1f5a4a5ca8513e75c69f8e9dfef34ecc7b7bd934a4282113096a4016dcb318"
+  },
+  {
+   "shot": 191376,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/191376.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json",
+   "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced"
+  },
+  {
+   "shot": 191782,
+   "original_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots/191782.json",
+   "snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
+   "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
+  }
+ ],
+ "completion_snapshot_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/cohort_labels.json"
+}

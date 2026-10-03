@@ -27,7 +27,7 @@ export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
 export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
 export LABELER_NO_FETCH=1 PYTHONPATH="$PWD/src" MPLBACKEND=Agg
 # Use the pinned, completed export named in the current report.
-export SAWTOOTH_SOURCE="$LABELER_ROOT/round4/saw/fix/shots"
+export SAWTOOTH_SOURCE="/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots"
 pixi run --frozen --no-install \
   --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker \
   python scripts/labeler/paper/fig_interpreter_tokeye.py --shot 201978 \
@@ -104,5 +104,5 @@ pixi run --frozen --no-install \
 
 The audit checks committed renderer hashes, actual figure hashes, physics
 state rows and source hashes, pixel clipping, caption length and unique labels,
-external/committed identity before and after rebuild, PDF size, non-blind splits,
+external/committed identity before and after a scratch rebuild, PDF size, non-blind splits,
 and byte-identical primary PDF/PNG rebuilding.

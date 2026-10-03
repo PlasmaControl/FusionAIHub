@@ -46,13 +46,15 @@
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
-   "2": "#56B4E9",
-   "3": "#009E73"
+   "2": "#009E73",
+   "3": "#F0E442"
   },
+  "n_brightness_rule": "constant full colour for every measured n pixel",
+  "raw_normalisation": "3rd/99.8th percentiles separately in each band",
   "unkeyed_n_colour": "#8C6BB1",
   "bands_khz": {
    "alfven_eigenmode": [
-    60.0,
+    80.0,
     null
    ],
    "neoclassical_tearing_mode": [
@@ -86,6 +88,14 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": []
   },
   "neoclassical_tearing_mode": {
@@ -110,6 +120,14 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": []
   },
   "confinement": {
@@ -132,6 +150,269 @@
     "4": "WPQH-mode",
     "5": "uncertain"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 2127.0,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2168.0,
+     "end_ms": 2189.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2200.072,
+     "end_ms": 2239.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2250.072,
+     "end_ms": 2289.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2300.072,
+     "end_ms": 2339.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2350.072,
+     "end_ms": 2389.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2400.072,
+     "end_ms": 2439.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2450.072,
+     "end_ms": 2482.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2482.0,
+     "end_ms": 2489.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2489.955,
+     "end_ms": 2500.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2500.072,
+     "end_ms": 2539.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2539.955,
+     "end_ms": 2550.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2550.072,
+     "end_ms": 2589.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2589.955,
+     "end_ms": 2600.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2600.072,
+     "end_ms": 2639.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2639.955,
+     "end_ms": 2650.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2650.072,
+     "end_ms": 2689.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2689.955,
+     "end_ms": 2700.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2700.072,
+     "end_ms": 2739.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2739.955,
+     "end_ms": 2750.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2750.072,
+     "end_ms": 2789.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2789.955,
+     "end_ms": 2800.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2800.072,
+     "end_ms": 2839.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2839.955,
+     "end_ms": 2850.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2850.072,
+     "end_ms": 2889.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2889.955,
+     "end_ms": 2900.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2900.072,
+     "end_ms": 2939.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2939.955,
+     "end_ms": 2950.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 2950.072,
+     "end_ms": 2989.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 2989.955,
+     "end_ms": 3010.069,
+     "state": "present"
+    },
+    {
+     "start_ms": 3010.069,
+     "end_ms": 3039.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 3039.955,
+     "end_ms": 3050.071,
+     "state": "present"
+    },
+    {
+     "start_ms": 3050.071,
+     "end_ms": 3089.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 3089.955,
+     "end_ms": 3100.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 3100.072,
+     "end_ms": 3139.955,
+     "state": "present"
+    },
+    {
+     "start_ms": 3139.955,
+     "end_ms": 3150.072,
+     "state": "present"
+    },
+    {
+     "start_ms": 3150.072,
+     "end_ms": 3178.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3178.0,
+     "end_ms": 3188.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3351.0,
+     "end_ms": 3389.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3389.954,
+     "end_ms": 3400.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3400.072,
+     "end_ms": 3439.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3439.954,
+     "end_ms": 3450.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3450.072,
+     "end_ms": 3489.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3489.954,
+     "end_ms": 3500.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3500.072,
+     "end_ms": 3539.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3539.954,
+     "end_ms": 3550.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3550.072,
+     "end_ms": 3589.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3589.954,
+     "end_ms": 3600.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3600.072,
+     "end_ms": 3639.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3639.954,
+     "end_ms": 3650.072,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3650.072,
+     "end_ms": 3689.954,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3689.954,
+     "end_ms": 3700.0,
+     "state": "uncertain"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2168.0,
@@ -306,11 +587,60 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      4700.0,
      4750.0
     ]
+   ]
+  },
+  "sawtooth_oscillation": {
+   "tier": "generated: automated labeler",
+   "title": "sawtooth",
+   "what": "physics sawtooth states; independently ECE-verified crash ticks",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
+   "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5",
+   "rows": 7,
+   "model": "physics sawtooth interval states",
+   "decision_threshold": 0.6,
+   "crowd_semantics": null,
+   "primary_bars": null,
+   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.meta.json",
+   "metadata_sha256": "9301ff6da16cd2161ea6508d2de7b5ecb9791c210fef8b7aa6ad172ad36bff5f",
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "state": "uncertain"
+    }
+   ],
+   "density_guard": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 56230,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "present_spans_ms": [],
+   "source_files": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
+     "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
+    }
    ]
   }
  },
@@ -333,13 +663,17 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/caption.tex",
-  "sha256": "7c26d10468e2c4f3230d961af29146b34528ffa61a8e2e472d83dbab0f93dc67"
+  "sha256": "22b74af31fd0d7748c597b90d4f9ad395d831fb5d5ca2618a8fc00f0ed0e5fbc"
  },
  "drawn": {
   "figure": [
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png"
   ],
+  "figure_sha256": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "b03f5e3b48f8c252f3b12304f4e58575a8ade8b000e31d880c75e4c6c0113189",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "3d3fc341c4863c53a4285251e8446969c1a6cf2a6826edd6c9ccc463ac7ac347"
+  },
   "blobs": {
    "wide_above_fold": 339,
    "zoom_below_fold": 87,
@@ -355,14 +689,14 @@
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
-  "sawtooth_track_shown": false,
-  "sawtooth_omission_reason": "optional source track omitted",
-  "view_description": "follow aligned signals, modes and intervals",
+  "sawtooth_track_shown": true,
+  "catalog_sawtooth_frame_model_shown": false,
+  "late_untagged_high_frequency": null,
   "n2_harmonic_consistent": false,
   "harmonic_support": {
-   "frequency_tolerance_khz": 1.2,
+   "frequency_ratio_tolerance": 0.1,
    "minimum_support_ms": 50.0,
-   "caption_frequency_step_khz": 5.0,
+   "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
    "support_ms": 0.0
   },
@@ -388,27 +722,35 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots/191782.json",
-     "sha256": "b75567abd557c99a6f2225478dffb46854eb5281d4fcab99e453e283dbdf6c9e"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
+     "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
     }
    ],
-   "sha256": "b75567abd557c99a6f2225478dffb46854eb5281d4fcab99e453e283dbdf6c9e",
+   "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
    "all_times_ms": [
     1263.299968188132,
+    1301.999967272663,
+    1337.2999664376227,
     1370.3999656546246,
-    1436.299964095725
+    1403.4999648716266,
+    1436.299964095725,
+    1469.8999633008993
    ],
    "ece_times_ms": [],
    "rejected_evidence_times_ms": [
     1263.299968188132,
+    1301.999967272663,
+    1337.2999664376227,
     1370.3999656546246,
-    1436.299964095725
+    1403.4999648716266,
+    1436.299964095725,
+    1469.8999633008993
    ],
    "rejected_elm_times_ms": [],
    "dalpha_available": true,
@@ -483,5 +825,10 @@
    }
   }
  },
- "git": "b7639a4b"
+ "git": "9ce61a15",
+ "render_code_sha256": {
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "23aa578f595ab038c90a7647e31841cc9f840debbd9c84d579ef8695b5bca459",
+  "src/labeler/paper/figure_sources.py": "dccae4fa232274b3fae8691b7901c06e6a3d52606728d0b700631fad5d8c2f1b",
+  "src/labeler/paper/mode_tags.py": "4c0c545f1e8bc3ebe262c6c02800e1d84fbf27d55e74fe1839d6e93a76b32d41"
+ }
 }

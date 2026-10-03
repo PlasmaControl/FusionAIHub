@@ -46,13 +46,15 @@
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
-   "2": "#56B4E9",
-   "3": "#009E73"
+   "2": "#009E73",
+   "3": "#F0E442"
   },
+  "n_brightness_rule": "constant full colour for every measured n pixel",
+  "raw_normalisation": "3rd/99.8th percentiles separately in each band",
   "unkeyed_n_colour": "#8C6BB1",
   "bands_khz": {
    "alfven_eigenmode": [
-    60.0,
+    80.0,
     null
    ],
    "neoclassical_tearing_mode": [
@@ -86,6 +88,24 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2750.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2750.0000000000005,
+     "end_ms": 3050.0000000000005,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3050.0,
+     "end_ms": 3150.0,
+     "state": "present"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      350.0,
@@ -127,6 +147,29 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2450.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2450.0,
+     "end_ms": 2800.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2800.0,
+     "end_ms": 3100.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3100.0,
+     "end_ms": 3110.0,
+     "state": "unassessed"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2450.0,
@@ -154,6 +197,24 @@
     "4": "WPQH-mode",
     "5": "uncertain"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2270.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2270.0,
+     "end_ms": 2793.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2793.0,
+     "end_ms": 3114.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2270.0,
@@ -179,6 +240,34 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2532.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2532.0,
+     "end_ms": 2856.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2856.0,
+     "end_ms": 3036.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3036.0,
+     "end_ms": 3080.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3080.0,
+     "end_ms": 3114.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2532.0,
@@ -188,6 +277,52 @@
      3036.0,
      3080.0
     ]
+   ]
+  },
+  "sawtooth_oscillation": {
+   "tier": "generated: automated labeler",
+   "title": "sawtooth",
+   "what": "physics sawtooth states; independently ECE-verified crash ticks",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json",
+   "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c",
+   "rows": 3,
+   "model": "physics sawtooth interval states",
+   "decision_threshold": 0.6,
+   "crowd_semantics": null,
+   "primary_bars": null,
+   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.meta.json",
+   "metadata_sha256": "00cc7ba35e801ec64eccdb15acd7524bf3c0410affb1022657d80d0c40143800",
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 3052.799925856558,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3052.799925856558,
+     "end_ms": 3114.099924406474,
+     "state": "unassessed"
+    }
+   ],
+   "density_guard": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 31080,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "present_spans_ms": [],
+   "source_files": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json",
+     "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c"
+    }
    ]
   }
  },
@@ -207,22 +342,26 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/caption.tex",
-  "sha256": "53f41ed45d08d311a517bfd7df16cac901443c66b1733aaf3c487c3535315aa6"
+  "sha256": "66778bdaebb982664b7f5bd23299627f65c80562fdc43daefccb320b5467873b"
  },
  "drawn": {
   "figure": [
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png"
   ],
+  "figure_sha256": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "bfa8c7986a8a5a4ea294d684baa9411b3afbd2d7e35503f96194026baf0def35",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "9ca2d8875dadbad7dc92039e53f5ad09c5011205b45c9b5452549dcac37a88ae"
+  },
   "blobs": {
    "wide_above_fold": 361,
    "zoom_below_fold": 124,
    "tagged": {
-    "alfven_eigenmode": 287,
+    "alfven_eigenmode": 262,
     "neoclassical_tearing_mode": 8,
     "sawtooth_oscillation": 0
    },
-   "untagged": 190
+   "untagged": 215
   },
   "elm_peaks_in_label": 6,
   "elm_peak_times_ms": [
@@ -236,18 +375,18 @@
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [],
   "sawtooth_strip_shown": false,
-  "sawtooth_track_shown": false,
-  "sawtooth_omission_reason": "optional source track omitted",
-  "view_description": "follow aligned signals, modes and intervals",
-  "n2_harmonic_consistent": true,
+  "sawtooth_track_shown": true,
+  "catalog_sawtooth_frame_model_shown": false,
+  "late_untagged_high_frequency": null,
+  "n2_harmonic_consistent": false,
   "harmonic_support": {
-   "frequency_tolerance_khz": 1.2,
+   "frequency_ratio_tolerance": 0.1,
    "minimum_support_ms": 50.0,
-   "caption_frequency_step_khz": 5.0,
+   "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-   "support_ms": 63.48800033990392,
-   "n1_median_khz": 3.415375734879987,
-   "n2_median_khz": 6.158011267253331
+   "support_ms": 44.032000235739815,
+   "n1_median_khz": 2.8442382660219985,
+   "n2_median_khz": 5.4931640330896965
   },
   "n3_components_unoutlined": 5,
   "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
@@ -271,14 +410,14 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots/203187.json",
-     "sha256": "aa85f9a45e2f934f99c324e249299c5b8acff7d931bd9268094a7966d240e469"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json",
+     "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c"
     }
    ],
-   "sha256": "aa85f9a45e2f934f99c324e249299c5b8acff7d931bd9268094a7966d240e469",
+   "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
@@ -308,7 +447,7 @@
    },
    "wide": {
     "alfven_eigenmode": {
-     "pixels": 276025,
+     "pixels": 253332,
      "outside_present": 0,
      "outside_band": 0,
      "pixels_55_to_60": 0
@@ -325,8 +464,8 @@
    "zoom": {
     "outside_measured_n": 0,
     "above_n_view_band": 0,
-    "rendered_outline_pixels": 7822,
-    "measured_n3_outline_pixels": 335
+    "rendered_outline_pixels": 7906,
+    "measured_n3_outline_pixels": 336
    },
    "wide": {
     "outside_measured_n": 0,
@@ -336,7 +475,8 @@
    }
   },
   "regimes_shown": [
-   "H-mode"
+   "H-mode",
+   "L-mode"
   ],
   "stores": {
    "edge_localized_mode": {
@@ -357,5 +497,10 @@
    }
   }
  },
- "git": "b7639a4b"
+ "git": "9ce61a15",
+ "render_code_sha256": {
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "23aa578f595ab038c90a7647e31841cc9f840debbd9c84d579ef8695b5bca459",
+  "src/labeler/paper/figure_sources.py": "dccae4fa232274b3fae8691b7901c06e6a3d52606728d0b700631fad5d8c2f1b",
+  "src/labeler/paper/mode_tags.py": "4c0c545f1e8bc3ebe262c6c02800e1d84fbf27d55e74fe1839d6e93a76b32d41"
+ }
 }

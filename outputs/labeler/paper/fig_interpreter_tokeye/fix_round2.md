@@ -1,7 +1,5 @@
-# Figure 1 second fix history
+# Historical Figure 1 report
 
-The current source semantics, outputs, thresholds and verification are in
-[fix_round3.md](fix_round3.md). This supersedes the second-fix report.
-Historical implementation commits: e5a56995..4aa6b8c0. The saved
-[fix_round2_audit.json](fix_round2_audit.json) is a historical snapshot;
-[fix_round3_audit.json](fix_round3_audit.json) audits the current renders.
+This report is superseded by [fix_round4.md](fix_round4.md), the current state,
+source revisions, selection rationale, results and verification. Earlier audit
+JSONs are historical snapshots; use `fix_round4_audit.json` for current artifacts.

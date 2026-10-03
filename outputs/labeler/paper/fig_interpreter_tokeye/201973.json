@@ -46,13 +46,15 @@
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
-   "2": "#56B4E9",
-   "3": "#009E73"
+   "2": "#009E73",
+   "3": "#F0E442"
   },
+  "n_brightness_rule": "constant full colour for every measured n pixel",
+  "raw_normalisation": "3rd/99.8th percentiles separately in each band",
   "unkeyed_n_colour": "#8C6BB1",
   "bands_khz": {
    "alfven_eigenmode": [
-    60.0,
+    80.0,
     null
    ],
    "neoclassical_tearing_mode": [
@@ -86,6 +88,19 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2450.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2450.0,
+     "end_ms": 3350.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      1600.0,
@@ -115,6 +130,24 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2050.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2050.0,
+     "end_ms": 3050.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3050.0,
+     "end_ms": 3350.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2050.0,
@@ -142,6 +175,29 @@
     "4": "WPQH-mode",
     "5": "uncertain"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 1793.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1793.0,
+     "end_ms": 2224.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2224.0,
+     "end_ms": 3013.0,
+     "state": "5"
+    },
+    {
+     "start_ms": 3013.0,
+     "end_ms": 3350.0,
+     "state": "absent"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      1793.0,
@@ -167,6 +223,59 @@
     "2": "uncertain",
     "3": "not observable"
    },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2075.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2075.0,
+     "end_ms": 2117.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2117.0,
+     "end_ms": 2165.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2165.0,
+     "end_ms": 2748.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 2748.0,
+     "end_ms": 2994.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2994.0,
+     "end_ms": 3045.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3045.0,
+     "end_ms": 3077.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3077.0,
+     "end_ms": 3124.0,
+     "state": "present"
+    },
+    {
+     "start_ms": 3124.0,
+     "end_ms": 3313.0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 3313.0,
+     "end_ms": 3350.0,
+     "state": "present"
+    }
+   ],
+   "density_guard": null,
    "present_spans_ms": [
     [
      2075.0,
@@ -189,6 +298,77 @@
      3356.0
     ]
    ]
+  },
+  "sawtooth_oscillation": {
+   "tier": "generated: automated labeler",
+   "title": "sawtooth",
+   "what": "physics sawtooth states; independently ECE-verified crash ticks",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
+   "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73",
+   "rows": 9,
+   "model": "physics sawtooth interval states",
+   "decision_threshold": 0.6,
+   "crowd_semantics": null,
+   "primary_bars": null,
+   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.meta.json",
+   "metadata_sha256": "6db0a612123179497fdff8821db671dc0f92eadd63c0139b5a050baf5895f7f2",
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
+   "state_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2093.5999485469442,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2093.5999485469442,
+     "end_ms": 3037.4999262184874,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3037.4999262184874,
+     "end_ms": 3193.099922537687,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3193.099922537687,
+     "end_ms": 3259.199920974056,
+     "state": "present"
+    },
+    {
+     "start_ms": 3259.199920974056,
+     "end_ms": 3323.4999194530055,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3323.4999194530055,
+     "end_ms": 3350.0,
+     "state": "unassessed"
+    }
+   ],
+   "density_guard": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 9649,
+    "density_samples": 33680,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "present_spans_ms": [
+    [
+     3193.1,
+     3259.2
+    ]
+   ],
+   "source_files": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
+     "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73"
+    }
+   ]
   }
  },
  "ae_co2": null,
@@ -207,22 +387,26 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/caption.tex",
-  "sha256": "72b06da7770b2ffa86f982a0614306b56dabcfd2ed5c34fe984a12b2bde79970"
+  "sha256": "2bfdcd5a9d0a16901b7f8bfc0e2e419278552c9c68e33949329b1e66168d1b57"
  },
  "drawn": {
   "figure": [
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png"
   ],
+  "figure_sha256": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "faefc1a2ebccd814b4899c69bb152558afb6ef2730efd6fdf7a6905644bb86f8",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "c5d100d665be9d6ef4741169349b5d5ea81f4b157df6cc3293a0d5d4d5c65ef6"
+  },
   "blobs": {
    "wide_above_fold": 297,
    "zoom_below_fold": 106,
    "tagged": {
-    "alfven_eigenmode": 178,
+    "alfven_eigenmode": 154,
     "neoclassical_tearing_mode": 14,
     "sawtooth_oscillation": 0
    },
-   "untagged": 211
+   "untagged": 235
   },
   "elm_peaks_in_label": 65,
   "elm_peak_times_ms": [
@@ -302,19 +486,29 @@
     "category": 1
    }
   ],
-  "sawtooth_strip_shown": false,
-  "sawtooth_track_shown": false,
-  "sawtooth_omission_reason": "optional source track omitted",
-  "view_description": "follow aligned signals, modes and intervals",
+  "sawtooth_strip_shown": true,
+  "sawtooth_track_shown": true,
+  "catalog_sawtooth_frame_model_shown": false,
+  "late_untagged_high_frequency": {
+   "band_khz": [
+    170,
+    250
+   ],
+   "pixels": 62592,
+   "first_time_ms": 2450.081101039958,
+   "last_time_ms": 3349.92113461029,
+   "columns": 1989,
+   "reason": "AE detector absent; time coincidence is required"
+  },
   "n2_harmonic_consistent": true,
   "harmonic_support": {
-   "frequency_tolerance_khz": 1.2,
+   "frequency_ratio_tolerance": 0.1,
    "minimum_support_ms": 50.0,
-   "caption_frequency_step_khz": 5.0,
+   "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
-   "support_ms": 446.46401665620397,
-   "n1_median_khz": 5.375453203475814,
-   "n2_median_khz": 10.077842923304743
+   "support_ms": 221.18400825169738,
+   "n1_median_khz": 6.549541522483164,
+   "n2_median_khz": 13.183593258159664
   },
   "n3_components_unoutlined": 3,
   "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
@@ -338,25 +532,41 @@
   },
   "ae_boxes_ms_khz": [],
   "sawtooth_crashes": {
-   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots",
+   "source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
    "files": [
     {
-     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/shots/201973.json",
-     "sha256": "ee1189a719bd58b489bb2da47f6619dde32ebe5340c4d30d483756553fbd7d16"
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
+     "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73"
     }
    ],
-   "sha256": "ee1189a719bd58b489bb2da47f6619dde32ebe5340c4d30d483756553fbd7d16",
+   "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73",
    "evidence_source": null,
    "physics_point_match_ms": 0.5,
    "verified": true,
-   "all_times_ms": [],
-   "ece_times_ms": [],
+   "all_times_ms": [
+    3193.099922537687,
+    3228.9999216884535,
+    3259.099920976422
+   ],
+   "ece_times_ms": [
+    3193.099922537687,
+    3228.9999216884535,
+    3259.099920976422
+   ],
    "rejected_evidence_times_ms": [],
    "rejected_elm_times_ms": [],
    "dalpha_available": true,
    "elm_veto_ms": 5.0,
-   "present_times_ms": [],
-   "drawn_times_ms": []
+   "present_times_ms": [
+    3193.099922537687,
+    3228.9999216884535,
+    3259.099920976422
+   ],
+   "drawn_times_ms": [
+    3193.099922537687,
+    3228.9999216884535,
+    3259.099920976422
+   ]
   },
   "projection_audit": {
    "zoom": {
@@ -375,7 +585,7 @@
    },
    "wide": {
     "alfven_eigenmode": {
-     "pixels": 215482,
+     "pixels": 204561,
      "outside_present": 0,
      "outside_band": 0,
      "pixels_55_to_60": 0
@@ -392,8 +602,8 @@
    "zoom": {
     "outside_measured_n": 0,
     "above_n_view_band": 0,
-    "rendered_outline_pixels": 27271,
-    "measured_n3_outline_pixels": 545
+    "rendered_outline_pixels": 27284,
+    "measured_n3_outline_pixels": 569
    },
    "wide": {
     "outside_measured_n": 0,
@@ -403,7 +613,8 @@
    }
   },
   "regimes_shown": [
-   "H-mode"
+   "H-mode",
+   "L-mode"
   ],
   "stores": {
    "edge_localized_mode": {
@@ -424,5 +635,10 @@
    }
   }
  },
- "git": "b7639a4b"
+ "git": "9ce61a15",
+ "render_code_sha256": {
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "23aa578f595ab038c90a7647e31841cc9f840debbd9c84d579ef8695b5bca459",
+  "src/labeler/paper/figure_sources.py": "dccae4fa232274b3fae8691b7901c06e6a3d52606728d0b700631fad5d8c2f1b",
+  "src/labeler/paper/mode_tags.py": "4c0c545f1e8bc3ebe262c6c02800e1d84fbf27d55e74fe1839d6e93a76b32d41"
+ }
 }

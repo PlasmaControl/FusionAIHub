@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -23,12 +24,14 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit4-primary-rebuild"
+    rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
         "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml", "-e", "labelmaker",
         "python", "scripts/labeler/paper/fig_interpreter_tokeye.py",
         "--shot", "201978", "--tmin", str(record["window_ms"][0]),
-        "--tmax", str(record["window_ms"][1]), "--out", str(files[0].parent),
+        "--tmax", str(record["window_ms"][1]), "--out", str(rebuild_dir),
     ]  # fmt: skip
     ae = record["ae_ours_lookup"]["supplied_predictions"]
     if ae:
@@ -40,9 +43,16 @@ def rebuild_primary(record):
     if evidence:
         cmd.extend(["--sawtooth-evidence", evidence])
     subprocess.run(cmd, check=True)
-    after = {str(p): sha256_of(p) for p in files}
+    rebuilt = [rebuild_dir / p.name for p in files]
+    after = {str(p): sha256_of(q) for p, q in zip(files, rebuilt, strict=True)}
     assert before == after, "primary rebuild changed PDF/PNG bytes"
-    return {"command": cmd, "before": before, "after": after, "identical": True}
+    return {
+        "command": cmd,
+        "before": before,
+        "after": after,
+        "identical": True,
+        "rebuild_files": [str(p) for p in rebuilt],
+    }
 
 
 def main():
@@ -55,6 +65,18 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--rebuild-primary", action="store_true")
     args = parser.parse_args()
+    manifest_file = args.records / "sawtooth_source_manifest.json"
+    manifest = json.loads(manifest_file.read_text())
+    complete = Path(manifest["completion_snapshot_path"])
+    assert sha256_of(complete) == manifest["completion_sha256"]
+    completion = json.loads(complete.read_text())
+    assert set(completion["requested_shots"]) == set(completion["processed_shots"])
+    assert not completion["errors"]
+    snapshot_hashes = {}
+    for source in manifest["files"]:
+        path = source["snapshot_path"]
+        assert sha256_of(Path(path)) == source["sha256"]
+        snapshot_hashes[path] = source["sha256"]
     audited, checked_sources, labels = [], {}, set()
     render_commits = set()
     for shot in SHOTS:
@@ -89,6 +111,7 @@ def main():
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
         assert saw["sha256"] == crashes["files"][0]["sha256"]
+        assert snapshot_hashes[saw["path"]] == saw["sha256"]
         if Path(saw["path"]).suffix == ".json":
             physics = json.loads(Path(saw["path"]).read_text())
             expected = []
@@ -210,6 +233,13 @@ def main():
                 "renders": audited,
                 "checked_sources": checked_sources,
                 "blind_test_shots_used": 0,
+                "sawtooth_source_manifest": {
+                    "path": str(manifest_file),
+                    "sha256": sha256_of(manifest_file),
+                    "original_source": manifest["original_source"],
+                    "snapshot_source": manifest["snapshot_source"],
+                    "completion_sha256": manifest["completion_sha256"],
+                },
                 "reproducibility": reproducibility,
             },
             indent=1,
