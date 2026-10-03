@@ -1,0 +1,3349 @@
+{
+  "script": "scripts/labeler/rwm_evaluate.py",
+  "protocol": {
+    "outer_folds": 5,
+    "inner_folds": 3,
+    "fold_seed": 0,
+    "bootstrap_replicates": 1000,
+    "forest": {
+      "n_estimators": 300,
+      "max_depth": 8,
+      "min_leaf": 5
+    },
+    "network": {
+      "hidden": [
+        32,
+        32
+      ],
+      "epochs": 15,
+      "batch_p": 64,
+      "batch_u": 512,
+      "weight_decay": 0.001,
+      "loss": "logistic"
+    },
+    "alarm_grid": {
+      "high_quantiles": [
+        0.9,
+        0.95,
+        0.98,
+        0.99
+      ],
+      "low_fractions": [
+        0.5,
+        0.75,
+        1.0
+      ],
+      "hold_ms": [
+        0,
+        20,
+        50
+      ]
+    },
+    "step_ms": 10.0,
+    "split": "shot-grouped; shots.json cohort_overlap counts the shots in the frozen cohort"
+  },
+  "configs": {
+    "rwm-brf": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 17,
+        "hanson_shots_with_a_false_alarm": 21,
+        "comparison_shots_with_an_alarm": 21
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.32489564565404555,
+          "rule": [
+            0.8514221195035429,
+            0.8514221195035429,
+            20.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.338995344821351,
+          "rule": [
+            0.8022511076307884,
+            0.8022511076307884,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.3740993781660335,
+          "rule": [
+            0.8053490541852906,
+            0.8053490541852906,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.22733725263439566,
+          "rule": [
+            0.8866410958287894,
+            0.8866410958287894,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.3171974445789976,
+          "rule": [
+            0.6882215883031997,
+            0.6882215883031997,
+            20.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.797962551752359,
+          "low": 0.7404156372468422,
+          "high": 0.8451536042269925
+        },
+        "slice_auprc": {
+          "estimate": 0.08419242794922249,
+          "low": 0.0611066906760652,
+          "high": 0.1164679754311959
+        },
+        "slice_tpr": {
+          "estimate": 0.8541666666666666,
+          "low": 0.7681818181818182,
+          "high": 0.9318227272727272
+        },
+        "slice_fpr": {
+          "estimate": 0.3329722703639515,
+          "low": 0.28170286797945787,
+          "high": 0.3879587559998884
+        },
+        "slice_precision": {
+          "estimate": 0.08165704043019319,
+          "low": 0.06032368663799331,
+          "high": 0.10804788258996453
+        },
+        "slice_f1": {
+          "estimate": 0.1490638065806217,
+          "low": 0.11230321084023398,
+          "high": 0.19280615103366844
+        },
+        "mixed_auroc": {
+          "estimate": 0.8987454543048191,
+          "low": 0.8659720375276995,
+          "high": 0.9283215259335964
+        },
+        "mixed_auprc": {
+          "estimate": 0.04673691796504678,
+          "low": 0.031500528627701696,
+          "high": 0.06928129995206919
+        },
+        "mixed_fpr": {
+          "estimate": 0.18636841205072446,
+          "low": 0.16101012818571714,
+          "high": 0.21301277760254111
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3541666666666667,
+          "low": 0.21731366459627335,
+          "high": 0.5
+        },
+        "warning_ms_mean": {
+          "estimate": 289.70529411764704,
+          "low": 253.67098823529415,
+          "high": 320.88237664473684
+        },
+        "warning_ms_median": {
+          "estimate": 329.5,
+          "low": 276.0,
+          "high": 367.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6363636363636364,
+          "low": 0.48484848484848486,
+          "high": 0.7878787878787878
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.0303030303030303,
+          "low": 1.9090909090909092,
+          "high": 4.303030303030303
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.1590909090909091,
+          "low": 0.09848484848484848,
+          "high": 0.22727272727272727
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.8257575757575758,
+          "low": 0.36363636363636365,
+          "high": 1.356060606060606
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 10,
+            "hanson_shots_with_a_false_alarm": 14,
+            "comparison_shots_with_an_alarm": 14
+          },
+          "metrics": {
+            "slice_auroc": 0.7966365685968123,
+            "slice_auprc": 0.08884409420714427,
+            "slice_tpr": 0.8807692307692307,
+            "slice_fpr": 0.3383633197910621,
+            "slice_precision": 0.08941819601718079,
+            "slice_f1": 0.16235377525700107,
+            "mixed_auroc": 0.926662198215248,
+            "mixed_auprc": 0.056905852049081954,
+            "mixed_fpr": 0.14458397403041176,
+            "onset_detection_rate": 0.38461538461538464,
+            "warning_ms_mean": 318.425,
+            "warning_ms_median": 344.25,
+            "hanson_false_alarm_shot_rate": 0.7,
+            "hanson_false_alarms_per_shot": 3.65,
+            "comparison_false_alarm_shot_rate": 0.175,
+            "comparison_false_alarms_per_shot": 0.925
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 7,
+            "hanson_shots_with_a_false_alarm": 7,
+            "comparison_shots_with_an_alarm": 7
+          },
+          "metrics": {
+            "slice_auroc": 0.799654320664959,
+            "slice_auprc": 0.07996267073579609,
+            "slice_tpr": 0.8227272727272728,
+            "slice_fpr": 0.3276308223116734,
+            "slice_precision": 0.07357723577235772,
+            "slice_f1": 0.13507462686567165,
+            "mixed_auroc": 0.8606112942153479,
+            "mixed_auprc": 0.03652050196567375,
+            "mixed_fpr": 0.2422209534684556,
+            "onset_detection_rate": 0.3181818181818182,
+            "warning_ms_mean": 248.67714285714283,
+            "warning_ms_median": 281.0,
+            "hanson_false_alarm_shot_rate": 0.5384615384615384,
+            "hanson_false_alarms_per_shot": 2.076923076923077,
+            "comparison_false_alarm_shot_rate": 0.1346153846153846,
+            "comparison_false_alarms_per_shot": 0.6730769230769231
+          }
+        }
+      },
+      "split_seeds": {
+        "1": {
+          "slice_auroc": 0.8074148794049683,
+          "slice_auprc": 0.0918238763767024,
+          "slice_tpr": 0.7833333333333333,
+          "slice_fpr": 0.3108752166377816,
+          "slice_precision": 0.08032471694082462,
+          "slice_f1": 0.14570819608602983,
+          "mixed_auroc": 0.8985078615583845,
+          "mixed_auprc": 0.048441185272372685,
+          "mixed_fpr": 0.17701028660786278,
+          "onset_detection_rate": 0.4375,
+          "warning_ms_mean": 188.64238095238093,
+          "warning_ms_median": 181.0,
+          "hanson_false_alarm_shot_rate": 0.5757575757575758,
+          "hanson_false_alarms_per_shot": 2.6363636363636362,
+          "comparison_false_alarm_shot_rate": 0.22727272727272727,
+          "comparison_false_alarms_per_shot": 1.2727272727272727
+        },
+        "2": {
+          "slice_auroc": 0.7898186260350472,
+          "slice_auprc": 0.08783949855107856,
+          "slice_tpr": 0.75625,
+          "slice_fpr": 0.3086366262276141,
+          "slice_precision": 0.07828337287039033,
+          "slice_f1": 0.14188000781708032,
+          "mixed_auroc": 0.8860787448790937,
+          "mixed_auprc": 0.04615602950246933,
+          "mixed_fpr": 0.1688249810638454,
+          "onset_detection_rate": 0.3333333333333333,
+          "warning_ms_mean": 239.311875,
+          "warning_ms_median": 266.45000000000005,
+          "hanson_false_alarm_shot_rate": 0.6363636363636364,
+          "hanson_false_alarms_per_shot": 2.5757575757575757,
+          "comparison_false_alarm_shot_rate": 0.3181818181818182,
+          "comparison_false_alarms_per_shot": 2.0833333333333335
+        },
+        "3": {
+          "slice_auroc": 0.800023168207202,
+          "slice_auprc": 0.08238411937851348,
+          "slice_tpr": 0.8333333333333334,
+          "slice_fpr": 0.3232957827845176,
+          "slice_precision": 0.08201763379126512,
+          "slice_f1": 0.14933731566175099,
+          "mixed_auroc": 0.8973795314421612,
+          "mixed_auprc": 0.04112438628806053,
+          "mixed_fpr": 0.18482908593349134,
+          "onset_detection_rate": 0.22916666666666666,
+          "warning_ms_mean": 309.0772727272727,
+          "warning_ms_median": 327.0,
+          "hanson_false_alarm_shot_rate": 0.6363636363636364,
+          "hanson_false_alarms_per_shot": 3.0303030303030303,
+          "comparison_false_alarm_shot_rate": 0.25757575757575757,
+          "comparison_false_alarms_per_shot": 1.7727272727272727
+        },
+        "4": {
+          "slice_auroc": 0.7958488289524359,
+          "slice_auprc": 0.0829201295652237,
+          "slice_tpr": 0.85,
+          "slice_fpr": 0.3287117273252455,
+          "slice_precision": 0.08225806451612903,
+          "slice_f1": 0.15,
+          "mixed_auroc": 0.895725901198068,
+          "mixed_auprc": 0.042908351221613815,
+          "mixed_fpr": 0.19130402912502747,
+          "onset_detection_rate": 0.4166666666666667,
+          "warning_ms_mean": 209.82,
+          "warning_ms_median": 169.25,
+          "hanson_false_alarm_shot_rate": 0.6363636363636364,
+          "hanson_false_alarms_per_shot": 3.303030303030303,
+          "comparison_false_alarm_shot_rate": 0.22727272727272727,
+          "comparison_false_alarms_per_shot": 1.4393939393939394
+        }
+      }
+    },
+    "rwm-brf-hanson-only": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "comparison": false
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 10,
+        "hanson_shots_with_a_false_alarm": 13,
+        "comparison_shots_with_an_alarm": 27
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.36357279342356263,
+          "rule": [
+            0.7029389998573987,
+            0.7029389998573987,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.2871802060090552,
+          "rule": [
+            0.8065231258259415,
+            0.8065231258259415,
+            50.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.40031265586343456,
+          "rule": [
+            0.8191637500724761,
+            0.8191637500724761,
+            20.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.19716652518151204,
+          "rule": [
+            0.789344664558131,
+            0.789344664558131,
+            50.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.27887008524080975,
+          "rule": [
+            0.8029113367336295,
+            0.8029113367336295,
+            50.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.8048327526237242,
+          "low": 0.756220338451965,
+          "high": 0.8517018937660162
+        },
+        "slice_auprc": {
+          "estimate": 0.0885539473227775,
+          "low": 0.0657643006861044,
+          "high": 0.12417730423764585
+        },
+        "slice_tpr": {
+          "estimate": 0.81875,
+          "low": 0.7319124758220502,
+          "high": 0.8979602040816327
+        },
+        "slice_fpr": {
+          "estimate": 0.3440930098209128,
+          "low": 0.2888691609653275,
+          "high": 0.4028051581497116
+        },
+        "slice_precision": {
+          "estimate": 0.07619232260566111,
+          "low": 0.05537606533057971,
+          "high": 0.10208987843239364
+        },
+        "slice_f1": {
+          "estimate": 0.13941113870166727,
+          "low": 0.10385746342133585,
+          "high": 0.18231274596864352
+        },
+        "mixed_auroc": {
+          "estimate": 0.8367772319210627,
+          "low": 0.7947734953021813,
+          "high": 0.8768418179107099
+        },
+        "mixed_auprc": {
+          "estimate": 0.02337589050068532,
+          "low": 0.015861052251365228,
+          "high": 0.035373922949714254
+        },
+        "mixed_fpr": {
+          "estimate": 0.3232829183668483,
+          "low": 0.29509282915013235,
+          "high": 0.3509758369842502
+        },
+        "onset_detection_rate": {
+          "estimate": 0.20833333333333334,
+          "low": 0.09523809523809523,
+          "high": 0.34147946084724007
+        },
+        "warning_ms_mean": {
+          "estimate": 216.49,
+          "low": 132.9925,
+          "high": 281.5022222222222
+        },
+        "warning_ms_median": {
+          "estimate": 211.25,
+          "low": 74.5,
+          "high": 318.5
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.3939393939393939,
+          "low": 0.24242424242424243,
+          "high": 0.5462121212121205
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 1.9090909090909092,
+          "low": 0.6356060606060613,
+          "high": 3.6371212121212113
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.20454545454545456,
+          "low": 0.14393939393939395,
+          "high": 0.2727272727272727
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 1.6893939393939394,
+          "low": 0.9848484848484849,
+          "high": 2.4393939393939394
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 5,
+            "hanson_shots_with_a_false_alarm": 9,
+            "comparison_shots_with_an_alarm": 15
+          },
+          "metrics": {
+            "slice_auroc": 0.7958494240814322,
+            "slice_auprc": 0.08345452332641375,
+            "slice_tpr": 0.7846153846153846,
+            "slice_fpr": 0.3047011027278003,
+            "slice_precision": 0.08854166666666667,
+            "slice_f1": 0.15912636505460218,
+            "mixed_auroc": 0.8448849784462932,
+            "mixed_auprc": 0.020054011087811057,
+            "mixed_fpr": 0.2635187083546899,
+            "onset_detection_rate": 0.19230769230769232,
+            "warning_ms_mean": 256.7,
+            "warning_ms_median": 317.0,
+            "hanson_false_alarm_shot_rate": 0.45,
+            "hanson_false_alarms_per_shot": 1.65,
+            "comparison_false_alarm_shot_rate": 0.1875,
+            "comparison_false_alarms_per_shot": 1.45
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 5,
+            "hanson_shots_with_a_false_alarm": 4,
+            "comparison_shots_with_an_alarm": 12
+          },
+          "metrics": {
+            "slice_auroc": 0.8211844581525433,
+            "slice_auprc": 0.10844540902722237,
+            "slice_tpr": 0.8590909090909091,
+            "slice_fpr": 0.38312248418631395,
+            "slice_precision": 0.0662228451296426,
+            "slice_f1": 0.12296681847755368,
+            "mixed_auroc": 0.8318504917862611,
+            "mixed_auprc": 0.028898980549169343,
+            "mixed_fpr": 0.40316871253211534,
+            "onset_detection_rate": 0.22727272727272727,
+            "warning_ms_mean": 176.28000000000003,
+            "warning_ms_median": 178.4000000000001,
+            "hanson_false_alarm_shot_rate": 0.3076923076923077,
+            "hanson_false_alarms_per_shot": 2.3076923076923075,
+            "comparison_false_alarm_shot_rate": 0.23076923076923078,
+            "comparison_false_alarms_per_shot": 2.0576923076923075
+          }
+        }
+      }
+    },
+    "rwm-brf-equilibrium-only": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 13,
+        "hanson_shots_with_a_false_alarm": 23,
+        "comparison_shots_with_an_alarm": 18
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.4041849822352358,
+          "rule": [
+            0.8669894766139595,
+            0.8669894766139595,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.22973323185574326,
+          "rule": [
+            0.8164695633296157,
+            0.8164695633296157,
+            50.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.34180364632322235,
+          "rule": [
+            0.8689063098800335,
+            0.8689063098800335,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.2308999145086976,
+          "rule": [
+            0.8768606437827678,
+            0.8768606437827678,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.32794208785658363,
+          "rule": [
+            0.8533770776338303,
+            0.8533770776338303,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7666658392306952,
+          "low": 0.7099345161564177,
+          "high": 0.817904323035926
+        },
+        "slice_auprc": {
+          "estimate": 0.0683519533186088,
+          "low": 0.04929346776592371,
+          "high": 0.09613247105286966
+        },
+        "slice_tpr": {
+          "estimate": 0.7895833333333333,
+          "low": 0.6744245647969053,
+          "high": 0.8937746710526316
+        },
+        "slice_fpr": {
+          "estimate": 0.37507221259387635,
+          "low": 0.3204418232658035,
+          "high": 0.4308966239776281
+        },
+        "slice_precision": {
+          "estimate": 0.06800645971649022,
+          "low": 0.05054130548492686,
+          "high": 0.09000666156148389
+        },
+        "slice_f1": {
+          "estimate": 0.1252271600859078,
+          "low": 0.0942839839433395,
+          "high": 0.16292082338816868
+        },
+        "mixed_auroc": {
+          "estimate": 0.8869276649074368,
+          "low": 0.8532588840544473,
+          "high": 0.9185815477491835
+        },
+        "mixed_auprc": {
+          "estimate": 0.034316015276670706,
+          "low": 0.023159249024242934,
+          "high": 0.05116550172771666
+        },
+        "mixed_fpr": {
+          "estimate": 0.19981919026559483,
+          "low": 0.17422397404075068,
+          "high": 0.22671657090831607
+        },
+        "onset_detection_rate": {
+          "estimate": 0.2708333333333333,
+          "low": 0.1399313725490197,
+          "high": 0.41671511627906976
+        },
+        "warning_ms_mean": {
+          "estimate": 177.60769230769228,
+          "low": 98.48421875000001,
+          "high": 249.95034965034964
+        },
+        "warning_ms_median": {
+          "estimate": 169.0,
+          "low": 55.5,
+          "high": 283.6143749999991
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.696969696969697,
+          "low": 0.5454545454545454,
+          "high": 0.8484848484848485
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 2.272727272727273,
+          "low": 1.4848484848484849,
+          "high": 3.091666666666666
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.13636363636363635,
+          "low": 0.07575757575757576,
+          "high": 0.19696969696969696
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.3712121212121212,
+          "low": 0.1893939393939394,
+          "high": 0.6060606060606061
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 10,
+            "hanson_shots_with_a_false_alarm": 15,
+            "comparison_shots_with_an_alarm": 13
+          },
+          "metrics": {
+            "slice_auroc": 0.7382603576052502,
+            "slice_auprc": 0.06548685778531525,
+            "slice_tpr": 0.7923076923076923,
+            "slice_fpr": 0.4251305861868833,
+            "slice_precision": 0.06568877551020408,
+            "slice_f1": 0.12131919905771496,
+            "mixed_auroc": 0.9032083316905203,
+            "mixed_auprc": 0.03650076669454627,
+            "mixed_fpr": 0.17080984110712455,
+            "onset_detection_rate": 0.38461538461538464,
+            "warning_ms_mean": 191.39,
+            "warning_ms_median": 208.0,
+            "hanson_false_alarm_shot_rate": 0.75,
+            "hanson_false_alarms_per_shot": 2.5,
+            "comparison_false_alarm_shot_rate": 0.1625,
+            "comparison_false_alarms_per_shot": 0.375
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 3,
+            "hanson_shots_with_a_false_alarm": 8,
+            "comparison_shots_with_an_alarm": 5
+          },
+          "metrics": {
+            "slice_auroc": 0.7960498457838884,
+            "slice_auprc": 0.0761769325385254,
+            "slice_tpr": 0.7863636363636364,
+            "slice_fpr": 0.32547441058079357,
+            "slice_precision": 0.07098892080426754,
+            "slice_f1": 0.1302220549491908,
+            "mixed_auroc": 0.8648038045311811,
+            "mixed_auprc": 0.033755969053441394,
+            "mixed_fpr": 0.2385954895803597,
+            "onset_detection_rate": 0.13636363636363635,
+            "warning_ms_mean": 131.66666666666666,
+            "warning_ms_median": 145.0,
+            "hanson_false_alarm_shot_rate": 0.6153846153846154,
+            "hanson_false_alarms_per_shot": 1.9230769230769231,
+            "comparison_false_alarm_shot_rate": 0.09615384615384616,
+            "comparison_false_alarms_per_shot": 0.36538461538461536
+          }
+        }
+      }
+    },
+    "rwm-brf-magnetics-only": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 0,
+        "hanson_shots_with_a_false_alarm": 0,
+        "comparison_shots_with_an_alarm": 0
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.5091516879768734,
+          "rule": [
+            0.7610808176847326,
+            0.7610808176847326,
+            50.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.493022115188783,
+          "rule": [
+            0.7743232430803844,
+            0.7743232430803844,
+            50.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.45044639647014484,
+          "rule": [
+            0.7482120703701949,
+            0.7482120703701949,
+            20.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.4971366513093354,
+          "rule": [
+            0.7573400143029947,
+            0.7573400143029947,
+            50.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.5140055719637484,
+          "rule": [
+            0.778644940978611,
+            0.778644940978611,
+            50.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.688233409156557,
+          "low": 0.6387217304096567,
+          "high": 0.7398278782867718
+        },
+        "slice_auprc": {
+          "estimate": 0.0594121923376016,
+          "low": 0.04316909923459798,
+          "high": 0.08591419610850404
+        },
+        "slice_tpr": {
+          "estimate": 0.7229166666666667,
+          "low": 0.6320735849056603,
+          "high": 0.8125135869565218
+        },
+        "slice_fpr": {
+          "estimate": 0.44923454650491046,
+          "low": 0.39876722689075633,
+          "high": 0.5046066576735585
+        },
+        "slice_precision": {
+          "estimate": 0.05283191230207065,
+          "low": 0.040457775361603485,
+          "high": 0.06825235113388349
+        },
+        "slice_f1": {
+          "estimate": 0.09846765039727583,
+          "low": 0.07658662010576882,
+          "high": 0.12472092120415244
+        },
+        "mixed_auroc": {
+          "estimate": 0.6976213746426564,
+          "low": 0.6505911358376437,
+          "high": 0.7454584953221215
+        },
+        "mixed_auprc": {
+          "estimate": 0.011168610870488075,
+          "low": 0.008184427456294191,
+          "high": 0.016056408998647922
+        },
+        "mixed_fpr": {
+          "estimate": 0.4434236567547096,
+          "low": 0.41202277954552036,
+          "high": 0.47299533223718604
+        },
+        "onset_detection_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "warning_ms_mean": {
+          "estimate": null,
+          "low": null,
+          "high": null
+        },
+        "warning_ms_median": {
+          "estimate": null,
+          "low": null,
+          "high": null
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 0,
+            "hanson_shots_with_a_false_alarm": 0,
+            "comparison_shots_with_an_alarm": 0
+          },
+          "metrics": {
+            "slice_auroc": 0.7653957765971695,
+            "slice_auprc": 0.09210447118299878,
+            "slice_tpr": 0.7615384615384615,
+            "slice_fpr": 0.3604178757980267,
+            "slice_precision": 0.0738255033557047,
+            "slice_f1": 0.13460231135282122,
+            "mixed_auroc": 0.7842345805569794,
+            "mixed_auprc": 0.019191703272897563,
+            "mixed_fpr": 0.3479839398599009,
+            "onset_detection_rate": 0.0,
+            "warning_ms_mean": null,
+            "warning_ms_median": null,
+            "hanson_false_alarm_shot_rate": 0.0,
+            "hanson_false_alarms_per_shot": 0.0,
+            "comparison_false_alarm_shot_rate": 0.0,
+            "comparison_false_alarms_per_shot": 0.0
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 0,
+            "hanson_shots_with_a_false_alarm": 0,
+            "comparison_shots_with_an_alarm": 0
+          },
+          "metrics": {
+            "slice_auroc": 0.5940679073657797,
+            "slice_auprc": 0.035899718517156294,
+            "slice_tpr": 0.6772727272727272,
+            "slice_fpr": 0.5372340425531915,
+            "slice_precision": 0.03834276891405044,
+            "slice_f1": 0.0725767169995129,
+            "mixed_auroc": 0.5694223133418109,
+            "mixed_auprc": 0.006858403760463981,
+            "mixed_fpr": 0.5709962888952327,
+            "onset_detection_rate": 0.0,
+            "warning_ms_mean": null,
+            "warning_ms_median": null,
+            "hanson_false_alarm_shot_rate": 0.0,
+            "hanson_false_alarms_per_shot": 0.0,
+            "comparison_false_alarm_shot_rate": 0.0,
+            "comparison_false_alarms_per_shot": 0.0
+          }
+        }
+      }
+    },
+    "rwm-brf-no-rotation": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 18,
+        "hanson_shots_with_a_false_alarm": 24,
+        "comparison_shots_with_an_alarm": 32
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.3171102464793819,
+          "rule": [
+            0.8130829548823115,
+            0.8130829548823115,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.32199191912654607,
+          "rule": [
+            0.43508919369415633,
+            0.8701783873883127,
+            50.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.3838984300591876,
+          "rule": [
+            0.8115722804330717,
+            0.8115722804330717,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.28572258638297143,
+          "rule": [
+            0.8778307954477687,
+            0.8778307954477687,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.448974920002042,
+          "rule": [
+            0.6966552641153202,
+            0.6966552641153202,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7994650250336992,
+          "low": 0.7433332130265394,
+          "high": 0.8465218030784175
+        },
+        "slice_auprc": {
+          "estimate": 0.08454166284206908,
+          "low": 0.06058563467472832,
+          "high": 0.11922731424109258
+        },
+        "slice_tpr": {
+          "estimate": 0.825,
+          "low": 0.7371326530612244,
+          "high": 0.9085171705860396
+        },
+        "slice_fpr": {
+          "estimate": 0.32286250722125936,
+          "low": 0.27303727916816023,
+          "high": 0.3782800427411579
+        },
+        "slice_precision": {
+          "estimate": 0.08136429011711527,
+          "low": 0.060703166555077764,
+          "high": 0.10764559282128316
+        },
+        "slice_f1": {
+          "estimate": 0.14812044136899197,
+          "low": 0.112501609646052,
+          "high": 0.19213322822537404
+        },
+        "mixed_auroc": {
+          "estimate": 0.8991655111540059,
+          "low": 0.8658257113685622,
+          "high": 0.9285955770472287
+        },
+        "mixed_auprc": {
+          "estimate": 0.04517782655644554,
+          "low": 0.030733537450319433,
+          "high": 0.06819193204598742
+        },
+        "mixed_fpr": {
+          "estimate": 0.17887946832164586,
+          "low": 0.1538523055344158,
+          "high": 0.2052370741667702
+        },
+        "onset_detection_rate": {
+          "estimate": 0.375,
+          "low": 0.20754716981132076,
+          "high": 0.5593389830508474
+        },
+        "warning_ms_mean": {
+          "estimate": 251.7111111111111,
+          "low": 189.59661764705885,
+          "high": 306.7020454545454
+        },
+        "warning_ms_median": {
+          "estimate": 305.25,
+          "low": 236.0,
+          "high": 352.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.7272727272727273,
+          "low": 0.5757575757575758,
+          "high": 0.8787878787878788
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 4.090909090909091,
+          "low": 2.51439393939394,
+          "high": 5.849242424242424
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.24242424242424243,
+          "low": 0.1740530303030305,
+          "high": 0.3181818181818182
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 1.5,
+          "low": 0.8409090909090909,
+          "high": 2.182196969696969
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 12,
+            "hanson_shots_with_a_false_alarm": 16,
+            "comparison_shots_with_an_alarm": 18
+          },
+          "metrics": {
+            "slice_auroc": 0.7999827001205411,
+            "slice_auprc": 0.09167399118538193,
+            "slice_tpr": 0.85,
+            "slice_fpr": 0.3254497968659315,
+            "slice_precision": 0.08969155844155845,
+            "slice_f1": 0.16226138032305434,
+            "mixed_auroc": 0.9258147531180592,
+            "mixed_auprc": 0.05682507871682092,
+            "mixed_fpr": 0.13939432769519905,
+            "onset_detection_rate": 0.46153846153846156,
+            "warning_ms_mean": 233.4,
+            "warning_ms_median": 278.45000000000005,
+            "hanson_false_alarm_shot_rate": 0.8,
+            "hanson_false_alarms_per_shot": 4.4,
+            "comparison_false_alarm_shot_rate": 0.225,
+            "comparison_false_alarms_per_shot": 1.175
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 6,
+            "hanson_shots_with_a_false_alarm": 8,
+            "comparison_shots_with_an_alarm": 14
+          },
+          "metrics": {
+            "slice_auroc": 0.7988198546709185,
+            "slice_auprc": 0.07831031765627022,
+            "slice_tpr": 0.7954545454545454,
+            "slice_fpr": 0.320299022426682,
+            "slice_precision": 0.07282563462338744,
+            "slice_f1": 0.13343499809378573,
+            "mixed_auroc": 0.8615319336672462,
+            "mixed_auprc": 0.033101660649169126,
+            "mixed_fpr": 0.23165857836140452,
+            "onset_detection_rate": 0.2727272727272727,
+            "warning_ms_mean": 288.3333333333333,
+            "warning_ms_median": 315.75,
+            "hanson_false_alarm_shot_rate": 0.6153846153846154,
+            "hanson_false_alarms_per_shot": 3.6153846153846154,
+            "comparison_false_alarm_shot_rate": 0.2692307692307692,
+            "comparison_false_alarms_per_shot": 2.0
+          }
+        }
+      }
+    },
+    "rwm-brf-with-locked-mode": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz",
+          "lock_v"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 21,
+        "hanson_shots_with_a_false_alarm": 26,
+        "comparison_shots_with_an_alarm": 27
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.3530050452426001,
+          "rule": [
+            0.8444024640238678,
+            0.8444024640238678,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.31670349368400036,
+          "rule": [
+            0.6961534235325871,
+            0.6961534235325871,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.35737891893279344,
+          "rule": [
+            0.7968254021063907,
+            0.7968254021063907,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.28645775754561265,
+          "rule": [
+            0.8747347599064791,
+            0.8747347599064791,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.321998453076957,
+          "rule": [
+            0.6913528579728804,
+            0.6913528579728804,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7992744138744464,
+          "low": 0.7435636796916155,
+          "high": 0.8447998015770267
+        },
+        "slice_auprc": {
+          "estimate": 0.08484671235233243,
+          "low": 0.06262813798558832,
+          "high": 0.12006443855462241
+        },
+        "slice_tpr": {
+          "estimate": 0.8645833333333334,
+          "low": 0.7835909090909092,
+          "high": 0.9357214285714286
+        },
+        "slice_fpr": {
+          "estimate": 0.32011842865395723,
+          "low": 0.26908717496430734,
+          "high": 0.375252094933815
+        },
+        "slice_precision": {
+          "estimate": 0.0856023102310231,
+          "low": 0.06395522534575938,
+          "high": 0.11242032104482388
+        },
+        "slice_f1": {
+          "estimate": 0.15578078078078078,
+          "low": 0.11878690606191432,
+          "high": 0.20005144358002097
+        },
+        "mixed_auroc": {
+          "estimate": 0.900588064317769,
+          "low": 0.8685869561005758,
+          "high": 0.9293803379259549
+        },
+        "mixed_auprc": {
+          "estimate": 0.047087737431503456,
+          "low": 0.03233701980270173,
+          "high": 0.07085732315033008
+        },
+        "mixed_fpr": {
+          "estimate": 0.17262442886114301,
+          "low": 0.14792963442612453,
+          "high": 0.19847892150582078
+        },
+        "onset_detection_rate": {
+          "estimate": 0.4375,
+          "low": 0.2857142857142857,
+          "high": 0.5833726415094339
+        },
+        "warning_ms_mean": {
+          "estimate": 225.74,
+          "low": 181.54467897727275,
+          "high": 270.71875
+        },
+        "warning_ms_median": {
+          "estimate": 236.0,
+          "low": 129.73999999999978,
+          "high": 334.25
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.7878787878787878,
+          "low": 0.6363636363636364,
+          "high": 0.9090909090909091
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 4.0,
+          "low": 2.6659090909090915,
+          "high": 5.637121212121212
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.20454545454545456,
+          "low": 0.13636363636363635,
+          "high": 0.2727272727272727
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 1.1363636363636365,
+          "low": 0.5681818181818182,
+          "high": 1.75
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 12,
+            "hanson_shots_with_a_false_alarm": 17,
+            "comparison_shots_with_an_alarm": 17
+          },
+          "metrics": {
+            "slice_auroc": 0.7962570873699719,
+            "slice_auprc": 0.08736861526821567,
+            "slice_tpr": 0.8884615384615384,
+            "slice_fpr": 0.3279164248403947,
+            "slice_precision": 0.09273384183059012,
+            "slice_f1": 0.16793893129770993,
+            "mixed_auroc": 0.9272173868758954,
+            "mixed_auprc": 0.05544409899561175,
+            "mixed_fpr": 0.12869468648556295,
+            "onset_detection_rate": 0.46153846153846156,
+            "warning_ms_mean": 239.10833333333335,
+            "warning_ms_median": 266.45000000000005,
+            "hanson_false_alarm_shot_rate": 0.85,
+            "hanson_false_alarms_per_shot": 4.4,
+            "comparison_false_alarm_shot_rate": 0.2125,
+            "comparison_false_alarms_per_shot": 0.9875
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 9,
+            "hanson_shots_with_a_false_alarm": 9,
+            "comparison_shots_with_an_alarm": 10
+          },
+          "metrics": {
+            "slice_auroc": 0.804831015735271,
+            "slice_auprc": 0.08710852894382251,
+            "slice_tpr": 0.8363636363636363,
+            "slice_fpr": 0.312392179413456,
+            "slice_precision": 0.07806533729316928,
+            "slice_f1": 0.14280170741171905,
+            "mixed_auroc": 0.8657415721589287,
+            "mixed_auprc": 0.039759828990865664,
+            "mixed_fpr": 0.23134456180416785,
+            "onset_detection_rate": 0.4090909090909091,
+            "warning_ms_mean": 207.91555555555553,
+            "warning_ms_median": 193.5,
+            "hanson_false_alarm_shot_rate": 0.6923076923076923,
+            "hanson_false_alarms_per_shot": 3.3846153846153846,
+            "comparison_false_alarm_shot_rate": 0.19230769230769232,
+            "comparison_false_alarms_per_shot": 1.3653846153846154
+          }
+        }
+      }
+    },
+    "rwm-brf-horizon-50": {
+      "model": "brf",
+      "horizon_ms": 50.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 240,
+        "negative_slices": 14116,
+        "excluded_slices": 563,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 17,
+        "hanson_shots_with_a_false_alarm": 21,
+        "comparison_shots_with_an_alarm": 22
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.43792894801081256,
+          "rule": [
+            0.8503130322217706,
+            0.8503130322217706,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.3624319384319387,
+          "rule": [
+            0.8164524528237466,
+            0.8164524528237466,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.4590896728136066,
+          "rule": [
+            0.6523324934903062,
+            0.6523324934903062,
+            20.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.32904365079365083,
+          "rule": [
+            0.865551425455163,
+            0.865551425455163,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.43539471980261424,
+          "rule": [
+            0.6651410459273186,
+            0.6651410459273186,
+            20.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7918591196750732,
+          "low": 0.737536118473852,
+          "high": 0.8398580455784309
+        },
+        "slice_auprc": {
+          "estimate": 0.04191591041137771,
+          "low": 0.03061693106651358,
+          "high": 0.06049811964907626
+        },
+        "slice_tpr": {
+          "estimate": 0.7625,
+          "low": 0.6499764150943397,
+          "high": 0.8636492281303602
+        },
+        "slice_fpr": {
+          "estimate": 0.3046188722017569,
+          "low": 0.25387610740785654,
+          "high": 0.36339010173587466
+        },
+        "slice_precision": {
+          "estimate": 0.04082087887575284,
+          "low": 0.02914168975885856,
+          "high": 0.056406615572736636
+        },
+        "slice_f1": {
+          "estimate": 0.07749311878043616,
+          "low": 0.05598724658934301,
+          "high": 0.10521640619135751
+        },
+        "mixed_auroc": {
+          "estimate": 0.8947917427729476,
+          "low": 0.8597925815088634,
+          "high": 0.9276188078245311
+        },
+        "mixed_auprc": {
+          "estimate": 0.023361272689465792,
+          "low": 0.015638018841372555,
+          "high": 0.03653140610109009
+        },
+        "mixed_fpr": {
+          "estimate": 0.15290665108010035,
+          "low": 0.13085722294182842,
+          "high": 0.17795739796981816
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3541666666666667,
+          "low": 0.22911931818181822,
+          "high": 0.48936170212765956
+        },
+        "warning_ms_mean": {
+          "estimate": 265.95588235294116,
+          "low": 214.5464955357143,
+          "high": 304.8683522727273
+        },
+        "warning_ms_median": {
+          "estimate": 303.3499999999999,
+          "low": 236.9000000000001,
+          "high": 330.25
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6363636363636364,
+          "low": 0.45454545454545453,
+          "high": 0.7878787878787878
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.272727272727273,
+          "low": 1.8484848484848484,
+          "high": 5.03030303030303
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.16666666666666666,
+          "low": 0.10606060606060606,
+          "high": 0.22746212121212103
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.7045454545454546,
+          "low": 0.378598484848485,
+          "high": 1.0761363636363632
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 130,
+            "negative_slices": 7030,
+            "excluded_slices": 283,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 12,
+            "hanson_shots_with_a_false_alarm": 15,
+            "comparison_shots_with_an_alarm": 12
+          },
+          "metrics": {
+            "slice_auroc": 0.7955804792646898,
+            "slice_auprc": 0.04504641292510605,
+            "slice_tpr": 0.7923076923076923,
+            "slice_fpr": 0.31877667140825033,
+            "slice_precision": 0.0439419795221843,
+            "slice_f1": 0.08326596604688763,
+            "mixed_auroc": 0.9273361768762305,
+            "mixed_auprc": 0.028977511456041327,
+            "mixed_fpr": 0.11879817724969124,
+            "onset_detection_rate": 0.46153846153846156,
+            "warning_ms_mean": 279.6875,
+            "warning_ms_median": 309.67499999999995,
+            "hanson_false_alarm_shot_rate": 0.75,
+            "hanson_false_alarms_per_shot": 4.05,
+            "comparison_false_alarm_shot_rate": 0.15,
+            "comparison_false_alarms_per_shot": 0.75
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 110,
+            "negative_slices": 7086,
+            "excluded_slices": 280,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 5,
+            "hanson_shots_with_a_false_alarm": 6,
+            "comparison_shots_with_an_alarm": 10
+          },
+          "metrics": {
+            "slice_auroc": 0.7829792420393605,
+            "slice_auprc": 0.03817261160321877,
+            "slice_tpr": 0.7272727272727273,
+            "slice_fpr": 0.290572960767711,
+            "slice_precision": 0.03740065451145395,
+            "slice_f1": 0.07114273010226767,
+            "mixed_auroc": 0.8457123280587444,
+            "mixed_auprc": 0.017298349292249715,
+            "mixed_fpr": 0.1984641638225256,
+            "onset_detection_rate": 0.22727272727272727,
+            "warning_ms_mean": 233.0,
+            "warning_ms_median": 230.5,
+            "hanson_false_alarm_shot_rate": 0.46153846153846156,
+            "hanson_false_alarms_per_shot": 2.076923076923077,
+            "comparison_false_alarm_shot_rate": 0.19230769230769232,
+            "comparison_false_alarms_per_shot": 0.6346153846153846
+          }
+        }
+      }
+    },
+    "rwm-brf-horizon-200": {
+      "model": "brf",
+      "horizon_ms": 200.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "comparison": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 958,
+        "negative_slices": 13345,
+        "excluded_slices": 616,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 19,
+        "hanson_shots_with_a_false_alarm": 25,
+        "comparison_shots_with_an_alarm": 26
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.33698960575707854,
+          "rule": [
+            0.8526217547284948,
+            0.8526217547284948,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.3349438285447319,
+          "rule": [
+            0.7272577870901344,
+            0.7272577870901344,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.3137524879309904,
+          "rule": [
+            0.8156714049773351,
+            0.8156714049773351,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.24346932836451665,
+          "rule": [
+            0.877764350866616,
+            0.877764350866616,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.28831198927503016,
+          "rule": [
+            0.8498160096507188,
+            0.8498160096507188,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.8060021854572448,
+          "low": 0.7503325217807447,
+          "high": 0.8538191709126375
+        },
+        "slice_auprc": {
+          "estimate": 0.1703691782873019,
+          "low": 0.12392580451759459,
+          "high": 0.24077123473154044
+        },
+        "slice_tpr": {
+          "estimate": 0.8705636743215032,
+          "low": 0.7939904255319149,
+          "high": 0.9415009888158781
+        },
+        "slice_fpr": {
+          "estimate": 0.3437991757212439,
+          "low": 0.29142036191510823,
+          "high": 0.4000527856319873
+        },
+        "slice_precision": {
+          "estimate": 0.15381777941718922,
+          "low": 0.11481605938236952,
+          "high": 0.19814758785787656
+        },
+        "slice_f1": {
+          "estimate": 0.26144200626959246,
+          "low": 0.20282469013914328,
+          "high": 0.32444724406682124
+        },
+        "mixed_auroc": {
+          "estimate": 0.9001160439610524,
+          "low": 0.8697283399026883,
+          "high": 0.9300012439949857
+        },
+        "mixed_auprc": {
+          "estimate": 0.09602215827651876,
+          "low": 0.06260446990729973,
+          "high": 0.14741100556805997
+        },
+        "mixed_fpr": {
+          "estimate": 0.19779719978857052,
+          "low": 0.1701111332614611,
+          "high": 0.22616673743227578
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3958333333333333,
+          "low": 0.2652772429726608,
+          "high": 0.5348837209302325
+        },
+        "warning_ms_mean": {
+          "estimate": 214.60736842105263,
+          "low": 166.04567857142857,
+          "high": 264.19381392045455
+        },
+        "warning_ms_median": {
+          "estimate": 229.0,
+          "low": 130.0,
+          "high": 300.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.7575757575757576,
+          "low": 0.6060606060606061,
+          "high": 0.9090909090909091
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.1515151515151514,
+          "low": 2.211363636363637,
+          "high": 4.121212121212121
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.19696969696969696,
+          "low": 0.12878787878787878,
+          "high": 0.26515151515151514
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.9090909090909091,
+          "low": 0.45435606060606076,
+          "high": 1.4174242424242418
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 518,
+            "negative_slices": 6622,
+            "excluded_slices": 303,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 10,
+            "hanson_shots_with_a_false_alarm": 17,
+            "comparison_shots_with_an_alarm": 15
+          },
+          "metrics": {
+            "slice_auroc": 0.7957087583333431,
+            "slice_auprc": 0.1749922125632708,
+            "slice_tpr": 0.861003861003861,
+            "slice_fpr": 0.36363636363636365,
+            "slice_precision": 0.15627189908899788,
+            "slice_f1": 0.26453143534994067,
+            "mixed_auroc": 0.9215946839996331,
+            "mixed_auprc": 0.11257035674260442,
+            "mixed_fpr": 0.15646346178631268,
+            "onset_detection_rate": 0.38461538461538464,
+            "warning_ms_mean": 241.48000000000002,
+            "warning_ms_median": 288.0,
+            "hanson_false_alarm_shot_rate": 0.85,
+            "hanson_false_alarms_per_shot": 3.4,
+            "comparison_false_alarm_shot_rate": 0.1875,
+            "comparison_false_alarms_per_shot": 0.8375
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 440,
+            "negative_slices": 6723,
+            "excluded_slices": 313,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 9,
+            "hanson_shots_with_a_false_alarm": 8,
+            "comparison_shots_with_an_alarm": 11
+          },
+          "metrics": {
+            "slice_auroc": 0.8179299690343868,
+            "slice_auprc": 0.16508459468041506,
+            "slice_tpr": 0.8818181818181818,
+            "slice_fpr": 0.3242600029748624,
+            "slice_precision": 0.15109034267912771,
+            "slice_f1": 0.2579787234042553,
+            "mixed_auroc": 0.8695101719845232,
+            "mixed_auprc": 0.07548221665593313,
+            "mixed_fpr": 0.2530965313101704,
+            "onset_detection_rate": 0.4090909090909091,
+            "warning_ms_mean": 184.74888888888887,
+            "warning_ms_median": 173.5,
+            "hanson_false_alarm_shot_rate": 0.6153846153846154,
+            "hanson_false_alarms_per_shot": 2.769230769230769,
+            "comparison_false_alarm_shot_rate": 0.21153846153846154,
+            "comparison_false_alarms_per_shot": 1.0192307692307692
+          }
+        }
+      }
+    },
+    "rwm-brf-all-modes": {
+      "model": "brf",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "comparison": true,
+        "all_modes": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 540,
+        "negative_slices": 13848,
+        "excluded_slices": 531,
+        "comparison_slices": 68006,
+        "target_onsets": 54,
+        "onsets_warned": 18,
+        "hanson_shots_with_a_false_alarm": 21,
+        "comparison_shots_with_an_alarm": 25
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.31412625173993,
+          "rule": [
+            0.8621530826824894,
+            0.8621530826824894,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.31024848344722483,
+          "rule": [
+            0.8728685293318719,
+            0.8728685293318719,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.31150904230584187,
+          "rule": [
+            0.6807213730829237,
+            0.6807213730829237,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.22443183312050186,
+          "rule": [
+            0.8914651714231735,
+            0.8914651714231735,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.379505636019125,
+          "rule": [
+            0.8092698001275034,
+            0.8092698001275034,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7996630078952436,
+          "low": 0.7478273450200177,
+          "high": 0.8441544099091343
+        },
+        "slice_auprc": {
+          "estimate": 0.0879893214181727,
+          "low": 0.06605876894636027,
+          "high": 0.12574123844934804
+        },
+        "slice_tpr": {
+          "estimate": 0.8425925925925926,
+          "low": 0.7490858585858586,
+          "high": 0.9305300764373545
+        },
+        "slice_fpr": {
+          "estimate": 0.33687175043327555,
+          "low": 0.28478409539697674,
+          "high": 0.3940309695472049
+        },
+        "slice_precision": {
+          "estimate": 0.0888671875,
+          "low": 0.06949462374042803,
+          "high": 0.1137597587885101
+        },
+        "slice_f1": {
+          "estimate": 0.1607773851590106,
+          "low": 0.12832753982174705,
+          "high": 0.20118890539283557
+        },
+        "mixed_auroc": {
+          "estimate": 0.8987168436303482,
+          "low": 0.8694165567515344,
+          "high": 0.9269576265835193
+        },
+        "mixed_auprc": {
+          "estimate": 0.045882546424751966,
+          "low": 0.03228305107316377,
+          "high": 0.06885422914271404
+        },
+        "mixed_fpr": {
+          "estimate": 0.20724704962494198,
+          "low": 0.1795773497832531,
+          "high": 0.23543096410681164
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3333333333333333,
+          "low": 0.21568627450980393,
+          "high": 0.4706656346749225
+        },
+        "warning_ms_mean": {
+          "estimate": 258.32500000000005,
+          "low": 197.23634046052632,
+          "high": 314.13340909090914
+        },
+        "warning_ms_median": {
+          "estimate": 301.54999999999995,
+          "low": 180.5,
+          "high": 346.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6363636363636364,
+          "low": 0.48484848484848486,
+          "high": 0.7878787878787878
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.606060606060606,
+          "low": 2.212121212121212,
+          "high": 5.1522727272727264
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.1893939393939394,
+          "low": 0.12878787878787878,
+          "high": 0.25757575757575757
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.7878787878787878,
+          "low": 0.44696969696969696,
+          "high": 1.1818181818181819
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 280,
+            "negative_slices": 6892,
+            "excluded_slices": 271,
+            "comparison_slices": 39932,
+            "target_onsets": 28,
+            "onsets_warned": 12,
+            "hanson_shots_with_a_false_alarm": 14,
+            "comparison_shots_with_an_alarm": 15
+          },
+          "metrics": {
+            "slice_auroc": 0.7946464845369372,
+            "slice_auprc": 0.08628876408581532,
+            "slice_tpr": 0.8892857142857142,
+            "slice_fpr": 0.3444573418456181,
+            "slice_precision": 0.09492947007243614,
+            "slice_f1": 0.1715466758525663,
+            "mixed_auroc": 0.9238863311854727,
+            "mixed_auprc": 0.05091503254528166,
+            "mixed_fpr": 0.17149325132410728,
+            "onset_detection_rate": 0.42857142857142855,
+            "warning_ms_mean": 271.5708333333333,
+            "warning_ms_median": 301.54999999999995,
+            "hanson_false_alarm_shot_rate": 0.7,
+            "hanson_false_alarms_per_shot": 4.4,
+            "comparison_false_alarm_shot_rate": 0.1875,
+            "comparison_false_alarms_per_shot": 0.8
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 260,
+            "negative_slices": 6956,
+            "excluded_slices": 260,
+            "comparison_slices": 28074,
+            "target_onsets": 26,
+            "onsets_warned": 6,
+            "hanson_shots_with_a_false_alarm": 7,
+            "comparison_shots_with_an_alarm": 10
+          },
+          "metrics": {
+            "slice_auroc": 0.803807449020215,
+            "slice_auprc": 0.09272156102027036,
+            "slice_tpr": 0.7923076923076923,
+            "slice_fpr": 0.3293559516963772,
+            "slice_precision": 0.08249899879855827,
+            "slice_f1": 0.14943779470438884,
+            "mixed_auroc": 0.8639222424734843,
+            "mixed_auprc": 0.042052016579482376,
+            "mixed_fpr": 0.2550385383956609,
+            "onset_detection_rate": 0.23076923076923078,
+            "warning_ms_mean": 231.83333333333334,
+            "warning_ms_median": 263.25,
+            "hanson_false_alarm_shot_rate": 0.5384615384615384,
+            "hanson_false_alarms_per_shot": 2.3846153846153846,
+            "comparison_false_alarm_shot_rate": 0.19230769230769232,
+            "comparison_false_alarms_per_shot": 0.7692307692307693
+          }
+        }
+      }
+    },
+    "rwm-nnpu": {
+      "model": "nnpu",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "prior_scale": 1.0
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 20,
+        "hanson_shots_with_a_false_alarm": 22,
+        "comparison_shots_with_an_alarm": 15
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.007423716131597757,
+          "rule": [
+            0.0613805162906646,
+            0.0613805162906646,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.007525531575083733,
+          "rule": [
+            0.06289974704384804,
+            0.06289974704384804,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.009846420027315617,
+          "rule": [
+            0.06058677121996871,
+            0.06058677121996871,
+            20.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.007496397942304611,
+          "rule": [
+            0.035822831094264984,
+            0.035822831094264984,
+            0.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.008072534576058388,
+          "rule": [
+            0.05970206856727597,
+            0.05970206856727597,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7936466457250144,
+          "low": 0.74256370121216,
+          "high": 0.8448936851230558
+        },
+        "slice_auprc": {
+          "estimate": 0.08304092484617728,
+          "low": 0.060050108762067546,
+          "high": 0.13353184755345887
+        },
+        "slice_tpr": {
+          "estimate": 0.7666666666666667,
+          "low": 0.655,
+          "high": 0.8736069851465275
+        },
+        "slice_fpr": {
+          "estimate": 0.32943385326400926,
+          "low": 0.26768639067046246,
+          "high": 0.3943984011993776
+        },
+        "slice_precision": {
+          "estimate": 0.07464503042596349,
+          "low": 0.055711028584652975,
+          "high": 0.09899260474759682
+        },
+        "slice_f1": {
+          "estimate": 0.13604436229205175,
+          "low": 0.10390052500223615,
+          "high": 0.1758371130070341
+        },
+        "mixed_auroc": {
+          "estimate": 0.9004574201220058,
+          "low": 0.8669982930212606,
+          "high": 0.9333848368483619
+        },
+        "mixed_auprc": {
+          "estimate": 0.05193720759021407,
+          "low": 0.035123466249088485,
+          "high": 0.09114533704215293
+        },
+        "mixed_fpr": {
+          "estimate": 0.17186698267647274,
+          "low": 0.14629649230193154,
+          "high": 0.19937689664714042
+        },
+        "onset_detection_rate": {
+          "estimate": 0.4166666666666667,
+          "low": 0.29624183006535953,
+          "high": 0.5532505910165484
+        },
+        "warning_ms_mean": {
+          "estimate": 218.0125,
+          "low": 173.35841533180778,
+          "high": 266.8781875
+        },
+        "warning_ms_median": {
+          "estimate": 203.25,
+          "low": 143.3499999999999,
+          "high": 296.9000000000001
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6666666666666666,
+          "low": 0.5143939393939401,
+          "high": 0.8181818181818182
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.272727272727273,
+          "low": 2.0901515151515158,
+          "high": 4.455303030303029
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.11363636363636363,
+          "low": 0.06060606060606061,
+          "high": 0.17424242424242425
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.5909090909090909,
+          "low": 0.27992424242424274,
+          "high": 0.9848484848484849
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 14,
+            "hanson_shots_with_a_false_alarm": 15,
+            "comparison_shots_with_an_alarm": 10
+          },
+          "metrics": {
+            "slice_auroc": 0.7933719139247288,
+            "slice_auprc": 0.0822725194255412,
+            "slice_tpr": 0.8923076923076924,
+            "slice_fpr": 0.389727219965177,
+            "slice_precision": 0.07950651130911583,
+            "slice_f1": 0.1460037759597231,
+            "mixed_auroc": 0.9412202322280487,
+            "mixed_auprc": 0.058571191690084116,
+            "mixed_fpr": 0.1361694857338117,
+            "onset_detection_rate": 0.5384615384615384,
+            "warning_ms_mean": 231.66071428571428,
+            "warning_ms_median": 246.75,
+            "hanson_false_alarm_shot_rate": 0.75,
+            "hanson_false_alarms_per_shot": 3.85,
+            "comparison_false_alarm_shot_rate": 0.125,
+            "comparison_false_alarms_per_shot": 0.5625
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 6,
+            "hanson_shots_with_a_false_alarm": 7,
+            "comparison_shots_with_an_alarm": 5
+          },
+          "metrics": {
+            "slice_auroc": 0.7768669297924617,
+            "slice_auprc": 0.10609308940444802,
+            "slice_tpr": 0.6181818181818182,
+            "slice_fpr": 0.26969522714203564,
+            "slice_precision": 0.06759443339960239,
+            "slice_f1": 0.12186379928315412,
+            "mixed_auroc": 0.821827654218462,
+            "mixed_auprc": 0.06531592198820586,
+            "mixed_fpr": 0.2195832143876677,
+            "onset_detection_rate": 0.2727272727272727,
+            "warning_ms_mean": 186.16666666666666,
+            "warning_ms_median": 155.5,
+            "hanson_false_alarm_shot_rate": 0.5384615384615384,
+            "hanson_false_alarms_per_shot": 2.3846153846153846,
+            "comparison_false_alarm_shot_rate": 0.09615384615384616,
+            "comparison_false_alarms_per_shot": 0.6346153846153846
+          }
+        }
+      }
+    },
+    "rwm-nnpu-prior-x0.5": {
+      "model": "nnpu",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "prior_scale": 0.5
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 16,
+        "hanson_shots_with_a_false_alarm": 21,
+        "comparison_shots_with_an_alarm": 13
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.004364321008324623,
+          "rule": [
+            0.02903641246259212,
+            0.02903641246259212,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.004378200508654118,
+          "rule": [
+            0.03033695794641971,
+            0.03033695794641971,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.006548915058374405,
+          "rule": [
+            0.016230246052145948,
+            0.016230246052145948,
+            0.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.006087092682719231,
+          "rule": [
+            0.04823781400918963,
+            0.04823781400918963,
+            50.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.006258993409574032,
+          "rule": [
+            0.028700644224882114,
+            0.028700644224882114,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7910137444637011,
+          "low": 0.7379500370074047,
+          "high": 0.8422936436819174
+        },
+        "slice_auprc": {
+          "estimate": 0.08264637180443844,
+          "low": 0.058800368879711365,
+          "high": 0.1401630108431616
+        },
+        "slice_tpr": {
+          "estimate": 0.74375,
+          "low": 0.6073722222222222,
+          "high": 0.869628412537917
+        },
+        "slice_fpr": {
+          "estimate": 0.3107307914500289,
+          "low": 0.2432475902337352,
+          "high": 0.376366785291132
+        },
+        "slice_precision": {
+          "estimate": 0.07660944206008584,
+          "low": 0.05745747348163919,
+          "high": 0.1007137836730919
+        },
+        "slice_f1": {
+          "estimate": 0.13891050583657588,
+          "low": 0.10601793036734937,
+          "high": 0.17751094872501325
+        },
+        "mixed_auroc": {
+          "estimate": 0.8995109559907477,
+          "low": 0.8640873249156432,
+          "high": 0.9342587286468454
+        },
+        "mixed_auprc": {
+          "estimate": 0.052028343266787,
+          "low": 0.03419425103023834,
+          "high": 0.09606757846642208
+        },
+        "mixed_fpr": {
+          "estimate": 0.1540425635888289,
+          "low": 0.12935857283205496,
+          "high": 0.17925543450985273
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3333333333333333,
+          "low": 0.21664215686274513,
+          "high": 0.46301679586563305
+        },
+        "warning_ms_mean": {
+          "estimate": 230.903125,
+          "low": 169.64539583333334,
+          "high": 290.83699248120297
+        },
+        "warning_ms_median": {
+          "estimate": 267.70000000000005,
+          "low": 122.0,
+          "high": 338.5
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6363636363636364,
+          "low": 0.45454545454545453,
+          "high": 0.7878787878787878
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 3.121212121212121,
+          "low": 2.029545454545455,
+          "high": 4.243181818181817
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.09848484848484848,
+          "low": 0.05303030303030303,
+          "high": 0.15151515151515152
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.6742424242424242,
+          "low": 0.23484848484848486,
+          "high": 1.2501893939393938
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 13,
+            "hanson_shots_with_a_false_alarm": 15,
+            "comparison_shots_with_an_alarm": 11
+          },
+          "metrics": {
+            "slice_auroc": 0.7968424929684361,
+            "slice_auprc": 0.08344840519914082,
+            "slice_tpr": 0.9076923076923077,
+            "slice_fpr": 0.3881311665699362,
+            "slice_precision": 0.08107179663345929,
+            "slice_f1": 0.1488489435509303,
+            "mixed_auroc": 0.9430486831210819,
+            "mixed_auprc": 0.05933101481731551,
+            "mixed_fpr": 0.13597727661028533,
+            "onset_detection_rate": 0.5,
+            "warning_ms_mean": 238.8807692307692,
+            "warning_ms_median": 296.9000000000001,
+            "hanson_false_alarm_shot_rate": 0.75,
+            "hanson_false_alarms_per_shot": 3.35,
+            "comparison_false_alarm_shot_rate": 0.1375,
+            "comparison_false_alarms_per_shot": 0.9125
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 3,
+            "hanson_shots_with_a_false_alarm": 6,
+            "comparison_shots_with_an_alarm": 2
+          },
+          "metrics": {
+            "slice_auroc": 0.7687137330754352,
+            "slice_auprc": 0.11678314700272883,
+            "slice_tpr": 0.55,
+            "slice_fpr": 0.23404255319148937,
+            "slice_precision": 0.06918238993710692,
+            "slice_f1": 0.12290502793296089,
+            "mixed_auroc": 0.8176362468533465,
+            "mixed_auprc": 0.0774240282023387,
+            "mixed_fpr": 0.17819012275192692,
+            "onset_detection_rate": 0.13636363636363635,
+            "warning_ms_mean": 196.33333333333334,
+            "warning_ms_median": 113.0,
+            "hanson_false_alarm_shot_rate": 0.46153846153846156,
+            "hanson_false_alarms_per_shot": 2.769230769230769,
+            "comparison_false_alarm_shot_rate": 0.038461538461538464,
+            "comparison_false_alarms_per_shot": 0.3076923076923077
+          }
+        }
+      }
+    },
+    "rwm-nnpu-prior-x2": {
+      "model": "nnpu",
+      "horizon_ms": 100.0,
+      "options": {
+        "columns": [
+          "betan",
+          "li",
+          "q95",
+          "qmin",
+          "wmhd_mj",
+          "betan_over_li",
+          "betan_minus_4li",
+          "ip_ma",
+          "n1rms_g",
+          "n1rms_max_g",
+          "n1rms_growth_per_s",
+          "n2rms_g",
+          "rot_core_khz",
+          "rot_mid_khz"
+        ],
+        "prior_scale": 2.0
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 16,
+        "hanson_shots_with_a_false_alarm": 21,
+        "comparison_shots_with_an_alarm": 14
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.010446466505527496,
+          "rule": [
+            0.12919236600399012,
+            0.12919236600399012,
+            0.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 0.011990290135145187,
+          "rule": [
+            0.1937296551465984,
+            0.1937296551465984,
+            0.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 0.00785417202860117,
+          "rule": [
+            0.05875317826867103,
+            0.05875317826867103,
+            50.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 0.010590950958430767,
+          "rule": [
+            0.2182327896356584,
+            0.2182327896356584,
+            20.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 0.010536142624914646,
+          "rule": [
+            0.12622537314891763,
+            0.12622537314891763,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7919555170421722,
+          "low": 0.7381610546511339,
+          "high": 0.8437618751648149
+        },
+        "slice_auprc": {
+          "estimate": 0.082836681721758,
+          "low": 0.060124549786403095,
+          "high": 0.12983911518747837
+        },
+        "slice_tpr": {
+          "estimate": 0.7916666666666666,
+          "low": 0.6865261627906977,
+          "high": 0.8911531334231806
+        },
+        "slice_fpr": {
+          "estimate": 0.35225303292894283,
+          "low": 0.2923769799938292,
+          "high": 0.41262586988424993
+        },
+        "slice_precision": {
+          "estimate": 0.07227082540890073,
+          "low": 0.05240053604895844,
+          "high": 0.09682167322413071
+        },
+        "slice_f1": {
+          "estimate": 0.13245033112582782,
+          "low": 0.0976187847788513,
+          "high": 0.17431230459857977
+        },
+        "mixed_auroc": {
+          "estimate": 0.8972466729379953,
+          "low": 0.8630777256503667,
+          "high": 0.9299097793690356
+        },
+        "mixed_auprc": {
+          "estimate": 0.051613000678944844,
+          "low": 0.034918327686714865,
+          "high": 0.08482234774625652
+        },
+        "mixed_fpr": {
+          "estimate": 0.1924279815280866,
+          "low": 0.16640594914737714,
+          "high": 0.21937507177898743
+        },
+        "onset_detection_rate": {
+          "estimate": 0.3333333333333333,
+          "low": 0.23404255319148937,
+          "high": 0.44236111111111104
+        },
+        "warning_ms_mean": {
+          "estimate": 256.49375,
+          "low": 198.23290966386557,
+          "high": 309.124735576923
+        },
+        "warning_ms_median": {
+          "estimate": 264.0,
+          "low": 165.21875000000026,
+          "high": 371.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.6363636363636364,
+          "low": 0.4840909090909098,
+          "high": 0.7878787878787878
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 2.4545454545454546,
+          "low": 1.4242424242424243,
+          "high": 3.5454545454545454
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.10606060606060606,
+          "low": 0.06060606060606061,
+          "high": 0.1590909090909091
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.36363636363636365,
+          "low": 0.17424242424242425,
+          "high": 0.5835227272727271
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 11,
+            "hanson_shots_with_a_false_alarm": 14,
+            "comparison_shots_with_an_alarm": 10
+          },
+          "metrics": {
+            "slice_auroc": 0.7884001517924908,
+            "slice_auprc": 0.08081269791969477,
+            "slice_tpr": 0.8461538461538461,
+            "slice_fpr": 0.3865351131746953,
+            "slice_precision": 0.07628294036061026,
+            "slice_f1": 0.13994910941475827,
+            "mixed_auroc": 0.9358626904020292,
+            "mixed_auprc": 0.056617293869445855,
+            "mixed_fpr": 0.14065436528276098,
+            "onset_detection_rate": 0.4230769230769231,
+            "warning_ms_mean": 253.12727272727273,
+            "warning_ms_median": 238.5,
+            "hanson_false_alarm_shot_rate": 0.7,
+            "hanson_false_alarms_per_shot": 2.65,
+            "comparison_false_alarm_shot_rate": 0.125,
+            "comparison_false_alarms_per_shot": 0.3875
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 5,
+            "hanson_shots_with_a_false_alarm": 7,
+            "comparison_shots_with_an_alarm": 4
+          },
+          "metrics": {
+            "slice_auroc": 0.7823461759631972,
+            "slice_auprc": 0.09563622364228207,
+            "slice_tpr": 0.7272727272727273,
+            "slice_fpr": 0.3182863714778608,
+            "slice_precision": 0.06739679865206402,
+            "slice_f1": 0.12336160370084812,
+            "mixed_auroc": 0.8284489917732852,
+            "mixed_auprc": 0.051574554723169456,
+            "mixed_fpr": 0.2616328860976306,
+            "onset_detection_rate": 0.22727272727272727,
+            "warning_ms_mean": 263.9,
+            "warning_ms_median": 289.5,
+            "hanson_false_alarm_shot_rate": 0.5384615384615384,
+            "hanson_false_alarms_per_shot": 2.1538461538461537,
+            "comparison_false_alarm_shot_rate": 0.07692307692307693,
+            "comparison_false_alarms_per_shot": 0.3269230769230769
+          }
+        }
+      }
+    },
+    "rule-betan-over-li": {
+      "model": "rule",
+      "horizon_ms": 100.0,
+      "options": {
+        "column": "betan_over_li"
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 1,
+        "hanson_shots_with_a_false_alarm": 5,
+        "comparison_shots_with_an_alarm": 17
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 4.051829037858976,
+          "rule": [
+            5.775222172617972,
+            5.775222172617972,
+            50.0
+          ]
+        },
+        {
+          "fold": 1,
+          "cutoff": 4.051829037858976,
+          "rule": [
+            5.869729170242535,
+            5.869729170242535,
+            20.0
+          ]
+        },
+        {
+          "fold": 2,
+          "cutoff": 3.934843093751021,
+          "rule": [
+            5.85933723186118,
+            5.85933723186118,
+            50.0
+          ]
+        },
+        {
+          "fold": 3,
+          "cutoff": 4.051829037858976,
+          "rule": [
+            5.875839348343624,
+            5.875839348343624,
+            50.0
+          ]
+        },
+        {
+          "fold": 4,
+          "cutoff": 4.08826044247278,
+          "rule": [
+            5.866607795418799,
+            5.866607795418799,
+            20.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.7522622099460813,
+          "low": 0.6875420800226769,
+          "high": 0.8153225046626771
+        },
+        "slice_auprc": {
+          "estimate": 0.073842479258426,
+          "low": 0.052061154184664,
+          "high": 0.11526166753987882
+        },
+        "slice_tpr": {
+          "estimate": 0.7354166666666667,
+          "low": 0.601875,
+          "high": 0.8470728291316526
+        },
+        "slice_fpr": {
+          "estimate": 0.302209705372617,
+          "low": 0.2448793400449284,
+          "high": 0.36307900767361084
+        },
+        "slice_precision": {
+          "estimate": 0.07778757161745262,
+          "low": 0.05588045153403306,
+          "high": 0.10407498453334502
+        },
+        "slice_f1": {
+          "estimate": 0.1406935033878039,
+          "low": 0.10307010329547645,
+          "high": 0.18338125717375425
+        },
+        "mixed_auroc": {
+          "estimate": 0.7842134572938809,
+          "low": 0.7176144067492355,
+          "high": 0.8428277788673694
+        },
+        "mixed_auprc": {
+          "estimate": 0.017120441222313106,
+          "low": 0.011241010307790606,
+          "high": 0.026552794390748844
+        },
+        "mixed_fpr": {
+          "estimate": 0.2653993696093044,
+          "low": 0.2403884257381551,
+          "high": 0.29095746012829166
+        },
+        "onset_detection_rate": {
+          "estimate": 0.020833333333333332,
+          "low": 0.0,
+          "high": 0.06976744186046512
+        },
+        "warning_ms_mean": {
+          "estimate": 188.0,
+          "low": 188.0,
+          "high": 188.0
+        },
+        "warning_ms_median": {
+          "estimate": 188.0,
+          "low": 188.0,
+          "high": 188.0
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.15151515151515152,
+          "low": 0.030303030303030304,
+          "high": 0.2727272727272727
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 0.24242424242424243,
+          "low": 0.06060606060606061,
+          "high": 0.45454545454545453
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.12878787878787878,
+          "low": 0.07575757575757576,
+          "high": 0.18181818181818182
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.29545454545454547,
+          "low": 0.15132575757575775,
+          "high": 0.4772727272727273
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 0,
+            "hanson_shots_with_a_false_alarm": 4,
+            "comparison_shots_with_an_alarm": 9
+          },
+          "metrics": {
+            "slice_auroc": 0.7262539622304567,
+            "slice_auprc": 0.06419175016175957,
+            "slice_tpr": 0.6461538461538462,
+            "slice_fpr": 0.2967208357515961,
+            "slice_precision": 0.07591504744690465,
+            "slice_f1": 0.13586736756975334,
+            "mixed_auroc": 0.8133934849321189,
+            "mixed_auprc": 0.018045222937037694,
+            "mixed_fpr": 0.19970527934392618,
+            "onset_detection_rate": 0.0,
+            "warning_ms_mean": null,
+            "warning_ms_median": null,
+            "hanson_false_alarm_shot_rate": 0.2,
+            "hanson_false_alarms_per_shot": 0.3,
+            "comparison_false_alarm_shot_rate": 0.1125,
+            "comparison_false_alarms_per_shot": 0.25
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 1,
+            "hanson_shots_with_a_false_alarm": 1,
+            "comparison_shots_with_an_alarm": 8
+          },
+          "metrics": {
+            "slice_auroc": 0.7911240786240786,
+            "slice_auprc": 0.10541444778003553,
+            "slice_tpr": 0.8409090909090909,
+            "slice_fpr": 0.30764807360552043,
+            "slice_precision": 0.07956989247311828,
+            "slice_f1": 0.14538310412573674,
+            "mixed_auroc": 0.7629668076713466,
+            "mixed_auprc": 0.018781641127781117,
+            "mixed_fpr": 0.3532115329717385,
+            "onset_detection_rate": 0.045454545454545456,
+            "warning_ms_mean": 188.0,
+            "warning_ms_median": 188.0,
+            "hanson_false_alarm_shot_rate": 0.07692307692307693,
+            "hanson_false_alarms_per_shot": 0.15384615384615385,
+            "comparison_false_alarm_shot_rate": 0.15384615384615385,
+            "comparison_false_alarms_per_shot": 0.36538461538461536
+          }
+        }
+      }
+    },
+    "rule-rwm-candidates": {
+      "model": "rule",
+      "horizon_ms": 100.0,
+      "options": {
+        "column": "rule_candidate",
+        "binary": true
+      },
+      "fold_seed": 0,
+      "counts": {
+        "hanson_shots": 33,
+        "comparison_shots": 132,
+        "positive_slices": 480,
+        "negative_slices": 13848,
+        "excluded_slices": 591,
+        "comparison_slices": 68006,
+        "target_onsets": 48,
+        "onsets_warned": 0,
+        "hanson_shots_with_a_false_alarm": 7,
+        "comparison_shots_with_an_alarm": 36
+      },
+      "rules_by_fold": [
+        {
+          "fold": 0,
+          "cutoff": 0.5,
+          "rule": [
+            0.5,
+            0.5,
+            0.0
+          ]
+        }
+      ],
+      "metrics": {
+        "slice_auroc": {
+          "estimate": 0.49776140958983245,
+          "low": 0.49538329515220875,
+          "high": 0.49951558676875607
+        },
+        "slice_auprc": {
+          "estimate": 0.03350083752093802,
+          "low": 0.02649293357878631,
+          "high": 0.04134815031298225
+        },
+        "slice_tpr": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "slice_fpr": {
+          "estimate": 0.004477180820335066,
+          "low": 0.0009688264624878094,
+          "high": 0.009233409695582591
+        },
+        "slice_precision": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "slice_f1": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "mixed_auroc": {
+          "estimate": 0.49546143132895154,
+          "low": 0.49266938722911197,
+          "high": 0.497624089039923
+        },
+        "mixed_auprc": {
+          "estimate": 0.005829912308402361,
+          "low": 0.00464566816753761,
+          "high": 0.006990845804551045
+        },
+        "mixed_fpr": {
+          "estimate": 0.009077137342096904,
+          "low": 0.004751821920153956,
+          "high": 0.014661225541775973
+        },
+        "onset_detection_rate": {
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
+        "warning_ms_mean": {
+          "estimate": null,
+          "low": null,
+          "high": null
+        },
+        "warning_ms_median": {
+          "estimate": null,
+          "low": null,
+          "high": null
+        },
+        "hanson_false_alarm_shot_rate": {
+          "estimate": 0.21212121212121213,
+          "low": 0.09090909090909091,
+          "high": 0.36363636363636365
+        },
+        "hanson_false_alarms_per_shot": {
+          "estimate": 0.42424242424242425,
+          "low": 0.12121212121212122,
+          "high": 0.7878787878787878
+        },
+        "comparison_false_alarm_shot_rate": {
+          "estimate": 0.2727272727272727,
+          "low": 0.19696969696969696,
+          "high": 0.3484848484848485
+        },
+        "comparison_false_alarms_per_shot": {
+          "estimate": 0.7954545454545454,
+          "low": 0.49981060606060623,
+          "high": 1.1363636363636365
+        }
+      },
+      "by_campaign": {
+        "2014": {
+          "counts": {
+            "hanson_shots": 20,
+            "comparison_shots": 80,
+            "positive_slices": 260,
+            "negative_slices": 6892,
+            "excluded_slices": 291,
+            "comparison_slices": 39932,
+            "target_onsets": 26,
+            "onsets_warned": 0,
+            "hanson_shots_with_a_false_alarm": 3,
+            "comparison_shots_with_an_alarm": 25
+          },
+          "metrics": {
+            "slice_auroc": 0.4965177016831109,
+            "slice_auprc": 0.036353467561521254,
+            "slice_tpr": 0.0,
+            "slice_fpr": 0.006964596633778294,
+            "slice_precision": 0.0,
+            "slice_f1": 0.0,
+            "mixed_auroc": 0.49295233213736545,
+            "mixed_auprc": 0.0055220457055475325,
+            "mixed_fpr": 0.014095335725269094,
+            "onset_detection_rate": 0.0,
+            "warning_ms_mean": null,
+            "warning_ms_median": null,
+            "hanson_false_alarm_shot_rate": 0.15,
+            "hanson_false_alarms_per_shot": 0.4,
+            "comparison_false_alarm_shot_rate": 0.3125,
+            "comparison_false_alarms_per_shot": 1.075
+          }
+        },
+        "2018": {
+          "counts": {
+            "hanson_shots": 13,
+            "comparison_shots": 52,
+            "positive_slices": 220,
+            "negative_slices": 6956,
+            "excluded_slices": 300,
+            "comparison_slices": 28074,
+            "target_onsets": 22,
+            "onsets_warned": 0,
+            "hanson_shots_with_a_false_alarm": 4,
+            "comparison_shots_with_an_alarm": 11
+          },
+          "metrics": {
+            "slice_auroc": 0.4989936745255894,
+            "slice_auprc": 0.030657748049052396,
+            "slice_tpr": 0.0,
+            "slice_fpr": 0.0020126509488211618,
+            "slice_precision": 0.0,
+            "slice_f1": 0.0,
+            "mixed_auroc": 0.49881530117042533,
+            "mixed_auprc": 0.00624113475177305,
+            "mixed_fpr": 0.0023693976591493008,
+            "onset_detection_rate": 0.0,
+            "warning_ms_mean": null,
+            "warning_ms_median": null,
+            "hanson_false_alarm_shot_rate": 0.3076923076923077,
+            "hanson_false_alarms_per_shot": 0.46153846153846156,
+            "comparison_false_alarm_shot_rate": 0.21153846153846154,
+            "comparison_false_alarms_per_shot": 0.36538461538461536
+          }
+        }
+      }
+    }
+  },
+  "single_feature_auroc": {
+    "betan": {
+      "auroc": 0.7150719718852301,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "li": {
+      "auroc": 0.7768967841324861,
+      "higher_means_unstable": false,
+      "present": 0.9872278056951423
+    },
+    "q95": {
+      "auroc": 0.5423254561428846,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "qmin": {
+      "auroc": 0.6561956901116888,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "wmhd_mj": {
+      "auroc": 0.7035527091758136,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "betan_over_li": {
+      "auroc": 0.7522622099460813,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "betan_minus_4li": {
+      "auroc": 0.7536331961294049,
+      "higher_means_unstable": true,
+      "present": 0.9872278056951423
+    },
+    "ip_ma": {
+      "auroc": 0.5500455841998845,
+      "higher_means_unstable": true,
+      "present": 1.0
+    },
+    "n1rms_g": {
+      "auroc": 0.5533064341421143,
+      "higher_means_unstable": true,
+      "present": 1.0
+    },
+    "n1rms_max_g": {
+      "auroc": 0.529914367899095,
+      "higher_means_unstable": true,
+      "present": 1.0
+    },
+    "n1rms_growth_per_s": {
+      "auroc": 0.5119141753321779,
+      "higher_means_unstable": false,
+      "present": 1.0
+    },
+    "n2rms_g": {
+      "auroc": 0.5646653247159638,
+      "higher_means_unstable": true,
+      "present": 1.0
+    },
+    "rot_core_khz": {
+      "auroc": 0.6800584169795879,
+      "higher_means_unstable": true,
+      "present": 0.8538525963149078
+    },
+    "rot_mid_khz": {
+      "auroc": 0.6314837130512228,
+      "higher_means_unstable": true,
+      "present": 0.8538525963149078
+    },
+    "lock_v": {
+      "auroc": 0.5989760855959947,
+      "higher_means_unstable": false,
+      "present": 1.0
+    }
+  }
+}

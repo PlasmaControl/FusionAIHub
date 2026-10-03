@@ -1,0 +1,27 @@
+{
+  "categories": {
+    "0": "absent",
+    "1": "present",
+    "2": "uncertain"
+  },
+  "category": "resistive_wall_mode",
+  "columns": [
+    "shot",
+    "category",
+    "t_start",
+    "t_end",
+    "confidence"
+  ],
+  "coverage": "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates screen on the matched comparison shots, which are unlabelled and not negatives. A shot absent from the table was not examined.",
+  "made_at": "2026-10-03T12:53:27+00:00",
+  "made_by": "scripts/labeler/rwm_build.py",
+  "n_rows": 266,
+  "n_shots": 70,
+  "rules": {
+    "present": "the 20 ms before each listed onset, of either mode number (a growth window; see outputs/labeler/rwm/growth.json)",
+    "absent": "the high-current window (Ip at least half its peak) outside [onset - 100, onset + 100] ms of every listed onset; the precursor before a growth window and the aftermath carry no row (not assessed)",
+    "uncertain": "rwm_candidates screen spans, comparison shots only"
+  },
+  "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
+  "summary": "outputs/labeler/rwm/shots.json"
+}
