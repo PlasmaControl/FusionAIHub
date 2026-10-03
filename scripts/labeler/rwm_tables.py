@@ -1,488 +1,309 @@
 #!/usr/bin/env python
-"""Render the tables of `docs/labeler/rwm_baseline.md` from the JSON records.
-
-Reads `outputs/labeler/rwm/{evaluation,shots,growth}.json` and writes the Markdown
-tables to `outputs/labeler/rwm/tables.md` (and stdout), so every number in the document
-is a copy of a number in a record and none is typed by hand. The published (Legacy)
-numbers are the constants below, from the digest of Piccione et al. 2022.
-
-    python scripts/labeler/rwm_tables.py
-"""
+"""Render named RWM tables and a paper LaTeX table from the fix-round JSON."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
-
-#: Piccione et al. 2022 (NSTX), digest `.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_
-#: 036002.md`: random under-sampling forest on its 28-shot test set (11 unstable, 17
-#: stable shots).
-LEGACY = {
-    "slice_auroc": 0.918,
-    "slice_tpr": 0.924,
-    "slice_fpr": 0.214,
-    "detected": 10,
-    "missed": 1,
-    "unstable_shots": 11,
-    "false_positives": 2,
-    "stable_shots": 17,
-}
+NAMES = (
+    "rwm-brf",
+    "rule-time-since-flattop",
+    "rule-betan",
+    "rule-betan-over-li",
+    "rule-rwm-candidates",
+)
 
 
-def interval(metric: dict | None, digits: int = 3) -> str:
-    """`estimate [low, high]`, or a dash when the metric is undefined."""
+def interval(metric, digits=3):
     if not metric or metric.get("estimate") is None:
         return "-"
-    low, high = metric.get("low"), metric.get("high")
     text = f"{metric['estimate']:.{digits}f}"
-    if low is None or high is None:
-        return text
-    return f"{text} [{low:.{digits}f}, {high:.{digits}f}]"
+    if metric.get("low") is not None and metric.get("high") is not None:
+        text += f" [{metric['low']:.{digits}f}, {metric['high']:.{digits}f}]"
+    return text
 
 
-def plain(value, digits: int = 3) -> str:
-    return "-" if value is None else f"{value:.{digits}f}"
-
-
-def table(header: list[str], rows: list[list[str]]) -> str:
+def table(header, rows):
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
-    lines += ["| " + " | ".join(row) + " |" for row in rows]
-    return "\n".join(lines)
+    return "\n".join(lines + ["| " + " | ".join(row) + " |" for row in rows])
 
 
-def balance(shots: dict) -> str:
+def scores(configs, prefix="slice", conditional=False):
+    keys = [f"{prefix}_auroc", f"{prefix}_auprc"]
     rows = []
-    for year, groups in shots["comparison"]["balance"].items():
-        for name, label in (
-            ("hanson", "Hanson shots"),
-            ("matched", "chosen comparison"),
-            ("pool_not_chosen", "pool, not chosen"),
-        ):
-            g = groups[name]
-            rows.append(
-                [
-                    year,
-                    label,
-                    str(g["shots"]),
-                    plain(g["betan_p95_mean"], 2),
-                    plain(g["betan_over_li_p95_mean"], 2),
-                ]
-            )
+    for name in NAMES:
+        c = configs[name]
+        values = [interval(c["metrics"][k]) for k in keys]
+        if conditional:
+            n = c["counts"]
+            values += [
+                str(n[f"{prefix}_positive_slices"]),
+                str(n[f"{prefix}_negative_slices"]),
+                f"{n[f'{prefix}_prevalence']:.3f}",
+            ]
+        rows.append([name, *values])
     return table(
-        ["campaign", "set", "shots", "mean flat-top beta_N p95", "mean beta_N/l_i p95"],
+        ["model", "AUROC (95% CI)", "AUPRC (95% CI)"]
+        + (
+            ["positive slices", "assumed-negative slices", "prevalence"]
+            if conditional
+            else []
+        ),
         rows,
     )
 
 
-def headline(configs: dict, names: list[str]) -> str:
-    rows = []
-    for name in names:
+def alarm_tables(configs):
+    counts, rates, warnings = [], [], []
+    for name in NAMES:
         c = configs[name]
-        m = c["metrics"]
-        rows.append(
+        n, m = c["counts"], c["metrics"]
+        counts.append(
             [
                 name,
-                interval(m["slice_auroc"]),
-                interval(m["slice_auprc"]),
-                interval(m["slice_f1"]),
-                interval(m["slice_tpr"]),
-                interval(m["slice_fpr"]),
+                f"{n['onsets_warned']}/{n['target_onsets']}",
+                f"{n['hanson_shots_with_an_unexplained_alarm']}/{n['hanson_shots']}",
+                f"{n['comparison_shots_with_an_alarm']}/{n['comparison_shots']}",
             ]
         )
-    return table(
-        ["model", "AUROC", "AUPRC", "F1", "TPR", "FPR"],
-        rows,
-    )
-
-
-def mixed(configs: dict, names: list[str]) -> str:
-    rows = []
-    for name in names:
-        m = configs[name]["metrics"]
-        rows.append(
+        rates.append(
             [
                 name,
-                interval(m["mixed_auroc"]),
-                interval(m["mixed_auprc"]),
-                interval(m["mixed_fpr"]),
-            ]
-        )
-    return table(["model", "AUROC", "AUPRC", "FPR"], rows)
-
-
-def per_shot(configs: dict, names: list[str]) -> str:
-    rows = []
-    for name in names:
-        c = configs[name]
-        m, n = c["metrics"], c["counts"]
-        rows.append(
-            [
-                name,
-                f"{n['onsets_warned']} of {n['target_onsets']}",
                 interval(m["onset_detection_rate"]),
-                plain(c.get("chance_detection")),
+                interval(m["hanson_unexplained_alarm_incidence"]),
+                interval(m["comparison_alarm_incidence"]),
+            ]
+        )
+        warnings.append(
+            [
+                name,
                 interval(m["warning_ms_median"], 0),
-                f"{n['hanson_shots_with_a_false_alarm']} of {n['hanson_shots']}",
-                interval(m["hanson_false_alarm_shot_rate"]),
-                interval(m["hanson_false_alarms_per_shot"], 2),
-                f"{n['comparison_shots_with_an_alarm']} of {n['comparison_shots']}",
-                interval(m["comparison_false_alarm_shot_rate"]),
-                interval(m["comparison_false_alarms_per_shot"], 2),
+                interval(m["uniform_alarm_reference"]),
+                interval(m["detection_minus_uniform_reference"]),
             ]
         )
-    return table(
-        [
-            "model",
-            "onsets warned",
-            "detection rate",
-            "detection by chance",
-            "median warning (ms)",
-            "Hanson shots with a false alarm",
-            "rate",
-            "per shot",
-            "comparison shots with an alarm",
-            "rate",
-            "per shot",
-        ],
-        rows,
-    )
-
-
-def variants(configs: dict, names: list[str]) -> str:
-    rows = []
-    for name in names:
-        c = configs[name]
-        m, n = c["metrics"], c["counts"]
-        rows.append(
+    return {
+        "Alarm counts — all models (n=1 targets)": table(
             [
-                name,
-                str(n["positive_slices"]),
-                interval(m["slice_auroc"]),
-                interval(m["slice_auprc"]),
-                interval(m["onset_detection_rate"]),
-                interval(m["hanson_false_alarm_shot_rate"]),
-                interval(m["comparison_false_alarm_shot_rate"]),
-            ]
-        )
-    return table(
-        [
-            "configuration",
-            "positive slices",
-            "AUROC",
-            "AUPRC",
-            "detection rate",
-            "Hanson false-alarm shot rate",
-            "comparison false-alarm shot rate",
-        ],
-        rows,
-    )
-
-
-def estimate(value):
-    """A point estimate from either a bootstrap dict or a plain number."""
-    return value["estimate"] if isinstance(value, dict) else value
-
-
-def seeds(config: dict) -> str:
-    runs = {"0": config["metrics"], **config.get("split_seeds", {})}
-    keys = (
-        "slice_auroc",
-        "slice_auprc",
-        "onset_detection_rate",
-        "comparison_false_alarm_shot_rate",
-    )
-    rows = [
-        [seed, *(plain(estimate(m[k])) for k in keys)]
-        for seed, m in sorted(runs.items())
-    ]
-    return table(
-        [
-            "fold seed",
-            "AUROC",
-            "AUPRC",
-            "detection rate",
-            "comparison false-alarm shot rate",
-        ],
-        rows,
-    )
-
-
-def by_campaign(config: dict) -> str:
-    rows = []
-    for year, part in config["by_campaign"].items():
-        n, m = part["counts"], part["metrics"]
-        rows.append(
+                "model",
+                "onsets warned",
+                "Hanson shots: unexplained alarm",
+                "unlabelled shots: any alarm",
+            ],
+            counts,
+        ),
+        "Alarm rates — all models (95% shot CIs)": table(
             [
-                year,
-                f"{n['hanson_shots']} / {n['comparison_shots']}",
-                str(n["positive_slices"]),
-                plain(m["slice_auroc"]),
-                plain(m["slice_auprc"]),
-                f"{n['onsets_warned']} of {n['target_onsets']}",
-                f"{n['hanson_shots_with_a_false_alarm']} of {n['hanson_shots']}",
-                f"{n['comparison_shots_with_an_alarm']} of {n['comparison_shots']}",
-            ]
-        )
-    return table(
-        [
-            "campaign",
-            "Hanson / comparison shots",
-            "positive slices",
-            "AUROC",
-            "AUPRC",
-            "onsets warned",
-            "Hanson shots with a false alarm",
-            "comparison shots with an alarm",
-        ],
-        rows,
-    )
-
-
-def paired(record: dict) -> str:
-    keys = (
-        ("slice_auroc", "AUROC"),
-        ("slice_auprc", "AUPRC"),
-        ("onset_detection_rate", "detection rate"),
-        ("hanson_false_alarm_shot_rate", "Hanson false-alarm shot rate"),
-        ("comparison_false_alarm_shot_rate", "comparison false-alarm shot rate"),
-    )
-    rows = [
-        [name, *(interval(difference[key]) for key, _ in keys)]
-        for name, difference in record.get("paired", {}).items()
-    ]
-    return table(["first - second", *(label for _, label in keys)], rows)
-
-
-def scored_time(config: dict) -> str:
-    rows = []
-    for role in ("hanson", "comparison"):
-        records = [r for r in config.get("per_shot", []) if r["role"] == role]
-        if not records:
-            continue
-        span = [r["span_ms"] / 1000.0 for r in records]
-        alarms = sum(r["alarms"] for r in records)
-        rows.append(
+                "model",
+                "onset detection",
+                "Hanson unexplained incidence",
+                "alarm incidence on unlabelled shots",
+            ],
+            rates,
+        ),
+        "Warning times — all models (detected onsets only)": table(
             [
-                role,
-                str(len(records)),
-                plain(sum(span) / len(span), 2),
-                plain(min(span), 2),
-                plain(max(span), 2),
-                plain(sum(span), 1),
-                str(alarms),
-                plain(alarms / sum(span), 2),
-            ]
+                "model",
+                "median warning, ms (95% CI)",
+                "uniform-alarm reference",
+                "detection minus reference",
+            ],
+            warnings,
+        ),
+    }
+
+
+def paired(record, prefix):
+    rows = [
+        [name, interval(m[f"{prefix}_auroc"]), interval(m[f"{prefix}_auprc"])]
+        for name, m in record["paired"].items()
+    ]
+    return table(
+        [
+            "first model minus rule",
+            "AUROC difference (95% CI)",
+            "AUPRC difference (95% CI)",
+        ],
+        rows,
+    )
+
+
+def latex_cell(m):
+    if m["estimate"] is None:
+        return "--"
+    point = f"{m['estimate']:.3f}"
+    if m["low"] is None or m["high"] is None:
+        return point
+    return (
+        r"\shortstack{" + point + r"\\{[" + f"{m['low']:.3f}, {m['high']:.3f}]" + "}}"
+    )
+
+
+def write_latex(configs, out_dir):
+    labels = {
+        "rwm-brf": r"\texttt{rwm-brf}",
+        "rule-time-since-flattop": "Elapsed time",
+        "rule-betan": r"$\beta_N$",
+        "rule-betan-over-li": r"$\beta_N/l_i$",
+        "rule-rwm-candidates": "RWM screen",
+    }
+    keys = ("slice_auroc", "slice_auprc", "high_beta_auroc")
+    lines = [
+        r"\begin{table}[t]",
+        r"\centering",
+        r"\small",
+        r"\setlength{\tabcolsep}{2pt}",
+        r"\begin{tabular}{@{}lccc@{}}",
+        r"\toprule",
+        (
+            r"Model / rule & \shortstack{Piccione-style\\AUROC} & "
+            r"\shortstack{Piccione-style\\AUPRC} & \shortstack{High-$\beta$\\AUROC} \\"
+        ),
+        r"\midrule",
+    ]
+    provenance = {}
+    for name in NAMES:
+        lines.append(
+            labels[name]
+            + " & "
+            + " & ".join(latex_cell(configs[name]["metrics"][k]) for k in keys)
+            + r" \\"
         )
-    return table(
-        [
-            "shots",
-            "count",
-            "mean scored span (s)",
-            "shortest",
-            "longest",
-            "total (s)",
-            "alarms",
-            "alarms per scored second",
-        ],
-        rows,
-    )
-
-
-def single_features(record: dict) -> str:
-    rows = [
-        [
-            name,
-            plain(v["auroc"]),
-            "higher" if v["higher_means_unstable"] else "lower",
-            plain(v["present"], 3),
-        ]
-        for name, v in record["single_feature_auroc"].items()
+        provenance[name] = {
+            k: {
+                "json_path": f"configs.{name}.metrics.{k}",
+                **configs[name]["metrics"][k],
+            }
+            for k in keys
+        }
+    lines += [
+        r"\bottomrule",
+        r"\end{tabular}",
+        (
+            r"\caption{DIII-D onset forecasting on Hanson shots. Positives are "
+            r"within 100 ms before a listed $n=1$ onset; assumed negatives are "
+            r"earlier than the last onset, excluding event aftermath. Complete "
+            r"negative coverage is unverified. High-$\beta$ uses "
+            r"$\beta_N\geq0.8$ times the shot's 95th percentile. Brackets give "
+            r"95\% shot-bootstrap intervals from 1,000 resamples of held-out "
+            r"predictions. The candidate screen uses a retrospective threshold.}"
+        ),
+        r"\label{tab:rwm-baseline}",
+        r"\end{table}",
     ]
-    return table(
-        ["feature", "AUROC", "unstable when", "fraction of slices with a value"], rows
-    )
+    target = out_dir / "table_rwm.tex"
+    target.write_text("\n".join(lines) + "\n")
+    return {"path": str(target), "cells": provenance}
 
 
-def shot_list(config: dict, role: str = "hanson") -> str:
-    rows = []
-    for r in config.get("per_shot", []):
-        if r["role"] != role:
-            continue
-        warned = ", ".join("-" if w is None else f"{w:.0f}" for w in r["warning_ms"])
-        rows.append(
-            [
-                str(r["shot"]),
-                str(r["campaign"]),
-                str(r["onsets"]),
-                warned or "-",
-                str(r["false_alarms"]),
-            ]
-        )
-    return table(
-        ["shot", "campaign", "n=1 onsets", "warning per onset (ms; - missed)", "false"],
-        rows,
-    )
-
-
-def legacy(configs: dict) -> str:
-    c = configs["rwm-brf"]
-    m, n = c["metrics"], c["counts"]
-    with_onset = [
-        r for r in c.get("per_shot", []) if r["role"] == "hanson" and r["onsets"]
-    ]
-    detected = sum(any(w is not None for w in r["warning_ms"]) for r in with_onset)
-    old = LEGACY
-    old_shots = f"{old['detected']} of {old['unstable_shots']} unstable shots"
-    old_false = f"{old['false_positives']} of {old['stable_shots']} stable shots"
-    new_shots = (
-        f"{detected} of {len(with_onset)} shots with an n=1 onset "
-        f"({n['onsets_warned']} of {n['target_onsets']} onsets)"
-    )
-    new_false = (
-        f"{n['hanson_shots_with_a_false_alarm']} of {n['hanson_shots']} Hanson shots; "
-        f"{n['comparison_shots_with_an_alarm']} of {n['comparison_shots']} unlabelled "
-        "comparison shots (upper bound)"
-    )
-    rows = [
-        [
-            "Legacy: Piccione et al. 2022, NSTX, 28 test shots",
-            f"{old['slice_auroc']:.3f}",
-            f"{old['slice_tpr']:.3f}",
-            f"{old['slice_fpr']:.3f}",
-            old_shots,
-            old_false,
-        ],
-        [
-            "Tokamak-SI: rwm-brf, DIII-D, shot-grouped CV",
-            interval(m["slice_auroc"]),
-            interval(m["slice_tpr"]),
-            interval(m["slice_fpr"]),
-            new_shots,
-            new_false,
-        ],
-    ]
-    return table(
-        [
-            "setting",
-            "slice AUROC",
-            "slice TPR",
-            "slice FPR",
-            "unstable shots detected",
-            "false alarms",
-        ],
-        rows,
-    )
-
-
-def growth(g: dict) -> str:
-    rows = [
-        [
-            "largest 20 ms growth rate of N1RMS, -150 to +30 ms from the onset (per s)",
-            plain(g["max_growth_per_s_n1"]["q1"], 0),
-            plain(g["max_growth_per_s_n1"]["median"], 0),
-            plain(g["max_growth_per_s_n1"]["q3"], 0),
-        ],
-        [
-            "e-folding time at that rate (ms)",
-            plain(g["efold_ms_n1"]["q1"], 1),
-            plain(g["efold_ms_n1"]["median"], 1),
-            plain(g["efold_ms_n1"]["q3"], 1),
-        ],
-        [
-            "time of the maximum growth relative to the onset (ms)",
-            plain(g["max_growth_at_ms_n1"]["q1"], 1),
-            plain(g["max_growth_at_ms_n1"]["median"], 1),
-            plain(g["max_growth_at_ms_n1"]["q3"], 1),
-        ],
-        [
-            "beta_N 100 ms before the onset",
-            plain(g["betan"]["m100"]["q1"], 2),
-            plain(g["betan"]["m100"]["median"], 2),
-            plain(g["betan"]["m100"]["q3"], 2),
-        ],
-        [
-            "beta_N at the onset",
-            plain(g["betan"]["at_onset"]["q1"], 2),
-            plain(g["betan"]["at_onset"]["median"], 2),
-            plain(g["betan"]["at_onset"]["q3"], 2),
-        ],
-        [
-            "beta_N 40 ms after the onset",
-            plain(g["betan"]["p40"]["q1"], 2),
-            plain(g["betan"]["p40"]["median"], 2),
-            plain(g["betan"]["p40"]["q3"], 2),
-        ],
-    ]
-    return table(
-        ["quantity (48 n=1 onsets)", "first quartile", "median", "third quartile"], rows
-    )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT / "tables.md")
     args = parser.parse_args()
     record = json.loads((OUT / "evaluation.json").read_text())
-    shots = json.loads((OUT / "shots.json").read_text())
-    g = json.loads((OUT / "growth.json").read_text())
     configs = record["configs"]
     sections = {
-        "selection balance (shots.json)": balance(shots),
-        "growth (growth.json)": growth(g),
-        "slice scores, Hanson shots (evaluation.json)": headline(
-            configs,
-            ["rwm-brf", "rwm-nnpu", "rule-betan-over-li", "rule-rwm-candidates"],
+        "Piccione-style primary scores — all models": scores(configs),
+        "Broader Hanson-negative sensitivity — same models and predictions": scores(
+            configs, "broad"
         ),
-        "slice scores with the comparison shots as negatives": mixed(
-            configs,
-            ["rwm-brf", "rwm-nnpu", "rule-betan-over-li", "rule-rwm-candidates"],
+        "High-beta conditional scores — all models": scores(configs, "high_beta", True),
+        "Above no-wall-proxy conditional scores — all models": scores(
+            configs, "above_proxy", True
         ),
-        "per-shot alarm scores": per_shot(
-            configs,
-            ["rwm-brf", "rwm-nnpu", "rule-betan-over-li", "rule-rwm-candidates"],
-        ),
-        "legacy against Tokamak-SI": legacy(configs),
-        "rwm-brf feature and training ablations": variants(
-            configs,
-            [
-                "rwm-brf",
-                "rwm-brf-hanson-only",
-                "rwm-brf-equilibrium-only",
-                "rwm-brf-magnetics-only",
-                "rwm-brf-no-rotation",
-                "rwm-brf-with-locked-mode",
-            ],
-        ),
-        "rwm-brf target variants": variants(
-            configs,
-            [
-                "rwm-brf-horizon-50",
-                "rwm-brf",
-                "rwm-brf-horizon-200",
-                "rwm-brf-all-modes",
-            ],
-        ),
-        "rwm-nnpu variants": variants(
-            configs,
-            ["rwm-nnpu-prior-x0.5", "rwm-nnpu", "rwm-nnpu-prior-x2"],
-        ),
-        "rwm-brf split-seed sensitivity": seeds(configs["rwm-brf"]),
-        "paired differences on shared shot resamples": paired(record),
-        "rwm-brf by campaign": by_campaign(configs["rwm-brf"]),
-        "rwm-brf scored time and alarm rate": scored_time(configs["rwm-brf"]),
-        "rwm-nnpu scored time and alarm rate": scored_time(configs["rwm-nnpu"]),
-        "single-feature AUROC": single_features(record),
-        "rwm-brf per Hanson shot": shot_list(configs["rwm-brf"]),
-        "rwm-nnpu per Hanson shot": shot_list(configs["rwm-nnpu"]),
+        **alarm_tables(configs),
     }
-    text = "".join(f"<!-- {name} -->\n{body}\n\n" for name, body in sections.items())
+    for prefix, label in (
+        ("slice", "primary"),
+        ("high_beta", "high-beta"),
+        ("above_proxy", "above-proxy"),
+    ):
+        sections[f"Paired differences — rwm-brf versus rules, {label}"] = paired(
+            record, prefix
+        )
+    alarm_keys = (
+        "onset_detection_rate",
+        "hanson_unexplained_alarm_incidence",
+        "comparison_alarm_incidence",
+    )
+    sections["Paired alarm differences — rwm-brf versus rules"] = table(
+        [
+            "first model minus rule",
+            "detection difference",
+            "Hanson incidence difference",
+            "unlabelled incidence difference",
+        ],
+        [
+            [name, *(interval(m[k]) for k in alarm_keys)]
+            for name, m in record["paired"].items()
+        ],
+    )
+    c = configs["rwm-brf"]
+    runs = {"0": c, **c["split_seeds"]}
+    sections["Split sensitivity — rwm-brf (fixed hyperparameters)"] = table(
+        [
+            "model",
+            "fold seed",
+            "primary AUROC",
+            "high-beta AUROC",
+            "detection rate",
+            "unlabelled alarm incidence",
+        ],
+        [
+            [
+                "rwm-brf",
+                s,
+                *(
+                    f"{(m[k]['estimate'] if s == '0' else m[k]):.3f}"
+                    for k in (
+                        "slice_auroc",
+                        "high_beta_auroc",
+                        "onset_detection_rate",
+                        "comparison_alarm_incidence",
+                    )
+                ),
+            ]
+            for s, run in runs.items()
+            for m in [run["metrics"]]
+        ],
+    )
+    text = (
+        "\n\n".join(f"### {name}\n\n{body}" for name, body in sections.items()) + "\n"
+    )
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text)
-    print(text)
+    out_dir = Path(os.environ["LABELER_ROOT"]) / "round4" / "rwm"
+    provenance = {
+        "script": "scripts/labeler/rwm_tables.py",
+        "source": "outputs/labeler/rwm/evaluation.json",
+        "latex": write_latex(configs, out_dir),
+        "markdown": str(args.out),
+        "sections": list(sections),
+    }
+    # Preserve exact covering-check output in the small provenance record for
+    # report citations. These logs are supplied by the stream's required runners;
+    # rendering tables does not itself run or certify the checks.
+    tmp_dir = Path(os.environ["TMPDIR"])
+    provenance["supplied_check_logs"] = {
+        name: {
+            "path": str(tmp_dir / filename),
+            "output": (tmp_dir / filename).read_text().strip(),
+        }
+        for name, filename in (
+            ("covering_tests", "tests.log"),
+            ("ruff_check", "ruff.log"),
+            ("ruff_format", "format.log"),
+            ("latex_compile", "latex.log"),
+        )
+        if (tmp_dir / filename).is_file()
+    }
+    (OUT / "presentation.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    print(f"wrote {args.out} and {out_dir / 'table_rwm.tex'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,142 @@
+{
+  "script": "scripts/labeler/rwm_tables.py",
+  "source": "outputs/labeler/rwm/evaluation.json",
+  "latex": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
+    "cells": {
+      "rwm-brf": {
+        "slice_auroc": {
+          "json_path": "configs.rwm-brf.metrics.slice_auroc",
+          "estimate": 0.7602021883920076,
+          "low": 0.7058712054691425,
+          "high": 0.809161269108473
+        },
+        "slice_auprc": {
+          "json_path": "configs.rwm-brf.metrics.slice_auprc",
+          "estimate": 0.16304825671489243,
+          "low": 0.12255501411878099,
+          "high": 0.21989172028956308
+        },
+        "high_beta_auroc": {
+          "json_path": "configs.rwm-brf.metrics.high_beta_auroc",
+          "estimate": 0.6021780297512571,
+          "low": 0.4910802032725228,
+          "high": 0.6881463994312261
+        }
+      },
+      "rule-time-since-flattop": {
+        "slice_auroc": {
+          "json_path": "configs.rule-time-since-flattop.metrics.slice_auroc",
+          "estimate": 0.7587335474151602,
+          "low": 0.7118506687957216,
+          "high": 0.8148521262935791
+        },
+        "slice_auprc": {
+          "json_path": "configs.rule-time-since-flattop.metrics.slice_auprc",
+          "estimate": 0.22785363859801916,
+          "low": 0.21216351902873304,
+          "high": 0.30695559234855635
+        },
+        "high_beta_auroc": {
+          "json_path": "configs.rule-time-since-flattop.metrics.high_beta_auroc",
+          "estimate": 0.6416995391060639,
+          "low": 0.5567491948316644,
+          "high": 0.7318311457640199
+        }
+      },
+      "rule-betan": {
+        "slice_auroc": {
+          "json_path": "configs.rule-betan.metrics.slice_auroc",
+          "estimate": 0.7070276324135744,
+          "low": 0.6389341617487666,
+          "high": 0.7717948860197866
+        },
+        "slice_auprc": {
+          "json_path": "configs.rule-betan.metrics.slice_auprc",
+          "estimate": 0.1656533156078931,
+          "low": 0.1281706498450382,
+          "high": 0.24642607838773417
+        },
+        "high_beta_auroc": {
+          "json_path": "configs.rule-betan.metrics.high_beta_auroc",
+          "estimate": 0.5627730548935749,
+          "low": 0.46823105654710007,
+          "high": 0.6505270191723881
+        }
+      },
+      "rule-betan-over-li": {
+        "slice_auroc": {
+          "json_path": "configs.rule-betan-over-li.metrics.slice_auroc",
+          "estimate": 0.7234524659054868,
+          "low": 0.6636812093487351,
+          "high": 0.7840685911293114
+        },
+        "slice_auprc": {
+          "json_path": "configs.rule-betan-over-li.metrics.slice_auprc",
+          "estimate": 0.15880887831181684,
+          "low": 0.12736523472238975,
+          "high": 0.2318260607893155
+        },
+        "high_beta_auroc": {
+          "json_path": "configs.rule-betan-over-li.metrics.high_beta_auroc",
+          "estimate": 0.592778357213194,
+          "low": 0.5092425002123125,
+          "high": 0.6772308641290743
+        }
+      },
+      "rule-rwm-candidates": {
+        "slice_auroc": {
+          "json_path": "configs.rule-rwm-candidates.metrics.slice_auroc",
+          "estimate": 0.5,
+          "low": 0.5,
+          "high": 0.5
+        },
+        "slice_auprc": {
+          "json_path": "configs.rule-rwm-candidates.metrics.slice_auprc",
+          "estimate": 0.08369659982563209,
+          "low": 0.0703560487145368,
+          "high": 0.10202112345716674
+        },
+        "high_beta_auroc": {
+          "json_path": "configs.rule-rwm-candidates.metrics.high_beta_auroc",
+          "estimate": 0.5,
+          "low": 0.5,
+          "high": 0.5
+        }
+      }
+    }
+  },
+  "markdown": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/tables.md",
+  "sections": [
+    "Piccione-style primary scores \u2014 all models",
+    "Broader Hanson-negative sensitivity \u2014 same models and predictions",
+    "High-beta conditional scores \u2014 all models",
+    "Above no-wall-proxy conditional scores \u2014 all models",
+    "Alarm counts \u2014 all models (n=1 targets)",
+    "Alarm rates \u2014 all models (95% shot CIs)",
+    "Warning times \u2014 all models (detected onsets only)",
+    "Paired differences \u2014 rwm-brf versus rules, primary",
+    "Paired differences \u2014 rwm-brf versus rules, high-beta",
+    "Paired differences \u2014 rwm-brf versus rules, above-proxy",
+    "Paired alarm differences \u2014 rwm-brf versus rules",
+    "Split sensitivity \u2014 rwm-brf (fixed hyperparameters)"
+  ],
+  "supplied_check_logs": {
+    "covering_tests": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
+      "output": ".................................................                        [100%]\n49 passed in 145.19s (0:02:25)"
+    },
+    "ruff_check": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
+      "output": "All checks passed!"
+    },
+    "ruff_format": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
+      "output": "13 files already formatted"
+    },
+    "latex_compile": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/latex.log",
+      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n\nLaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.\n\n )</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us\nr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share\n/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texliv\ne/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/f\nonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/typ\ne1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pub\nlic/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/rwm_table_preview.pdf (1 page, 81640 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/rwm_table_preview.log."
+    }
+  }
+}

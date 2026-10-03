@@ -15,7 +15,7 @@
   the SELDNet training comparison (`ae/README.md`, `ae/training/README.md`);
 - `tabpfn/`: the TabPFN-against-the-CNN study (Study A on the CNN's archived inputs, Study B on
   labelmaker's reconstructed inputs), with its own README.
-- `rwm/`: the resistive-wall-mode baseline (`growth.json`, `shots.json`, `evaluation.json`,
+- `rwm/`: Hanson-only onset forecasting baseline, explicit weak/assumed/unlabelled tiers, primary and conditional shot-bootstrap scores, named alarm tables and paper-artifact provenance; [scope and results](../../docs/labeler/rwm_baseline.md).
   `tables.md`), written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py` and read
   through `docs/labeler/rwm_baseline.md`.
 

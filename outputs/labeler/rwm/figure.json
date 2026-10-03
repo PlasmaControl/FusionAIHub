@@ -1,0 +1,101 @@
+{
+  "script": "scripts/labeler/rwm_figure.py",
+  "model": "rwm-brf",
+  "prediction_path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet",
+  "fold_seed": 0,
+  "selection": "first/middle/last n=1 Hanson shot in each campaign; first matched comparisons",
+  "examples": [
+    {
+      "shot": 156785,
+      "campaign": 2014,
+      "role": "hanson",
+      "centre_ms": 856.0,
+      "target_onsets_ms": [
+        856.0
+      ],
+      "displayed_slices": 101
+    },
+    {
+      "shot": 176067,
+      "campaign": 2018,
+      "role": "hanson",
+      "centre_ms": 2638.0,
+      "target_onsets_ms": [
+        2638.0
+      ],
+      "displayed_slices": 140
+    },
+    {
+      "shot": 156796,
+      "campaign": 2014,
+      "role": "hanson",
+      "centre_ms": 2730.0,
+      "target_onsets_ms": [
+        2730.0
+      ],
+      "displayed_slices": 141
+    },
+    {
+      "shot": 176077,
+      "campaign": 2018,
+      "role": "hanson",
+      "centre_ms": 1653.5,
+      "target_onsets_ms": [
+        1653.5
+      ],
+      "displayed_slices": 140
+    },
+    {
+      "shot": 158022,
+      "campaign": 2014,
+      "role": "hanson",
+      "centre_ms": 2996.45,
+      "target_onsets_ms": [
+        2996.45
+      ],
+      "displayed_slices": 140
+    },
+    {
+      "shot": 176089,
+      "campaign": 2018,
+      "role": "hanson",
+      "centre_ms": 2843.0,
+      "target_onsets_ms": [
+        2843.0
+      ],
+      "displayed_slices": 140
+    },
+    {
+      "shot": 157974,
+      "campaign": 2014,
+      "role": "comparison",
+      "matched_to": 156785,
+      "centre_ms": 856.0,
+      "target_onsets_ms": [],
+      "displayed_slices": 131
+    },
+    {
+      "shot": 176118,
+      "campaign": 2018,
+      "role": "comparison",
+      "matched_to": 176067,
+      "centre_ms": 2638.0,
+      "target_onsets_ms": [],
+      "displayed_slices": 140
+    }
+  ],
+  "window_ms": [
+    -800.0,
+    600.0
+  ],
+  "ratio_ylim": [
+    0,
+    8.0
+  ],
+  "score_is_calibrated_probability": false,
+  "dpi": 150,
+  "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.pdf",
+  "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png",
+  "source_rows_csv": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_figure_rows.csv",
+  "caption": "Held-out rwm-brf scores (solid blue) and beta_N/li (dashed orange). Vertical lines mark listed n=1 onsets; grey spans show the 100 ms forecast target, not verified instability intervals. Bottom panels are unlabelled comparison shots; their zero is the matched Hanson onset time, not an onset on those shots. The dotted orange line is the no-wall proxy beta_N/li=4. Examples were chosen by shot number, not model performance; this figure does not estimate warning skill."
+}
