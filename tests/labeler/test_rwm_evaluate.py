@@ -150,3 +150,37 @@ def test_single_feature_auroc_reads_the_direction():
     )
     assert out["n1rms_g"]["auroc"] < 0.7
     assert out["q95"]["present"] == 0.0
+
+
+def test_chance_detection_is_the_hit_probability_of_randomly_placed_alarms():
+    records = [
+        {"warning_ms": [100.0, None], "alarms": 2, "span_ms": 3900.0},
+        {"warning_ms": [None], "alarms": 0, "span_ms": 3900.0},
+        {"warning_ms": [], "alarms": 5, "span_ms": 3900.0},
+    ]
+    # Window 390 ms of a 3900 ms span: one alarm hits with probability 0.1.
+    one_alarm = 1.0 - 0.9**2
+    expected = (2 * one_alarm + 1 * 0.0) / 3
+    assert ev.chance_detection(records) == pytest.approx(expected)
+    assert np.isnan(
+        ev.chance_detection([{"warning_ms": [], "alarms": 1, "span_ms": 5}])
+    )
+    # An alarm every few ms over a span shorter than the window is a sure hit.
+    short = [{"warning_ms": [None], "alarms": 1, "span_ms": 100.0}]
+    assert ev.chance_detection(short) == 1.0
+
+
+def test_shot_records_carry_the_alarm_count_and_scored_span():
+    table, onsets = _table()
+    traces = ev.shot_traces(table, np.arange(len(table), dtype=float))
+    table = table.assign(
+        score=np.arange(len(table), dtype=float), called=np.zeros(len(table), bool)
+    )
+    alarms = {
+        shot: ev.score_alarms({shot: traces[shot]}, onsets, (1e9, 1e9, 0.0))[shot]
+        for shot in traces
+    }
+    groups = ev.shot_records(table, alarms, onsets, onsets)
+    record = groups["hanson"][0]
+    assert record["alarms"] == 0
+    assert record["span_ms"] == pytest.approx(790.0)

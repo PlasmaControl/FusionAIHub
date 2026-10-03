@@ -349,17 +349,45 @@ def shot_records(oof, alarms, target_onsets, all_onsets):
                 "called": rows.called.to_numpy(),
                 "warning_ms": warnings,
                 "false_alarms": len(outcome["false"]),
+                "alarms": len(outcome["alarms"]),
+                "span_ms": float(rows.t_ms.max() - rows.t_ms.min()),
             }
         )
     return groups
+
+
+def chance_detection(records, window_ms=alarm.MAX_WARNING_MS - alarm.MIN_WARNING_MS):
+    """Expected share of onsets warned if each shot's alarms fell at random.
+
+    Each of a shot's `alarms` is placed uniformly and independently over its scored span
+    (`span_ms`); an onset is warned when one lands in its warning range of `window_ms`.
+    The expectation for an onset is `1 - (1 - window / span) ** alarms`, averaged over
+    the target onsets of `records` (the shots' `warning_ms` entries). It is the share a
+    scorer with no skill but this alarm rate would get, to read the detection rate against.
+    """
+    expected, onsets = 0.0, 0
+    for record in records:
+        n = len(record["warning_ms"])
+        if not n:
+            continue
+        share = (
+            min(1.0, window_ms / record["span_ms"]) if record["span_ms"] > 0 else 1.0
+        )
+        expected += n * (1.0 - (1.0 - share) ** record["alarms"])
+        onsets += n
+    return expected / onsets if onsets else float("nan")
 
 
 def _stack(records, key):
     return np.concatenate([r[key] for r in records]) if records else np.array([])
 
 
-def statistic(groups):
-    """Every reported number of one configuration, from per-shot records."""
+def statistic(groups, *, mixed=True):
+    """Every reported number of one configuration, from per-shot records.
+
+    `mixed=False` leaves out the three scores that stack the comparison shots' slices
+    (they are the slow ones); it is for the paired bootstraps.
+    """
     hanson, comparison = groups.get("hanson", []), groups.get("comparison", [])
     score, label, called = (_stack(hanson, k) for k in ("score", "label", "called"))
     keep = np.isin(label, [labels.POSITIVE, labels.NEGATIVE])
@@ -375,18 +403,20 @@ def statistic(groups):
     out["slice_fpr"] = fp / (fp + tn) if fp + tn else np.nan
     out["slice_precision"] = tp / (tp + fp) if tp + fp else np.nan
     out["slice_f1"] = 2 * tp / (2 * tp + fp + fn) if tp + fp + fn else np.nan
-    # Comparison slices scored as negatives: a lower bound, they may hold unlisted RWMs.
-    score_c = _stack(comparison, "score")
-    s_all = np.concatenate([score[keep], score_c])
-    y_all = np.concatenate([y, np.zeros(len(score_c), dtype=bool)])
-    out["mixed_auroc"] = metrics.auroc(s_all, y_all)
-    out["mixed_auprc"] = metrics.auprc(s_all, y_all)
-    called_c = _stack(comparison, "called").astype(bool)
-    out["mixed_fpr"] = (
-        (fp + int(called_c.sum())) / (fp + tn + len(called_c))
-        if fp + tn + len(called_c)
-        else np.nan
-    )
+    if mixed:
+        # Comparison slices scored as negatives: a lower bound, they may hold unlisted
+        # RWMs.
+        score_c = _stack(comparison, "score")
+        s_all = np.concatenate([score[keep], score_c])
+        y_all = np.concatenate([y, np.zeros(len(score_c), dtype=bool)])
+        out["mixed_auroc"] = metrics.auroc(s_all, y_all)
+        out["mixed_auprc"] = metrics.auprc(s_all, y_all)
+        called_c = _stack(comparison, "called").astype(bool)
+        out["mixed_fpr"] = (
+            (fp + int(called_c.sum())) / (fp + tn + len(called_c))
+            if fp + tn + len(called_c)
+            else np.nan
+        )
     # The paper's per-shot scoring.
     warnings = [w for r in hanson for w in r["warning_ms"]]
     detected = [w for w in warnings if w is not None]

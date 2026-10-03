@@ -137,6 +137,18 @@ CONFIGS = {
 }
 #: Fold seeds for the split-sensitivity rerun of the headline configuration.
 SPLIT_SEEDS = (1, 2, 3, 4)
+#: Configurations whose per-shot alarm outcomes are written out (the paper's table).
+PER_SHOT = ("rwm-brf", "rwm-nnpu", "rule-betan-over-li")
+#: Pairs of configurations compared on shared shot resamples: `(first, second)` reports
+#: first - second.
+PAIRS = (
+    ("rwm-brf", "rule-betan-over-li"),
+    ("rwm-nnpu", "rule-betan-over-li"),
+    ("rwm-brf", "rwm-nnpu"),
+    ("rwm-brf", "rwm-brf-hanson-only"),
+    ("rwm-brf", "rwm-brf-equilibrium-only"),
+    ("rwm-brf", "rwm-brf-no-rotation"),
+)
 
 
 def clean(value):
@@ -215,6 +227,25 @@ def run_config(args):
         "rules_by_fold": rules,
     }
     if seed == SEED:
+        if name in PER_SHOT:
+            result["per_shot"] = sorted(
+                (
+                    {
+                        "shot": r["shot"],
+                        "role": role,
+                        "campaign": r["campaign"],
+                        "onsets": len(r["warning_ms"]),
+                        "warning_ms": r["warning_ms"],
+                        "false_alarms": r["false_alarms"],
+                        "alarms": r["alarms"],
+                        "span_ms": r["span_ms"],
+                    }
+                    for role, records in groups.items()
+                    for r in records
+                ),
+                key=lambda r: r["shot"],
+            )
+        result["chance_detection"] = ev.chance_detection(groups["hanson"])
         result["metrics"] = metrics.shot_bootstrap(
             groups, ev.statistic, replicates=_STATE["replicates"], seed=SEED
         )
@@ -228,7 +259,21 @@ def run_config(args):
             }
     else:
         result["metrics"] = ev.statistic(groups)
-    return name, seed, clean(json.loads(json.dumps(result, default=float)))
+    kept = groups if seed == SEED and name in {n for p in PAIRS for n in p} else None
+    return name, seed, clean(json.loads(json.dumps(result, default=float))), kept
+
+
+def run_pair(args):
+    """One paired bootstrap, `(first, second, groups_first, groups_second)`."""
+    first, second, groups_first, groups_second = args
+    interval = metrics.paired_bootstrap(
+        groups_first,
+        groups_second,
+        lambda g: ev.statistic(g, mixed=False),
+        replicates=_STATE["replicates"],
+        seed=SEED,
+    )
+    return f"{first} - {second}", clean(json.loads(json.dumps(interval, default=float)))
 
 
 def main() -> None:
@@ -251,10 +296,15 @@ def main() -> None:
         args.workers, initializer=_init, initargs=(slices_path, args.replicates)
     ) as pool:
         done = pool.map(run_config, jobs, chunksize=1)
+        kept = {n: g for n, s, _, g in done if g is not None}
+        pairs = [(a, b, kept[a], kept[b]) for a, b in PAIRS if a in kept and b in kept]
+        paired = dict(pool.map(run_pair, pairs, chunksize=1))
     results: dict = {}
+    earlier: dict = {}
     if args.only and args.out.is_file():
-        results = json.loads(args.out.read_text()).get("configs", {})
-    for name, seed, result in done:
+        earlier = json.loads(args.out.read_text())
+        results = earlier.get("configs", {})
+    for name, seed, result, _ in done:
         if seed == SEED:
             results[name] = result
         else:
@@ -281,6 +331,7 @@ def main() -> None:
             "split": "shot-grouped; shots.json cohort_overlap counts the shots in the frozen cohort",
         },
         "configs": results,
+        "paired": {**earlier.get("paired", {}), **paired},
         "single_feature_auroc": ev.single_feature_auroc(
             ev.relabel(slices, _STATE["onsets"], _STATE["other"], 100.0)
         ),

@@ -163,3 +163,28 @@ def test_nnpu_logistic_loss_trains_at_a_tiny_prior():
     assert metrics.auroc(model.predict_proba(xt), yt) > 0.85
     with pytest.raises(ValueError):
         NnPU(prior=0.1, loss="hinge")
+
+
+def test_paired_bootstrap_shares_resamples_between_the_two_models():
+    rng = np.random.default_rng(0)
+    values = rng.normal(size=40)
+    first = {"hanson": [{"x": v} for v in values], "comparison": []}
+    second = {"hanson": [{"x": v - 1.0} for v in values], "comparison": []}
+
+    def mean(groups):
+        return {"mean": float(np.mean([r["x"] for r in groups["hanson"]]))}
+
+    out = metrics.paired_bootstrap(first, second, mean, replicates=200, seed=1)
+    # The models differ by exactly 1 on every shot, so every resample differs by 1.
+    assert out["mean"]["estimate"] == pytest.approx(1.0)
+    assert out["mean"]["low"] == pytest.approx(1.0)
+    assert out["mean"]["high"] == pytest.approx(1.0)
+    same = metrics.paired_bootstrap(first, first, mean, replicates=50, seed=1)
+    assert same["mean"] == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+
+
+def test_paired_bootstrap_rejects_different_shot_sets():
+    first = {"hanson": [{"x": 1.0}, {"x": 2.0}]}
+    second = {"hanson": [{"x": 1.0}]}
+    with pytest.raises(ValueError, match="different shots"):
+        metrics.paired_bootstrap(first, second, lambda g: 0.0, replicates=2)

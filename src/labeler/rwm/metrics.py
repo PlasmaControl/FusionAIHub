@@ -68,6 +68,25 @@ def confusion(score, label, cutoff):
     return tpr, fpr, precision, f1
 
 
+def _interval(values, point, level):
+    """`{"estimate", "low", "high"}`: `point` with the percentile interval of `values`."""
+    values = np.asarray(values, dtype=float)
+    values = values[np.isfinite(values)]
+    if not len(values):
+        return {"estimate": point, "low": float("nan"), "high": float("nan")}
+    tail = 100 * (1 - level) / 2
+    low, high = np.percentile(values, [tail, 100 - tail])
+    return {"estimate": point, "low": float(low), "high": float(high)}
+
+
+def _summarise(estimate, draws, level):
+    if isinstance(estimate, dict):
+        return {
+            k: _interval([d[k] for d in draws], estimate[k], level) for k in estimate
+        }
+    return _interval(draws, estimate, level)
+
+
 def shot_bootstrap(groups, statistic, *, replicates=1000, seed=0, level=0.95):
     """Percentile interval of `statistic` over shots resampled with replacement.
 
@@ -86,16 +105,38 @@ def shot_bootstrap(groups, statistic, *, replicates=1000, seed=0, level=0.95):
             if records
         }
         draws.append(statistic(sample))
-    tail = 100 * (1 - level) / 2
+    return _summarise(estimate, draws, level)
 
-    def interval(values, point):
-        values = np.asarray(values, dtype=float)
-        values = values[np.isfinite(values)]
-        if not len(values):
-            return {"estimate": point, "low": float("nan"), "high": float("nan")}
-        low, high = np.percentile(values, [tail, 100 - tail])
-        return {"estimate": point, "low": float(low), "high": float(high)}
 
-    if isinstance(estimate, dict):
-        return {k: interval([d[k] for d in draws], estimate[k]) for k in estimate}
-    return interval(draws, estimate)
+def _difference(first, second):
+    if isinstance(first, dict):
+        return {k: first[k] - second[k] for k in first}
+    return first - second
+
+
+def paired_bootstrap(
+    groups_a, groups_b, statistic, *, replicates=1000, seed=0, level=0.95
+):
+    """Percentile interval of `statistic(a) - statistic(b)` over shared shot resamples.
+
+    `groups_a` and `groups_b` score the same shots in the same order (two models on one
+    cross-validation); every replicate draws one set of shots and applies it to both, so
+    the interval is for the difference between the models, not for each on its own.
+    The result has the shape of `shot_bootstrap`'s, for the difference `a - b`.
+    """
+    for name, records in groups_a.items():
+        if len(records) != len(groups_b.get(name, [])):
+            raise ValueError(f"stratum {name!r} holds different shots in the two sets")
+    rng = np.random.default_rng(seed)
+    estimate = _difference(statistic(groups_a), statistic(groups_b))
+    draws = []
+    for _ in range(replicates):
+        picks = {
+            name: rng.integers(0, len(records), len(records))
+            for name, records in groups_a.items()
+            if records
+        }
+        sample_a = {n: [groups_a[n][i] for i in idx] for n, idx in picks.items()}
+        sample_b = {n: [groups_b[n][i] for i in idx] for n, idx in picks.items()}
+        draws.append(_difference(statistic(sample_a), statistic(sample_b)))
+    return _summarise(estimate, draws, level)
