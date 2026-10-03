@@ -29,6 +29,12 @@ label_grid:
       2: hybrid
       3: elevated
       4: high
+    detachment:
+      0: absent
+      1: attached
+      2: detached
+      3: marfe
+      4: uncertain
     # The event catalog's six phenomena: in their tables the category is the state.
     alfven_eigenmode: &catalog_states
       0: absent
