@@ -469,16 +469,48 @@ def run_evaluate(paths, args):
     cv = json.loads((directory / "cv/run.json").read_text())
     thresholds = {s: r["threshold"] for r in cv["fold_records"] for s in r["test"]}
     shots = sorted(windows(paths).shot.unique().tolist())
+    window_table = windows(paths)
     bins = {m: [] for m in ("elm-ours", "elm-ours-onset", "elm-elmo")}
     events = {m: {str(tol): [] for tol in (2, 5)} for m in bins}
     overlap = np.zeros(3, dtype=int)
     raw_counts = {"bins": 0, "positive_bins": 0, "hand_onsets": 0}
+    coverage_audit = {
+        "all_windows": len(window_table),
+        "fully_input_covered_windows": 0,
+        "unsupported_windows": [],
+        "hand_onset_cells_outside_whole_scored_window": 0,
+        "hand_regions_without_scored_positive_cell": 0,
+        "definition": "Every 1ms input cell touching the complete Smith window has both FS and interferometer samples; fully covered comparisons use the same windows and all methods. Nine edge onsets can lack a whole scored-window cell, but every truth remains in event denominators and may match an adjacent supported peak within tolerance.",
+    }
     per_shot = []
     for shot in shots:
         z = dict(np.load(directory / "targets" / f"{shot}.npz"))
         p = dict(np.load(directory / "frozen" / f"{shot}.npz"))
         on = np.load(directory / "cv/pred" / f"{shot}.npz")["onset"]
         mask = z["mask"]
+        for row in window_table[window_table.shot == shot].itertuples():
+            a = int(np.floor(row.t0_ms - inputs.GRID0_MS))
+            b = int(np.ceil(row.end_ms - inputs.GRID0_MS))
+            supported = (
+                a >= 0 and b <= len(z["input_valid"]) and z["input_valid"][a:b].all()
+            )
+            if supported:
+                coverage_audit["fully_input_covered_windows"] += 1
+            else:
+                coverage_audit["unsupported_windows"].append(
+                    {"shot": shot, "file": row.file, "group": row.group}
+                )
+            cell = int(np.floor(row.label_t0_ms - inputs.GRID0_MS))
+            coverage_audit["hand_onset_cells_outside_whole_scored_window"] += int(
+                not (0 <= cell < len(mask) and mask[cell])
+            )
+            edge = inputs.GRID0_MS + np.arange(len(mask))
+            has_positive = (
+                (edge < row.label_t1_ms) & (edge + 1 > row.label_t0_ms) & mask
+            ).any()
+            coverage_audit["hand_regions_without_scored_positive_cell"] += int(
+                not has_positive
+            )
         continuous = {
             "elm-ours": p["event"],
             "elm-ours-onset": on,
@@ -535,6 +567,15 @@ def run_evaluate(paths, args):
             for row in cv["fold_records"]
         ],
         "counts": raw_counts,
+        "coverage_audit": coverage_audit,
+        "common_covered_comparison": {
+            "windows": coverage_audit["fully_input_covered_windows"],
+            "identical_to_all_windows": not coverage_audit["unsupported_windows"],
+            "metrics_alias": "methods"
+            if not coverage_audit["unsupported_windows"]
+            else None,
+            "note": "After the independently audited source repair, every window is input covered, so common-covered and all-window results coincide; the record stores one copy.",
+        },
         "shots": len(shots),
         "methods": {},
         "per_shot": per_shot,
