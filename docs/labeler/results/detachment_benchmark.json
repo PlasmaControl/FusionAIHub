@@ -2292,8 +2292,15 @@
    }
   ]
  },
+ "rule_conflicts_resolved_by_model": {
+  "bins": 1973,
+  "with_tangtv_vote": 1940,
+  "model_state_equals_tangtv_vote": 1909
+ },
  "divertor_te_check": {
   "threshold_ev": 5.0,
+  "bins_with_te_point": 24784,
+  "bins_with_te_exactly_zero": 7436,
   "by_state": {
    "attached": {
     "n_bins": 4830,

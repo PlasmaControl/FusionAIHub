@@ -242,8 +242,14 @@ def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
     as missing.
     """
     te = frame.aux_te_div.to_numpy(dtype=float)
+    finite = np.isfinite(te)
+    out = {
+        "threshold_ev": TE_DETACHED_EV,
+        "bins_with_te_point": int(finite.sum()),
+        "bins_with_te_exactly_zero": int(np.sum(te[finite] == 0)),
+        "by_state": {},
+    }
     te = np.where(te > 0, te, np.nan)
-    out = {"threshold_ev": TE_DETACHED_EV, "by_state": {}}
     for state in (*STATES, core.UNCERTAIN):
         x = te[(lm_state == state) & np.isfinite(te)]
         if len(x):
@@ -265,6 +271,23 @@ def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
             value[ok], te[ok] < TE_DETACHED_EV, frame.shot.to_numpy()[ok], rng
         )
     return out
+
+
+def conflicts_resolved(frame: pd.DataFrame) -> dict:
+    """Bins where the rule says uncertain (conflict) and the model is certain.
+
+    How many carry a TangTV vote and how often the model's state is that vote.
+    """
+    rule = frame.state_rule.to_numpy()
+    lm = frame.state_lm.to_numpy()
+    sel = (rule == core.UNCERTAIN) & np.isin(lm, STATES)
+    tv = frame["tangtv_vote"].to_numpy()
+    voted = sel & (tv > 0)
+    return {
+        "bins": int(sel.sum()),
+        "with_tangtv_vote": int(voted.sum()),
+        "model_state_equals_tangtv_vote": int(np.sum(lm[voted] == tv[voted])),
+    }
 
 
 def failure_analysis(frame, lm_state) -> dict:
@@ -438,6 +461,7 @@ def main() -> None:
                 entry["n_shots"] = int(sub.shot.nunique())
                 result["indicators"][name].setdefault(ref_name, {})[subset] = entry
     result["failure_analysis"] = failure_analysis(frame, lm_state)
+    result["rule_conflicts_resolved_by_model"] = conflicts_resolved(frame)
     if "aux_te_div" in frame:
         result["divertor_te_check"] = te_check(frame, lm_state, rng)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

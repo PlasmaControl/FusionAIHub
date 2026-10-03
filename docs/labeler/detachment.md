@@ -193,7 +193,7 @@ shots of different regimes; a uniform prior over the three states would count th
 attached before any vote, so a lone detached vote would label a bin and a lone attached
 vote would not), and only the propensities are fitted on all bins. The prior was set
 after the first full run showed that asymmetry (lone detached votes labelled bins, lone
-attached votes did not), with no score in view. The accuracy is the price of this: it
+attached votes did not): a structural correction, with no score as its objective. The accuracy is the price of this: it
 rests on 40 shots, those of the owner's inversions, and cannot be checked against truth.
 
 **Structure.** The independent structure (no correlation) was chosen by the one-standard-error
@@ -227,8 +227,8 @@ Where the rule says `attached` and the model `uncertain` (4,532 bins), it is a l
 Afrac or Prad,div vote (posterior 0.66 or 0.67; two agreeing votes reach 0.8); where the
 rule says `detached` and the model `uncertain` (1,393), the same for a lone detached vote. Where both
 labels are certain they differ on 33 of 8,316 bins. Where the rule is `uncertain`
-(conflicting votes) the model resolves 1,973 bins; 98 % of them carry a TangTV vote and the
-model follows it in 98 % of those.
+(conflicting votes) the model resolves 1,973 bins; 1,940 of them carry a TangTV vote and
+the model's state is that vote on 1,909 (`rule_conflicts_resolved_by_model` in the benchmark JSON).
 
 **Posterior threshold.** Share of the 24,786 assessed bins that stay `uncertain` as the
 threshold moves (the label uses 0.7, chosen before any score was seen):
@@ -377,7 +377,8 @@ front height from the regression (`surrogate`) against the inversion (`inversion
 few, 146 and 217 bins.)
 
 **Independent check.** Divertor Thomson Te (the six real-time points `TSSDIVTE00-05`;
-the peak of them per bin; an exact 0 eV is a failed fit and is read as missing) was read
+the peak of them per bin; an exact 0 eV, 7,436 of the 24,784 bins with a point, is a failed fit and is read as
+missing) was read
 by no indicator:
 
 | label state | bins with Te | Te quartiles | share < 5 eV |
@@ -598,7 +599,7 @@ Tests: `tests/labeler/test_detachment_{core,indicators,label_model,surrogate}.py
 * **No IRTV, no bolometer image.** The brief's fourth row and the geometry of the bolometer
   are not in the corpus or in the `\BOLOM` tree.
 * **The Te check is sparse**: real-time points, the peak per bin, an exact 0 eV (30 % of
-  bins) read as a failed fit.
+  the bins with a point) read as a failed fit.
 * **Small test split.** The cohort's test split carries 4 to 80 bins per leave-one-out row
   and 8 shots with a camera frame; its intervals are wide, and nothing was tuned on it.
 * **The baselines are scored against this label**, not against truth (a model that
