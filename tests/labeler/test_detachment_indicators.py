@@ -105,7 +105,7 @@ def test_afrac_invalid_without_inputs_or_reference():
     assert set(afrac.afrac_indicator(EDGES, t, jsat, tn, ne, None, None).reason) == {
         "no_power"
     }
-    short = core.bin_edges(0.0, 1000.0)  # 20 bins < AFRAC_MIN_BINS
+    short = core.bin_edges(0.0, 1000.0)  # 1 s < AFRAC_MIN_MS
     ind = afrac.afrac_indicator(short, t, jsat, tn, ne, tp, psol)
     assert set(ind.reason) == {"short_reference"} and not ind.valid.any()
     _, weak = series(0.1e6)
@@ -124,6 +124,29 @@ def test_afrac_ramp_is_invalid():
     ramp = (EDGES[:-1] > 60) & (EDGES[1:] < 950)  # the record's edge reads 0
     assert (ind.reason[ramp] == "ramp").all()
     assert ind.valid[EDGES[:-1] > 1100].all()
+
+
+def test_afrac_reads_the_inter_elm_level():
+    # Every 10th ms-sweep is an ELM spike 10x the quiet level; masked, the bin's
+    # median current is the quiet one and the shot reads attached throughout.
+    t = np.arange(0.5, 5000.0, 1.0)
+    jsat = np.ones((1, t.size))
+    flag = np.zeros(t.size, dtype=bool)
+    flag[::10] = True
+    jsat[0, flag] = 10.0
+    tn, ne = series(1e14)
+    tp, psol = series(4e6)
+    ind = afrac.afrac_indicator(EDGES, t, jsat, tn, ne, tp, psol, None, None, t, flag)
+    assert ind.valid.all()
+    assert ind.value == pytest.approx(np.ones(N))
+
+
+def test_elm_at_uses_the_nearest_sample():
+    t = np.arange(0.0, 100.0, 10.0)
+    flag = t == 30.0
+    got = core.elm_at([29.0, 31.0, 55.0, 500.0], t, flag)
+    assert got.tolist() == [True, True, False, False]
+    assert not core.elm_at([1.0, 2.0], None, None).any()
 
 
 # ---- Langmuir sweeps ----------------------------------------------------------------

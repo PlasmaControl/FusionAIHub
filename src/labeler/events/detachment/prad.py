@@ -20,6 +20,7 @@ from .core import (
     assemble,
     bin_fraction,
     bin_mean,
+    elm_at,
 )
 
 
@@ -33,14 +34,6 @@ def fdiv_vote(f: np.ndarray) -> np.ndarray:
         vote[f >= th.PRAD_DETACHED_MIN] = DETACHED
     vote[~np.isfinite(f)] = ABSTAIN
     return vote
-
-
-def _elm_at(t_ms: np.ndarray, elm_t_ms, elm_flag) -> np.ndarray:
-    """ELM flag of the nearest D-alpha sample for every time in `t_ms`."""
-    if elm_t_ms is None:
-        return np.zeros(len(t_ms), dtype=bool)
-    index = np.clip(np.searchsorted(elm_t_ms, t_ms), 0, len(elm_t_ms) - 1)
-    return np.asarray(elm_flag, dtype=bool)[index]
 
 
 def prad_indicator(
@@ -68,7 +61,7 @@ def prad_indicator(
     if power_t_ms is None or p_in_w is None:
         return assemble("prad", value, np.zeros(n, bool), reason, np.zeros(n))
     prad_t_ms = np.asarray(prad_t_ms, dtype=float)
-    in_elm = _elm_at(prad_t_ms, elm_t_ms, elm_flag)
+    in_elm = elm_at(prad_t_ms, elm_t_ms, elm_flag)
     prad, count = bin_mean(prad_t_ms, prad_w, edges, keep=~in_elm)
     p_in, _ = bin_mean(power_t_ms, p_in_w, edges)
     elm_share = (

@@ -24,8 +24,8 @@ AFRAC_DETACHED_MAX = 0.5
 #: therefore mis-called attached in its top tail: a stated limitation of this
 #: indicator, which is why it never decides alone.
 AFRAC_REFERENCE_QUANTILE = 0.90
-#: Fewest valid bins (50 ms each) the reference quantile may rest on.
-AFRAC_MIN_BINS = 60
+#: Least valid time (ms, any bin width) the reference quantile may rest on.
+AFRAC_MIN_MS = 3000.0
 
 # --- Prad,div (Eldon 2019, NME 18 285; Chen 2026 NF 66 036014) ---------------------
 #: The indicator is f_div = Prad,div,L / P_in, the radiated power below the X-point
@@ -80,8 +80,13 @@ EFIT_SENTINELS = (-0.89, -9.99, 0.0)
 #: robust sigmas over its low-passed baseline; the bins an ELM touches are dropped
 #: from Afrac and Prad (Eldon 2017's detector; Leonard 2018: analyse between ELMs).
 ELM_SIGMA = 4.0
-#: A bin with more than this fraction of its samples inside an ELM is invalid.
-MAX_ELM_FRACTION = 0.5
+#: ... and by at least this fraction of the baseline itself: a quiet, noisy D-alpha
+#: (a detached or MARFE plasma has none of the ELMs' spikes) has a tiny robust sigma,
+#: and noise alone would otherwise be flagged as ELMs.
+ELM_MIN_REL_RISE = 0.5
+#: A bin with more than this fraction of its samples inside an ELM is invalid; the
+#: samples inside ELMs are dropped from the rest (so a bin keeps its inter-ELM time).
+MAX_ELM_FRACTION = 0.8
 #: |dIp/dt| above this (MA/s) is a ramp: Afrac's model is not valid (Eldon 2022).
 RAMP_DIP_MAX_MA_PER_S = 1.0
 #: The attached baseline must be at least this long (ms) to fit a reference level.

@@ -8,7 +8,7 @@ predicts for an attached divertor with the same upstream density and power; it i
 What is different here, and why. The corpus holds raw swept-probe records with no
 calibration and no probe positions (`langmuir.py`), so:
 
-* Jsat is the PEAK over the live probes of each bin's median ion current (the
+* Jsat is the PEAK over the live probes of each bin's median inter-ELM ion current (the
   strike point moves along the array; the probe that sees it carries the maximum).
   Between two probes the peak under-reads: a source of false "detached" votes.
 * `C` is not Eldon's absolute constant but the shot's own attached level, the
@@ -34,6 +34,7 @@ from .core import (
     assemble,
     bin_fraction,
     bin_median,
+    elm_at,
 )
 
 
@@ -86,7 +87,7 @@ def afrac_indicator(
     """Afrac indicator on a bin grid.
 
     Reasons on an invalid bin: `no_probes`, `no_density`, `no_power`, `low_power`,
-    `ramp`, `elm`, `no_samples`, `short_reference` (fewer than AFRAC_MIN_BINS bins
+    `ramp`, `elm`, `no_samples`, `short_reference` (under AFRAC_MIN_MS of valid bins
     to set the attached level on).
     """
     n = len(edges) - 1
@@ -102,6 +103,9 @@ def afrac_indicator(
     if power_t_ms is None or p_sol_w is None:
         return assemble("afrac", value, nothing, reason, np.zeros(n))
 
+    # sweeps inside an ELM are dropped: the bin's median is the inter-ELM level
+    in_elm = elm_at(probe_t_ms, elm_t_ms, elm_flag)
+    jsat = np.where(in_elm[None, :], np.nan, jsat)
     peak, _ = peak_jsat(edges, probe_t_ms, jsat)
     density = bin_median(ne_t_ms, ne, edges)[0]
     p_sol = bin_median(power_t_ms, p_sol_w, edges)[0]
@@ -124,7 +128,7 @@ def afrac_indicator(
     reason[np.nan_to_num(elm_share) > th.MAX_ELM_FRACTION] = "elm"
     reason[(reason == "") & ~(np.nan_to_num(peak) > 0)] = "no_samples"
     ok = (reason == "") & np.isfinite(raw)
-    if ok.sum() < th.AFRAC_MIN_BINS:
+    if ok.sum() * float(edges[1] - edges[0]) < th.AFRAC_MIN_MS:
         reason[ok] = "short_reference"
         return assemble("afrac", value, nothing, reason, np.zeros(n))
     reference = np.quantile(raw[ok], th.AFRAC_REFERENCE_QUANTILE)

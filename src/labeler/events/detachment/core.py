@@ -142,6 +142,19 @@ def bin_mean(
         return np.where(count > 0, total / count, np.nan), count
 
 
+def elm_at(t_ms: np.ndarray, elm_t_ms, elm_flag) -> np.ndarray:
+    """ELM flag of the nearest D-alpha sample for every time in `t_ms`."""
+    t_ms = np.asarray(t_ms, dtype=float)
+    if elm_t_ms is None:
+        return np.zeros(len(t_ms), dtype=bool)
+    elm_t_ms = np.asarray(elm_t_ms, dtype=float)
+    after = np.clip(np.searchsorted(elm_t_ms, t_ms), 0, len(elm_t_ms) - 1)
+    before = np.clip(after - 1, 0, len(elm_t_ms) - 1)
+    nearer_before = np.abs(elm_t_ms[before] - t_ms) <= np.abs(elm_t_ms[after] - t_ms)
+    index = np.where(nearer_before, before, after)
+    return np.asarray(elm_flag, dtype=bool)[index]
+
+
 def bin_fraction(t_ms: np.ndarray, flag: np.ndarray, edges: np.ndarray) -> np.ndarray:
     """Fraction of samples per bin where `flag` is true (NaN for an empty bin)."""
     t_ms = np.asarray(t_ms, dtype=float)

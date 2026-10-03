@@ -164,7 +164,8 @@ def elm_mask(shot: int):
     The median over the live corpus filterscope rows FS01-FS08 (each divided by its
     own median), against a 50 ms running median; a sample is in an ELM when it
     exceeds that baseline by `ELM_SIGMA` robust standard deviations of the residual
-    (MAD x 1.4826), widened by 1 ms each side. None if the corpus has no record.
+    (MAD x 1.4826) and by `ELM_MIN_REL_RISE` of the baseline, widened by 1 ms each
+    side. None if the corpus has no record.
     """
     from scipy.ndimage import maximum_filter1d, median_filter
 
@@ -182,6 +183,8 @@ def elm_mask(shot: int):
     base = median_filter(x, size=max(3, round(50.0 / step)), mode="nearest")
     resid = x - base
     sigma = 1.4826 * np.median(np.abs(resid - np.median(resid)))
-    flag = resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)
+    flag = (resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)) & (
+        resid > thresholds.ELM_MIN_REL_RISE * base
+    )
     widen = max(1, round(1.0 / step)) * 2 + 1
     return t, maximum_filter1d(flag.astype(np.uint8), size=widen).astype(bool)

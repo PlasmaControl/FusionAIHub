@@ -17,6 +17,7 @@ The grid is the discharge only: bins where EFIT's plasma current is under
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import multiprocessing as mp
 import os
@@ -86,7 +87,9 @@ def tangtv_for(shot, edges, cache):
     )
 
 
-def process(shot: int) -> dict:
+def process(
+    shot: int, width_ms: float = core.BIN_MS, out_dir: Path | None = None
+) -> dict:
     """Compute and save one shot's bins; return a one-line status."""
     cache = signals.load_cache(shot)
     if "ipmeas" not in cache:
@@ -95,7 +98,7 @@ def process(shot: int) -> dict:
     live = np.abs(ip) >= MIN_IP_A
     if not live.any():
         return {"shot": shot, "status": "no_plasma"}
-    edges = core.bin_edges(t_ip[live][0], t_ip[live][-1])
+    edges = core.bin_edges(t_ip[live][0], t_ip[live][-1], width_ms)
     starts = edges[:-1]
     n = len(starts)
 
@@ -160,7 +163,7 @@ def process(shot: int) -> dict:
             out[f"aux_{key}"] = core.bin_median(*cache[key], edges)[0].astype(
                 np.float32
             )
-    target = root() / "bins" / f"{shot}.npz"
+    target = (out_dir or root() / "bins") / f"{shot}.npz"
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_name(f".{target.name}.tmp.npz")
     np.savez_compressed(tmp, **out)
@@ -182,14 +185,25 @@ def main() -> int:
     parser.add_argument("--shots-file", required=True)
     parser.add_argument("--workers", type=int, default=6)
     parser.add_argument("--redo", action="store_true", help="recompute existing bins")
+    parser.add_argument("--width-ms", type=float, default=core.BIN_MS)
+    parser.add_argument(
+        "--out-dir", default=None, help="default: $LABELER_ROOT/round4/detach/bins"
+    )
     args = parser.parse_args()
+    out_dir = Path(args.out_dir) if args.out_dir else root() / "bins"
     shots = [int(s) for s in Path(args.shots_file).read_text().split()]
     if not args.redo:
-        shots = [s for s in shots if not (root() / "bins" / f"{s}.npz").is_file()]
-    log = root() / "bins_log.jsonl"
+        shots = [s for s in shots if not (out_dir / f"{s}.npz").is_file()]
+    log = (
+        out_dir.parent / "bins_log.jsonl" if args.out_dir else root() / "bins_log.jsonl"
+    )
     done = 0
     with mp.Pool(args.workers) as pool, open(log, "a") as handle:
-        for result in pool.imap_unordered(process_safe, shots, chunksize=1):
+        for result in pool.imap_unordered(
+            functools.partial(process_safe, width_ms=args.width_ms, out_dir=out_dir),
+            shots,
+            chunksize=1,
+        ):
             handle.write(json.dumps(result) + "\n")
             handle.flush()
             done += 1
@@ -197,9 +211,9 @@ def main() -> int:
     return 0
 
 
-def process_safe(shot: int) -> dict:
+def process_safe(shot: int, width_ms: float, out_dir: Path) -> dict:
     try:
-        return process(shot)
+        return process(shot, width_ms, out_dir)
     except Exception as error:  # noqa: BLE001  one bad shot must not stop the run
         return {"shot": shot, "status": f"error {type(error).__name__}: {error}"[:200]}
 
