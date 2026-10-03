@@ -7,14 +7,14 @@ Two shots of the 73 with BES are shown: of the shots whose scored bins are 10 to
 90 % present, panel (a) is at the 75th percentile of per-shot F1 of `elm-ours`.
 Panel (b) replaces the original 25th-percentile shot 200427 with the next ranked
 shot on reviewer request; the original and replacement ranks are recorded.
-Each panel shows normalized filterscope D-alpha (FS02), the reviewed spans (crowd,
-non-crowd
-present, absent),
-the out-of-fold event probability of `elm-ours` with its fold's threshold, and the
-spans ELM-O and the ELM clock detect, over a window of up to 1.5 s from 100 ms before
-the first present span. Writes `fig_elm_examples.pdf`, `.png` (150 dpi) and
-`fig_elm_examples.json` (the shots, the rule, their F1) under
-`$LABELER_ROOT/round4/elm/figures/`.
+Each panel shows normalized filterscope D-alpha (FS02) as log10(S/S0), with S0 the
+preprocessing centre defined on the figure, the reviewed spans (crowd, non-crowd
+present, absent), the out-of-fold event probability of `elm-ours` with its fold's
+threshold, and the spans ELM-O and the ELM clock detect, over a window of up to
+1.5 s from 100 ms before the first present span. Writes `fig_elm_examples.pdf`,
+`.png` (150 dpi), `fig_elm_examples_caption.tex` (the caption, with the panel-b
+replacement disclosed) and `fig_elm_examples.json` (the shots, the rule, their F1)
+under `$LABELER_ROOT/round4/elm/figures/`.
 """
 
 from __future__ import annotations
@@ -144,9 +144,10 @@ def scored_window_audit(shot, spans, bins, event, threshold, elmo, t0, t1):
         )
     ]
     selected_spans = spans[(spans.t_start < t1) & (spans.t_end > t0)]
-    display_edges = np.arange(
-        np.floor(t0 / labels.BIN_MS), np.ceil(t1 / labels.BIN_MS)
-    ) * labels.BIN_MS
+    display_edges = (
+        np.arange(np.floor(t0 / labels.BIN_MS), np.ceil(t1 / labels.BIN_MS))
+        * labels.BIN_MS
+    )
     return {
         "interval_ms": [t0, t1],
         "scoring_set": "bes73 before DSM-specific restrictions",
@@ -190,7 +191,10 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
         shade(a, d.spans, t0, t1)
     ax.plot(t[sel], x[sel], color="#222222", lw=0.6)
     ax.set_ylabel("FS02 D-alpha\n" + r"$\log_{10}(S/S_0)$", fontsize=8)
-    ax.set_title(f"({panel}) shot {shot}", fontsize=9, loc="left")
+    title = f"({panel}) shot {shot}"
+    if panel == "b":
+        title += " (revised selection)"
+    ax.set_title(title, fontsize=9, loc="left")
     bx.plot(tt[sl], event[sl], color=PROB, lw=1.0, label="elm-ours")
     bx.axhline(oof.threshold[shot], color=PROB, lw=0.8, ls="--")
     bx.set_ylim(-0.02, 1.02)
@@ -249,25 +253,66 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
             320.0,
             700.0,
         )
-    if shot == 200427 and t0 <= 2690.0 and t1 >= 2760.0:
-        text = "Reviewed non-crowd present span\n2690–2760 ms; D-alpha drop"
-        ax.annotate(
-            text,
-            xy=(2760.0, float(np.interp(2760.0, t, x))),
-            xytext=(0.24, 0.08),
-            textcoords="axes fraction",
-            fontsize=7,
-            va="bottom",
-            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.9},
-            arrowprops={"arrowstyle": "->", "color": NON_CROWD, "lw": 0.7},
-        )
-        info["annotation"] = {
-            "span_ms": [2690.0, 2760.0],
-            "text": text.replace("\n", "; "),
-            "interpretation": "Reviewed present span at a D-alpha drop; neither "
-            "an independently verified isolated ELM nor a verified transition.",
-        }
     return info
+
+
+def disagreement_sentence(audit: dict | None) -> str:
+    """The scored-bin disagreement between `elm-ours` and ELM-O on the panel shot."""
+    if audit is None:
+        return ""
+    bins = [
+        r
+        for r in audit["scored_bins"]
+        if r["truth"] == 1 and not r["ours_call"] and r["elmo_call"]
+    ]
+    if not bins:
+        return ""
+    first, last = bins[0]["span_ms"][0], bins[-1]["span_ms"][1]
+    text = (
+        f"The low elm-ours output from {first:g} to {last:g} ms covers {len(bins)} "
+        "scored 50 ms crowd bins that elm-ours calls absent and ELM-O calls present."
+    )
+    excluded = audit["excluded_display_grid_bins_ms"]
+    starts = [r["span_ms"][0] for r in audit["reviewed_spans"] if r["kind"] == "crowd"]
+    straddle = [
+        (a, b) for a, b in excluded if any(a < t < b for t in starts) and b <= first
+    ]
+    if straddle:
+        a, b = straddle[-1]
+        start = next(t for t in starts if a < t < b)
+        text += (
+            f" The {a:g}--{b:g} ms bin straddles the reviewed crowd start at "
+            f"{start:g} ms and is not scored."
+        )
+    return text
+
+
+def caption_text(shots, info, panels, disagreement) -> str:
+    """The figure caption in LaTeX; the panel-b replacement and S0 are stated."""
+    first, second = panels
+    replaced = info["replaced_panel_b"]
+    return (
+        f"Reviewed spans and detector outputs on shots {shots[0]} and {shots[1]}, "
+        "drawn from the BES shots with 10--90\\% present 50 ms bins. Panel (a) "
+        "is at the 75th percentile of per-shot out-of-fold elm-ours F1. Panel (b) "
+        f"is a revised selection: the original 25th-percentile shot "
+        f"{replaced['shot']} was replaced, on a reviewer's request, by the next F1 "
+        "rank because its reviewed present span was an ambiguous D-alpha drop. "
+        "Top: FS02 D-alpha as $\\log_{10}(S/S_0)$, where "
+        f"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ native ordinate units is the "
+        "preprocessing centre (input floor "
+        f"$10^{{{np.log10(inputs.FS_FLOOR):g}}}$); the ratio claims no physical "
+        "unit. Shading: reviewed crowd, non-crowd present and absent spans. "
+        "Bottom: out-of-fold ELMy-occupancy probability with its fold's threshold "
+        f"(a: fold {first['fold']}, {first['inner_validation_threshold']:.3f}; b: "
+        f"fold {second['fold']}, {second['inner_validation_threshold']:.3f}; each "
+        "held-out fold has its own inner-validation shots), ELM-O detections "
+        "(short ones as ticks) and the elm-clock present spans, which seeded the "
+        "review and are not independent of it. "
+        + disagreement_sentence(disagreement)
+        + " Windows start 100 ms before the first reviewed present span, clipped "
+        "to input coverage, and last up to 1500 ms; place at 7-inch width."
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -336,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         [handles[i] for i in shading],
         [names[i] for i in shading],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.08),
+        bbox_to_anchor=(0.5, 0.115),
         ncol=len(shading),
         fontsize=7.5,
         frameon=False,
@@ -347,35 +392,34 @@ def main(argv: list[str] | None = None) -> int:
         handles[3:],
         names[3:],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.03),
+        bbox_to_anchor=(0.5, 0.07),
         ncol=4,
         fontsize=7.5,
         frameon=False,
         columnspacing=1.0,
         handlelength=1.4,
     )
-    fig.tight_layout(rect=(0, 0.1, 1, 1))
+    fig.text(
+        0.5,
+        0.01,
+        rf"$S_0=10^{{{inputs.FS_CENTRE:g}}}$ native ordinate units, the "
+        "preprocessing centre of FS02 D-alpha "
+        rf"(input floor $10^{{{np.log10(inputs.FS_FLOOR):g}}}$)."
+        "\n"
+        r"$\log_{10}(S/S_0)$ is a dimensionless ratio; no physical unit is claimed.",
+        ha="center",
+        va="bottom",
+        fontsize=7,
+        linespacing=1.3,
+    )
+    fig.tight_layout(rect=(0, 0.15, 1, 1))
     for ext in ("pdf", "png"):
         fig.savefig(out_dir / f"fig_elm_examples.{ext}", dpi=150)
     disagreement = next(
         (p["reviewer_disagreement_audit"] for p in panels if p["shot"] == 195111),
         None,
     )
-    disagreement_caption = ""
-    if disagreement is not None:
-        false_negatives = [
-            row for row in disagreement["scored_bins"]
-            if row["truth"] == 1 and not row["ours_call"] and row["elmo_call"]
-        ]
-        first = false_negatives[0]["span_ms"][0]
-        last = false_negatives[-1]["span_ms"][1]
-        disagreement_caption = (
-            f"On shot 195111, the low elm-ours output from {first:g} to "
-            f"{last:g} ms includes {len(false_negatives)} scored 50 ms crowd "
-            "bins: elm-ours calls them absent while ELM-O calls them present. "
-            "These disagreements are within scored time. The 300–350 ms bin "
-            "straddles the reviewed crowd start at 328 ms and is excluded. "
-        )
+    caption = caption_text(shots, info, panels, disagreement)
     info.update(
         {
             "git": git_sha(),
@@ -414,46 +458,17 @@ def main(argv: list[str] | None = None) -> int:
                 "input_transform_to_plot": "fs02 * FS_SCALE",
                 "FS_SCALE": inputs.FS_SCALE,
                 "FS_CENTRE": inputs.FS_CENTRE,
-                "S0_native_ordinate": 10.0 ** inputs.FS_CENTRE,
+                "S0_native_ordinate": 10.0**inputs.FS_CENTRE,
                 "S0_definition": "10**FS_CENTRE, the existing preprocessing centre",
                 "floor_native_ordinate": inputs.FS_FLOOR,
                 "reduction": "maximum per 0.1 ms cell; missing cells omitted",
                 "probability": "out-of-fold ELMy-occupancy probability per 1 ms",
             },
             "window_rule": {"duration_ms": WINDOW_MS, "lead_ms": LEAD_MS},
-            "caption": (
-                f"Reviewed spans and detector outputs on shots {shots[0]} and "
-                f"{shots[1]} from shots with BES and 10–90% present 50 ms bins. "
-                "Panel (a) is at the 75th percentile rank of per-shot "
-                "out-of-fold elm-ours F1. Panel (b) replaces the original "
-                f"25th-percentile shot {info['replaced_panel_b']['shot']} on "
-                "reviewer request because its reviewed present span was an "
-                "ambiguous D-alpha drop; the replacement is the next F1 rank, "
-                "so panel (b) is a revised selection. "
-                f"Top: log10(S/S0) for FS02 D-alpha, where S0 = "
-                f"{10.0 ** inputs.FS_CENTRE:.0e} native ordinate units is the "
-                "existing preprocessing centre, with the same input floor. "
-                "This ratio assigns no physical unit to the source signal. "
-                "Shading marks reviewed crowd and absent "
-                "spans. Bottom: out-of-fold elm-ours ELMy-occupancy probability "
-                "and the threshold selected on inner-validation shots. "
-                f"Panel (a) uses fold {panels[0]['fold']} and threshold "
-                f"{panels[0]['inner_validation_threshold']:.3f}; panel (b) uses "
-                f"fold {panels[1]['fold']} and threshold "
-                f"{panels[1]['inner_validation_threshold']:.3f}. They differ "
-                "because each held-out fold has its own inner-validation set. "
-                f"{disagreement_caption}"
-                "Also shown are ELM-O "
-                "detections (short detections drawn as ticks), and the original "
-                "elm-clock present spans. The review began from that clock and "
-                "is not independent of it. Each window begins 100 ms before the "
-                "first reviewed present span, clipped to input coverage, and "
-                "lasts up to 1500 ms. "
-                "Place at 7-inch "
-                "two-column width to preserve text of at least 7 pt."
-            ),
+            "caption": caption,
         }
     )
+    (out_dir / "fig_elm_examples_caption.tex").write_text(caption + "\n")
     (out_dir / "fig_elm_examples.json").write_text(json.dumps(info, indent=1))
     print("shots", shots, {s: round(info["per_shot_f1"][str(s)], 3) for s in shots})
     return 0

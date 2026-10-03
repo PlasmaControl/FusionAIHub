@@ -43,15 +43,9 @@ def method_label(key: str, *, multiline: bool = False) -> str:
     label = label.replace("1×128", r"$1\times128$")
     if multiline:
         label = {
-            NAME["detect"]: (
-                r"elm-dsm (60-input $1\times128$)"
-            ),
-            NAME["exposed"]: (
-                "elm-dsm (source stats)"
-            ),
-            NAME["init"]: (
-                "elm-dsm (source weights/stats)"
-            ),
+            NAME["detect"]: (r"elm-dsm (60-input $1\times128$)"),
+            NAME["exposed"]: ("elm-dsm (source stats)"),
+            NAME["init"]: ("elm-dsm (source weights/stats)"),
         }.get(key, label)
     if key in EXPOSED:
         label += r"$^{\ddagger}$"
@@ -66,8 +60,8 @@ def exposure_heading(columns: int) -> str:
     )
 
 
-def cell(point: float, ci, digits=3, ci_digits=3) -> str:
-    if math.isnan(point):
+def cell(point: float | None, ci, digits=3, ci_digits=3) -> str:
+    if point is None or math.isnan(point):
         return "--"
     out = f"{point:.{digits}f}"
     if ci is not None and not math.isnan(ci[0]):
@@ -76,11 +70,22 @@ def cell(point: float, ci, digits=3, ci_digits=3) -> str:
 
 
 def metric_cell(res: dict, metric: str) -> str:
-    if metric not in res["point"]:
+    if res["point"].get(metric) is None:
         return "--"
     out = cell(res["point"][metric], res.get("ci95", {}).get(metric))
     if metric == "f1" and res["point"].get("recall", 0) >= 0.99:
         out += r"$^{\dagger}$"
+    return out
+
+
+def delta_cell(change: dict | None) -> str:
+    """A paired change `value` with its shot-bootstrap interval, signed."""
+    if not change or change.get("value") is None or math.isnan(change["value"]):
+        return "--"
+    out = f"{change['value']:+.3f}"
+    ci = change.get("ci95")
+    if ci is not None and not math.isnan(ci[0]):
+        out += f" {{\\scriptsize[{ci[0]:+.3f}, {ci[1]:+.3f}]}}"
     return out
 
 
@@ -109,17 +114,20 @@ def header(record: dict, source: str) -> str:
 def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -> str:
     """`res[ref_a]` and `res[ref_b]` are `score_reference` outputs."""
     a, b = res[ref_a], res[ref_b]
+    change = res.get("comparison", {}).get("auroc_change_paired", {})
     lines = [
-        header(record, source) + "\\begin{tabular}{lcccc}",
+        header(record, source)
+        + "\\footnotesize\\setlength{\\tabcolsep}{2.5pt}\n"
+        + "\\begin{tabular}{lccccc}",
         "\\toprule",
         (
             f"& \\multicolumn{{2}}{{c}}{{{labels[0]} "
             f"({100 * a['prevalence']:.0f}\\% present)}} "
             f"& \\multicolumn{{2}}{{c}}{{{labels[1]} "
-            f"({100 * b['prevalence']:.0f}\\% present)}} \\\\"
+            f"({100 * b['prevalence']:.0f}\\% present)}} & Paired change \\\\"
         ),
-        "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}",
-        "Method & AUROC & F1 & AUROC & F1 \\\\",
+        "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-6}",
+        "Method & AUROC & F1 & AUROC & F1 & $\\Delta$AUROC \\\\",
         "\\midrule",
     ]
     exposed = False
@@ -128,18 +136,19 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
             continue
         ra, rb = a["methods"][key], b["methods"][key]
         if key in EXPOSED and not exposed:
-            lines.append(exposure_heading(5))
+            lines.append(exposure_heading(6))
             exposed = True
         label = method_label(key, multiline=True)
         lines.append(
             f"{label} & {metric_cell(ra, 'auroc')} & {metric_cell(ra, 'f1')} & "
-            f"{metric_cell(rb, 'auroc')} & {metric_cell(rb, 'f1')} \\\\"
+            f"{metric_cell(rb, 'auroc')} & {metric_cell(rb, 'f1')} & "
+            f"{delta_cell(change.get(key))} \\\\"
         )
     lines.append("\\midrule")
     ra, rb = a["methods"][ALWAYS], b["methods"][ALWAYS]
     lines.append(
         f"{method_label(ALWAYS)} & {ra['point']['auroc']:.3f} & {metric_cell(ra, 'f1')} & "
-        f"{rb['point']['auroc']:.3f} & {metric_cell(rb, 'f1')} \\\\"
+        f"{rb['point']['auroc']:.3f} & {metric_cell(rb, 'f1')} & -- \\\\"
     )
     lines += ["\\bottomrule", "\\end{tabular}", ""]
     return "\n".join(lines)
@@ -227,8 +236,117 @@ def _f1(p: float, r: float) -> float:
     return 2 * p * r / (p + r) if p + r else float("nan")
 
 
+def signed(value: float, ci=None) -> str:
+    """`+0.031` or `+0.031 [-0.019, +0.081]`."""
+    out = f"{value:+.3f}"
+    if ci is not None:
+        out += f" [{ci[0]:+.3f}, {ci[1]:+.3f}]"
+    return out
+
+
+NUMBER_WORDS = (
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+)
+
+
+def count_word(n: int) -> str:
+    return NUMBER_WORDS[n] if 0 <= n < len(NUMBER_WORDS) else str(n)
+
+
+def ranking_sentence(*panels: dict) -> str:
+    """What the reference change does to each panel's method orders, from the record."""
+    auroc_moved = any(p["comparison"]["order_changes"]["auroc"] for p in panels)
+    pairs = max(len(p["comparison"]["order_flips"]["f1"]) for p in panels)
+    text = (
+        "The AUROC order changes. "
+        if auroc_moved
+        else "No ranking change: the AUROC order is unchanged. "
+    )
+    if pairs:
+        text += (
+            f"The F1 order of {count_word(pairs)} method pairs differs "
+            "(review-tuned thresholds; descriptive). "
+        )
+    return text
+
+
+def excluding_zero(*panels: tuple[str, dict]) -> str:
+    """Names the paired legacy-minus-review changes whose interval excludes zero."""
+    hits = []
+    for scope, panel in panels:
+        for key, row in panel["comparison"]["auroc_change_paired"].items():
+            lo, hi = row["ci95"]
+            if lo > 0 or hi < 0:
+                hits.append(
+                    f"{method_label(key)} {scope} ({signed(row['value'], row['ci95'])})"
+                )
+    if not hits:
+        return "Every paired interval includes zero. "
+    return "The paired interval excludes zero only for " + "; ".join(hits) + ". "
+
+
+def main_caption(record: dict, ours: dict | None = None) -> str:
+    """The main swap caption; every number is read from the swap record.
+
+    `ours` is the elm-ours evaluation record; with it the caption compares ELM-O's
+    AUROC on the BES overlap shots with its AUROC on the whole BES subset.
+    """
+    overlap, bes = record["swap"]["overlap"], record["swap"]["overlap_bes"]
+    held, held_bes = (
+        record["swap"]["overlap_dsm_heldout"],
+        record["swap"]["overlap_bes_dsm_heldout"],
+    )
+    change = overlap["comparison"]["auroc_change_paired"][NAME["dsm"]]
+    interval = change["ci95"]
+    inside = interval[0] <= 0 <= interval[1]
+    order = ranking_sentence(overlap, bes)
+    in_sample = len(overlap["dsm_refit_training_shots"])
+    text = (
+        f"ELM reference swap on {count_word(overlap['n_shots'])} overlap shots "
+        f"({count_word(bes['n_shots'])} with BES); inconclusive. AUROC compares "
+        "references; F1 uses review-tuned thresholds; "
+        "$\\Delta$ is the paired legacy-minus-review AUROC change with its "
+        "shot-bootstrap interval; $^{\\dagger}$ marks recall $\\geq0.99$. "
+        + order
+        + f"The supplemental refit$^{{\\ddagger}}$ row's AUROC change "
+        f"{signed(change['value'])} is in-sample on {in_sample}/{overlap['n_shots']} "
+        "shots and "
+        + ("within its interval" if inside else "outside its interval")
+        + "; no AE Finding-2 analogue is established. "
+        + excluding_zero(("on all overlap shots", overlap), ("on the BES shots", bes))
+        + f"The {count_word(held['n_shots'])} shots "
+        f"({held_bes['n_shots']} with BES) outside original DSM fitting are too small "
+        f"for intervals. All {count_word(overlap['n_shots'])} overlap shots use the "
+        "upstream WPQH PCPHD02/03 export in the reduced-input detection adaptation."
+    )
+    if ours is not None:
+        elmo = NAME["elmo"]
+        panel = bes["reviewed"]["methods"][elmo]["point"]["auroc"]
+        whole = ours["sets"]["bes73"]["methods"][elmo]["point"]["auroc"]
+        text += (
+            f" ELM-O scores {panel:.3f} on these {count_word(bes['n_shots'])} WPQH "
+            f"shots against {whole:.3f} on the BES subset, likely domain shift."
+        )
+    return text
+
+
 def write(
-    record: dict, out_dir: Path, source="outputs/labeler/elm/swap/evaluation.json"
+    record: dict,
+    out_dir: Path,
+    source="outputs/labeler/elm/swap/evaluation.json",
+    ours: dict | None = None,
 ):
     """Four consolidated appendix tables; complete diagnostics remain in JSON."""
     out_dir = Path(out_dir)
@@ -237,19 +355,7 @@ def write(
     for tag in ("overlap", "overlap_bes"):
         res = record["swap"][tag]
         panels.append(panel_heading(res) + main_table(res, record, source))
-    overlap = record["swap"]["overlap"]
-    refit_a = overlap["reviewed"]["methods"][NAME["dsm"]]["point"]["auroc"]
-    refit_b = overlap["legacy"]["methods"][NAME["dsm"]]["point"]["auroc"]
-    caption = (
-        "ELM reference swap: eight overlap shots and seven with BES; evidence "
-        "is inconclusive. F1 uses review-tuned thresholds; AUROC compares "
-        "references. Subsets outside original DSM fitting and checkpoint selection "
-        "(3 shots; 2 with BES) are too small for intervals. The refit$^{\\ddagger}$ "
-        "row is the AE Finding-2 analogue: its AUROC rises from "
-        f"{refit_a:.3f} to {refit_b:.3f} under the legacy reference. All eight overlap "
-        "shots use upstream \\texttt{dalpha\\_wpqh.pkl} PCPHD02/03 in the reduced-input "
-        "detection adaptation. Brackets show shot-bootstrap intervals."
-    )
+    caption = main_caption(record, ours)
     tables = {
         "table_elm_swap.tex": wrap_table(
             "\n\\medskip\n".join(panels), caption, "tab:elm-swap"
@@ -431,10 +537,11 @@ def swap_caption(res: dict, gap: int | None = None, full: bool = False) -> str:
 
 
 def wrap_table(body: str, caption: str, label: str) -> str:
-    if label.startswith("tab:elm-swap") or label in (
+    wanted = label.startswith("tab:elm-swap") or label in (
         "tab:elm-dsm-native",
         "tab:elm-dsm-own-target",
-    ):
+    )
+    if wanted and "domain shift" not in caption:  # the main caption says it already
         caption += " " + DOMAIN_NOTE
     return (
         "\\begin{table*}[t]\n\\centering\n\\small\n"
