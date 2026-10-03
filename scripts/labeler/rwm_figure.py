@@ -100,7 +100,7 @@ def main():
             "axes.linewidth": 0.6,
         }
     )
-    fig, axes = plt.subplots(4, 2, figsize=(3.35, 5.6), sharex=True, sharey=True)
+    fig, axes = plt.subplots(4, 2, figsize=(3.25, 5.6), sharex=True, sharey=True)
     for index, (ax, example, rows) in enumerate(zip(axes.ravel(), examples, frames)):
         right = ax.twinx()
         x = rows.relative_ms.to_numpy() / 1000.0
@@ -144,7 +144,7 @@ def main():
         right.spines["top"].set_visible(False)
         ax.grid(axis="y", lw=0.35, color="#dddddd")
     fig.subplots_adjust(
-        left=0.13, right=0.86, bottom=0.11, top=0.91, wspace=0.20, hspace=0.23
+        left=0.13, right=0.86, bottom=0.11, top=0.89, wspace=0.20, hspace=0.23
     )
     fig.text(0.015, 0.52, "Held-out rwm-brf score", rotation=90, va="center")
     fig.text(0.945, 0.52, r"$\beta_N/l_i$", rotation=90, va="center", color=BETA_COLOR)
@@ -169,7 +169,7 @@ def main():
         ],
         loc="upper center",
         bbox_to_anchor=(0.5, 0.995),
-        ncol=3,
+        ncol=2,
         frameon=False,
         columnspacing=0.8,
         handlelength=1.5,

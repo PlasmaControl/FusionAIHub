@@ -414,7 +414,7 @@ def write_latex(record, out_dir):
             r"negative coverage is unverified. High-$\beta$ uses "
             r"$\beta_N\geq0.8$ times the shot's 95th percentile. Brackets give "
             r"95\% shot-bootstrap intervals from 1,000 resamples of held-out "
-            r"predictions. Within-phase discrimination is not distinguishable "
+            r"predictions. Primary within-phase discrimination is not distinguishable "
             r"from chance; reversed in 2014. The retrospective candidate screen "
             r"never fires before a listed onset and is constant zero on primary "
             r"slices. The separately sourced Legacy reference uses a different "
