@@ -205,14 +205,15 @@ def shot_categories(configs):
             "Missed Hanson shots",
             "Early Hanson shots",
             "Hanson shots without n=1 targets (excluded)",
-            "unlabelled shots with an alarm",
+            "FP on comparison shots (alarm incidence)",
         ],
         rows,
     ) + (
         "\n\nDetected, Early and Missed are mutually exclusive on Hanson shots "
         "with an n=1 target: any Detected alarm takes precedence over Early, "
         "then Missed. Early means more than 400 ms before a listed onset. "
-        "Unlabelled-shot alarms are incidence, not a verified false-positive rate."
+        "The FP column reports unlabelled-shot alarm incidence, not a verified "
+        "stable-shot false-positive rate."
     )
 
 
