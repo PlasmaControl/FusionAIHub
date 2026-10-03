@@ -125,6 +125,1737 @@
           ]
         }
       ],
+      "per_shot": [
+        {
+          "shot": 156785,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 5,
+          "alarms": 5,
+          "span_ms": 4540.0
+        },
+        {
+          "shot": 156786,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            392.0,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 3,
+          "span_ms": 2680.0
+        },
+        {
+          "shot": 156787,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            236.9000000000001
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 1350.0
+        },
+        {
+          "shot": 156788,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 1560.0
+        },
+        {
+          "shot": 156789,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156790,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            300.0
+          ],
+          "false_alarms": 2,
+          "alarms": 5,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156791,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 3240.0
+        },
+        {
+          "shot": 156792,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            348.5,
+            null
+          ],
+          "false_alarms": 2,
+          "alarms": 4,
+          "span_ms": 2730.0
+        },
+        {
+          "shot": 156793,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            165.5,
+            395.0
+          ],
+          "false_alarms": 5,
+          "alarms": 8,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 156794,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 14,
+          "alarms": 16,
+          "span_ms": 3350.0
+        },
+        {
+          "shot": 156795,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            276.0,
+            363.3499999999999
+          ],
+          "false_alarms": 1,
+          "alarms": 7,
+          "span_ms": 4110.0
+        },
+        {
+          "shot": 156796,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 2020.0
+        },
+        {
+          "shot": 156797,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3700.0
+        },
+        {
+          "shot": 157968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 157969,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6370.0
+        },
+        {
+          "shot": 157970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3270.0
+        },
+        {
+          "shot": 157971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3370.0
+        },
+        {
+          "shot": 157972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2880.0
+        },
+        {
+          "shot": 157973,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 157975,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6220.0
+        },
+        {
+          "shot": 157976,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6740.0
+        },
+        {
+          "shot": 157978,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2870.0
+        },
+        {
+          "shot": 157979,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6830.0
+        },
+        {
+          "shot": 157980,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157982,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6320.0
+        },
+        {
+          "shot": 157995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3360.0
+        },
+        {
+          "shot": 157997,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3770.0
+        },
+        {
+          "shot": 157999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158001,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158002,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 158003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158005,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 26,
+          "alarms": 26,
+          "span_ms": 4640.0
+        },
+        {
+          "shot": 158006,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 158007,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3280.0
+        },
+        {
+          "shot": 158008,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 3310.0
+        },
+        {
+          "shot": 158009,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 2420.0
+        },
+        {
+          "shot": 158010,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4910.0
+        },
+        {
+          "shot": 158011,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 4430.0
+        },
+        {
+          "shot": 158012,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 14,
+          "alarms": 15,
+          "span_ms": 4760.0
+        },
+        {
+          "shot": 158013,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            340.0,
+            null
+          ],
+          "false_alarms": 5,
+          "alarms": 6,
+          "span_ms": 2930.0
+        },
+        {
+          "shot": 158014,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            367.0
+          ],
+          "false_alarms": 4,
+          "alarms": 5,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 158015,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3590.0
+        },
+        {
+          "shot": 158016,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 4650.0
+        },
+        {
+          "shot": 158017,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 4600.0
+        },
+        {
+          "shot": 158018,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 158019,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 158020,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 5210.0
+        },
+        {
+          "shot": 158021,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5590.0
+        },
+        {
+          "shot": 158022,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 5,
+          "alarms": 5,
+          "span_ms": 3540.0
+        },
+        {
+          "shot": 158023,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 7,
+          "alarms": 7,
+          "span_ms": 4820.0
+        },
+        {
+          "shot": 158928,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 5,
+          "alarms": 5,
+          "span_ms": 3430.0
+        },
+        {
+          "shot": 158929,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5560.0
+        },
+        {
+          "shot": 158930,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 10,
+          "alarms": 10,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158931,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 3660.0
+        },
+        {
+          "shot": 158932,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4330.0
+        },
+        {
+          "shot": 158933,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 158934,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 158935,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4150.0
+        },
+        {
+          "shot": 158936,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 158937,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3910.0
+        },
+        {
+          "shot": 158938,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 4340.0
+        },
+        {
+          "shot": 158939,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 158940,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 158941,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158942,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 158968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5960.0
+        },
+        {
+          "shot": 158970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5400.0
+        },
+        {
+          "shot": 158972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5550.0
+        },
+        {
+          "shot": 158977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5230.0
+        },
+        {
+          "shot": 158981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158987,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158989,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158990,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158991,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158992,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158993,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 158996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 158998,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5010.0
+        },
+        {
+          "shot": 158999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4140.0
+        },
+        {
+          "shot": 159000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5020.0
+        },
+        {
+          "shot": 159003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159262,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 159266,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6100.0
+        },
+        {
+          "shot": 159269,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5130.0
+        },
+        {
+          "shot": 159270,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159273,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4700.0
+        },
+        {
+          "shot": 159276,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159277,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5250.0
+        },
+        {
+          "shot": 176067,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5880.0
+        },
+        {
+          "shot": 176068,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 4,
+          "warning_ms": [
+            null,
+            112.0,
+            390.5,
+            383.0
+          ],
+          "false_alarms": 1,
+          "alarms": 5,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176069,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            49.73999999999978,
+            null,
+            329.5
+          ],
+          "false_alarms": 3,
+          "alarms": 7,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176070,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 4,
+          "alarms": 5,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176071,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            281.0
+          ],
+          "false_alarms": 1,
+          "alarms": 2,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176072,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5440.0
+        },
+        {
+          "shot": 176073,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 6,
+          "alarms": 6,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176074,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 9,
+          "alarms": 9,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 176075,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 2990.0
+        },
+        {
+          "shot": 176076,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 5450.0
+        },
+        {
+          "shot": 176077,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 6,
+          "alarms": 6,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176078,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            195.0,
+            null
+          ],
+          "false_alarms": 3,
+          "alarms": 5,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176079,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5690.0
+        },
+        {
+          "shot": 176080,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 11,
+          "alarms": 11,
+          "span_ms": 5480.0
+        },
+        {
+          "shot": 176084,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176085,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5870.0
+        },
+        {
+          "shot": 176086,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176087,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176088,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5700.0
+        },
+        {
+          "shot": 176089,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176090,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5940.0
+        },
+        {
+          "shot": 176091,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176092,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176094,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176108,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5900.0
+        },
+        {
+          "shot": 176111,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3480.0
+        },
+        {
+          "shot": 176115,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176116,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176118,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176119,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5600.0
+        },
+        {
+          "shot": 176126,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176131,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 176132,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2000.0
+        },
+        {
+          "shot": 176134,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176135,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5570.0
+        },
+        {
+          "shot": 176136,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5840.0
+        },
+        {
+          "shot": 176137,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176138,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176139,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6070.0
+        },
+        {
+          "shot": 176140,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176141,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176151,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176152,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 176153,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176154,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176156,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176158,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176160,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176161,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176162,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176163,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3640.0
+        },
+        {
+          "shot": 176442,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 6,
+          "alarms": 6,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 176444,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4860.0
+        },
+        {
+          "shot": 176446,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5170.0
+        },
+        {
+          "shot": 176447,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4950.0
+        },
+        {
+          "shot": 176448,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 176449,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3610.0
+        },
+        {
+          "shot": 176450,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176452,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176453,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4260.0
+        },
+        {
+          "shot": 176454,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176456,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176457,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176458,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176460,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        }
+      ],
+      "chance_detection": 0.3279735092024793,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.797962551752359,
@@ -430,6 +2161,7 @@
           ]
         }
       ],
+      "chance_detection": 0.16220872612713136,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.8048327526237242,
@@ -655,6 +2387,7 @@
           ]
         }
       ],
+      "chance_detection": 0.2789632843317412,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7666658392306952,
@@ -876,6 +2609,7 @@
           ]
         }
       ],
+      "chance_detection": 0.0,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.688233409156557,
@@ -1105,6 +2839,7 @@
           ]
         }
       ],
+      "chance_detection": 0.37981187934743144,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7994650250336992,
@@ -1337,6 +3072,7 @@
           ]
         }
       ],
+      "chance_detection": 0.39453526962102264,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7992744138744464,
@@ -1568,6 +3304,7 @@
           ]
         }
       ],
+      "chance_detection": 0.3076006652896282,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7918591196750732,
@@ -1799,6 +3536,7 @@
           ]
         }
       ],
+      "chance_detection": 0.34360383598585686,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.8060021854572448,
@@ -2031,6 +3769,7 @@
           ]
         }
       ],
+      "chance_detection": 0.351640416834336,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7996630078952436,
@@ -2262,6 +4001,1737 @@
           ]
         }
       ],
+      "per_shot": [
+        {
+          "shot": 156785,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 7,
+          "alarms": 7,
+          "span_ms": 4540.0
+        },
+        {
+          "shot": 156786,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            228.5
+          ],
+          "false_alarms": 1,
+          "alarms": 3,
+          "span_ms": 2680.0
+        },
+        {
+          "shot": 156787,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            296.9000000000001
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 1350.0
+        },
+        {
+          "shot": 156788,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 1560.0
+        },
+        {
+          "shot": 156789,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156790,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            370.0
+          ],
+          "false_alarms": 2,
+          "alarms": 8,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156791,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 2,
+          "span_ms": 3240.0
+        },
+        {
+          "shot": 156792,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            88.5,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 2730.0
+        },
+        {
+          "shot": 156793,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            265.0
+          ],
+          "false_alarms": 5,
+          "alarms": 11,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 156794,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            56.0
+          ],
+          "false_alarms": 8,
+          "alarms": 11,
+          "span_ms": 3350.0
+        },
+        {
+          "shot": 156795,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            166.0,
+            143.3499999999999
+          ],
+          "false_alarms": 1,
+          "alarms": 4,
+          "span_ms": 4110.0
+        },
+        {
+          "shot": 156796,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            380.0
+          ],
+          "false_alarms": 3,
+          "alarms": 6,
+          "span_ms": 2020.0
+        },
+        {
+          "shot": 156797,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            38.0
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 3700.0
+        },
+        {
+          "shot": 157968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 157969,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6370.0
+        },
+        {
+          "shot": 157970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3270.0
+        },
+        {
+          "shot": 157971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3370.0
+        },
+        {
+          "shot": 157972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2880.0
+        },
+        {
+          "shot": 157973,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 157975,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6220.0
+        },
+        {
+          "shot": 157976,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6740.0
+        },
+        {
+          "shot": 157978,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2870.0
+        },
+        {
+          "shot": 157979,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6830.0
+        },
+        {
+          "shot": 157980,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157982,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6320.0
+        },
+        {
+          "shot": 157995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3360.0
+        },
+        {
+          "shot": 157997,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3770.0
+        },
+        {
+          "shot": 157999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158001,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158002,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 158003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158005,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 4640.0
+        },
+        {
+          "shot": 158006,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 158007,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3280.0
+        },
+        {
+          "shot": 158008,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3310.0
+        },
+        {
+          "shot": 158009,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2420.0
+        },
+        {
+          "shot": 158010,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4910.0
+        },
+        {
+          "shot": 158011,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 9,
+          "alarms": 9,
+          "span_ms": 4430.0
+        },
+        {
+          "shot": 158012,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            296.0
+          ],
+          "false_alarms": 9,
+          "alarms": 10,
+          "span_ms": 4760.0
+        },
+        {
+          "shot": 158013,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            170.0,
+            null
+          ],
+          "false_alarms": 11,
+          "alarms": 13,
+          "span_ms": 2930.0
+        },
+        {
+          "shot": 158014,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            367.0
+          ],
+          "false_alarms": 2,
+          "alarms": 3,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 158015,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 7,
+          "alarms": 9,
+          "span_ms": 3590.0
+        },
+        {
+          "shot": 158016,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4650.0
+        },
+        {
+          "shot": 158017,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 11,
+          "alarms": 11,
+          "span_ms": 4600.0
+        },
+        {
+          "shot": 158018,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 158019,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            378.0
+          ],
+          "false_alarms": 9,
+          "alarms": 14,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 158020,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 5210.0
+        },
+        {
+          "shot": 158021,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5590.0
+        },
+        {
+          "shot": 158022,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 3540.0
+        },
+        {
+          "shot": 158023,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 4820.0
+        },
+        {
+          "shot": 158928,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 5,
+          "alarms": 5,
+          "span_ms": 3430.0
+        },
+        {
+          "shot": 158929,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5560.0
+        },
+        {
+          "shot": 158930,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 7,
+          "alarms": 7,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158931,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3660.0
+        },
+        {
+          "shot": 158932,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4330.0
+        },
+        {
+          "shot": 158933,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 158934,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 158935,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 4150.0
+        },
+        {
+          "shot": 158936,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 158937,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3910.0
+        },
+        {
+          "shot": 158938,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4340.0
+        },
+        {
+          "shot": 158939,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 158940,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 158941,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158942,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 158968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5960.0
+        },
+        {
+          "shot": 158970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5400.0
+        },
+        {
+          "shot": 158972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5550.0
+        },
+        {
+          "shot": 158977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5230.0
+        },
+        {
+          "shot": 158981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158987,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158989,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158990,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158991,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158992,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158993,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 158996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 158998,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5010.0
+        },
+        {
+          "shot": 158999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4140.0
+        },
+        {
+          "shot": 159000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5020.0
+        },
+        {
+          "shot": 159003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159262,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 159266,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6100.0
+        },
+        {
+          "shot": 159269,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5130.0
+        },
+        {
+          "shot": 159270,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159273,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4700.0
+        },
+        {
+          "shot": 159276,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159277,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5250.0
+        },
+        {
+          "shot": 176067,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            178.0
+          ],
+          "false_alarms": 7,
+          "alarms": 10,
+          "span_ms": 5880.0
+        },
+        {
+          "shot": 176068,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 4,
+          "warning_ms": [
+            null,
+            null,
+            null,
+            133.0
+          ],
+          "false_alarms": 5,
+          "alarms": 9,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176069,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176070,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 3,
+          "alarms": 4,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176071,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            341.0
+          ],
+          "false_alarms": 1,
+          "alarms": 6,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176072,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5440.0
+        },
+        {
+          "shot": 176073,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176074,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            101.0
+          ],
+          "false_alarms": 6,
+          "alarms": 9,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 176075,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2990.0
+        },
+        {
+          "shot": 176076,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 12,
+          "alarms": 12,
+          "span_ms": 5450.0
+        },
+        {
+          "shot": 176077,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176078,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            105.0,
+            259.0
+          ],
+          "false_alarms": 1,
+          "alarms": 5,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176079,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5690.0
+        },
+        {
+          "shot": 176080,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 5480.0
+        },
+        {
+          "shot": 176084,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176085,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5870.0
+        },
+        {
+          "shot": 176086,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176087,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176088,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5700.0
+        },
+        {
+          "shot": 176089,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176090,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5940.0
+        },
+        {
+          "shot": 176091,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176092,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176094,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176108,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5900.0
+        },
+        {
+          "shot": 176111,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3480.0
+        },
+        {
+          "shot": 176115,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176116,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176118,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176119,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5600.0
+        },
+        {
+          "shot": 176126,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176131,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 176132,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2000.0
+        },
+        {
+          "shot": 176134,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176135,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5570.0
+        },
+        {
+          "shot": 176136,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5840.0
+        },
+        {
+          "shot": 176137,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176138,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176139,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6070.0
+        },
+        {
+          "shot": 176140,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176141,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176151,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176152,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 176153,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176154,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176156,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176158,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176160,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176161,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176162,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176163,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3640.0
+        },
+        {
+          "shot": 176442,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 176444,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4860.0
+        },
+        {
+          "shot": 176446,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5170.0
+        },
+        {
+          "shot": 176447,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4950.0
+        },
+        {
+          "shot": 176448,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 176449,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3610.0
+        },
+        {
+          "shot": 176450,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176452,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176453,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4260.0
+        },
+        {
+          "shot": 176454,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176456,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176457,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176458,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176460,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        }
+      ],
+      "chance_detection": 0.3494852425037087,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7936466457250144,
@@ -2493,6 +5963,7 @@
           ]
         }
       ],
+      "chance_detection": 0.3413178336982055,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7910137444637011,
@@ -2724,6 +6195,7 @@
           ]
         }
       ],
+      "chance_detection": 0.30497964316728643,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7919555170421722,
@@ -2939,6 +6411,1737 @@
           ]
         }
       ],
+      "per_shot": [
+        {
+          "shot": 156785,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4540.0
+        },
+        {
+          "shot": 156786,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2680.0
+        },
+        {
+          "shot": 156787,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 1350.0
+        },
+        {
+          "shot": 156788,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 1560.0
+        },
+        {
+          "shot": 156789,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156790,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4530.0
+        },
+        {
+          "shot": 156791,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3240.0
+        },
+        {
+          "shot": 156792,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2730.0
+        },
+        {
+          "shot": 156793,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 156794,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 3350.0
+        },
+        {
+          "shot": 156795,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4110.0
+        },
+        {
+          "shot": 156796,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2020.0
+        },
+        {
+          "shot": 156797,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3700.0
+        },
+        {
+          "shot": 157968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3010.0
+        },
+        {
+          "shot": 157969,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6370.0
+        },
+        {
+          "shot": 157970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3270.0
+        },
+        {
+          "shot": 157971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3370.0
+        },
+        {
+          "shot": 157972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2880.0
+        },
+        {
+          "shot": 157973,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 157975,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6220.0
+        },
+        {
+          "shot": 157976,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6740.0
+        },
+        {
+          "shot": 157978,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2870.0
+        },
+        {
+          "shot": 157979,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6830.0
+        },
+        {
+          "shot": 157980,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6870.0
+        },
+        {
+          "shot": 157982,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6730.0
+        },
+        {
+          "shot": 157994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6320.0
+        },
+        {
+          "shot": 157995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 157996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3360.0
+        },
+        {
+          "shot": 157997,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3770.0
+        },
+        {
+          "shot": 157999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158001,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158002,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 158003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6350.0
+        },
+        {
+          "shot": 158005,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4640.0
+        },
+        {
+          "shot": 158006,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 158007,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3280.0
+        },
+        {
+          "shot": 158008,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3310.0
+        },
+        {
+          "shot": 158009,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2420.0
+        },
+        {
+          "shot": 158010,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4910.0
+        },
+        {
+          "shot": 158011,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4430.0
+        },
+        {
+          "shot": 158012,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4760.0
+        },
+        {
+          "shot": 158013,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 2930.0
+        },
+        {
+          "shot": 158014,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2860.0
+        },
+        {
+          "shot": 158015,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3590.0
+        },
+        {
+          "shot": 158016,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 4650.0
+        },
+        {
+          "shot": 158017,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 4600.0
+        },
+        {
+          "shot": 158018,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 158019,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 158020,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 5210.0
+        },
+        {
+          "shot": 158021,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5590.0
+        },
+        {
+          "shot": 158022,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 3540.0
+        },
+        {
+          "shot": 158023,
+          "role": "hanson",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4820.0
+        },
+        {
+          "shot": 158928,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3430.0
+        },
+        {
+          "shot": 158929,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5560.0
+        },
+        {
+          "shot": 158930,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158931,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3660.0
+        },
+        {
+          "shot": 158932,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4330.0
+        },
+        {
+          "shot": 158933,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 158934,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 158935,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4150.0
+        },
+        {
+          "shot": 158936,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 158937,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3910.0
+        },
+        {
+          "shot": 158938,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4340.0
+        },
+        {
+          "shot": 158939,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 158940,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 158941,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3780.0
+        },
+        {
+          "shot": 158942,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 158968,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5960.0
+        },
+        {
+          "shot": 158970,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158971,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5400.0
+        },
+        {
+          "shot": 158972,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158974,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5550.0
+        },
+        {
+          "shot": 158977,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5230.0
+        },
+        {
+          "shot": 158981,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158987,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158989,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158990,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5080.0
+        },
+        {
+          "shot": 158991,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158992,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158993,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5090.0
+        },
+        {
+          "shot": 158994,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5100.0
+        },
+        {
+          "shot": 158995,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 158996,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 158998,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5010.0
+        },
+        {
+          "shot": 158999,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4140.0
+        },
+        {
+          "shot": 159000,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5020.0
+        },
+        {
+          "shot": 159003,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159004,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5070.0
+        },
+        {
+          "shot": 159262,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5110.0
+        },
+        {
+          "shot": 159266,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 6100.0
+        },
+        {
+          "shot": 159269,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 8,
+          "alarms": 8,
+          "span_ms": 5130.0
+        },
+        {
+          "shot": 159270,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159273,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4700.0
+        },
+        {
+          "shot": 159276,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5140.0
+        },
+        {
+          "shot": 159277,
+          "role": "comparison",
+          "campaign": 2014,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5250.0
+        },
+        {
+          "shot": 176067,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5880.0
+        },
+        {
+          "shot": 176068,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 4,
+          "warning_ms": [
+            null,
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176069,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176070,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176071,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176072,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5440.0
+        },
+        {
+          "shot": 176073,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176074,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5670.0
+        },
+        {
+          "shot": 176075,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2990.0
+        },
+        {
+          "shot": 176076,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5450.0
+        },
+        {
+          "shot": 176077,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176078,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 2,
+          "warning_ms": [
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176079,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5690.0
+        },
+        {
+          "shot": 176080,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5480.0
+        },
+        {
+          "shot": 176084,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176085,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5870.0
+        },
+        {
+          "shot": 176086,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5720.0
+        },
+        {
+          "shot": 176087,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            188.0
+          ],
+          "false_alarms": 2,
+          "alarms": 4,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176088,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 3,
+          "warning_ms": [
+            null,
+            null,
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 1,
+          "span_ms": 5700.0
+        },
+        {
+          "shot": 176089,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 1,
+          "warning_ms": [
+            null
+          ],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176090,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5940.0
+        },
+        {
+          "shot": 176091,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        },
+        {
+          "shot": 176092,
+          "role": "hanson",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176094,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176108,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5900.0
+        },
+        {
+          "shot": 176111,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3480.0
+        },
+        {
+          "shot": 176115,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5640.0
+        },
+        {
+          "shot": 176116,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176118,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5650.0
+        },
+        {
+          "shot": 176119,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5600.0
+        },
+        {
+          "shot": 176126,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176131,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5730.0
+        },
+        {
+          "shot": 176132,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 2000.0
+        },
+        {
+          "shot": 176134,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176135,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5570.0
+        },
+        {
+          "shot": 176136,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5840.0
+        },
+        {
+          "shot": 176137,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176138,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176139,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 6070.0
+        },
+        {
+          "shot": 176140,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 4,
+          "alarms": 4,
+          "span_ms": 5630.0
+        },
+        {
+          "shot": 176141,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176151,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176152,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5580.0
+        },
+        {
+          "shot": 176153,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5530.0
+        },
+        {
+          "shot": 176154,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 1,
+          "alarms": 1,
+          "span_ms": 5770.0
+        },
+        {
+          "shot": 176156,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5800.0
+        },
+        {
+          "shot": 176158,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176160,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5860.0
+        },
+        {
+          "shot": 176161,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176162,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176163,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3640.0
+        },
+        {
+          "shot": 176442,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 3,
+          "alarms": 3,
+          "span_ms": 5300.0
+        },
+        {
+          "shot": 176444,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4860.0
+        },
+        {
+          "shot": 176446,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5170.0
+        },
+        {
+          "shot": 176447,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4950.0
+        },
+        {
+          "shot": 176448,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4630.0
+        },
+        {
+          "shot": 176449,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 3610.0
+        },
+        {
+          "shot": 176450,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176452,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 2,
+          "alarms": 2,
+          "span_ms": 5710.0
+        },
+        {
+          "shot": 176453,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 4260.0
+        },
+        {
+          "shot": 176454,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5830.0
+        },
+        {
+          "shot": 176456,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176457,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5850.0
+        },
+        {
+          "shot": 176458,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5820.0
+        },
+        {
+          "shot": 176460,
+          "role": "comparison",
+          "campaign": 2018,
+          "onsets": 0,
+          "warning_ms": [],
+          "false_alarms": 0,
+          "alarms": 0,
+          "span_ms": 5890.0
+        }
+      ],
+      "chance_detection": 0.029199519514944153,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.7522622099460813,
@@ -3119,6 +8322,7 @@
           ]
         }
       ],
+      "chance_detection": 0.02123179678005137,
       "metrics": {
         "slice_auroc": {
           "estimate": 0.49776140958983245,
@@ -3266,6 +8470,410 @@
             "comparison_false_alarms_per_shot": 0.36538461538461536
           }
         }
+      }
+    }
+  },
+  "paired": {
+    "rwm-brf - rule-betan-over-li": {
+      "slice_auroc": {
+        "estimate": 0.04570034180627769,
+        "low": -0.017587479721910604,
+        "high": 0.11429449103293526
+      },
+      "slice_auprc": {
+        "estimate": 0.010349948690796487,
+        "low": -0.01610966354407023,
+        "high": 0.03228360146161639
+      },
+      "slice_tpr": {
+        "estimate": 0.11874999999999991,
+        "low": -0.0204866600790514,
+        "high": 0.2729554521276596
+      },
+      "slice_fpr": {
+        "estimate": 0.030762564991334507,
+        "low": -0.015659081375838897,
+        "high": 0.08256430691573544
+      },
+      "slice_precision": {
+        "estimate": 0.00386946881274057,
+        "low": -0.013467199340016361,
+        "high": 0.021502321097550157
+      },
+      "slice_f1": {
+        "estimate": 0.008370303192817813,
+        "low": -0.021120302677188948,
+        "high": 0.04003996462338085
+      },
+      "onset_detection_rate": {
+        "estimate": 0.33333333333333337,
+        "low": 0.18352607709750582,
+        "high": 0.49056603773584906
+      },
+      "warning_ms_mean": {
+        "estimate": 101.70529411764704,
+        "low": 65.09837433155077,
+        "high": 132.39671875000002
+      },
+      "warning_ms_median": {
+        "estimate": 141.5,
+        "low": 88.0,
+        "high": 179.0
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": 0.48484848484848486,
+        "low": 0.303030303030303,
+        "high": 0.6666666666666667
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": 2.787878787878788,
+        "low": 1.7272727272727273,
+        "high": 4.03030303030303
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": 0.030303030303030304,
+        "low": -0.045454545454545456,
+        "high": 0.10606060606060608
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": 0.5303030303030303,
+        "low": 0.04545454545454547,
+        "high": 1.060984848484848
+      }
+    },
+    "rwm-nnpu - rule-betan-over-li": {
+      "slice_auroc": {
+        "estimate": 0.04138443577893314,
+        "low": -0.027300270248965915,
+        "high": 0.1081640010112055
+      },
+      "slice_auprc": {
+        "estimate": 0.009198445587751278,
+        "low": -0.017562705233617686,
+        "high": 0.04510612942240532
+      },
+      "slice_tpr": {
+        "estimate": 0.03125,
+        "low": -0.13463541666666673,
+        "high": 0.20639007092198583
+      },
+      "slice_fpr": {
+        "estimate": 0.02722414789139227,
+        "low": -0.03687711737460266,
+        "high": 0.09998347763968295
+      },
+      "slice_precision": {
+        "estimate": -0.003142541191489129,
+        "low": -0.022528794056974166,
+        "high": 0.014541350135877667
+      },
+      "slice_f1": {
+        "estimate": -0.004649141095752152,
+        "low": -0.037236151231360856,
+        "high": 0.026971653059168006
+      },
+      "onset_detection_rate": {
+        "estimate": 0.39583333333333337,
+        "low": 0.2631006864988559,
+        "high": 0.545508658008658
+      },
+      "warning_ms_mean": {
+        "estimate": 30.01249999999999,
+        "low": -14.739124040920709,
+        "high": 81.22453124999997
+      },
+      "warning_ms_median": {
+        "estimate": 15.25,
+        "low": -44.65000000000009,
+        "high": 108.90000000000009
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": 0.5151515151515151,
+        "low": 0.3333333333333333,
+        "high": 0.696969696969697
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": 3.0303030303030303,
+        "low": 1.9393939393939392,
+        "high": 4.182575757575757
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": -0.015151515151515152,
+        "low": -0.09090909090909093,
+        "high": 0.06818181818181818
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": 0.29545454545454547,
+        "low": -0.07575757575757575,
+        "high": 0.7047348484848484
+      }
+    },
+    "rwm-brf - rwm-nnpu": {
+      "slice_auroc": {
+        "estimate": 0.0043159060273445515,
+        "low": -0.02254814446519824,
+        "high": 0.02813663524217077
+      },
+      "slice_auprc": {
+        "estimate": 0.0011515031030452094,
+        "low": -0.02655276613299722,
+        "high": 0.011033756615323242
+      },
+      "slice_tpr": {
+        "estimate": 0.08749999999999991,
+        "low": -0.010638297872340389,
+        "high": 0.17717548076923062
+      },
+      "slice_fpr": {
+        "estimate": 0.003538417099942237,
+        "low": -0.03207115372572483,
+        "high": 0.04477606922881371
+      },
+      "slice_precision": {
+        "estimate": 0.007012010004229699,
+        "low": -0.001985072140545032,
+        "high": 0.01578894839312686
+      },
+      "slice_f1": {
+        "estimate": 0.013019444288569965,
+        "low": -0.0027732945646048762,
+        "high": 0.02845287333956331
+      },
+      "onset_detection_rate": {
+        "estimate": -0.0625,
+        "low": -0.2272727272727273,
+        "high": 0.10909090909090907
+      },
+      "warning_ms_mean": {
+        "estimate": 71.69279411764705,
+        "low": 7.177557072829141,
+        "high": 127.51314853896102
+      },
+      "warning_ms_median": {
+        "estimate": 126.25,
+        "low": -15.461250000000037,
+        "high": 201.03124999999997
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": -0.030303030303030276,
+        "low": -0.1515151515151516,
+        "high": 0.09090909090909094
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": -0.24242424242424265,
+        "low": -1.3037878787878783,
+        "high": 0.7280303030303026
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": 0.045454545454545456,
+        "low": -0.007765151515151363,
+        "high": 0.0984848484848485
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": 0.23484848484848486,
+        "low": -0.21231060606060592,
+        "high": 0.7424242424242423
+      }
+    },
+    "rwm-brf - rwm-brf-hanson-only": {
+      "slice_auroc": {
+        "estimate": -0.006870200871365251,
+        "low": -0.04021792062351739,
+        "high": 0.022151135249442656
+      },
+      "slice_auprc": {
+        "estimate": -0.004361519373555001,
+        "low": -0.029322177141567044,
+        "high": 0.017810836317912183
+      },
+      "slice_tpr": {
+        "estimate": 0.03541666666666665,
+        "low": -0.02546818181818175,
+        "high": 0.10408375850340128
+      },
+      "slice_fpr": {
+        "estimate": -0.011120739456961293,
+        "low": -0.0429436211760573,
+        "high": 0.02274724950684215
+      },
+      "slice_precision": {
+        "estimate": 0.0054647178245320754,
+        "low": -0.002589247006336058,
+        "high": 0.012989654603889723
+      },
+      "slice_f1": {
+        "estimate": 0.00965266787895444,
+        "low": -0.00420294434771092,
+        "high": 0.02242583677242727
+      },
+      "onset_detection_rate": {
+        "estimate": 0.14583333333333334,
+        "low": -0.04545454545454547,
+        "high": 0.3334677419354838
+      },
+      "warning_ms_mean": {
+        "estimate": 73.21529411764703,
+        "low": -3.812028679653681,
+        "high": 158.79031439393933
+      },
+      "warning_ms_median": {
+        "estimate": 118.25,
+        "low": -17.768749999999983,
+        "high": 230.03749999999997
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": 0.24242424242424243,
+        "low": 0.030303030303030276,
+        "high": 0.45454545454545453
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": 1.121212121212121,
+        "low": -1.0909090909090908,
+        "high": 2.9090909090909087
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": -0.04545454545454547,
+        "low": -0.12878787878787878,
+        "high": 0.03787878787878787
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": -0.8636363636363636,
+        "low": -1.772727272727273,
+        "high": 0.09867424242424216
+      }
+    },
+    "rwm-brf - rwm-brf-equilibrium-only": {
+      "slice_auroc": {
+        "estimate": 0.03129671252166377,
+        "low": 0.00794044799173556,
+        "high": 0.0558747459654123
+      },
+      "slice_auprc": {
+        "estimate": 0.015840474630613693,
+        "low": 0.004292191633120581,
+        "high": 0.03125082288272742
+      },
+      "slice_tpr": {
+        "estimate": 0.06458333333333333,
+        "low": 0.008333333333333304,
+        "high": 0.1341059833024118
+      },
+      "slice_fpr": {
+        "estimate": -0.04209994222992486,
+        "low": -0.08179197574827274,
+        "high": -0.008266260579291036
+      },
+      "slice_precision": {
+        "estimate": 0.013650580713702967,
+        "low": 0.00656024136204028,
+        "high": 0.022749863117389177
+      },
+      "slice_f1": {
+        "estimate": 0.023836646494713898,
+        "low": 0.011611090285219658,
+        "high": 0.03914159705567031
+      },
+      "onset_detection_rate": {
+        "estimate": 0.08333333333333337,
+        "low": -0.08510638297872342,
+        "high": 0.26421383647798735
+      },
+      "warning_ms_mean": {
+        "estimate": 112.09760180995477,
+        "low": 37.54601547619045,
+        "high": 192.32278502126528
+      },
+      "warning_ms_median": {
+        "estimate": 160.5,
+        "low": 25.15000000000009,
+        "high": 285.97562500000004
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": -0.06060606060606066,
+        "low": -0.18181818181818177,
+        "high": 0.06060606060606055
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": 0.7575757575757573,
+        "low": -0.12121212121212155,
+        "high": 1.6969696969696972
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": 0.022727272727272735,
+        "low": -0.030303030303030304,
+        "high": 0.07575757575757575
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": 0.4545454545454546,
+        "low": 0.04545454545454547,
+        "high": 0.946969696969697
+      }
+    },
+    "rwm-brf - rwm-brf-no-rotation": {
+      "slice_auroc": {
+        "estimate": -0.001502473281340233,
+        "low": -0.009396836327603068,
+        "high": 0.006106814586716757
+      },
+      "slice_auprc": {
+        "estimate": -0.00034923489284659215,
+        "low": -0.00957519755488201,
+        "high": 0.007198268400306173
+      },
+      "slice_tpr": {
+        "estimate": 0.029166666666666674,
+        "low": -0.006125637755102109,
+        "high": 0.07677002583979331
+      },
+      "slice_fpr": {
+        "estimate": 0.01010976314269213,
+        "low": 0.0006884896927018968,
+        "high": 0.02134868310627923
+      },
+      "slice_precision": {
+        "estimate": 0.0002927503130779191,
+        "low": -0.0031903366043934222,
+        "high": 0.003945462636887207
+      },
+      "slice_f1": {
+        "estimate": 0.0009433652116297431,
+        "low": -0.0051905855925138186,
+        "high": 0.0077001802194756755
+      },
+      "onset_detection_rate": {
+        "estimate": -0.020833333333333315,
+        "low": -0.16982135688478517,
+        "high": 0.1348214285714284
+      },
+      "warning_ms_mean": {
+        "estimate": 37.994183006535934,
+        "low": -12.905762609649114,
+        "high": 103.07383333333333
+      },
+      "warning_ms_median": {
+        "estimate": 24.25,
+        "low": -40.0,
+        "high": 112.6068749999999
+      },
+      "hanson_false_alarm_shot_rate": {
+        "estimate": -0.09090909090909094,
+        "low": -0.21212121212121204,
+        "high": 0.0
+      },
+      "hanson_false_alarms_per_shot": {
+        "estimate": -1.0606060606060606,
+        "low": -2.0613636363636356,
+        "high": -0.030303030303030276
+      },
+      "comparison_false_alarm_shot_rate": {
+        "estimate": -0.08333333333333334,
+        "low": -0.13636363636363635,
+        "high": -0.03787878787878787
+      },
+      "comparison_false_alarms_per_shot": {
+        "estimate": -0.6742424242424242,
+        "low": -1.13655303030303,
+        "high": -0.18181818181818188
       }
     }
   },
