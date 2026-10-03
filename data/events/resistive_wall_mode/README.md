@@ -51,53 +51,16 @@ Neither tier supplies verified negatives. Category codes are unchanged.
 ## Models
 **stable**: none
 
-**latest**: rwm-brf | 2026_10_03 (onset-derived forecasting baseline)
+**latest**: rwm-brf
 
-**all** (reference split (seed 0); Hanson primary 100 ms forecasts on 10 ms slices; assumed negatives):
+**all**:
 
-- rwm-brf | 2026_10_03 | Phase-controlled AUROC: 0.544 [0.453, 0.629] (no skill beyond phase) | Primary AUROC: 0.760 [0.706, 0.809] (phase-confounded; no established difference from elapsed time) | Broad AUROC: 0.740 [0.668, 0.799] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
-- rwm-rule-elapsed-time | 2026_10_03 | Primary AUROC: 0.759 [0.712, 0.815] | Broad AUROC: 0.390 [0.333, 0.440] | AUPRC: 0.228 [0.212, 0.307] | F1: 0.267 [0.217, 0.331]
-- rwm-rule-betan | 2026_10_03 | Primary AUROC: 0.707 [0.639, 0.772] | Broad AUROC: 0.715 [0.641, 0.776] | AUPRC: 0.166 [0.128, 0.246] | F1: 0.246 [0.194, 0.312]
-- rwm-rule-betan-over-li | 2026_10_03 | Primary AUROC: 0.723 [0.664, 0.784] | Broad AUROC: 0.752 [0.688, 0.815] | AUPRC: 0.159 [0.127, 0.232] | F1: 0.261 [0.212, 0.328]
-- rwm-rule-rwm-candidates | 2026_10_03 | Primary AUROC: 0.500 [0.500, 0.500] | Broad AUROC: 0.498 [0.495, 0.500] | AUPRC: 0.084 [0.070, 0.102] | F1: 0.000 [0.000, 0.000]
+- rwm-brf | 2026_10_03 | Phase-controlled AUROC: 0.534 [0.438, 0.624] | Primary AUROC: 0.760 [0.706, 0.809] (no established skill beyond phase)
+- rwm-rule-elapsed-time | 2026_10_03 | Phase-controlled AUROC: 0.522 [0.520, 0.549] | Primary AUROC: 0.759 [0.712, 0.815]
+- rwm-rule-betan | 2026_10_03 | Phase-controlled AUROC: 0.529 [0.417, 0.634] | Primary AUROC: 0.707 [0.639, 0.772]
+- rwm-rule-betan-over-li | 2026_10_03 | Phase-controlled AUROC: 0.588 [0.476, 0.691] | Primary AUROC: 0.723 [0.664, 0.784]
 
-No AUROC advantage over the strongest scalar, or onset-specific warning skill,
-was established. Within shot, the forest is **0.02–0.07 below βN and βN/li on both
-masks (one of four unadjusted intervals excludes zero)**. Intervals are exploratory,
-unadjusted for multiple comparisons.
-Primary/broad point means are forest **0.784/0.719**, beta_N **0.814/0.739**,
-beta_N/l_i **0.855/0.786**, elapsed time **0.931/0.417**. Elapsed time's **0.931**
-primary mean is an artefact of the mask's cutoff at the last onset (median **1.0**).
-Sources: `evaluation.json/configs/<model>/within_shot_auroc` and
-`evaluation.json/paired/rwm-brf - <scalar>/within_shot_auroc`.
-
-
-Within campaign and 200 ms elapsed-time bins, primary AUROC is **0.544
-[0.453, 0.629]** for the forest, versus **0.582** elapsed time, **0.541** βN and
-**0.595** βN/li. All paired forest-minus-scalar intervals include zero. Source:
-`evaluation.json/{configs/<model>,paired/rwm-brf - <scalar>}/phase_controlled_auroc`.
-
-In 2014 high-beta, the forest is below chance on the reference split
-(**0.311 [0.22, 0.41]**); the scalar rules are near chance. Forest detection ranges
-**0.125–0.271** over five splits; no improvement over the approximate rate-matched
-random reference was established. All four rules were compared on seed 0 only;
-rule alarms were not replayed over seeds 1–4. Sources:
-`evaluation.json/configs/<model>/by_campaign/2014/metrics/high_beta_auroc`,
-`split_sensitivity/alarm_ranges`. Full results and limitations are in
-[the current protocol](../../../docs/labeler/rwm_baseline.md) and
-[evaluation.json](../../../outputs/labeler/rwm/evaluation.json).
-
-`nnpu.py` and `evaluate.Nnpu` remain excluded development code. Comparison-as-negative
-training is reported separately as a label-noisy sensitivity below.
-
-**Label-noisy comparison-negative sensitivity:** one reference-split 5×3 nested
-shot-grouped CV with `Brf(use_comparison=True)` treats all 132 comparisons as
-assumed training negatives. It uses identical held-out shots and scores the
-unchanged primary Hanson mask: phase-controlled AUROC **0.596 [0.522, 0.668]**, pooled
-AUROC **0.769 [0.729, 0.811]** (phase-confounded). Paired phase-controlled change is
-**0.052 [-0.026, 0.122]**, so improvement over the baseline is not established;
-comparisons are not verified stable controls. Source:
-`outputs/labeler/rwm/comparison_sensitivity.json`.
+Reference split (seed 0), Hanson primary forecasts, assumed negatives, 100 ms phase bins with at least 5 slices. Pooled primary AUROC is phase-confounded; elapsed time's residual AUROC is the phase floor. Intervals are exploratory shot-bootstrap intervals. Adding the unverified comparisons as label-noisy training negatives gives phase-controlled AUROC **0.587 [0.505, 0.660]**, a paired change of **+0.053 [-0.028, 0.127]**. It alarms on **3/132** comparison shots and warns **5/48** onsets. The paired interval includes zero; whether verified stable-shot negatives would help is untested. See [protocol and results](../../../docs/labeler/rwm_baseline.md) and [comparison sensitivity](../../../outputs/labeler/rwm/comparison_sensitivity.json).
 
 ## Inputs
 **rwm-brf** (stored scalars and profiles; trailing/held features on a 10 ms grid):
@@ -112,7 +75,7 @@ is the most promising next input; none is cached on the 79 zero-DUSBRADIAL 2014
 shots checked, so no probe or fetch was made (`cached_sensor_audit.json`,
 `LABELER_NO_FETCH=1`; fallback behavior is not independently verified here).
 
-**rules**: beta_N, beta_N/l_i, elapsed time since the first |Ip| ≥0.5 MA sample, and the existing `rwm_candidates` call. The analysis span and the candidate screen's whole-flat-top median/MAD threshold are retrospective; the screen is not a causal alarm comparator.
+**rules**: beta_N, beta_N/l_i and elapsed time since the first |Ip| ≥0.5 MA sample. The `rwm_candidates` screen is a concurrent review aid; its whole-flat-top median/MAD threshold and the analysis span are retrospective.
 
 ## Method
 Dataset 1 loads as point events, preserving `NTOR` and `MODE_TYPE` in `attrs`
@@ -123,9 +86,8 @@ than an absence claim (see `src/labeler/events/rwm.py`).
 
 The primary `rwm-brf` trains only on Hanson RWM shots: no stable discharge supplies
 negatives, so it learns **when an RWM comes in a shot that has one**.
-Unlike Piccione's 90 stable shots among 134, this timing-only roster likely explains
-why the forest reduces to a phase ranker; the 132 comparisons enter only the
-separately labelled sensitivity.
+The measured comparison-negative sensitivity is reported under Models;
+whether verified stable-shot negatives would help is untested.
 
 Hanson onset points support one minimal present slice **[o, o+10 ms)**
 (category 1, `onset_point_minimal`); this does not measure mode duration.
@@ -138,6 +100,10 @@ folds keep tuning inside training shots; five split seeds and four run-record
 holdouts assess sensitivity. Offline magnetic timing and acausal ZIPFIT limit
 online interpretation. Per-shot Detected/Early/Missed uses the first considered
 alarm; any-alarm precedence is a labelled sensitivity.
+The minimal **[o−20,o)/[o,o+10 ms)** physical windows are a deviation from the
+brief's growth-window positives: growth duration and pre-onset presence are
+unverified. Onset-derived interval `attrs.source_onsets` preserves contributing
+`NTOR`, `MODE_TYPE` and original onset times, including merged duplicates.
 The repository evaluation is a summary below 0.5 MB. Its `external_details`
 pointer names the complete record under `$LABELER_ROOT/round4/rwm/`, including
 per-shot outcomes and within-shot details; read it with

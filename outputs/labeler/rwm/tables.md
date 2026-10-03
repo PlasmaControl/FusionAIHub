@@ -1,13 +1,13 @@
-Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions; exploratory, unadjusted for multiple comparisons. Individual metrics and detection-minus-reference use percentile intervals; between-model differences use basic paired intervals. Within-shot means/medians weight each two-class Hanson shot equally; one-class shots are omitted from those summaries, with counts in JSON. Phase-controlled AUROC compares only positive-negative pairs within campaign x 200 ms elapsed-time bin, weighted by pair count; phase shot resampling is stratified by campaign. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
+Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions; exploratory, unadjusted for multiple comparisons. Individual metrics and detection-minus-reference use percentile intervals; between-model differences use basic paired intervals. Within-shot means/medians weight each two-class Hanson shot equally; one-class shots are omitted from those summaries, with counts in JSON. Phase-controlled AUROC compares only positive-negative pairs within campaign x 100 ms elapsed-time bin (at least five eligible slices), weighted by pair count; elapsed time is the residual-phase floor; phase shot resampling is stratified by campaign. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
 
 ### Label-noisy comparison-negative sensitivity — one reference-split CV
 
 | Hanson primary score | baseline | sensitivity | paired change |
 |---|---|---|---|
-| Phase-controlled AUROC | 0.544 [0.453, 0.629] | 0.596 [0.522, 0.668] | 0.052 [-0.026, 0.122] |
+| Phase-controlled AUROC | 0.534 [0.438, 0.624] | 0.587 [0.505, 0.660] | 0.053 [-0.028, 0.127] |
 | Pooled AUROC (phase-confounded) | 0.760 [0.706, 0.809] | 0.769 [0.729, 0.811] | 0.008 [-0.025, 0.040] |
 
-Source: outputs/labeler/rwm/comparison_sensitivity.json. Comparisons enter training as label-noisy negatives. Headline scoring and cutoff tuning use primary Hanson slices; alarm tuning keeps the original Hanson trace scope. Identical outer shots, inner splits and seeds; 5×3 nested shot-grouped CV. Paired change is sensitivity minus baseline, with 95% basic shot intervals. The phase-controlled interval excludes chance on this split, but the paired change includes zero. Comparisons are not verified stable shots; this sensitivity does not replace the baseline.
+Source: outputs/labeler/rwm/comparison_sensitivity.json. Comparisons enter training as label-noisy negatives. Headline scoring and cutoff tuning use primary Hanson slices; alarm tuning keeps the original Hanson trace scope. Identical outer shots, inner splits and seeds; 5×3 nested shot-grouped CV. Paired change is sensitivity minus baseline, with 95% basic shot intervals. The paired change includes zero; whether verified stable-shot negatives would help is untested. Comparison shots alarmed: 3/132; onsets warned: 5/48. Comparisons are not verified stable shots; this sensitivity does not replace the baseline.
 
 ### Five-split AUROC ranges — rwm-brf (seeds 0–4)
 
@@ -59,7 +59,6 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | Elapsed time | 0.759 [0.712, 0.815] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] | 0.692 [0.525, 0.830] | 0.318 [0.244, 0.368] |
 | βN | 0.707 [0.639, 0.772] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] | 0.750 [0.619, 0.865] | 0.397 [0.323, 0.454] |
 | βN/li | 0.723 [0.664, 0.784] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] | 0.735 [0.602, 0.847] | 0.356 [0.269, 0.427] |
-| RWM screen | 0.500 [0.500, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
 ### Broader Hanson-negative sensitivity — same models and predictions
 
@@ -69,7 +68,6 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | Elapsed time | 0.390 [0.333, 0.440] | 0.025 [0.019, 0.032] |
 | βN | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
 | βN/li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
-| RWM screen | 0.498 [0.495, 0.500] | 0.034 [0.026, 0.041] |
 
 ### Within-shot AUROC — primary and broad Hanson masks (reference split, seed 0)
 
@@ -83,8 +81,6 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | βN | broad | 30 | 0.821 | 0.739 |
 | βN/li | primary | 30 | 0.900 | 0.855 |
 | βN/li | broad | 30 | 0.866 | 0.786 |
-| RWM screen | primary | 30 | 0.500 | 0.500 |
-| RWM screen | broad | 30 | 0.500 | 0.499 |
 
 ### Paired within-shot mean AUROC differences (95% basic shot CIs)
 
@@ -94,23 +90,33 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | rwm-brf - βN | -0.031 [-0.109, 0.045] | -0.020 [-0.095, 0.058] | 30/30 |
 | rwm-brf - βN/li | -0.071 [-0.133, -0.010] | -0.067 [-0.137, 0.002] | 30/30 |
 
-### Phase-controlled primary AUROC — within campaign and 200 ms time bins
+### Phase-controlled primary AUROC — within campaign and 100 ms time bins
 
 | model / rule | AUROC (95% percentile shot CI) |
 |---|---|
-| rwm-brf | 0.544 [0.453, 0.629] |
-| Elapsed time | 0.582 [0.552, 0.650] |
-| βN | 0.541 [0.439, 0.643] |
-| βN/li | 0.595 [0.494, 0.696] |
-| RWM screen | 0.500 [0.500, 0.500] |
+| rwm-brf | 0.534 [0.438, 0.624] |
+| Elapsed time | 0.522 [0.520, 0.549] |
+| βN | 0.529 [0.417, 0.634] |
+| βN/li | 0.588 [0.476, 0.691] |
+
+### Phase-bin-width sensitivity — primary mask, campaign control retained
+
+| Time-bin width | Forest | Elapsed time | βN | βN/li |
+|---|---|---|---|---|
+| 50 ms | 0.536 | 0.518 | 0.529 | 0.588 |
+| 100 ms | 0.534 | 0.522 | 0.529 | 0.588 |
+| 200 ms | 0.544 | 0.582 | 0.541 | 0.595 |
+| 400 ms | 0.557 | 0.561 | 0.558 | 0.592 |
+| 800 ms | 0.538 | 0.552 | 0.558 | 0.589 |
+| No time control | 0.742 | 0.778 | 0.705 | 0.734 |
 
 ### Paired phase-controlled AUROC — forest minus scalar
 
 | forest minus scalar | AUROC difference (95% basic paired shot CI) |
 |---|---|
-| rwm-brf - Elapsed time | -0.037 [-0.125, 0.091] |
-| rwm-brf - βN | 0.004 [-0.112, 0.134] |
-| rwm-brf - βN/li | -0.051 [-0.167, 0.072] |
+| rwm-brf - Elapsed time | 0.012 [-0.069, 0.122] |
+| rwm-brf - βN | 0.005 [-0.115, 0.131] |
+| rwm-brf - βN/li | -0.054 [-0.169, 0.062] |
 
 ### Comparison pool — reference forest alarms by run title
 
@@ -147,7 +153,6 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | Elapsed time | 0.642 [0.557, 0.732] | 0.255 [0.241, 0.343] | 365 | 2351 | 0.134 |
 | βN | 0.563 [0.468, 0.651] | 0.176 [0.132, 0.273] | 365 | 2351 | 0.134 |
 | βN/li | 0.593 [0.509, 0.677] | 0.165 [0.132, 0.249] | 365 | 2351 | 0.134 |
-| RWM screen | 0.500 [0.500, 0.500] | 0.134 [0.108, 0.171] | 365 | 2351 | 0.134 |
 
 ### Above no-wall-proxy conditional scores — all models
 
@@ -157,7 +162,6 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | Elapsed time | 0.597 [0.524, 0.676] | 0.268 [0.254, 0.355] | 365 | 1913 | 0.160 |
 | βN | 0.509 [0.386, 0.617] | 0.183 [0.139, 0.279] | 365 | 1913 | 0.160 |
 | βN/li | 0.512 [0.428, 0.591] | 0.168 [0.132, 0.252] | 365 | 1913 | 0.160 |
-| RWM screen | 0.500 [0.500, 0.500] | 0.160 [0.125, 0.215] | 365 | 1913 | 0.160 |
 
 ### Leave-one-run-record-out — rwm-brf (95% shot CIs)
 
@@ -207,7 +211,6 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | Elapsed time | 3/48 | 4/33 | 128/132 |
 | βN | 4/48 | 1/33 | 58/132 |
 | βN/li | 1/48 | 3/33 | 30/132 |
-| RWM screen | 0/48 | 0/33 | 36/132 |
 
 ### Alarm rates — all models (95% shot CIs)
 
@@ -217,7 +220,6 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | Elapsed time | 0.062 [0.000, 0.137] | 0.121 [0.030, 0.242] | 0.970 [0.939, 1.000] |
 | βN | 0.083 [0.019, 0.163] | 0.030 [0.000, 0.121] | 0.439 [0.356, 0.515] |
 | βN/li | 0.021 [0.000, 0.064] | 0.091 [0.000, 0.212] | 0.227 [0.167, 0.295] |
-| RWM screen | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] | 0.273 [0.197, 0.348] |
 
 ### Warning times — all models (detected onsets only)
 
@@ -227,7 +229,6 @@ Source: outputs/labeler/rwm/rotation_ablation.json. Change is no rotation minus 
 | Elapsed time | 145 [36, 235] | 0.046 [0.023, 0.069] | 0.016 [-0.039, 0.083] |
 | βN | 34 [16, 385] | 0.025 [0.006, 0.050] | 0.058 [0.014, 0.115] |
 | βN/li | 36 [36, 36] | 0.030 [0.006, 0.065] | -0.009 [-0.052, 0.030] |
-| RWM screen | - | 0.000 [0.000, 0.000] | 0.000 [0.000, 0.000] |
 
 ### Forest alarm sensitivity — five splits and run-record holdout
 
@@ -368,7 +369,6 @@ First slice in the [onset - 20 ms, onset) window: 6 snapshots are below beta_N/l
 | Elapsed time | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
 | βN | 3/30 | 26/30 | 1/30 | 3 | 58/132 |
 | βN/li | 1/30 | 26/30 | 3/30 | 3 | 30/132 |
-| RWM screen | 0/30 | 30/30 | 0/30 | 3 | 36/132 |
 
 Detected, Early and Missed are mutually exclusive on Hanson shots with an n=1 target. The first considered alarm decides the primary shot category. Early means unexplained and more than 400 ms before a future target. The FP column reports unlabelled-shot alarm incidence, not a verified stable-shot false-positive rate.
 
@@ -380,7 +380,6 @@ Detected, Early and Missed are mutually exclusive on Hanson shots with an n=1 ta
 | Elapsed time | 3/30 | 25/30 | 2/30 | 3 | 128/132 |
 | βN | 4/30 | 26/30 | 0/30 | 3 | 58/132 |
 | βN/li | 1/30 | 26/30 | 3/30 | 3 | 30/132 |
-| RWM screen | 0/30 | 30/30 | 0/30 | 3 | 36/132 |
 
 Detected, Early and Missed are mutually exclusive on Hanson shots with an n=1 target. Sensitivity: any warning wins, otherwise any Early alarm, then Missed. Early means unexplained and more than 400 ms before a future target. The FP column reports unlabelled-shot alarm incidence, not a verified stable-shot false-positive rate.
 
@@ -440,6 +439,8 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | rwm-brf - Elapsed time | 0.125 [-0.021, 0.270] | 0.121 [-0.091, 0.333] | -0.826 [-0.894, -0.765] |
 | rwm-brf - βN | 0.104 [-0.053, 0.245] | 0.212 [0.061, 0.333] | -0.295 [-0.394, -0.197] |
 | rwm-brf - βN/li | 0.167 [0.015, 0.310] | 0.152 [0.000, 0.303] | -0.083 [-0.182, 0.015] |
+
+Alarm-rule comparisons mostly reflect tuning monotone rules on truncated Hanson traces; they do not establish forest forecasting skill.
 
 ### Split sensitivity — rwm-brf (fixed hyperparameters)
 

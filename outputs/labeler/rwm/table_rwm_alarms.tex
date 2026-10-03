@@ -1,19 +1,19 @@
 \begin{table*}[t]
 \centering
 \small
-\setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}lcccccc@{}}
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lcccccccc@{}}
 \toprule
-Evaluation & \shortstack{First alarm\\D/E/M} & \shortstack{Any alarm\\D/E/M} & \shortstack{Onsets\\warned} & \shortstack{Onset\\detection} & \shortstack{Detection minus\\random reference} & \shortstack{Median warning\\(ms)} \\
+Evaluation & \shortstack{First alarm\\D/E/M} & \shortstack{Any alarm\\D/E/M} & \shortstack{Onsets\\warned} & \shortstack{Onset\\detection} & \shortstack{Detection minus\\random\\reference} & \shortstack{Median warning\\(ms)} & \shortstack{Comparison\\shots alarmed} & \shortstack{Hanson shots\\with unexplained\\alarms} \\
 \midrule
-Seed 0 & 2/6/22 & 6/2/22 & 9/48 & $0.188$ {\scriptsize $[0.049, 0.333]$} & $-0.002$ {\scriptsize $[-0.058, 0.052]$} & 356 [286, 389] \\
-Seed 1 & 5/5/20 & 6/4/20 & 8/48 & $0.167$ {\scriptsize $[0.046, 0.302]$} & $0.031$ {\scriptsize $[-0.042, 0.118]$} & 179 [75, 343] \\
-Seed 2 & 4/5/21 & 7/2/21 & 10/48 & $0.208$ {\scriptsize $[0.085, 0.340]$} & $0.038$ {\scriptsize $[-0.012, 0.094]$} & 302 [56, 340] \\
-Seed 3 & 8/5/17 & 11/2/17 & 13/48 & $0.271$ {\scriptsize $[0.158, 0.392]$} & $0.049$ {\scriptsize $[-0.054, 0.142]$} & 239 [114, 347] \\
-Seed 4 & 4/1/25 & 5/1/24 & 6/48 & $0.125$ {\scriptsize $[0.025, 0.245]$} & $0.057$ {\scriptsize $[-0.021, 0.158]$} & 135 [38, 341] \\
-Run-record holdout & 3/4/23 & 6/1/23 & 8/48 & $0.167$ {\scriptsize $[0.049, 0.309]$} & $0.014$ {\scriptsize $[-0.025, 0.053]$} & 214 [140, 343] \\
-Five-split point range & -- & -- & -- & $0.125$ to $0.271$ & $-0.002$ to $0.057$ & $135$ to $356$ \\
+Seed 0 & 2/6/22 & 6/2/22 & 9/48 & \shortstack{$0.188$\\{\scriptsize $[0.049, 0.333]$}} & \shortstack{$-0.002$\\{\scriptsize $[-0.058, 0.052]$}} & \shortstack{$356$\\{\scriptsize $[286, 389]$}} & \shortstack{19/132\\\shortstack{$0.144$\\{\scriptsize $[0.083, 0.212]$}}} & \shortstack{8/33\\\shortstack{$0.242$\\{\scriptsize $[0.091, 0.394]$}}} \\
+Seed 1 & 5/5/20 & 6/4/20 & 8/48 & \shortstack{$0.167$\\{\scriptsize $[0.046, 0.302]$}} & \shortstack{$0.031$\\{\scriptsize $[-0.042, 0.118]$}} & \shortstack{$179$\\{\scriptsize $[75, 343]$}} & \shortstack{37/132\\\shortstack{$0.280$\\{\scriptsize $[0.205, 0.356]$}}} & \shortstack{7/33\\\shortstack{$0.212$\\{\scriptsize $[0.091, 0.364]$}}} \\
+Seed 2 & 4/5/21 & 7/2/21 & 10/48 & \shortstack{$0.208$\\{\scriptsize $[0.085, 0.340]$}} & \shortstack{$0.038$\\{\scriptsize $[-0.012, 0.094]$}} & \shortstack{$302$\\{\scriptsize $[56, 340]$}} & \shortstack{23/132\\\shortstack{$0.174$\\{\scriptsize $[0.106, 0.242]$}}} & \shortstack{8/33\\\shortstack{$0.242$\\{\scriptsize $[0.121, 0.394]$}}} \\
+Seed 3 & 8/5/17 & 11/2/17 & 13/48 & \shortstack{$0.271$\\{\scriptsize $[0.158, 0.392]$}} & \shortstack{$0.049$\\{\scriptsize $[-0.054, 0.142]$}} & \shortstack{$239$\\{\scriptsize $[114, 347]$}} & \shortstack{32/132\\\shortstack{$0.242$\\{\scriptsize $[0.167, 0.318]$}}} & \shortstack{7/33\\\shortstack{$0.212$\\{\scriptsize $[0.091, 0.364]$}}} \\
+Seed 4 & 4/1/25 & 5/1/24 & 6/48 & \shortstack{$0.125$\\{\scriptsize $[0.025, 0.245]$}} & \shortstack{$0.057$\\{\scriptsize $[-0.021, 0.158]$}} & \shortstack{$135$\\{\scriptsize $[38, 341]$}} & \shortstack{12/132\\\shortstack{$0.091$\\{\scriptsize $[0.045, 0.144]$}}} & \shortstack{3/33\\\shortstack{$0.091$\\{\scriptsize $[0.000, 0.212]$}}} \\
+\shortstack[l]{Run-record\\holdout} & 3/4/23 & 6/1/23 & 8/48 & \shortstack{$0.167$\\{\scriptsize $[0.049, 0.309]$}} & \shortstack{$0.014$\\{\scriptsize $[-0.025, 0.053]$}} & \shortstack{$214$\\{\scriptsize $[140, 343]$}} & -- & \shortstack{9/33\\\shortstack{$0.273$\\{\scriptsize $[0.152, 0.424]$}}} \\
+\shortstack[l]{Five-split\\point range} & -- & -- & -- & \shortstack{$0.125$\\to $0.271$} & \shortstack{$-0.002$\\to $0.057$} & \shortstack{$135$\\to $356$} & -- & -- \\
 \bottomrule
 \end{tabular}
-\caption{Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All four rules were compared on the reference split only; their alarm results were not replayed over seeds 1--4.}
+\caption{Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All continuous scalar rules were compared on the reference split only; their alarm results were not replayed over other split seeds. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\scriptsize $[286, 389]$} ms, near the 400 ms limit.}
 \end{table*}

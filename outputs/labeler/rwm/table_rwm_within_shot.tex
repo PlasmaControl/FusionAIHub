@@ -6,15 +6,14 @@
 \toprule
 Model / rule (or difference) & Primary mean AUROC & Broad mean AUROC & Phase-controlled AUROC \\
 \midrule
-\texttt{rwm-brf} & $0.784$ & $0.719$ & $0.544$ {\scriptsize $[0.453, 0.629]$} \\
-Elapsed time & $0.931$ & $0.417$ & $0.582$ {\scriptsize $[0.552, 0.650]$} \\
-$\beta_N$ & $0.814$ & $0.739$ & $0.541$ {\scriptsize $[0.439, 0.643]$} \\
-$\beta_N/l_i$ & $0.855$ & $0.786$ & $0.595$ {\scriptsize $[0.494, 0.696]$} \\
-RWM screen & $0.500$ & $0.499$ & $0.500$ {\scriptsize $[0.500, 0.500]$} \\
-\texttt{rwm-brf} - Elapsed time & $-0.147$ {\scriptsize $[-0.200, -0.084]$} & $0.302$ {\scriptsize $[0.217, 0.384]$} & $-0.037$ {\scriptsize $[-0.125, 0.091]$} \\
-\texttt{rwm-brf} - $\beta_N$ & $-0.031$ {\scriptsize $[-0.109, 0.045]$} & $-0.020$ {\scriptsize $[-0.095, 0.058]$} & $0.004$ {\scriptsize $[-0.112, 0.134]$} \\
-\texttt{rwm-brf} - $\beta_N/l_i$ & $-0.071$ {\scriptsize $[-0.133, -0.010]$} & $-0.067$ {\scriptsize $[-0.137, 0.002]$} & $-0.051$ {\scriptsize $[-0.167, 0.072]$} \\
+\texttt{rwm-brf} & $0.784$ & $0.719$ & $0.534$ {\scriptsize $[0.438, 0.624]$} \\
+Elapsed time & $0.931$ & $0.417$ & $0.522$ {\scriptsize $[0.520, 0.549]$} \\
+$\beta_N$ & $0.814$ & $0.739$ & $0.529$ {\scriptsize $[0.417, 0.634]$} \\
+$\beta_N/l_i$ & $0.855$ & $0.786$ & $0.588$ {\scriptsize $[0.476, 0.691]$} \\
+\texttt{rwm-brf} - Elapsed time & $-0.147$ {\scriptsize $[-0.200, -0.084]$} & $0.302$ {\scriptsize $[0.217, 0.384]$} & $0.012$ {\scriptsize $[-0.069, 0.122]$} \\
+\texttt{rwm-brf} - $\beta_N$ & $-0.031$ {\scriptsize $[-0.109, 0.045]$} & $-0.020$ {\scriptsize $[-0.095, 0.058]$} & $0.005$ {\scriptsize $[-0.115, 0.131]$} \\
+\texttt{rwm-brf} - $\beta_N/l_i$ & $-0.071$ {\scriptsize $[-0.133, -0.010]$} & $-0.067$ {\scriptsize $[-0.137, 0.002]$} & $-0.054$ {\scriptsize $[-0.169, 0.062]$} \\
 \bottomrule
 \end{tabular}
-\caption{Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.02--0.07 below $\beta_N$ and $\beta_N/l_i$ on both masks (one of four unadjusted intervals excludes zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 200 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.}
+\caption{Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\beta_N$ and $\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.}
 \end{table*}

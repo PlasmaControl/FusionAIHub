@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "02070457d4048458311e6b0576cd6b490d286817f41f4afe65e9ab108968edac",
+  "source_sha256": "a5ef2c01b976d6707bbe3c775ae16f1da3f78168f424b7183152b142fe881a5f",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -43,16 +43,11 @@
           "low": 0.2614966232303802,
           "high": 0.42092874813984527
         },
-        "within_shot_primary_mean": {
-          "json_path": "configs.rwm-brf.within_shot_auroc.primary.mean",
-          "estimate": 0.7836439827099465,
-          "n_shots": 30
-        },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-brf.phase_controlled_auroc",
-          "estimate": 0.5441252317428455,
-          "low": 0.4534909213385078,
-          "high": 0.6288685755799931
+          "estimate": 0.5337573804158704,
+          "low": 0.43832175011536373,
+          "high": 0.6236245643079941
         }
       },
       "rwm-rule-elapsed-time": {
@@ -92,16 +87,11 @@
           "low": 0.24437115374446478,
           "high": 0.3681517415831221
         },
-        "within_shot_primary_mean": {
-          "json_path": "configs.rwm-rule-elapsed-time.within_shot_auroc.primary.mean",
-          "estimate": 0.9309497992055623,
-          "n_shots": 30
-        },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
-          "estimate": 0.5816013604873221,
-          "low": 0.5519475509028573,
-          "high": 0.6496287629716558
+          "estimate": 0.521991500042785,
+          "low": 0.520015148266446,
+          "high": 0.5489396110602781
         }
       },
       "rwm-rule-betan": {
@@ -141,16 +131,11 @@
           "low": 0.32276111912678007,
           "high": 0.45378258832394364
         },
-        "within_shot_primary_mean": {
-          "json_path": "configs.rwm-rule-betan.within_shot_auroc.primary.mean",
-          "estimate": 0.8144481602535586,
-          "n_shots": 30
-        },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan.phase_controlled_auroc",
-          "estimate": 0.5405776495351203,
-          "low": 0.4394491783838339,
-          "high": 0.6427899899636456
+          "estimate": 0.5287515331298668,
+          "low": 0.41720693889290306,
+          "high": 0.634488570270699
         }
       },
       "rwm-rule-betan-over-li": {
@@ -190,21 +175,16 @@
           "low": 0.26864187796097494,
           "high": 0.4272105191201794
         },
-        "within_shot_primary_mean": {
-          "json_path": "configs.rwm-rule-betan-over-li.within_shot_auroc.primary.mean",
-          "estimate": 0.8546671454496839,
-          "n_shots": 30
-        },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
-          "estimate": 0.5946625963562358,
-          "low": 0.4939690191534765,
-          "high": 0.6956327521842156
+          "estimate": 0.5879089534784221,
+          "low": 0.4762407853780383,
+          "high": 0.6910579613427574
         }
       }
     },
-    "caption": "Within-RWM-shot timing: \\texttt{rwm-brf} trains only on Hanson RWM shots, so no stable discharge supplies negatives; it forecasts when an RWM comes in a shot that has one, unlike Piccione's 90 stable shots among 134, likely explaining the forest's phase ranking. No skill beyond phase is established by phase-controlled AUROC. Reference split (seed 0): 33 shots, 30 target shots, 48 $n=1$ onsets, 480 positive versus 5,255 assumed-negative 10 ms slices; $5\\times3$ nested shot-grouped CV. Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. F1/TPR/FPR use the fold's ROC cutoff nearest (0 FPR, 1 TPR), chosen on inner-OOF primary Hanson slices. Brackets: exploratory 95\\% shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Within-shot means weight two-class shots equally; elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase-controlled AUROC compares pairs within campaign and 200 ms elapsed-time bins; all paired forest-minus-scalar intervals include zero (repository supplement). The omitted RWM screen is constant zero on primary slices (AUROC 0.500). Legacy uses different inputs and validation.",
-    "caption_words": 183,
+    "caption": "Within-RWM-shot timing with assumed negatives; no established skill beyond phase. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset; broad adds later Hanson time. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.",
+    "caption_words": 65,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -1209,7 +1189,7 @@
     "within_shot": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
-      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.02--0.07 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (one of four unadjusted intervals excludes zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 200 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
+      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
       "source": {
         "paired_within_shot_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
@@ -1257,24 +1237,24 @@
         },
         "phase_controlled_auroc": {
           "rwm-brf": {
-            "estimate": 0.5441252317428455,
-            "low": 0.4534909213385078,
-            "high": 0.6288685755799931
+            "estimate": 0.5337573804158704,
+            "low": 0.43832175011536373,
+            "high": 0.6236245643079941
           },
           "rwm-rule-elapsed-time": {
-            "estimate": 0.5816013604873221,
-            "low": 0.5519475509028573,
-            "high": 0.6496287629716558
+            "estimate": 0.521991500042785,
+            "low": 0.520015148266446,
+            "high": 0.5489396110602781
           },
           "rwm-rule-betan": {
-            "estimate": 0.5405776495351203,
-            "low": 0.4394491783838339,
-            "high": 0.6427899899636456
+            "estimate": 0.5287515331298668,
+            "low": 0.41720693889290306,
+            "high": 0.634488570270699
           },
           "rwm-rule-betan-over-li": {
-            "estimate": 0.5946625963562358,
-            "low": 0.4939690191534765,
-            "high": 0.6956327521842156
+            "estimate": 0.5879089534784221,
+            "low": 0.4762407853780383,
+            "high": 0.6910579613427574
           },
           "rwm-rule-rwm-candidates": {
             "estimate": 0.5,
@@ -1284,19 +1264,19 @@
         },
         "paired_phase_controlled_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
-            "estimate": -0.03747612874447659,
-            "low": -0.12450675806146302,
-            "high": 0.09122205862995181
+            "estimate": 0.011765880373085347,
+            "low": -0.06924226650639081,
+            "high": 0.12217107707534618
           },
           "rwm-brf - rwm-rule-betan": {
-            "estimate": 0.0035475822077252195,
-            "low": -0.11209051487950976,
-            "high": 0.13417312841722806
+            "estimate": 0.005005847286003617,
+            "low": -0.11478871880319125,
+            "high": 0.1309557352325516
           },
           "rwm-brf - rwm-rule-betan-over-li": {
-            "estimate": -0.0505373646133902,
-            "low": -0.16685823212246848,
-            "high": 0.07225576089990518
+            "estimate": -0.054151573062551694,
+            "low": -0.16922257008732436,
+            "high": 0.062374992869305756
           }
         },
         "configs.rwm-brf.within_shot_auroc": {
@@ -1344,18 +1324,6 @@
           "broad": {
             "mean": 0.785614913350108,
             "median": 0.8655014768721094,
-            "n_shots": 30
-          }
-        },
-        "configs.rwm-rule-rwm-candidates.within_shot_auroc": {
-          "primary": {
-            "mean": 0.5,
-            "median": 0.5,
-            "n_shots": 30
-          },
-          "broad": {
-            "mean": 0.49873122790816765,
-            "median": 0.5,
             "n_shots": 30
           }
         }
@@ -1763,7 +1731,7 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All four rules were compared on the reference split only; their alarm results were not replayed over seeds 1--4.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All continuous scalar rules were compared on the reference split only; their alarm results were not replayed over other split seeds. Comparison and Hanson incidences are unlabelled-shot incidences, not verified false-positive rates. Warning medians are conditional on the matching window; the reference-split median is $356$ {\\scriptsize $[286, 389]$} ms, near the 400 ms limit.",
       "source": {
         "configs.rwm-brf": {
           "0": {
@@ -4936,7 +4904,8 @@
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
     "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
     "Paired within-shot mean AUROC differences (95% basic shot CIs)",
-    "Phase-controlled primary AUROC \u2014 within campaign and 200 ms time bins",
+    "Phase-controlled primary AUROC \u2014 within campaign and 100 ms time bins",
+    "Phase-bin-width sensitivity \u2014 primary mask, campaign control retained",
     "Paired phase-controlled AUROC \u2014 forest minus scalar",
     "Comparison pool \u2014 reference forest alarms by run title",
     "Rotation sensitivity \u2014 one reference-split no-rotation CV",
@@ -4971,18 +4940,36 @@
     "Campaign sensitivity \u2014 rwm-brf, seed 4 (95% shot CIs)",
     "Leave-one-run-record-out \u2014 by campaign (95% shot CIs)"
   ],
+  "documentation": {
+    "doc": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/docs/labeler/rwm_baseline.md",
+    "readme": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/data/events/resistive_wall_mode/README.md",
+    "words": 2637,
+    "warning_distribution": {
+      "n": 9,
+      "min_ms": 32.0,
+      "max_ms": 391.0,
+      "median": {
+        "estimate": 356.0,
+        "low": 286.0,
+        "high": 389.0
+      },
+      "matching_min_ms": 10.0,
+      "matching_max_ms": 400.0,
+      "source": "E#/configs/rwm-brf/per_shot/*/warning_ms (external details)"
+    }
+  },
   "rotation_ablation_source": {
     "path": "outputs/labeler/rwm/rotation_ablation.json",
-    "sha256": "b5b839fd2101f49483efb6269046e9a20c90c141b7c88455f78b16381007aeb3"
+    "sha256": "ae686b2306f298e5538bec5ef04c17c94dc7164f7d2f9a2e3a6aebbee012d00e"
   },
   "comparison_sensitivity_source": {
     "path": "outputs/labeler/rwm/comparison_sensitivity.json",
-    "sha256": "d4b2dce03d1e57a4215a1a95814712c4d6917938f807bca40a5f6f08d9caf54f"
+    "sha256": "412e0de2ba3f6a6cc94a212b49d8ad88ae81726250bd7a95845db4a22728ee80"
   },
   "external_evaluation_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
-    "sha256": "1a726d4de3539219a6e57a5b4738d5ca326f22d9ae4b154cca1a2ea1cdd829b6",
-    "bytes": 1857510,
+    "sha256": "051ac0d92df523087c82cfc1aa31529ed86afb97e66b543bc4ec14964531a329",
+    "bytes": 1861814,
     "omitted_keys": [
       "per_shot",
       "shots",
@@ -5000,17 +4987,17 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "dafbbd89051110dd7e0e3c6fb7af808904d36c94895ed6758a1f9217a8714e4f"
+        "sha256": "2d57a976b13588e4258b0f6f62bbea2dc10d010095bbcb123e1e7b56e8daf6d9"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "a448f868531891a3e8972e176177b2f52eb2a850c05e62c7835522c9f833e304"
+        "sha256": "9b5d160b8be6663add08053d77d8bf463bc7aa69a3247763472ca5403fb5c84c"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "d93db973cf04914403a825faf24279fed2c041498141265d03f4734dc8ebbb40"
+        "sha256": "4c3e6bf042b9e892e72eaa181c1658ff63f97a44a234933063600ee0493e682a"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
@@ -5020,17 +5007,17 @@
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "48565617e265321b9f822bb257ec6b4d27d37f8b783296abe81e19b1af2590d6"
+        "sha256": "17a62b010f53516ef6348009d721782478d2ea758f118ce16239c5570b874df4"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "93ee5e04608e9f7072dafe7c9cc3a04efca4ec9b5b1a10a71147f5574680e9ee"
+        "sha256": "3109950d93cdb09bfbd59610feca721fe8a1b7c8833bccdfd5a7f305144e4ba9"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "02527e6c209d2ee72fd973239b4bb84eb3dad78d1beff69402d5027f47c49e6d"
+        "sha256": "f206eb3e98a3f57391575e85d11fc5e470f2b9ae2a569ef32a9e90fee74dd332"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
@@ -5040,17 +5027,17 @@
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "7538371be65016d9b2fcf3ae0c9c296a05ee3b6250c5cb39c5cf038c37a68028"
+        "sha256": "8b98a1467a9830dbb7aaaf941014f091588612f00e1ffe20c6ee19611834f4d6"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "e51eaaabd3dfdb7910078c4d4d8aa3f2dd32d8cebca8dd781949fa462cd6579c"
+        "sha256": "197189cf34c10f5f1d2ce352dceb612fd64409d5da581ba6b1b881b5cfa8028e"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "84d9e19d06b55224285768f09f3377098615af594dfd7439717c14142ecbedf2"
+        "sha256": "fd462da8dec5284869223dc1f39b8790d5b9c9b75a44bd32f6523111669f5467"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -5060,7 +5047,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "548b6e922506fd5d56698419fd8d60409c6e7e044f4d9b43e59f8d7d8f72877a"
+        "sha256": "a47d433f9fe4e4c2f089bc5e96bb0489670659ab83ff3fa5c0fe184b12a16574"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -5069,49 +5056,53 @@
     ]
   },
   "supplied_check_logs": {
-    "covering_reader_tests": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-reader-tests.log",
-      "output": "......................................................................   [100%]\n70 passed in 3.53s"
+    "covering_tests": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-covering-tests.log",
+      "output": "........................................................................ [ 64%]\n.......................................                                  [100%]\n111 passed in 6.75s"
     },
     "ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-ruff.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-ruff.log",
       "output": "All checks passed!"
     },
-    "new_python_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-format.log",
-      "output": "4 files already formatted"
+    "python_format": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-format.log",
+      "output": "7 files already formatted"
     },
     "table_and_record_validation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-validation.log",
-      "output": "evaluation: 451703 bytes; complete external record exactly matches pre-round evaluation\nAll retained metrics, counts, folds and protocols are unchanged; no nested per-shot arrays in summary\nbaseline: primary AUROC 0.760202188; phase-controlled AUROC 0.544125232; 33/30 shots, 48 onsets, 480/5255 slices\ncomparison sensitivity: primary AUROC 0.768547415; phase-controlled AUROC 0.596453812; 33/30 shots, 48 onsets, 480/5255 slices\nSensitivity uses exactly the reference held-out shots, folds and scoring masks\nSensitivity factory enables comparison-negative training; default baseline still excludes comparisons\nCache audit: 79 zero-DUSBRADIAL shots (15 Hanson), 0 ONSBRADIAL traces, 0 network calls\nMain table: phase first; caption includes task, sizes, CV and cutoff; Legacy blanks/screen row removed\nSplit table: every bracket has 3 decimal places\nOriginal fitted prediction hashes checked against pre-fix8 archive where available\nPASS\nFollow-up: both evaluation digests verified after saved sensitivity replay; cutoff/alarm protocol scopes corrected; canonical archive preserved and custom paths isolated by resolved-path hash."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-validation.log",
+      "output": "PASS: 15 baseline/split/full-trace/holdout records independently reproduce all phase widths; counts, pooled/alarm metrics and fold rules unchanged\nPASS: comparison-negative and no-rotation phase scores and paired points reproduce independently\nPASS: all three forest-minus-scalar phase differences use regenerated points\nPASS: 612 rows / 165 shots; all non-attribute export columns unchanged; all 56 original mode/time/source tuples preserved; six n=2 present intervals identified directly\nPASS: every saved prediction checksum unchanged; no refit/tuning guards passed all three replays\nPASS: caption 65 words; doc 2637 words; screen absent from forecasting tables; causal/unhedged claims removed\nPASS: external-detail checksums verified on load"
+    },
+    "empty_warning_generation": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-empty-green.log",
+      "output": "PASS: zero-warning saved evaluation regenerates documentation with unavailable warning distribution"
     },
     "latex_compile": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-latex.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-latex.log",
       "output": "table_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-visual.log",
-      "output": "Viewed all eight regenerated PNGs with view_image: table_rwm-1.png, table_rwm_alarms-1.png, table_rwm_campaign_pairs-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png, table_rwm_split_summary-1.png, table_rwm_within_shot-1.png, rwm_onset_scores.png. Main table leads with phase-controlled AUROC; rows, bracket precision, captions and Legacy block are legible. All table boundaries, figure axes and source rows are visible; no clipped or overlapping text. No LaTeX layout warnings remain."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-visual.log",
+      "output": "Viewed all eight regenerated 150-dpi PNGs using view_image: table_rwm-1.png, table_rwm_alarms-1.png, table_rwm_within_shot-1.png, table_rwm_campaign_pairs-1.png, table_rwm_split_summary-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png and rwm_onset_scores.png under $LABELER_ROOT/round4/rwm/.\nFinal alarm-table image was viewed again after spacing/range-row repair. All nine columns visible, warning and incidence brackets legible, no overlap/clipping; paired tables and onset rows legible. Main caption compact, within-shot point column absent. All final LaTeX compilation outputs are warning-free; all seven tables one page. Score figure keeps vector PDF and legible column-width labels."
     },
-    "comparison_negative_fit": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-comparison.log",
-      "output": "single comparison-negative CV: 58.1 s\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
+    "baseline_saved_replay": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-rescore.log",
+      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json\nPASS: no fit or tuning call during saved rescoring"
     },
     "comparison_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-comparison-replay.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-comparison-replay.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json\nPASS: no fit or tuning call during saved rescoring"
+    },
+    "rotation_saved_replay": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-rotation-replay.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json\nPASS: no fit or tuning call during saved rescoring"
     },
     "final_code_review": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-review.log",
-      "output": "Read-only final reviewer found two issues: custom --out archive basename collision and a concentration citation to pruned shot mapping. Fixed by hashing full resolved custom output paths (new reader regression) and pointing the citation to the complete external record. Follow-up: No remaining actionable findings. Both reported issues are addressed, and the tuning descriptions now distinguish slice cutoffs from alarm tuning."
-    },
-    "summary_migration": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-migration.log",
-      "output": "rwm_evaluate.py --compact-saved: preserved complete pre-round record at $LABELER_ROOT/round4/rwm/evaluation_details.json; summary 451703 bytes. Equality to pre-round JSON and pointer SHA-256 verified in fix9-validation.log; no refit or rescore."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-review.log",
+      "output": "Read-only fresh reviewer: no Critical or Important issues. Independently verified all nonphase metrics/counts/options/fold rules against base, 612 identical non-attribute rows, all 56 source onset tuples, six phase widths across 17 records, external detail hashes, one fold per shot, 55 focused tests, source/caption limits, and both paper tables legible.\nMinor valid-zero-warning crash: reproduced in fix10-empty-red.log, guarded nullable distribution/range, and fixed by fix10-empty-green.log. Current nine-warning results unchanged.\nTransient rendered-artifact hash mismatch while rendering: final presentation regeneration and fix10-artifact-hashes.log verify actual final artifacts.\nNo remaining actionable findings. Operational false-positive performance, verified stable-negative effects, sensor semantics/timing remain out of scope and untested. Root independently verifies every saved prediction against its pre-round SHA-256 snapshot."
     },
     "artifact_hashes": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-artifact-hashes.log",
-      "output": "f852ff92a86445c46357e36c46d75c86db5722ffa282e4eefbc9e2b7e6cfdeaa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-comparison-negative_seed0.parquet\na8df94f3eb817d6c4ef2924cedb1866e30237d03d1e61b1cc70ebb2be713c3aa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-no-rotation_seed0.parquet\n3c76cd6bc507042de59d8456aa5959cd19d334f4170cc36587fde2a91e0cca4a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet\ne8aa23dffd6f2f2259c19edff818ec7514f71727ccacef6ac98e80e07f9096c4  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet\n3c76cd6bc507042de59d8456aa5959cd19d334f4170cc36587fde2a91e0cca4a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet\n9616b289e6f9ef1de4e1dfcd56bcbd7c6b100598bd311b86310d464871965cb2  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet\n4fa67e5b0e99eec3d84b69be2122711be22bd036536e5c6fa227fb04c82837b6  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet\n3b753323b5cfc6c82d75d58aa77e4899c226765c7e5ce3239717373ba302eaaa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet\n2f9a1f6918ba0f649410886006ec8ffc18030e6af38324d96fdf9384b6ce0cbf  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet\nb17e5419c6f0a65f93833dcb0f7d4da469020d7a5d5088ac2cd1a84fbad8f52a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet\nb17e5419c6f0a65f93833dcb0f7d4da469020d7a5d5088ac2cd1a84fbad8f52a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet\n32cb0596b2c012afcfed41c04d88743d471c365bc938b6369ea278b2e2273330  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet\n32cb0596b2c012afcfed41c04d88743d471c365bc938b6369ea278b2e2273330  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet\nf9e8215666e081016db0d44c24299a1121511eaca58b2cb0d326f29b1eb1aaa9  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet\nf9e8215666e081016db0d44c24299a1121511eaca58b2cb0d326f29b1eb1aaa9  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet\nd01a0a212ddd812c6a73f6eba49c7ba16f05f68d5d82aeef2430389de38c5e52  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet\nd01a0a212ddd812c6a73f6eba49c7ba16f05f68d5d82aeef2430389de38c5e52  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet\na448f868531891a3e8972e176177b2f52eb2a850c05e62c7835522c9f833e304  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png\ne51eaaabd3dfdb7910078c4d4d8aa3f2dd32d8cebca8dd781949fa462cd6579c  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png\n1e0a10acca3193f27239b07abc563fd4471051400f655b20d28c558af1ba5d6e  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png\nad6addd847791d7edea4dc963a895835e05f63b491655dad75b1147043cf3926  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png\n644b25d2a60f185970de51e2a56d52dd7bc14ea7aaf1614503088bcadcaec1cb  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png\n5fa82a7bbc9d9f239e22151f2d3176c5799832a59eb3ce4a8abe71d71eac49ae  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png\n93ee5e04608e9f7072dafe7c9cc3a04efca4ec9b5b1a10a71147f5574680e9ee  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png\n3f3d2d9c8e1fa6077a9df023d1db570a71e724e0f3ef7835bcd7a047e0fc0b2b  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix10-artifact-hashes.log",
+      "output": "PASS: all 14 final table PDF/PNG artifact hashes and E/C/A source hashes match\nPASS: all eight PNGs inspected after final layout; zero final LaTeX warnings\nPASS: caption words 65 doc words 2637"
     }
   }
 }
