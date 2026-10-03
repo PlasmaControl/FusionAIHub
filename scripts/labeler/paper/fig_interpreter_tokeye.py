@@ -1295,7 +1295,8 @@ def track_record(track: lf.Track, window=None) -> dict | None:
 def draft_caption(shot: int, records, drawn) -> str:
     text = figure_sources.caption(shot, records, drawn)
     text = re.sub(r"\bn=([0-9/]+)", r"$n=\1$", text)
-    text = text.replace("≥", r"$\geq$").replace("<60", "$<60$")
+    text = text.replace("≥", r"$\geq$").replace("≤", r"$\leq$")
+    text = text.replace("<60", "$<60$")
     label = f"fig:interpreter-{shot}"
     return f"\\caption{{{text}}}\n\\label{{{label}}}\n"
 
