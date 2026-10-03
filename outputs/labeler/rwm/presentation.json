@@ -135,6 +135,158 @@
         }
       }
     },
+    "caption": "Retrospective DIII-D forecasting on 33 Hanson shots with acausal ZIPFIT inputs and unverified negative coverage. Positives precede listed $n=1$ onsets by at most 100 ms; high-$\\beta$ conditions on $\\beta_N\\geq0.8$ shot p95. Brackets: 95\\% shot-bootstrap intervals (1,000 resamples). Ranges span five splits: high-$\\beta$ AUROC 0.60--0.70; forest-minus-elapsed-time -0.04--0.05, with paired intervals including zero in all three pooled strata. Leave-one-run-record-out retains four records across three dates. Legacy uses different inputs and expert-reviewed stable shots; results are not comparable.",
+    "caption_words": 75,
+    "split_ranges": {
+      "json_path": "split_sensitivity.auroc_ranges",
+      "values": {
+        "pooled": {
+          "slice_auroc": {
+            "by_seed": {
+              "0": 0.7602021883920076,
+              "1": 0.787127339042182,
+              "2": 0.7726976292419917,
+              "3": 0.8057447272438947,
+              "4": 0.7929715746907707
+            },
+            "min": 0.7602021883920076,
+            "max": 0.8057447272438947
+          },
+          "high_beta_auroc": {
+            "by_seed": {
+              "0": 0.6021780297512571,
+              "1": 0.651469791344983,
+              "2": 0.6310203177895737,
+              "3": 0.6957441601650128,
+              "4": 0.6637979757957849
+            },
+            "min": 0.6021780297512571,
+            "max": 0.6957441601650128
+          },
+          "above_proxy_auroc": {
+            "by_seed": {
+              "0": 0.5455878667229984,
+              "1": 0.6032395505875445,
+              "2": 0.5722318097515915,
+              "3": 0.6571948241663027,
+              "4": 0.6141053641630086
+            },
+            "min": 0.5455878667229984,
+            "max": 0.6571948241663027
+          }
+        },
+        "2014": {
+          "slice_auroc": {
+            "by_seed": {
+              "0": 0.6627125506072874,
+              "1": 0.7152648448043185,
+              "2": 0.6983561066126855,
+              "3": 0.7349375843454791,
+              "4": 0.7219095816464237
+            },
+            "min": 0.6627125506072874,
+            "max": 0.7349375843454791
+          },
+          "high_beta_auroc": {
+            "by_seed": {
+              "0": 0.3112921561197423,
+              "1": 0.4538493116079323,
+              "2": 0.41890867752936717,
+              "3": 0.5274251610458507,
+              "4": 0.4697486421624353
+            },
+            "min": 0.3112921561197423,
+            "max": 0.5274251610458507
+          },
+          "above_proxy_auroc": {
+            "by_seed": {
+              "0": 0.27677304964539007,
+              "1": 0.4340022566086396,
+              "2": 0.38363958736299164,
+              "3": 0.5078255963894261,
+              "4": 0.43273694390715667
+            },
+            "min": 0.27677304964539007,
+            "max": 0.5078255963894261
+          }
+        },
+        "2018": {
+          "slice_auroc": {
+            "by_seed": {
+              "0": 0.8194866310160428,
+              "1": 0.832244461420932,
+              "2": 0.8243254392666157,
+              "3": 0.8484545454545455,
+              "4": 0.8321275783040489
+            },
+            "min": 0.8194866310160428,
+            "max": 0.8484545454545455
+          },
+          "high_beta_auroc": {
+            "by_seed": {
+              "0": 0.6979584182270692,
+              "1": 0.7226175983522404,
+              "2": 0.7070554243521323,
+              "3": 0.7471607614531053,
+              "4": 0.726857782199492
+            },
+            "min": 0.6979584182270692,
+            "max": 0.7471607614531053
+          },
+          "above_proxy_auroc": {
+            "by_seed": {
+              "0": 0.647018115561162,
+              "1": 0.667301762500438,
+              "2": 0.6491905813097866,
+              "3": 0.7061783874697782,
+              "4": 0.6765084621044886
+            },
+            "min": 0.647018115561162,
+            "max": 0.7061783874697782
+          }
+        }
+      }
+    },
+    "paired_time_ranges": {
+      "json_path": "split_sensitivity.paired_time_ranges",
+      "values": {
+        "slice_auroc": {
+          "min": 0.0014686409768474018,
+          "max": 0.047011179828734484,
+          "all_cis_include_zero": true
+        },
+        "high_beta_auroc": {
+          "min": -0.039521509354806805,
+          "max": 0.054044621058948916,
+          "all_cis_include_zero": true
+        },
+        "above_proxy_auroc": {
+          "min": -0.05109238161390339,
+          "max": 0.060514575829400896,
+          "all_cis_include_zero": true
+        }
+      }
+    },
+    "run_record_cells": {
+      "slice_auroc": {
+        "json_path": "leave_one_run_record_out.metrics.slice_auroc",
+        "estimate": 0.7789200761179829,
+        "low": 0.7311668160793936,
+        "high": 0.8227504607236329
+      },
+      "high_beta_auroc": {
+        "json_path": "leave_one_run_record_out.metrics.high_beta_auroc",
+        "estimate": 0.6209266823211341,
+        "low": 0.5359219009637753,
+        "high": 0.7002918637249058
+      },
+      "above_proxy_auroc": {
+        "json_path": "leave_one_run_record_out.metrics.above_proxy_auroc",
+        "estimate": 0.5794699568203138,
+        "low": 0.47487570018579617,
+        "high": 0.6770970334398514
+      }
+    },
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -172,15 +324,17 @@
   },
   "markdown": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/tables.md",
   "sections": [
-    "Piccione-style primary scores \u2014 all models",
+    "Five-split AUROC ranges \u2014 rwm-brf (seeds 0\u20134)",
+    "Five-split paired AUROC \u2014 forest minus elapsed time",
+    "Piccione-style primary scores \u2014 all models (split 0)",
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
     "High-beta conditional scores \u2014 all models",
     "Above no-wall-proxy conditional scores \u2014 all models",
-    "Campaign sensitivity \u2014 rwm-brf (95% shot CIs)",
-    "Leave-one-run-day-out \u2014 rwm-brf (95% shot CIs)",
-    "Leave-one-run-day-out \u2014 each held-out run day",
-    "Leave-one-run-day-out \u2014 F1 and alarms (95% shot CIs)",
-    "Leave-one-run-day-out \u2014 F1 and alarms by held-out run day",
+    "Campaign sensitivity \u2014 rwm-brf, split 0 (95% shot CIs)",
+    "Leave-one-run-record-out \u2014 rwm-brf (95% shot CIs)",
+    "Leave-one-run-record-out \u2014 each held-out run record",
+    "Leave-one-run-record-out \u2014 F1 and alarms (95% shot CIs)",
+    "Leave-one-run-record-out \u2014 F1 and alarms by held-out run record",
     "Alarm counts \u2014 all models (n=1 targets)",
     "Alarm rates \u2014 all models (95% shot CIs)",
     "Warning times \u2014 all models (detected onsets only)",
@@ -188,15 +342,20 @@
     "Alarm definition sensitivity \u2014 rwm-brf",
     "Legacy NSTX \u2014 separately sourced published reference",
     "Paired differences \u2014 rwm-brf versus rules, primary",
-    "Paired differences \u2014 rwm-brf versus rules, high-beta",
-    "Paired differences \u2014 rwm-brf versus rules, above-proxy",
+    "Paired differences \u2014 rwm-brf versus rules, high-beta conditional",
+    "Paired differences \u2014 rwm-brf versus rules, above-proxy conditional",
     "Paired alarm differences \u2014 rwm-brf versus rules (95% basic CIs)",
-    "Split sensitivity \u2014 rwm-brf (fixed hyperparameters)"
+    "Split sensitivity \u2014 rwm-brf (fixed hyperparameters)",
+    "Campaign sensitivity \u2014 rwm-brf, split 1 (95% shot CIs)",
+    "Campaign sensitivity \u2014 rwm-brf, split 2 (95% shot CIs)",
+    "Campaign sensitivity \u2014 rwm-brf, split 3 (95% shot CIs)",
+    "Campaign sensitivity \u2014 rwm-brf, split 4 (95% shot CIs)",
+    "Leave-one-run-record-out \u2014 by campaign (95% shot CIs)"
   ],
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": "........................................................................ [ 51%]\n...................................................................      [100%]\n139 passed in 152.09s (0:02:32)"
+      "output": ".........................................                                [100%]\n41 passed in 8.10s"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -204,11 +363,11 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "11 files already formatted"
+      "output": "4 files already formatted"
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/latex.log",
-      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsfont\ns/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pf\nb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr\n/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/\ntexlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/\ntexmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-\ndist/fonts/type1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/rwm_table_preview.pdf (1 page, 87420 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/rwm_table_preview.log."
+      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsf\nonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></\nusr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texli\nve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/\nfonts/type1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/rwm_table_standalone.pdf (1 page, 98217 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/rwm_table_standalone.log."
     }
   }
 }

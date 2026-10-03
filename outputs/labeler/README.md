@@ -16,7 +16,7 @@
 - `tabpfn/`: the TabPFN-against-the-CNN study (Study A on the CNN's archived inputs, Study B on
   labelmaker's reconstructed inputs), with its own README.
 - `rwm/`: Hanson-only onset forecasting baseline with explicit evidence tiers,
-  primary and conditional scores, campaign and run-day sensitivity, alarm tables,
+  primary and conditional scores, five-split and run-record sensitivity, alarm tables,
   and a separately sourced published NSTX reference. `evaluation.json` and
   `tables.md` are written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py`;
   `figure.json` records the paper figure and caption. Large prediction, figure,
