@@ -246,14 +246,16 @@ def tangtv_indicator(
 
 
 def evidence_votes(dz, valid, spatial, second_cue):
-    """DZ>=1.2 for >=2 adjacent valid bins, psiN<1 peak and independent cue."""
+    """MARFE vote: DZ>=1.2, a psiN<1 emission peak and the density cue, together on
+    at least `MARFE_MIN_BINS` adjacent valid bins; otherwise the DZ vote. Returns
+    the votes and the DZ>=1.2 candidate mask."""
     dz = np.asarray(dz)
     candidate = np.asarray(valid) & (dz >= th.DZ_MARFE_MIN)
     evidence = candidate & np.asarray(spatial) & np.asarray(second_cue)
     edges = np.flatnonzero(np.r_[True, evidence[1:] != evidence[:-1], True])
     sustained = np.zeros(len(dz), bool)
     for start, end in itertools.pairwise(edges):
-        if evidence[start] and end - start >= 2:
+        if evidence[start] and end - start >= th.MARFE_MIN_BINS:
             sustained[start:end] = True
     vote = dz_vote(dz)
     vote[sustained] = MARFE

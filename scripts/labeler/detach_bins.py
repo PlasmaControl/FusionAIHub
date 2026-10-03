@@ -295,10 +295,15 @@ def confinement(shot, edges):
 
 
 def processed_ratio(shot, edges, cache, base, elm):
-    """Local Jsat proxy from a positioned SOL probe; no camera-dependent fit.
+    """Local Jsat proxy from the SOL-side processed probes; no camera-dependent fit.
 
-    The probe and strike point use the same close EFIT map. A whole-shot
+    The probes and the outer strike point use the same close EFIT map. The probe is
+    chosen by flux (`afrac.select_sol_probe`): the peak current among the probes
+    outboard of the strike point with 1.000 < psiN <= 1.05. A whole-shot
     model-normalised 90th percentile is only a local reference, not Eldon C.
+    Provenance (the reported probe's position, flux, distance and margin) is
+    exported for every bin, valid or not: an invalid bin reports the probe nearest
+    the strike point and the reason it could not vote.
     """
     n = len(edges) - 1
     modes = np.full(n, "local_proxy", dtype="U32")
@@ -306,6 +311,7 @@ def processed_ratio(shot, edges, cache, base, elm):
         "aux_jsat_selected_probe": np.full(n, -1, np.int16),
         "afrac_efit_source": np.full(n, "none", dtype="U16"),
         "afrac_probe_position_valid": np.zeros(n, bool),
+        "afrac_probe_n_eligible": np.zeros(n, np.int16),
         **{
             f"aux_jsat_{name}": np.full(n, np.nan, np.float32)
             for name in (
@@ -362,26 +368,37 @@ def processed_ratio(shot, edges, cache, base, elm):
     strike[~close] = np.nan
     psi_n = signals.flux_at_positions(maps, centres, positions)
     which, usable, probe_reason = afrac.select_sol_probe(jsat, positions, strike, psi_n)
-    index = np.maximum(which, 0)
-    selected = np.where(usable, jsat[index, np.arange(n)], np.nan)
+    column = np.arange(n)
+    reported = afrac.reported_probe(positions, strike, psi_n, which, usable)
+    index = np.maximum(reported, 0)
+    selected = np.where(usable, jsat[np.maximum(which, 0), column], np.nan)
+    numbers = np.array([int(k[1:]) for k in keys])
     provenance["afrac_efit_source"][:] = str(maps.get("source", "EFIT01"))
     provenance["afrac_probe_position_valid"] = usable
+    provenance["afrac_probe_n_eligible"] = (
+        (
+            (positions[:, None, 0] - strike[None, :, 0] >= th.PROBE_STRIKE_MARGIN_M)
+            & (psi_n > th.PROBE_SOL_PSI_N_MIN)
+            & (psi_n <= th.PROBE_SOL_PSI_N_MAX)
+        )
+        .sum(axis=0)
+        .astype(np.int16)
+    )
     provenance["aux_jsat_strike_r_m"] = strike[:, 0].astype(np.float32)
     provenance["aux_jsat_strike_z_m"] = strike[:, 1].astype(np.float32)
-    provenance["aux_jsat_selected_probe"][usable] = np.array(
-        [int(k[1:]) for k in keys]
-    )[which[usable]]
-    selected_positions = np.where(usable[:, None], positions[index], np.nan)
-    provenance["aux_jsat_selected_r_m"] = selected_positions[:, 0].astype(np.float32)
-    provenance["aux_jsat_selected_z_m"] = selected_positions[:, 1].astype(np.float32)
+    have = reported >= 0
+    provenance["aux_jsat_selected_probe"][have] = numbers[reported[have]]
+    reported_positions = np.where(have[:, None], positions[index], np.nan)
+    provenance["aux_jsat_selected_r_m"] = reported_positions[:, 0].astype(np.float32)
+    provenance["aux_jsat_selected_z_m"] = reported_positions[:, 1].astype(np.float32)
     provenance["aux_jsat_selected_psin"] = np.where(
-        usable, psi_n[index, np.arange(n)], np.nan
+        have, psi_n[index, column], np.nan
     ).astype(np.float32)
     provenance["aux_jsat_selected_distance_m"] = np.linalg.norm(
-        selected_positions - strike, axis=1
+        reported_positions - strike, axis=1
     ).astype(np.float32)
     provenance["aux_jsat_radial_margin_m"] = (
-        selected_positions[:, 0] - strike[:, 0]
+        reported_positions[:, 0] - strike[:, 0]
     ).astype(np.float32)
     density = signals.line_density(cache)
     power = signals.heating_power(shot, cache)
@@ -463,9 +480,11 @@ def process(
     geo, geo_source = signals.tangtv_geometry(shot, cache)
     # Spatial evidence exists only for true inversions with a close flux map.
     spatial = spatial_evidence(shot, edges, geo, frame_quality)
+    # The MARFE density cue is the Greenwald fraction alone. The confinement
+    # table's H-L back-transition is recorded but is not a cue: it can also follow
+    # a detachment that is not a MARFE.
     second, fg = greenwald_cue(edges, cache)
     _, back_transition = confinement(shot, edges)
-    second |= back_transition
     afrac_ind, afrac_mode, probe_provenance = processed_ratio(
         shot, edges, cache, afrac_ind, elm
     )
@@ -505,6 +524,11 @@ def process(
         out["aux_p_in_w"] = signals.window_mean(
             p_t, p_in, core.bin_centres(edges), th.PRAD_AVERAGING_MS
         ).astype(np.float32)
+    ratio = prad.relative_fdiv(prad_ind.value, prad_ind.valid, out.get("aux_p_in_w"))
+    out["prad_rel_value"] = ratio.astype(np.float32)
+    out["prad_rel_vote"] = np.where(
+        prad_ind.valid, prad.relative_vote(ratio), core.ABSTAIN
+    ).astype(np.int8)
     for name in ("prad_divl", "prad_tot"):
         out[f"aux_{name}_w"] = np.full(n, np.nan, np.float32)
         if name in cache:

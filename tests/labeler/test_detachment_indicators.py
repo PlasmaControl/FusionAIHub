@@ -24,7 +24,7 @@ def clean_elm():
 def test_prad_votes_follow_the_fraction():
     t, p_in = series(4e6)
     _, low = series(1.0e6)  # f = 0.25
-    _, mid = series(1.8e6)  # f = 0.45
+    _, mid = series(1.7e6)  # f = 0.425, between the cutoffs
     _, high = series(2.4e6)  # f = 0.6
     for rad, want in ((low, core.ATTACHED), (mid, core.ABSTAIN), (high, core.DETACHED)):
         ind = prad.prad_indicator(EDGES, t, rad, t, p_in, *clean_elm())
@@ -456,32 +456,194 @@ def test_prad_averaging_window_requires_elm_availability_outside_native_bin():
 def test_input_power_gate_constants_are_ordered():
     assert th.AFRAC_DETACHED_MAX < th.AFRAC_ATTACHED_MIN
     assert th.PRAD_ATTACHED_MAX < th.PRAD_DETACHED_MIN
+    assert th.PRAD_REL_ATTACHED_MAX < th.PRAD_REL_DETACHED_MIN
     assert th.DZ_ATTACHED_MAX < th.DZ_DETACHED_MIN < th.DZ_MARFE_MIN
 
 
-def test_positioned_jsat_selects_sol_probe_instead_of_private_flux_probe():
-    positions = np.array([[1.494, -1.25], [1.503, -1.25], [1.512, -1.25]])
-    strike = np.array([[1.5, -1.25]])
-    which, valid, reason = afrac.select_sol_probe(
-        np.ones((3, 1)), positions, strike, np.array([[0.993], [1.02], [1.03]])
+def test_prad_anchor_constants_match_the_measured_record():
+    import json
+    from pathlib import Path
+
+    path = (
+        Path(__file__).parents[2] / "docs/labeler/results/detachment_prad_anchor.json"
     )
-    assert which.tolist() == [2]
-    assert valid.tolist() == [True]
-    assert reason.tolist() == [""]
+    measured = json.loads(path.read_text())["measured_anchor"]
+    assert th.PRAD_ANCHOR_SHOT == json.loads(path.read_text())["shot"]
+    assert th.PRAD_ANCHOR_P_IN_MW == pytest.approx(measured["p_in_mw"], abs=1e-3)
+    assert th.PRAD_ANCHOR_ATTACHED_MW == pytest.approx(
+        measured["attached_mw"], abs=1e-3
+    )
+    assert th.PRAD_ANCHOR_DETACHED_MW == pytest.approx(
+        measured["detached_mw"], abs=1e-3
+    )
 
 
-def test_positioned_jsat_rejects_private_flux_uncertain_and_distant_probes():
-    which, valid, reason = afrac.select_sol_probe(
-        np.ones((1, 4)),
-        np.array([[1.51, -1.25]]),
-        np.array([[1.5, -1.25], [1.5, -1.25], [1.48, -1.25], [1.5, -1.25]]),
-        np.array([[0.993, 1.005, 1.1, np.nan]]),
+def test_prad_cutoffs_sit_between_the_measured_anchor_values():
+    lo, hi = th.prad_cutoffs()
+    p_in = th.PRAD_ANCHOR_P_IN_MW
+    attached = th.PRAD_ANCHOR_ATTACHED_MW / p_in
+    detached = th.PRAD_ANCHOR_DETACHED_MW / p_in
+    assert attached < lo < hi < detached
+    assert 0.5 * (lo + hi) == pytest.approx(0.5 * (attached + detached))
+    assert hi - lo == pytest.approx(2 * th.PRAD_BAND_MW / p_in)
+    # a wider band moves both cutoffs outward, never across the midpoint
+    wide_lo, wide_hi = th.prad_cutoffs(band_mw=0.2)
+    assert wide_lo < lo < hi < wide_hi
+    rel_lo, rel_hi = th.prad_relative_cutoffs()
+    assert (
+        1.0 < rel_lo < rel_hi < th.PRAD_ANCHOR_DETACHED_MW / th.PRAD_ANCHOR_ATTACHED_MW
     )
-    assert which.tolist() == [-1, -1, -1, -1]
-    assert not valid.any()
-    assert reason.tolist() == [
-        "probe_not_sol",
-        "probe_not_sol",
-        "probe_far_from_strike",
-        "probe_flux_unknown",
+
+
+def test_prad_votes_use_the_cutoffs_passed_in():
+    f = np.array([0.30, 0.42, 0.50, np.nan])
+    default = prad.fdiv_vote(f)
+    assert default.tolist() == [
+        core.ATTACHED,
+        core.ABSTAIN,
+        core.DETACHED,
+        core.ABSTAIN,
     ]
+    shifted = prad.fdiv_vote(f, attached_max=0.45, detached_min=0.55)
+    assert shifted.tolist() == [
+        core.ATTACHED,
+        core.ATTACHED,
+        core.ABSTAIN,
+        core.ABSTAIN,
+    ]
+
+
+def test_relative_fdiv_reads_the_change_from_the_shots_own_baseline():
+    # a flat-top shot at 0.3 whose last third detaches to 0.45; the beam ramp-up
+    # bins read 0.1 for want of power and are not the unseeded baseline
+    f = np.r_[np.full(20, 0.10), np.full(60, 0.30), np.full(30, 0.45)]
+    p_in = np.r_[np.full(20, 1.0e6), np.full(90, 4.0e6)]
+    valid = np.ones(len(f), bool)
+    ratio = prad.relative_fdiv(f, valid, p_in)
+    assert ratio[20:80] == pytest.approx(np.ones(60))
+    assert ratio[80:] == pytest.approx(np.full(30, 1.5))
+    votes = prad.relative_vote(ratio)
+    assert (votes[20:80] == core.ATTACHED).all() and (votes[80:] == core.DETACHED).all()
+    # without the power guard the ramp-up sets the baseline and everything reads high
+    assert np.nanmin(prad.relative_fdiv(f, valid)[20:]) == pytest.approx(3.0)
+
+
+def test_relative_fdiv_needs_a_baseline():
+    f = np.full(th.PRAD_BASELINE_MIN_BINS - 1, 0.3)
+    assert np.isnan(prad.relative_fdiv(f, np.ones(len(f), bool))).all()
+    f = np.full(60, 0.3)
+    valid = np.zeros(60, bool)
+    valid[:10] = True
+    assert np.isnan(prad.relative_fdiv(f, valid)).all()
+    ratio = prad.relative_fdiv(
+        np.r_[np.full(50, 0.3), np.nan], np.r_[np.ones(50, bool), False]
+    )
+    assert np.isnan(ratio[-1]) and ratio[0] == pytest.approx(1.0)
+
+
+#: 189057 at 3000 ms (EFIT02 slice): the outer strike point and the processed
+#: Langmuir probes p12-p18 on the divertor shelf at Z = -1.249 m, with psiN read
+#: off the multi-slice flux map and the measured median Jsat (A/cm^2). Flux
+#: grows only ~0.4 per metre here, so psiN = 1.01 lies 2.3 cm from the strike.
+SHELF_STRIKE = np.array([[1.4928, -1.2448]])
+SHELF_R = [1.5027, 1.5316, 1.5591, 1.5870, 1.6148, 1.6430, 1.6702]
+SHELF_POSITIONS = np.array([[r, -1.2494] for r in SHELF_R])
+SHELF_PSI_N = np.array(
+    [[1.0026], [1.0153], [1.0289], [1.0444], [1.0614], [1.0806], [1.1008]]
+)
+SHELF_JSAT = np.array([[5.847], [5.583], [3.353], [2.115], [1.207], [1.102], [0.859]])
+
+
+def test_positioned_jsat_takes_the_peak_current_in_the_near_sol_window():
+    which, valid, reason = afrac.select_sol_probe(
+        SHELF_JSAT, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
+    )
+    # p12 sits 9.9 mm outboard at psiN 1.003: SOL side, so it is eligible and has
+    # the peak; the former 1.01 flux cut and 2 cm cap rejected it
+    assert (
+        which.tolist() == [0] and valid.tolist() == [True] and reason.tolist() == [""]
+    )
+
+
+def test_positioned_jsat_follows_the_peak_outward_as_the_target_detaches():
+    jsat = SHELF_JSAT.copy()
+    jsat[0] = 0.8  # the probe nearest the strike point has lost its current
+    which, valid, _ = afrac.select_sol_probe(
+        jsat, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
+    )
+    assert which.tolist() == [1] and valid.tolist() == [True]
+    # a larger current beyond the window (psiN > 1.05) is never selected
+    jsat[4] = 40.0
+    which, _, _ = afrac.select_sol_probe(
+        jsat, SHELF_POSITIONS, SHELF_STRIKE, SHELF_PSI_N
+    )
+    assert which.tolist() == [1]
+
+
+def test_positioned_jsat_rejections_name_the_reason():
+    positions = np.array([[1.45, -1.25], [1.503, -1.25], [1.52, -1.25]])
+    strike = np.tile([1.5, -1.25], (4, 1))
+    psi_n = np.array(
+        [
+            [0.99, 1.02, np.nan, 1.08],  # probe 0: inboard of the strike point
+            [1.002, 1.001, np.nan, 1.08],  # probe 1: only 3 mm outboard
+            [1.02, 0.998, np.nan, 1.07],  # probe 2: 2 cm outboard
+        ]
+    )
+    which, valid, reason = afrac.select_sol_probe(
+        np.ones((3, 4)), positions, strike, psi_n
+    )
+    # bin 0 is valid on probe 2; bin 1 has probe 2 inside the separatrix; bin 2 has
+    # no flux anywhere; bin 3 is outside the separatrix but beyond psiN 1.05
+    assert which.tolist() == [2, -1, -1, -1]
+    assert valid.tolist() == [True, False, False, False]
+    assert reason.tolist() == [
+        "",
+        "probe_not_sol",
+        "probe_flux_unknown",
+        "probe_beyond_sol_window",
+    ]
+
+
+def test_positioned_jsat_eligible_probe_without_current():
+    which, valid, reason = afrac.select_sol_probe(
+        np.array([[np.nan, 0.0]]),
+        np.array([[1.52, -1.25]]),
+        np.tile([1.5, -1.25], (2, 1)),
+        np.array([[1.02, 1.02]]),
+    )
+    assert which.tolist() == [-1, -1] and not valid.any()
+    assert reason.tolist() == ["no_probe_samples", "no_probe_samples"]
+
+
+def test_reported_probe_names_the_nearest_known_probe_on_invalid_bins():
+    strike = np.array([[1.5, -1.25], [1.5, -1.25]])
+    positions = np.array([[1.45, -1.25], [1.503, -1.25], [1.58, -1.25]])
+    psi_n = np.array([[0.99, np.nan], [1.002, np.nan], [1.04, np.nan]])
+    which, valid, reason = afrac.select_sol_probe(
+        np.ones((3, 2)), positions, strike, psi_n
+    )
+    assert valid.tolist() == [True, False] and reason[1] == "probe_flux_unknown"
+    reported = afrac.reported_probe(positions, strike, psi_n, which, valid)
+    # bin 0 reports the chosen probe, bin 1 (no flux anywhere) reports none
+    assert reported.tolist() == [which[0], -1]
+    psi_n[:, 1] = [0.99, 1.002, 1.04]
+    which, valid, reason = afrac.select_sol_probe(
+        np.ones((3, 2)), positions, strike, psi_n
+    )
+    reported = afrac.reported_probe(positions, strike, psi_n, which, valid)
+    assert reported[1] == which[1]
+
+
+def test_beam_power_falls_back_to_the_bms_total(monkeypatch):
+    monkeypatch.setattr(signals, "corpus_group", lambda *a, **k: None)
+    t = np.arange(0.0, 1000.0, 1.0)
+    cache = {"pinj_bms": (t, np.full(len(t), 4.0, dtype=np.float32))}
+    got = signals.beam_power(0, cache, np.array([500.0]), 250.0)
+    assert got == pytest.approx([4.0e6])
+    assert signals.beam_power(0, {}, np.array([500.0]), 250.0) is None
+    # the NB total in kW outranks the BMS record when both exist
+    cache["pinj_total"] = (t, np.full(len(t), 3500.0, dtype=np.float32))
+    assert signals.beam_power(0, cache, np.array([500.0]), 250.0) == pytest.approx(
+        [3.5e6]
+    )

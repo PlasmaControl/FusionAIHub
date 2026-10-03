@@ -4,7 +4,13 @@
 calibrated bolometer (`\\BOLOM::PRAD_DIVL`, Eldon 2019's Prad,div,L) and P_in the
 beam, ohmic and ECH power. Thresholds and their sources are in `thresholds.py`.
 Prad,div is a radiation measure, not a detachment measure; the indicator is a
-weak voter and never votes MARFE (the integrals carry no position).
+weak voter. It never votes MARFE and never corroborates one: a MARFE moves the
+radiation out of the Prad,div,L region (above the X-point), so a MARFE bin can
+read the same f_div as a detached one or lower.
+
+Two votes are computed from the same value: the absolute one (the exported label's
+vote) and a per-shot relative one (`relative_fdiv`, f_div over the shot's own
+baseline), recorded as a sensitivity alternative.
 """
 
 from __future__ import annotations
@@ -27,16 +33,60 @@ from .core import (
 )
 
 
-def fdiv_vote(f: np.ndarray) -> np.ndarray:
-    """Attached at or below PRAD_ATTACHED_MAX, detached at or above
-    PRAD_DETACHED_MIN, abstain between (and where `f` is not finite)."""
+def fdiv_vote(
+    f: np.ndarray,
+    attached_max: float | None = None,
+    detached_min: float | None = None,
+) -> np.ndarray:
+    """Attached at or below `attached_max` (default PRAD_ATTACHED_MAX), detached at
+    or above `detached_min` (default PRAD_DETACHED_MIN), abstain between (and where
+    `f` is not finite). The cutoffs are arguments so the sweeps can vary them."""
+    attached_max = th.PRAD_ATTACHED_MAX if attached_max is None else attached_max
+    detached_min = th.PRAD_DETACHED_MIN if detached_min is None else detached_min
     f = np.asarray(f, dtype=float)
     vote = np.full(f.shape, ABSTAIN, dtype=np.int8)
     with np.errstate(invalid="ignore"):
-        vote[f <= th.PRAD_ATTACHED_MAX] = ATTACHED
-        vote[f >= th.PRAD_DETACHED_MIN] = DETACHED
+        vote[f <= attached_max] = ATTACHED
+        vote[f >= detached_min] = DETACHED
     vote[~np.isfinite(f)] = ABSTAIN
     return vote
+
+
+def relative_fdiv(
+    f: np.ndarray, valid: np.ndarray, p_in_w: np.ndarray | None = None
+) -> np.ndarray:
+    """f_div over the shot's own baseline, NaN where invalid or without a baseline.
+
+    The baseline is the `PRAD_BASELINE_QUANTILE` of the shot's valid f_div (its
+    unseeded level: seeding and heating only raise the ratio), and needs at least
+    `PRAD_BASELINE_MIN_BINS` valid bins. When `p_in_w` is given, the baseline uses
+    only the bins at the shot's flat-top input power (at least
+    `PRAD_BASELINE_POWER_FRACTION` of its 90th percentile), so the beam ramp-up,
+    where the ratio is low for want of power, is not read as the unseeded level.
+    A shot detached throughout has no attached baseline and reads as attached: a
+    stated limitation of this vote.
+    """
+    f = np.asarray(f, dtype=float)
+    valid = np.asarray(valid, dtype=bool) & np.isfinite(f)
+    out = np.full(f.shape, np.nan)
+    basis = valid
+    if p_in_w is not None:
+        p_in_w = np.asarray(p_in_w, dtype=float)
+        if valid.any() and np.isfinite(p_in_w[valid]).any():
+            top = np.nanquantile(p_in_w[valid], 0.9)
+            basis = valid & (p_in_w >= th.PRAD_BASELINE_POWER_FRACTION * top)
+    if basis.sum() < th.PRAD_BASELINE_MIN_BINS:
+        return out
+    base = float(np.quantile(f[basis], th.PRAD_BASELINE_QUANTILE))
+    if base <= 0:
+        return out
+    out[valid] = f[valid] / base
+    return out
+
+
+def relative_vote(ratio: np.ndarray) -> np.ndarray:
+    """Vote on `relative_fdiv` with the anchor-derived relative cutoffs."""
+    return fdiv_vote(ratio, th.PRAD_REL_ATTACHED_MAX, th.PRAD_REL_DETACHED_MIN)
 
 
 def elm_window_known(edges, elm_t_ms, elm_flag) -> np.ndarray:

@@ -110,8 +110,12 @@ def window_mean(t_src, y_src, t_dst, width_ms, *, keep=None):
 def beam_power(shot: int, cache, t_dst, width_ms: float):
     """Neutral-beam power (W) averaged over `width_ms` windows at `t_dst`, or None.
 
-    The corpus `pinj` (rows are beams, in watts) when it is a real record, else the
-    fetched `\\NB::PINJ` total (kW). Averaged, not sampled: a beam may blip.
+    The corpus `pinj` (rows are beams, in watts) when it is a real record; else the
+    fetched `\\NB::PINJ` total (kW); else the fetched PTDATA `BMSPINJ` total
+    (`pinj_bms`, megawatts: the beam management system's total, checked against the
+    corpus beams in `detachment_nbi_calibration.json`). Averaged, not sampled: a
+    beam may blip. None when no source holds a record: Prad,div cannot be
+    normalised without the beam power, and a missing record is never zero.
     """
     corpus = corpus_group(shot, "pinj")
     if corpus is not None:
@@ -120,6 +124,9 @@ def beam_power(shot: int, cache, t_dst, width_ms: float):
     if "pinj_total" in cache and np.isfinite(cache["pinj_total"][1]).any():
         t, y = cache["pinj_total"]
         return window_mean(t, y, t_dst, width_ms) * 1e3
+    if "pinj_bms" in cache and np.isfinite(cache["pinj_bms"][1]).any():
+        t, y = cache["pinj_bms"]
+        return window_mean(t, y, t_dst, width_ms) * 1e6
     return None
 
 

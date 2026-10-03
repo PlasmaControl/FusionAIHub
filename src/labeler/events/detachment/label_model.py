@@ -59,7 +59,7 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from .core import ABSENT, ABSTAIN, UNCERTAIN, VOTE_STATES
+from .core import ABSENT, ABSTAIN, ATTACHED, MARFE, UNCERTAIN, VOTE_STATES
 
 LF_NAMES = ("afrac", "prad", "tangtv")
 ALLOWED = {"afrac": (1, 2), "prad": (1, 2), "tangtv": (1, 2, 3)}
@@ -93,7 +93,10 @@ class LabelModel:
     theta: np.ndarray | None = None
     loglik: float | None = None
     n_obs: int = 0
+    #: Bins on which every labelling function was valid (the anchor population),
+    #: counted even when too few to use; `used_anchor` says whether they were.
     anchor_bins: int = 0
+    used_anchor: bool = False
 
     def __post_init__(self) -> None:
         if self.allowed is None:
@@ -211,16 +214,17 @@ class LabelModel:
         `PRIOR_LOGIT` after the accuracy fit (the accuracies are fitted with the class
         balance free: on the anchor bins it is identified, but those shots are not a
         sample of the corpus). With fewer than `MIN_ANCHOR_BINS` bins on which every
-        LF is valid the accuracies are not identified and the plain `fit` is used instead
-        (`self.anchor_bins` is then 0).
+        LF is valid the accuracies are not identified and the plain `fit` is used
+        instead: `self.anchor_bins` keeps the real count and `self.used_anchor` is
+        False.
         """
         votes, valid = np.asarray(votes), np.asarray(valid, dtype=bool)
         full = valid.all(axis=1)
         if anchor_mask is not None:
             full &= np.asarray(anchor_mask, bool)
         self.anchor_bins = int(full.sum())
-        if self.anchor_bins < MIN_ANCHOR_BINS:
-            self.anchor_bins = 0
+        self.used_anchor = self.anchor_bins >= MIN_ANCHOR_BINS
+        if not self.used_anchor:
             return self.fit(votes, valid)
         self.fit(votes[full], valid[full])
         base = self.theta.copy()
@@ -364,9 +368,20 @@ def redundant_decide(posterior, votes, valid, threshold=0.7):
 def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
     """Primary observed label: compatible redundant votes with TangTV required.
 
-    This rule uses no fitted posterior. Lower-shelf window measurements remain
-    provisional, pending owner sign-off, and unknown ELM coverage never supplies
-    certainty. ``redundant_decide`` is retained only as a model diagnostic.
+    This rule uses no fitted posterior. ``redundant_decide`` is retained only as a
+    model diagnostic. Unknown ELM coverage never supplies certainty, and a
+    lower-shelf camera window never emits a state (its bins are uncertain with the
+    tier `lower_shelf_window`).
+
+    Attached and detached are certain when TangTV votes and at least one other
+    valid indicator casts a compatible vote, with no conflicting vote. MARFE is
+    certain on the TangTV MARFE vote alone, which already carries the spatial
+    evidence (emission peak inside the separatrix near and above the X-point), the
+    density-limit cue and a persistence of adjacent bins (`tangtv.evidence_votes`);
+    Prad,div and Afrac are NOT corroborators of a MARFE (the radiation leaves the
+    Prad,div,L region and the target current says nothing about the X-point), so
+    their detached votes are neither required nor counted, and only an attached
+    vote from either of them (a conflict) can stop it.
     """
     valid = np.asarray(valid, bool)
     votes = np.where(valid, votes, ABSTAIN)
@@ -376,12 +391,16 @@ def compatibility_decide(votes, valid, *, tangtv_tier, elm_known):
     support = cast.sum(axis=1) >= 2
     conflict = (fallback == UNCERTAIN) & cast.any(axis=1)
     tv = votes[:, LF_NAMES.index("tangtv")]
-    permitted = assessed & support & (tv > 0) & ~conflict
+    others = [j for j, name in enumerate(LF_NAMES) if name != "tangtv"]
+    attached_elsewhere = (votes[:, others] == ATTACHED).any(axis=1)
+    marfe_ok = assessed & (tv == MARFE) & ~attached_elsewhere
+    permitted = assessed & support & (tv > 0) & ~conflict & (tv != MARFE)
     state = np.where(permitted, fallback, UNCERTAIN).astype(np.int8)
+    state[marfe_ok] = MARFE
     tier = np.full(len(state), "insufficient_support", dtype=object)
-    tier[permitted] = "certain"
+    tier[permitted | marfe_ok] = "certain"
     tier[(tv <= 0) & support & ~conflict] = "low_confidence_pair"
-    tier[conflict] = "conflict"
+    tier[conflict & ~marfe_ok] = "conflict"
     tier[~cast.any(axis=1)] = "no_vote"
     geometry = np.asarray(tangtv_tier)
     lower = valid[:, 2] & (geometry == "lower_shelf_window")

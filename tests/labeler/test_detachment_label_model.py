@@ -176,8 +176,25 @@ def test_anchored_fit_falls_back_to_the_plain_fit_without_enough_anchor_bins():
         votes[:, :2], valid[:, :2]
     )
     assert model.anchor_bins == 3000 + 12000  # every bin has both of these LFs
+    assert model.used_anchor
     thin = lm.LabelModel().fit_anchored(votes, valid)
-    assert thin.anchor_bins == 0 and thin.theta is not None
+    assert thin.anchor_bins == 0 and not thin.used_anchor and thin.theta is not None
+
+
+def test_a_thin_anchor_population_is_counted_but_not_used():
+    votes, valid = simulate_two_populations()
+    valid = valid.copy()
+    keep = np.flatnonzero(valid.all(axis=1))[:100]
+    valid[:, 2] = False
+    valid[keep, 2] = True  # 100 bins with all three LFs, fewer than MIN_ANCHOR_BINS
+    votes = np.where(valid, votes, core.ABSTAIN)
+    model = lm.LabelModel().fit_anchored(votes, valid)
+    assert model.anchor_bins == 100
+    assert not model.used_anchor and model.theta is not None
+    masked = lm.LabelModel().fit_anchored(
+        votes, valid, anchor_mask=np.zeros(len(votes), bool)
+    )
+    assert masked.anchor_bins == 0 and not masked.used_anchor
 
 
 def test_a_lone_vote_is_judged_as_hard_for_detached_as_for_attached():
@@ -264,3 +281,42 @@ def test_primary_compatibility_requires_explicit_upper_shelf_provenance():
     )
     assert state.tolist() == [4]
     assert tier.tolist() == ["geometry_unknown"]
+
+
+def test_marfe_is_certain_on_the_tangtv_vote_alone():
+    # Prad,div and Afrac do not corroborate a MARFE: the radiation leaves the
+    # Prad,div,L region and the target current says nothing about the X-point.
+    # Their detached votes are neither required nor counted; abstentions and
+    # detached votes give the same state.
+    votes = np.array([[2, 2, 3], [-1, -1, 3], [-1, 2, 3], [2, -1, 3]])
+    valid = np.array([[1, 1, 1], [1, 1, 1], [0, 1, 1], [1, 0, 1]], bool)
+    state, tier = lm.compatibility_decide(
+        votes, valid, tangtv_tier=np.full(4, "upper_shelf"), elm_known=np.ones(4, bool)
+    )
+    assert state.tolist() == [3, 3, 3, 3]
+    assert tier.tolist() == ["certain"] * 4
+
+
+def test_marfe_still_needs_a_second_valid_indicator_and_known_geometry():
+    votes = np.array([[-1, -1, 3], [2, 2, 3], [2, 2, 3]])
+    valid = np.array([[0, 0, 1], [1, 1, 1], [1, 1, 1]], bool)
+    state, tier = lm.compatibility_decide(
+        votes,
+        valid,
+        tangtv_tier=np.array(["upper_shelf", "lower_shelf_window", "upper_shelf"]),
+        elm_known=np.array([True, True, False]),
+    )
+    assert state.tolist() == [0, 4, 4]
+    assert tier.tolist() == ["not_assessed", "lower_shelf_window", "elm_unknown"]
+
+
+def test_an_attached_vote_from_another_indicator_blocks_marfe():
+    votes = np.array([[1, 2, 3], [2, 1, 3]])
+    state, tier = lm.compatibility_decide(
+        votes,
+        votes > 0,
+        tangtv_tier=np.full(2, "upper_shelf"),
+        elm_known=np.ones(2, bool),
+    )
+    assert state.tolist() == [4, 4]
+    assert tier.tolist() == ["conflict", "conflict"]

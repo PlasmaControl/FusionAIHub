@@ -14,10 +14,11 @@ The bin exporter selects a positioned processed SOL-side probe before calling
 this numerical helper. Unpositioned corpus sweeps cannot establish that provenance
 and do not vote. Differences from published Afrac remain:
 
-* The exporter supplies the nearest qualified SOL-side probe's median inter-ELM
-  current. This helper can also accept a probe array, using its per-bin peak;
-  such an array must have passed independent position/flux selection upstream.
-  A finite probe spacing can under-read the current and bias detached votes.
+* The exporter supplies the peak median inter-ELM current among the probes on the
+  SOL side of the outer strike point, selected by flux (`select_sol_probe`). This
+  helper can also accept a probe array, using its per-bin peak; such an array must
+  have passed independent position/flux selection upstream. A finite probe
+  spacing can under-read the current and bias detached votes.
 * `C` is not Eldon's fitted attached-current constant but a local proxy level, the
   `AFRAC_REFERENCE_QUANTILE` of the model-normalised Jsat over its valid bins.
   There is no literature-backed minimum-duration gate. A shot detached
@@ -148,26 +149,57 @@ def afrac_indicator(
 
 
 def select_sol_probe(jsat, positions, strike, psi_n):
-    """Nearest finite positive outer-target current safely on the SOL side.
+    """Peak current among the probes on the SOL side of the outer strike point.
 
-    Require R_probe - R_strike >= 5 mm, distance <= 2 cm and psiN >= 1.01.
-    The local position/flux guard bands are explicit uncertainty margins, not
-    a claim that the EFIT/probe positions were independently calibrated.
-    Returns selected index (-1 if none), validity and the abstention reason.
+    A probe is eligible on a bin when it is at least `PROBE_STRIKE_MARGIN_M`
+    outboard of the strike point, strictly outside the separatrix
+    (psiN > `PROBE_SOL_PSI_N_MIN`) and inside the near SOL
+    (psiN <= `PROBE_SOL_PSI_N_MAX`), and has a finite positive current. Private
+    flux and inboard probes never qualify; there is no distance cap, because the
+    flux window already confines the choice to the target region. The chosen
+    probe is the one with the largest current. `jsat` is (probe, bin); `positions`
+    (probe, 2) the probe (R, Z); `strike` (bin, 2) the outer strike point;
+    `psi_n` (probe, bin). The margins are explicit uncertainty guards, not a claim
+    that EFIT or the probe positions were independently calibrated.
+
+    Returns the chosen probe index per bin (-1 if none), validity and the
+    abstention reason: `probe_flux_unknown` (no probe has a flux value),
+    `probe_not_sol` (none is outboard and outside the separatrix),
+    `probe_beyond_sol_window` (outside the separatrix but all beyond the window) or
+    `no_probe_samples` (eligible, but no current in the bin).
     """
     positions, strike = np.asarray(positions), np.asarray(strike)
     psi_n, jsat = np.asarray(psi_n), np.asarray(jsat)
-    distance = np.linalg.norm(positions[:, None, :] - strike[None, :, :], axis=2)
-    close = np.isfinite(distance) & (distance <= th.PROBE_MAX_DISTANCE_M)
-    sol = positions[:, None, 0] - strike[None, :, 0] >= th.PROBE_STRIKE_MARGIN_M
-    sol &= np.isfinite(psi_n) & (psi_n >= th.PROBE_SOL_PSI_N_MIN)
-    usable = close & sol & np.isfinite(jsat) & (jsat > 0)
-    ranked = np.where(usable, distance, np.inf)
+    margin = positions[:, None, 0] - strike[None, :, 0]
+    flux_known = np.isfinite(psi_n) & np.isfinite(margin)
+    outside = (
+        flux_known
+        & (margin >= th.PROBE_STRIKE_MARGIN_M)
+        & (psi_n > th.PROBE_SOL_PSI_N_MIN)
+    )
+    eligible = outside & (psi_n <= th.PROBE_SOL_PSI_N_MAX)
+    usable = eligible & np.isfinite(jsat) & (jsat > 0)
+    ranked = np.where(usable, jsat, -np.inf)
     valid = usable.any(axis=0)
-    which = np.where(valid, ranked.argmin(axis=0), -1)
+    which = np.where(valid, ranked.argmax(axis=0), -1)
     reason = np.full(len(which), "", object)
     reason[~valid] = "no_probe_samples"
-    reason[~(close & sol).any(axis=0)] = "probe_not_sol"
-    reason[~(close & np.isfinite(psi_n)).any(axis=0)] = "probe_flux_unknown"
-    reason[~close.any(axis=0)] = "probe_far_from_strike"
+    reason[~eligible.any(axis=0) & outside.any(axis=0)] = "probe_beyond_sol_window"
+    reason[~outside.any(axis=0)] = "probe_not_sol"
+    reason[~flux_known.any(axis=0)] = "probe_flux_unknown"
     return which, valid, reason
+
+
+def reported_probe(positions, strike, psi_n, which, valid):
+    """The probe a bin's provenance describes, valid or not.
+
+    The chosen probe where the bin is valid; otherwise the probe nearest the outer
+    strike point with a known flux value, so an invalid bin still says how far
+    that probe was and what its psiN and margin were. -1 where there is none.
+    """
+    positions, strike = np.asarray(positions), np.asarray(strike)
+    distance = np.linalg.norm(positions[:, None, :] - strike[None, :, :], axis=2)
+    known = np.isfinite(distance) & np.isfinite(np.asarray(psi_n))
+    nearest = np.where(known, distance, np.inf).argmin(axis=0)
+    nearest = np.where(known.any(axis=0), nearest, -1)
+    return np.where(np.asarray(valid), which, nearest)
