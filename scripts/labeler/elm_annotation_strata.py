@@ -97,6 +97,7 @@ def coverage_audit(paths, run):
 def checkpoint_audit(paths, runs):
     records, thresholds, selected_epochs = [], [], []
     training_seconds = 0.0
+    primary_training_seconds = 0.0
     for run in runs:
         directory = paths.root / "round4/elm/cv" / run
         source = json.loads((directory / "run.json").read_text())
@@ -120,6 +121,8 @@ def checkpoint_audit(paths, runs):
             neighbours = ap[max(0, selected - 1) : selected + 2]
             surrounding = np.delete(neighbours, selected - max(0, selected - 1))
             training_seconds += sum(row["seconds"] for row in history)
+            if run == "cv2":
+                primary_training_seconds += sum(row["seconds"] for row in history)
             thresholds.append(record["threshold"])
             selected_epochs.append(selected)
             records.append(
@@ -145,6 +148,7 @@ def checkpoint_audit(paths, runs):
                     ),
                 }
             )
+    sensitivity_path = OUT / "smoothed_selection.json"
     return {
         "protocol": "Original selection maximizes single-epoch inner-validation "
         "AUPRC. Audit compares the maximum trailing three-epoch mean after all "
@@ -163,11 +167,24 @@ def checkpoint_audit(paths, runs):
         ),
         "observed_training_seconds_all_folds": training_seconds,
         "estimated_serial_retrain_hours": training_seconds / 3600,
-        "smoothed_checkpoint_rescore_available": False,
+        "estimated_primary_five_fold_retrain_hours": primary_training_seconds / 3600,
+        "smoothed_checkpoint_rescore_available": sensitivity_path.exists(),
+        "smoothed_selection_sensitivity": {
+            "run": "cv2-smoothed",
+            "scope": "One five-fold rerun of the frozen primary partitions and "
+            "recipe, with the same seed; only inner-validation checkpoint "
+            "selection changes. The canonical cv2 occupancy fit remains frozen.",
+            "evaluation_record": str(sensitivity_path),
+            "evaluation_record_sha256": (
+                sha256_of(sensitivity_path) if sensitivity_path.exists() else None
+            ),
+            "status": "available" if sensitivity_path.exists() else "pending",
+        },
         "limitation": "Only the selected best state was saved for each fold. A "
-        "smoothed-checkpoint comparison needs all 20 folds rerun on the fixed "
-        "partitions; the estimate excludes queue time and artifact serialization. "
-        "This audit changes no reported operating point.",
+        "separate five-fold sensitivity reruns the primary seed rather than "
+        "reselecting states in the 20 historical folds. Estimates exclude queue "
+        "time and artifact serialization. The historical diagnostic changes no "
+        "canonical reported operating point.",
     }
 
 
