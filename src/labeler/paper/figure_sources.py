@@ -30,7 +30,7 @@ NTM_THRESHOLD = 0.63
 SAWTOOTH_THRESHOLD = 0.6
 ELM_VETO_MS = 5.0
 ECE_MATCH_MS = 3.0
-SAWTOOTH_DISPLAY_MIN_MS = 10.0
+SAWTOOTH_DISPLAY_MIN_MS = 0.0
 
 
 def tokeye_fingerprints(paths, shot, group, row, inference_code) -> dict:
@@ -97,60 +97,13 @@ def has_present_time(track: lf.Track, window: tuple[float, float]) -> bool:
 
 
 def sawtooth_display(track: lf.Track, window: tuple[float, float]):
-    """Merge sub-10 ms state slivers into the longer touching neighbour.
-
-    Display only: source rows stay exact. Process shortest sliver first, ties
-    left to right; equal neighbour durations prefer the earlier state. Never
-    bridge a gap in assessment. Independently verified crash ticks stay exact.
-    """
+    """Clip to the view without changing any source category or duration."""
     rows = [
         replace(r, t_start=max(r.t_start, window[0]), t_end=min(r.t_end, window[1]))
         for r in track.rows
         if r.t_end > window[0] and r.t_start < window[1]
     ]
-    changes = []
-    while True:
-        merged = []
-        for row in rows:
-            if (
-                merged
-                and merged[-1].category == row.category
-                and abs(merged[-1].t_end - row.t_start) < 1e-6
-            ):
-                merged[-1] = replace(merged[-1], t_end=row.t_end)
-            else:
-                merged.append(row)
-        rows = merged
-        candidates = []
-        for i, row in enumerate(rows):
-            duration = row.t_end - row.t_start
-            neighbours = [
-                j
-                for j in (i - 1, i + 1)
-                if 0 <= j < len(rows)
-                and abs(
-                    min(row.t_end, rows[j].t_end) - max(row.t_start, rows[j].t_start)
-                )
-                < 1e-6
-            ]
-            if duration < SAWTOOTH_DISPLAY_MIN_MS and neighbours:
-                candidates.append((duration, i, neighbours))
-        if not candidates:
-            break
-        _, i, neighbours = min(candidates)
-        j = max(neighbours, key=lambda j: (rows[j].t_end - rows[j].t_start, -j))
-        row = rows[i]
-        category = rows[j].category
-        changes.append(
-            {
-                "start_ms": row.t_start,
-                "end_ms": row.t_end,
-                "from": row.category,
-                "to": category,
-            }
-        )
-        rows[i] = replace(row, category=category)
-    return replace(track, rows=tuple(rows)), changes
+    return replace(track, rows=tuple(rows)), []
 
 
 def late_untagged_lines(mask, t_ms, f_khz, late_absent) -> dict | None:
@@ -636,23 +589,69 @@ def sawtooth_caption(record: dict) -> str:
 
 
 def caption(shot: int, records: dict, drawn: dict) -> str:
-    """Explain the three tiers and each track's source in concise paper prose."""
+    """Explain visible timing and colour choices; full sources are in the appendix."""
     tagged = drawn.get("blobs", {}).get("tagged")
     ae = tagged is None or bool(tagged.get(mt.AE))
     ntm = tagged is None or bool(tagged.get(mt.NTM))
     sentences = [
-        f"DIII-D shot {shot}: raw signals → TokEye-processed modes → event labels.",
-        "The 0–30 kHz range is vertically expanded.",
+        (
+            f"DIII-D shot {shot}: raw signals → TokEye-processed modes → event labels; "
+            "raw bands normalised separately."
+        ),
+        "Toroidal mode number n: Mirnov array.",
     ]
-    highlights = []
+    ae_record = records.get(mt.AE) or {}
     if ae:
-        highlights.append("Pink AE highlights")
+        if ae_record.get("tier") == lf.GENERATED:
+            bin_ms = ae_record.get("temporal_bin_ms") or 25
+            timing = f"Pink AE tags inherit the CO2 detector's {bin_ms:g} ms timing"
+            late = drawn.get("late_untagged_high_frequency")
+            if shot == 201978 and late and late.get("first_time_ms") is not None:
+                timing += (
+                    ": the same lines stay untagged after "
+                    f"{round(late['first_time_ms'] / 1000, 2):g} s, "
+                    "where it is negative"
+                )
+            sentences.append(timing + ".")
+        else:
+            sentences.append("Pink AE: time/band coincidence with source labels.")
+        sentences.append("AE floor: 80 kHz input band; 55–80 kHz stays white.")
+    if shot == 201978 and drawn.get("first_large_peak_before_expert_ms") is not None:
+        peak = int(np.floor(drawn["largest_dalpha_peak_ms"] + 0.5))
+        sentences.append(f"The first ELM ({peak} ms) precedes the expert span.")
     if ntm:
-        highlights.append("orange NTM outlines")
-    if highlights:
-        sentences.append(" and ".join(highlights) + " show time/band coincidence only.")
-    if ntm:
-        sentences.append("Outlines require measured n=1 or 2 at ≤30 kHz.")
+        text = "Orange NTM outlines: time coincidence only"
+        if shot == 201978:
+            text += " (including 3–5 kHz fragments)"
+        record = records.get(mt.NTM) or {}
+        if record.get("tier") == lf.GENERATED:
+            qualification = ntm_description(record).partition(" (")[2].rstrip(")")
+            if qualification:
+                text += f"; {qualification}"
+        sentences.append(text + ".")
+    if ae and ae_record.get("tier") == lf.GENERATED:
+        sentences.append("AE targets used TokEye's mask (circularity).")
+    saw = records.get(mt.SAWTOOTH)
+    if saw is not None and not any(
+        r["state"] == "present" for r in saw.get("state_intervals_ms", [])
+    ):
+        sentences.append("Sawtooth: four-state notation only in this window.")
+    text = " ".join(sentences)
+    if len(text.split()) > 95:
+        raise ValueError(f"caption exceeds 95 words: {len(text.split())}")
+    return text
+
+
+def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
+    """Keep source caveats and measured shot details outside the paper caption."""
+    notes = [
+        f"DIII-D shot {shot}. Raw bands are normalised separately.",
+        (
+            "Toroidal mode number n is measured by the Mirnov array. "
+            "The 0–30 kHz range is vertically expanded; 30–55 kHz is compressed. "
+            "Both use the higher-resolution spectrogram."
+        ),
+    ]
     sources = []
     for key, name in (
         (mt.AE, "AE"),
@@ -662,7 +661,7 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         (mt.SAWTOOTH, "sawtooth"),
     ):
         record = records.get(key)
-        if record is None or (key == mt.AE and not ae) or (key == mt.NTM and not ntm):
+        if record is None:
             continue
         tier = record.get("tier")
         if tier == lf.SILVER:
@@ -684,27 +683,16 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         else:
             source = "detector"
         if key == "confinement":
-            name = (
-                record.get("title", name).capitalize()
-                if record.get("title") == "regime"
-                else record.get("title", name)
-            )
+            name = record.get("title", name).capitalize()
         sources.append(f"{name}: {source}")
     if sources:
-        sentences.append("Tracks: " + "; ".join(sources) + ".")
-    if mt.SAWTOOTH in records:
-        sentences.append(
-            "Hatching marks uncertain states; blank marks unassessed time."
-        )
-    text = " ".join(sentences)
-    if len(text.split()) > 85:
-        raise ValueError(f"caption exceeds 85 words: {len(text.split())}")
-    return text
-
-
-def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
-    """Keep source caveats and measured shot details outside the paper caption."""
-    notes = [f"DIII-D shot {shot}. Raw bands are normalised separately."]
+        notes.append("Tracks: " + "; ".join(sources) + ".")
+    notes.append(
+        "Operating probability thresholds (for detector sources): "
+        f"TokEye {mt.PROB_THRESHOLD:g}; "
+        f"AE {(records.get(mt.AE) or {}).get('decision_threshold') or AE_THRESHOLD:g}; "
+        f"NTM {(records.get(mt.NTM) or {}).get('decision_threshold') or NTM_THRESHOLD:g}."
+    )
     ae = records.get(mt.AE) or {}
     if ae.get("tier") == lf.GENERATED:
         bin_ms = ae.get(
@@ -717,6 +705,10 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
             text += f" in {bin_ms:g} ms bins"
         notes.append(text + ".")
         notes.append(
+            "The 80 kHz AE floor matches the ae-ours input band (80–250 kHz); "
+            "55–80 kHz cascade lines stay white even during detector-positive time."
+        )
+        notes.append(
             "AE targets used TokEye's mask; highlights are not independent "
             "physical confirmation."
         )
@@ -725,18 +717,43 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
             ntm_description(records[mt.NTM])
             + "; shared magnetic inputs, not independent confirmation."
         )
+    if records.get(mt.NTM) is not None:
+        notes.append(
+            "NTM outlines require measured and dominant n=1 or 2 at ≤30 kHz. "
+            "They mark time coincidence only; they do not establish a 2/1 island."
+        )
+        if shot == 201978:
+            notes.append("These outlines also include small 3–5 kHz fragments.")
     if drawn.get("lmode_inferred"):
         notes.append(
             "L-mode (inferred) uses pre-transition H-mode-detector absent shading."
         )
     if records.get(mt.SAWTOOTH) is not None:
         notes.append(sawtooth_caption(records[mt.SAWTOOTH]))
+        notes.append(
+            "The sawtooth row preserves all source intervals, including those "
+            "shorter than 10 ms, with no state smoothing. Hatching marks "
+            "uncertainty; blank marks unassessed time."
+        )
+        if shot == 201978:
+            notes.append(
+                "Here the sawtooth row shows only the four-state notation, "
+                "with no present sawtooth events in this window; these physics "
+                "labels remain unvalidated."
+            )
     late = drawn.get("late_untagged_high_frequency")
     if late:
         lo, hi = late["band_khz"]
+        timing = (
+            f" after {round(late['first_time_ms'] / 1000, 2):g} s"
+            if late.get("first_time_ms") is not None
+            else " at late times"
+        )
         notes.append(
-            f"The {lo:.0f}–{hi:.0f} kHz support comprises late magnetic structures "
-            "without a positive AE-detector label."
+            f"Magnetic lines at {lo:.0f}–{hi:.0f} kHz remain visible{timing}, "
+            "but stay untagged because the CO2 AE detector is negative. "
+            "The AE tags inherit the detector's timing, including its "
+            "negative gaps; they do not imply that the magnetic lines disappear."
         )
     if drawn.get("sawtooth_strip_shown"):
         notes.append(

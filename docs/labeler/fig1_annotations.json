@@ -1,7 +1,7 @@
 {
   "201978": {
     "publication_suitability": {"suitable_alternate": true, "role": "primary"},
-    "ae_label": {"time_ms": 2000, "frequency_khz": 180}
+    "ae_label": {"time_ms": 2775, "frequency_khz": 180}
   },
   "201973": {
     "publication_suitability": {"suitable_alternate": true, "role": "best visual alternate; ELM/H-mode conflict"}

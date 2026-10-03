@@ -206,7 +206,8 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
         },
     )
     assert len(text.split()) <= 150
-    assert "Regime:" in text
+    sources = fs.appendix_notes(42, records, {})
+    assert "Regime:" in sources
     assert "Ticks" not in text
     assert ("below bar" in text) == (tier == fs.lf.GENERATED)
     assert "harmonic" not in text
@@ -459,23 +460,20 @@ def test_confinement_intervals_keep_categories_and_regime_names(tmp_path, monkey
     assert rows[-1]["state"] == "uncertain"
 
 
-def test_sawtooth_display_merges_short_slivers_without_mutating_source():
+def test_sawtooth_display_preserves_short_uncertain_intervals():
     spec = next(s for s in fs.lf.TRACKS if s.key == fs.mt.SAWTOOTH)
     original = (
         fs.lf.Row(0, 100, fs.PRESENT),
-        fs.lf.Row(100, 105, fs.UNCERTAIN),
-        fs.lf.Row(105, 200, fs.PRESENT),
+        fs.lf.Row(100, 105.5, fs.UNCERTAIN),
+        fs.lf.Row(105.5, 200, fs.PRESENT),
         fs.lf.Row(200, 210, fs.UNCERTAIN),
-        fs.lf.Row(210, 300, fs.NOT_OBSERVABLE),
+        fs.lf.Row(210, 216.5, fs.UNCERTAIN),
+        fs.lf.Row(216.5, 300, fs.NOT_OBSERVABLE),
     )
     track = fs.lf.Track(spec, None, None, original)
     display, changes = fs.sawtooth_display(track, (0, 300))
-    assert display.rows == (
-        fs.lf.Row(0, 200, fs.PRESENT),
-        fs.lf.Row(200, 210, fs.UNCERTAIN),
-        fs.lf.Row(210, 300, fs.NOT_OBSERVABLE),
-    )
-    assert changes == [{"start_ms": 100, "end_ms": 105, "from": 2, "to": 1}]
+    assert display.rows == original
+    assert changes == []
     assert track.rows == original
     assert fs.has_present_time(track, (20, 40))
     assert not fs.has_present_time(track, (200, 300))
@@ -540,7 +538,7 @@ def test_caption_omits_absent_highlights_and_expert_elm_claims():
     )
     assert "AE:" not in text and "NTM:" not in text
     assert "Pink" not in text and "NTM outlines" not in text
-    assert "ELMs: detector" in text
+    assert "ELMs: detector" in fs.appendix_notes(42, records, {})
     assert "circles" not in text and "expert ELM" not in text
     assert "Triangles:" not in text
     assert "frame model not shown" not in text
@@ -564,7 +562,8 @@ def test_appendix_discloses_ae_bins_and_data_derived_late_band():
         {fs.mt.AE: record},
         {"late_untagged_high_frequency": {"band_khz": [80, 250]}},
     )
-    assert "late magnetic structures without a positive AE-detector label" in primary
+    assert "Magnetic lines at 80–250 kHz remain visible" in primary
+    assert "stay untagged because the CO2 AE detector is negative" in primary
     assert "magnetics-only" not in primary
     assert "170–250" not in text
 
@@ -600,7 +599,7 @@ def test_caption_discloses_elm_hmode_conflicts_and_inferred_lmode():
     assert "L-mode (inferred)" in text
 
 
-def test_caption_explains_tiers_and_retains_sources_without_appendix_caveats():
+def test_primary_caption_explains_visible_timing_and_source_dependence():
     records = {
         fs.mt.AE: {"tier": fs.lf.GENERATED, "what": "ae-ours", "title": "AE"},
         fs.mt.NTM: {
@@ -615,21 +614,26 @@ def test_caption_explains_tiers_and_retains_sources_without_appendix_caveats():
         fs.mt.SAWTOOTH: {"tier": fs.lf.GENERATED, "what": "physics states"},
     }
     text = fs.caption(
-        42,
+        201978,
         records,
         {
             "first_large_peak_before_expert_ms": 11,
             "largest_dalpha_peak_ms": 2297,
             "expert_elm_start_ms": 2308,
+            "late_untagged_high_frequency": {"first_time_ms": 2800},
         },
     )
-    assert 65 <= len(text.split()) <= 85
+    assert len(text.split()) <= 95
     assert "raw signals → TokEye-processed modes → event labels" in text
-    assert "0–30 kHz" in text and "vertically expanded" in text
-    assert "time/band coincidence only" in text
-    assert "orange" in text and "Pink" in text
-    assert "candidate suggestions (detector F1 0.46, below bar)" in text
-    assert "ELMs: expert" in text and "sawtooth: physics labels" in text
+    assert "raw bands normalised separately" in text
+    assert "Toroidal mode number n: Mirnov array" in text
+    assert "time coincidence only (including 3–5 kHz fragments)" in text
+    assert "Orange" in text and "Pink" in text
+    assert "detector F1 0.46, below bar" in text
+    assert "25 ms timing" in text and "untagged after 2.8 s" in text
+    assert "first ELM (2297 ms) precedes the expert span" in text
+    assert "AE targets used TokEye's mask (circularity)" in text
+    assert "four-state notation only" in text
     assert all(s not in text for s in ("row omitted", "Circles:", "Triangles:"))
 
 

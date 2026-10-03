@@ -32,7 +32,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "fix8-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "fix9-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -73,6 +73,10 @@ def main():
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--rebuild-primary", action="store_true")
+    parser.add_argument(
+        "--baseline-ref",
+        help="git ref whose records must have identical scientific data",
+    )
     args = parser.parse_args()
     manifest_file = args.records / "sawtooth_source_manifest.json"
     manifest = json.loads(manifest_file.read_text())
@@ -102,6 +106,39 @@ def main():
     for shot in SHOTS:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
+        if args.baseline_ref:
+            record_path = file.resolve().relative_to(Path.cwd())
+            baseline = json.loads(
+                subprocess.check_output(
+                    ["git", "show", f"{args.baseline_ref}:{record_path}"]
+                )
+            )
+            presentation = {
+                "annotations",
+                "appendix",
+                "caption",
+                "drawn",
+                "git",
+                "render_code_sha256",
+                "render_started_from_clean_head",
+                "tracks",
+            }
+            for key in record.keys() - presentation:
+                assert record[key] == baseline[key], (shot, "changed input", key)
+            for key, track in record["tracks"].items():
+                display = {"display_intervals_ms", "display_merge"}
+                source = {k: v for k, v in track.items() if k not in display}
+                old = {
+                    k: v for k, v in baseline["tracks"][key].items() if k not in display
+                }
+                assert source == old, (shot, "changed source track", key)
+            presentation = {"figure", "figure_sha256", "layout", "display_state_keys"}
+            for key in record["drawn"].keys() - presentation:
+                assert record["drawn"][key] == baseline["drawn"][key], (
+                    shot,
+                    "changed scientific drawing record",
+                    key,
+                )
         assert record["render_started_from_clean_head"]
         assert record["split"] in ("train", "val"), f"blind shot {shot}"
         drawn = record["drawn"]
@@ -180,7 +217,9 @@ def main():
             fs.state_intervals(display, record["window_ms"])
         )
         assert saw["display_merge"]["changes"] == changes
-        assert saw["display_merge"]["minimum_duration_ms"] == 10
+        assert saw["display_merge"]["minimum_duration_ms"] == 0
+        assert changes == []
+        assert saw["display_intervals_ms"] == saw["state_intervals_ms"]
         vermillion = "#D55E00"
         saw_present_drawn = any(r["category"] == 1 for r in saw["display_intervals_ms"])
         assert (
@@ -240,8 +279,19 @@ def main():
                 shot,
                 "peak triangles touch box",
             )
+        assert geometry["ae_in_panel_label"] is None
         if shot == 201978:
-            assert geometry["ae_in_panel_label"]["position_ms_khz"] == [2000, 180]
+            label = geometry["ae_margin_label"]
+            assert label["leader_anchor_ms_khz"] == [2775, 180]
+            assert label["bounds"][0] > panels["pr_hi"]["bounds"][2]
+        n_key = geometry["n_key_bounds"]
+        if n_key is not None:
+            panel = panels["pr_lo"]["bounds"]
+            assert n_key[0] > panel[2]
+            assert panel[1] <= n_key[1] < n_key[3] <= panel[3]
+        assert geometry["scale_note"].replace("-\n", "-").replace("\n", " ") == (
+            "0–55 kHz: higher-resolution spectrogram; 0–30 stretched, 30–55 compressed"
+        )
         n_labels = [
             x for x in geometry["legend_labels"] if x.startswith("n=") or x == "other n"
         ]
@@ -261,9 +311,11 @@ def main():
                 assert width <= 0 or height <= 0, (left["text"], right["text"])
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
-        assert ("AE (detector band ≥80 kHz)" in legend) == bool(tags[mt.AE])
+        assert ("AE (detector-positive time; detector band ≥80 kHz)" in legend) == bool(
+            tags[mt.AE]
+        )
         ntm_key = (
-            "NTM suggestions"
+            "NTM candidate suggestions"
             if record["tracks"][mt.NTM]["tier"] == lf.GENERATED
             else "NTM labels"
         )
@@ -303,7 +355,7 @@ def main():
         # Count prose, excluding TeX wrapper and standalone math delimiters.
         prose = caption.split("\\label")[0].removeprefix("\\caption{").rstrip("}\n")
         words = len(prose.replace(r"$\geq$", "≥").replace("$", "").split())
-        assert words <= 85
+        assert words <= 95
         assert not any(
             s in caption
             for s in (
@@ -324,13 +376,16 @@ def main():
             and "TokEye-processed modes" in caption
             and "event labels" in caption
         )
-        assert "0–30 kHz" in caption and "vertically expanded" in caption
+        assert "raw bands normalised separately" in caption
+        assert "Toroidal mode number $n$: Mirnov array" in caption
         assert "row omitted" not in caption and "shared inputs" not in caption
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
         appendix = appendix_file.read_text()
         assert appendix.strip() == fs.appendix_notes(shot, record["tracks"], drawn)
         assert fs.sawtooth_caption(saw) in appendix
+        assert "TokEye 0.2; AE 0.5; NTM 0.63" in appendix
+        assert "shorter than 10 ms, with no state smoothing" in appendix
         assert "magnetics-only" not in appendix
         assert "Bt unavailable" not in appendix
         if shown:
@@ -341,15 +396,22 @@ def main():
             assert "sources disagree" in appendix
         ntm = record["tracks"][mt.NTM]
         if ntm["tier"] == lf.GENERATED and tags[mt.NTM]:
-            assert fs.ntm_description(ntm).removeprefix("NTM ") in caption
+            qualification = fs.ntm_description(ntm).partition(" (")[2].rstrip(")")
+            assert qualification in caption
             evaluation = json.loads(Path(ntm["performance"]["evaluation"]).read_text())
             assert ntm["performance"]["f1"] == evaluation["scores"]["ntm_frames"]["f1"]
         if shot == 201978:
-            assert "CO2 neural detector" in caption
+            assert "CO2 neural detector" in appendix
             assert (
-                "late magnetic structures without a positive AE-detector label"
-                in appendix
+                "AE tags inherit the CO2 detector's 25 ms timing: the same lines "
+                "stay untagged after 2.8 s, where it is negative" in caption
             )
+            assert "first ELM (2297 ms) precedes the expert span" in caption
+            assert "55–80 kHz stays white" in caption
+            assert "time coincidence only (including 3–5 kHz fragments)" in caption
+            assert "AE targets used TokEye's mask (circularity)" in caption
+            assert "four-state notation only" in caption
+            assert "detector F1" not in " ".join(legend)
             for key in (mt.AE, mt.NTM):
                 training = record["detector_training"][key]
                 source = Path(training["training_source"])
@@ -529,6 +591,7 @@ def main():
                     "catalog_comparison": catalog_comparison,
                 },
                 "reproducibility": reproducibility,
+                "scientific_data_unchanged_from": args.baseline_ref,
             },
             indent=1,
         )

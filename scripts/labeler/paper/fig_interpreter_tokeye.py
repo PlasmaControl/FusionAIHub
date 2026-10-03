@@ -538,7 +538,7 @@ def clear_of(fixed, moved: list) -> None:
 
 def leader(ax, text, xy, y=0.15):
     """Text in the empty right margin, joined by a neutral leader."""
-    ax.annotate(
+    return ax.annotate(
         text,
         xy=xy,
         xytext=(1.02, y),
@@ -677,12 +677,12 @@ def draw_legends(
         event_handles.append(
             Patch(
                 fc=EVENT_COLOURS[mode_tags.AE],
-                label="AE (detector band\n≥80 kHz)",
+                label="AE (detector-positive\ntime; detector band\n≥80 kHz)",
             )
         )
     if projected["zoom"][mode_tags.NTM].any():
         ntm_label = (
-            "NTM suggestions"
+            "NTM candidate\nsuggestions"
             if by_key[mode_tags.NTM].source.tier == lf.GENERATED
             else "NTM labels"
         )
@@ -701,6 +701,7 @@ def draw_legends(
         "handletextpad": 0.3,
         "borderpad": 0,
         "borderaxespad": 0,
+        "labelspacing": 0.3,
     }
     fig.legend(
         handles=event_handles,
@@ -715,10 +716,12 @@ def draw_legends(
     if n_handles:
         fig.legend(
             handles=n_handles,
-            bbox_to_anchor=(0.48, ax["h_lab"].get_position().y1 - 0.006),
+            title="toroidal mode number n\n(Mirnov array)",
+            title_fontsize=FONT,
+            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.016),
             **{
                 **legend_options,
-                "ncols": 4,
+                "ncols": 2,
                 "columnspacing": 0.4,
                 "handlelength": 0.7,
                 "labelspacing": 0.25,
@@ -743,7 +746,7 @@ def draw_legends(
                 Patch(fc=REGIME_GREYS[c], lw=0, label=regime_names[c])
                 for c in sorted(shown)
             ],
-            bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y0 + 0.10),
+            bbox_to_anchor=(0.792, ax["raw_lo"].get_position().y1 - 0.05),
             **legend_options,
         )
 
@@ -975,9 +978,9 @@ def draw(
             va="top",
             color=INK,
         )
-        leader(
+        scale_note = leader(
             ax["raw_mid"],
-            "0–55 kHz: finer\nfrequency bins\n(30–55 compressed)",
+            "0–55 kHz: higher-\nresolution spectrogram;\n0–30 stretched,\n30–55 compressed",
             (t1, 45),
             y=0.75,
         )
@@ -1019,51 +1022,7 @@ def draw(
                 spans[mode_tags.NTM],
                 edge=True,
             )
-        ae_label = None
         ae_annotation = (annotations or {}).get("ae_label")
-        if ae_annotation and projected["wide"][mode_tags.AE].any():
-            ae_label = ax["pr_hi"].text(
-                ae_annotation["time_ms"],
-                ae_annotation["frequency_khz"],
-                "AE (detector-positive time)",
-                fontsize=FONT,
-                color="white",
-                ha="center",
-                va="center",
-                zorder=8,
-                bbox={"fc": "black", "ec": "none", "pad": 1.0},
-            )
-        # Leaders identify representative structures, never claim seeding.
-        ntm_n1 = [b for b in blobs_low if mode_tags.NTM in b.tags and b.dominant_n == 1]
-        ntm_points = []
-        for b in ntm_n1:
-            rr, cc = b.component.rows, b.component.cols
-            keep = mode_tags.present_columns(low.t[cc], spans[mode_tags.NTM])
-            if low.n_map is not None:
-                keep &= low.n_map[rr, cc] == 1
-            if keep.any():
-                # Rightmost support shortens the leader across the n panel.
-                support = np.flatnonzero(keep)
-                i = support[np.argmax(low.t[cc[support]])]
-                ntm_points.append((low.t[cc[i]], low.all_f[rr[i]]))
-        if ntm_points:
-            description = figure_sources.ntm_description(
-                track_record(by_key[mode_tags.NTM])
-            )
-            description = description.replace(
-                "NTM candidate suggestions", "NTM candidate\nsuggestions"
-            )
-            description = description.replace(" (", "\n(").replace(
-                ", below bar", ",\nbelow bar"
-            )
-            leader(
-                ax["pr_lo"],
-                description
-                if by_key[mode_tags.NTM].source.tier == lf.GENERATED
-                else "n=1 mode; NTM label",
-                max(ntm_points),
-                y=0.44,
-            )
         strip = ax["crashes"]
         strip.set_facecolor("#222222")
         strip.set_ylim(0, 1)
@@ -1288,10 +1247,39 @@ def draw(
             t1,
         )
         fig.draw_without_rendering()
+        ae_label = None
+        if ae_annotation and projected["wide"][mode_tags.AE].any():
+            ae_label = next(
+                text
+                for key in fig.legends
+                for text in key.texts
+                if text.get_text().startswith("AE (detector-positive")
+            )
+            bounds = ae_label.get_window_extent().transformed(
+                fig.transFigure.inverted()
+            )
+            ax["pr_hi"].annotate(
+                "",
+                xy=(ae_annotation["time_ms"], ae_annotation["frequency_khz"]),
+                xytext=(0.787, (bounds.y0 + bounds.y1) / 2),
+                textcoords=fig.transFigure,
+                arrowprops={"arrowstyle": "->", "color": "#999999", "lw": 0.5},
+                annotation_clip=False,
+                zorder=9,
+            )
+        n_legend = next(
+            (
+                key
+                for key in fig.legends
+                if key.get_title().get_text().startswith("toroidal mode number")
+            ),
+            None,
+        )
         layout_record = {
             "n_panel_height_units": layout["pr_lo"],
             "n_panel_height_in": ax["pr_lo"].get_position().height * HEIGHT_IN,
             "n_panel_band_khz": list(ax["pr_lo"].get_ylim()),
+            "scale_note": scale_note.get_text(),
             "processed_omitted_band_khz": [],
             "processed_restored_strip_khz": [N_VIEW_KHZ, FOLD_KHZ],
             "frequency_scale_breaks_khz": [N_VIEW_KHZ, FOLD_KHZ],
@@ -1337,11 +1325,27 @@ def draw(
                 for text, a, b in regime_texts
             ],
             "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
-            "ae_in_panel_label": None
+            "n_key_bounds": None
+            if n_legend is None
+            else list(
+                n_legend.get_window_extent()
+                .transformed(fig.transFigure.inverted())
+                .extents
+            ),
+            "ae_in_panel_label": None,
+            "ae_margin_label": None
             if ae_label is None
             else {
                 "text": ae_label.get_text(),
-                "position_ms_khz": list(ae_label.get_position()),
+                "leader_anchor_ms_khz": [
+                    ae_annotation["time_ms"],
+                    ae_annotation["frequency_khz"],
+                ],
+                "bounds": list(
+                    ae_label.get_window_extent()
+                    .transformed(fig.transFigure.inverted())
+                    .extents
+                ),
             },
             "elm_box_bounds": [
                 list(
@@ -1377,7 +1381,13 @@ def draw(
                 }
                 for text in [
                     *fig.texts,
+                    scale_note,
                     *[text for key in fig.legends for text in key.texts],
+                    *[
+                        key.get_title()
+                        for key in fig.legends
+                        if key.get_title().get_text()
+                    ],
                 ]
             ],
         }
@@ -1399,8 +1409,8 @@ def draw(
         )
         track_records[mode_tags.SAWTOOTH]["display_merge"] = {
             "minimum_duration_ms": figure_sources.SAWTOOTH_DISPLAY_MIN_MS,
-            "rule": "shortest sliver first, merge into longer touching neighbour; "
-            "ties prefer earlier; source unchanged; crash ticks unchanged",
+            "rule": "exact source states clipped to view; no smoothing; "
+            "crash ticks unchanged",
             "changes": saw_changes if show_sawtooth else [],
         }
     late_absent = np.zeros(len(high.t), bool)
@@ -1657,6 +1667,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
 def draft_caption(shot: int, records, drawn) -> str:
     text = figure_sources.caption(shot, records, drawn)
     text = re.sub(r"\bn=([0-9/]+)", r"$n=\1$", text)
+    text = text.replace("mode number n:", "mode number $n$:")
     text = text.replace("≥", r"$\geq$").replace("≤", r"$\leq$")
     text = text.replace("→", r"$\rightarrow$")
     text = text.replace("<60", "$<60$")
@@ -1670,8 +1681,10 @@ def main(argv=None) -> int:
     torch.set_num_threads(8)
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--shot", type=int, default=201978)
-    parser.add_argument("--tmin", type=float, help="ms; the shot's preset window")
-    parser.add_argument("--tmax", type=float)
+    parser.add_argument(
+        "--tmin", "--start", type=float, help="ms; supply both bounds or neither"
+    )
+    parser.add_argument("--tmax", "--end", type=float)
     parser.add_argument("--out", type=Path, help="folder; default round4/fig1")
     parser.add_argument("--cache", type=Path, help="TokEye cache; default <out>/cache")
     parser.add_argument("--device", default="cpu", help="TokEye's device")
@@ -1708,6 +1721,12 @@ def main(argv=None) -> int:
         help="full physics JSON evidence paired with cohort CSVs",
     )
     args = parser.parse_args(argv)
+    if (args.tmin is None) != (args.tmax is None):
+        parser.error("supply both --tmin/--start and --tmax/--end, or neither")
+    if args.tmin is not None and not (
+        math.isfinite(args.tmin) and math.isfinite(args.tmax) and args.tmin < args.tmax
+    ):
+        parser.error("time bounds must be finite and start must precede end")
     annotations = json.loads(args.annotations.read_text()).get(str(args.shot), {})
     clean_head = not subprocess.check_output(["git", "status", "--porcelain"]).strip()
 
