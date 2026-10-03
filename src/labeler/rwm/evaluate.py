@@ -366,7 +366,7 @@ def cross_validate(
     never reward detection. Comparison shots never tune primary thresholds or rules.
     `alarm_scope` controls both tuning and scoring, as in `score_alarms`.
     `outer_groups` is a table column name or a shot-to-group map: each group is held
-    out once, overriding `outer` (e.g. four run days yield four folds). Alternatively,
+    out once, overriding `outer` (e.g. four run records yield four folds). Alternatively,
     `outer_shot_folds` lists explicit disjoint held-out shot sets covering every shot.
     Inner threshold/rule selection remains nested and shot-grouped in all cases.
     Returns `(oof, alarms, rules)` where
@@ -458,6 +458,41 @@ def _fixed_call(table, model, target_onsets, explanation_onsets, alarm_scope):
         alarm_scope=alarm_scope,
     )
     return piece, alarms, [{"fold": 0, "cutoff": 0.5, "rule": [0.5, 0.5, 0.0]}]
+
+
+def replay_alarms(
+    oof,
+    rules,
+    target_onsets,
+    *,
+    explanation_onsets=None,
+    alarm_scope="primary",
+):
+    """Replay saved outer-fold alarm rules without fitting or changing slice calls.
+
+    Each shot must occur in one fold, and each saved fold must have exactly one
+    rule. The scope and onset maps must match those used to select the rules.
+    """
+    folds = [r["fold"] for r in rules]
+    if len(set(folds)) != len(folds) or set(folds) != set(oof.fold):
+        raise ValueError("saved rules must cover every prediction fold exactly once")
+    if not oof.groupby("shot").fold.nunique(dropna=False).eq(1).all():
+        raise ValueError("saved predictions must have one fold per shot")
+    roles = oof.drop_duplicates("shot").set_index("shot").role.to_dict()
+    outcomes = {}
+    for saved in rules:
+        part = oof[oof.fold == saved["fold"]]
+        outcomes.update(
+            score_alarms(
+                shot_traces(part, part.score.to_numpy()),
+                target_onsets,
+                saved["rule"],
+                explanation_onsets=explanation_onsets,
+                shot_roles=roles,
+                alarm_scope=alarm_scope,
+            )
+        )
+    return outcomes
 
 
 # ---- scoring the pooled out-of-fold predictions ------------------------------------

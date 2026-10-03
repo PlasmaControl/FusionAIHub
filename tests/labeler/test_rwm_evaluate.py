@@ -354,9 +354,9 @@ def test_shot_categories_carry_early_ignored_and_multiple_target_counts():
     assert stats["comparison_alarm_incidence"] == 1.0
 
 
-def test_run_day_outer_holdout_keeps_siblings_out_of_training():
+def test_run_record_outer_holdout_keeps_siblings_out_of_training():
     table, onsets = _table(n_hanson=12, n_comparison=0)
-    table["run_day"] = table.shot // 3
+    table["run_record"] = table.shot // 3
     seen = []
 
     class TracedRule(ev.Rule):
@@ -372,15 +372,15 @@ def test_run_day_outer_holdout_keeps_siblings_out_of_training():
         table,
         lambda seed: TracedRule("betan_over_li"),
         onsets,
-        outer_groups="run_day",
+        outer_groups="run_record",
         inner=2,
     )
     assert len(rules) == 4 and len(oof) == len(table)
-    assert oof.groupby("run_day").fold.nunique().eq(1).all()
-    assert oof.groupby("fold").run_day.nunique().eq(1).all()
+    assert oof.groupby("run_record").fold.nunique().eq(1).all()
+    assert oof.groupby("fold").run_record.nunique().eq(1).all()
     for train, test in seen:
         assert not train & test
-    # Each outer fit is the one scoring a complete three-shot run day.
+    # Each outer fit is the one scoring a complete three-shot run record.
     for train, test in seen:
         if len(test) == 3:
             assert not {s // 3 for s in train} & {s // 3 for s in test}
@@ -394,6 +394,46 @@ def test_run_day_outer_holdout_keeps_siblings_out_of_training():
     assert mapped.set_index(["shot", "t_ms"]).fold.equals(
         oof.set_index(["shot", "t_ms"]).fold
     )
+
+
+@pytest.mark.parametrize("scope", ["primary", "full_trace"])
+def test_saved_alarm_replay_matches_live_cv_without_changing_predictions(scope):
+    table, onsets = _table(n_hanson=6, n_comparison=6)
+    explanations = {shot: times + [650.0] for shot, times in onsets.items()}
+    oof, alarms, rules = ev.cross_validate(
+        table,
+        lambda seed: ev.Rule("betan_over_li"),
+        onsets,
+        explanation_onsets=explanations,
+        outer=3,
+        inner=2,
+        alarm_scope=scope,
+    )
+    original = oof.copy(deep=True)
+    replay = ev.replay_alarms(
+        oof,
+        rules,
+        onsets,
+        explanation_onsets=explanations,
+        alarm_scope=scope,
+    )
+    assert replay == alarms
+    pd.testing.assert_frame_equal(oof, original)
+
+
+def test_saved_alarm_replay_rejects_incomplete_rules_and_split_shots():
+    table, onsets = _table(n_hanson=6, n_comparison=0)
+    oof, _, rules = ev.cross_validate(
+        table, lambda seed: ev.Rule("betan_over_li"), onsets, outer=3, inner=2
+    )
+    with pytest.raises(ValueError, match="exactly once"):
+        ev.replay_alarms(oof, rules[:-1], onsets)
+    with pytest.raises(ValueError, match="exactly once"):
+        ev.replay_alarms(oof, rules + rules[:1], onsets)
+    changed = oof.copy()
+    changed.loc[changed.index[0], "fold"] = (int(changed.fold.iloc[0]) + 1) % 3
+    with pytest.raises(ValueError, match="one fold per shot"):
+        ev.replay_alarms(changed, rules, onsets)
 
 
 def test_explicit_outer_shot_folds_cover_every_shot_once():
