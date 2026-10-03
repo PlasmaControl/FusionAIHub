@@ -124,10 +124,9 @@ def read_d_alpha(
         t_ms, rows = got
         for i, row in enumerate(rows):
             finite = np.isfinite(row)
-            if (
-                finite.mean() > 0.5
-                and np.nanstd(row[finite][:: max(1, finite.sum() // 20000)]) > 0
-            ):
+            # float64: D-alpha reaches 1e19 on some shots and a float32 square overflows
+            sample = row[finite][:: max(1, finite.sum() // 20000)].astype(np.float64)
+            if finite.mean() > 0.5 and np.std(sample) > 0:
                 return t_ms, row, f"{source}:FS{i + 1:02d}"
     return None
 
