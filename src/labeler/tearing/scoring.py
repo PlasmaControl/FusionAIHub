@@ -42,7 +42,7 @@ def shot_folds(shots, k: int = 5, seed: int = 0) -> dict[int, int]:
 
 
 def bin_centres(window, bin_ms: float = BIN_MS) -> np.ndarray:
-    """Centres (ms) of the bins wholly inside `window`, on an absolute grid of `bin_ms`."""
+    """Centres (ms) of the bins wholly inside `window`, on an absolute `bin_ms` grid."""
     lo = np.ceil(window[0] / bin_ms) * bin_ms
     hi = np.floor(window[1] / bin_ms) * bin_ms
     if hi - lo < bin_ms:
@@ -309,3 +309,36 @@ def best_threshold(stats: list[ShotStats], edges) -> float:
     k = int(np.argmax(f1))
     # cumulative from the top: the k-th reversed bin starts at edges[len(edges) - 2 - k]
     return float(np.asarray(edges)[len(edges) - 2 - k])
+
+
+def evaluate(
+    shots,
+    y: dict,
+    valid: dict,
+    score: dict,
+    threshold,
+    *,
+    edges=None,
+    n: int = 1000,
+    seed: int = 0,
+) -> dict:
+    """The benchmark's numbers for one detector on `shots`, with shot-bootstrap CIs.
+
+    `y`, `valid` and `score` map a shot to its per-bin arrays (`label_bins`,
+    `align_scores`); `threshold` is one number or a map from shot to the threshold its
+    fold chose. A shot with no scored bin is left out and listed. `edges` default to
+    the pooled scores' quantiles.
+    """
+    pooled = np.concatenate([np.asarray(score[s], dtype=float) for s in shots])
+    edges = edges_for(pooled) if edges is None else np.asarray(edges, dtype=float)
+    stats, empty = [], []
+    for s in shots:
+        thr = threshold[s] if isinstance(threshold, dict) else threshold
+        st = shot_stats(s, y[s], valid[s], score[s], edges, thr)
+        (stats if st.n_bins else empty).append(st if st.n_bins else int(s))
+    out = bootstrap(stats, n=n, seed=seed)
+    out["shots_without_a_scored_bin"] = empty
+    out["bins_scored"] = int(sum(s.n_bins for s in stats))
+    out["bins_positive"] = int(sum(s.n_pos for s in stats))
+    out["bin_ms"] = BIN_MS
+    return out

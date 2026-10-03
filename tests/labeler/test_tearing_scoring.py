@@ -155,3 +155,19 @@ def test_the_best_threshold_separates_two_clean_classes():
     st = scoring.shot_stats(0, y, np.ones(100, bool), s, edges)
     thr = scoring.best_threshold([st], edges)
     assert 0.4 < thr <= 0.6
+
+
+def test_evaluate_leaves_out_a_shot_with_no_scored_bin_and_takes_per_shot_thresholds():
+    rng = np.random.default_rng(3)
+    y, valid, score = {}, {}, {}
+    for k in range(6):
+        y[k] = (rng.random(100) < 0.3).astype(int)
+        valid[k] = np.ones(100, bool)
+        score[k] = 0.2 + 0.6 * y[k] + 0.05 * rng.random(100)
+    score[6], y[6], valid[6] = np.full(10, np.nan), np.zeros(10, int), np.ones(10, bool)
+    out = scoring.evaluate(
+        list(range(7)), y, valid, score, {k: 0.5 for k in range(7)}, n=20
+    )
+    assert out["shots_without_a_scored_bin"] == [6]
+    assert out["n_shots"] == 6 and out["bins_scored"] == 600
+    assert out["auroc"]["value"] == 1.0 and out["f1"]["value"] == 1.0
