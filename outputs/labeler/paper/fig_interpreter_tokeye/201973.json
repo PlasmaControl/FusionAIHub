@@ -1,0 +1,239 @@
+{
+ "shot": 201973,
+ "year": 2024,
+ "window_ms": [
+  1600.0,
+  3350.0
+ ],
+ "split": "val",
+ "tokeye": {
+  "checkpoint": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt",
+  "sha256": "4afc3948ba53af40cb2787441b251757f8c77e764784e0aaa2602af0471229a9",
+  "probe": "mirnov row 15 (MPI66M322D)",
+  "threshold": 0.2,
+  "cache": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201973_1500_3450.npz",
+  "device": "cpu",
+  "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/201973_processed.h5"
+ },
+ "filter": {
+  "mask": "coherent >= threshold and not transient >= threshold",
+  "pickup_row_share": 0.4,
+  "min_size_px": {
+   "zoom": 40,
+   "wide": 30
+  },
+  "hole_area_px": 10,
+  "components": "skimage connectivity 2 (8-connected)",
+  "tag_cover": 0.5,
+  "bands_khz": {
+   "alfven_eigenmode": [
+    60.0,
+    null
+   ],
+   "neoclassical_tearing_mode": [
+    0.0,
+    60.0
+   ],
+   "sawtooth_oscillation": [
+    0.0,
+    60.0
+   ]
+  },
+  "fold_khz": 55.0,
+  "elm_peaks": "D-alpha less a 25-sample running median, over 4.0 MADs"
+ },
+ "tracks": {
+  "alfven_eigenmode": {
+   "tier": "generated: automated labeler",
+   "what": "the AE frame model (v2) run on the shot's CO2",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt",
+   "sha256": "f4693f8304365ce39766360511155131c43a5b5a9ea4924bdb9ab764359d9024",
+   "rows": 5,
+   "present_spans_ms": [
+    [
+     1640.0,
+     1830.0
+    ],
+    [
+     1880.0,
+     2250.0
+    ]
+   ]
+  },
+  "neoclassical_tearing_mode": {
+   "tier": "generated: automated labeler",
+   "what": "the tearing-mode frame model",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.csv",
+   "sha256": "5440c7cd5a3747656169d9b271ac7ff2879aaa22388d986fc828525cc4ab4957",
+   "rows": 5,
+   "present_spans_ms": [
+    [
+     2050.0,
+     3050.0
+    ]
+   ]
+  },
+  "confinement": {
+   "tier": "generated: automated labeler",
+   "what": "the H-mode frame model, its present spans as H-mode",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/hmode_frames/v2/high_confinement_mode_suggest_hmode_frames_v2.csv",
+   "sha256": "c7786a4063ca83153362545eac27139a7d4aa44fc77193a0222b6074f15d58a7",
+   "rows": 3,
+   "present_spans_ms": [
+    [
+     1700.0,
+     3250.0
+    ]
+   ]
+  },
+  "edge_localized_mode": {
+   "tier": "silver: expert review",
+   "what": "the expert's review",
+   "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
+   "sha256": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+   "rows": 11,
+   "present_spans_ms": [
+    [
+     2075.0,
+     2117.0
+    ],
+    [
+     2165.0,
+     2748.0
+    ],
+    [
+     2994.0,
+     3045.0
+    ],
+    [
+     3077.0,
+     3124.0
+    ],
+    [
+     3313.0,
+     3356.0
+    ]
+   ]
+  },
+  "sawtooth_oscillation": {
+   "tier": "generated: automated labeler",
+   "what": "the sawtooth frame model",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/sawtooth_frames/v2/sawtooth_oscillation_suggest_sawtooth_frames_v2.csv",
+   "sha256": "a445f034fc90ce6eb8311f9c9331df7e6f206c05376cf48d900516f2d05b469f",
+   "rows": 31,
+   "present_spans_ms": [
+    [
+     2100.0,
+     2110.0
+    ],
+    [
+     2190.0,
+     2200.0
+    ],
+    [
+     2700.0,
+     2720.0
+    ],
+    [
+     2750.0,
+     2780.0
+    ],
+    [
+     2790.0,
+     2810.0
+    ],
+    [
+     2860.0,
+     2880.0
+    ],
+    [
+     2910.0,
+     2950.0
+    ],
+    [
+     2960.0,
+     2970.0
+    ],
+    [
+     2990.0,
+     3050.0
+    ],
+    [
+     3060.0,
+     3070.0
+    ],
+    [
+     3080.0,
+     3130.0
+    ],
+    [
+     3140.0,
+     3210.0
+    ],
+    [
+     3220.0,
+     3230.0
+    ],
+    [
+     3280.0,
+     3290.0
+    ],
+    [
+     3300.0,
+     3310.0
+    ]
+   ]
+  }
+ },
+ "ae_co2": {
+  "path": "/scratch/gpfs/EKOLEMEN/foundation_model/201973_processed.h5",
+  "sha256": "4847edb83b64006fa93d11111bcf141d752c13d4db9f7f35c31590201b4ece00"
+ },
+ "drawn": {
+  "figure": [
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png"
+  ],
+  "blobs": {
+   "wide_above_fold": 221,
+   "zoom_below_fold": 92,
+   "tagged": {
+    "alfven_eigenmode": 95,
+    "neoclassical_tearing_mode": 45,
+    "sawtooth_oscillation": 11
+   },
+   "untagged": 167
+  },
+  "elm_peaks_in_label": 67,
+  "n_map": {
+   "kept_share": 0.1492,
+   "keys": [
+    "n=1",
+    "n=2",
+    "n=3"
+   ]
+  },
+  "regimes_shown": [
+   "H-mode"
+  ],
+  "stores": {
+   "edge_localized_mode": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/201973.h5",
+    "sha256": "ea62fb08cc8e35d7ca04db770c4416a3d2b2860730ed452b616d17622e2d35b2"
+   },
+   "neoclassical_tearing_mode": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/201973.h5",
+    "sha256": "a7ec797ef9b07fa26061a2387285165c09d1d5a6b22c495270335874d3c848c9"
+   },
+   "high_confinement_mode": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/201973.h5",
+    "sha256": "e89d9a6e1d292e0a47eada17b23b7e8da3a8b59b87af0a884516a4eca1e3d4cb"
+   },
+   "sawtooth_oscillation": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/201973.h5",
+    "sha256": "cbdf1d4ce3b8e3c8939bf4f0fdc6cbf8b663bff7998825bf720ef6a83cb56ff7"
+   }
+  }
+ },
+ "git": "0fbdbba"
+}
