@@ -481,7 +481,7 @@ def test_sawtooth_display_merges_short_slivers_without_mutating_source():
     assert not fs.has_present_time(track, (200, 300))
 
 
-def test_sawtooth_visibility_requires_positive_present_overlap():
+def test_present_time_requires_positive_duration_overlap():
     spec = next(s for s in fs.lf.TRACKS if s.key == fs.mt.SAWTOOTH)
     track = fs.lf.Track(
         spec,
