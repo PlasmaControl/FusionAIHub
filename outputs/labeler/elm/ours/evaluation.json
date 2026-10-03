@@ -1,6 +1,6 @@
 {
- "git": "aa4ccbf2",
- "created": "2026-10-03T17:28:46+00:00",
+ "git": "8b586d94",
+ "created": "2026-10-03T19:23:52+00:00",
  "run": "cv2",
  "train_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
  "reference": "expert-reviewed spans (review/labels.csv)",
@@ -1131,6 +1131,9 @@
       "auprc": 0.8752273777121873,
       "prevalence": 0.40187052462370304
      },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.7395457197632742,
@@ -1177,6 +1180,52 @@
        0.9606530716814174
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "elm-ours",
      "high_recall": false
@@ -1210,6 +1259,9 @@
       "absent_span_alarm_rate_guard25": 0.10550458715596331,
       "absent_span_interior_alarm_rate_guard25": 0.11855670103092783
      },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.7195219234302184,
@@ -1248,6 +1300,44 @@
        0.19736842105263158
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "elm-clock",
      "high_recall": false
@@ -1284,6 +1374,9 @@
       "auprc": 0.8326756912456157,
       "prevalence": 0.40187052462370304
      },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.7675314518788678,
@@ -1330,6 +1423,52 @@
        0.8899523849577735
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "ELM-O",
      "high_recall": false,
@@ -1367,6 +1506,9 @@
       "auprc": 0.40187052462370304,
       "prevalence": 0.40187052462370304
      },
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.3249898292891919,
@@ -1413,6 +1555,52 @@
        0.4792399287713274
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "Always-present rule",
      "high_recall": true
@@ -1421,217 +1609,424 @@
    "paired": {
     "elm-ours - elm-clock: f1": {
      "value": 0.13689452763657006,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.048235845859991196,
       0.23295650654495076
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: precision": {
      "value": 0.003999285275335995,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.08931644270431226,
       0.0870015262365005
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: recall": {
      "value": 0.24290909090909085,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.11334588123987742,
       0.3700605023108849
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: false_alarm_bin_rate": {
      "value": 0.03200586366967993,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.025296954040576792,
       0.09506687468730066
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: crowd_bin_recall": {
      "value": 0.24830954169797148,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.11438810126582284,
       0.3797981034759462
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: non_crowd_span_touch_recall": {
      "value": 0.4838709677419355,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.2908770161290322,
       0.7704187925170068
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: absent_span_alarm_rate": {
      "value": 0.5,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.2856943335993615,
       0.6666970802919708
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
      "value": 0.3302752293577982,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.20706196581196584,
       0.43166143141824564
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: f1": {
      "value": 0.002487893367899452,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.05198977705946881,
       0.0584588923306623
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: precision": {
      "value": -0.014149101148366872,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.07132251715699703,
       0.030883284908492903
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: recall": {
      "value": 0.020000000000000018,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.0597732070138565,
       0.10771815622800848
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: false_alarm_bin_rate": {
      "value": 0.014414854629855853,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.019487152283919815,
       0.06000733353117814
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: crowd_bin_recall": {
      "value": 0.024417731029301337,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.05325614049440771,
       0.1104917758711458
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: non_crowd_span_touch_recall": {
      "value": 0.06451612903225812,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.37175824175824174,
       0.4462612612612612
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: absent_span_alarm_rate": {
      "value": 0.16972477064220182,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.12745057490280418,
       0.412927240274498
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: absent_span_alarm_rate_guard25": {
      "value": 0.12844036697247707,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.04221201880693508,
       0.2674459547985588
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: auroc": {
      "value": 0.022942007418430554,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.014337545899778315,
       0.06723434640902332
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-elmo: auprc": {
      "value": 0.04255168646657159,
+     "replicates": 1000,
+     "positive_shots": 53,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.057514888098725514,
       0.12926710880861497
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     }
    },
    "per_kind": {
     "elm-ours": {
      "crowd_bin_recall": {
       "point": 0.8767843726521413,
+      "numerator": 2334,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.8051002111479382,
        0.9416690672687636
       ],
-      "numerator": 2334,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.48863636363636365,
+      "numerator": 43,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.3083676012461059,
        0.7358954531394988
       ],
-      "numerator": 43,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6989247311827957,
+      "numerator": 65,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.276543596161869,
        0.8706140699523053
       ],
-      "numerator": 65,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-clock": {
      "crowd_bin_recall": {
       "point": 0.6284748309541698,
+      "numerator": 1673,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.49183326567204577,
        0.7705392570665561
       ],
-      "numerator": 1673,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.4090909090909091,
+      "numerator": 36,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.22340425531914893,
        0.7333962264150943
       ],
-      "numerator": 36,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.21505376344086022,
+      "numerator": 20,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.09008783783783783,
        0.6308503836317132
       ],
-      "numerator": 20,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-elmo": {
      "crowd_bin_recall": {
       "point": 0.8523666416228399,
+      "numerator": 2269,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.7878092204796188,
        0.9006113568544136
       ],
-      "numerator": 2269,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.6022727272727273,
+      "numerator": 53,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.38233957219251336,
        0.730813953488372
       ],
-      "numerator": 53,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6344086021505376,
+      "numerator": 59,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.2665573770491803,
        0.8592592592592593
       ],
-      "numerator": 59,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     }
    },
@@ -1714,6 +2109,9 @@
         "auprc": 0.895793432654566,
         "prevalence": 0.6243311743170937
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7803116686990571,
@@ -1760,6 +2158,52 @@
          0.9862993688659083
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -1791,6 +2235,9 @@
         "absent_span_alarm_rate_guard25": 0.18181818181818182,
         "absent_span_interior_alarm_rate_guard25": 0.18461538461538463
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7764578627767189,
@@ -1829,6 +2276,44 @@
          0.3333333333333333
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -1863,6 +2348,9 @@
         "auprc": 0.8934107429683836,
         "prevalence": 0.6243311743170937
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8035433924725766,
@@ -1908,6 +2396,52 @@
          0.8205401647654541,
          0.9493802838131451
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -1968,6 +2502,9 @@
         "auprc": 0.24431097600953103,
         "prevalence": 0.04857142857142857
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.11289754656974102,
@@ -2014,6 +2551,52 @@
          0.7954326582184982
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -2045,6 +2628,9 @@
         "absent_span_alarm_rate_guard25": 0.05128205128205128,
         "absent_span_interior_alarm_rate_guard25": 0.06666666666666667
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.11841751556310129,
@@ -2083,6 +2669,44 @@
          0.24003448275862066
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -2117,6 +2741,9 @@
         "auprc": 0.1640305283217146,
         "prevalence": 0.04857142857142857
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.06054018445322794,
@@ -2162,6 +2789,52 @@
          0.05163882717283185,
          0.3904227896594883
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2224,6 +2897,9 @@
         "auprc": 0.8843828754747115,
         "prevalence": 0.4519927536231884
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8760906993560829,
@@ -2270,6 +2946,52 @@
          0.9674237040790757
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -2301,6 +3023,9 @@
         "absent_span_alarm_rate_guard25": 0.06382978723404255,
         "absent_span_interior_alarm_rate_guard25": 0.06976744186046512
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.6206071964017992,
@@ -2339,6 +3064,44 @@
          0.22514423076923065
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -2373,6 +3136,9 @@
         "auprc": 0.7888339024829611,
         "prevalence": 0.4519927536231884
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.6858866206753154,
@@ -2418,6 +3184,52 @@
          0.6255182488188908,
          0.929290303962718
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2483,55 +3295,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.07862903225806452
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.019790700980210383,
-         0.16104211322657924
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.3333333333333333,
-         0.7083333333333334
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.3333333333333333,
-         0.7083333333333334
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.34615384615384615,
-         0.7083333333333334
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.019790700980210383,
-         0.16104211322657924
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -2565,47 +3394,62 @@
         "absent_span_interior_alarm_rate_guard25": 0.15384615384615385,
         "no_present_false_positive_fraction": 0.05577956989247312
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.0,
-         0.14678300516871962
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.0,
-         0.3333333333333333
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.0,
-         0.3333333333333333
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.0,
-         0.3448275862068966
-        ],
-        "no_present_false_positive_fraction": [
-         0.0,
-         0.14678300516871962
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -2642,55 +3486,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.04502688172043011
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.011617010757919525,
-         0.1026492201093711
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.31995454545454544,
-         0.6800454545454545
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.22723607038123167,
-         0.5384615384615384
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.24,
-         0.5416666666666666
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.011617010757919525,
-         0.1026492201093711
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2861,6 +3722,9 @@
       "auprc": 0.8770972997900133,
       "prevalence": 0.3758562333789991
      },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.7495159608852175,
@@ -2907,6 +3771,52 @@
        0.9492208894338952
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "elm-ours",
      "high_recall": false
@@ -2940,6 +3850,9 @@
       "absent_span_alarm_rate_guard25": 0.09649122807017543,
       "absent_span_interior_alarm_rate_guard25": 0.10543130990415335
      },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.7881797667757062,
@@ -2978,6 +3891,44 @@
        0.16129846855653307
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "elm-clock",
      "high_recall": false
@@ -3014,6 +3965,9 @@
       "auprc": 0.3758562333789991,
       "prevalence": 0.3758562333789991
      },
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": {
       "precision": [
        0.3221066083680579,
@@ -3060,6 +4014,52 @@
        0.42966989317156895
       ]
      },
+     "bootstrap_draw_counts": {
+      "precision": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "f1": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "false_alarm_bin_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "crowd_bin_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "non_crowd_span_touch_recall": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "absent_span_interior_alarm_rate_guard25": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auroc": {
+       "valid": 1000,
+       "undefined": 0
+      },
+      "auprc": {
+       "valid": 1000,
+       "undefined": 0
+      }
+     },
      "replicates": 1000,
      "display_name": "Always-present rule",
      "high_recall": true
@@ -3068,118 +4068,224 @@
    "paired": {
     "elm-ours - elm-clock: f1": {
      "value": 0.07273957118041663,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.003370729716784301,
       0.15139108898917794
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: precision": {
      "value": -0.04773028479512853,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.11992278512973138,
       0.02481009575043852
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: recall": {
      "value": 0.1693825042881647,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.05398490859685413,
       0.2820844397884729
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: false_alarm_bin_rate": {
      "value": 0.04996772111039381,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.0036423996226150664,
       0.09425468059799981
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: crowd_bin_recall": {
      "value": 0.17140339281780126,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.05126318705301676,
       0.28640467160779093
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: non_crowd_span_touch_recall": {
      "value": 0.45,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       -0.08041935483870967,
       0.6894353518821603
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: absent_span_alarm_rate": {
      "value": 0.49122807017543857,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.3447135955831608,
       0.6039829939893983
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     },
     "elm-ours - elm-clock: absent_span_alarm_rate_guard25": {
      "value": 0.33040935672514615,
+     "replicates": 1000,
+     "positive_shots": 86,
+     "descriptive_only": false,
+     "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
      "ci95": [
       0.22073463268365814,
       0.41441819971231736
-     ]
+     ],
+     "bootstrap_draw_counts": {
+      "valid": 1000,
+      "undefined": 0
+     }
     }
    },
    "per_kind": {
     "elm-ours": {
      "crowd_bin_recall": {
       "point": 0.8512888301387971,
+      "numerator": 3864,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.7886745018405341,
        0.902639143546046
       ],
-      "numerator": 3864,
-      "denominator": 4539
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.52,
+      "numerator": 65,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.32114839486925095,
        0.7277850877192982
       ],
-      "numerator": 65,
-      "denominator": 125
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6833333333333333,
+      "numerator": 82,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.3787776412776413,
        0.8343161574021873
       ],
-      "numerator": 82,
-      "denominator": 120
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-clock": {
      "crowd_bin_recall": {
       "point": 0.6798854373209958,
+      "numerator": 3086,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.5806443975315209,
        0.7886305714510763
       ],
-      "numerator": 3086,
-      "denominator": 4539
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.424,
+      "numerator": 53,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.2641261171797418,
        0.6271321673278039
       ],
-      "numerator": 53,
-      "denominator": 125
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.23333333333333334,
+      "numerator": 28,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.12159526547824422,
        0.5206024283935242
       ],
-      "numerator": 28,
-      "denominator": 120
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     }
    },
@@ -3285,6 +4391,9 @@
         "auprc": 0.920164332448996,
         "prevalence": 0.5668324525955859
        },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8189222156553717,
@@ -3331,6 +4440,52 @@
          0.9845864635009597
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -3362,6 +4517,9 @@
         "absent_span_alarm_rate_guard25": 0.1452991452991453,
         "absent_span_interior_alarm_rate_guard25": 0.14782608695652175
        },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8483066928925462,
@@ -3399,6 +4557,44 @@
          0.06140350877192982,
          0.23942577030812315
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -3462,6 +4658,9 @@
         "auprc": 0.266954157750611,
         "prevalence": 0.05284147557328016
        },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.1319878706199461,
@@ -3508,6 +4707,52 @@
          0.695391059628673
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -3539,6 +4784,9 @@
         "absent_span_alarm_rate_guard25": 0.043478260869565216,
         "absent_span_interior_alarm_rate_guard25": 0.0547945205479452
        },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.1574074074074074,
@@ -3576,6 +4824,44 @@
          0.0,
          0.17073170731707318
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -3646,6 +4932,9 @@
         "auprc": 0.8945385625035545,
         "prevalence": 0.45687203791469194
        },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7420903830884836,
@@ -3692,6 +4981,52 @@
          0.953107871906416
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -3723,6 +5058,9 @@
         "absent_span_alarm_rate_guard25": 0.07058823529411765,
         "absent_span_interior_alarm_rate_guard25": 0.0759493670886076
        },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7714100985221676,
@@ -3760,6 +5098,44 @@
          0.012044606999426277,
          0.1733478260869565
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -3837,55 +5213,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.09189378057302586
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.03560192308440447,
-         0.16655840829943463
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.3783633633633634,
-         0.7241379310344828
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.3486689106487148,
-         0.7084821428571427
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.358974358974359,
-         0.7291666666666666
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.03560192308440447,
-         0.16655840829943463
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -3919,47 +5312,62 @@
         "absent_span_interior_alarm_rate_guard25": 0.13043478260869565,
         "no_present_false_positive_fraction": 0.052061495457721874
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.0007264604334524628,
-         0.11977042893800618
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.046511627906976744,
-         0.2916666666666667
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.022210144927536233,
-         0.24391598915989157
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.023255813953488372,
-         0.25
-        ],
-        "no_present_false_positive_fraction": [
-         0.0007264604334524628,
-         0.11977042893800618
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }

@@ -1,9 +1,10 @@
 {
- "created": "2026-10-03T17:35:20+00:00",
+ "git": "2bb7a4ad",
+ "created": "2026-10-03T19:30:17+00:00",
  "source_script": "scripts/labeler/elm_annotation_strata.py",
- "source_script_sha256": "1dc2513144c1a123e93a2345c04e06a9473552da8dc667119e92addda175a921",
+ "source_script_sha256": "df2192d303ea4e170680c6a3fba7e4f5d1f65520209ddbe95821202c85f6dc01",
  "source_evaluation": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
- "source_evaluation_sha256": "24a89272b1bf28765d49cc234db54363284c4bbd021042156ebfd98235d2d330",
+ "source_evaluation_sha256": "385016dd464c9cedb435c26baf4260c1df5d1be992354e7a60b2d01ef3058896",
  "run": "cv2",
  "annotation_mode_definition": {
   "non_crowd_present_shots": 33,
@@ -12,7 +13,7 @@
   "ci_method": "95% percentile bootstrap of physical shots within each group, 1000 replicates, seed 20261003; the same draws are used across methods.",
   "note": "Per-ELM annotations and whole ELMing-period crowds define different occupancy targets across shots; non-crowd spans are not verified onsets."
  },
- "ci_method": "95% percentile bootstrap of physical shots within each annotation group, 1000 replicates, seed 20261003; fixed OOF thresholds.",
+ "ci_method": "95% percentile bootstrap of physical shots within each annotation group, 1000 replicates, seed 20261003; fixed OOF thresholds. Valid/undefined draws are reported; fewer than five positive-bearing shots are descriptive only and have no population-level interval.",
  "sets": {
   "bes73": {
    "shots": [
@@ -96,88 +97,151 @@
     "elm-ours": {
      "crowd_bin_recall": {
       "point": 0.8767843726521413,
+      "numerator": 2334,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.8051002111479382,
        0.9416690672687636
       ],
-      "numerator": 2334,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.48863636363636365,
+      "numerator": 43,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.3083676012461059,
        0.7358954531394988
       ],
-      "numerator": 43,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6989247311827957,
+      "numerator": 65,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.276543596161869,
        0.8706140699523053
       ],
-      "numerator": 65,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-clock": {
      "crowd_bin_recall": {
       "point": 0.6284748309541698,
+      "numerator": 1673,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.49183326567204577,
        0.7705392570665561
       ],
-      "numerator": 1673,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.4090909090909091,
+      "numerator": 36,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.22340425531914893,
        0.7333962264150943
       ],
-      "numerator": 36,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.21505376344086022,
+      "numerator": 20,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.09008783783783783,
        0.6308503836317132
       ],
-      "numerator": 20,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-elmo": {
      "crowd_bin_recall": {
       "point": 0.8523666416228399,
+      "numerator": 2269,
+      "denominator": 2662,
+      "positive_shots": 45,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.7878092204796188,
        0.9006113568544136
       ],
-      "numerator": 2269,
-      "denominator": 2662
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.6022727272727273,
+      "numerator": 53,
+      "denominator": 88,
+      "positive_shots": 18,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.38233957219251336,
        0.730813953488372
       ],
-      "numerator": 53,
-      "denominator": 88
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6344086021505376,
+      "numerator": 59,
+      "denominator": 93,
+      "positive_shots": 22,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.2665573770491803,
        0.8592592592592593
       ],
-      "numerator": 59,
-      "denominator": 93
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     }
    },
@@ -260,6 +324,9 @@
         "auprc": 0.895793432654566,
         "prevalence": 0.6243311743170937
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7803116686990571,
@@ -306,6 +373,52 @@
          0.9862993688659083
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -337,6 +450,9 @@
         "absent_span_alarm_rate_guard25": 0.18181818181818182,
         "absent_span_interior_alarm_rate_guard25": 0.18461538461538463
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7764578627767189,
@@ -375,6 +491,44 @@
          0.3333333333333333
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -409,6 +563,9 @@
         "auprc": 0.8934107429683836,
         "prevalence": 0.6243311743170937
        },
+       "positive_shots": 33,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8035433924725766,
@@ -454,6 +611,52 @@
          0.8205401647654541,
          0.9493802838131451
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -551,6 +754,9 @@
         "auprc": 0.24431097600953103,
         "prevalence": 0.04857142857142857
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.11289754656974102,
@@ -597,6 +803,52 @@
          0.7954326582184982
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -628,6 +880,9 @@
         "absent_span_alarm_rate_guard25": 0.05128205128205128,
         "absent_span_interior_alarm_rate_guard25": 0.06666666666666667
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.11841751556310129,
@@ -666,6 +921,44 @@
          0.24003448275862066
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -700,6 +993,9 @@
         "auprc": 0.1640305283217146,
         "prevalence": 0.04857142857142857
        },
+       "positive_shots": 8,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.06054018445322794,
@@ -745,6 +1041,52 @@
          0.05163882717283185,
          0.3904227896594883
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -821,6 +1163,9 @@
         "auprc": 0.8843828754747115,
         "prevalence": 0.4519927536231884
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8760906993560829,
@@ -867,6 +1212,52 @@
          0.9674237040790757
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -898,6 +1289,9 @@
         "absent_span_alarm_rate_guard25": 0.06382978723404255,
         "absent_span_interior_alarm_rate_guard25": 0.06976744186046512
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.6206071964017992,
@@ -936,6 +1330,44 @@
          0.22514423076923065
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-elmo": {
@@ -970,6 +1402,9 @@
         "auprc": 0.7888339024829611,
         "prevalence": 0.4519927536231884
        },
+       "positive_shots": 12,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.6858866206753154,
@@ -1015,6 +1450,52 @@
          0.6255182488188908,
          0.929290303962718
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -1096,55 +1577,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.07862903225806452
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.019790700980210383,
-         0.16104211322657924
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.3333333333333333,
-         0.7083333333333334
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.3333333333333333,
-         0.7083333333333334
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.34615384615384615,
-         0.7083333333333334
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.019790700980210383,
-         0.16104211322657924
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -1178,47 +1676,62 @@
         "absent_span_interior_alarm_rate_guard25": 0.15384615384615385,
         "no_present_false_positive_fraction": 0.05577956989247312
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.0,
-         0.14678300516871962
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.0,
-         0.3333333333333333
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.0,
-         0.3333333333333333
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.0,
-         0.3448275862068966
-        ],
-        "no_present_false_positive_fraction": [
-         0.0,
-         0.14678300516871962
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 879,
+         "undefined": 121
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -1255,55 +1768,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.04502688172043011
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.011617010757919525,
-         0.1026492201093711
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.31995454545454544,
-         0.6800454545454545
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.22723607038123167,
-         0.5384615384615384
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.24,
-         0.5416666666666666
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.011617010757919525,
-         0.1026492201093711
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -1461,59 +1991,101 @@
     "elm-ours": {
      "crowd_bin_recall": {
       "point": 0.8512888301387971,
+      "numerator": 3864,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.7886745018405341,
        0.902639143546046
       ],
-      "numerator": 3864,
-      "denominator": 4539
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.52,
+      "numerator": 65,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.32114839486925095,
        0.7277850877192982
       ],
-      "numerator": 65,
-      "denominator": 125
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.6833333333333333,
+      "numerator": 82,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.3787776412776413,
        0.8343161574021873
       ],
-      "numerator": 82,
-      "denominator": 120
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     },
     "elm-clock": {
      "crowd_bin_recall": {
       "point": 0.6798854373209958,
+      "numerator": 3086,
+      "denominator": 4539,
+      "positive_shots": 76,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.5806443975315209,
        0.7886305714510763
       ],
-      "numerator": 3086,
-      "denominator": 4539
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_bin_recall": {
       "point": 0.424,
+      "numerator": 53,
+      "denominator": 125,
+      "positive_shots": 25,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.2641261171797418,
        0.6271321673278039
       ],
-      "numerator": 53,
-      "denominator": 125
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      },
      "non_crowd_span_touch_recall": {
       "point": 0.23333333333333334,
+      "numerator": 28,
+      "denominator": 120,
+      "positive_shots": 33,
+      "descriptive_only": false,
+      "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
       "ci95": [
        0.12159526547824422,
        0.5206024283935242
       ],
-      "numerator": 28,
-      "denominator": 120
+      "bootstrap_draw_counts": {
+       "valid": 1000,
+       "undefined": 0
+      }
      }
     }
    },
@@ -1619,6 +2191,9 @@
         "auprc": 0.920164332448996,
         "prevalence": 0.5668324525955859
        },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8189222156553717,
@@ -1665,6 +2240,52 @@
          0.9845864635009597
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -1696,6 +2317,9 @@
         "absent_span_alarm_rate_guard25": 0.1452991452991453,
         "absent_span_interior_alarm_rate_guard25": 0.14782608695652175
        },
+       "positive_shots": 56,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.8483066928925462,
@@ -1733,6 +2357,44 @@
          0.06140350877192982,
          0.23942577030812315
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -1856,6 +2518,9 @@
         "auprc": 0.266954157750611,
         "prevalence": 0.05284147557328016
        },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.1319878706199461,
@@ -1902,6 +2567,52 @@
          0.695391059628673
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -1933,6 +2644,9 @@
         "absent_span_alarm_rate_guard25": 0.043478260869565216,
         "absent_span_interior_alarm_rate_guard25": 0.0547945205479452
        },
+       "positive_shots": 10,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.1574074074074074,
@@ -1970,6 +2684,44 @@
          0.0,
          0.17073170731707318
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2057,6 +2809,9 @@
         "auprc": 0.8945385625035545,
         "prevalence": 0.45687203791469194
        },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7420903830884836,
@@ -2103,6 +2858,52 @@
          0.953107871906416
         ]
        },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auprc": {
+         "valid": 1000,
+         "undefined": 0
+        }
+       },
        "replicates": 1000
       },
       "elm-clock": {
@@ -2134,6 +2935,9 @@
         "absent_span_alarm_rate_guard25": 0.07058823529411765,
         "absent_span_interior_alarm_rate_guard25": 0.0759493670886076
        },
+       "positive_shots": 20,
+       "descriptive_only": false,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
         "precision": [
          0.7714100985221676,
@@ -2171,6 +2975,44 @@
          0.012044606999426277,
          0.1733478260869565
         ]
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2272,55 +3114,72 @@
         "prevalence": 0.0,
         "no_present_false_positive_fraction": 0.09189378057302586
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.03560192308440447,
-         0.16655840829943463
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.3783633633633634,
-         0.7241379310344828
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.3486689106487148,
-         0.7084821428571427
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.358974358974359,
-         0.7291666666666666
-        ],
-        "auroc": [
-         NaN,
-         NaN
-        ],
-        "auprc": [
-         NaN,
-         NaN
-        ],
-        "no_present_false_positive_fraction": [
-         0.03560192308440447,
-         0.16655840829943463
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "auroc": null,
+        "auprc": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "auroc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "auprc": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       },
@@ -2354,47 +3213,62 @@
         "absent_span_interior_alarm_rate_guard25": 0.13043478260869565,
         "no_present_false_positive_fraction": 0.052061495457721874
        },
+       "positive_shots": 0,
+       "descriptive_only": true,
+       "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
        "ci95": {
-        "precision": [
-         0.0,
-         0.0
-        ],
-        "recall": [
-         NaN,
-         NaN
-        ],
-        "f1": [
-         0.0,
-         0.0
-        ],
-        "false_alarm_bin_rate": [
-         0.0007264604334524628,
-         0.11977042893800618
-        ],
-        "crowd_bin_recall": [
-         NaN,
-         NaN
-        ],
-        "non_crowd_span_touch_recall": [
-         NaN,
-         NaN
-        ],
-        "absent_span_alarm_rate": [
-         0.046511627906976744,
-         0.2916666666666667
-        ],
-        "absent_span_alarm_rate_guard25": [
-         0.022210144927536233,
-         0.24391598915989157
-        ],
-        "absent_span_interior_alarm_rate_guard25": [
-         0.023255813953488372,
-         0.25
-        ],
-        "no_present_false_positive_fraction": [
-         0.0007264604334524628,
-         0.11977042893800618
-        ]
+        "precision": null,
+        "recall": null,
+        "f1": null,
+        "false_alarm_bin_rate": null,
+        "crowd_bin_recall": null,
+        "non_crowd_span_touch_recall": null,
+        "absent_span_alarm_rate": null,
+        "absent_span_alarm_rate_guard25": null,
+        "absent_span_interior_alarm_rate_guard25": null,
+        "no_present_false_positive_fraction": null
+       },
+       "bootstrap_draw_counts": {
+        "precision": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "f1": {
+         "valid": 988,
+         "undefined": 12
+        },
+        "false_alarm_bin_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "crowd_bin_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "non_crowd_span_touch_recall": {
+         "valid": 0,
+         "undefined": 1000
+        },
+        "absent_span_alarm_rate": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "absent_span_interior_alarm_rate_guard25": {
+         "valid": 1000,
+         "undefined": 0
+        },
+        "no_present_false_positive_fraction": {
+         "valid": 1000,
+         "undefined": 0
+        }
        },
        "replicates": 1000
       }
@@ -2889,7 +3763,3506 @@
   "smoothed_candidate_differs": 15,
   "observed_training_seconds_all_folds": 3402.4476346969604,
   "estimated_serial_retrain_hours": 0.9451243429713779,
-  "smoothed_checkpoint_rescore_available": false,
-  "limitation": "Only the selected best state was saved for each fold. A smoothed-checkpoint comparison needs all 20 folds rerun on the fixed partitions; the estimate excludes queue time and artifact serialization. This audit changes no reported operating point."
+  "estimated_primary_five_fold_retrain_hours": 0.234122055305375,
+  "smoothed_checkpoint_rescore_available": true,
+  "smoothed_selection_sensitivity": {
+   "run": "cv2-smoothed",
+   "scope": "One five-fold rerun of the frozen primary partitions and recipe, with the same seed; only inner-validation checkpoint selection changes. The canonical cv2 occupancy fit remains frozen.",
+   "evaluation_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/smoothed_selection.json",
+   "evaluation_record_sha256": "90a9ce4ed9e3985411d752b38a1363fe773f8d185ef93459746ee24bea861186",
+   "status": "available"
+  },
+  "limitation": "Only the selected best state was saved for each fold. A separate five-fold sensitivity reruns the primary seed rather than reselecting states in the 20 historical folds. Estimates exclude queue time and artifact serialization. The historical diagnostic changes no canonical reported operating point."
+ },
+ "clock_boundary_identity": {
+  "definition": "Category-1 crowd review spans, inclusive 1 ms proximity to original elm-clock present-span starts/ends; all 119 review shots. The clock seeded the review, so this is dependence, not validation.",
+  "clock_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_clock/v1/edge_localized_mode_suggest_elm_clock_v1.csv",
+  "clock_source_sha256": "b5f3523133beeb90c4a3ad7ea2a7a9b75c584a98572258a65e142e2afbc83b4d",
+  "crowd_spans": 86,
+  "counts": {
+   "start_within_1ms": 48,
+   "end_within_1ms": 38,
+   "both_within_1ms": 28,
+   "same_clock_span_both_within_1ms": 27
+  },
+  "per_span": [
+   {
+    "shot": 185857,
+    "t_start_ms": 2067.0,
+    "t_end_ms": 5113.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 185866,
+    "t_start_ms": 2807.0,
+    "t_end_ms": 4466.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 185945,
+    "t_start_ms": 396.0,
+    "t_end_ms": 2113.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 185961,
+    "t_start_ms": 1404.0,
+    "t_end_ms": 5616.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 186013,
+    "t_start_ms": 547.0,
+    "t_end_ms": 3515.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 186013,
+    "t_start_ms": 3717.0,
+    "t_end_ms": 5920.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 186427,
+    "t_start_ms": 1220.0,
+    "t_end_ms": 6008.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 186569,
+    "t_start_ms": 509.0,
+    "t_end_ms": 6545.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 186945,
+    "t_start_ms": 2126.0,
+    "t_end_ms": 7616.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 187035,
+    "t_start_ms": 620.0,
+    "t_end_ms": 6043.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 187076,
+    "t_start_ms": 1023.0,
+    "t_end_ms": 3057.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 187196,
+    "t_start_ms": 1099.0,
+    "t_end_ms": 2314.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 189004,
+    "t_start_ms": 577.0,
+    "t_end_ms": 6473.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 189044,
+    "t_start_ms": 1863.0,
+    "t_end_ms": 5355.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 189061,
+    "t_start_ms": 1433.0,
+    "t_end_ms": 5575.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 189272,
+    "t_start_ms": 615.0,
+    "t_end_ms": 5018.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 189559,
+    "t_start_ms": 2222.0,
+    "t_end_ms": 2965.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 189741,
+    "t_start_ms": 305.0,
+    "t_end_ms": 5511.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190094,
+    "t_start_ms": 2078.0,
+    "t_end_ms": 5589.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190177,
+    "t_start_ms": 1126.0,
+    "t_end_ms": 1376.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190177,
+    "t_start_ms": 1457.0,
+    "t_end_ms": 2555.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190300,
+    "t_start_ms": 1607.0,
+    "t_end_ms": 2318.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190335,
+    "t_start_ms": 1466.0,
+    "t_end_ms": 2671.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190643,
+    "t_start_ms": 1256.0,
+    "t_end_ms": 2008.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 190991,
+    "t_start_ms": 943.0,
+    "t_end_ms": 2711.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 190991,
+    "t_start_ms": 3835.0,
+    "t_end_ms": 6950.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 191470,
+    "t_start_ms": 1609.0,
+    "t_end_ms": 5545.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 191677,
+    "t_start_ms": 1556.0,
+    "t_end_ms": 2458.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 192010,
+    "t_start_ms": 1770.0,
+    "t_end_ms": 3124.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 192015,
+    "t_start_ms": 1889.0,
+    "t_end_ms": 4816.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 192226,
+    "t_start_ms": 1030.0,
+    "t_end_ms": 6027.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 192232,
+    "t_start_ms": 1066.0,
+    "t_end_ms": 6021.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 192425,
+    "t_start_ms": 1059.0,
+    "t_end_ms": 3280.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 192425,
+    "t_start_ms": 3328.0,
+    "t_end_ms": 5587.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 192732,
+    "t_start_ms": 1421.0,
+    "t_end_ms": 3271.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 192914,
+    "t_start_ms": 2913.0,
+    "t_end_ms": 3494.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 192914,
+    "t_start_ms": 3608.0,
+    "t_end_ms": 5033.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 193008,
+    "t_start_ms": 1215.0,
+    "t_end_ms": 4562.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 193022,
+    "t_start_ms": 4479.0,
+    "t_end_ms": 5001.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 193276,
+    "t_start_ms": 1677.0,
+    "t_end_ms": 2189.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195016,
+    "t_start_ms": 423.0,
+    "t_end_ms": 6054.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195024,
+    "t_start_ms": 454.0,
+    "t_end_ms": 6136.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195066,
+    "t_start_ms": 382.0,
+    "t_end_ms": 6043.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195102,
+    "t_start_ms": 426.0,
+    "t_end_ms": 6064.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195111,
+    "t_start_ms": 328.0,
+    "t_end_ms": 5623.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195263,
+    "t_start_ms": 3340.0,
+    "t_end_ms": 6216.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195279,
+    "t_start_ms": 1337.0,
+    "t_end_ms": 4318.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 195646,
+    "t_start_ms": 1418.0,
+    "t_end_ms": 5006.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195959,
+    "t_start_ms": 1707.0,
+    "t_end_ms": 2682.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 195959,
+    "t_start_ms": 2774.0,
+    "t_end_ms": 4099.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 196332,
+    "t_start_ms": 1841.0,
+    "t_end_ms": 4175.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 196405,
+    "t_start_ms": 2345.0,
+    "t_end_ms": 2485.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 196405,
+    "t_start_ms": 4392.0,
+    "t_end_ms": 5038.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 196541,
+    "t_start_ms": 1060.0,
+    "t_end_ms": 4313.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 198806,
+    "t_start_ms": 1529.0,
+    "t_end_ms": 2299.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 198899,
+    "t_start_ms": 1458.0,
+    "t_end_ms": 6009.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 198971,
+    "t_start_ms": 1334.0,
+    "t_end_ms": 6622.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 199087,
+    "t_start_ms": 2243.0,
+    "t_end_ms": 5004.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 200127,
+    "t_start_ms": 1441.0,
+    "t_end_ms": 4213.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 200198,
+    "t_start_ms": 1911.0,
+    "t_end_ms": 5432.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 200320,
+    "t_start_ms": 1477.0,
+    "t_end_ms": 5108.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 200427,
+    "t_start_ms": 1826.0,
+    "t_end_ms": 2429.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 200636,
+    "t_start_ms": 1362.0,
+    "t_end_ms": 3277.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 200917,
+    "t_start_ms": 736.0,
+    "t_end_ms": 4171.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 200990,
+    "t_start_ms": 1519.0,
+    "t_end_ms": 4022.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 201395,
+    "t_start_ms": 1828.0,
+    "t_end_ms": 3147.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 201395,
+    "t_start_ms": 3574.0,
+    "t_end_ms": 5103.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 201447,
+    "t_start_ms": 924.0,
+    "t_end_ms": 2499.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 201973,
+    "t_start_ms": 2165.0,
+    "t_end_ms": 2748.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 201978,
+    "t_start_ms": 2308.0,
+    "t_end_ms": 4367.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203012,
+    "t_start_ms": 1188.0,
+    "t_end_ms": 5100.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203041,
+    "t_start_ms": 1176.0,
+    "t_end_ms": 3602.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 203132,
+    "t_start_ms": 2289.0,
+    "t_end_ms": 4628.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203470,
+    "t_start_ms": 1222.0,
+    "t_end_ms": 4991.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203521,
+    "t_start_ms": 4123.0,
+    "t_end_ms": 5334.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203629,
+    "t_start_ms": 2184.0,
+    "t_end_ms": 5090.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203719,
+    "t_start_ms": 1299.0,
+    "t_end_ms": 4210.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 203764,
+    "t_start_ms": 1278.0,
+    "t_end_ms": 4188.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203778,
+    "t_start_ms": 1314.0,
+    "t_end_ms": 4211.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203941,
+    "t_start_ms": 1468.0,
+    "t_end_ms": 2361.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 203959,
+    "t_start_ms": 1369.0,
+    "t_end_ms": 2524.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 203959,
+    "t_start_ms": 2829.0,
+    "t_end_ms": 4001.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 203959,
+    "t_start_ms": 4532.0,
+    "t_end_ms": 6054.0,
+    "start_within_1ms": false,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 204256,
+    "t_start_ms": 797.0,
+    "t_end_ms": 2081.0,
+    "start_within_1ms": false,
+    "end_within_1ms": true,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   },
+   {
+    "shot": 204530,
+    "t_start_ms": 905.0,
+    "t_end_ms": 4018.0,
+    "start_within_1ms": true,
+    "end_within_1ms": true,
+    "both_within_1ms": true,
+    "same_clock_span_both_within_1ms": true
+   },
+   {
+    "shot": 204937,
+    "t_start_ms": 1276.0,
+    "t_end_ms": 4211.0,
+    "start_within_1ms": true,
+    "end_within_1ms": false,
+    "both_within_1ms": false,
+    "same_clock_span_both_within_1ms": false
+   }
+  ],
+  "shares": {
+   "start_within_1ms": 0.5581395348837209,
+   "end_within_1ms": 0.4418604651162791,
+   "both_within_1ms": 0.32558139534883723,
+   "same_clock_span_both_within_1ms": 0.313953488372093
+  }
+ },
+ "review_non_crowd_merge_sensitivity": {
+  "definition": "Fixed interior-bin universe, OOF predictions and review-tuned thresholds. Merge non-crowd review spans across fully reviewed absent gaps <=tau (0, 100, 200, 300 ms); crowd, uncertain, not-observable and unlabelled time are barriers. At least 25 ms merged occupancy makes an originally absent bin present. No retraining or threshold selection; event counts are not inferred from crowds.",
+  "sets": {
+   "bes73": {
+    "shots": [
+     185857,
+     185866,
+     185945,
+     185961,
+     186013,
+     186636,
+     187035,
+     187328,
+     189272,
+     189324,
+     189741,
+     190637,
+     190643,
+     190695,
+     190790,
+     191382,
+     191677,
+     192003,
+     192010,
+     192015,
+     192425,
+     192432,
+     192721,
+     192732,
+     192751,
+     192914,
+     193008,
+     193022,
+     193075,
+     194155,
+     194160,
+     194445,
+     195016,
+     195024,
+     195066,
+     195102,
+     195103,
+     195111,
+     195263,
+     195279,
+     195646,
+     195959,
+     196332,
+     196405,
+     196541,
+     198806,
+     198899,
+     198971,
+     199789,
+     199790,
+     199909,
+     199921,
+     200198,
+     200385,
+     200427,
+     200636,
+     201270,
+     201494,
+     201707,
+     201973,
+     201978,
+     203012,
+     203041,
+     203132,
+     203187,
+     203470,
+     203629,
+     203941,
+     203959,
+     204233,
+     204240,
+     204243,
+     204256
+    ],
+    "n_shots": 73,
+    "bins": 6843,
+    "by_gap": {
+     "gap_0ms": {
+      "gap_ms": 0,
+      "positive_bins": 2750,
+      "added_positive_bins": 0,
+      "methods": {
+       "elm-ours": {
+        "shots": 73,
+        "counts": {
+         "tp": 2377,
+         "fp": 502,
+         "fn": 373,
+         "tn": 3591,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8256339006599513,
+         "recall": 0.8643636363636363,
+         "f1": 0.8445549831231125,
+         "false_alarm_bin_rate": 0.12264842413877351,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9413442906958666,
+         "auprc": 0.8752273777121873,
+         "prevalence": 0.40187052462370304
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7395457197632742,
+          0.8961176991683061
+         ],
+         "recall": [
+          0.7901741866205585,
+          0.9336388778515702
+         ],
+         "f1": [
+          0.7856667623548219,
+          0.8961734938617731
+         ],
+         "false_alarm_bin_rate": [
+          0.0712555720487201,
+          0.18401519131783964
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8977795482939129,
+          0.9721534073218661
+         ],
+         "auprc": [
+          0.7514780169503263,
+          0.9606530716814174
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 73,
+        "counts": {
+         "tp": 1709,
+         "fp": 371,
+         "fn": 1041,
+         "tn": 3722,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8216346153846154,
+         "recall": 0.6214545454545455,
+         "f1": 0.7076604554865424,
+         "false_alarm_bin_rate": 0.09064256046909358,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7195219234302184,
+          0.9144994290718339
+         ],
+         "recall": [
+          0.48847123910178747,
+          0.7569010047338591
+         ],
+         "f1": [
+          0.6022869457539355,
+          0.79988257241337
+         ],
+         "false_alarm_bin_rate": [
+          0.038875865936425925,
+          0.14627979393783824
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-elmo": {
+        "shots": 73,
+        "counts": {
+         "tp": 2322,
+         "fp": 443,
+         "fn": 428,
+         "tn": 3650,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8397830018083182,
+         "recall": 0.8443636363636363,
+         "f1": 0.842067089755213,
+         "false_alarm_bin_rate": 0.10823356950891766,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.918402283277436,
+         "auprc": 0.8326756912456157,
+         "prevalence": 0.40187052462370304
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7675314518788678,
+          0.8992787261655186
+         ],
+         "recall": [
+          0.7785412578843305,
+          0.892024288020887
+         ],
+         "f1": [
+          0.7893921176916634,
+          0.8849678307534709
+         ],
+         "false_alarm_bin_rate": [
+          0.06832796902059918,
+          0.1562950801106996
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8772004932548915,
+          0.9506421020958974
+         ],
+         "auprc": [
+          0.753311824432465,
+          0.8899523849577735
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_100ms": {
+      "gap_ms": 100,
+      "positive_bins": 2758,
+      "added_positive_bins": 8,
+      "methods": {
+       "elm-ours": {
+        "shots": 73,
+        "counts": {
+         "tp": 2384,
+         "fp": 495,
+         "fn": 374,
+         "tn": 3590,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8280653004515457,
+         "recall": 0.864394488759971,
+         "f1": 0.845839985808054,
+         "false_alarm_bin_rate": 0.1211750305997552,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9414483558678304,
+         "auprc": 0.8756028095434522,
+         "prevalence": 0.40303960251351745
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7446521816658465,
+          0.8985183658373045
+         ],
+         "recall": [
+          0.79064325341131,
+          0.9336883496982334
+         ],
+         "f1": [
+          0.7872469540788288,
+          0.8967747351378553
+         ],
+         "false_alarm_bin_rate": [
+          0.06977691935004306,
+          0.18284072720510267
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8977179230711521,
+          0.972248987840619
+         ],
+         "auprc": [
+          0.7521184024053288,
+          0.960901394713604
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 73,
+        "counts": {
+         "tp": 1709,
+         "fp": 371,
+         "fn": 1049,
+         "tn": 3714,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8216346153846154,
+         "recall": 0.6196519216823785,
+         "f1": 0.7064902852418354,
+         "false_alarm_bin_rate": 0.09082007343941248,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7195219234302184,
+          0.9144994290718339
+         ],
+         "recall": [
+          0.48697925832479244,
+          0.7540901725243861
+         ],
+         "f1": [
+          0.601378777194155,
+          0.7998726106984932
+         ],
+         "false_alarm_bin_rate": [
+          0.03897371185739579,
+          0.14657136319423406
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-elmo": {
+        "shots": 73,
+        "counts": {
+         "tp": 2322,
+         "fp": 443,
+         "fn": 436,
+         "tn": 3642,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8397830018083182,
+         "recall": 0.8419144307469181,
+         "f1": 0.8408473655621944,
+         "false_alarm_bin_rate": 0.10844553243574051,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9175279569482081,
+         "auprc": 0.8321633201629522,
+         "prevalence": 0.40303960251351745
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7675314518788678,
+          0.8992787261655186
+         ],
+         "recall": [
+          0.7771340672017433,
+          0.8893255561073174
+         ],
+         "f1": [
+          0.7868799451922577,
+          0.882726495338738
+         ],
+         "false_alarm_bin_rate": [
+          0.06846245092807687,
+          0.1563803226032927
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8762086685965611,
+          0.9494432589190596
+         ],
+         "auprc": [
+          0.7529162864663733,
+          0.8892991897616953
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_200ms": {
+      "gap_ms": 200,
+      "positive_bins": 2775,
+      "added_positive_bins": 25,
+      "methods": {
+       "elm-ours": {
+        "shots": 73,
+        "counts": {
+         "tp": 2390,
+         "fp": 489,
+         "fn": 385,
+         "tn": 3579,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8301493574157693,
+         "recall": 0.8612612612612612,
+         "f1": 0.8454191722674212,
+         "false_alarm_bin_rate": 0.12020648967551623,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.940961669634236,
+         "auprc": 0.8755626161293399,
+         "prevalence": 0.4055238930293731
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7475315320716871,
+          0.9009195790378464
+         ],
+         "recall": [
+          0.7874374920575613,
+          0.9298055805131277
+         ],
+         "f1": [
+          0.7868764126718911,
+          0.8959353127305061
+         ],
+         "false_alarm_bin_rate": [
+          0.06885700367644866,
+          0.18246784728830517
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8968793704904124,
+          0.971935583310698
+         ],
+         "auprc": [
+          0.7524368443812819,
+          0.9607097164767652
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 73,
+        "counts": {
+         "tp": 1709,
+         "fp": 371,
+         "fn": 1066,
+         "tn": 3697,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8216346153846154,
+         "recall": 0.6158558558558559,
+         "f1": 0.7040164778578785,
+         "false_alarm_bin_rate": 0.09119960668633235,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7195219234302184,
+          0.9144994290718339
+         ],
+         "recall": [
+          0.4838132975788985,
+          0.7500668846611177
+         ],
+         "f1": [
+          0.599152723526568,
+          0.7963774868292337
+         ],
+         "false_alarm_bin_rate": [
+          0.03922158682847963,
+          0.1474480401985272
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-elmo": {
+        "shots": 73,
+        "counts": {
+         "tp": 2322,
+         "fp": 443,
+         "fn": 453,
+         "tn": 3625,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8397830018083182,
+         "recall": 0.8367567567567568,
+         "f1": 0.8382671480144405,
+         "false_alarm_bin_rate": 0.10889872173058014,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9148828031571394,
+         "auprc": 0.8305246826301067,
+         "prevalence": 0.4055238930293731
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7675314518788678,
+          0.8992787261655186
+         ],
+         "recall": [
+          0.772395268142262,
+          0.8853089145191326
+         ],
+         "f1": [
+          0.7840264169576743,
+          0.8802397937823412
+         ],
+         "false_alarm_bin_rate": [
+          0.06858963772411472,
+          0.15732246376737513
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8725342308221687,
+          0.9470891665242108
+         ],
+         "auprc": [
+          0.7519164759482975,
+          0.8881203382466311
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_300ms": {
+      "gap_ms": 300,
+      "positive_bins": 2795,
+      "added_positive_bins": 45,
+      "methods": {
+       "elm-ours": {
+        "shots": 73,
+        "counts": {
+         "tp": 2390,
+         "fp": 489,
+         "fn": 405,
+         "tn": 3559,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8301493574157693,
+         "recall": 0.855098389982111,
+         "f1": 0.8424391963341558,
+         "false_alarm_bin_rate": 0.12080039525691699,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9392925325432909,
+         "auprc": 0.8745697501152339,
+         "prevalence": 0.40844658775390913
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7475315320716871,
+          0.9009195790378464
+         ],
+         "recall": [
+          0.7800702242305841,
+          0.9248401274126987
+         ],
+         "f1": [
+          0.7838716046062542,
+          0.8932958959114853
+         ],
+         "false_alarm_bin_rate": [
+          0.069289136834147,
+          0.18281549335035985
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8952773472371021,
+          0.9705968226808921
+         ],
+         "auprc": [
+          0.7522310606826941,
+          0.959117341276822
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 73,
+        "counts": {
+         "tp": 1709,
+         "fp": 371,
+         "fn": 1086,
+         "tn": 3677,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8216346153846154,
+         "recall": 0.6114490161001789,
+         "f1": 0.7011282051282052,
+         "false_alarm_bin_rate": 0.0916501976284585,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7195219234302184,
+          0.9144994290718339
+         ],
+         "recall": [
+          0.4793999196633094,
+          0.7459987885314309
+         ],
+         "f1": [
+          0.5966053314799336,
+          0.7930760091889048
+         ],
+         "false_alarm_bin_rate": [
+          0.03940756749189572,
+          0.14796103800673763
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-elmo": {
+        "shots": 73,
+        "counts": {
+         "tp": 2327,
+         "fp": 438,
+         "fn": 468,
+         "tn": 3610,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8415913200723327,
+         "recall": 0.8325581395348837,
+         "f1": 0.8370503597122302,
+         "false_alarm_bin_rate": 0.10820158102766798,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9139336017874946,
+         "auprc": 0.831490656859641,
+         "prevalence": 0.40844658775390913
+        },
+        "positive_shots": 53,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7686383322021125,
+          0.9012268855534022
+         ],
+         "recall": [
+          0.767388067243665,
+          0.8821708325998944
+         ],
+         "f1": [
+          0.7832190049111765,
+          0.8793814846935192
+         ],
+         "false_alarm_bin_rate": [
+          0.06754166135500848,
+          0.1572334660646638
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.8722695477475951,
+          0.9464838788867966
+         ],
+         "auprc": [
+          0.7533249937404376,
+          0.8901192370395893
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     }
+    }
+   },
+   "all119": {
+    "shots": [
+     185857,
+     185866,
+     185945,
+     185961,
+     186013,
+     186093,
+     186427,
+     186569,
+     186636,
+     186945,
+     187035,
+     187076,
+     187105,
+     187196,
+     187328,
+     189004,
+     189044,
+     189061,
+     189272,
+     189324,
+     189559,
+     189688,
+     189741,
+     189885,
+     190094,
+     190177,
+     190218,
+     190300,
+     190335,
+     190637,
+     190643,
+     190695,
+     190790,
+     190991,
+     191326,
+     191382,
+     191470,
+     191677,
+     192003,
+     192010,
+     192015,
+     192148,
+     192226,
+     192229,
+     192232,
+     192425,
+     192432,
+     192721,
+     192732,
+     192751,
+     192914,
+     193008,
+     193022,
+     193075,
+     193276,
+     194155,
+     194160,
+     194445,
+     194600,
+     194608,
+     195016,
+     195024,
+     195066,
+     195102,
+     195103,
+     195111,
+     195186,
+     195263,
+     195279,
+     195646,
+     195786,
+     195959,
+     196332,
+     196405,
+     196541,
+     198806,
+     198899,
+     198971,
+     199087,
+     199789,
+     199790,
+     199909,
+     199921,
+     200127,
+     200198,
+     200320,
+     200385,
+     200427,
+     200636,
+     200917,
+     200954,
+     200990,
+     201270,
+     201395,
+     201447,
+     201494,
+     201707,
+     201973,
+     201978,
+     203012,
+     203041,
+     203132,
+     203187,
+     203470,
+     203521,
+     203576,
+     203629,
+     203719,
+     203764,
+     203778,
+     203941,
+     203959,
+     204233,
+     204240,
+     204243,
+     204256,
+     204530,
+     204560,
+     204937
+    ],
+    "n_shots": 119,
+    "bins": 12409,
+    "by_gap": {
+     "gap_0ms": {
+      "gap_ms": 0,
+      "positive_bins": 4664,
+      "added_positive_bins": 0,
+      "methods": {
+       "elm-ours": {
+        "shots": 119,
+        "counts": {
+         "tp": 3929,
+         "fp": 873,
+         "fn": 735,
+         "tn": 6872,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8182007496876301,
+         "recall": 0.842409948542024,
+         "f1": 0.8301288823156561,
+         "false_alarm_bin_rate": 0.11271788250484184,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9411310567211514,
+         "auprc": 0.8770972997900133,
+         "prevalence": 0.3758562333789991
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7495159608852175,
+          0.8771511125786182
+         ],
+         "recall": [
+          0.7804735180057296,
+          0.8949298872565407
+         ],
+         "f1": [
+          0.7778083334360725,
+          0.87137111165181
+         ],
+         "false_alarm_bin_rate": [
+          0.0748831989780186,
+          0.15179345482547688
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.9059641156290614,
+          0.9670334677878331
+         ],
+         "auprc": [
+          0.7742874201622371,
+          0.9492208894338952
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 119,
+        "counts": {
+         "tp": 3139,
+         "fp": 486,
+         "fn": 1525,
+         "tn": 7259,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8659310344827587,
+         "recall": 0.6730274442538593,
+         "f1": 0.7573893111352394,
+         "false_alarm_bin_rate": 0.06275016139444803,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7881797667757062,
+          0.9297161094224924
+         ],
+         "recall": [
+          0.5747416798065339,
+          0.7787257647841497
+         ],
+         "f1": [
+          0.6802863478641,
+          0.8268300529629479
+         ],
+         "false_alarm_bin_rate": [
+          0.032321406955395544,
+          0.10047542599716909
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_100ms": {
+      "gap_ms": 100,
+      "positive_bins": 4673,
+      "added_positive_bins": 9,
+      "methods": {
+       "elm-ours": {
+        "shots": 119,
+        "counts": {
+         "tp": 3937,
+         "fp": 865,
+         "fn": 736,
+         "tn": 6871,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8198667221990837,
+         "recall": 0.8424994650117698,
+         "f1": 0.8310290237467018,
+         "false_alarm_bin_rate": 0.11181489141675284,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.941254059990825,
+         "auprc": 0.8774107874851207,
+         "prevalence": 0.3765815134176807
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7521182125685509,
+          0.8785906086096053
+         ],
+         "recall": [
+          0.7807813868938308,
+          0.8948184696655342
+         ],
+         "f1": [
+          0.7792214317738672,
+          0.8718482197047712
+         ],
+         "false_alarm_bin_rate": [
+          0.07379014465587362,
+          0.1507088098166273
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.9061501192185581,
+          0.9670707999392546
+         ],
+         "auprc": [
+          0.7742986627664539,
+          0.9497100024437654
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 119,
+        "counts": {
+         "tp": 3139,
+         "fp": 486,
+         "fn": 1534,
+         "tn": 7250,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8659310344827587,
+         "recall": 0.671731221913118,
+         "f1": 0.7565678476741383,
+         "false_alarm_bin_rate": 0.06282316442605998,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7881797667757062,
+          0.9297161094224924
+         ],
+         "recall": [
+          0.5738470057331944,
+          0.7770622796161838
+         ],
+         "f1": [
+          0.6792302339832589,
+          0.8262733452037307
+         ],
+         "false_alarm_bin_rate": [
+          0.03237002391590025,
+          0.10047808540882651
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_200ms": {
+      "gap_ms": 200,
+      "positive_bins": 4697,
+      "added_positive_bins": 33,
+      "methods": {
+       "elm-ours": {
+        "shots": 119,
+        "counts": {
+         "tp": 3947,
+         "fp": 855,
+         "fn": 750,
+         "tn": 6857,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8219491878384007,
+         "recall": 0.8403236108154141,
+         "f1": 0.8310348457732393,
+         "false_alarm_bin_rate": 0.1108661825726141,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9410831944907008,
+         "auprc": 0.8776000656197959,
+         "prevalence": 0.37851559352083164
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7543938774263002,
+          0.879825429671235
+         ],
+         "recall": [
+          0.7788223800408807,
+          0.8927235585340672
+         ],
+         "f1": [
+          0.779788186126948,
+          0.8714902827923624
+         ],
+         "false_alarm_bin_rate": [
+          0.07257244951481773,
+          0.14995752718616376
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.9062466186000616,
+          0.9670094664168533
+         ],
+         "auprc": [
+          0.7745630706931882,
+          0.9497162508396921
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 119,
+        "counts": {
+         "tp": 3139,
+         "fp": 486,
+         "fn": 1558,
+         "tn": 7226,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8659310344827587,
+         "recall": 0.6682989142005535,
+         "f1": 0.7543859649122807,
+         "false_alarm_bin_rate": 0.06301867219917012,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7881797667757062,
+          0.9297161094224924
+         ],
+         "recall": [
+          0.5713928805068303,
+          0.7732020811799694
+         ],
+         "f1": [
+          0.6779885462680381,
+          0.8238098452939343
+         ],
+         "false_alarm_bin_rate": [
+          0.032467027173763055,
+          0.10074694632144002
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     },
+     "gap_300ms": {
+      "gap_ms": 300,
+      "positive_bins": 4721,
+      "added_positive_bins": 57,
+      "methods": {
+       "elm-ours": {
+        "shots": 119,
+        "counts": {
+         "tp": 3947,
+         "fp": 855,
+         "fn": 774,
+         "tn": 6833,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8219491878384007,
+         "recall": 0.8360516839652616,
+         "f1": 0.8289404599390948,
+         "false_alarm_bin_rate": 0.11121227887617066,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.9400687388538513,
+         "auprc": 0.8768891544637244,
+         "prevalence": 0.3804496736239826
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7543938774263002,
+          0.879825429671235
+         ],
+         "recall": [
+          0.7756362075646401,
+          0.8884251370530561
+         ],
+         "f1": [
+          0.7775826431400236,
+          0.8701916801672254
+         ],
+         "false_alarm_bin_rate": [
+          0.07282187032407884,
+          0.1504102124640039
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.9045974521319887,
+          0.9660446205421958
+         ],
+         "auprc": [
+          0.7742918434297729,
+          0.9488691249842546
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "auroc": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "auprc": {
+          "valid": 1000,
+          "undefined": 0
+         }
+        },
+        "replicates": 1000
+       },
+       "elm-clock": {
+        "shots": 119,
+        "counts": {
+         "tp": 3139,
+         "fp": 486,
+         "fn": 1582,
+         "tn": 7202,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.8659310344827587,
+         "recall": 0.6649015039186613,
+         "f1": 0.7522166307213036,
+         "false_alarm_bin_rate": 0.06321540062434963,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN
+        },
+        "positive_shots": 86,
+        "descriptive_only": false,
+        "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+        "ci95": {
+         "precision": [
+          0.7881797667757062,
+          0.9297161094224924
+         ],
+         "recall": [
+          0.5687133919479924,
+          0.7695804681949547
+         ],
+         "f1": [
+          0.6752403943592609,
+          0.8219151185413538
+         ],
+         "false_alarm_bin_rate": [
+          0.03252894636144687,
+          0.1009333896766059
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ]
+        },
+        "bootstrap_draw_counts": {
+         "precision": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "recall": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "f1": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "false_alarm_bin_rate": {
+          "valid": 1000,
+          "undefined": 0
+         },
+         "crowd_bin_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "non_crowd_span_touch_recall": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         },
+         "absent_span_interior_alarm_rate_guard25": {
+          "valid": 0,
+          "undefined": 1000
+         }
+        },
+        "replicates": 1000
+       }
+      }
+     }
+    }
+   }
+  }
  }
 }
