@@ -270,17 +270,24 @@ def paired_difference(
     if [p.shot for p in a] != [p.shot for p in b]:
         raise ValueError("the two methods must be scored on the same shots")
 
-    def value(parts, d):
+    ranked = metric in ("auroc", "auprc")
+    per_a, per_b = (
+        (None, None)
+        if ranked
+        else (np.stack([counts(p) for p in a]), np.stack([counts(p) for p in b]))
+    )
+
+    def value(parts, d, per):
         if metric in ("auroc", "auprc"):
             truth, score = _pool(parts, d)
             fn = roc_auc if metric == "auroc" else average_precision
             return fn(truth, score)
-        total = np.stack([counts(parts[i]) for i in d]).sum(axis=0)
+        total = per[d].sum(axis=0)
         return rates(total)[metric]
 
     all_idx = np.arange(len(a))
-    point = value(a, all_idx) - value(b, all_idx)
-    reps = np.array([value(a, d) - value(b, d) for d in boot])
+    point = value(a, all_idx, per_a) - value(b, all_idx, per_b)
+    reps = np.array([value(a, d, per_a) - value(b, d, per_b) for d in boot])
     audit = bootstrap_summary(
         {metric: reps},
         n_shots=len(a),

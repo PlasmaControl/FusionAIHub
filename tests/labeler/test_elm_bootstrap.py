@@ -49,6 +49,27 @@ def test_positive_shot_count_controls_intervals_even_in_a_large_negative_set():
     assert sum(result["bootstrap_draw_counts"]["auroc"].values()) == 30
 
 
+def test_paired_hard_metric_matches_pooled_counts_for_each_shot_draw():
+    a = [_part(shot, [1, 0]) for shot in range(5)]
+    b = [_part(shot, [1, 0]) for shot in range(5)]
+    for shot, part in enumerate(b):
+        part.call = np.array([shot % 2 == 0, shot % 3 == 0])
+    boot = score.draws(5, 30)
+    expected = np.array(
+        [
+            score.rates(np.stack([score.counts(a[i]) for i in draw]).sum(axis=0))["f1"]
+            - score.rates(np.stack([score.counts(b[i]) for i in draw]).sum(axis=0))[
+                "f1"
+            ]
+            for draw in boot
+        ]
+    )
+    result = score.paired_difference(a, b, boot, "f1")
+    assert result["ci95"] == score._ci(expected)
+    assert result["value"] == pytest.approx(1 - 6 / 10)
+    assert result["bootstrap_draw_counts"] == {"valid": 30, "undefined": 0}
+
+
 def test_review_tau_merge_preserves_unknown_gaps_and_crowd_barriers():
     spans = pd.DataFrame(
         {
