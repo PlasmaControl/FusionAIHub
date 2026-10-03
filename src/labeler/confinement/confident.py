@@ -57,6 +57,19 @@ def confident_joint(
     return joint, guess
 
 
+def calibrate_joint(joint: np.ndarray, label_counts: np.ndarray) -> np.ndarray:
+    """Northcutt's calibrated joint: rows scaled to the given-label counts, whole
+    matrix scaled to their total, so that it estimates the joint of given and true
+    labels over all windows rather than over the confidently placed ones."""
+    joint = joint.astype(np.float64)
+    rows = joint.sum(axis=1, keepdims=True)
+    scaled = np.divide(
+        joint * label_counts[:, None], rows, out=np.zeros_like(joint), where=rows > 0
+    )
+    total = scaled.sum()
+    return scaled * (label_counts.sum() / total) if total > 0 else scaled
+
+
 def interval_issues(
     windows: pd.DataFrame,
     probs: np.ndarray,

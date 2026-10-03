@@ -132,21 +132,31 @@ def read_d_alpha(
     return None
 
 
-def read_beam_power(shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CORPUS):
-    """Time (ms) and the eight beams' power (W, NaN-safe sum), or None."""
+def read_beams(
+    shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CORPUS
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Time (ms) and the eight beams' power ``(8, n)`` in watts (15L, 15R, ...), or None.
+
+    The corpus is tried first, then the raw cache, then the 0D fetch's own pinj record.
+    """
     for base in (corpus, raw_dir):
         got = _h5_rows(base / f"{shot}_processed.h5", "pinj", slice(None))
         if got is not None:
-            t_ms, rows = got
-            return t_ms, np.nansum(rows, axis=0)
+            return got
     path = zerod_dir / f"{shot}.npz"
     if path.exists():
         with np.load(path) as d:
             if "pinj" in d.files:
                 grid = d["pinj"]
                 t_ms = float(d["pinj_t0_ms"]) + (np.arange(grid.shape[1]) + 0.5)
-                return t_ms, np.nansum(grid, axis=0)
+                return t_ms, grid
     return None
+
+
+def read_beam_power(shot: int, raw_dir: Path, zerod_dir: Path, corpus: Path = CORPUS):
+    """Time (ms) and the eight beams' total power (W, NaN-safe sum), or None."""
+    got = read_beams(shot, raw_dir, zerod_dir, corpus)
+    return None if got is None else (got[0], np.nansum(got[1], axis=0))
 
 
 def assemble(

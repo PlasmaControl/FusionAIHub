@@ -6,14 +6,15 @@ Gill et al. (2024) report macro F1 0.94; the first retrain on our labels
 reruns the classifier one protocol difference at a time and cumulatively, scoring every
 row the same way (per window, shot-bootstrap intervals), to attribute the gap:
 
-  a  beam gating: 150L >= 700 kW, 150R <= 200 kW (WP QH 400 kW in training) b
-  transition exclusion: 20 ms inside each interval end, 100 ms after an L-mode interval
-  c  the paper's optimiser: Adam, weight decay 1e-3, learning rates 1e-3 / 1e-5 d  a
-  per-shot check that the channels of the block carry a signal r  the paper's rows
-  (first six of the 8 x 8 array) rather than rows 1-6 g  the native 1 MHz sampling (a
-  window is 1.02 ms, not 2.05 ms) e  every curated shot with BES (fetched), not just
-  those in the corpus f  the paper's split by discharge, stratified by dominant regime,
-  72.5 / 15 / 12.5 %
+  a  beam gating: 150L >= 700 kW, 150R <= 200 kW (400 kW for WPQH in training)
+  b  transition exclusion: 20 ms inside each interval end, 100 ms after an L-mode
+     interval
+  c  the paper's optimiser: Adam, weight decay 1e-3, learning rates 1e-3 / 1e-5
+  d  a per-shot check that the channels of the block carry a signal
+  r  the paper's rows (first six of the 8 x 8 array) rather than rows 1-6
+  g  the native 1 MHz sampling (a window is 1.02 ms, not 2.05 ms)
+  e  every curated shot with BES (fetched), not just those in the corpus
+  f  the paper's split by discharge, stratified by dominant regime, 72.5 / 15 / 12.5 %
 
 The ROWS table below names each configuration. Stages::
 
@@ -70,21 +71,17 @@ class Row:
     name: str
     label: str
     data: str = "500k"  # sampling rate of the features: 500k (corpus) or 1m (native)
-    shots: str = (
-        "corpus"  # corpus: the shots the corpus holds BES for; all: every fetched
-    )
-    rows: tuple[int, int] = (
-        1,
-        7,
-    )  # rows of the 8 x 8 array: the first retrain used 1-6
+    # corpus: the shots the corpus holds BES for; all: every fetched shot
+    shots: str = "corpus"
+    # rows [lo, hi) of the 8 x 8 array: the first retrain used rows 1-6
+    rows: tuple[int, int] = (1, 7)
     gate: bool = False
     transition_ms: float = 0.0
     buildup_ms: float = 0.0
     layout: bool = False
     optimiser: str = "ours"
-    protocol: str = (
-        "cv5"  # cv5: shot-grouped 5-fold; paper: stratified 72.5/15/12.5 splits
-    )
+    # cv5: shot-grouped 5-fold; paper: stratified 72.5 / 15 / 12.5 % splits
+    protocol: str = "cv5"
 
 
 def _chain() -> dict[str, Row]:

@@ -95,3 +95,13 @@ def test_interval_issues_flags_the_interval_that_disagrees():
     out = confident.interval_issues(frame, probs)
     assert out.set_index("interval").flagged.to_dict() == {0: False, 1: False, 2: True}
     assert out.set_index("interval").other[2] == "L"
+
+
+def test_calibrated_joint_keeps_label_counts_and_total():
+    joint = np.array([[8, 2], [0, 5]])
+    counts = np.array([20, 5])
+    cal = confident.calibrate_joint(joint, counts)
+    assert cal.sum() == pytest.approx(25.0)
+    assert cal.sum(axis=1) == pytest.approx([20.0, 5.0])
+    assert cal[0, 1] / cal[0].sum() == pytest.approx(0.2)
+    assert confident.calibrate_joint(np.zeros((2, 2)), counts).sum() == 0.0
