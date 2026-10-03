@@ -42,12 +42,15 @@ def test_crashes_and_train_with_point_and_span_attrs():
     assert all(r.attrs["inversion_rho"] is None for r in found.crashes)
 
 
-def test_qmin_veto_and_missing_geometry_do_not_fabricate_radius():
+def test_qmin_conflict_and_missing_geometry_do_not_fabricate_radius():
     t, y = synthetic()
     qmin = (np.array([0.0, 0.4]), np.array([1.2, 1.2]))
     found = detect(t, y, shot=1, qmin=qmin)
-    assert not found.crashes
-    assert found.rejected["qmin_above_one"] == 4
+    assert len(found.crashes) == 4
+    assert not found.intervals
+    assert len(found.uncertain_intervals) == 1
+    assert all(r.attrs["inversion_rho"] is None for r in found.crashes)
+    assert all(r.attrs["state"] == "uncertain" for r in found.crashes)
 
 
 def test_global_drop_and_channel_noise_rejected():
@@ -125,9 +128,9 @@ def test_presence_grid_does_not_depend_on_native_clock_roundoff():
 
 @pytest.mark.parametrize(
     "surface,reason",
-    [(0.25, None), (np.nan, "no_q1_surface"), (0.8, "q1_radius_mismatch")],
+    [(0.25, None), (np.nan, "no_q1_surface"), (0.8, "calibrated_direction")],
 )
-def test_calibrated_radius_acceptance_and_q1_vetoes(surface, reason):
+def test_calibrated_radius_acceptance_and_q1_conflicts(surface, reason):
     t, y = synthetic()
     positions = np.array([0.8, 0.7, 0.04, 0.08, 0.16, 0.36, 0.49, 0.64])
     psi = np.repeat(positions[:, None], 2, axis=1)
@@ -142,6 +145,11 @@ def test_calibrated_radius_acceptance_and_q1_vetoes(surface, reason):
         assert len(found.crashes) == 4
         assert found.crashes[0].attrs["inversion_rho"] == pytest.approx(np.sqrt(0.26))
         assert found.crashes[0].attrs["q1_rho"] == 0.5
+    elif reason == "no_q1_surface":
+        assert len(found.crashes) == 4
+        assert not found.intervals
+        assert len(found.uncertain_intervals) == 1
+        assert reason in found.uncertain_intervals[0].attrs["uncertainty_reasons"]
     else:
         assert not found.crashes
         assert found.rejected[reason] == 4
