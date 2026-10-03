@@ -1,0 +1,138 @@
+{
+  "git_sha": "21183f0b664bd95ca15cc50dd10032b3240580f7",
+  "git_dirty": true,
+  "source_sha256": {
+    "src/labeler/events/review/video.py": "0b6aed491ece15f9e1a5ad22a19f217d6b35f967dd9851a5260ae71b0fcdd1df",
+    "src/labeler/events/review/detachment.py": "421f3ae7b50de2c5b17a46643ed08c0889538323b3e365797d1d5bb646d75fb2",
+    "src/labeler/events/panels/detachment.py": "3e388532dde6037a2d4021485e1a1397d62822a9a3a8b8bcb2cef9aedecdb4be",
+    "tests/labeler/test_review_detachment.py": "84887b890e4fd8574ea6d1613047279648673b8818d11b85c72c4fe6c6664f3a",
+    "tests/labeler/test_review_detachment_browser.py": "4680c5fc589217baa7745aaccab2480ba21a65fcaa02cd58e56b2152f5a38845",
+    "scripts/labeler/detachment_review_demo.py": "cdb5ec14e2551df43cd5c5eea094df931da8021ae160901350d84645a62e0405",
+    "src/labeler/events/interval_tables.py": "928010ef1d1bd7ee89d7c917cf799abd5efb0b960fae1d07815f451644ca8037",
+    "src/labeler/events/panels/__init__.py": "64f66baf3573fbe05f38fbdf5e693c297c3efecbeea5c0dae44f0c02f7b44f65",
+    "src/labeler/events/review/build.py": "e20fc61d3a55e6f76c6cb861c0cda20991a378cf6b0670286b6d997a3f21c085",
+    "src/labeler/events/review/rows.py": "955da6710257280bfdac0db5a140649125a936d3ce4c6f465588eb2709adc37b",
+    "src/labeler/events/ui/app.py": "ac8b5c1f1faa3438ad229963577988f3e8bc36eb4a4cc6e4e49c86101ac5d207",
+    "tests/labeler/test_review_build.py": "3d676c6e948d7f32591207ef5b4aa67ee5c1435385fa90b232c9a98767146293",
+    "tests/labeler/test_events_ui.py": "777c8fd22fe15120c0f3b99350716dd0e765c71a36f43587d93dedbbeae0b037",
+    "tests/labeler/test_review_versions.py": "0301edff143818435f020f93a00e82ac9079c7f42b78a6dd87ea954c4b804f06",
+    "src/labeler/events/ui/static/app.js": "97463872f86272a891b380e6effff2a0027b02f46c92dd59a38a121db7151cca",
+    "tests/labeler/review_browser.mjs": "5746ac32ea5fd0b7940847272a1615e2a87cc7e1430c4d2d193d60f9e406765d"
+  },
+  "checks": [
+    {
+      "command": [
+        "bash",
+        "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/pt.sh",
+        "/scratch/gpfs/nc1514/FusionAIHub-r4-detach-ui",
+        "tests/labeler/test_review_detachment.py",
+        "tests/labeler/test_review_detachment_browser.py",
+        "tests/labeler/test_review_build.py",
+        "tests/labeler/test_review_rows.py",
+        "tests/labeler/test_review_panel_rows.py",
+        "tests/labeler/test_review_labels.py",
+        "tests/labeler/test_interval_tables.py",
+        "tests/labeler/test_events_ui.py",
+        "tests/labeler/test_review_versions.py",
+        "tests/labeler/test_review_page.py",
+        "tests/labeler/test_review_browser.py",
+        "tests/labeler/test_review_browser_api1.py",
+        "tests/labeler/test_review_browser_race.py",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--junitxml=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/detach-ui/review-verification-8af4bhui/pytest.xml"
+      ],
+      "returncode": 0,
+      "stdout_tail": "........................................................................ [ 33%]\n........................................................................ [ 66%]\n........................................................................ [100%]\n216 passed in 29.87s\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "pixi",
+        "run",
+        "--frozen",
+        "--no-install",
+        "--manifest-path",
+        "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
+        "-e",
+        "labelmaker",
+        "ruff",
+        "check",
+        "src/labeler/events/review/video.py",
+        "src/labeler/events/review/detachment.py",
+        "src/labeler/events/panels/detachment.py",
+        "tests/labeler/test_review_detachment.py",
+        "tests/labeler/test_review_detachment_browser.py",
+        "scripts/labeler/detachment_review_demo.py",
+        "src/labeler/events/interval_tables.py",
+        "src/labeler/events/panels/__init__.py",
+        "src/labeler/events/review/build.py",
+        "src/labeler/events/review/rows.py",
+        "src/labeler/events/ui/app.py",
+        "tests/labeler/test_review_build.py",
+        "tests/labeler/test_events_ui.py",
+        "tests/labeler/test_review_versions.py"
+      ],
+      "returncode": 0,
+      "stdout_tail": "All checks passed!\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "pixi",
+        "run",
+        "--frozen",
+        "--no-install",
+        "--manifest-path",
+        "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
+        "-e",
+        "labelmaker",
+        "ruff",
+        "format",
+        "--check",
+        "src/labeler/events/review/video.py",
+        "src/labeler/events/review/detachment.py",
+        "src/labeler/events/panels/detachment.py",
+        "tests/labeler/test_review_detachment.py",
+        "tests/labeler/test_review_detachment_browser.py",
+        "scripts/labeler/detachment_review_demo.py"
+      ],
+      "returncode": 0,
+      "stdout_tail": "6 files already formatted\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "node",
+        "--check",
+        "src/labeler/events/ui/static/app.js"
+      ],
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "node",
+        "--check",
+        "tests/labeler/review_browser.mjs"
+      ],
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    }
+  ],
+  "pytest": [
+    {
+      "name": "pytest",
+      "errors": "0",
+      "failures": "0",
+      "skipped": "0",
+      "tests": "216",
+      "time": "29.702",
+      "timestamp": "2026-10-03T08:31:57.784089-04:00",
+      "hostname": "stellar-vis2.princeton.edu"
+    }
+  ]
+}
