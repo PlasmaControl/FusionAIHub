@@ -92,7 +92,10 @@ def test_the_source_is_read_per_shot_and_point_events_are_ignored(event_dir):
 def test_rwm_export_reader_round_trip_keeps_unassessed_time_and_evidence(tmp_path):
     from labeler.rwm.labels import window_rows
 
-    tiers = {0: "assumed_absent", 1: "conventional_weak", 4: "unassessed"}
+    tiers = {
+        0: "assumed_absent", 1: "onset_point_minimal",
+        2: "onset_window_uncertain", 4: "unassessed",
+    }
     exported = pd.DataFrame(
         [
             [shot, category, a, b, "", attrs_text({
@@ -110,18 +113,23 @@ def test_rwm_export_reader_round_trip_keeps_unassessed_time_and_evidence(tmp_pat
     restored_rows = label.rows(156785)
     assert [row[:4] for row in restored_rows] == [
         [156785, 0, 444, 756], [156785, 4, 756, 836],
-        [156785, 1, 836, 856], [156785, 4, 856, 4997],
+        [156785, 2, 836, 856], [156785, 1, 856, 866],
+        [156785, 4, 866, 4997],
     ]
     restored = pd.DataFrame(restored_rows, columns=WITH_ATTRS)
     assert restored["attrs"].tolist() == exported["attrs"].tolist()
-    # Probe the review's reported failure times, the weak window, and late time.
-    for t, expected in [(500, 0), (800, 4), (840, 1), (900, 4), (4996, 4)]:
+    # Probe both half-open onset windows and the unassessed time after them.
+    for t, expected in [
+        (500, 0), (800, 4), (836, 2), (840, 2), (855.9, 2),
+        (856, 1), (860, 1), (865.9, 1), (866, 4), (900, 4), (4996, 4),
+    ]:
         covering = restored[(restored.t_start <= t) & (t < restored.t_end)]
         assert covering.category.tolist() == [expected]
     assert label.as_json()["attrs"] == [
         {"evidence_tier": "assumed_absent", "coverage_verified": False},
         {"evidence_tier": "unassessed", "coverage_verified": False},
-        {"evidence_tier": "conventional_weak", "coverage_verified": False},
+        {"evidence_tier": "onset_window_uncertain", "coverage_verified": False},
+        {"evidence_tier": "onset_point_minimal", "coverage_verified": False},
         {"evidence_tier": "unassessed", "coverage_verified": False},
     ]
 

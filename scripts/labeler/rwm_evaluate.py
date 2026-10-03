@@ -11,7 +11,6 @@ nnPU is excluded because its earlier development used an outer evaluation fold.
 from __future__ import annotations
 
 import argparse
-import json
 import re
 import sys
 from datetime import UTC, datetime
@@ -29,6 +28,11 @@ from labeler.config import Paths
 from labeler.events import rwm
 from labeler.rwm import data, features, labels, metrics
 from labeler.rwm import evaluate as ev
+from labeler.rwm.records import (
+    evaluation_details_path,
+    load_evaluation,
+    write_evaluation,
+)
 
 # DUSBRADIAL is zero on most 2014 traces and flagged corrupted on 2018 Hanson shots.
 ALL = tuple(f for f in features.FEATURES if f != "lock_v")
@@ -66,7 +70,10 @@ def clean(value):
 def factory(config):
     if config["kind"] == "brf":
         return lambda seed: ev.Brf(
-            config["columns"], use_comparison=False, seed=seed, **FOREST
+            config["columns"],
+            use_comparison=config.get("comparison", False),
+            seed=seed,
+            **FOREST,
         )
     return lambda seed: ev.Rule(config["column"], binary=config.get("binary", False))
 
@@ -474,6 +481,11 @@ def main() -> None:
     parser.add_argument("--workers", type=int, default=5)
     parser.add_argument("--only", nargs="*", choices=list(CONFIGS))
     parser.add_argument(
+        "--compact-saved",
+        action="store_true",
+        help="move saved shot details externally without rescoring or fitting",
+    )
+    parser.add_argument(
         "--rescore-saved",
         action="store_true",
         help="replay predictions and fold rules from --out without refitting or tuning",
@@ -485,13 +497,26 @@ def main() -> None:
     if not 1 <= args.workers <= 8:
         parser.error("workers must be between 1 and 8")
     paths = Paths.from_env()
+    details_path = evaluation_details_path(
+        args.out,
+        paths.root / "round4/rwm",
+        canonical_summary=REPO / "outputs/labeler/rwm/evaluation.json",
+    )
+    if args.compact_saved:
+        if args.rescore_saved or args.only:
+            parser.error("--compact-saved cannot be combined with scoring options")
+        write_evaluation(
+            load_evaluation(args.out, details=True), args.out, details_path
+        )
+        print(f"compacted {args.out}; complete record at {details_path}")
+        return
     slices_path = args.slices or paths.root / "round4" / "rwm" / "slices.parquet"
     names = args.only or list(CONFIGS)
     if "rwm-brf" in names and "rwm-rule-elapsed-time" not in names:
         names = [*names, "rwm-rule-elapsed-time"]
     if args.rescore_saved and args.only:
         parser.error("--rescore-saved requires the complete saved configuration set")
-    saved_record = json.loads(args.out.read_text()) if args.rescore_saved else None
+    saved_record = load_evaluation(args.out) if args.rescore_saved else None
     if args.rescore_saved and not isinstance(saved_record, dict):
         parser.error("saved replay requires an evaluation object; fitting is forbidden")
     if saved_record is not None:
@@ -667,10 +692,7 @@ def main() -> None:
         "screen_audit": screen,
         "onset_physics": physics,
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(
-        json.dumps(clean(record), indent=2, default=float, allow_nan=False) + "\n"
-    )
+    write_evaluation(clean(record), args.out, details_path)
     print(f"wrote {args.out}")
 
 

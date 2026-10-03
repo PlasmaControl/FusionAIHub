@@ -19,6 +19,7 @@ import rwm_evaluate as baseline
 from labeler.config import Paths
 from labeler.rwm import evaluate as ev
 from labeler.rwm import labels, metrics
+from labeler.rwm.records import load_evaluation
 
 
 def main():
@@ -39,8 +40,8 @@ def main():
         s: sorted(target.get(s, []) + other.get(s, []))
         for s in set(target) | set(other)
     }
-    reference = json.loads(
-        (baseline.REPO / "outputs/labeler/rwm/evaluation.json").read_text()
+    reference = load_evaluation(
+        baseline.REPO / "outputs/labeler/rwm/evaluation.json"
     )["configs"]["rwm-brf"]
     original, original_alarms, _ = baseline.replay(reference, target, every)
     original_groups = ev.shot_records(original, original_alarms, target)

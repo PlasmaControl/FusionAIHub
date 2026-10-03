@@ -22,6 +22,8 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+from labeler.rwm.records import load_evaluation
+
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 SCORE_COLOR, BETA_COLOR = "#0072B2", "#D55E00"
@@ -29,7 +31,7 @@ WINDOW_MS = (-800.0, 600.0)
 
 
 def main():
-    record = json.loads((OUT / "evaluation.json").read_text())
+    record = load_evaluation(OUT / "evaluation.json")
     paths_root = Path(os.environ["LABELER_ROOT"])
     out_dir = paths_root / "round4" / "rwm"
     prediction_path = Path(record["configs"]["rwm-brf"]["predictions"])
