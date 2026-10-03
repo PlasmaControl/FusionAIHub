@@ -1,6 +1,6 @@
 {
   "scope": "cohort_plus_review",
-  "cached_records_only": false,
+  "cached_records_only": true,
   "requested_shots": [
     185805,
     185835,
@@ -1102,13 +1102,13 @@
     "radius_units": "sqrt(normalized poloidal flux), only if calibrated",
     "sxr_use": "coverage recorded only; no corroboration claim"
   },
-  "seconds": 931.1,
+  "seconds": 0.7,
   "source_records": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
   "signals": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/signals",
   "state_seconds": {
     "present": 160.2539962091065,
-    "absent": 56.66579865954036,
-    "uncertain": 2079.504250808219,
+    "absent": 50.16889881322797,
+    "uncertain": 2086.001150654531,
     "unassessed": 356.9601915559169
   },
   "uncertain_intervals": 12961,

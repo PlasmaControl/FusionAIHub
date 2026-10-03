@@ -16,11 +16,55 @@ These diagnostic counts describe train/candidate metadata. CSV state spans come 
 
 | Fixed split | Present (s) | Absent (s) | Uncertain (s) | Unassessed (s) |
 |---|---:|---:|---:|---:|
-| train | 127.089 | 48.677 | 1673.943 | 272.849 |
-| val | 18.616 | 1.929 | 202.798 | 41.487 |
-| test | 14.548 | 6.059 | 202.764 | 42.625 |
+| train | 127.089 | 44.475 | 1678.145 | 272.849 |
+| val | 18.616 | 1.454 | 203.273 | 41.487 |
+| test | 14.548 | 4.240 | 204.583 | 42.625 |
 
 Source: `outputs/labeler/sawtooth/fix2/data_summary.json` → `splits.<split>.state_seconds`.
+
+## State policy before and after
+
+Absence requires candidate-free support within ±1.5 maximum periods and a recorded core-ECE relaxation test with no periodic pattern. Stable significant negative core edges protect their entire phase without the positive train's period bounds or crossing an observability gap. Undetected ambiguous support stays uncertain. This is a conservative research negative-label policy, not expert-validated absence.
+
+| Scope / run | Present (s) | Absent (s) | Uncertain (s) | Unassessed (s) | Absent in <300 ms state holes (s) | Absent between candidate spans (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| cohort / before | 33.312 | 1929.254 | 364.139 | 326.679 | 291.034 | 290.996 |
+| cohort / after | 160.254 | 50.169 | 2086.001 | 356.960 | 7.872 | 0.000 |
+| population / before | 1225.299 | 37419.786 | 9112.752 | 34380.014 | 6710.258 | 6709.009 |
+| population / after | 5496.152 | 905.902 | 40897.400 | 34838.397 | 155.385 | 0.000 |
+
+Candidate holes are gaps <300 ms between merged detected present/uncertain candidate spans. Canonical state holes also include tested quiet spans flanked by default uncertainty from context/noise limits; both definitions are reported explicitly.
+
+Source: `outputs/labeler/sawtooth/fix2/state_transition_audit.json` → `scopes`.
+Source: `outputs/labeler/sawtooth/fix2/cohort_phase_refinement.json` → `changed_shots`.
+Source: `outputs/labeler/sawtooth/fix2/population_phase_refinement.json` → `changed_shots`.
+
+Population: 16909 corpus files inspected; 13648 processed records, 144149 diagnostic crash points and 28714 definite train candidates. 3261 read failures are excluded from label truth. Processed records can have no observable support; those bins are unassessed. The same frozen rule applies to cohort and population, with different evidence availability.
+
+Source: `outputs/labeler/sawtooth/fix2/population_labels.json`.
+
+Previously processed shots now excluded: [186208, 186866]; their screened ECE lacks enough coherent physical core channels. These failures supply no training or scoring truth.
+
+Source: `outputs/labeler/sawtooth/fix2/population_labels.json` → `errors`.
+
+EFIT01 availability: 1,212/13,648 population shots versus 452/500 cohort shots. The prior run had 1,213/13,650 versus 452/500; equality of the rule does not give equality of equilibrium evidence.
+
+Source: `outputs/labeler/sawtooth/fix2/population_labels.json` → `q_sources`.
+Source: `outputs/labeler/sawtooth/fix2/cohort_labels.json` → `q_sources`.
+Source: `outputs/labeler/sawtooth/fix/population_labels.json` → `q_sources`.
+Source: `outputs/labeler/sawtooth/fix/cohort_labels.json` → `q_sources`.
+
+## Nominal geometry coverage and q=1 comparison
+
+Same-shot RF metadata and field/axis support determine nominal R. Other shots use a per-shot hottest physical channel proxy; their radii are null. These comparisons remain physically unvalidated.
+
+| Scope | Mapped shots | Paired inversion / q=1 crashes | Median R difference (m) | Maximum absolute difference (m) |
+|---|---:|---:|---:|---:|
+| cohort | 4 | 17 | -0.084 | 0.207 |
+| population | 10 | 52 | 0.014 | 0.207 |
+
+Source: `outputs/labeler/sawtooth/fix2/population_labels.json` → `radius_geometry_counts; q1_major_radius_comparison`.
+Source: `outputs/labeler/sawtooth/fix2/cohort_labels.json` → `radius_geometry_counts; q1_major_radius_comparison`.
 
 ## Old rule and physics labels against anchored expert spans
 
@@ -56,8 +100,8 @@ The read-only `heuristics.sawtooth_events` rule and the physics labels both ran 
 | Crash metric, ±2 ms | Value [95% shot-bootstrap CI] |
 |---|---:|
 | precision | 0.099 [0.078, 0.129] |
-| recall | 0.104 [0.081, 0.130] |
-| f1 | 0.101 [0.079, 0.129] |
+| recall | 0.106 [0.083, 0.132] |
+| f1 | 0.102 [0.080, 0.130] |
 
 Source: `outputs/labeler/sawtooth/fix2/validation.json` → `legacy_agreement`.
 
@@ -76,13 +120,13 @@ Each whole shot belongs to one outer fold. Inner selection shots from that fold'
 
 | Model | Crash F1, ±1 ms | Crash F1, ±2 ms | Bin AUROC | Bin AUPRC | Bin F1 |
 |---|---:|---:|---:|---:|---:|
-| saw-hl3 | 0.854 [0.809, 0.893] | 0.855 [0.809, 0.893] | 0.705 [0.607, 0.795] | 0.805 [0.731, 0.877] | 0.883 [0.844, 0.913] |
-| saw-ours | 0.822 [0.790, 0.850] | 0.828 [0.797, 0.853] | 0.986 [0.977, 0.993] | 0.993 [0.989, 0.997] | 0.978 [0.964, 0.988] |
+| saw-hl3 | 0.852 [0.805, 0.891] | 0.853 [0.807, 0.892] | 0.753 [0.658, 0.834] | 0.849 [0.770, 0.912] | 0.897 [0.862, 0.926] |
+| saw-ours | 0.834 [0.802, 0.862] | 0.836 [0.805, 0.863] | 0.985 [0.974, 0.994] | 0.993 [0.988, 0.998] | 0.976 [0.961, 0.987] |
 
 | Model | Assessed bins | Observable bins | Uncertain bins | Unassessed bins |
 |---|---:|---:|---:|---:|
-| saw-hl3 | 87868 | 924838 | 836970 | 136353 |
-| saw-ours | 87868 | 924838 | 836970 | 136353 |
+| saw-hl3 | 85767 | 924838 | 839071 | 136353 |
+| saw-ours | 85767 | 924838 | 839071 | 136353 |
 
 Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `Tokamak-SI`.
 
@@ -103,16 +147,16 @@ Model span scores use all known observable bins; the anchored annotations supply
 
 | Model | Shot | Observable reviewed bins | AUROC | AUPRC | Precision | Recall | F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| saw-hl3 | 186636 | 2341 | 0.020 | 0.228 | 0.387 | 1.000 | 0.558 |
-| saw-hl3 | 189324 | 2798 | 0.139 | 0.325 | 0.489 | 1.000 | 0.656 |
-| saw-hl3 | 190637 | 2986 | 0.172 | 0.534 | 0.027 | 0.010 | 0.014 |
-| saw-ours | 186636 | 2341 | 0.751 | 0.535 | 0.599 | 0.812 | 0.689 |
-| saw-ours | 189324 | 2798 | 0.754 | 0.658 | 0.586 | 0.971 | 0.731 |
-| saw-ours | 190637 | 2986 | 0.660 | 0.723 | 0.808 | 0.539 | 0.646 |
+| saw-hl3 | 186636 | 2341 | 0.036 | 0.230 | 0.387 | 1.000 | 0.558 |
+| saw-hl3 | 189324 | 2798 | 0.222 | 0.349 | 0.489 | 1.000 | 0.656 |
+| saw-hl3 | 190637 | 2986 | 0.167 | 0.523 | 0.032 | 0.012 | 0.017 |
+| saw-ours | 186636 | 2341 | 0.625 | 0.457 | 0.433 | 0.503 | 0.465 |
+| saw-ours | 189324 | 2798 | 0.728 | 0.634 | 0.593 | 0.971 | 0.737 |
+| saw-ours | 190637 | 2986 | 0.722 | 0.806 | 0.831 | 0.763 | 0.796 |
 
 Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `Tokamak-SI.<model>.expert.by_shot`.
 
-saw-hl3 pooled expert AUROC is 0.147, below chance. This anchored-span ranking result supplies no independent physical validation despite its out-of-fold agreement with algorithmic labels.
+saw-hl3 pooled expert AUROC is 0.159, below chance. This anchored-span ranking result supplies no independent physical validation despite its out-of-fold agreement with algorithmic labels.
 
 Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `Tokamak-SI.saw-hl3.expert.presence.auroc`.
 
@@ -122,19 +166,23 @@ saw-hl3 ranks the anchored span targets below chance on shots 186636, 189324, 19
 
 | System / dataset | Three-class window accuracy [95% CI] | Macro-F1 [95% CI] |
 |---|---:|---:|
-| Adapted saw-hl3 / unvalidated DIII-D labels | 0.601 [0.534, 0.667] | 0.576 [0.506, 0.643] |
-| Fit-chosen majority / same DIII-D windows | 0.554 [0.472, 0.629] | 0.238 [0.214, 0.257] |
-| Observed majority class 2 / same DIII-D windows | 0.554 [0.472, 0.629] | 0.238 [0.214, 0.257] |
+| Adapted saw-hl3 / unvalidated DIII-D labels | 0.651 [0.586, 0.708] | 0.626 [0.554, 0.686] |
+| Fit-chosen majority / same DIII-D windows | 0.568 [0.486, 0.643] | 0.241 [0.218, 0.261] |
+| Observed majority class 2 / same DIII-D windows | 0.568 [0.486, 0.643] | 0.241 [0.218, 0.261] |
 | OuYang real time / HL-3 | 0.922 stated; 0.835 count-derived | not reported |
 | OuYang offline / HL-3 | 0.956 stated; 0.907 count-derived | not reported |
+
+Classification covers 85,788 20 ms windows at 2 ms hops, scored on observable & algorithm-assessed window centers. Per-fold fitting period boundaries are [40.64999903840272, 38.44999909044466, 38.599999086896375] ms.
+
+Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `Tokamak-SI.saw-hl3.three_class_window_protocol`.
 
 Confusion rows are algorithmic truth; columns are predictions. Classes are absent (0), short-period (1), long-period (2); the period boundary is fitted on each training fold.
 
 | Truth class | Predicted 0 | Predicted 1 | Predicted 2 | Recall |
 |---|---:|---:|---:|---:|
-| 0 | 12884 | 3110 | 8346 | 0.529 |
-| 1 | 878 | 9561 | 4413 | 0.644 |
-| 2 | 8467 | 9810 | 30419 | 0.625 |
+| 0 | 11692 | 3308 | 7240 | 0.526 |
+| 1 | 271 | 11577 | 3004 | 0.779 |
+| 2 | 4095 | 12019 | 32582 | 0.669 |
 
 Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `Tokamak-SI.saw-hl3.three_class_*`.
 
@@ -148,12 +196,12 @@ Source: `outputs/labeler/sawtooth/fix2/benchmark.json` → `legacy`.
 
 | Model | Fold | Fit / selection shots | Best / completed epochs | Presence threshold | Crash threshold | Derivative z |
 |---|---:|---:|---:|---:|---:|---:|
-| saw-hl3 | 0 | 213 / 53 | 4 / 12 | 0.050 | 0.050 | 20.000 |
-| saw-hl3 | 1 | 214 / 53 | 4 / 12 | 0.150 | 0.050 | 20.000 |
-| saw-hl3 | 2 | 214 / 53 | 1 / 9 | 0.200 | 0.050 | 17.000 |
-| saw-ours | 0 | 213 / 53 | 14 / 22 | 0.500 | 0.900 | 0.000 |
-| saw-ours | 1 | 214 / 53 | 10 / 18 | 0.300 | 0.950 | 0.000 |
-| saw-ours | 2 | 214 / 53 | 18 / 26 | 0.750 | 0.950 | 0.000 |
+| saw-hl3 | 0 | 213 / 53 | 2 / 10 | 0.050 | 0.450 | 20.000 |
+| saw-hl3 | 1 | 214 / 53 | 8 / 16 | 0.100 | 0.450 | 20.000 |
+| saw-hl3 | 2 | 214 / 53 | 1 / 9 | 0.350 | 0.100 | 17.000 |
+| saw-ours | 0 | 213 / 53 | 20 / 28 | 0.950 | 0.950 | 0.000 |
+| saw-ours | 1 | 214 / 53 | 12 / 20 | 0.150 | 0.950 | 0.000 |
+| saw-ours | 2 | 214 / 53 | 12 / 20 | 0.450 | 0.950 | 0.000 |
 
 saw-hl3 fold 0: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted. saw-hl3 fold 1: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted. saw-hl3 fold 2: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted. saw-ours fold 0: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted. saw-ours fold 1: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted. saw-ours fold 2: Tesla V100S-PCIE-32GB; inner selection loss patience exhausted.
 

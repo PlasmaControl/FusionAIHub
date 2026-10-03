@@ -401,6 +401,22 @@ def render_models(lines, benchmark, benchmark_path):
                     f"{number(row.get('accuracy_from_counts'))} count-derived | "
                     "not reported |"
                 )
+        if "three_class_window_accuracy" in baseline:
+            protocol = baseline["three_class_window_protocol"]
+            lines += [
+                "",
+                (
+                    f"Classification covers {baseline['three_class']['windows']:,} "
+                    f"{protocol['window_ms']} ms windows at "
+                    f"{protocol['hop_ms']} ms hops, scored on "
+                    f"{protocol['scoring_support']}. Per-fold fitting period "
+                    f"boundaries are {protocol['class_boundaries_ms_by_fold']} ms."
+                ),
+                "",
+                source(
+                    benchmark_path, "Tokamak-SI.saw-hl3.three_class_window_protocol"
+                ),
+            ]
         if "three_class_confusion" in baseline:
             recalls = baseline["three_class_per_class_recall"]
             lines += [

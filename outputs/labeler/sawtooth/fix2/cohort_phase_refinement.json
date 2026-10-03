@@ -1,0 +1,174 @@
+{
+  "counts": {
+    "processed_shots": 500,
+    "cached_input_arrays_retained": 500,
+    "cached_target_cells_changed": 64969
+  },
+  "changed_shots": [
+    {
+      "shot": 187328,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.3093999926809785,
+      "cached_assessment_cells_changed": 3094,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 190532,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.13379999683488952,
+      "cached_assessment_cells_changed": 1338,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 190646,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 1.6014999621156658,
+      "cached_assessment_cells_changed": 16015,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 191549,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.08359999802239759,
+      "cached_assessment_cells_changed": 836,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 192404,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.2810999933504301,
+      "cached_assessment_cells_changed": 2811,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 192741,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.18879999553383575,
+      "cached_assessment_cells_changed": 1888,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 192751,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.1407999966693012,
+      "cached_assessment_cells_changed": 1408,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 192761,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.5295999874720301,
+      "cached_assessment_cells_changed": 5296,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 194232,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 1.1237999734159128,
+      "cached_assessment_cells_changed": 11238,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 198971,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.25599999394418393,
+      "cached_assessment_cells_changed": 2560,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 199216,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.28569999324161466,
+      "cached_assessment_cells_changed": 2857,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 199789,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.04299999898281204,
+      "cached_assessment_cells_changed": 430,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 200551,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.5181999877417036,
+      "cached_assessment_cells_changed": 5182,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 200672,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.3352999920683002,
+      "cached_assessment_cells_changed": 3353,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 203012,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.38199999096358717,
+      "cached_assessment_cells_changed": 3820,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 203041,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.1664999960613538,
+      "cached_assessment_cells_changed": 1665,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 203136,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.028599999323451808,
+      "cached_assessment_cells_changed": 286,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    },
+    {
+      "shot": 203174,
+      "source": "saved significant per-channel negative core edges",
+      "prior_reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation",
+      "removed_absent_seconds": 0.0891999978899265,
+      "cached_assessment_cells_changed": 892,
+      "input_values_unchanged": true,
+      "no_corpus_reread": true
+    }
+  ],
+  "validation_status": "unvalidated conservative absence refinement",
+  "source_records": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+  "reader_policy": "native_FIR_positive_absence_dynamic_core_perchannel_relaxation_phase_guard"
+}

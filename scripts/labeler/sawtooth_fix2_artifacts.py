@@ -842,8 +842,9 @@ def report(args):
         "### Models and held-out metrics",
         "",
         (
-            "Both architectures use identical observable inputs during fitting and "
-            "inference. Assessment masks affect only losses and scoring. Both use "
+            "Each architecture uses its own observable inputs consistently during "
+            "fitting and inference. Assessment masks affect only losses and scoring. "
+            "Both use "
             "crash-centred, period-class-balanced sampling; stopping uses uncapped "
             "inner-selection patience. Outer-fold metrics cover the fixed training "
             "cohort, conditioned on conservative algorithm-assessed support. "
@@ -864,6 +865,20 @@ def report(args):
         assert prediction_manifest["shots"] == sorted(
             r["shot"] for r in queue_record["rows"]
         )
+    lines += [
+        "",
+        (
+            "Pooled anchored-span AUROC is "
+            + ", ".join(
+                f"{model} {record['expert']['presence']['auroc']:.4f}"
+                for model, record in benchmark.items()
+            )
+            + ". The HL-3 adaptation ranks these anchored targets below chance; "
+            "these exploratory results provide no independent crash validation."
+        ),
+        "",
+        source("benchmark.json", "Tokamak-SI.<model>.expert.presence.auroc"),
+    ]
     hl3 = benchmark["saw-hl3"]
     majority = hl3["three_class_majority_baseline"]
     hl3_accuracy = ci(

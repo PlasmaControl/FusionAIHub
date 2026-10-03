@@ -1045,22 +1045,22 @@
     "crash_cells": [
       380,
       3442,
-      3290
+      3217
     ],
     "crash": {
       "precision": 0.09942438513867086,
-      "recall": 0.10354223433242507,
-      "f1": 0.10144153764014949
+      "recall": 0.105643591882124,
+      "f1": 0.1024396818978299
     },
     "presence": {
-      "auroc": 0.564534259165561,
-      "auprc": 0.49338421211184313,
+      "auroc": 0.5617684795660413,
+      "auprc": 0.49475343658010046,
       "precision": 0.5016852670211969,
-      "recall": 0.8086279402000041,
-      "f1": 0.6192057316744347,
-      "accuracy": 0.5441811139800812,
-      "positive_bins": 49699,
-      "negative_bins": 58741
+      "recall": 0.8280551377413307,
+      "f1": 0.6248182899431743,
+      "accuracy": 0.5411957069386746,
+      "positive_bins": 48533,
+      "negative_bins": 56660
     },
     "ci95": {
       "crash_precision": [
@@ -1068,36 +1068,36 @@
         0.12879352883331885
       ],
       "crash_recall": [
-        0.08128941913930525,
-        0.13034703539866496
+        0.08296128969643238,
+        0.13245803942197173
       ],
       "crash_f1": [
-        0.07942137556861467,
-        0.1287136602213701
+        0.0804241811053497,
+        0.1303677136196247
       ],
       "presence_auroc": [
-        0.5314878511135194,
-        0.5969610301039283
+        0.5294175296978061,
+        0.5911927361464108
       ],
       "presence_auprc": [
-        0.45844102369884177,
-        0.5221331601557021
+        0.460389621473332,
+        0.5235638904951261
       ],
       "presence_f1": [
-        0.5842223403789337,
-        0.6491430108572922
+        0.5901318573431901,
+        0.6533018908918664
       ],
       "presence_precision": [
         0.466337486994522,
         0.531967576098261
       ],
       "presence_recall": [
-        0.7449953562692897,
-        0.858883285004604
+        0.7674649339403451,
+        0.8775295261970619
       ],
       "presence_accuracy": [
-        0.5104457907340649,
-        0.5733779816633274
+        0.5079721258001346,
+        0.5707849276979139
       ]
     },
     "bootstrap_replicates": 1000,
@@ -2485,14 +2485,14 @@
     },
     {
       "shot": 187328,
-      "old_crashes": 9,
+      "old_crashes": 7,
       "new_crashes": 3,
       "observable_bins": 1193,
-      "assessed_bins": 364,
+      "assessed_bins": 210,
       "cells_2ms": [
         0,
         3,
-        9
+        7
       ],
       "crash": {
         "precision": 0.0,
@@ -2500,14 +2500,14 @@
         "f1": 0.0
       },
       "presence": {
-        "auroc": 0.6799924924924925,
-        "auprc": 0.5256088506088505,
+        "auroc": 0.5,
+        "auprc": 0.5571428571428572,
         "precision": 0.5571428571428572,
-        "recall": 0.7905405405405406,
-        "f1": 0.6536312849162011,
-        "accuracy": 0.6593406593406593,
-        "positive_bins": 148,
-        "negative_bins": 216
+        "recall": 1.0,
+        "f1": 0.7155963302752294,
+        "accuracy": 0.5571428571428572,
+        "positive_bins": 117,
+        "negative_bins": 93
       }
     },
     {
@@ -4294,14 +4294,14 @@
     },
     {
       "shot": 190532,
-      "old_crashes": 2,
+      "old_crashes": 1,
       "new_crashes": 3,
       "observable_bins": 2616,
-      "assessed_bins": 90,
+      "assessed_bins": 24,
       "cells_2ms": [
         0,
         3,
-        2
+        1
       ],
       "crash": {
         "precision": 0.0,
@@ -4314,9 +4314,9 @@
         "precision": 0.0,
         "recall": null,
         "f1": 0.0,
-        "accuracy": 0.7333333333333333,
+        "accuracy": 0.0,
         "positive_bins": 0,
-        "negative_bins": 90
+        "negative_bins": 24
       }
     },
     {
@@ -4510,14 +4510,14 @@
     },
     {
       "shot": 190646,
-      "old_crashes": 12,
+      "old_crashes": 1,
       "new_crashes": 3,
       "observable_bins": 2996,
-      "assessed_bins": 835,
+      "assessed_bins": 35,
       "cells_2ms": [
         0,
         3,
-        12
+        1
       ],
       "crash": {
         "precision": 0.0,
@@ -4525,14 +4525,14 @@
         "f1": 0.0
       },
       "presence": {
-        "auroc": 0.7160493827160493,
-        "auprc": 0.4871885857913802,
+        "auroc": null,
+        "auprc": 1.0,
         "precision": 1.0,
-        "recall": 0.43209876543209874,
-        "f1": 0.603448275862069,
-        "accuracy": 0.9449101796407186,
-        "positive_bins": 81,
-        "negative_bins": 754
+        "recall": 1.0,
+        "f1": 1.0,
+        "accuracy": 1.0,
+        "positive_bins": 35,
+        "negative_bins": 0
       }
     },
     {
@@ -5428,29 +5428,29 @@
     },
     {
       "shot": 191549,
-      "old_crashes": 2,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 1072,
-      "assessed_bins": 42,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        2
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.8333333333333334,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.16666666666666666,
-        "positive_bins": 35,
-        "negative_bins": 7
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -6373,29 +6373,29 @@
     },
     {
       "shot": 192404,
-      "old_crashes": 2,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2947,
-      "assessed_bins": 141,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        2
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.5531914893617021,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.44680851063829785,
-        "positive_bins": 78,
-        "negative_bins": 63
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -6670,41 +6670,41 @@
     },
     {
       "shot": 192741,
-      "old_crashes": 3,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2036,
-      "assessed_bins": 94,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        3
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.9361702127659574,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.06382978723404255,
-        "positive_bins": 88,
-        "negative_bins": 6
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
       "shot": 192751,
-      "old_crashes": 3,
+      "old_crashes": 1,
       "new_crashes": 2,
       "observable_bins": 2977,
-      "assessed_bins": 98,
+      "assessed_bins": 27,
       "cells_2ms": [
         0,
         2,
-        3
+        1
       ],
       "crash": {
         "precision": 0.0,
@@ -6712,14 +6712,14 @@
         "f1": 0.0
       },
       "presence": {
-        "auroc": 0.6901408450704225,
-        "auprc": 0.8292612819775798,
+        "auroc": null,
+        "auprc": 1.0,
         "precision": 1.0,
-        "recall": 0.38028169014084506,
-        "f1": 0.5510204081632653,
-        "accuracy": 0.5510204081632653,
-        "positive_bins": 71,
-        "negative_bins": 27
+        "recall": 1.0,
+        "f1": 1.0,
+        "accuracy": 1.0,
+        "positive_bins": 27,
+        "negative_bins": 0
       }
     },
     {
@@ -6778,29 +6778,29 @@
     },
     {
       "shot": 192761,
-      "old_crashes": 3,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2707,
-      "assessed_bins": 264,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        3
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.6590909090909091,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.3409090909090909,
-        "positive_bins": 174,
-        "negative_bins": 90
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -7912,29 +7912,29 @@
     },
     {
       "shot": 194232,
-      "old_crashes": 29,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 3058,
-      "assessed_bins": 561,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        29
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.7361853832442068,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.2638146167557932,
-        "positive_bins": 413,
-        "negative_bins": 148
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -10237,7 +10237,7 @@
       "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2972,
-      "assessed_bins": 128,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
@@ -10254,9 +10254,9 @@
         "precision": null,
         "recall": null,
         "f1": null,
-        "accuracy": 1.0,
+        "accuracy": null,
         "positive_bins": 0,
-        "negative_bins": 128
+        "negative_bins": 0
       }
     },
     {
@@ -10423,29 +10423,29 @@
     },
     {
       "shot": 199216,
-      "old_crashes": 2,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 1257,
-      "assessed_bins": 143,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        2
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.17482517482517484,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.8251748251748252,
-        "positive_bins": 25,
-        "negative_bins": 118
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -10669,7 +10669,7 @@
       "old_crashes": 4,
       "new_crashes": 4,
       "observable_bins": 2819,
-      "assessed_bins": 88,
+      "assessed_bins": 66,
       "cells_2ms": [
         0,
         4,
@@ -10681,13 +10681,13 @@
         "f1": 0.0
       },
       "presence": {
-        "auroc": 0.26595744680851063,
-        "auprc": 0.45148291424887166,
+        "auroc": 0.5,
+        "auprc": 0.37878787878787873,
         "precision": 0.3787878787878788,
-        "recall": 0.5319148936170213,
-        "f1": 0.4424778761061947,
-        "accuracy": 0.2840909090909091,
-        "positive_bins": 47,
+        "recall": 1.0,
+        "f1": 0.5494505494505495,
+        "accuracy": 0.3787878787878788,
+        "positive_bins": 25,
         "negative_bins": 41
       }
     },
@@ -11395,14 +11395,14 @@
     },
     {
       "shot": 200551,
-      "old_crashes": 4,
+      "old_crashes": 2,
       "new_crashes": 4,
       "observable_bins": 2988,
-      "assessed_bins": 307,
+      "assessed_bins": 48,
       "cells_2ms": [
         0,
         4,
-        4
+        2
       ],
       "crash": {
         "precision": 0.0,
@@ -11410,14 +11410,14 @@
         "f1": 0.0
       },
       "presence": {
-        "auroc": 0.9761029411764706,
+        "auroc": 0.5,
         "auprc": 0.7291666666666666,
         "precision": 0.7291666666666666,
         "recall": 1.0,
         "f1": 0.8433734939759037,
-        "accuracy": 0.9576547231270358,
+        "accuracy": 0.7291666666666666,
         "positive_bins": 35,
-        "negative_bins": 272
+        "negative_bins": 13
       }
     },
     {
@@ -11530,29 +11530,29 @@
     },
     {
       "shot": 200672,
-      "old_crashes": 6,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2533,
-      "assessed_bins": 168,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        6
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.9107142857142858,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.08928571428571429,
-        "positive_bins": 153,
-        "negative_bins": 15
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -12907,19 +12907,19 @@
     },
     {
       "shot": 203012,
-      "old_crashes": 1,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2865,
-      "assessed_bins": 191,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        1
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
         "auroc": null,
@@ -12927,9 +12927,9 @@
         "precision": null,
         "recall": null,
         "f1": null,
-        "accuracy": 1.0,
+        "accuracy": null,
         "positive_bins": 0,
-        "negative_bins": 191
+        "negative_bins": 0
       }
     },
     {
@@ -12961,29 +12961,29 @@
     },
     {
       "shot": 203041,
-      "old_crashes": 3,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 2586,
-      "assessed_bins": 84,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        3
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.5238095238095238,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.47619047619047616,
-        "positive_bins": 44,
-        "negative_bins": 40
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {
@@ -13018,7 +13018,7 @@
       "old_crashes": 13,
       "new_crashes": 15,
       "observable_bins": 2582,
-      "assessed_bins": 247,
+      "assessed_bins": 233,
       "cells_2ms": [
         6,
         9,
@@ -13030,14 +13030,14 @@
         "f1": 0.42857142857142855
       },
       "presence": {
-        "auroc": 0.5463576158940397,
+        "auroc": 0.5,
         "auprc": 0.4120171673819743,
         "precision": 0.41201716738197425,
         "recall": 1.0,
         "f1": 0.5835866261398176,
-        "accuracy": 0.44534412955465585,
+        "accuracy": 0.41201716738197425,
         "positive_bins": 96,
-        "negative_bins": 151
+        "negative_bins": 137
       }
     },
     {
@@ -13069,29 +13069,29 @@
     },
     {
       "shot": 203174,
-      "old_crashes": 4,
+      "old_crashes": 0,
       "new_crashes": 0,
       "observable_bins": 1294,
-      "assessed_bins": 45,
+      "assessed_bins": 0,
       "cells_2ms": [
         0,
         0,
-        4
+        0
       ],
       "crash": {
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0
+        "recall": null,
+        "f1": null
       },
       "presence": {
-        "auroc": 0.5,
-        "auprc": 0.28888888888888886,
+        "auroc": null,
+        "auprc": null,
         "precision": null,
-        "recall": 0.0,
-        "f1": 0.0,
-        "accuracy": 0.7111111111111111,
-        "positive_bins": 13,
-        "negative_bins": 32
+        "recall": null,
+        "f1": null,
+        "accuracy": null,
+        "positive_bins": 0,
+        "negative_bins": 0
       }
     },
     {

@@ -412,8 +412,8 @@
       "uncertain_shots": 367,
       "state_seconds": {
         "present": 127.08949699363033,
-        "absent": 48.677398848510194,
-        "uncertain": 1673.9426604019945,
+        "absent": 44.4752989479131,
+        "uncertain": 1678.1447603025917,
         "unassessed": 272.8487935456167
       }
     },
@@ -479,8 +479,8 @@
       "uncertain_shots": 47,
       "state_seconds": {
         "present": 18.616099559626257,
-        "absent": 1.929499954356651,
-        "uncertain": 202.797595202715,
+        "absent": 1.4535999656143186,
+        "uncertain": 203.27349519145736,
         "unassessed": 41.486699018610054
       }
     },
@@ -546,8 +546,8 @@
       "uncertain_shots": 45,
       "state_seconds": {
         "present": 14.548399655849865,
-        "absent": 6.0588998566734995,
-        "uncertain": 202.76399520350975,
+        "absent": 4.239999899700545,
+        "uncertain": 204.5828951604827,
         "unassessed": 42.62469899169006
       }
     }

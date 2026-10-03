@@ -1,12 +1,12 @@
 {
-  "covering_tests_passed": 105,
+  "covering_tests_passed": 107,
   "logs": {
     "tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/tests.log",
       "tail": [
-        "........................................................................ [ 68%]",
-        ".................................                                        [100%]",
-        "105 passed in 6.71s",
+        "........................................................................ [ 67%]",
+        "...................................                                      [100%]",
+        "107 passed in 5.17s",
         "/scratch/gpfs/nc1514/FusionAIHub/.pixi/envs/labelmaker/lib/python3.11/site-packages/XRootD/client/finalize.py:46: FutureWarning: `torch.distributed.reduce_op` is deprecated, please use `torch.distributed.ReduceOp` instead",
         "  if isinstance(obj, File) and obj.is_open():"
       ]

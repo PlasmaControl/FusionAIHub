@@ -19,16 +19,21 @@ covering tests only; `labeler:` commits with the user-specified Codex trailer.
 - [x] Models (benchmark and covering tests): use identical observability inputs
   at fit/inference and loss-only assessment masks; match sampling, widen z,
   train with inner-selection patience, report confusion/recalls/F1/baseline.
-- [ ] Regeneration: freeze explicit prior provenance on the original train
+- [x] Regeneration: freeze explicit prior provenance on the original train
   development shots, run cohort then population, compare state seconds and
   absent support in short holes with the prior run, rerun validation/models.
 - [x] Owner review: queue 15 nonexpert validation shots stratified by explicit
   heating/period proxies because cached H/L is unavailable, write blind protocol,
   render and inspect one
   300 ms train/val example at 3.25 inches with fonts at least 7 pt.
-- [ ] Evidence/docs: render current JSON-backed results, state expert anchoring
+- [x] Evidence/docs: render current JSON-backed results, state expert anchoring
   and possible edge-originated relaxations on 190637, add brief history appendix,
   append Fix round 2 report, run covering tests/ruff and commit on r4-saw.
+
+The final absence audit also protects significant negative-core phases without
+period bounds. Saved edge records were refined with inputs retained, and both
+models were retrained after cohort assessment targets changed. All final figures
+were viewed and the covering tests, Ruff and required formatting checks passed.
 
 Shared interfaces: `Detection.absent_mask/absence_diagnostics` feed the driver;
 `state_spans(..., absent=...)` defaults unresolved bins to uncertainty. Driver

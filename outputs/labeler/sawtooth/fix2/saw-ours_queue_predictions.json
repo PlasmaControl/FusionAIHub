@@ -22,62 +22,62 @@
     {
       "shot": 185857,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/185857.npz",
-      "picks": 18
+      "picks": 15
     },
     {
       "shot": 185866,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/185866.npz",
-      "picks": 21
+      "picks": 22
     },
     {
       "shot": 186093,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/186093.npz",
-      "picks": 83
+      "picks": 56
     },
     {
       "shot": 186427,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/186427.npz",
-      "picks": 9
+      "picks": 8
     },
     {
       "shot": 187105,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187105.npz",
-      "picks": 83
+      "picks": 82
     },
     {
       "shot": 187196,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187196.npz",
-      "picks": 10
+      "picks": 2
     },
     {
       "shot": 187328,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/187328.npz",
-      "picks": 8
+      "picks": 9
     },
     {
       "shot": 189559,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/189559.npz",
-      "picks": 54
+      "picks": 53
     },
     {
       "shot": 190300,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/190300.npz",
-      "picks": 23
+      "picks": 21
     },
     {
       "shot": 192232,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/192232.npz",
-      "picks": 10
+      "picks": 7
     },
     {
       "shot": 193075,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/193075.npz",
-      "picks": 33
+      "picks": 37
     },
     {
       "shot": 195786,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/195786.npz",
-      "picks": 137
+      "picks": 136
     },
     {
       "shot": 198806,
@@ -87,17 +87,17 @@
     {
       "shot": 200320,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/200320.npz",
-      "picks": 21
+      "picks": 17
     },
     {
       "shot": 204530,
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/predictions/ensemble/saw-ours/204530.npz",
-      "picks": 68
+      "picks": 63
     }
   ],
-  "crash_threshold": 0.9333333333333332,
+  "crash_threshold": 0.9499999999999998,
   "derivative_z": 0.0,
-  "presence_threshold": 0.5166666666666667,
+  "presence_threshold": 0.5166666666666666,
   "threshold_provenance": "means of frozen inner-selection thresholds",
   "ensemble": "mean of three frozen fold probabilities",
   "pick_support": "observable bins, including algorithm-uncertain bins",
