@@ -1,0 +1,77 @@
+{
+ "category": "confinement",
+ "categories": {
+  "1": "high (H)",
+  "2": "low (L)",
+  "3": "qh (QH)",
+  "4": "wpqh (WPQH)"
+ },
+ "columns": [
+  "shot",
+  "category",
+  "t_start",
+  "t_end",
+  "confidence"
+ ],
+ "made_at": "2026-10-03T21:37:42+00:00",
+ "made_by": "scripts/labeler/confinement_ours.py apply",
+ "git_sha": "5263c5a1",
+ "producer": "confine-ours",
+ "model": "1D U-Net (U-Time style) over D-alpha, line density, beta_N, W_MHD and injected power; 5 shot-grouped folds; docs/labeler/confinement_ours.md",
+ "roster": "/scratch/gpfs/nc1514/FusionAIHub/data/events/confinement/shots.csv",
+ "segmentation": {
+  "bins_ms": 1.0,
+  "active": "total beam power >= 200000 W, gaps of at most 50 ms bridged",
+  "mode_filter_bins": 21,
+  "min_segment_ms": 20,
+  "confidence": "mean probability of the segment's class over its bins"
+ },
+ "shots_in_roster": 839,
+ "shots_labelled": 805,
+ "shots_missing": {
+  "count": 34,
+  "reasons": {
+   "190586": "no beam power record",
+   "190602": "no beam power record",
+   "191228": "no beam power record",
+   "191313": "no beam power record",
+   "191316": "no beam power record",
+   "191320": "no beam power record",
+   "191326": "no beam power record",
+   "194597": "no beam power record",
+   "194598": "no beam power record",
+   "194600": "no beam power record",
+   "194602": "no beam power record",
+   "194603": "no beam power record",
+   "194605": "no beam power record",
+   "194608": "no beam power record",
+   "196093": "no beam power record",
+   "196096": "no beam power record",
+   "196101": "no beam power record",
+   "199183": "no beam power record",
+   "200007": "no segment of 20 ms or more while the beam is on",
+   "200704": "no beam power record",
+   "201099": "no beam power record",
+   "201395": "no beam power record",
+   "201447": "no beam power record",
+   "201707": "no beam power record",
+   "201713": "no beam power record",
+   "201948": "no beam power record",
+   "202098": "no beam power record",
+   "202100": "no beam power record",
+   "202101": "no beam power record",
+   "202102": "no beam power record",
+   "202103": "no beam power record",
+   "202110": "no beam power record",
+   "203498": "no beam power record",
+   "203629": "no beam power record"
+  }
+ },
+ "prediction_source": {
+  "curated shots": "the fold model that never saw the shot",
+  "other shots": "mean of the five fold models",
+  "curated_held_out": 401,
+  "ensemble": 405
+ },
+ "coverage": "Active (beam-on) bins only; other time is not assessed, not low."
+}
