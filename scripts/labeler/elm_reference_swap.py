@@ -15,8 +15,9 @@ labelled windows.
 inside one reviewed absent, non-crowd or crowd span, in analysed time, with the DSM's
 rows), so every method sits on the same bins under both references.
 Onset bins and occupancy sensitivities (covered gaps <=100/200/300 ms) are all
-reported. No predictions or thresholds are selected again. Missing coverage is
-never bridged. A three-shot subset excludes original DSM fitting/selection shots.
+reported, alongside an AE-style all-covered majority-bin comparison. No predictions
+or thresholds are selected again. Missing coverage is never bridged. A three-shot
+subset excludes original DSM fitting/selection shots.
 
 **3. Finding 1.** What the legacy table misses: `|M|` (review-present bins it marks
 absent), `|P|` (legacy-present bins the review marks absent), and its recall and
@@ -556,6 +557,8 @@ def main(argv=None) -> int:
     }
     over["shot_level_ground_truth"]["reviewed_present_spans"] = reviewed_present
     dsm_record = json.loads((OUT.parent / "dsm" / "evaluation.json").read_text())
+    fits = json.loads((work / "fits.json").read_text())
+    repair = fits.get("detection_input_repair")
     dsm_source = dsm_record["own_target"]
     source_overlap = dsm_source["reviewed_shot_ids_in_published_split"]
     trained = set(source_overlap["train"])
@@ -564,6 +567,8 @@ def main(argv=None) -> int:
     record = {
         "git": git_sha(),
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "source_script": str(Path(__file__).relative_to(REPO)),
+        "source_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "run": args.run,
         "cohort_test_shots_used": 0,
         "cohort_test_shots_used_scope": "U-Net and confirmatory DSM detection "
@@ -598,6 +603,7 @@ def main(argv=None) -> int:
                     paths.root / compare.ELMO_DIR / "review_elms.csv",
                     paths.root / compare.ELMO_DIR / "review_sweep.csv.gz",
                     paths.root / compare.CLOCK_CSV,
+                    work / "fits.json",
                 )
             },
             "thresholds_by_shot": {
@@ -623,7 +629,7 @@ def main(argv=None) -> int:
             "swap_source_heldout_shots": sorted(set(shots_over) - source_used),
         },
         "dsm_serving_conditions": {
-            "applies_to": [NAME[k] for k in ("dsm", "detect", "exposed", "init")],
+            "applies_to": [NAME[k] for k in ("dsm", "exposed", "init")],
             "inputs": "60 of 124 original inputs; no D-alpha: pcphd02/pcphd03 "
             "are mean-filled on every shot; CO2 missing on 75/119 shots",
             "time_resolution": "50 ms-mean serving inputs on a 25 ms grid; "
@@ -634,7 +640,19 @@ def main(argv=None) -> int:
             "on measured usable labelled rows of its outer training partition "
             "and starts from independent random weights. Supplemental variants "
             "retain upstream normalization, including blind-cohort source shots "
-            "190646 and 190532 (feature-statistics exposure).",
+                "190646 and 190532 (feature-statistics exposure).",
+            "isolated_detection": (
+                {
+                    key: value
+                    for key, value in repair.items()
+                    if key != "rows"
+                }
+                if repair
+                else {
+                    "inputs": "Historical detector with no D-alpha and missing "
+                    "CO2 on 75/119 shots; no repaired fit metadata available."
+                }
+            ),
         },
         "interval_audit": interval_coverage_audit(table, data, shots_over),
         "interval_audit_occupancy": {

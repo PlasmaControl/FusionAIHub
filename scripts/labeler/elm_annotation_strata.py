@@ -317,7 +317,9 @@ def main(argv=None):
         "run": args.run,
         "annotation_mode_definition": evaluation["annotation_modes"],
         "ci_method": "95% percentile bootstrap of physical shots within each "
-        "annotation group, 1000 replicates, seed 20261003; fixed OOF thresholds.",
+        "annotation group, 1000 replicates, seed 20261003; fixed OOF thresholds. "
+        "Valid/undefined draws are reported; fewer than five positive-bearing "
+        "shots are descriptive only and have no population-level interval.",
         "sets": {
             name: {
                 "shots": panel["shots"],
