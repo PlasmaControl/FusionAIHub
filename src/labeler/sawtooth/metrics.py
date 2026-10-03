@@ -9,6 +9,88 @@ from ..scoring.events import match
 HISTOGRAM_BINS = 512
 
 
+def classification_metrics(cells):
+    """Three-regime window scores; rows are truth and columns are prediction.
+
+    Macro F1 averages over all three declared classes, with zero F1 for a class
+    with no truth or predictions. Recall is undefined when no truth is available.
+    """
+    cells = np.asarray(cells)
+    if cells.shape != (3, 3) or not np.isfinite(cells).all() or (cells < 0).any():
+        raise ValueError("classification requires a finite nonnegative 3x3 matrix")
+    support, predicted = cells.sum(axis=1), cells.sum(axis=0)
+    true_positive = cells.diagonal()
+    denominators = support + predicted
+    f1 = np.divide(
+        2 * true_positive,
+        denominators,
+        out=np.zeros(3, dtype=float),
+        where=denominators > 0,
+    )
+    return {
+        "confusion": cells.astype(int).tolist(),
+        "class_support": support.astype(int).tolist(),
+        "predicted_class_counts": predicted.astype(int).tolist(),
+        "per_class_recall": [
+            float(tp / total) if total else None
+            for tp, total in zip(true_positive, support, strict=True)
+        ],
+        "per_class_f1": f1.tolist() if cells.sum() else [None] * 3,
+        "window_accuracy": float(cells.trace() / cells.sum()) if cells.sum() else None,
+        "macro_f1": float(f1.mean()) if cells.sum() else None,
+        "windows": int(cells.sum()),
+    }
+
+
+def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
+    """Resample whole-shot confusion matrices, including a fit-chosen majority.
+
+    Each row carries ``cells`` and ``majority_cells`` from the same eligible
+    windows. The majority class is chosen on fitting shots separately per fold.
+    """
+    if not rows:
+        raise ValueError("classification bootstrap requires at least one shot")
+    cells = np.stack([r["cells"] for r in rows])
+    majority = np.stack([r["majority_cells"] for r in rows])
+    result = classification_metrics(cells.sum(axis=0))
+    baseline = classification_metrics(majority.sum(axis=0))
+    samples = {name: [] for name in ("window_accuracy", "macro_f1")}
+    baseline_samples = {name: [] for name in samples}
+    recall_samples = [[] for _ in range(3)]
+    rng = np.random.default_rng(seed)
+    for _ in range(replicates):
+        selected = rng.integers(0, len(rows), size=len(rows))
+        values = classification_metrics(cells[selected].sum(axis=0))
+        majority_values = classification_metrics(majority[selected].sum(axis=0))
+        for name, sample in samples.items():
+            if values[name] is not None:
+                sample.append(values[name])
+                baseline_samples[name].append(majority_values[name])
+        for sample, value in zip(
+            recall_samples, values["per_class_recall"], strict=True
+        ):
+            if value is not None:
+                sample.append(value)
+
+    def interval(sample):
+        return np.quantile(sample, [0.025, 0.975]).tolist() if sample else None
+
+    baseline["ci95"] = {name: interval(v) for name, v in baseline_samples.items()}
+    baseline["selection"] = "majority of natural fitting-shot windows, per fold"
+    return {
+        **result,
+        "ci95": {
+            **{name: interval(v) for name, v in samples.items()},
+            "per_class_recall": [interval(v) for v in recall_samples],
+        },
+        "majority_baseline": baseline,
+        "shot_ids": [r["shot"] for r in rows],
+        "shots": len(rows),
+        "bootstrap_replicates": replicates,
+        "bootstrap_seed": seed,
+    }
+
+
 def bin_times(window_s, bin_ms=2.0):
     """Centers of one absolute-time bin grid within half-open waveform coverage."""
     lo, hi = window_s

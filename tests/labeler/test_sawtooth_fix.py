@@ -160,7 +160,15 @@ def test_auxiliary_neutron_drop_and_mirnov_burst_have_explicit_evidence():
     for crash in (0.08, 0.16, 0.24, 0.32):
         neutrons -= 20 * np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
         mirnov[np.abs(t - crash) < 0.0004] = 40.0
-    result = detect(t, y, shot=1, neutron=(t, neutrons), mirnov=(t, mirnov), sxr=y)
+    result = detect(
+        t,
+        y,
+        shot=1,
+        neutron=(t, neutrons),
+        mirnov=(t, mirnov),
+        sxr=y,
+        nbi=(t, np.full(len(t), 1e6)),
+    )
     assert len(result.crashes) == 4
     assert all(e.attrs["neutron_drop_corroboration"] is True for e in result.crashes)
     assert all(e.attrs["mirnov_burst_corroboration"] is True for e in result.crashes)
@@ -173,17 +181,52 @@ def test_nonuniform_observability_shape_is_an_error():
         detect(t, y, shot=1, observability=np.ones(len(t) - 1, dtype=bool))
 
 
-def test_usable_auxiliary_without_crash_evidence_flags_uncertainty():
+def test_auxiliary_without_positive_crash_evidence_does_not_veto_train():
     t, y = waveform()
     result = detect(t, y, shot=1, neutron=(t, np.full(len(t), 100.0)))
     assert len(result.crashes) == 4
-    assert not result.intervals
-    assert len(result.uncertain_intervals) == 1
-    assert (
-        "auxiliary_not_corroborated"
-        in result.uncertain_intervals[0].attrs["uncertainty_reasons"]
-    )
+    assert len(result.intervals) == 1
+    assert not result.uncertain_intervals
+    assert all(e.attrs["state"] == "present" for e in result.crashes)
     assert all(e.attrs["mirnov_burst_corroboration"] is None for e in result.crashes)
+
+
+@pytest.mark.parametrize("nbi_power", [None, 0.0])
+def test_neutron_drop_without_known_nbi_on_is_not_corroboration(nbi_power):
+    t, y = waveform()
+    neutrons = np.full(len(t), 100.0)
+    for crash in (0.08, 0.16, 0.24, 0.32):
+        neutrons -= 20 * np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+    nbi = None if nbi_power is None else (t, np.full(len(t), nbi_power))
+    result = detect(t, y, shot=1, neutron=(t, neutrons), nbi=nbi)
+    assert len(result.intervals) == 1
+    assert all(e.attrs["neutron_drop_corroboration"] is None for e in result.crashes)
+
+
+def test_noise_sized_neutron_drop_is_unknown_and_records_window_noise():
+    t, y = waveform()
+    neutrons = 100 + np.tile([-10.0, 10.0], len(t) // 2)
+    for crash in (0.08, 0.16, 0.24, 0.32):
+        neutrons -= 3 * np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+    result = detect(t, y, shot=1, neutron=(t, neutrons), nbi=(t, np.full(len(t), 1e6)))
+    assert len(result.intervals) == 1
+    assert all(e.attrs["neutron_drop_corroboration"] is None for e in result.crashes)
+    assert all(e.attrs["neutron_window_noise"] > 15 for e in result.crashes)
+    assert all(e.attrs["neutron_noise_k"] == 3 for e in result.crashes)
+
+
+def test_auxiliary_positive_evidence_is_attached_only_to_coincident_crash():
+    t, y = waveform()
+    mirnov = np.zeros(len(t))
+    mirnov[np.abs(t - 0.16) < 0.0004] = 40
+    result = detect(t, y, shot=1, mirnov=(t, mirnov))
+    assert len(result.intervals) == 1
+    assert [e.attrs["mirnov_burst_corroboration"] for e in result.crashes] == [
+        None,
+        True,
+        None,
+        None,
+    ]
 
 
 def test_all_missing_auxiliary_samples_leave_evidence_unknown():

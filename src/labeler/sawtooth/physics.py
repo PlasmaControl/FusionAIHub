@@ -8,6 +8,7 @@ an inversion boundary but does not establish its physical radius or q=1 proximit
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from itertools import pairwise
 
 import numpy as np
 from scipy.ndimage import gaussian_filter1d, maximum_filter1d
@@ -39,6 +40,9 @@ class Rule:
     inversion_spread_channels: float = 2.0
     minimum_ip_ma: float = 0.3
     neutron_relative_drop: float = 0.02
+    neutron_noise_k: float = 3.0
+    minimum_nbi_power_w: float = 1e5
+    maximum_channel_to_core: float = 1.5
     mirnov_burst_z: float = 6.0
     dalpha_burst_z: float = 6.0
 
@@ -54,6 +58,8 @@ class Detection:
     candidates: int
     observable: np.ndarray
     uncertain_intervals: list[Event]
+    absent_mask: np.ndarray
+    absence_diagnostics: dict
 
 
 def _runs(mask):
@@ -99,7 +105,7 @@ def noise_calibration(rule=DEFAULT_RULE, *, fs=10000, frames=5000, seed=20261003
     }
 
 
-def inversion_profile(step, level, rule=DEFAULT_RULE):
+def inversion_profile(step, level, rule=DEFAULT_RULE, *, core_level=None):
     """Contiguous core loss bordered by an outer gain, with Gude's A_norm/A_net.
 
     The hottest part of an uncalibrated array is only a temperature proxy for the
@@ -107,13 +113,21 @@ def inversion_profile(step, level, rule=DEFAULT_RULE):
     """
     step, level = np.asarray(step), np.asarray(level)
     valid = np.isfinite(step) & np.isfinite(level) & (level > 0)
+    if core_level is not None and np.isfinite(core_level) and core_level > 0:
+        valid &= level <= rule.maximum_channel_to_core * core_level
     if valid.sum() < 4:
         return "coverage", {}
     profile = np.where(valid, step, 0.0)
     total = np.abs(profile).sum()
     norm = total / np.where(valid, np.abs(level), 0).sum()
     net = abs(profile.sum()) / max(total, 1e-12)
-    attrs = {"a_norm": float(norm), "a_net": float(net)}
+    attrs = {
+        "a_norm": float(norm),
+        "a_net": float(net),
+        "masked_channels": np.flatnonzero(~valid).tolist(),
+        "maximum_channel_to_core": rule.maximum_channel_to_core,
+        "core_reference_kev": float(core_level) if core_level is not None else None,
+    }
     if norm < rule.significance:
         return "significance", attrs
     if net >= rule.maximum_net:
@@ -133,7 +147,15 @@ def inversion_profile(step, level, rule=DEFAULT_RULE):
     ]
     if not nearby:
         return "rise_block", attrs
-    c, d = max(nearby, key=lambda cd: profile[cd[0] : cd[1]].sum())
+    # The nearest contiguous gain borders this loss. A stronger remote block
+    # may be harmonic overlap or a different event and cannot move the boundary.
+    c, d = min(
+        nearby,
+        key=lambda cd: (
+            cd[0] - b if cd[0] >= b else a - cd[1],
+            -profile[cd[0] : cd[1]].sum(),
+        ),
+    )
     boundary = (b + c - 1) / 2 if c >= b else (a + d - 1) / 2
     hot = int(np.argmax(np.where(valid, level, -np.inf)))
     core_moves = a - 2 <= hot < b + 2 or level[a:b].mean() >= 0.7 * level[hot]
@@ -146,6 +168,8 @@ def inversion_profile(step, level, rule=DEFAULT_RULE):
         core_moves=bool(core_moves),
         inversion_rho=None,
         q1_rho=None,
+        inversion_R_m=None,
+        q1_R_m=None,
         geometry_status="channel_order_only",
     )
     return "accept", attrs
@@ -180,14 +204,211 @@ def _window(trace, crash, lower, upper):
     return segment[np.isfinite(segment)]
 
 
-def _relative_drop(trace, crash):
+def _neutron_evidence(trace, nbi, crash, rule):
+    """Positive evidence only, with native-window noise and known NBI support.
+
+    Quadrature MAD scatter is conservative: native samples may be correlated,
+    so their count does not artificially shrink the reported noise threshold.
+    """
+    attrs = {
+        "neutron_relative_drop": None,
+        "neutron_drop_corroboration": None,
+        "neutron_window_noise": None,
+        "neutron_noise_k": rule.neutron_noise_k,
+        "neutron_noise_method": "quadrature_native_window_MAD",
+        "neutron_drop_absolute": None,
+        "neutron_evidence_status": "unavailable",
+        "nbi_power_w": None,
+        "nbi_on": None,
+    }
+    if nbi is not None:
+        power = align_q([crash], nbi[0], np.atleast_2d(nbi[1]))[0, 0]
+        if np.isfinite(power):
+            attrs["nbi_power_w"] = float(power)
+            attrs["nbi_on"] = bool(power >= rule.minimum_nbi_power_w)
     if trace is None:
-        return None
+        return attrs
     before = _window(trace, crash, -0.0015, -0.0003)
     after = _window(trace, crash, 0.0003, 0.0015)
-    if not len(before) or not len(after) or np.median(before) <= 0:
-        return None
-    return float((np.median(before) - np.median(after)) / np.median(before))
+    attrs["neutron_window_samples"] = [len(before), len(after)]
+    if min(len(before), len(after)) < 4:
+        attrs["neutron_evidence_status"] = "insufficient_window_samples"
+        return attrs
+    pre, post = np.median(before), np.median(after)
+    scales = [
+        1.4826 * np.median(abs(before - pre)),
+        1.4826 * np.median(abs(after - post)),
+    ]
+    noise = float(np.hypot(*scales))
+    attrs["neutron_window_noise"] = noise
+    attrs["neutron_drop_absolute"] = float(pre - post)
+    if pre <= 0 or pre <= rule.neutron_noise_k * max(scales):
+        attrs["neutron_evidence_status"] = "noise_dominated"
+        return attrs
+    attrs["neutron_relative_drop"] = float((pre - post) / pre)
+    if attrs["nbi_on"] is not True:
+        attrs["neutron_evidence_status"] = (
+            "nbi_unknown" if attrs["nbi_on"] is None else "nbi_off"
+        )
+        return attrs
+    threshold = max(rule.neutron_relative_drop * pre, rule.neutron_noise_k * noise)
+    attrs["neutron_drop_threshold_absolute"] = float(threshold)
+    if pre - post >= threshold:
+        attrs["neutron_drop_corroboration"] = True
+        attrs["neutron_evidence_status"] = "positive"
+    else:
+        attrs["neutron_evidence_status"] = "below_noise_threshold"
+    return attrs
+
+
+def _core_reference(values, membership):
+    """Hottest coherent three-channel core median, robust to isolated spikes.
+
+    A broad proxy can include cooler flanks. Its full median would incorrectly
+    screen a steep physical central peak, so compare with the hottest local
+    neighborhood having at least two measured core channels.
+    """
+    valid = membership & np.isfinite(values) & (values > 0)
+    reference = np.full(values.shape[1], np.nan)
+    for lo in range(len(values) - 2):
+        supported = valid[lo : lo + 3]
+        missing = supported.sum(axis=0) < 2
+        if missing.all():
+            continue
+        selected = np.where(supported, values[lo : lo + 3], np.nan)
+        selected[0, missing] = 0
+        median = np.nanmedian(selected, axis=0)
+        median[missing] = np.nan
+        reference = np.fmax(reference, median)
+    return reference
+
+
+def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, sigma):
+    """Test quiet local support independently of profile/train acceptance.
+
+    Repeated significant negative core edges are conservative evidence of
+    possible relaxation even when the outer profile or central-drop gate fails.
+    A tested negative requires a full +/-1.5 maximum-period observable window.
+    This research policy still requires independent negative-label validation.
+    """
+    dt = float(np.median(np.diff(t)))
+    width = round(rule.frame_ms / 1000 / dt) | 1
+    half, remove = width // 2, int(np.ceil(7 * sigma))
+    core_times, ambiguous_core_times = [], []
+    peaks, _ = find_peaks(-core_edge, distance=max(1, half))
+    for k in peaks:
+        if k < half or k + half >= len(t) or not observable[k]:
+            continue
+        relative = -core_edge[k] * np.sqrt(2 * np.pi) * sigma / core_level[k]
+        if not np.isfinite(relative) or relative < rule.significance:
+            continue
+        # Even an isolated, irregular, or sub-period-floor core drop is
+        # unresolved evidence. Failure of POSR/period grouping cannot prove
+        # absence around an observed significant negative edge.
+        ambiguous_core_times.append(float(t[k]))
+        if posr(core_edge[k - half : k + half + 1], core_edge[k], remove) >= (
+            rule.posr_threshold
+        ):
+            core_times.append(float(t[k]))
+    periodic = []
+    core_times = np.asarray(core_times)
+    # A periodicity claim must not cross an unobserved diagnostic gap.
+    for lo, hi in _runs(observable):
+        left = np.searchsorted(core_times, t[lo])
+        right = np.searchsorted(core_times, t[hi - 1], side="right")
+        for a, b in trains(core_times[left:right], rule):
+            periodic.extend(core_times[left + a : left + b])
+    horizon = 1.5 * rule.maximum_period_ms / 1000
+    radius = int(np.ceil(horizon / dt))
+    complete = (
+        maximum_filter1d(
+            (~observable).astype(np.uint8), 2 * radius + 1, mode="constant", cval=1
+        )
+        == 0
+    )
+    # A failed edge test is informative only if its noise floor could resolve
+    # an edge at the profile significance threshold. Estimate local scatter
+    # in maximum-period blocks, then require that support across the context.
+    detectable = np.zeros(len(t), dtype=bool)
+    noise_rows = []
+    block = max(width, round(rule.maximum_period_ms / 1000 / dt))
+    for lo in range(0, len(t), block):
+        hi = min(len(t), lo + block)
+        supported = observable[lo:hi] & np.isfinite(core_level[lo:hi])
+        if supported.sum() < width:
+            continue
+        relative_edge = (
+            core_edge[lo:hi][supported]
+            * np.sqrt(2 * np.pi)
+            * sigma
+            / core_level[lo:hi][supported]
+        )
+        noise = float(1.4826 * np.median(abs(relative_edge - np.median(relative_edge))))
+        detectable[lo:hi] = rule.posr_threshold * noise < rule.significance
+        noise_rows.append(
+            {
+                "start_s": float(t[lo]),
+                "end_s": float(t[hi - 1] + dt),
+                "relative_edge_noise": noise,
+            }
+        )
+    noise_resolved = (
+        maximum_filter1d(
+            (~detectable).astype(np.uint8), 2 * radius + 1, mode="constant", cval=1
+        )
+        == 0
+    )
+
+    def proximity(times):
+        near = np.zeros(len(t), dtype=bool)
+        for time in times:
+            lo, hi = np.searchsorted(t, [time - horizon, time + horizon])
+            # Include both boundary samples in the exclusion window.
+            near[lo : min(len(t), hi + 1)] = True
+        return near
+
+    profile_near = proximity(candidates)
+    periodic_near = proximity(periodic)
+    core_edge_near = proximity(ambiguous_core_times)
+    absent = (
+        observable
+        & complete
+        & noise_resolved
+        & ~profile_near
+        & ~periodic_near
+        & ~core_edge_near
+    )
+    return absent, {
+        "policy": "complete_quiet_core_context",
+        "validation_status": "unvalidated_research_policy",
+        "context_radius_ms": horizon * 1000,
+        "profile_passing_candidates": len(candidates),
+        "core_relaxation_test": {
+            "method": "periodic_negative_fractional_core_edge_POSR",
+            "aggregation": "minimum_per_channel_fractional_edge",
+            "minimum_relative_edge": rule.significance,
+            "posr_threshold": rule.posr_threshold,
+            "minimum_period_ms": rule.minimum_period_ms,
+            "maximum_period_ms": rule.maximum_period_ms,
+            "minimum_train": rule.minimum_train,
+            "candidate_edges": len(core_times),
+            "ambiguous_edges": len(ambiguous_core_times),
+            "ambiguous_edge_times_s": ambiguous_core_times,
+            "periodic_edges": len(periodic),
+            "periodic_edge_times_s": list(map(float, periodic)),
+            "noise_method": "maximum_period_block_relative_edge_MAD",
+            "noise_windows": noise_rows,
+        },
+        "reason_samples": {
+            "unobservable": int((~observable).sum()),
+            "incomplete_context": int((observable & ~complete).sum()),
+            "unresolved_core_noise": int((observable & ~noise_resolved).sum()),
+            "near_profile_candidate": int((observable & profile_near).sum()),
+            "periodic_core_relaxation": int((observable & periodic_near).sum()),
+            "core_edge_ambiguous": int((observable & core_edge_near).sum()),
+            "tested_absence": int(absent.sum()),
+        },
+    }
 
 
 def _burst(trace, crash, threshold, *, absolute=False):
@@ -245,6 +466,7 @@ def detect(
     observability=None,
     neutron=None,
     mirnov=None,
+    nbi=None,
     q_source="EFIT01",
 ):
     """ECE (channels,time) -> point crashes and train spans; all times seconds.
@@ -253,6 +475,8 @@ def detect(
     uncertainty; they never assert absence. Calibrated psi must show loss inside
     and gain outside q=1. Uncalibrated SXR has no corroboration claim. Observability
     can supply a density/cutoff mask in addition to finite core ECE and its Te floor.
+    Neutron evidence needs known NBI power in watts and a measured-noise drop;
+    missing auxiliary evidence never downgrades an ECE crash.
     """
     t = np.asarray(t_s, dtype=float)
     values = np.asarray(y, dtype=np.float32)
@@ -289,9 +513,21 @@ def detect(
         closest = np.zeros_like(valid_position)
         np.put_along_axis(closest, nearest[: rule.minimum_channels], True, axis=0)
         calibrated_core[:, unknown] = (closest & valid_position)[:, unknown]
-        core_valid = finite & calibrated_core & (values >= rule.te_floor_kev)
+        membership = calibrated_core
     else:
-        core_valid = finite[proxy] & (values[proxy] >= rule.te_floor_kev)
+        membership = np.zeros_like(finite)
+        membership[proxy] = True
+    core_level = _core_reference(values, membership)
+    # The local pre-crash core level is the comparison scale. A central crash
+    # itself must not make a genuine outer rise look hotter than the core.
+    reference_width = round(rule.frame_ms / 1000 / dt) | 1
+    core_level = maximum_filter1d(
+        np.where(np.isfinite(core_level), core_level, 0), reference_width
+    )
+    finite &= (values > 0) & (
+        values <= rule.maximum_channel_to_core * core_level[None, :]
+    )
+    core_valid = finite & membership & (values >= rule.te_floor_kev)
     observable = (core_valid.sum(axis=0) >= rule.minimum_channels) & (
         finite.sum(axis=0) >= 4
     )
@@ -338,7 +574,7 @@ def detect(
             clusters.append([vote])
         else:
             clusters[-1].append(vote)
-    rejected, accepted = {}, []
+    rejected, accepted, profile_candidates = {}, [], []
 
     def reject(reason):
         rejected[reason] = rejected.get(reason, 0) + 1
@@ -355,13 +591,14 @@ def detect(
             reject("holdoff")
             continue
         profile = np.where(bad[:, k], np.nan, step[:, k])
-        level = gaussian_filter1d(
-            clean[:, max(0, k - half) : k + half + 1].mean(axis=1), 1
+        level = clean[:, max(0, k - half) : k + half + 1].mean(axis=1)
+        verdict, attrs = inversion_profile(
+            profile, level, rule, core_level=float(core_level[k])
         )
-        verdict, attrs = inversion_profile(profile, level, rule)
         if verdict != "accept":
             reject(verdict)
             continue
+        profile_candidates.append(float(t[k]))
         attrs["uncertainty_reasons"] = []
         if core_channels is not None and (geometry is None or geometry.psi is None):
             loss = np.isfinite(profile[proxy]) & (
@@ -469,20 +706,9 @@ def detect(
         attrs["sxr_geometry_status"] = (
             "unverified_spatial_pairing" if sxr is not None else "unavailable"
         )
-        neutron_drop = _relative_drop(neutron, t[k])
-        attrs["neutron_relative_drop"] = neutron_drop
-        attrs["neutron_drop_corroboration"] = (
-            None if neutron_drop is None else neutron_drop >= rule.neutron_relative_drop
-        )
-        attrs["mirnov_burst_corroboration"] = _burst(
-            mirnov, t[k], rule.mirnov_burst_z, absolute=True
-        )
-        evidence = [
-            attrs["neutron_drop_corroboration"],
-            attrs["mirnov_burst_corroboration"],
-        ]
-        if any(item is not None for item in evidence) and not any(evidence):
-            attrs["uncertainty_reasons"].append("auxiliary_not_corroborated")
+        attrs.update(_neutron_evidence(neutron, nbi, t[k], rule))
+        burst = _burst(mirnov, t[k], rule.mirnov_burst_z, absolute=True)
+        attrs["mirnov_burst_corroboration"] = True if burst else None
         attrs.update(
             crowd=False,
             period_ms=None,
@@ -492,20 +718,13 @@ def detect(
     times = [a for a, _ in accepted]
     groups = _stable_groups(accepted, observable, t, rule)
     train_members = set()
-    for a, b in groups:
+    for train_index, (a, b) in enumerate(groups):
         train_members.update(range(a, b))
         period = float(np.median(np.diff(times[a:b])) * 1000)
-        reasons = sorted(
-            {
-                reason
-                for _, attrs in accepted[a:b]
-                for reason in attrs["uncertainty_reasons"]
-            }
-        )
         for _, attrs in accepted[a:b]:
             attrs["period_ms"] = period
-            attrs["state"] = "uncertain" if reasons else "present"
-            attrs["uncertainty_reasons"] = reasons
+            attrs["train_id"] = f"{shot}:{train_index}"
+            attrs["state"] = "uncertain" if attrs["uncertainty_reasons"] else "present"
     kwargs = {
         "shot": int(shot),
         "source": "saw_physics",
@@ -527,7 +746,21 @@ def detect(
         if index in train_members
     ]
     intervals, uncertain_intervals = [], []
-    for a, b in groups:
+    state_groups = []
+    for train_start, train_stop in groups:
+        boundaries = [train_start]
+        for index in range(train_start + 1, train_stop):
+            previous, current = accepted[index - 1][1], accepted[index][1]
+            if (previous["state"], previous["uncertainty_reasons"]) != (
+                current["state"],
+                current["uncertainty_reasons"],
+            ):
+                boundaries.append(index)
+        boundaries.append(train_stop)
+        state_groups.extend(
+            (a, b, train_start, train_stop) for a, b in pairwise(boundaries)
+        )
+    for a, b, train_start, train_stop in state_groups:
         radii = [
             attrs["inversion_rho"]
             for _, attrs in accepted[a:b]
@@ -536,8 +769,13 @@ def detect(
         attrs = {
             "crowd": True,
             "crashes": b - a,
+            "train_id": accepted[a][1]["train_id"],
             "period_ms": accepted[a][1]["period_ms"],
             "inversion_rho": float(np.median(radii)) if radii else None,
+            "q1_rho": accepted[a][1]["q1_rho"],
+            "inversion_R_m": None,
+            "q1_R_m": None,
+            "geometry_status": accepted[a][1]["geometry_status"],
             "inversion_channel": float(
                 np.median([r[1]["inversion_channel"] for r in accepted[a:b]])
             ),
@@ -551,18 +789,21 @@ def detect(
             "uncertainty_reasons": accepted[a][1]["uncertainty_reasons"],
         }
         output = uncertain_intervals if attrs["state"] == "uncertain" else intervals
-        start, end = times[a], times[b - 1]
+        start = times[a] if a == train_start else (times[a - 1] + times[a]) / 2
+        end = times[b - 1] + dt if b == train_stop else (times[b - 1] + times[b]) / 2
         if attrs["state"] == "uncertain":
             # Cover the final uncertain point and its finite filter support.
-            left = int(np.searchsorted(t, start))
-            right = int(np.searchsorted(t, end))
+            left = int(np.searchsorted(t, times[a]))
+            right = int(np.searchsorted(t, times[b - 1]))
             run = next(
                 (lo, hi) for lo, hi in _runs(observable) if lo <= left <= right < hi
             )
             padding = rule.frame_ms / 2000
-            start = max(float(t[run[0]]), start - padding)
+            if a == train_start:
+                start = max(float(t[run[0]]), start - padding)
             run_stop = t[run[1]] if run[1] < len(t) else t[-1] + dt
-            end = min(float(run_stop), end + padding)
+            if b == train_stop:
+                end = min(float(run_stop), end + padding)
         output.append(
             Event(t0_s=start, t1_s=end, confidence=1.0, attrs=attrs, **kwargs)
         )
@@ -597,6 +838,32 @@ def detect(
                 **kwargs,
             )
         )
+    core_support = finite & membership
+    # Preserve the strongest negative fractional edge from any measured core
+    # channel. A signed proxy mean can dilute a drop in a subset of channels,
+    # or cancel it against simultaneous rises in other core channels.
+    core_edge = np.full(len(t), np.inf)
+    for channel in np.flatnonzero(core_support.any(axis=1)):
+        channel_level = maximum_filter1d(clean[channel], reference_width)
+        fractional_edge = np.divide(
+            c[channel],
+            channel_level,
+            out=np.full(len(t), np.inf),
+            where=core_support[channel] & (channel_level > 0),
+        )
+        core_edge = np.minimum(core_edge, fractional_edge)
+    core_edge[~np.isfinite(core_edge)] = 0
+    absent_mask, absence_diagnostics = _absence_evidence(
+        t, observable, core_edge, np.ones(len(t)), profile_candidates, rule, sigma
+    )
+    absence_diagnostics["profile_passing_candidate_times_s"] = profile_candidates
     return Detection(
-        crashes, intervals, rejected, len(clusters), observable, uncertain_intervals
+        crashes,
+        intervals,
+        rejected,
+        len(clusters),
+        observable,
+        uncertain_intervals,
+        absent_mask,
+        absence_diagnostics,
     )

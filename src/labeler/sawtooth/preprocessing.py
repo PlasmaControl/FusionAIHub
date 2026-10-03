@@ -69,12 +69,24 @@ def mask_spans(t, mask):
     ]
 
 
-def state_spans(t, observable, present, uncertain):
-    """Four-state labels and loss/score mask; uncertainty takes precedence."""
+def state_spans(t, observable, present, uncertain, *, absent=None):
+    """Four states; only explicit positive absence evidence supplies negatives.
+
+    Observable bins without an accepted train or a tested absence remain
+    uncertain. ``absent`` is a sample mask, typically ``Detection.absent_mask``.
+    Missing diagnostic support overrides every assessment.
+    """
     from .metrics import spans_at
 
     observable = np.asarray(observable, dtype=bool)
-    states = np.full(len(t), "absent", dtype="U10")
+    if observable.shape != np.shape(t):
+        raise ValueError("observability must have one boolean per sample")
+    states = np.full(len(t), "uncertain", dtype="U10")
+    if absent is not None:
+        absent = np.asarray(absent, dtype=bool)
+        if absent.shape != np.shape(t):
+            raise ValueError("absence evidence must have one boolean per sample")
+        states[absent] = "absent"
     states[spans_at(t, present)] = "present"
     doubt = spans_at(t, uncertain)
     states[doubt] = "uncertain"
@@ -87,4 +99,4 @@ def state_spans(t, observable, present, uncertain):
         ],
         key=lambda r: r["start_s"],
     )
-    return spans, observable & ~doubt
+    return spans, (states == "present") | (states == "absent")

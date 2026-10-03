@@ -61,6 +61,130 @@ def test_global_drop_and_channel_noise_rejected():
     assert not detect(t, y, shot=1).crashes
 
 
+def test_inversion_uses_adjacent_gain_instead_of_stronger_remote_gain():
+    step = np.array([0, 0, -0.5, -0.5, 0.15, 0.15, 0, 0.6, 0.6, 0])
+    verdict, attrs = inversion_profile(step, np.full(10, 3.0))
+    assert verdict == "accept"
+    assert attrs["inversion_channel"] == 3.5
+
+
+def test_implausibly_hot_gain_channels_cannot_define_inversion():
+    step = np.array([0, 0, -0.5, -0.5, 0, 0, 0.7, 0.7])
+    level = np.array([3, 3, 3, 3, 2, 2, 12, 12])
+    verdict, _ = inversion_profile(step, level, core_level=3.0)
+    assert verdict == "redistribution"
+
+
+def test_absence_needs_complete_quiet_core_context():
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    found = detect(t, y, shot=1, core_channels=[2, 3, 4])
+    assert found.absent_mask[(t > 0.5) & (t < 1.5)].all()
+    assert not found.absent_mask[t < 0.375].any()
+    assert found.absence_diagnostics["core_relaxation_test"]["periodic_edges"] == 0
+
+
+def test_periodic_core_relaxation_without_outer_rise_prevents_absence():
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    for crash in np.arange(0.4, 1.7, 0.08):
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+        y[2:5] -= 0.5 * transient
+    y += np.random.default_rng(12).normal(0, 0.002, y.shape)
+    found = detect(t, y, shot=1, core_channels=[2, 3, 4])
+    assert not found.intervals
+    assert not found.absent_mask[(t > 0.5) & (t < 1.5)].any()
+    assert found.absence_diagnostics["core_relaxation_test"]["periodic_edges"] >= 10
+
+
+@pytest.mark.parametrize("opposing_rises", [False, True], ids=["diluted", "cancelled"])
+def test_subset_core_drops_cannot_be_hidden_by_proxy_averaging(opposing_rises):
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    for crash in np.arange(0.4, 1.7, 0.08):
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+        y[2:4] -= 0.12 * transient
+        if opposing_rises:
+            # Separate single-channel gains fail the contiguous profile test
+            # and exactly cancel the two negative channels in a signed mean.
+            y[[0, 6]] += 0.12 * transient
+    y += np.random.default_rng(43).normal(0, 0.0005, y.shape)
+    found = detect(t, y, shot=1, core_channels=range(7))
+    assert not found.intervals
+    assert found.absence_diagnostics["profile_passing_candidates"] == 0
+    assert not found.absent_mask[(t > 0.5) & (t < 1.5)].any()
+    assert found.absence_diagnostics["core_relaxation_test"]["periodic_edges"] >= 10
+
+
+def test_profile_candidate_below_central_amplitude_prevents_absence():
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    transient = np.where(t >= 1.0, np.exp(-(t - 1.0) / 0.018), 0)
+    y[2:5] -= 0.12 * transient
+    y[5:7] += 0.1 * transient
+    y += np.random.default_rng(14).normal(0, 0.001, y.shape)
+    found = detect(t, y, shot=1, core_channels=[2, 3, 4])
+    assert not found.crashes
+    assert not found.absent_mask[(t > 0.7) & (t < 1.3)].any()
+    assert found.absence_diagnostics["profile_passing_candidates"] >= 1
+
+
+def test_noisy_core_without_resolved_edges_is_not_tested_absence():
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    y[2:5] += np.random.default_rng(19).normal(0, 0.3, (3, len(t)))
+    found = detect(t, y, shot=1, core_channels=[2, 3, 4])
+    assert found.observable[(t > 0.5) & (t < 1.5)].all()
+    assert not found.absent_mask[(t > 0.5) & (t < 1.5)].any()
+    assert found.absence_diagnostics["reason_samples"]["unresolved_core_noise"] > 0
+
+
+@pytest.mark.parametrize(
+    "crashes",
+    [np.arange(0.4, 1.6, 0.012), [0.45, 0.92, 1.47]],
+    ids=["rapid_periodic", "irregular"],
+)
+def test_significant_nonprofile_core_edges_are_not_absence(crashes):
+    t = np.arange(0, 2, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    for crash in crashes:
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.003), 0)
+        y[2:5] -= 0.2 * transient
+    y += np.random.default_rng(25).normal(0, 0.001, y.shape)
+    found = detect(t, y, shot=1, core_channels=[2, 3, 4])
+    assert not found.intervals
+    for crash in crashes:
+        assert not found.absent_mask[np.abs(t - crash) < 0.2].any()
+    assert found.absence_diagnostics["reason_samples"]["core_edge_ambiguous"] > 0
+
+
+def test_equilibrium_uncertainty_is_decided_per_crash():
+    t, y = synthetic()
+    q = np.full(len(t), 0.8)
+    q[np.abs(t - 0.16) < 0.001] = 1.2
+    found = detect(t, y, shot=1, qmin=(t, q))
+    assert [event.attrs["state"] for event in found.crashes] == [
+        "present",
+        "uncertain",
+        "present",
+        "present",
+    ]
+
+
+def test_steep_physical_core_peak_survives_channel_temperature_screen():
+    t, _ = synthetic()
+    level = np.array([1.5, 2, 4, 4.5, 4, 2, 1.5, 1.0])
+    y = np.repeat(level[:, None], len(t), axis=1)
+    for crash in (0.08, 0.16, 0.24, 0.32):
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+        y[2:5] -= 0.7 * transient
+        y[5:7] += 0.4 * transient
+    y += np.random.default_rng(31).normal(0, 0.003, y.shape)
+    found = detect(t, y, shot=1, core_channels=range(7))
+    assert len(found.crashes) == 4
+    assert all(3 not in event.attrs["masked_channels"] for event in found.crashes)
+
+
 def test_period_trains_do_not_bridge_gap_or_isolated_crash():
     assert trains([0.1, 0.2, 0.3, 0.8, 0.9, 1.0]) == [(0, 3), (3, 6)]
     assert trains([0.1, 0.2]) == []

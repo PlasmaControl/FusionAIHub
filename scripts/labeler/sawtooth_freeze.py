@@ -80,12 +80,32 @@ def main():
                 k: {
                     "value": v,
                     "shots": shots,
-                    "origin": "literature/review prior, checked and frozen on TRAIN",
+                    "origin": (
+                        "Gude filter/profile prior"
+                        if k
+                        in {
+                            "sigma_ms",
+                            "frame_ms",
+                            "posr_threshold",
+                            "coincidence_ms",
+                            "minimum_channels",
+                            "significance",
+                            "maximum_net",
+                            "minimum_block",
+                        }
+                        else "TRAIN lower-tail amplitude with 5% prior floor"
+                        if k == "central_relative_drop"
+                        else "explicit review/implementation prior; not data optimized"
+                    ),
+                    "evidence": "per-shot train_audit below; no expert validation",
                 }
                 for k, v in asdict(rule).items()
             },
             "reader_guards": {
-                "core_proxy_channels": list(range(20, 36)),
+                "core_proxy_policy": (
+                    "actual RF frequency/Bt/axis mapping when supported, otherwise "
+                    "hottest physically screened channel and adjacent neighbors"
+                ),
                 "ece_valid_range_kev": [0, 100],
                 "density_quantile": 0.9,
                 "density_cutoff_margin": 0.9,
@@ -94,7 +114,8 @@ def main():
                 "sample_rate_hz": 10000,
                 "shots": shots,
                 "cutoff_note": (
-                    "density/B proxy; frequency/radius calibration unavailable"
+                    "density/B proxy; channel-specific calibration only if actual "
+                    "frequency metadata are present"
                 ),
             },
             "profile_and_support_guards": {
@@ -119,6 +140,9 @@ def main():
                     "error": r.get("error"),
                     "density_guard": r.get("density_guard"),
                     "rejected": r.get("rejected", {}),
+                    "state_seconds": r.get("state_seconds", {}),
+                    "absence_diagnostics": r.get("absence_diagnostics", {}),
+                    "core_geometry": r.get("core_geometry", {}),
                 }
                 for r in records
             ],

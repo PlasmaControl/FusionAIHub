@@ -8,11 +8,11 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=24G
 #SBATCH --time=04:00:00
-#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/population_%A_%a.log
-#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix/population_%A_%a.log
+#SBATCH --output=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/population_%A_%a.log
+#SBATCH --error=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/population_%A_%a.log
 
-# Four disjoint resumable population shards. Repair diagnostic masks afterward,
-# then run labels --population --records-only for the final JSON/CSV export.
+# Four disjoint resumable population shards, then run
+# labels --population --records-only for the final JSON/CSV export.
 set -euo pipefail
 export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/saw
 export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker

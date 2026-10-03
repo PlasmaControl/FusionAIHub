@@ -60,8 +60,41 @@ def test_four_states_do_not_turn_missing_or_uncertain_into_absence():
     t = np.arange(10) * 0.001
     observable = np.ones(10, dtype=bool)
     observable[4:6] = False
-    states, assessed = state_spans(t, observable, [(0.001, 0.004)], [(0.003, 0.007)])
+    absent = np.zeros(10, dtype=bool)
+    absent[7:] = True
+    states, assessed = state_spans(
+        t, observable, [(0.001, 0.004)], [(0.003, 0.007)], absent=absent
+    )
     expanded = {r["state"] for r in states}
     assert expanded == {"present", "absent", "uncertain", "unassessed"}
     assert not assessed[3:7].any()
-    assert assessed[:3].all()
+    assert not assessed[0]
+    assert assessed[1:3].all()
+    assert assessed[7:].all()
+
+
+def test_observable_support_without_absence_evidence_stays_uncertain():
+    t = np.arange(10) * 0.001
+    spans, assessed = state_spans(t, np.ones(10, dtype=bool), [], [])
+    assert len(spans) == 1
+    assert spans[0]["state"] == "uncertain"
+    assert spans[0]["start_s"] == 0.0
+    assert spans[0]["end_s"] == pytest.approx(0.01)
+    assert not assessed.any()
+
+
+def test_uncertainty_and_missing_support_override_explicit_absence():
+    t = np.arange(10) * 0.001
+    observable = np.ones(10, dtype=bool)
+    observable[4] = False
+    spans, assessed = state_spans(
+        t, observable, [], [(0.002, 0.006)], absent=np.ones(10, dtype=bool)
+    )
+    assert [row["state"] for row in spans] == [
+        "absent",
+        "uncertain",
+        "unassessed",
+        "uncertain",
+        "absent",
+    ]
+    assert not assessed[2:6].any()

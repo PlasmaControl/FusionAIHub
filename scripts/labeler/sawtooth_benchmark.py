@@ -25,6 +25,8 @@ from labeler.sawtooth.metrics import (
     aggregate,
     bin_times,
     binary_cells,
+    bootstrap_classification,
+    classification_metrics,
     event_cells,
     point_metrics,
     presence_from_cells,
@@ -34,8 +36,9 @@ from labeler.sawtooth.metrics import (
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 
 MODELS = ("saw-hl3", "saw-ours")
+INPUT_POLICY = "observable-only inputs; loss-only assessment; balanced crash-centred"
 THRESHOLDS = np.arange(1, 20) / 20
-DERIVATIVE_Z = tuple(range(2, 11))
+DERIVATIVE_Z = (*range(2, 21), 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 1000)
 LEGACY = {
     "source": (
         "OuYang et al. PPCF 67 (2025) 105004, "
@@ -108,6 +111,28 @@ def inner_split(outer_training, *, seed):
     return sorted(map(int, shuffled[count:])), sorted(map(int, shuffled[:count]))
 
 
+def guard_partition(split, fitting, selection, heldout):
+    """Fail before fitting/tuning if any fixed-val, test or expert shot enters."""
+    allowed = set(split["training_cohort"])
+    forbidden = set().union(
+        split["fixed_validation_excluded"],
+        split["blind_test_excluded"],
+        split["all_reviewed_excluded"],
+    )
+    groups = [set(shots) for shots in (fitting, selection, heldout)]
+    if any(group - allowed or group & forbidden for group in groups):
+        raise ValueError("fitting, selection and heldout must use fixed train shots")
+    if any(a & b for i, a in enumerate(groups) for b in groups[i + 1 :]):
+        raise ValueError("fitting, selection and heldout shot groups overlap")
+
+
+def guard_prediction_shots(split, shots):
+    """Queue inference uses fixed validation shots and cannot load blind test."""
+    if set(shots) - set(split["fixed_validation_excluded"]):
+        raise ValueError("queue predictions require fixed validation shots")
+    return sorted(set(shots))
+
+
 def present_rows(rec, key):
     return [
         row
@@ -135,6 +160,16 @@ def assessed_points(signal, times):
     """No point truth/prediction from an unknown or uncertain bin is scored."""
     times = np.asarray(times, dtype=float)
     return times[masks_at(signal, times)[1]]
+
+
+def input_values(signal, name):
+    """One observability-only input policy shared by fitting and inference."""
+    values = signal["baseline" if name == "saw-hl3" else "y"].astype(np.float32).copy()
+    observable = np.asarray(signal["observable"], dtype=bool)
+    if observable.shape != (len(signal["t"]),):
+        raise ValueError("observability must share the native input time grid")
+    values[:, ~observable] = np.nan
+    return values
 
 
 def period_boundary(work, shots):
@@ -170,38 +205,50 @@ def targets(t, rec, boundary):
     return picks, presence, classes
 
 
-def windows(work, shots, model, boundary, *, per_shot=64):
-    """Natural random windows + pick-centered windows for the dense picker."""
+def sample_window_starts(t, classes, crashes, width, rng, *, count):
+    """Half random, half crash-centred, balanced over available period classes."""
+    random = rng.integers(0, len(t) - width + 1, size=count)
+    centers = np.clip(
+        np.searchsorted(t, crashes) - width // 2, 0, len(t) - width
+    ).astype(int)
+    groups = [centers[classes[centers + width // 2] == label] for label in (1, 2)]
+    groups = [group for group in groups if len(group)]
+    if not groups:
+        return random
+    positive_count = count // 2
+    positive = [
+        rng.choice(
+            group,
+            size=positive_count // len(groups) + int(i < positive_count % len(groups)),
+            replace=True,
+        )
+        for i, group in enumerate(groups)
+    ]
+    return np.r_[random[: count - positive_count], *positive]
+
+
+def windows(work, shots, model, boundary, *, per_shot=64, balanced=True):
+    """Same random/crash-centred sampling and observable inputs for both models."""
     width = 200 if model == "saw-hl3" else 1000
     xs, ys, owners = [], [], []
     for shot in shots:
         data = np.load(work / "signals" / f"{shot}.npz")
         t = data["t"]
-        x = data["baseline" if model == "saw-hl3" else "y"].astype(np.float32)
+        x = input_values(data, model)
         if len(t) < width:
             continue
         rec = record(work, shot)
         pick, present, classes = targets(t, rec, boundary)
         observable, assessed = masks_at(data, t)
         rng = np.random.default_rng(SEED + shot)
-        starts = rng.integers(0, len(t) - width + 1, size=per_shot)
-        if model == "saw-ours":
-            centers = np.array(
-                [
-                    np.searchsorted(t, r["time_s"]) - width // 2
-                    for r in present_rows(rec, "crashes")
-                ]
-            )
-            centers = np.clip(centers, 0, len(t) - width).astype(int)
-            if len(centers):
-                starts = np.r_[
-                    starts[: per_shot // 2],
-                    rng.choice(
-                        centers,
-                        size=per_shot // 2,
-                        replace=len(centers) < per_shot // 2,
-                    ),
-                ]
+        centers = assessed_points(
+            data, [r["time_s"] for r in present_rows(rec, "crashes")]
+        )
+        starts = (
+            sample_window_starts(t, classes, centers, width, rng, count=per_shot)
+            if balanced
+            else rng.integers(0, len(t) - width + 1, size=per_shot)
+        )
         for start in starts:
             window = x[:, start : start + width].copy()
             mask = assessed[start : start + width]
@@ -209,8 +256,6 @@ def windows(work, shots, model, boundary, *, per_shot=64):
                 continue
             if model == "saw-hl3" and not mask[width // 2]:
                 continue
-            # Unknown input bins do not influence normalization or gradients.
-            window[:, ~mask] = np.nan
             xs.append(window.astype(np.float16))
             ys.append(
                 int(classes[start + width // 2])
@@ -253,6 +298,34 @@ def normalize(x, mean, std):
     )
 
 
+def window_classification(model, x, y, mean, std, *, batch=128):
+    """Diagnose the classifier on fitting/selection windows with dropout off."""
+    device = next(model.parameters()).device
+    model.eval()
+    cells = np.zeros((3, 3), dtype=int)
+    with torch.no_grad():
+        for start in range(0, len(x), batch):
+            logits = model(
+                torch.from_numpy(normalize(x[start : start + batch], mean, std)).to(
+                    device
+                )
+            )
+            estimate = logits.argmax(dim=1).cpu().numpy()
+            np.add.at(cells, (y[start : start + batch], estimate), 1)
+    return classification_metrics(cells)
+
+
+def prediction_classification(predictions, work, boundary):
+    """Natural overlapping windows from a supplied fitting/selection shot set."""
+    cells = np.zeros((3, 3), dtype=int)
+    for shot, pred in predictions.items():
+        _, _, truth = targets(pred["class_t"], record(work, shot), boundary)
+        valid = masks_at(pred, pred["class_t"])[1]
+        estimate = pred["class_prob"].argmax(axis=1)
+        np.add.at(cells, (truth[valid], estimate[valid]), 1)
+    return classification_metrics(cells)
+
+
 def loss(model, logits, y, weights=None):
     if model == "saw-hl3":
         return F.cross_entropy(logits, y.long(), weight=weights)
@@ -270,9 +343,8 @@ def loss(model, logits, y, weights=None):
 
 def infer(model, name, signal, mean, std, *, batch=128):
     t = signal["t"]
-    values = signal["baseline" if name == "saw-hl3" else "y"].copy()
+    values = input_values(signal, name)
     observable, assessed = masks_at(signal, t)
-    values[:, ~observable] = np.nan
     device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
@@ -343,7 +415,36 @@ def infer(model, name, signal, mean, std, *, batch=128):
         }
 
 
-def picks(name, prediction, signal, threshold, z=4):
+def ensemble_predictions(predictions):
+    """Average frozen fold probabilities on identical native time/support grids."""
+    first = predictions[0]
+    grids = ("t", "observable", "assessed")
+    if "class_t" in first:
+        grids += ("class_t",)
+    for prediction in predictions[1:]:
+        if any(not np.array_equal(first[key], prediction[key]) for key in grids):
+            raise ValueError(
+                "fold predictions do not share the same time/support grids"
+            )
+    result = {key: first[key].copy() for key in grids}
+    for key in ("presence", "crash", "class_prob"):
+        if key in first:
+            result[key] = np.mean([p[key] for p in predictions], axis=0).astype(
+                np.float32
+            )
+    return result
+
+
+def derivative_candidates(signal):
+    """Single-channel derivative peaks and robust z values, reusable in tuning."""
+    core = np.nan_to_num(input_values(signal, "saw-hl3")[0].astype(float), nan=0)
+    derivative = -gaussian_filter1d(core, 2.5, order=1)
+    scale = 1.4826 * np.median(np.abs(derivative - np.median(derivative)))
+    peaks, _ = find_peaks(derivative, distance=50)
+    return peaks, derivative[peaks] / max(scale, 1e-8)
+
+
+def picks(name, prediction, signal, threshold, z=4, *, derivative=None):
     t = prediction["t"]
     if name == "saw-ours":
         peaks, _ = find_peaks(prediction["crash"], height=threshold, distance=50)
@@ -351,16 +452,19 @@ def picks(name, prediction, signal, threshold, z=4):
         # The published network has no timing head. Gate a *single-channel*
         # derivative picker with its predicted regime probability. No inversion,
         # q, coincidence or physics labels enter this inference step.
-        core = np.nan_to_num(signal["baseline"][0].astype(float), nan=0)
-        derivative = -gaussian_filter1d(core, 2.5, order=1)
-        scale = 1.4826 * np.median(np.abs(derivative - np.median(derivative)))
-        peaks, _ = find_peaks(derivative, height=z * max(scale, 1e-8), distance=50)
+        peaks, amplitudes = (
+            derivative_candidates(signal) if derivative is None else derivative
+        )
+        peaks = peaks[amplitudes >= z]
         peaks = peaks[prediction["presence"][peaks] >= threshold]
     return assessed_points(signal, t[peaks])
 
 
-def calibrate(name, predictions, work):
+def calibrate(name, predictions, work, *, selection_shots, split):
     """Select only on inner held-out training shots, never fixed val/expert."""
+    if set(predictions) != set(selection_shots):
+        raise ValueError("calibration predictions must be the inner selection shots")
+    guard_partition(split, [], selection_shots, [])
     references, truth_by_shot = {}, {}
     signals = {}
     for shot, prediction in predictions.items():
@@ -380,11 +484,23 @@ def calibrate(name, predictions, work):
         probability = np.interp(t, prediction["t"], prediction["presence"])[valid]
         truth_by_shot[shot] = truth, probability
     options = []
+    derivatives = (
+        {shot: derivative_candidates(signal) for shot, signal in signals.items()}
+        if name == "saw-hl3"
+        else {}
+    )
     for threshold in THRESHOLDS:
         for z in DERIVATIVE_Z if name == "saw-hl3" else (0,):
             cells = np.zeros(3)
             for shot, prediction in predictions.items():
-                estimate = picks(name, prediction, signals[shot], threshold, z)
+                estimate = picks(
+                    name,
+                    prediction,
+                    signals[shot],
+                    threshold,
+                    z,
+                    derivative=derivatives.get(shot),
+                )
                 cells += event_cells(references[shot], estimate, 2)
             scores = point_metrics(cells)
             options.append(
@@ -438,6 +554,11 @@ def train(args):
             out = args.work / "models" / name / f"fold_{fold}"
             out.mkdir(parents=True, exist_ok=True)
             if (out / "complete.json").exists():
+                previous = json.loads((out / "complete.json").read_text())
+                if previous.get("input_policy") != INPUT_POLICY:
+                    raise ValueError(
+                        "completed fold uses obsolete input/sampling policy"
+                    )
                 print(f"resume: {name} fold {fold} complete", flush=True)
                 continue
             seed = SEED + fold
@@ -449,6 +570,7 @@ def train(args):
             ]
             heldout = [s for s in split["training_cohort"] if split["folds"][s] == fold]
             training, validation = inner_split(outer_training, seed=seed)
+            guard_partition(split, training, validation, heldout)
             boundary = period_boundary(args.work, training)
             x, y, owners = windows(
                 args.work, training, name, boundary, per_shot=args.windows_per_shot
@@ -459,6 +581,11 @@ def train(args):
             class_weights = None
             if name == "saw-hl3":
                 counts = np.bincount(y, minlength=3)
+                _, natural_y, _ = windows(
+                    args.work, training, name, boundary, per_shot=32, balanced=False
+                )
+                natural_counts = np.bincount(natural_y, minlength=3)
+                majority_class = int(natural_counts.argmax())
                 class_weights = torch.tensor(
                     len(y) / (3 * np.maximum(counts, 1)),
                     dtype=torch.float32,
@@ -480,6 +607,7 @@ def train(args):
                 epoch += 1
                 model.train()
                 losses = []
+                fitting_cells = np.zeros((3, 3), dtype=int)
                 for _ in range(args.steps):
                     selected = rng.integers(0, len(x), size=batch)
                     xx = normalize(x[selected], mean, std)
@@ -501,8 +629,15 @@ def train(args):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                     optimizer.step()
                     losses.append(value.item())
+                    if name == "saw-hl3":
+                        np.add.at(
+                            fitting_cells,
+                            (y[selected], logits.detach().argmax(dim=1).cpu().numpy()),
+                            1,
+                        )
                 model.eval()
                 vloss, vweights = [], []
+                selection_cells = np.zeros((3, 3), dtype=int)
                 with torch.no_grad():
                     for start in range(0, len(vx), batch):
                         logits = model(
@@ -521,6 +656,14 @@ def train(args):
                             ).item()
                         )
                         if name == "saw-hl3":
+                            np.add.at(
+                                selection_cells,
+                                (
+                                    vy[start : start + batch],
+                                    logits.argmax(dim=1).cpu().numpy(),
+                                ),
+                                1,
+                            )
                             vweights.append(
                                 float(
                                     class_weights[
@@ -538,6 +681,16 @@ def train(args):
                         "epoch": epoch,
                         "train_loss": float(np.mean(losses)),
                         "val_loss": validation_loss,
+                        "augmented_fit_classification": (
+                            classification_metrics(fitting_cells)
+                            if name == "saw-hl3"
+                            else None
+                        ),
+                        "balanced_selection_classification": (
+                            classification_metrics(selection_cells)
+                            if name == "saw-hl3"
+                            else None
+                        ),
                     }
                 )
                 print(
@@ -554,6 +707,16 @@ def train(args):
                     stale += 1
                 scheduler.step()
             model.load_state_dict(best_state)
+            fit_classification = (
+                window_classification(model, x, y, mean, std)
+                if name == "saw-hl3"
+                else None
+            )
+            balanced_selection_classification = (
+                window_classification(model, vx, vy, mean, std)
+                if name == "saw-hl3"
+                else None
+            )
             torch.save(
                 {
                     "state_dict": best_state,
@@ -563,7 +726,9 @@ def train(args):
                     "training_shots": training,
                     "validation_shots": validation,
                     "selection_shots": validation,
+                    "majority_class": majority_class if name == "saw-hl3" else None,
                     "model": name,
+                    "input_policy": INPUT_POLICY,
                 },
                 out / "checkpoint.pt",
             )
@@ -574,7 +739,13 @@ def train(args):
                 )
                 for s in validation
             }
-            selected, options = calibrate(name, validation_predictions, args.work)
+            selected, options = calibrate(
+                name,
+                validation_predictions,
+                args.work,
+                selection_shots=validation,
+                split=split,
+            )
             pred_dir = args.work / "predictions" / name / f"fold_{fold}"
             pred_dir.mkdir(parents=True, exist_ok=True)
             for shot in heldout + split["expert_shots"]:
@@ -586,6 +757,7 @@ def train(args):
                 np.savez_compressed(pred_dir / f"{shot}.npz", **prediction)
             summary = {
                 "model": name,
+                "input_policy": INPUT_POLICY,
                 "fold": fold,
                 "seed": seed,
                 "label_work_root": str(args.work),
@@ -599,6 +771,20 @@ def train(args):
                 "training_windows": len(owners),
                 "selection_windows": selection_windows,
                 "training_class_counts": counts.tolist() if name == "saw-hl3" else None,
+                "natural_training_class_counts": (
+                    natural_counts.tolist() if name == "saw-hl3" else None
+                ),
+                "majority_class": majority_class if name == "saw-hl3" else None,
+                "fit_classification": fit_classification,
+                "balanced_selection_classification": balanced_selection_classification,
+                "natural_selection_classification": (
+                    prediction_classification(
+                        validation_predictions, args.work, boundary
+                    )
+                    if name == "saw-hl3"
+                    else None
+                ),
+                "diagnosis_scope": "fitting and inner-selection fixed-train shots only",
                 "period_boundary_ms": boundary,
                 "history": history,
                 "best_epoch": best_epoch,
@@ -618,10 +804,20 @@ def train(args):
                 "peak_cuda_memory_bytes": torch.cuda.max_memory_allocated(),
                 "threshold_grid": THRESHOLDS.tolist(),
                 "derivative_z_grid": list(DERIVATIVE_Z) if name == "saw-hl3" else [],
+                "selected_derivative_z_at_grid_edge": (
+                    selected["z"] in (min(DERIVATIVE_Z), max(DERIVATIVE_Z))
+                    if name == "saw-hl3"
+                    else None
+                ),
+                "window_sampling": (
+                    "half natural random, half crash-centred; crash-centred samples "
+                    "balance the available small/large period classes per shot; "
+                    "identical policy for both models"
+                ),
                 "input_channels": (
                     [
-                        "ECE core mean channels 20-27",
-                        "ECE outer mean channels 8-15",
+                        "ECE core mean: per-shot geometry/profile core proxy",
+                        "ECE outer mean: per-shot geometry/profile outer proxy",
                         "Mirnov mean channels 0-1",
                         "Ip",
                     ]
@@ -629,9 +825,10 @@ def train(args):
                     else [f"ECE channel {i}" for i in range(48)]
                 ),
                 "unknown_truth": (
-                    "observable & assessed masks exclude unavailable, "
-                    "cutoff, low-Te and uncertain bins"
+                    "observability alone masks inputs; assessed supervision/scoring "
+                    "excludes uncertain bins while keeping observable measurements"
                 ),
+                "validation_status": "unvalidated algorithmic supervision",
                 "seconds": round(time.monotonic() - begun, 1),
                 "parameters": sum(p.numel() for p in model.parameters()),
             }
@@ -670,14 +867,27 @@ def evaluate(args):
             "gaussian_target_sigma_ms": 0.5,
             "assessment": (
                 "OOF pseudolabel scores intersect observable & assessed. "
-                "Primary expert scores intersect known expert spans & observable, "
-                "because independent expert truth resolves algorithm uncertainty; "
+                "Exploratory review scores intersect anchored reviewed spans & "
+                "observable; spans were drawn while reviewing old rule suggestions. "
                 "conditional algorithm-assessed scores also reported."
             ),
             "input_parity": (
-                "saw-hl3: two ECE averages (20-27, 8-15), Mirnov mean 0-1 and Ip; "
+                "saw-hl3: per-shot geometry/profile core and outer ECE averages, "
+                "Mirnov mean 0-1 and Ip; "
                 "saw-ours: all 48 ECE channels. Adapted HL-3 ECE inputs replace "
                 "published SXR; architecture and input access differ."
+            ),
+            "inputs": (
+                "one observability-only masking policy in fitting and inference; "
+                "assessment masks affect supervision and scoring only"
+            ),
+            "sampling": (
+                "both models: half natural random windows, half crash-centred "
+                "windows balanced over available period classes per fitting shot"
+            ),
+            "validation_status": (
+                "unvalidated algorithmic labels; reviewed spans are exploratory, "
+                "anchored to prior rule suggestions, and have no point crash truth"
             ),
         },
     }
@@ -691,8 +901,14 @@ def evaluate(args):
             )
             for fold in range(3)
         ]
+        for summary in summaries:
+            guard_partition(
+                split,
+                summary["training_shots"],
+                summary["selection_shots"],
+                summary["heldout_shots"],
+            )
         rows = {1: [], 2: []}
-        class_cells = np.zeros((3, 3), dtype=int)
         shot_class_cells, by_shot = [], []
         for shot in split["training_cohort"]:
             fold = split["folds"][shot]
@@ -751,8 +967,12 @@ def evaluate(args):
                 np.add.at(
                     cells, (classes[valid], pred["class_prob"].argmax(axis=1)[valid]), 1
                 )
-                class_cells += cells
-                shot_class_cells.append(cells)
+                majority_cells = np.zeros((3, 3), dtype=int)
+                majority_cells[:, summary["majority_class"]] = cells.sum(axis=1)
+                shot_class_cells.append(
+                    {"shot": shot, "cells": cells, "majority_cells": majority_cells}
+                )
+                shot_result["three_class"] = classification_metrics(cells)
         score = {
             f"crash_tolerance_{tolerance}ms": aggregate(rows[tolerance])
             for tolerance in (1, 2)
@@ -768,22 +988,38 @@ def evaluate(args):
             )
         }
         if name == "saw-hl3":
-            score["three_class_confusion"] = class_cells.tolist()
-            score["three_class_window_accuracy"] = (
-                float(class_cells.trace() / class_cells.sum())
-                if class_cells.sum()
-                else None
-            )
-            cells = np.stack(shot_class_cells)
-            rng = np.random.default_rng(SEED)
-            accuracy = []
-            for _ in range(1000):
-                totals = cells[rng.integers(0, len(cells), size=len(cells))].sum(axis=0)
-                if totals.sum():
-                    accuracy.append(float(totals.trace() / totals.sum()))
-            score["three_class_accuracy_ci95"] = (
-                np.quantile(accuracy, [0.025, 0.975]).tolist() if accuracy else None
-            )
+            classification = bootstrap_classification(shot_class_cells)
+            score["three_class"] = classification
+            score["three_class_confusion"] = classification["confusion"]
+            score["three_class_per_class_recall"] = classification["per_class_recall"]
+            score["three_class_recall_ci95"] = classification["ci95"][
+                "per_class_recall"
+            ]
+            score["three_class_window_accuracy"] = classification["window_accuracy"]
+            score["three_class_accuracy_ci95"] = classification["ci95"][
+                "window_accuracy"
+            ]
+            score["three_class_macro_f1"] = classification["macro_f1"]
+            score["three_class_macro_f1_ci95"] = classification["ci95"]["macro_f1"]
+            majority = classification["majority_baseline"]
+            majority["accuracy"] = majority["window_accuracy"]
+            majority["accuracy_ci95"] = majority["ci95"]["window_accuracy"]
+            majority["class_by_fold"] = [s["majority_class"] for s in summaries]
+            score["three_class_majority_baseline"] = majority
+            score["three_class_window_protocol"] = {
+                "classes": [
+                    "no sawtooth",
+                    "small-period sawtooth",
+                    "large-period sawtooth",
+                ],
+                "class_boundaries_ms_by_fold": [
+                    s["period_boundary_ms"] for s in summaries
+                ],
+                "window_ms": 20,
+                "hop_ms": 2,
+                "scoring_support": "observable & algorithm-assessed window centers",
+                "class_selection": "period median on fitting shots, per fold",
+            }
         expert, expert_hist, expert_cells = [], [], []
         conditional_hist, conditional_cells = [], []
         presence_threshold = float(
@@ -934,7 +1170,8 @@ def evaluate(args):
             "note": (
                 "Three-fold ensemble; thresholds are means of inner selections. "
                 "Per-shot scores without bootstrap because n=3. "
-                "Expert review has spans, no point crash times."
+                "Exploratory spans were anchored to prior rule suggestions; "
+                "no independent point crash times or spatial validation."
             ),
         }
         output["Tokamak-SI"][name] = score
@@ -964,9 +1201,96 @@ def evaluate(args):
     )
 
 
+def predict(args):
+    """Export fixed-validation ensembles without fitting or threshold selection."""
+    torch.set_num_threads(args.threads)
+    if not torch.cuda.is_available():
+        raise RuntimeError("GPU inference requires the phase3 CUDA Python environment")
+    torch.cuda.set_per_process_memory_fraction(0.28)
+    split = manifest(args.work)
+    shots = guard_prediction_shots(split, args.prediction_shots)
+    if not shots:
+        raise ValueError("predict requires at least one --prediction-shots entry")
+    device = torch.device("cuda")
+    for name in args.models:
+        summaries, predictions = [], {shot: [] for shot in shots}
+        for fold in range(3):
+            directory = args.work / "models" / name / f"fold_{fold}"
+            summary = json.loads((directory / "complete.json").read_text())
+            guard_partition(
+                split,
+                summary["training_shots"],
+                summary["selection_shots"],
+                summary["heldout_shots"],
+            )
+            if summary.get("input_policy") != INPUT_POLICY:
+                raise ValueError("checkpoint uses obsolete input/sampling policy")
+            checkpoint = torch.load(
+                directory / "checkpoint.pt", map_location=device, weights_only=False
+            )
+            model = (HL3() if name == "saw-hl3" else PhasePicker()).to(device)
+            model.load_state_dict(checkpoint["state_dict"])
+            for shot in shots:
+                with np.load(args.work / "signals" / f"{shot}.npz") as signal:
+                    predictions[shot].append(
+                        infer(
+                            model, name, signal, checkpoint["mean"], checkpoint["std"]
+                        )
+                    )
+            summaries.append(summary)
+            del model, checkpoint
+            torch.cuda.empty_cache()
+        threshold = float(
+            np.mean([s["selected_crash_threshold"]["threshold"] for s in summaries])
+        )
+        z = float(np.mean([s["selected_crash_threshold"]["z"] for s in summaries]))
+        presence_threshold = float(
+            np.mean([s["presence_threshold"] for s in summaries])
+        )
+        destination = args.work / "predictions" / "ensemble" / name
+        destination.mkdir(parents=True, exist_ok=True)
+        files = []
+        for shot in shots:
+            prediction = ensemble_predictions(predictions[shot])
+            with np.load(args.work / "signals" / f"{shot}.npz") as signal:
+                observable_signal = {
+                    "t": signal["t"],
+                    "baseline": signal["baseline"],
+                    "observable": signal["observable"],
+                    "assessed": signal["observable"],
+                }
+                prediction["picks"] = picks(
+                    name, prediction, observable_signal, threshold, z
+                )
+            path = destination / f"{shot}.npz"
+            np.savez_compressed(path, **prediction)
+            files.append(
+                {"shot": shot, "path": str(path), "picks": len(prediction["picks"])}
+            )
+        provenance = {
+            "model": name,
+            "shots": shots,
+            "split": "fixed validation; excluded from fitting and selection",
+            "files": files,
+            "crash_threshold": threshold,
+            "derivative_z": z,
+            "presence_threshold": presence_threshold,
+            "threshold_provenance": "means of frozen inner-selection thresholds",
+            "ensemble": "mean of three frozen fold probabilities",
+            "pick_support": "observable bins, including algorithm-uncertain bins",
+            "validation_status": "unvalidated algorithmic predictions for blind review",
+            "input_policy": INPUT_POLICY,
+        }
+        save_json(destination / "manifest.json", provenance)
+        save_json(OUTPUT / f"{name}_queue_predictions.json", provenance)
+        print(
+            f"{name}: fixed-validation predictions for {len(shots)} shots", flush=True
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["train", "evaluate"])
+    parser.add_argument("stage", choices=["train", "evaluate", "predict"])
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--models", nargs="+", choices=MODELS, default=list(MODELS))
     parser.add_argument(
@@ -977,12 +1301,13 @@ def main():
     parser.add_argument("--steps", type=int, default=80)
     parser.add_argument("--windows-per-shot", type=int, default=64)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument("--prediction-shots", nargs="+", type=int, default=[])
     args = parser.parse_args()
     if not 1 <= args.threads <= 8:
         parser.error("threads must be 1..8")
     if args.patience < 1 or args.min_delta <= 0:
         parser.error("patience and min-delta must be positive")
-    (train if args.stage == "train" else evaluate)(args)
+    {"train": train, "evaluate": evaluate, "predict": predict}[args.stage](args)
 
 
 if __name__ == "__main__":
