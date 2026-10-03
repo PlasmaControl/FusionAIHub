@@ -7,36 +7,36 @@
 Reference & AUROC: methods, best first \\
 \midrule
 \multicolumn{2}{l}{\textbf{All 8 overlap shots; 641 bins}} \\
-reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
-onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
-$\tau=100$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
-$\tau=200$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
-$\tau=300$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
+reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
+onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
+$\tau=100$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
+$\tau=200$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
+$\tau=300$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
 \midrule
-\multicolumn{2}{l}{\textbf{7 BES shots, ELM-O chunks; 526 bins}} \\
-reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
-onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
-$\tau=100$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
-$\tau=200$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
-$\tau=300$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
+\multicolumn{2}{l}{\textbf{7 BES shots, elm-elmo chunks; 526 bins}} \\
+reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
+onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
+$\tau=100$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
+$\tau=200$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
+$\tau=300$ ms & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
 \midrule
 \multicolumn{2}{l}{\textbf{Known majority, complete scores: All 8 overlap shots; 782 bins}} \\
 reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ \\
 onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ \\
 \midrule
 \multicolumn{2}{l}{\textbf{Known majority, detection coverage: All 8 overlap shots; 779 bins}} \\
-reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
-onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm detection \\
+reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
+onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-dsm (detection) \\
 \midrule
-\multicolumn{2}{l}{\textbf{Known majority, complete scores: 7 BES shots, ELM-O chunks; 724 bins}} \\
-reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O \\
-onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O \\
+\multicolumn{2}{l}{\textbf{Known majority, complete scores: 7 BES shots, elm-elmo chunks; 724 bins}} \\
+reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo \\
+onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo \\
 \midrule
-\multicolumn{2}{l}{\textbf{Known majority, detection coverage: 7 BES shots, ELM-O chunks; 721 bins}} \\
-reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
-onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ ELM-O $>$ elm-dsm detection \\
+\multicolumn{2}{l}{\textbf{Known majority, detection coverage: 7 BES shots, elm-elmo chunks; 721 bins}} \\
+reviewed & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
+onset bins & elm-ours $>$ elm-dsm refit$^{\ddagger}$ $>$ elm-elmo $>$ elm-dsm (detection) \\
 \bottomrule
 \end{tabular}
-\caption{AUROC point orders with fixed predictions on strict interior bins and known all-covered bins. Eight-shot evidence is inconclusive; point crossings cannot establish population ranking reversal. Source-exposed variants are supplemental. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\caption{AUROC point orders with fixed predictions on strict interior bins and known all-covered bins. Eight-shot evidence is inconclusive; point crossings cannot establish population ranking reversal. Source-exposed variants are supplemental. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; comparisons with reviewed occupancy involve definition and domain shift.}
 \label{tab:elm-swap-rankings}
 \end{table*}

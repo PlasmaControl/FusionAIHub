@@ -71,7 +71,7 @@ def test_generated_captions_are_short_and_table_specific(tmp_path):
                 assert "Brackets" not in caption and "Numerical F1" not in caption
     caption = (tmp_path / "table_elm_swap.tex").read_text()
     assert "inconclusive" in caption
-    assert "eight" in caption and "three" in caption and "two" in caption
+    assert "eight" in caption and "3 shots; 2 with BES" in caption
     assert "AUROC" in caption and "review-tuned" in caption
 
 
@@ -107,12 +107,16 @@ def test_main_occupancy_table_has_two_panels_and_only_six_core_rows():
         "elm-dsm (detection)",
         "elm-clock",
         "always-present",
-        "feature-only",
+        "elm-feature",
     ):
         assert text.count(name + " & ") == 2
     assert "detection init" not in text and "source exposure" not in text
     assert "photodiodes" in text and "56" in text and "44" in text and "33" in text
-    assert "WPQH phases" in text
+    assert "WPQH breakthrough-ELM" in text
+    assert "developmental shot-cv" in text.lower()
+    assert "16 review run days" in text
+    assert "60 input columns" in text and "BES subset only" in text
+    assert "domain shift" not in text and "192721:" not in text
 
 
 def test_native_paper_table_omits_four_shot_exact_export():
@@ -122,3 +126,18 @@ def test_native_paper_table_omits_four_shot_exact_export():
     text = paper_module().native_table(native)
     assert "exact native exports" not in text and "Reviewed occupancy" not in text
     assert "within horizon" in text and "Non-crowd starts" in text
+
+
+def test_smith_and_per_kind_captions_have_specific_limits():
+    root = SOURCE.parent.parent
+    smith = json.loads((root / "smith/evaluation.json").read_text())
+    ours = json.loads((root / "ours/evaluation.json").read_text())
+    module = paper_module()
+    text = module.smith_table(smith)
+    assert "not estimable under selected" in text
+    assert "within-Smith run-day sharing" in text
+    assert "historical tuning events is unresolved" in text
+    assert "domain shift" not in text and "192721:" not in text
+    assert r"\textit{NE}" in text
+    kinds = module.per_kind_table(ours)
+    assert "5 ms before" in kinds and "domain shift" not in kinds

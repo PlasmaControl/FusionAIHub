@@ -495,6 +495,12 @@ def run_evaluate(paths, args):
         "definition": "Every 1ms input cell touching the complete Smith window has both FS and interferometer samples; fully covered comparisons use the same windows and all methods. Nine edge onsets can lack a whole scored-window cell, but every truth remains in event denominators and may match an adjacent supported peak within tolerance.",
     }
     per_shot = []
+    head_audit = {
+        "out_of_window_firings": 0,
+        "matched": 0,
+        "correct_1ms_cell": 0,
+        "max_absolute_error_ms": 0.0,
+    }
     for shot in shots:
         z = dict(np.load(directory / "targets" / f"{shot}.npz"))
         p = dict(np.load(directory / "frozen" / f"{shot}.npz"))
@@ -548,6 +554,10 @@ def run_evaluate(paths, args):
             "elm-ours-onset": found_onsets(on, mask, thresholds[shot]),
             "elm-elmo": z["elmo_events"],
         }
+        all_head = found_onsets(on, z["input_valid"], thresholds[shot])
+        head_audit["out_of_window_firings"] += len(all_head) - len(
+            found["elm-ours-onset"]
+        )
         raw_counts["bins"] += int(mask.sum())
         raw_counts["positive_bins"] += int((z["state"][mask] == 1).sum())
         raw_counts["hand_onsets"] += len(z["truth"])
@@ -584,6 +594,16 @@ def run_evaluate(paths, args):
             detail["methods"][method] = {"detected_onsets": len(found[method])}
             for tol in (2, 5):
                 result = smith.match_events(found[method], z["truth"], tol)
+                if method == "elm-ours-onset" and tol == 2:
+                    errors = np.asarray(result["errors_ms"])
+                    head_audit["matched"] += len(errors)
+                    if len(errors):
+                        head_audit["max_absolute_error_ms"] = max(
+                            head_audit["max_absolute_error_ms"],
+                            float(np.abs(errors).max()),
+                        )
+                    # Output peaks are cell centres; correct cells have |e| <= 0.5 ms.
+                    head_audit["correct_1ms_cell"] += int((np.abs(errors) <= 0.5).sum())
                 events[method][str(tol)].append(result)
                 detail["methods"][method][str(tol)] = {
                     k: result[k] for k in ("tp", "fp", "fn")
@@ -670,6 +690,23 @@ def run_evaluate(paths, args):
     result["methods"]["elm-ours"]["events_source"] = (
         "Frozen auxiliary onset head; separate from delivered occupancy output, no Smith threshold tuning."
     )
+    head_audit["correct_1ms_cell_fraction"] = (
+        head_audit["correct_1ms_cell"] / head_audit["matched"]
+    )
+    head_audit["scope"] = (
+        "Peaks on valid input cells outside scored Smith windows have no negative "
+        "truth; these are firings, not adjudicated false positives."
+    )
+    result["onset_window_audit"] = head_audit
+    for row in result["methods"]["elm-ours-onset"]["events"].values():
+        row["selected_window_precision_f1"] = {
+            key: {"point": row["point"][key], "ci95": row["ci95"][key]}
+            for key in ("precision", "f1")
+        }
+        for key in ("precision", "f1"):
+            row["point"][key] = None
+            row["ci95"][key] = None
+        row["precision_f1_status"] = "not estimable under selected windows"
     result["onset_output_delivered"] = False
     result["onset_output_scope"] = "Physical-onset output in the reviewed event catalog"
     result["experimental_smith_cv_onset_traces"] = {
@@ -679,9 +716,13 @@ def run_evaluate(paths, args):
         "scope": "1ms benchmark traces on Smith shots from held-out-shot folds; selected-window evaluation only",
     }
     frozen_f1 = result["methods"]["elm-ours"]["events"]["2"]["point"]["f1"]
-    smith_f1 = result["methods"]["elm-ours-onset"]["events"]["2"]["point"]["f1"]
+    smith_recall = result["methods"]["elm-ours-onset"]["events"]["2"]["point"]["recall"]
     result["onset_delivery_reason"] = (
-        f"Frozen auxiliary onset F1 at +/-2ms is {frozen_f1:.3f}; Smith-only CV onset F1 is {smith_f1:.3f}. The experimental CV trace is delivered, but physical-onset catalog output remains withheld because selected Smith windows do not validate continuous-discharge false alarms or transfer of the Smith-trained head to the review domain."
+        f"Frozen auxiliary onset F1 at +/-2ms is {frozen_f1:.3f}; Smith-only CV "
+        f"onset recall is {smith_recall:.3f}. Precision/F1 are not estimable under "
+        "selected windows. The experimental CV trace is available; catalog "
+        "physical-onset output is withheld pending continuous-discharge false-alarm "
+        "validation and transfer of the Smith-trained head to the review domain."
     )
     # Undefined metrics stay explicit nulls alongside valid/undefined draw counts.
     result = json.loads(json.dumps(result), parse_constant=lambda _: None)

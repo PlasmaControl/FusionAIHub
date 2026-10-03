@@ -83,11 +83,7 @@ labelmaker:
         slots are 12 non-BES columns plus bes_slow_channel_1..48, so that model
         dropped every ECE channel and required 48 BES ones. It has been
         refitted on the correct 60 columns; the numbers below are the refit."
-      - "2026-09-06: with the columns identified correctly, dropping BES is not
-        a cost - it is an improvement. no_bes beats all124 on test NLL by 0.101
-        and on 20 ms AUROC by 0.0019 (Evaluation). BES is 64 of 124 inputs and
-        the fit at these hyperparameters overfits from epoch 1, so removing them
-        removes more variance than signal."
+      - "2026-10-03: the no_bes/all124 comparison is source-validation selection evidence only; it does not establish that BES is dispensable or that one architecture outperforms the native [100,1000] checkpoint."
       - "2026-09-06: both fits still reach their best test NLL after ONE epoch
         and get worse after it, at lr 1e-3 AND at lr 1e-4 (job 2924075,
         discarded). The optimum lies inside the first pass over 540k rows and a
@@ -183,10 +179,11 @@ the existing adapter slug remains `d3d_elm_time_to_event_dsm` for compatibility.
 The weights are **not** upstream's. Upstream's four Keras graphs take 124
 inputs and 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled
 shots, so a model that needs BES cannot be served at corpus scale. labeler
-therefore fitted the same architecture on upstream's own rows twice - once on
+therefore fitted a smaller architecture on upstream's own rows twice - once on
 all 124 columns (`all124`) and once on the 60 that are not BES (`no_bes`) - and
-serves the second. Architecture and hyperparameters are `hiro_scripts/model.cfg`
-verbatim: `k = 3`, one 128-unit ReLU6 embedding layer with dropout 0.2,
+serves the second. The native checkpoint uses layers `[100, 1000]`; both
+refits use one 128-unit layer. Refit hyperparameters are `k = 3`, ReLU6,
+dropout 0.2,
 LogNormal mixture, Adam at lr 1e-3, batch 1024, seed 0.
 
 Inference is `1 - S(h + 1 | x)` through `runners/dsm_pickle.survival`, the same
@@ -321,72 +318,76 @@ mode, and a stop at the first non-finite loss.
 
 ### Isolated reviewed-label detection
 
-The confirmatory detector completes 40 epochs in each of the five fixed,
-shot-grouped folds used by `elm-ours`. Inner-validation AUPRC selects the
-checkpoint and inner-validation F1 selects the threshold. The selected epochs
-(zero based) are 14, 34, 9, 30 and 1; thresholds are 0.207, 0.376, 0.544,
-0.017 and 0.451. This variability is development evidence, and the task is
-reviewed ELMy-phase occupancy rather than independently validated individual
-ELM onset detection. Source parameter reuse and source normalization reuse are
-both false for every fold, recorded with its fitting shot IDs, normalization
-constants, raw-row hashes and checkpoint hash.
+These are developmental shot-CV occupancy estimates on five fixed folds.
+Preliminary outer-fold predictions existed before cv2 (influence unresolved);
+16 review run days span folds. Inner-validation AUPRC selects checkpoints
+at zero-based epochs 35, 31, 2, 24, 0; inner-validation F1 selects
+thresholds 0.067, 0.122, 0.482, 0.021, 0.395. Each fold fits its own normalization and starts
+from random weights. No blind-cohort shots enter these fits.
 
 | Common panel | Shots | 50 ms bins | AUROC [95% shot CI] | F1 [95% shot CI] |
 |---|---:|---:|---|---|
-| All reviewed shots | 119 | 11,653 | 0.855 [0.813, 0.896] | 0.754 [0.696, 0.811] |
-| BES-covered shots | 73 | 6,527 | 0.856 [0.806, 0.902] | 0.780 [0.705, 0.842] |
+| All reviewed | 119 | 11,653 | 0.845 [0.796, 0.893] | 0.742 [0.681, 0.798] |
+| BES subset only | 73 | 6,527 | 0.840 [0.777, 0.892] | 0.783 [0.711, 0.842] |
 
-The source is [the detector evaluation JSON](../../../../outputs/labeler/elm/dsm/evaluation.json),
-`sets.{all119,bes73}.methods.elm-dsm-detect`, produced by
-`scripts/labeler/elm_dsm_evaluate.py --run cv2 --epochs 40 --device cuda`.
-The historical normalization-exposed scratch and source-initialized scores are
-retained as `elm-dsm-detect-exposed` and `elm-dsm-detect-init`; the latter also
-inherits survival-weight and source checkpoint-selection exposure.
+Source: [dsm/evaluation.json](../../../../outputs/labeler/elm/dsm/evaluation.json), `detectors.elm-dsm-detect` and `sets`.
+The detector uses 60 input columns, including measured PCPHD02/03 on
+119 shots and DENV2F/3F means on 115 per chord (four mean-filled).
+The inputs and architecture were designed for WPQH breakthrough-ELM
+forecasting from 50 ms means; density calibration remains unresolved.
 
-The limited-input survival refit's own-target AUROCs at 5, 10, 20 and 50 ms
-are 0.758 [0.700, 0.811], 0.764 [0.708, 0.817], 0.770 [0.716, 0.822] and
-0.777 [0.722, 0.830], on 80 physical early-stopping validation shots. These
-are selection-informed results. Its served checkpoint is **after one epoch**,
-selected as `best_epoch=0` from a **seven-epoch run**, rather than a run that
-stopped after one epoch. Exact values and physical-shot bootstrap intervals
-are in that JSON's `own_target.horizons`; the source training record is
-`training_no_bes.json` beside the installed checkpoint.
+### Limited-input survival refit (selection evidence)
+
+The served checkpoint is after 1 epoch
+of a 7-epoch run, selected at best_epoch=0. Its 80 physical source-validation
+shots selected the checkpoint; they are not independent test evidence.
+
+| Horizon | AUROC [95% physical-shot CI] |
+|---|---|
+| 5 ms | 0.758 [0.700, 0.811] |
+| 10 ms | 0.764 [0.708, 0.817] |
+| 20 ms | 0.770 [0.716, 0.822] |
+| 50 ms | 0.777 [0.722, 0.830] |
+
+Source: `dsm/evaluation.json:own_target.horizons`.
 
 ### Native original-checkpoint audit
 
-`scripts/labeler/elm_dsm_native.py` evaluates parameter setting 1 from the
-original `hiro_scripts/models/model9.pkl`, identified by the upstream export
-notebook and verified against the shipped `wpqh1` embedding and head kernels.
-It retains all 124 inputs, including 64 BES channels and PCPHD02/03, at 1 ms,
-and uses the original PyTorch ReLU6 checkpoint. The Keras conversion contains
-unbounded ReLU activations, so it is not silently substituted for this checkpoint.
+The original 124-input, 1 ms checkpoint has embedding layers [100, 1000].
+The limited-input survival refit and reviewed detector instead use one
+128-unit layer. Native evaluation uses model9 parameter setting 1 with
+ReLU6; the Keras conversion's unbounded ReLU is not substituted.
 
-Exact source exports exist on five reviewed shots. Four have scored review
-overlap (190637, 190643, 192721 and 196541), totaling 11,565 one-millisecond
-rows; 192751's exported phase rows do not overlap a scored review span.
-The exact-export 50 ms risk AUROC is 0.465 [0.139, 0.653]. Every shot in this
-small panel is source exposed: 196541 entered optimizer fitting and the other
-three entered checkpoint selection, and all entered source normalization.
-No threshold is tuned for this native panel. It is a separate continuous-score
-comparison with limited phase coverage, not a held-out confirmatory result.
+The corrected forward presence target asks whether a reviewed present
+span intersects (t, t+h]; the separate onset target asks whether a
+non-crowd start lies in that interval. Reviewed non-crowd starts sit
+about 5 ms before BES onsets and are not verified physical onsets.
 
-Original diagnostic H5 records plus existing or paced, isolated PCPHD02/03
-fetches make 45 reviewed shots reconstructable. The reconstruction is reported
-separately because the source smoothed concatenated filtered phase rows whereas
-serving smooths each shot's normalized NBI trace. It retains original 1 ms
-sampling and all 124 columns without mean filling or clipping. Per-column
-agreement with exact source exports, remaining missing columns for every
-reviewed shot, filter-domain failures and coverage are recorded in
-[the native evaluation JSON](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
-The fetch record is [native_fetch.json](../../../../outputs/labeler/elm/dsm/native_fetch.json).
+Exact-export 50 ms AUROC is **0.607**, CI **null**:
+descriptive only on 4 source-exposed shots and 11,565 rows
+(190637, 190643, 192721, 196541).
+196541 entered optimizer fitting; the other three entered checkpoint
+selection; all entered source normalization. Five shots have exports,
+but 192751 has no scored overlap. No operating threshold is selected.
 
-The original checkpoint's own-target AUROCs at 5/10/20/50 ms are
-0.926 [0.915, 0.937], 0.931 [0.919, 0.941], 0.939 [0.927, 0.949] and
-0.955 [0.945, 0.964], on 326 physical source validation shots. The original
-trainer's reversed chronological partition is preserved: the last 10% of phase
-records train the model, and the first 90% select it. These are historical
-checkpoint-selection results, not untouched evaluation; exact values and
-row/case/control counts are in `native_evaluation.json:own_target.horizons`.
+| Native panel | Horizon | Shots | Rows | AUROC [95% physical-shot CI] |
+|---|---|---:|---:|---|
+| Reconstructed presence | 5 ms | 33 | 138,049 | 0.610 [0.541, 0.705] |
+| Reconstructed presence | 10 ms | 33 | 137,986 | 0.613 [0.544, 0.708] |
+| Reconstructed presence | 20 ms | 33 | 137,825 | 0.620 [0.549, 0.715] |
+| Reconstructed presence | 50 ms | 33 | 137,282 | 0.709 [0.630, 0.789] |
+| Source selection target | 5 ms | 326 | 699,512 | 0.926 [0.915, 0.937] |
+| Source selection target | 10 ms | 326 | 697,855 | 0.931 [0.919, 0.941] |
+| Source selection target | 20 ms | 326 | 694,596 | 0.939 [0.927, 0.949] |
+| Source selection target | 50 ms | 326 | 685,337 | 0.955 [0.945, 0.964] |
+
+Reconstruction is a sensitivity: source smoothing of concatenated
+phase rows differs from within-shot NBI smoothing. Source validation
+retains the original reversed chronological split and selected weights.
+It is not independent evaluation. Coverage, inputs, targets and exposure
+are in [native_evaluation.json](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
+Reproduce scoring without training with `elm_dsm_evaluate.py --rescore`
+and `elm_dsm_native.py`; render this block with `elm_protocol.py`.
 
 ### BES ablation, refitted on the correct columns (2026-09-06)
 
@@ -410,7 +411,7 @@ input set, and were included in upstream normalization.
 **Decision rule, written before the run:** adopt `no_bes` if its test NLL is
 within 0.02 of `all124`'s *and* its 20 ms AUROC is within 0.02. It passes both
 by improving on both: **ΔNLL -0.1010** and **Δ20 ms AUROC +0.0019** in
-`no_bes`'s favour. **Verdict: adopt `no_bes`; BES is droppable.** (50 ms is the
+`no_bes`'s favour. **Selection: serve `no_bes` under this validation rule.** (50 ms is the
 one horizon where `all124` is ahead, by 0.0036.)
 
 This reverses the verdict this card carried on 2026-09-06 before the column
@@ -432,7 +433,8 @@ Two caveats that belong with the numbers rather than under them:
 * upstream passes the **test** split as `val_data`, which this fit reproduces,
   so the early stop selects on the test rows. `test NLL` is a
   selection-informed number, not held out. Both sets are selected identically,
-  so the comparison between them is fair.
+  so this remains a selection comparison; it does not establish that BES is
+  dispensable in other populations or architectures.
 
 ### Coverage on the corpus
 

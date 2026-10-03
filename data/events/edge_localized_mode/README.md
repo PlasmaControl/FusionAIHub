@@ -42,16 +42,21 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 **Publications**:
 
 ## Models
+**stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (forecast, not a detector)
 
+**latest**: elm-ours | 2026_10_03
+
+**all**:
 - elm-ours | 2026_10_03 | AUROC: 0.939 [0.901, 0.966] | AUPRC: 0.878 [0.775, 0.951] | F1: 0.834 [0.782, 0.875] (119 shots / 11,653 common bins)
+- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.777 [0.730, 0.824] | AUPRC: 0.662 [0.592, 0.736] | F1: 0.627 [0.559, 0.692] (elm-dsm refit; supplemental source-exposed offline risk score; 119 shots / 11,653 common bins)
 - elm-dsm (detection) | 2026_10_03 | AUROC: 0.845 [0.796, 0.893] | AUPRC: 0.748 [0.651, 0.832] | F1: 0.742 [0.681, 0.798] (119 shots / 11,653 common bins)
-- elm-clock | 2026_10_03 | AUROC: -- | AUPRC: -- | F1: 0.759 [0.683, 0.829] (119 shots / 11,653 common bins)
-- elm-always-present | 2026_10_03 | AUROC: 0.500 [0.500, 0.500] | AUPRC: 0.391 [0.332, 0.450] | F1: 0.562 [0.499, 0.621]† (119 shots / 11,653 common bins)
-- elm-feature-only | 2026_10_03 | AUROC: 0.833 [0.782, 0.879] | AUPRC: 0.704 [0.612, 0.789] | F1: 0.713 [0.649, 0.770] (119 shots / 11,653 common bins)
-- elm-elmo | 2026_10_03 | AUROC: 0.914 [0.869, 0.948] | AUPRC: 0.833 [0.755, 0.892] | F1: 0.841 [0.786, 0.885] (73 shots / 6,527 common bins)
-- elm-ours-onset | 2026_10_03 | Event F1 ±2/5 ms: 0.964 [0.956, 0.972] (211 Smith shots; experimental shot-CV trace, selected windows)
+- elm-clock | 2026_09_13 | AUROC: -- | AUPRC: -- | F1: 0.759 [0.683, 0.829] (119 shots / 11,653 common bins)
+- elm-elmo | 2026_10_01 | AUROC: 0.914 [0.869, 0.948] | AUPRC: 0.833 [0.755, 0.892] | F1: 0.841 [0.786, 0.885] (73 shots / 6,527 common bins)
+- always-present | 2026_10_03 | AUROC: 0.500 [0.500, 0.500] | AUPRC: 0.391 [0.332, 0.450] | F1: 0.562 [0.499, 0.621] (119 shots / 11,653 common bins)
+- elm-feature | 2026_10_03 | AUROC: 0.833 [0.782, 0.879] | AUPRC: 0.704 [0.612, 0.789] | F1: 0.713 [0.649, 0.770] (119 shots / 11,653 common bins)
+- elm-ours-onset | 2026_10_03 | Recall ±2/5 ms: 0.930 [0.915, 0.945] | Matched errors ≤0.82 ms; 94% correct 1 ms cell (211 Smith shots; developmental selected-window shot CV)
 
-Brackets are eligible 95% shot-bootstrap intervals. Review scores are occupancy-development estimates (97% crowd positives; clock-seeded D-alpha review), with shot-grouped fits excluding blind-cohort shots. ELM-O requires BES; the DSM detector includes photodiodes and fast-density substitutes with unresolved calibration. Historical source-exposed DSM variants remain supplemental. The independent Smith onset and occupancy evaluation, run-day overlap and limitations are in [elm_ours.md](../../../docs/labeler/elm_ours.md). Frozen elm-ours performs poorly on Smith event regions (AUROC 0.505), so its auxiliary onset output is not delivered. The successful Smith-trained head is an experimental selected-window CV trace; catalog physical-onset output remains withheld. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).
+Brackets are 95% shot-bootstrap intervals. Review results are developmental shot-CV occupancy estimates (97% crowd positives; clock-seeded review). Reviewed non-crowd starts sit about 5 ms before BES onsets. Catalog physical-onset output is withheld. Smith onset precision/F1 are not estimable under selected windows. Inputs, run-day sharing and timing limits: [elm_ours.md](../../../docs/labeler/elm_ours.md).
 
 ## Inputs
 **elm-dsm** (internal adapter slug `d3d_elm_time_to_event_dsm`):

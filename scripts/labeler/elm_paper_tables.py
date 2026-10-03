@@ -26,7 +26,7 @@ def benchmark_table(ours, dsm, feature=None) -> str:
         ("elm-dsm-detect", "elm-dsm (detection)"),
         ("elm-clock", "elm-clock"),
         ("always present", "always-present"),
-        ("elm-feature-only", "feature-only"),
+        ("elm-feature-only", "elm-feature"),
     )
     for tag in ("all119", "bes73"):
         res = dsm["sets"][tag]
@@ -52,12 +52,17 @@ def benchmark_table(ours, dsm, feature=None) -> str:
             lines.append(label + " & " + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}"]
     caption = (
-        "Reviewed 50 ms occupancy, 97\\% crowd positives; brackets: eligible "
-        "shot-bootstrap intervals. Inputs: ours, FS02--04/fast density; ELM-O, "
-        "BES/FS/density (BES only); DSM, 60 diagnostics including PCPHD02/03 photodiodes "
+        "Developmental shot-CV estimates of reviewed 50 ms occupancy, 97\\% crowd "
+        "positives; brackets: shot-bootstrap intervals. Preliminary outer-fold "
+        "predictions existed before cv2; their influence is unresolved, and "
+        "16 review run days span folds. Inputs: elm-ours, FS02--04/fast density; "
+        "elm-elmo, BES/FS/density (BES subset only); DSM, 60 input columns "
+        "including PCPHD02/03 photodiodes "
         "on all 119 shots and DENV2F/3F on 115 each (four each mean-filled); clock, "
         "D-alpha/phase gate; "
-        "always-present, none; feature-only, log D-alpha max-minus-median. "
+        "always-present, none; elm-feature, log D-alpha max-minus-median. "
+        "DSM inputs and architecture were designed for WPQH breakthrough-ELM "
+        "forecasting from 50 ms means. "
         "Clock boundary identity within 1 ms: 56\\% starts, 44\\% ends, "
         "33\\% both. Density calibration remains unresolved."
     )
@@ -76,7 +81,7 @@ def annotation_table(ours) -> str:
     lines = []
     for tag in ("all119", "bes73"):
         res = ours["sets"][tag]
-        scope = "All reviewed shots" if tag == "all119" else "BES, ELM-O chunks"
+        scope = "All reviewed shots" if tag == "all119" else "BES, elm-elmo chunks"
         lines += [
             r"\textbf{" + scope + r"}\par\smallskip",
             r"\begin{tabular}{lrrcc}",
@@ -140,7 +145,7 @@ def per_kind_table(ours) -> str:
     ]
     for tag in ("all119", "bes73"):
         res = ours["sets"][tag]
-        scope = "All reviewed shots" if tag == "all119" else "BES, ELM-O chunks"
+        scope = "All reviewed shots" if tag == "all119" else "BES, elm-elmo chunks"
         lines += [r"\midrule", r"\multicolumn{4}{l}{" + scope + r"} \\"]
         for method, _ in (*swap_tex.ROWS, (swap_tex.ALWAYS, swap_tex.ALWAYS)):
             if method not in res["per_kind"]:
@@ -163,7 +168,8 @@ def per_kind_table(ours) -> str:
         "non-crowd bin recall use positive interior bins; non-crowd span recall "
         "credits any detection touching a sufficiently covered individual span, "
         "after clipping detections to analyzed coverage. Brackets show 95\\% "
-        "shot-bootstrap intervals. Span-touch recall does not measure onset timing."
+        "shot-bootstrap intervals. Reviewed non-crowd starts are about 5 ms before "
+        "BES onsets; span-touch recall does not measure onset timing."
     )
     return swap_tex.wrap_table("\n".join(lines), caption, "tab:elm-per-kind")
 
@@ -254,7 +260,10 @@ def smith_table(record) -> str:
     for method, row in record["methods"].items():
         for tolerance, res in row["events"].items():
             cells = [
-                swap_tex.metric_cell(res, m) for m in ("precision", "recall", "f1")
+                r"\textit{NE}"
+                if method == "elm-ours-onset" and m in ("precision", "f1")
+                else swap_tex.metric_cell(res, m)
+                for m in ("precision", "recall", "f1")
             ]
             error = res["timing_error_ms"]["median_absolute"]
             timing = "--" if error is None else f"{error:.3f}"
@@ -268,12 +277,14 @@ def smith_table(record) -> str:
             )
     lines += [r"\bottomrule\end{tabular}"]
     caption = (
-        "Independent Smith hand-labelled windows: frozen review ensemble "
-        "(elm-ours), Smith-only grouped-CV onset head, and fixed-setting ELM-O. "
-        "Whole 1 ms occupancy cells and one-to-one onset matching have different "
-        "targets. Timing errors describe matched events. Brackets show eligible "
-        "shot-bootstrap intervals; ELM-O's 0.997/0.980 window-overlap P/R is "
-        "distinct from onset matching."
+        "Smith windows: frozen review-to-Smith transfer (elm-ours) is independent "
+        "of review shots and run days. The Smith-trained head is developmental "
+        "shot CV with within-Smith run-day sharing; overlap with elm-elmo's "
+        "historical tuning events is unresolved. NE: not estimable under selected "
+        "windows (precision/F1); false positives count only inside windows, with "
+        "30,436 additional out-of-window head firings. Head recall is 0.930; "
+        "all matched errors are within 0.82 ms and 94\\% are in the correct 1 ms "
+        "cell. Occupancy and onset targets differ. Brackets: shot-bootstrap intervals."
     )
     return swap_tex.wrap_table("\n".join(lines), caption, "tab:elm-smith")
 
@@ -330,6 +341,7 @@ def native_table(native) -> str:
         "validation. AUROC brackets show 95\\% physical-shot bootstrap intervals. "
         "$^{\\ddagger}$ marks supplemental source exposure, not independent "
         "confirmatory evidence."
+        " Reviewed non-crowd starts are about 5 ms before BES onsets."
     )
     return swap_tex.wrap_table("\n".join(lines), caption, "tab:elm-dsm-native")
 
@@ -340,14 +352,13 @@ Reviewed occupancy uses 50 ms bins wholly inside known spans and signal coverage
 the main panels additionally require DSM rows. Crowd annotations supply 97\% of
 positive bins. Review began from the clock: within 1 ms, 56\% of crowd starts,
 44\% of ends and 33\% of both edges match its boundaries. This development
-reference is dependent on D-alpha evidence; span starts are not verified onsets.
-
-The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM
-targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift
-(192721: 1 legacy bin versus 17 non-crowd review spans).
+reference is dependent on D-alpha evidence; reviewed non-crowd starts are about
+5 ms before BES onsets and are not verified physical onsets.
 
 Five shot-grouped folds exclude blind-cohort shots; checkpoint and threshold
-selection uses inner-validation shots. The primary occupancy model remains the
+selection uses inner-validation shots. These are developmental shot-CV estimates:
+preliminary outer-fold predictions existed before cv2 (influence unresolved),
+and 16 review run days span folds. The primary occupancy model remains the
 frozen original recipe. A trailing-three-epoch selection after warm-up is reported
 as a sensitivity, not selected on its held-out performance. Feature-only uses one
 within-bin FS02--04 log D-alpha max-minus-median feature and L2 logistic regression
@@ -362,20 +373,22 @@ Native risks are scored against reviewed presence or per-ELM starts in $(t,t+h]$
 The four exact-export source-exposed shots remain in the appendix JSON record only.
 
 Eligible intervals use 1,000 physical-shot bootstrap draws. Every metric records
-finite and undefined draws; fewer than five positive-bearing shots are descriptive
-only and have no population 95\% interval. $^{\ddagger}$ marks source exposure;
+finite and undefined draws; at least five denominator-bearing shots are required
+per endpoint (negative-bearing shots for false-alarm rates). $^{\ddagger}$ marks source exposure;
 $^{\dagger}$ marks recall at least 0.99. Complete numeric precision and recall,
 input availability and training exposure remain in the evaluation JSON records.
 
-Smith's independent hand-labelled windows test the frozen review ensemble and
-shot-grouped Smith-trained onset head separately. Window occupancy uses 1 ms
+Frozen review-to-Smith transfer is independent of review shots and run days.
+The Smith-trained head is developmental shot CV with within-Smith run-day sharing;
+overlap with ELM-O's historical tuning events is unresolved. Window occupancy uses 1 ms
 cells, so it is not comparable to the crowd-dominated 50 ms review target.
 Event metrics use one-to-one onset matching at 2 and 5 ms and report timing errors;
 ELM-O uses its published fixed setting. Frozen occupancy transfer fails against
 Smith event regions, and the frozen auxiliary onset output is not delivered.
-The Smith-trained onset head succeeds on selected windows and remains an
-experimental CV trace; catalog physical-onset output is withheld. Run-day overlap
-is reported separately from shot overlap.
+The Smith-trained head recalls 0.930 of selected-window events; matched errors
+are within 0.82 ms, with 94\% in the correct 1 ms cell. Precision/F1 are not
+estimable under selected windows: false positives count only inside windows,
+and 30,436 additional firings occur outside. Catalog onset output is withheld.
 
 Finding 1 uses all-covered known 50 ms cells with at least 25 ms reviewed present;
 unknown time stays unknown. Finding 2 includes both strict interior and known

@@ -3,14 +3,13 @@ Reviewed occupancy uses 50 ms bins wholly inside known spans and signal coverage
 the main panels additionally require DSM rows. Crowd annotations supply 97\% of
 positive bins. Review began from the clock: within 1 ms, 56\% of crowd starts,
 44\% of ends and 33\% of both edges match its boundaries. This development
-reference is dependent on D-alpha evidence; span starts are not verified onsets.
-
-The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM
-targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift
-(192721: 1 legacy bin versus 17 non-crowd review spans).
+reference is dependent on D-alpha evidence; reviewed non-crowd starts are about
+5 ms before BES onsets and are not verified physical onsets.
 
 Five shot-grouped folds exclude blind-cohort shots; checkpoint and threshold
-selection uses inner-validation shots. The primary occupancy model remains the
+selection uses inner-validation shots. These are developmental shot-CV estimates:
+preliminary outer-fold predictions existed before cv2 (influence unresolved),
+and 16 review run days span folds. The primary occupancy model remains the
 frozen original recipe. A trailing-three-epoch selection after warm-up is reported
 as a sensitivity, not selected on its held-out performance. Feature-only uses one
 within-bin FS02--04 log D-alpha max-minus-median feature and L2 logistic regression
@@ -25,20 +24,22 @@ Native risks are scored against reviewed presence or per-ELM starts in $(t,t+h]$
 The four exact-export source-exposed shots remain in the appendix JSON record only.
 
 Eligible intervals use 1,000 physical-shot bootstrap draws. Every metric records
-finite and undefined draws; fewer than five positive-bearing shots are descriptive
-only and have no population 95\% interval. $^{\ddagger}$ marks source exposure;
+finite and undefined draws; at least five denominator-bearing shots are required
+per endpoint (negative-bearing shots for false-alarm rates). $^{\ddagger}$ marks source exposure;
 $^{\dagger}$ marks recall at least 0.99. Complete numeric precision and recall,
 input availability and training exposure remain in the evaluation JSON records.
 
-Smith's independent hand-labelled windows test the frozen review ensemble and
-shot-grouped Smith-trained onset head separately. Window occupancy uses 1 ms
+Frozen review-to-Smith transfer is independent of review shots and run days.
+The Smith-trained head is developmental shot CV with within-Smith run-day sharing;
+overlap with ELM-O's historical tuning events is unresolved. Window occupancy uses 1 ms
 cells, so it is not comparable to the crowd-dominated 50 ms review target.
 Event metrics use one-to-one onset matching at 2 and 5 ms and report timing errors;
 ELM-O uses its published fixed setting. Frozen occupancy transfer fails against
 Smith event regions, and the frozen auxiliary onset output is not delivered.
-The Smith-trained onset head succeeds on selected windows and remains an
-experimental CV trace; catalog physical-onset output is withheld. Run-day overlap
-is reported separately from shot overlap.
+The Smith-trained head recalls 0.930 of selected-window events; matched errors
+are within 0.82 ms, with 94\% in the correct 1 ms cell. Precision/F1 are not
+estimable under selected windows: false positives count only inside windows,
+and 30,436 additional firings occur outside. Catalog onset output is withheld.
 
 Finding 1 uses all-covered known 50 ms cells with at least 25 ms reviewed present;
 unknown time stays unknown. Finding 2 includes both strict interior and known

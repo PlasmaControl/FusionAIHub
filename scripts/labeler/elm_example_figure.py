@@ -34,7 +34,7 @@ WINDOW_MS = 1500.0
 LEAD_MS = 100.0
 #: Okabe-Ito colours: crowd, non-crowd, absent, probability, ELM-O, clock.
 CROWD, NON_CROWD, ABSENT = "#E69F00", "#CC79A7", "#999999"
-PROB, ELMO, CLOCK = "#009E73", "#CC79A7", "#56B4E9"
+PROB, ELMO, CLOCK = "#009E73", "#D55E00", "#56B4E9"
 
 
 def f1_of(truth: np.ndarray, call: np.ndarray) -> float:
@@ -87,9 +87,7 @@ def shade(ax, spans, t0, t1) -> None:
     for r in spans.itertuples():
         if r.t_end < t0 or r.t_start > t1:
             continue
-        colour = {"crowd": CROWD, "non_crowd": NON_CROWD, "absent": ABSENT}.get(
-            r.kind
-        )
+        colour = {"crowd": CROWD, "non_crowd": NON_CROWD, "absent": ABSENT}.get(r.kind)
         if colour is None:
             continue
         ax.axvspan(
@@ -120,7 +118,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
     bx.plot(tt[sl], event[sl], color=PROB, lw=1.0, label="elm-ours")
     bx.axhline(oof.threshold[shot], color=PROB, lw=0.8, ls="--")
     bx.set_ylim(-0.02, 1.02)
-    bx.set_ylabel("event\nprobability", fontsize=8)
+    bx.set_ylabel("ELMy-occupancy\nprobability", fontsize=8)
     for y, spans, colour in (
         (0.93, elmo.get(shot), ELMO),
         (0.85, clock.get(shot), CLOCK),
@@ -224,12 +222,25 @@ def main(argv: list[str] | None = None) -> int:
         "ELM-O detections (ticks)",
         "elm-clock present spans",
     ]
+    visible_kinds = set()
+    for panel in panels:
+        shot = panel["shot"]
+        start, stop = panel["window_ms"]
+        spans = data[shot].spans
+        visible_kinds.update(
+            spans.loc[(spans.t_start < stop) & (spans.t_end > start), "kind"]
+        )
+    shading = [
+        i
+        for i, kind in enumerate(("crowd", "non_crowd", "absent"))
+        if kind in visible_kinds
+    ]
     fig.legend(
-        handles[:3],
-        names[:3],
+        [handles[i] for i in shading],
+        [names[i] for i in shading],
         loc="lower center",
         bbox_to_anchor=(0.5, 0.08),
-        ncol=3,
+        ncol=len(shading),
         fontsize=7.5,
         frameon=False,
         columnspacing=1.5,
@@ -276,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
                 "FS_CENTRE": inputs.FS_CENTRE,
                 "floor_au": inputs.FS_FLOOR,
                 "reduction": "maximum per 0.1 ms cell; missing cells omitted",
-                "probability": "out-of-fold elm-ours event probability per 1 ms",
+                "probability": "out-of-fold ELMy-occupancy probability per 1 ms",
             },
             "window_rule": {"duration_ms": WINDOW_MS, "lead_ms": LEAD_MS},
             "caption": (
@@ -287,9 +298,8 @@ def main(argv: list[str] | None = None) -> int:
                 "25th percentile of per-shot "
                 "out-of-fold elm-ours F1. Top: FS02 D-alpha on a log10 a.u. axis, "
                 "with the model-input normalization reversed; source physical "
-                "units are unconfirmed. Shading marks reviewed crowd, non-crowd "
-                "present and absent spans. Non-crowd spans are not verified "
-                "isolated ELMs. Bottom: out-of-fold elm-ours event probability "
+                "units are unconfirmed. Shading marks reviewed crowd and absent "
+                "spans. Bottom: out-of-fold elm-ours ELMy-occupancy probability "
                 "and the threshold selected on inner-validation shots. "
                 f"Panel (a) uses fold {panels[0]['fold']} and threshold "
                 f"{panels[0]['inner_validation_threshold']:.3f}; panel (b) uses "
@@ -303,10 +313,7 @@ def main(argv: list[str] | None = None) -> int:
                 "first reviewed present span, clipped to input coverage, and "
                 "lasts up to 1500 ms. Crowd boundaries match the clock within "
                 "1 ms for 56% of starts, 44% of ends and 33% of both edges. "
-                "The DSM and legacy onset table were built on WPQH phases with "
-                "breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly "
-                "reflect definition and domain shift (192721: 1 legacy bin "
-                "versus 17 non-crowd review spans). Place at 7-inch "
+                "Place at 7-inch "
                 "two-column width to preserve text of at least 7 pt."
             ),
         }

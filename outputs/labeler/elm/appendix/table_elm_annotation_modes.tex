@@ -19,10 +19,10 @@ Annotation mode & Precision & Recall & Absent-bin FP fraction \\
 Crowd only & 0.886 {\scriptsize[0.82, 0.94]} & 0.904 {\scriptsize[0.84, 0.95]} & -- \\
 Non-crowd only & 0.298 {\scriptsize[0.13, 0.55]} & 0.698 {\scriptsize[0.40, 0.91]} & -- \\
 Mixed crowd/non-crowd & 0.857 {\scriptsize[0.74, 0.95]} & 0.617 {\scriptsize[0.49, 0.76]} & -- \\
-No reviewed present span & -- & -- & 0.092 \\
+No reviewed present span & -- & -- & 0.092 {\scriptsize[0.04, 0.17]} \\
 \bottomrule
 \end{tabular}\par\medskip
-\textbf{BES, ELM-O chunks}\par\smallskip
+\textbf{BES, elm-elmo chunks}\par\smallskip
 \begin{tabular}{lrrcc}
 \toprule
 Annotation mode & Shots & Bins & F1 & AUROC \\
@@ -40,8 +40,8 @@ Annotation mode & Precision & Recall & Absent-bin FP fraction \\
 Crowd only & 0.873 {\scriptsize[0.78, 0.95]} & 0.926 {\scriptsize[0.86, 0.98]} & -- \\
 Non-crowd only & 0.264 {\scriptsize[0.11, 0.67]} & 0.706 {\scriptsize[0.47, 0.91]} & -- \\
 Mixed crowd/non-crowd & 0.940 {\scriptsize[0.88, 0.99]} & 0.601 {\scriptsize[0.40, 0.79]} & -- \\
-No reviewed present span & -- & -- & 0.079 \\
+No reviewed present span & -- & -- & 0.079 {\scriptsize[0.02, 0.16]} \\
 \bottomrule
-\end{tabular}\par\medskip\caption{elm-ours occupancy performance by mutually exclusive annotation mode. Membership uses each shot's complete reviewed annotations; scoring uses the panel's covered interior bins. Mixed shots contain both crowd and individual-span annotations. No-present shots report the fraction of absent bins called present; positive-class metrics are undefined. Shot counts include members with no scored bins. Brackets show 95\% shot-bootstrap intervals. These occupancy scores do not validate individual ELM onsets. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\end{tabular}\par\medskip\caption{elm-ours occupancy performance by mutually exclusive annotation mode. Membership uses each shot's complete reviewed annotations; scoring uses the panel's covered interior bins. Mixed shots contain both crowd and individual-span annotations. No-present shots report the fraction of absent bins called present; positive-class metrics are undefined. Shot counts include members with no scored bins. Brackets show 95\% shot-bootstrap intervals. These occupancy scores do not validate individual ELM onsets.}
 \label{tab:elm-annotation-modes}
 \end{table*}

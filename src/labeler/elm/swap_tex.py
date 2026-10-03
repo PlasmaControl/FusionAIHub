@@ -17,16 +17,15 @@ from . import compare
 
 DOMAIN_NOTE = (
     "The DSM and legacy onset table were built on WPQH phases with "
-    "breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect "
-    "definition and domain shift (192721: 1 legacy bin versus 17 non-crowd "
-    "review spans)."
+    "breakthrough-ELM targets; comparisons with reviewed occupancy involve "
+    "definition and domain shift."
 )
 
 NAME = compare.NAME
 ROWS = (
     (NAME["ours"], "elm-ours"),
-    (NAME["elmo"], "ELM-O"),
-    (NAME["detect"], "elm-dsm detection"),
+    (NAME["elmo"], "elm-elmo"),
+    (NAME["detect"], "elm-dsm (detection)"),
     (NAME["clock"], "elm-clock"),
     (NAME["dsm"], "elm-dsm refit"),
     ("elm-dsm-detect-exposed", "elm-dsm detection exposed"),
@@ -38,7 +37,9 @@ EXPOSED = {NAME["dsm"], NAME["init"], "elm-dsm-detect-exposed"}
 
 def method_label(key: str) -> str:
     """Keep source exposure visible wherever a method's result is displayed."""
-    label = dict(ROWS).get(key, key)
+    label = {ALWAYS: "always-present", "elm-feature-only": "elm-feature"}.get(
+        key, dict(ROWS).get(key, key)
+    )
     if key in EXPOSED:
         label += r"$^{\ddagger}$"
     return label
@@ -124,7 +125,7 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
     lines.append("\\midrule")
     ra, rb = a["methods"][ALWAYS], b["methods"][ALWAYS]
     lines.append(
-        f"{ALWAYS} & {ra['point']['auroc']:.3f} & {metric_cell(ra, 'f1')} & "
+        f"{method_label(ALWAYS)} & {ra['point']['auroc']:.3f} & {metric_cell(ra, 'f1')} & "
         f"{rb['point']['auroc']:.3f} & {metric_cell(rb, 'f1')} \\\\"
     )
     lines += ["\\bottomrule", "\\end{tabular}", ""]
@@ -181,7 +182,8 @@ def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
         f"{legacy_label} & {prf(leg_vs_rev)} & 1.000 & 1.000 & {identity} \\\\"
     )
     lines.append(
-        f"{ALWAYS} & {prf(a['methods'][ALWAYS])} & {prf(b['methods'][ALWAYS])} \\\\"
+        f"{method_label(ALWAYS)} & {prf(a['methods'][ALWAYS])} & "
+        f"{prf(b['methods'][ALWAYS])} \\\\"
     )
     # the expert labels read as a detector of the legacy marks: the legacy table's
     # precision against the review is the expert's recall against the legacy table
@@ -225,8 +227,8 @@ def write(
     caption = (
         "ELM reference swap: eight overlap shots and seven with BES; evidence "
         "is inconclusive. F1 uses review-tuned thresholds; AUROC compares "
-        "references. Only three source-unexposed shots and two with BES are "
-        "descriptive only. Brackets show eligible shot-bootstrap intervals."
+        "references. Source-unexposed subsets (3 shots; 2 with BES) are too small "
+        "for intervals; values are in the JSON. Brackets show shot-bootstrap intervals."
     )
     tables = {
         "table_elm_swap.tex": wrap_table(
@@ -262,7 +264,7 @@ def write(
 
 def panel_heading(res: dict) -> str:
     if res.get("has_elmo"):
-        text = f"{res['n_shots']} BES shots, ELM-O chunks"
+        text = f"{res['n_shots']} BES shots, elm-elmo chunks"
     else:
         text = f"All {res['n_shots']} overlap shots"
     if not res.get("dsm_refit_training_shots"):
@@ -305,7 +307,7 @@ def sensitivity_table(record: dict, source: str) -> str:
             (key, value["finding_1"]) for key, value in res["occupancy"].items()
         ]
         scope = (
-            f"{res['n_shots']} BES shots, ELM-O chunks"
+            f"{res['n_shots']} BES shots, elm-elmo chunks"
             if res["has_elmo"]
             else f"All {res['n_shots']} overlap shots"
         )
@@ -354,7 +356,7 @@ def ranking_table(record: dict, source: str, metric: str) -> str:
             for r in res.get("occupancy", {}).values()
         ]
         scope = (
-            f"{res['n_shots']} BES shots, ELM-O chunks"
+            f"{res['n_shots']} BES shots, elm-elmo chunks"
             if res["has_elmo"]
             else f"All {res['n_shots']} overlap shots"
         )
@@ -407,7 +409,10 @@ def swap_caption(res: dict, gap: int | None = None, full: bool = False) -> str:
 
 
 def wrap_table(body: str, caption: str, label: str) -> str:
-    if DOMAIN_NOTE not in caption:
+    if label.startswith("tab:elm-swap") or label in (
+        "tab:elm-dsm-native",
+        "tab:elm-dsm-own-target",
+    ):
         caption += " " + DOMAIN_NOTE
     return (
         "\\begin{table*}[t]\n\\centering\n\\small\n"

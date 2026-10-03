@@ -11,7 +11,7 @@ elm-elmo & -- & -- & -- \\
 elm-dsm (detection) & 0.845 {\scriptsize[0.80, 0.89]} & 0.748 {\scriptsize[0.65, 0.83]} & 0.742 {\scriptsize[0.68, 0.80]} \\
 elm-clock & -- & -- & 0.759 {\scriptsize[0.68, 0.83]} \\
 always-present & 0.500 {\scriptsize[0.50, 0.50]} & 0.391 {\scriptsize[0.33, 0.45]} & 0.562 {\scriptsize[0.50, 0.62]}$^{\dagger}$ \\
-feature-only & 0.833 {\scriptsize[0.78, 0.88]} & 0.704 {\scriptsize[0.61, 0.79]} & 0.713 {\scriptsize[0.65, 0.77]} \\
+elm-feature & 0.833 {\scriptsize[0.78, 0.88]} & 0.704 {\scriptsize[0.61, 0.79]} & 0.713 {\scriptsize[0.65, 0.77]} \\
 \midrule
 \multicolumn{4}{l}{BES subset: 73 shots/6,527 common bins} \\
 elm-ours & 0.939 {\scriptsize[0.89, 0.97]} & 0.876 {\scriptsize[0.75, 0.96]} & 0.848 {\scriptsize[0.79, 0.90]} \\
@@ -19,8 +19,8 @@ elm-elmo & 0.914 {\scriptsize[0.87, 0.95]} & 0.833 {\scriptsize[0.75, 0.89]} & 0
 elm-dsm (detection) & 0.840 {\scriptsize[0.78, 0.89]} & 0.731 {\scriptsize[0.61, 0.84]} & 0.783 {\scriptsize[0.71, 0.84]} \\
 elm-clock & -- & -- & 0.714 {\scriptsize[0.61, 0.81]} \\
 always-present & 0.500 {\scriptsize[0.50, 0.50]} & 0.417 {\scriptsize[0.34, 0.50]} & 0.588 {\scriptsize[0.50, 0.67]}$^{\dagger}$ \\
-feature-only & 0.829 {\scriptsize[0.77, 0.89]} & 0.712 {\scriptsize[0.61, 0.82]} & 0.723 {\scriptsize[0.64, 0.80]} \\
+elm-feature & 0.829 {\scriptsize[0.77, 0.89]} & 0.712 {\scriptsize[0.61, 0.82]} & 0.723 {\scriptsize[0.64, 0.80]} \\
 \bottomrule
-\end{tabular}\caption{Reviewed 50 ms occupancy, 97\% crowd positives; brackets: eligible shot-bootstrap intervals. Inputs: ours, FS02--04/fast density; ELM-O, BES/FS/density (BES only); DSM, 60 diagnostics including PCPHD02/03 photodiodes on all 119 shots and DENV2F/3F on 115 each (four each mean-filled); clock, D-alpha/phase gate; always-present, none; feature-only, log D-alpha max-minus-median. Clock boundary identity within 1 ms: 56\% starts, 44\% ends, 33\% both. Density calibration remains unresolved. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\end{tabular}\caption{Developmental shot-CV estimates of reviewed 50 ms occupancy, 97\% crowd positives; brackets: shot-bootstrap intervals. Preliminary outer-fold predictions existed before cv2; their influence is unresolved, and 16 review run days span folds. Inputs: elm-ours, FS02--04/fast density; elm-elmo, BES/FS/density (BES subset only); DSM, 60 input columns including PCPHD02/03 photodiodes on all 119 shots and DENV2F/3F on 115 each (four each mean-filled); clock, D-alpha/phase gate; always-present, none; elm-feature, log D-alpha max-minus-median. DSM inputs and architecture were designed for WPQH breakthrough-ELM forecasting from 50 ms means. Clock boundary identity within 1 ms: 56\% starts, 44\% ends, 33\% both. Density calibration remains unresolved.}
 \label{tab:elm-benchmark}
 \end{table*}

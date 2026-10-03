@@ -90,6 +90,22 @@ def evaluate_set(
     }
     named = {NAMES[m]: plist for m, plist in parts.items()}
     out.update(methods.summarise_methods(named, boot, NAMES["ours"]))
+    fold_auroc = []
+    for fold in sorted({oof.fold_of[s] for s in shots}):
+        selected = [p for p in parts["ours"] if oof.fold_of[p.shot] == fold]
+        fold_auroc.append(
+            {
+                "fold": fold,
+                "shots": [p.shot for p in selected],
+                "auroc": score.summarise(selected)["point"]["auroc"],
+            }
+        )
+    out["fold_auroc_sensitivity"] = {
+        "per_fold": fold_auroc,
+        "mean": sum(r["auroc"] for r in fold_auroc) / len(fold_auroc),
+        "definition": "Unweighted mean of within-fold AUROCs; saved scores, "
+        "unchanged thresholds, no fitting or selection.",
+    }
     out["per_kind"] = {
         method: methods.kind_summary(values, boot) for method, values in named.items()
     }
@@ -158,7 +174,8 @@ def main(argv: list[str] | None = None) -> int:
             pd.concat([data[s].spans for s in shots_all], ignore_index=True)
         ),
         "onset_head": "Dropped from paper outputs: reviewed span starts are not "
-        "verified physical ELM onsets and the auxiliary head has weak agreement. "
+        "verified physical ELM onsets; reviewed non-crowd starts sit about 5 ms "
+        "before BES onsets and the auxiliary head has weak agreement. "
         "Existing checkpoints retain it; no onset retraining was performed.",
         "span_alarm_definition": {
             "raw": "Any detected-span touch inside panel coverage on a sufficiently "
@@ -183,7 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         "ci_method": "95% percentile bootstrap of physical shots within each group, "
         "1000 replicates, seed 20261003; the same draws are used across methods.",
         "note": "Per-ELM annotations and whole ELMing-period crowds define different "
-        "occupancy targets across shots; non-crowd spans are not verified onsets.",
+        "occupancy targets across shots; non-crowd starts sit about 5 ms before "
+        "BES onsets and are not verified physical onsets.",
     }
     boot_bes = score.draws(len(bes.shots))
     record["sets"]["bes73"] = evaluate_set(

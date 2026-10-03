@@ -1,13 +1,13 @@
 {
- "git": "da3f6693",
+ "git": "1a675d02",
  "sources": {
   "ours": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
-   "sha256": "db18c0082478cb81ec9c56fe63798261d19c9d9ff2aaae5ab15591ee2a282d2e"
+   "sha256": "978e5c4e014dc5af0c07a6d1f368813de0ec66a55dbf6465f4926fd8f470509d"
   },
   "dsm": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
-   "sha256": "b8f739a34b679b708a8628ee5f87c6cc833b84039230a32d4a7692377fc91597"
+   "sha256": "011192e7dffc9e4f94314c6555559f0228283ffbf9229d54a55f25d2eda8b442"
   },
   "swap": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/evaluation.json",
@@ -27,60 +27,60 @@
   },
   "smith": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/smith/evaluation.json",
-   "sha256": "7cb9be78d9e060a89662535f5a5df30ff7dcc6eb170c8f76f5e0a8181b3d79fa"
+   "sha256": "71082c474b2f9eef83b435d2cb40256caf037d233382f740a8ff6a4546718bff"
   }
  },
  "tables": {
-  "table_elm_annotation_modes.tex": "1e77ada283d94bf61dc37c9fb3b677613605a1240306189916e01d1237eda171",
-  "table_elm_benchmark.tex": "52cef157328b08359ca39dcad3f2887cf1888b058e253702532a711f33a43f89",
-  "table_elm_dsm_native.tex": "c7697c607e91a08260d9fcf062e561f93b8aa287df90043c82dafbc8bba5b2fe",
-  "table_elm_dsm_own_target.tex": "bcbc2d766b4d7395e9bb89c3ad9c05d0d88fc5bde37ca3f88f1bd430cf68431a",
-  "table_elm_per_kind.tex": "1aa655397ba9a86799bfe402f8627c6560ee86408ed1d417287d352d29bc47e3",
-  "table_elm_smith.tex": "f11a1edc700a77451881f11bd26f58f137f85b2d18bd3ee13f826b424fa02c7b",
-  "table_elm_supplemental.tex": "da2e303b2ef85d7b6cc5972507abf49048a41296031130afe25db0d735aaad95",
-  "table_elm_swap.tex": "239e1d0aee6e9da3ed7a75f78b45855f2443bb977488b988e13161fe3551333f",
-  "table_elm_swap_full.tex": "caf6b362e3b38924bfa709ed8479a204f83c7d6ca3be03d8191f5fee6d14a141",
-  "table_elm_swap_rankings.tex": "103e6282ce520fb9e41a9e8a5b8b01c4e67256675e127ad251f985d186b51e28",
-  "table_elm_swap_sensitivity.tex": "1e2b17d0801c28a85f68e5215bf687a667ad799b8b80f340101ccb5a177b0431"
+  "table_elm_annotation_modes.tex": "2d50823700fc8f9e73fa61fde57c27e26bd6aaabed4a9d21466d924d6c59c65a",
+  "table_elm_benchmark.tex": "d2284d9bd3df5acfe66fd4a2c9a1a75566294db9f72e3a2568e4afbc7d71e1fe",
+  "table_elm_dsm_native.tex": "0578b1b24321d1b64c68d57a187298929f55943402fc82e1364f86560567de47",
+  "table_elm_dsm_own_target.tex": "323442d6ce4c2aa9739683297c394402874d8b74df9da12786bc3640976438ff",
+  "table_elm_per_kind.tex": "f6689976f07b40f0c4be97303d6354f490dae952dccff9600ba51ff09676491a",
+  "table_elm_smith.tex": "b8169a83c2e8209112d2083164c71765c657d6a6534998c6345638640624ecb0",
+  "table_elm_supplemental.tex": "f08e8eb8291880bdf5ed9f96a9107e242a4cc0f7f8a6a21a23dd9a76fcff2155",
+  "table_elm_swap.tex": "58f69b7876e5b91c0a6300836920b7f418bffa1d2cffd809eaeff1df9ce38a9b",
+  "table_elm_swap_full.tex": "92c48f8c286988370b6d5b7dc184790f0b909bcea250648b762b0b81fd6ed098",
+  "table_elm_swap_rankings.tex": "f7016a91d22d3c718459cc581ee0fd3b7b0220426ae8e218718078931384a94f",
+  "table_elm_swap_sensitivity.tex": "7cf4a9528cf26c2137c15bced83bc04a0e09974ec723384cfd19f64fc298a4fc"
  },
  "caption_word_counts": {
   "table_elm_annotation_modes.tex": [
-   101
+   66
   ],
   "table_elm_benchmark.tex": [
-   97
+   98
   ],
   "table_elm_dsm_native.tex": [
-   91
+   89
   ],
   "table_elm_dsm_own_target.tex": [
-   100
+   88
   ],
   "table_elm_per_kind.tex": [
-   81
+   56
   ],
   "table_elm_smith.tex": [
-   81
+   80
   ],
   "table_elm_supplemental.tex": [
-   69
+   34
   ],
   "table_elm_swap.tex": [
-   71
-  ],
-  "table_elm_swap_full.tex": [
-   60
-  ],
-  "table_elm_swap_rankings.tex": [
    64
   ],
+  "table_elm_swap_full.tex": [
+   48
+  ],
+  "table_elm_swap_rankings.tex": [
+   52
+  ],
   "table_elm_swap_sensitivity.tex": [
-   69
+   57
   ]
  },
  "shared_notes": {
   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
-  "sha256": "a970bef01ad299b5cf6d955fe307dce3d55a83554ade829712dc44705249a0a4"
+  "sha256": "6fb9ee3a298857fa84bcf1e1b2cafd02dbe7f9b1bae490d437bbc825c16285c0"
  },
  "benchmark_json_paths": [
   "ours/evaluation.json:sets.all119.methods",

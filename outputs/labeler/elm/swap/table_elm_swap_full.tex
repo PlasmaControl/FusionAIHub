@@ -9,7 +9,7 @@
 Method & P & R & F1 & P & R & F1 \\
 \midrule
 elm-ours & 0.589 & 0.925 & 0.720 {\scriptsize[0.33, 0.90]} & 0.455 & 0.946 & 0.614 {\scriptsize[0.22, 0.79]} \\
-elm-dsm detection & 0.301 & 0.544 & 0.387 {\scriptsize[0.08, 0.61]} & 0.218 & 0.523 & 0.308 {\scriptsize[0.08, 0.50]} \\
+elm-dsm (detection) & 0.301 & 0.544 & 0.387 {\scriptsize[0.08, 0.61]} & 0.218 & 0.523 & 0.308 {\scriptsize[0.08, 0.50]} \\
 elm-clock & 0.605 & 0.333 & 0.430 {\scriptsize[0.11, 0.66]} & 0.481 & 0.351 & 0.406 {\scriptsize[0.13, 0.64]} \\
 \midrule\multicolumn{7}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
 elm-dsm refit$^{\ddagger}$ & 0.288 & 0.993 & 0.446 {\scriptsize[0.18, 0.67]}$^{\dagger}$ & 0.219 & 1.000 & 0.359 {\scriptsize[0.11, 0.56]}$^{\dagger}$ \\
@@ -17,13 +17,13 @@ elm-dsm detection exposed$^{\ddagger}$ & 0.285 & 0.517 & 0.367 {\scriptsize[0.12
 elm-dsm detection init$^{\ddagger}$ & 0.265 & 0.517 & 0.350 {\scriptsize[0.12, 0.53]} & 0.206 & 0.532 & 0.296 {\scriptsize[0.07, 0.48]} \\
 \midrule
 legacy onset table & 0.964 & 0.728 & 0.829 {\scriptsize[0.53, 0.90]} & 1.000 & 1.000 & 1.000 {\scriptsize[1.00, 1.00]}$^{\dagger}$ \\
-always present & 0.229 & 1.000 & 0.373 {\scriptsize[0.15, 0.57]}$^{\dagger}$ & 0.173 & 1.000 & 0.295 {\scriptsize[0.09, 0.46]}$^{\dagger}$ \\
+always-present & 0.229 & 1.000 & 0.373 {\scriptsize[0.15, 0.57]}$^{\dagger}$ & 0.173 & 1.000 & 0.295 {\scriptsize[0.09, 0.46]}$^{\dagger}$ \\
 expert (oracle) & 1.000 & 1.000 & 1.000 {\scriptsize[1.00, 1.00]}$^{\dagger}$ & 0.728 & 0.964 & 0.829 {\scriptsize[0.532, 0.901]} \\
 \midrule
 Prevalence of present bins & \multicolumn{3}{c}{0.229} & \multicolumn{3}{c}{0.173} \\
 $|M|$, $|P|$ of 641 bins & \multicolumn{6}{c}{$|M|=40$, $|P|=4$} \\
 \bottomrule
 \end{tabular}
-\caption{Fixed-prediction precision, recall and F1 against both references. Eight overlap shots; identity oracle results hold by definition. Brackets show eligible shot-bootstrap intervals; F1 is review-tuned. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\caption{Fixed-prediction precision, recall and F1 against both references. Eight overlap shots; identity oracle results hold by definition. Brackets show eligible shot-bootstrap intervals; F1 is review-tuned. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; comparisons with reviewed occupancy involve definition and domain shift.}
 \label{tab:elm-swap-full}
 \end{table*}

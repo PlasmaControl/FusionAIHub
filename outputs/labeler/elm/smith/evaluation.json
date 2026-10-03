@@ -1,6 +1,6 @@
 {
- "git": "da3f6693bdf71af611a8a163648cc59ee4ca45f5",
- "created": "2026-10-03T19:40:00.081128+00:00",
+ "git": "1a675d02",
+ "created": "2026-10-03T20:29:30.157874+00:00",
  "protocol": {
   "git": "3c293c3b",
   "created": "2026-10-03T19:21:26.774896+00:00",
@@ -701,7 +701,7 @@
   "onset_recipe": "Same U-Net from scratch, onset-only masked BCE on Smith hand starts; sigma=1 ms; 5 shot folds, 21 inner-validation shots; select trailing-3 mean inner-val event F1 at +/-2ms after warmup; threshold on inner validation only. No review/cohort test shots; no tuning on outer folds.",
   "limitations": "Smith windows are selected around known ELMs, not a continuous-discharge negative population. Event FPs within them depend on completeness of single-region hand annotations. Smith CV is developmental, frozen review-to-Smith transfer is independent.",
   "code_sha256": {
-   "scripts/labeler/elm_smith_evaluate.py": "11abef027a5f600d9aa93954b638e52da967c91b6bf43d2a68eafdfd5bad01ab",
+   "scripts/labeler/elm_smith_evaluate.py": "c108ac745232dad9445130a0b2dbba63f08c9307f39dc680597af4b4b2f20a6c",
    "src/labeler/elm/smith.py": "f9cd52bd206924b5bf6977933142fe3d79b3313bd4bd43bdc3199884b7ac4af6"
   },
   "input_source_repairs": [
@@ -2229,7 +2229,33 @@
     },
     "positive_shots": 211,
     "descriptive_only": false,
-    "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+    "endpoint_shots": {
+     "precision": 211,
+     "recall": 211,
+     "f1": 211,
+     "false_alarm_bin_rate": 211,
+     "crowd_bin_recall": 0,
+     "non_crowd_span_touch_recall": 0,
+     "absent_span_alarm_rate": 0,
+     "absent_span_alarm_rate_guard25": 0,
+     "absent_span_interior_alarm_rate_guard25": 0,
+     "auroc": 211,
+     "auprc": 211
+    },
+    "interval_eligible": {
+     "precision": true,
+     "recall": true,
+     "f1": true,
+     "false_alarm_bin_rate": true,
+     "crowd_bin_recall": false,
+     "non_crowd_span_touch_recall": false,
+     "absent_span_alarm_rate": false,
+     "absent_span_alarm_rate_guard25": false,
+     "absent_span_interior_alarm_rate_guard25": false,
+     "auroc": true,
+     "auprc": true
+    },
+    "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
     "ci95": {
      "precision": [
       0.14303297578211854,
@@ -2485,7 +2511,33 @@
     },
     "positive_shots": 211,
     "descriptive_only": false,
-    "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+    "endpoint_shots": {
+     "precision": 211,
+     "recall": 211,
+     "f1": 211,
+     "false_alarm_bin_rate": 211,
+     "crowd_bin_recall": 0,
+     "non_crowd_span_touch_recall": 0,
+     "absent_span_alarm_rate": 0,
+     "absent_span_alarm_rate_guard25": 0,
+     "absent_span_interior_alarm_rate_guard25": 0,
+     "auroc": 211,
+     "auprc": 211
+    },
+    "interval_eligible": {
+     "precision": true,
+     "recall": true,
+     "f1": true,
+     "false_alarm_bin_rate": true,
+     "crowd_bin_recall": false,
+     "non_crowd_span_touch_recall": false,
+     "absent_span_alarm_rate": false,
+     "absent_span_alarm_rate_guard25": false,
+     "absent_span_interior_alarm_rate_guard25": false,
+     "auroc": true,
+     "auprc": true
+    },
+    "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
     "ci95": {
      "precision": [
       0.8671884199755528,
@@ -2548,9 +2600,9 @@
       "fn": 162
      },
      "point": {
-      "precision": 1.0,
+      "precision": null,
       "recall": 0.9300518134715026,
-      "f1": 0.963758389261745
+      "f1": null
      },
      "positive_bearing_shots": 211,
      "descriptive_only": false,
@@ -2626,19 +2678,30 @@
       }
      },
      "ci95": {
-      "precision": [
-       1.0,
-       1.0
-      ],
+      "precision": null,
       "recall": [
        0.9154089638601969,
        0.944938346508315
       ],
-      "f1": [
-       0.955836566315276,
-       0.9716897691919274
-      ]
-     }
+      "f1": null
+     },
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 1.0,
+       "ci95": [
+        1.0,
+        1.0
+       ]
+      },
+      "f1": {
+       "point": 0.963758389261745,
+       "ci95": [
+        0.955836566315276,
+        0.9716897691919274
+       ]
+      }
+     },
+     "precision_f1_status": "not estimable under selected windows"
     },
     "5": {
      "counts": {
@@ -2647,9 +2710,9 @@
       "fn": 162
      },
      "point": {
-      "precision": 1.0,
+      "precision": null,
       "recall": 0.9300518134715026,
-      "f1": 0.963758389261745
+      "f1": null
      },
      "positive_bearing_shots": 211,
      "descriptive_only": false,
@@ -2725,19 +2788,30 @@
       }
      },
      "ci95": {
-      "precision": [
-       1.0,
-       1.0
-      ],
+      "precision": null,
       "recall": [
        0.9154089638601969,
        0.944938346508315
       ],
-      "f1": [
-       0.955836566315276,
-       0.9716897691919274
-      ]
-     }
+      "f1": null
+     },
+     "selected_window_precision_f1": {
+      "precision": {
+       "point": 1.0,
+       "ci95": [
+        1.0,
+        1.0
+       ]
+      },
+      "f1": {
+       "point": 0.963758389261745,
+       "ci95": [
+        0.955836566315276,
+        0.9716897691919274
+       ]
+      }
+     },
+     "precision_f1_status": "not estimable under selected windows"
     }
    }
   },
@@ -2761,7 +2835,33 @@
     },
     "positive_shots": 211,
     "descriptive_only": false,
-    "interval_policy": "No population-level 95% CI when fewer than five physical shots carry positives; otherwise percentile intervals over finite shot-bootstrap draws, with valid/undefined counts reported.",
+    "endpoint_shots": {
+     "precision": 211,
+     "recall": 211,
+     "f1": 211,
+     "false_alarm_bin_rate": 211,
+     "crowd_bin_recall": 0,
+     "non_crowd_span_touch_recall": 0,
+     "absent_span_alarm_rate": 0,
+     "absent_span_alarm_rate_guard25": 0,
+     "absent_span_interior_alarm_rate_guard25": 0,
+     "auroc": 211,
+     "auprc": 211
+    },
+    "interval_eligible": {
+     "precision": true,
+     "recall": true,
+     "f1": true,
+     "false_alarm_bin_rate": true,
+     "crowd_bin_recall": false,
+     "non_crowd_span_touch_recall": false,
+     "absent_span_alarm_rate": false,
+     "absent_span_alarm_rate_guard25": false,
+     "absent_span_interior_alarm_rate_guard25": false,
+     "auroc": true,
+     "auprc": true
+    },
+    "interval_policy": "At least five denominator-bearing physical shots per endpoint; positive-bearing shots for positive-class/ranking metrics, negative-bearing shots for false-alarm rates. Percentile intervals use finite shot-bootstrap draws, with valid/undefined counts reported.",
     "ci95": {
      "precision": [
       0.9928960605613103,
@@ -13037,8 +13137,16 @@
   "source_sha256": "0318dd3fe24528611059042b2d915d29fe7e171dc76a46b5e56f9f536b7ade04"
  },
  "code_sha256": {
-  "scripts/labeler/elm_smith_evaluate.py": "11abef027a5f600d9aa93954b638e52da967c91b6bf43d2a68eafdfd5bad01ab",
+  "scripts/labeler/elm_smith_evaluate.py": "c108ac745232dad9445130a0b2dbba63f08c9307f39dc680597af4b4b2f20a6c",
   "src/labeler/elm/smith.py": "f9cd52bd206924b5bf6977933142fe3d79b3313bd4bd43bdc3199884b7ac4af6"
+ },
+ "onset_window_audit": {
+  "out_of_window_firings": 30436,
+  "matched": 2154,
+  "correct_1ms_cell": 2023,
+  "max_absolute_error_ms": 0.8150000000000546,
+  "correct_1ms_cell_fraction": 0.9391829155060353,
+  "scope": "Peaks on valid input cells outside scored Smith windows have no negative truth; these are firings, not adjudicated false positives."
  },
  "onset_output_delivered": false,
  "onset_output_scope": "Physical-onset output in the reviewed event catalog",
@@ -13048,7 +13156,5 @@
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/smith/cv/pred",
   "scope": "1ms benchmark traces on Smith shots from held-out-shot folds; selected-window evaluation only"
  },
- "onset_delivery_reason": "Frozen auxiliary onset F1 at +/-2ms is 0.000; Smith-only CV onset F1 is 0.964. The experimental CV trace is delivered, but physical-onset catalog output remains withheld because selected Smith windows do not validate continuous-discharge false alarms or transfer of the Smith-trained head to the review domain.",
- "generation_git": "4a9bad18",
- "audit_git_meaning": "current code/record audit; historical training provenance remains embedded and is not rewritten"
+ "onset_delivery_reason": "Frozen auxiliary onset F1 at +/-2ms is 0.000; Smith-only CV onset recall is 0.930. Precision/F1 are not estimable under selected windows. The experimental CV trace is available; catalog physical-onset output is withheld pending continuous-discharge false-alarm validation and transfer of the Smith-trained head to the review domain."
 }

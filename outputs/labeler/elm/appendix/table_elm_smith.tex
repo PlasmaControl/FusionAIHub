@@ -15,10 +15,10 @@ Method & Tolerance & Precision & Recall & F1 & Median $|e|$ (ms) \\
 \midrule
 elm-ours & $\pm$2 ms & 0.000 {\scriptsize[0.00, 0.00]} & 0.000 {\scriptsize[0.00, 0.00]} & 0.000 {\scriptsize[0.00, 0.00]} & -- \\
 elm-ours & $\pm$5 ms & 0.500 {\scriptsize[0.45, 0.55]} & 0.074 {\scriptsize[0.06, 0.09]} & 0.129 {\scriptsize[0.10, 0.16]} & 4.753 \\
-elm-ours-onset & $\pm$2 ms & 1.000 {\scriptsize[1.00, 1.00]} & 0.930 {\scriptsize[0.92, 0.94]} & 0.964 {\scriptsize[0.96, 0.97]} & 0.244 \\
-elm-ours-onset & $\pm$5 ms & 1.000 {\scriptsize[1.00, 1.00]} & 0.930 {\scriptsize[0.92, 0.94]} & 0.964 {\scriptsize[0.96, 0.97]} & 0.244 \\
+elm-ours-onset & $\pm$2 ms & \textit{NE} & 0.930 {\scriptsize[0.92, 0.94]} & \textit{NE} & 0.244 \\
+elm-ours-onset & $\pm$5 ms & \textit{NE} & 0.930 {\scriptsize[0.92, 0.94]} & \textit{NE} & 0.244 \\
 elm-elmo & $\pm$2 ms & 0.958 {\scriptsize[0.94, 0.97]} & 0.987 {\scriptsize[0.97, 1.00]} & 0.972 {\scriptsize[0.96, 0.98]} & 0.075 \\
 elm-elmo & $\pm$5 ms & 0.958 {\scriptsize[0.94, 0.97]} & 0.987 {\scriptsize[0.97, 1.00]} & 0.972 {\scriptsize[0.96, 0.98]} & 0.075 \\
-\bottomrule\end{tabular}\caption{Independent Smith hand-labelled windows: frozen review ensemble (elm-ours), Smith-only grouped-CV onset head, and fixed-setting ELM-O. Whole 1 ms occupancy cells and one-to-one onset matching have different targets. Timing errors describe matched events. Brackets show eligible shot-bootstrap intervals; ELM-O's 0.997/0.980 window-overlap P/R is distinct from onset matching. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect definition and domain shift (192721: 1 legacy bin versus 17 non-crowd review spans).}
+\bottomrule\end{tabular}\caption{Smith windows: frozen review-to-Smith transfer (elm-ours) is independent of review shots and run days. The Smith-trained head is developmental shot CV with within-Smith run-day sharing; overlap with elm-elmo's historical tuning events is unresolved. NE: not estimable under selected windows (precision/F1); false positives count only inside windows, with 30,436 additional out-of-window head firings. Head recall is 0.930; all matched errors are within 0.82 ms and 94\% are in the correct 1 ms cell. Occupancy and onset targets differ. Brackets: shot-bootstrap intervals.}
 \label{tab:elm-smith}
 \end{table*}
