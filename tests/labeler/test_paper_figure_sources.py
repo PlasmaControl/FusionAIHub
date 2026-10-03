@@ -347,7 +347,7 @@ def test_sawtooth_caption_uses_window_states_and_qualified_proxy():
     assert "uncertain" in text
     assert "unassessed from 2.31 s" in text
     assert "conservative density proxy" in text
-    assert "no Bt available" in text
+    assert "Bt not in the local corpus" in text
     assert "is cut off" not in text
     record["state_intervals_ms"] = [
         {"start_ms": 1500, "end_ms": 3300, "state": "absent"}
@@ -368,3 +368,118 @@ def test_sawtooth_summary_keeps_present_intervals_between_uncertain_and_blank():
     assert "present intervals" in text
     assert "unassessed from 2.02 s" in text
     assert "no Bt" not in text
+
+
+def test_confinement_intervals_keep_categories_and_regime_names(tmp_path, monkeypatch):
+    p = _paths(tmp_path, monkeypatch)
+    rows = fs.state_intervals(fs.confinement_track(p, 42), (150, 300))
+    assert rows == [
+        {"start_ms": 150, "end_ms": 200, "category": 2, "state": "L-mode"},
+        {"start_ms": 200, "end_ms": 300, "category": 1, "state": "H-mode"},
+    ]
+    rows = fs.state_intervals(fs.confinement_track(p, 43), (4400, 5000))
+    assert rows[-1]["category"] == 5
+    assert rows[-1]["state"] == "uncertain"
+
+
+def test_sawtooth_display_merges_short_slivers_without_mutating_source():
+    spec = next(s for s in fs.lf.TRACKS if s.key == fs.mt.SAWTOOTH)
+    original = (
+        fs.lf.Row(0, 100, fs.PRESENT),
+        fs.lf.Row(100, 105, fs.UNCERTAIN),
+        fs.lf.Row(105, 200, fs.PRESENT),
+        fs.lf.Row(200, 210, fs.UNCERTAIN),
+        fs.lf.Row(210, 300, fs.NOT_OBSERVABLE),
+    )
+    track = fs.lf.Track(spec, None, None, original)
+    display, changes = fs.sawtooth_display(track, (0, 300))
+    assert display.rows == (
+        fs.lf.Row(0, 200, fs.PRESENT),
+        fs.lf.Row(200, 210, fs.UNCERTAIN),
+        fs.lf.Row(210, 300, fs.NOT_OBSERVABLE),
+    )
+    assert changes == [{"start_ms": 100, "end_ms": 105, "from": 2, "to": 1}]
+    assert track.rows == original
+    assert fs.has_present_time(track, (20, 40))
+    assert not fs.has_present_time(track, (200, 300))
+
+
+def test_sawtooth_visibility_requires_positive_present_overlap():
+    spec = next(s for s in fs.lf.TRACKS if s.key == fs.mt.SAWTOOTH)
+    track = fs.lf.Track(
+        spec,
+        rows=(
+            fs.lf.Row(0, 10, fs.PRESENT),
+            fs.lf.Row(10, 100, fs.UNCERTAIN),
+            fs.lf.Row(100, 100, fs.PRESENT),
+        ),
+    )
+    assert not fs.has_present_time(track, (10, 110))
+    assert fs.has_present_time(track, (9, 11))
+
+
+def test_sawtooth_display_does_not_bridge_unassessed_gaps():
+    spec = next(s for s in fs.lf.TRACKS if s.key == fs.mt.SAWTOOTH)
+    track = fs.lf.Track(
+        spec,
+        rows=(
+            fs.lf.Row(0, 50, fs.PRESENT),
+            fs.lf.Row(60, 65, fs.UNCERTAIN),
+        ),
+    )
+    display, changes = fs.sawtooth_display(track, (0, 65))
+    assert display.rows == track.rows
+    assert changes == []
+
+
+def test_late_line_band_is_measured_and_requires_continuous_duration():
+    t = np.arange(0, 501, 10)
+    f = np.array([90.0, 100.0, 110.0, 120.0])
+    mask = np.zeros((4, len(t)), bool)
+    mask[1:3, 10:31] = True  # 200 ms at 100–110 kHz
+    mask[3, 45:] = True  # 50 ms at the edge, should not change the band
+    got = fs.late_untagged_lines(mask, t, f, t >= 100)
+    assert got["band_khz"] == [100, 110]
+    assert got["minimum_duration_ms"] == 150
+    assert got["first_time_ms"] == 100
+    assert got["last_time_ms"] == 300
+    assert fs.late_untagged_lines(mask, t, f, t >= 450) is None
+
+
+def test_caption_omits_absent_highlights_and_expert_elm_claims():
+    records = {
+        k: {"tier": fs.lf.GENERATED, "what": "source", "title": k}
+        for k in (fs.mt.AE, fs.mt.NTM, "edge_localized_mode")
+    }
+    text = fs.caption(
+        42,
+        records,
+        {
+            "blobs": {"tagged": {fs.mt.AE: 0, fs.mt.NTM: 0}},
+            "sawtooth_track_shown": False,
+            "elm_peaks_in_label": 2,
+            "elm_crowd_spans_ms": [],
+        },
+    )
+    assert "AE:" not in text and "NTM:" not in text
+    assert "Pink" not in text and "NTM outlines" not in text
+    assert "ELMs: detector" in text
+    assert "circles" not in text and "expert ELM" not in text
+    assert "triangles" in text
+    assert "frame model not shown" not in text
+
+
+def test_caption_discloses_ae_bins_and_data_derived_late_band():
+    record = {"tier": fs.lf.GENERATED, "what": "ae-ours", "title": "AE"}
+    text = fs.caption(
+        42,
+        {fs.mt.AE: record},
+        {
+            "blobs": {"tagged": {fs.mt.AE: 1, fs.mt.NTM: 0}},
+            "late_untagged_high_frequency": {"band_khz": [105, 125]},
+        },
+    )
+    assert "detector band ≥80 kHz" in text
+    assert "25 ms bins" in text
+    assert "105–125 kHz" in text
+    assert "170–250" not in text

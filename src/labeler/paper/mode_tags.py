@@ -238,7 +238,7 @@ def tag_mask(found, event, shape, t_ms, f_khz, spans, *, n_map=None) -> np.ndarr
     out &= ((f_khz >= lo) & (f_khz < hi))[:, None]
     if event == NTM:
         # A dominant n cannot extend measured evidence to an entire component.
-        out &= np.isfinite(n_map) if n_map is not None else False
+        out &= np.isin(n_map, (1, 2)) if n_map is not None else False
     return out
 
 

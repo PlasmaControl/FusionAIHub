@@ -13,7 +13,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
   components), the toroidal-n view (the review page's n map, gated by the same
   mask) in place of the 0-30 kHz band. Highlights intersect PRESENT label
-  times with AE >=80 kHz or NTM <60 kHz; NTM requires dominant measured n=1/2.
+  times with AE >=80 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1/2.
   Optional ECE-verified, ELM-vetoed sawtooth crashes appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
   it, and the confinement regimes shade it;
@@ -44,6 +44,7 @@ import argparse
 import json
 import math
 import re
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -99,7 +100,7 @@ N_OTHER = "#8C6BB1"
 EVENT_COLOURS = {
     mode_tags.AE: "#CC79A7",
     mode_tags.NTM: "#E69F00",
-    mode_tags.SAWTOOTH: "#F0E442",
+    mode_tags.SAWTOOTH: "#D55E00",
     "edge_localized_mode": "#333333",
 }
 EVENT_NAMES = {
@@ -115,11 +116,8 @@ ABSENT_GREY = "#e4e4e4"
 HEADINGS = {
     "h_raw": ("Raw signals: magnetics spectrogram (Mirnov probe)",),
     "h_proc": (
-        "TokEye-processed: label–mode coincidence; toroidal n below 30 kHz",
-        (
-            "mask → remove small objects / fill holes → components → "
-            "clip to label times and band"
-        ),
+        "TokEye-processed: measured n and label–mode coincidence",
+        ("mask → remove small objects / fill holes → components → time/band tags"),
     ),
     "h_lab": ("Labels; source at right",),
 }
@@ -444,19 +442,23 @@ def event_clip(ax, spans, event):
 
 
 def project(ax, band, mask, event, spans, edge=False):
-    """Tint or a two-pixel outline pooled at the 150-dpi print resolution."""
+    """Tint or a translucent one-pixel inner edge at 150-dpi print resolution."""
     if not mask.any():
         return mask
     if edge:
         pos = ax.get_position()
-        nf = min(len(band.f), max(1, round(pos.height * HEIGHT_IN * DPI_PNG)))
+        # The processed panel displays only 0–30 of the zoom band's 0–55 kHz.
+        visible_share = (band.f[-1] - band.f[0]) / np.diff(ax.get_ylim())[0]
+        nf = min(
+            len(band.f), max(1, round(pos.height * HEIGHT_IN * DPI_PNG * visible_share))
+        )
         nt = min(len(band.t), max(1, round(pos.width * PAGE_IN * DPI_PNG)))
         # Max pooling preserves narrow ridges when reduced to print pixels.
         ri = np.linspace(0, mask.shape[0], nf, endpoint=False).astype(int)
         ci = np.linspace(0, mask.shape[1], nt, endpoint=False).astype(int)
         display = np.maximum.reduceat(np.maximum.reduceat(mask, ri, axis=0), ci, axis=1)
         edge_mask = display & ~ndimage.binary_erosion(display)
-        outline = ndimage.binary_dilation(edge_mask) & display
+        outline = edge_mask
         # Expand the print-grid inner edge back to native pixels, then intersect
         # the measured-pixel mask. No stroke may invent n outside its support.
         row_bin = np.searchsorted(ri, np.arange(mask.shape[0]), side="right") - 1
@@ -466,7 +468,7 @@ def project(ax, band, mask, event, spans, edge=False):
         shown = mask
     rgba = np.zeros((*shown.shape, 4), np.float32)
     rgba[..., :3] = to_rgb(EVENT_COLOURS[event])
-    rgba[..., 3] = shown * (1.0 if edge else 0.65)
+    rgba[..., 3] = shown * (0.45 if edge else 0.65)
     artist = ax.imshow(
         rgba,
         origin="lower",
@@ -504,21 +506,18 @@ def clear_of(fixed, moved: list) -> None:
             text.set_x(inv.transform((box.x1, box.y0))[0] + 15.0)
 
 
-def leader(ax, text, xy):
-    """A short neutral arrow next to a structure, never a coloured ridge."""
-    left, right = ax.get_xlim()
-    align_right = xy[0] > left + 0.55 * (right - left)
+def leader(ax, text, xy, y=0.15):
+    """Text in the empty right margin, joined by a neutral leader."""
     ax.annotate(
         text,
         xy=xy,
-        xytext=(-6 if align_right else 6, 10),
-        textcoords="offset points",
+        xytext=(1.02, y),
+        textcoords="axes fraction",
         fontsize=FONT,
-        color="white",
-        ha="right" if align_right else "left",
+        color=INK,
+        ha="left",
         va="center",
-        bbox={"fc": "black", "ec": "none", "alpha": 0.8, "pad": 1.2},
-        arrowprops={"arrowstyle": "->", "color": "white", "lw": 0.7},
+        arrowprops={"arrowstyle": "->", "color": "#999999", "lw": 0.5},
         zorder=9,
         annotation_clip=False,
     )
@@ -641,6 +640,19 @@ def draw(
     tracks = tuple(saw if t.spec.key == mode_tags.SAWTOOTH else t for t in tracks)
     if saw is not None:
         by_key[mode_tags.SAWTOOTH] = saw
+    show_sawtooth = saw is not None and figure_sources.has_present_time(saw, (t0, t1))
+    display_saw, saw_changes = (
+        figure_sources.sawtooth_display(saw, (t0, t1))
+        if saw is not None
+        else (None, [])
+    )
+    if not show_sawtooth:
+        crashes = np.array([])
+    display_tracks = tuple(
+        display_saw if t.spec.key == mode_tags.SAWTOOTH else t
+        for t in tracks
+        if t.spec.key != mode_tags.SAWTOOTH or show_sawtooth
+    )
 
     low = Band(z, "zoom", 0.0, FOLD_KHZ, t0, t1)
     high = Band(z, "wide", FOLD_KHZ, TOP_KHZ + 1, t0, t1)
@@ -671,16 +683,16 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 1.0, "raw_lo": 0.8, "g1": 0.1, "da_raw": 0.42,
-        "g2": 0.07, "nbi": 0.42, "h_proc": 1.21 if len(crashes) else 0.94,
-        "pr_hi": 1.0, "pr_lo": 0.8,
+        "h_raw": 0.32, "raw_hi": 0.80, "raw_lo": 0.62, "g1": 0.1, "da_raw": 0.38,
+        "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
+        "pr_hi": 0.95, "pr_lo": 1.30,
         "crashes": 0.16 if len(crashes) else 0.001,
-        "g3": 0.1, "da_pr": 0.62, "h_lab": 0.40,
+        "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
-    names = [*layout, *[f"track{i}" for i in range(len(tracks))]]
+    names = [*layout, *[f"track{i}" for i in range(len(display_tracks))]]
     heights = [
         *layout.values(),
-        *[0.18 for t in tracks],
+        *[0.20 for t in display_tracks],
     ]
     with style():
         fig = Figure(figsize=(PAGE_IN, HEIGHT_IN))
@@ -690,14 +702,14 @@ def draw(
             height_ratios=heights,
             hspace=0.0,
             left=0.14,
-            right=0.82,
+            right=0.78,
             top=0.985,
             bottom=0.12,
         )
         ax = {n: fig.add_subplot(gs[i]) for i, n in enumerate(names)}
         for n in ("h_raw", "g1", "g2", "h_proc", "g3", "h_lab"):
             ax[n].set_visible(False)
-        track_axes = [ax[f"track{i}"] for i in range(len(tracks))]
+        track_axes = [ax[f"track{i}"] for i in range(len(display_tracks))]
         for n in (
             "raw_hi",
             "raw_lo",
@@ -717,9 +729,9 @@ def draw(
         # ---- raw
         for hi, lo, band in (("raw_hi", "raw_lo", None), ("pr_hi", "pr_lo", None)):
             ax[hi].set_ylim(FOLD_KHZ, TOP_KHZ)
-            ax[lo].set_ylim(0, FOLD_KHZ)
+            ax[lo].set_ylim(0, FOLD_KHZ if lo == "raw_lo" else N_VIEW_KHZ)
             ax[hi].set_yticks([100, 150, 200, 250])
-            ax[lo].set_yticks([0, 20, 40, 55])
+            ax[lo].set_yticks([0, 20, 40, 55] if lo == "raw_lo" else [0, 10, 20, 30])
             ax[hi].spines["bottom"].set_visible(False)
             ax[hi].tick_params(bottom=False)
             ax[hi].set_ylabel("kHz", labelpad=2)
@@ -738,12 +750,7 @@ def draw(
                     )
         draw_raw(ax["raw_hi"], high)
         draw_raw(ax["raw_lo"], low)
-        label_box = {"fc": "black", "alpha": 0.5, "ec": "none", "pad": 1.0}
-        for name, text in (("raw_lo", "0-55 kHz, finer resolution"),):
-            ax[name].text(
-                0.006, 0.94, text, transform=ax[name].transAxes, color="white",
-                fontsize=FONT, va="top", ha="left", bbox=label_box,
-            )  # fmt: skip
+        leader(ax["raw_lo"], "0–55 kHz,\nfiner resolution", (t1, 45), y=0.75)
         if da_sig.rows:
             trace(ax["da_raw"], da_sig.rows[0])
         ax["da_raw"].set_ylabel(
@@ -841,6 +848,7 @@ def draw(
             if r.category == UNCERTAIN
         ]
         peaks = np.array([])
+        visible = []
         elm_chip = None
         da = ax["da_pr"]
         if da_sig.rows:
@@ -925,7 +933,7 @@ def draw(
             mode_tags.AE: "AE", mode_tags.NTM: "NTM", mode_tags.SAWTOOTH: "sawtooth",
             elm_key: "ELMs", "confinement": by_key["confinement"].spec.title,
         }  # fmt: skip
-        for a, track in zip(track_axes, tracks, strict=True):
+        for a, track in zip(track_axes, display_tracks, strict=True):
             key = track.spec.key
             track_bars(a, track, EVENT_COLOURS.get(key, "#888888"),
                        REGIME_GREYS if key == "confinement" else None)  # fmt: skip
@@ -950,48 +958,41 @@ def draw(
 
         pos = ax["h_proc"].get_position()
         event_handles = [
-            Patch(fc=EVENT_COLOURS[mode_tags.AE], alpha=0.65, label="AE ≥80 kHz"),
-            Line2D(
-                [], [], color=EVENT_COLOURS[mode_tags.NTM], ls="-", label="NTM <60 kHz"
-            ),
-            Patch(fc="none", ec=INK, lw=0.8, label="ELM intervals"),
-            Line2D(
-                [],
-                [],
-                color=INK,
-                marker="v",
-                ls="",
-                ms=3,
-                label="D-alpha peaks",
-            ),
+            Patch(fc="white", ec=INK, lw=0.5, label="TokEye mask,\nn not measured")
         ]
-        mask_handle = Patch(
-            fc="white", ec=INK, lw=0.5, label="TokEye mask, n not measured"
-        )
-        fig.legend(
-            handles=[mask_handle, *n_handles],
-            loc="lower left",
-            ncols=1 + len(n_handles),
-            frameon=False,
-            fontsize=FONT,
-            handlelength=1.0,
-            columnspacing=0.9,
-            handletextpad=0.3,
-            borderpad=0,
-            borderaxespad=0,
-            bbox_to_anchor=(pos.x0, pos.y0 + (0.058 if len(crashes) else 0.030)),
-        )
+        if projected["wide"][mode_tags.AE].any():
+            event_handles.append(
+                Patch(
+                    fc=EVENT_COLOURS[mode_tags.AE],
+                    alpha=0.65,
+                    label="AE (detector band\n≥80 kHz)",
+                )
+            )
+        if projected["zoom"][mode_tags.NTM].any():
+            event_handles.append(
+                Line2D(
+                    [],
+                    [],
+                    color=EVENT_COLOURS[mode_tags.NTM],
+                    alpha=0.45,
+                    lw=0.7,
+                    label="NTM (n=1/2, ≤30 kHz)",
+                )
+            )
+        legend_options = {
+            "loc": "upper left",
+            "ncols": 1,
+            "frameon": False,
+            "fontsize": FONT,
+            "handlelength": 1.0,
+            "handletextpad": 0.3,
+            "borderpad": 0,
+            "borderaxespad": 0,
+        }
         fig.legend(
             handles=event_handles,
-            loc="lower left",
-            ncols=len(event_handles),
-            frameon=False,
-            fontsize=FONT,
-            handlelength=1.1,
-            columnspacing=0.9,
-            handletextpad=0.3,
-            borderaxespad=0,
-            bbox_to_anchor=(pos.x0, pos.y0 + (0.030 if len(crashes) else 0.004)),
+            bbox_to_anchor=(0.792, pos.y1 - 0.025),
+            **legend_options,
         )
         if len(crashes):
             fig.legend(
@@ -1001,50 +1002,132 @@ def draw(
                         [],
                         color=EVENT_COLOURS[mode_tags.SAWTOOTH],
                         ls=":",
-                        label="sawtooth crashes (ECE-verified)",
+                        label="ECE-verified crashes",
                     )
                 ],
-                loc="lower left",
-                frameon=False,
-                fontsize=FONT,
-                borderaxespad=0,
-                bbox_to_anchor=(pos.x0, pos.y0 + 0.004),
+                bbox_to_anchor=(0.792, strip.get_position().y1 + 0.003),
+                **legend_options,
             )
-        colours = [EVENT_COLOURS[e] for e in (mode_tags.AE, mode_tags.NTM)]
-        if show_sawtooth:
-            colours.append(EVENT_COLOURS[mode_tags.SAWTOOTH])
-        handles = [
-            tuple(Patch(fc=c, lw=0) for c in (*colours, INK)),
-            Patch(fc="white", ec=INK, hatch="//////", lw=0.4),
-            Patch(fc=ABSENT_GREY, lw=0),
-            Patch(fc="white", ec="#999999", lw=0.5),
-        ]  # fmt: skip
+        if n_handles:
+            fig.legend(
+                handles=n_handles,
+                bbox_to_anchor=(0.792, ax["pr_lo"].get_position().y1 - 0.005),
+                **legend_options,
+            )
+        elm_handles = []
+        if visible:
+            elm_handles.append(Patch(fc="none", ec=INK, lw=0.8, label="ELM intervals"))
+        if len(peaks):
+            elm_handles.append(
+                Line2D(
+                    [], [], color=INK, marker="v", ls="", ms=3, label="D-alpha peaks"
+                )
+            )
+        if elm_handles:
+            fig.legend(
+                handles=elm_handles,
+                bbox_to_anchor=(0.792, da.get_position().y1),
+                **legend_options,
+            )
+
+        colours = [
+            EVENT_COLOURS[t.spec.key]
+            for t in display_tracks
+            if t.spec.key in EVENT_COLOURS
+            and figure_sources.has_present_time(t, (t0, t1))
+        ]
+        display_states = [
+            r
+            for t in display_tracks
+            for r in figure_sources.state_intervals(t, (t0, t1))
+        ]
+        display_keys = []
+        handles = []
+        if colours:
+            handles.append(tuple(Patch(fc=c, lw=0) for c in colours))
+            display_keys.append("present")
+        if any(r["state"] == "uncertain" for r in display_states):
+            handles.append(Patch(fc="white", ec=INK, hatch="//////", lw=0.4))
+            display_keys.append("uncertain")
+        if any(r["state"] == "absent" for r in display_states):
+            handles.append(Patch(fc=ABSENT_GREY, lw=0))
+            display_keys.append("absent")
+        has_blank = any(
+            t.source is None
+            or sum(
+                r["end_ms"] - r["start_ms"]
+                for r in figure_sources.state_intervals(t, (t0, t1))
+                if r["state"] != "unassessed"
+            )
+            < t1 - t0 - 1e-6
+            for t in display_tracks
+        )
+        if has_blank:
+            handles.append(Patch(fc="white", ec="#999999", lw=0.5))
+            display_keys.append("blank")
         fig.legend(
             handles,
-            ["present", "uncertain", "absent",
-             "blank: unassessed / unobservable"],
+            ["blank: unassessed / unobservable" if k == "blank" else k
+             for k in display_keys],
             handler_map={tuple: HandlerTuple(ndivide=None, pad=0)},
-            loc="lower center", ncols=4, frameon=False, fontsize=FONT,
+            loc="lower center", ncols=len(handles), frameon=False, fontsize=FONT,
             bbox_to_anchor=(0.5, 0.0), columnspacing=1.2, handlelength=2.5,
         )  # fmt: skip
-        fig.legend(
-            handles=[
-                Line2D(
-                    [],
-                    [],
-                    color=INK,
-                    lw=3,
-                    marker="o",
-                    ms=3,
-                    markerfacecolor="white",
-                    label="expert ELM interval (one span for many ELMs)",
-                )
-            ],
-            loc="lower center",
-            frameon=False,
-            fontsize=FONT,
-            bbox_to_anchor=(0.5, 0.034),
+        expert_crowd = (
+            by_key[elm_key].source is not None
+            and (by_key[elm_key].source.tier == lf.SILVER)
+            and any(
+                r.crowd == 1
+                and r.category in (PRESENT, UNCERTAIN)
+                and r.t_start < t1
+                and r.t_end > t0
+                for r in by_key[elm_key].rows
+            )
         )
+        if expert_crowd:
+            fig.legend(
+                handles=[
+                    Line2D(
+                        [],
+                        [],
+                        color=INK,
+                        lw=3,
+                        marker="o",
+                        ms=3,
+                        markerfacecolor="white",
+                        label="expert ELM interval (one span for many ELMs)",
+                    )
+                ],
+                loc="lower center",
+                frameon=False,
+                fontsize=FONT,
+                bbox_to_anchor=(0.5, 0.034),
+            )
+        fig.draw_without_rendering()
+        layout_record = {
+            "n_panel_height_units": layout["pr_lo"],
+            "n_panel_height_in": ax["pr_lo"].get_position().height * HEIGHT_IN,
+            "n_panel_band_khz": list(ax["pr_lo"].get_ylim()),
+            "processed_omitted_band_khz": [N_VIEW_KHZ, FOLD_KHZ],
+            "legend_labels": [t.get_text() for key in fig.legends for t in key.texts],
+            "present_chip_colours": colours,
+            "heading_and_legend_text_bounds": [
+                {
+                    "text": text.get_text(),
+                    "font_pt": text.get_fontsize(),
+                    "bounds": [
+                        text.get_window_extent().x0 / fig.bbox.width,
+                        text.get_window_extent().y0 / fig.bbox.height,
+                        text.get_window_extent().x1 / fig.bbox.width,
+                        text.get_window_extent().y1 / fig.bbox.height,
+                    ],
+                }
+                for text in [
+                    *fig.texts,
+                    *[text for key in fig.legends for text in key.texts],
+                ]
+            ],
+        }
         paths_out = save_figure(fig, stem, png_dpi)
 
     tags_count = {
@@ -1052,8 +1135,19 @@ def draw(
         for e in (mode_tags.AE, mode_tags.NTM, mode_tags.SAWTOOTH)
     }
     track_records = {t.spec.key: track_record(t, (t0, t1)) for t in tracks}
-    if show_sawtooth:
+    if saw is not None:
         track_records[mode_tags.SAWTOOTH]["source_files"] = crash_record["files"]
+        track_records[mode_tags.SAWTOOTH]["display_intervals_ms"] = (
+            figure_sources.state_intervals(display_saw, (t0, t1))
+            if show_sawtooth
+            else []
+        )
+        track_records[mode_tags.SAWTOOTH]["display_merge"] = {
+            "minimum_duration_ms": figure_sources.SAWTOOTH_DISPLAY_MIN_MS,
+            "rule": "shortest sliver first, merge into longer touching neighbour; "
+            "ties prefer earlier; source unchanged; crash ticks unchanged",
+            "changes": saw_changes if show_sawtooth else [],
+        }
     late_absent = np.zeros(len(high.t), bool)
     active_ends = [b for a, b in spans[mode_tags.AE] if a < t1 and b > t0]
     if active_ends:
@@ -1066,8 +1160,7 @@ def draw(
                 if r.category == ABSENT
             ],
         )
-    late_band = (high.f >= 170) & (high.f <= TOP_KHZ)
-    late_pixels = high.lit & late_band[:, None] & late_absent[None, :]
+    late = figure_sources.late_untagged_lines(high.lit, high.t, high.f, late_absent)
     return {
         "tracks": track_records,
         "figure": [str(p) for p in paths_out],
@@ -1091,22 +1184,17 @@ def draw(
         ],
         "sawtooth_strip_shown": bool(len(crashes)),
         "sawtooth_track_shown": show_sawtooth,
+        "sawtooth_visibility_rule": "row only if source has positive PRESENT "
+        "duration in the displayed window",
+        "display_state_keys": display_keys,
+        "layout": layout_record,
         "catalog_sawtooth_frame_model_shown": False,
-        "late_untagged_high_frequency": {
-            "band_khz": [170, 250],
-            "pixels": int(late_pixels.sum()),
-            "first_time_ms": float(high.t[np.flatnonzero(late_pixels.any(0))[0]]),
-            "last_time_ms": float(high.t[np.flatnonzero(late_pixels.any(0))[-1]]),
-            "columns": int(late_pixels.any(0).sum()),
-            "reason": "AE detector absent; time coincidence is required",
-        }
-        if late_pixels.any()
-        else None,
+        "late_untagged_high_frequency": late,
         "n2_harmonic_consistent": harmonic["support_ms"]
         >= harmonic["minimum_support_ms"],
         "harmonic_support": harmonic,
         "n3_components_unoutlined": sum(b.dominant_n == 3 for b in blobs_low),
-        "n3_outline_rule": "dominant n=3 does not meet the NTM n=1/2 rule",
+        "n3_outline_rule": "both dominant n and each outlined pixel must be n=1/2",
         "n_map": None
         if n_read is None
         else {
@@ -1235,25 +1323,7 @@ def track_record(track: lf.Track, window=None) -> dict | None:
         if track.spec.key == mode_tags.SAWTOOTH and Path(track.file).suffix == ".json"
         else {}
     )
-    codes = {
-        ABSENT: "absent",
-        PRESENT: "present",
-        UNCERTAIN: "uncertain",
-        NOT_OBSERVABLE: "unassessed",
-    }
-    state_rows = []
-    for r in track.rows:
-        a, b = r.t_start, r.t_end
-        if window is not None:
-            a, b = max(a, window[0]), min(b, window[1])
-        if b > a:
-            state_rows.append(
-                {
-                    "start_ms": a,
-                    "end_ms": b,
-                    "state": codes.get(r.category, str(r.category)),
-                }
-            )
+    state_rows = figure_sources.state_intervals(track, window or (-math.inf, math.inf))
     ae_threshold = figure_sources.AE_THRESHOLD
     if track.spec.key == mode_tags.AE and track.source.run is not None:
         from labeler.paper.shots import Model
@@ -1340,6 +1410,7 @@ def main(argv=None) -> int:
         help="full physics JSON evidence paired with cohort CSVs",
     )
     args = parser.parse_args(argv)
+    clean_head = not subprocess.check_output(["git", "status", "--porcelain"]).strip()
 
     paths = Paths.from_env()
     out = args.out or paths.root / "round4" / "fig1"
@@ -1439,12 +1510,12 @@ def main(argv=None) -> int:
             "hole_area_px": mode_tags.HOLE_AREA,
             "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
             "tag_rule": "component AND PRESENT time pixels AND event band; "
-            "NTM dominant measured n in {1,2} AND measured n pixel <=30 kHz; "
+            "NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; "
             "sawtooth crash ticks, no mode tag",
             "ae_highlight_rule": "pixel tint only; no component bounding boxes",
             "outline_display_rule": "max pool at 150-dpi axes resolution; "
-            "erode for edge, expand one print pixel inward; re-intersect native "
-            "measured-pixel mask; clip to raw time/band spans",
+            "one print pixel inner edge, alpha 0.45; re-intersect native "
+            "n=1/2 mask; clip to raw time/band spans",
             "projection_audit_rule": "enumerate projected coordinates against "
             "raw, end-exclusive intervals; independent of present_columns",
             "n_palette": N_COLOURS,
@@ -1486,6 +1557,7 @@ def main(argv=None) -> int:
         "caption": {"path": str(caption_file), "sha256": sha256_of(caption_file)},
         "drawn": drawn,
         "git": git_sha(),
+        "render_started_from_clean_head": clean_head,
         "render_code_sha256": {
             p: sha256_of(Path(p))
             for p in (

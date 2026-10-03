@@ -15,6 +15,9 @@ import subprocess
 from pathlib import Path
 
 from labeler.config import sha256_of
+from labeler.paper import figure_sources as fs
+from labeler.paper import label_figure as lf
+from labeler.paper import mode_tags as mt
 from labeler.paper.figure_sources import AE_THRESHOLD
 
 SHOTS = (201978, 201973, 203187, 186636, 191376, 191782)
@@ -24,7 +27,7 @@ def rebuild_primary(record):
     """Rebuild with the recorded sources and verify identical PDF/PNG bytes."""
     files = [Path(p) for p in record["drawn"]["figure"]]
     before = {str(p): sha256_of(p) for p in files}
-    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit4-primary-rebuild"
+    rebuild_dir = Path(os.environ["TMPDIR"]) / "audit5-primary-rebuild"
     rebuild_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         "pixi", "run", "--frozen", "--no-install", "--manifest-path",
@@ -82,6 +85,7 @@ def main():
     for shot in SHOTS:
         file = args.records / f"{shot}.json"
         record = json.loads(file.read_text())
+        assert record["render_started_from_clean_head"]
         assert record["split"] in ("train", "val"), f"blind shot {shot}"
         drawn = record["drawn"]
         render_commits.add(record["git"])
@@ -98,6 +102,7 @@ def main():
                 assert event["outside_present"] == event["outside_band"] == 0
         for band in drawn["ntm_measured_pixel_audit"].values():
             assert band["outside_measured_n"] == band["above_n_view_band"] == 0
+            assert band["measured_n3_outline_pixels"] == 0
         assert drawn["ae_boxes_ms_khz"] == []
         crashes = drawn["sawtooth_crashes"]
         shown = crashes["drawn_times_ms"]
@@ -106,7 +111,6 @@ def main():
         assert drawn["sawtooth_strip_shown"] == bool(shown)
         if shot == 201978:
             assert record["window_ms"] == [1500, 3300]
-        assert drawn["sawtooth_track_shown"]
         assert drawn["catalog_sawtooth_frame_model_shown"] is False
         saw = record["tracks"]["sawtooth_oscillation"]
         assert saw["state_intervals_ms"]
@@ -119,9 +123,70 @@ def main():
                 a = max(row["start_s"] * 1000, record["window_ms"][0])
                 b = min(row["end_s"] * 1000, record["window_ms"][1])
                 if b > a:
-                    expected.append({"start_ms": a, "end_ms": b, "state": row["state"]})
+                    expected.append(
+                        {
+                            "start_ms": a,
+                            "end_ms": b,
+                            "state": row["state"],
+                            "category": {
+                                "absent": 0,
+                                "present": 1,
+                                "uncertain": 2,
+                                "unassessed": 3,
+                            }[row["state"]],
+                        }
+                    )
             assert saw["state_intervals_ms"] == expected
             assert saw["density_guard"] == physics.get("density_guard")
+        present_saw = any(r["category"] == 1 for r in saw["state_intervals_ms"])
+        assert drawn["sawtooth_track_shown"] == present_saw
+        spec = next(s for s in lf.TRACKS if s.key == mt.SAWTOOTH)
+        raw = lf.Track(
+            spec,
+            rows=tuple(
+                lf.Row(r["start_ms"], r["end_ms"], r["category"])
+                for r in saw["state_intervals_ms"]
+            ),
+        )
+        display, changes = fs.sawtooth_display(raw, record["window_ms"])
+        assert saw["display_intervals_ms"] == (
+            fs.state_intervals(display, record["window_ms"]) if present_saw else []
+        )
+        assert saw["display_merge"]["changes"] == (changes if present_saw else [])
+        assert saw["display_merge"]["minimum_duration_ms"] == 10
+        vermillion = "#D55E00"
+        saw_present_drawn = any(r["category"] == 1 for r in saw["display_intervals_ms"])
+        assert (
+            vermillion in drawn["layout"]["present_chip_colours"]
+        ) == saw_present_drawn
+        confine = record["tracks"]["confinement"]
+        mapping = {int(k): v for k, v in confine["states"].items()}
+        for row in confine["state_intervals_ms"]:
+            category = row["category"]
+            state = mapping.get(category, "absent" if category == 0 else str(category))
+            if confine["title"] == "H-mode" and category == 3:
+                state = "unassessed"
+            assert row["state"] == state
+        geometry = drawn["layout"]
+        assert geometry["n_panel_height_units"] >= 0.8
+        assert geometry["n_panel_height_in"] >= 0.8
+        assert geometry["n_panel_band_khz"] == [0, 30]
+        assert geometry["processed_omitted_band_khz"] == [30, 55]
+        for text in geometry["heading_and_legend_text_bounds"]:
+            assert text["font_pt"] >= 7
+            x0, y0, x1, y1 = text["bounds"]
+            assert 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1, text["text"]
+        legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
+        tags = drawn["blobs"]["tagged"]
+        assert ("AE (detector band ≥80 kHz)" in legend) == bool(tags[mt.AE])
+        assert ("NTM (n=1/2, ≤30 kHz)" in legend) == bool(tags[mt.NTM])
+        elm_expert = record["tracks"]["edge_localized_mode"]["tier"] == lf.SILVER
+        crowd = bool(drawn["elm_crowd_spans_ms"])
+        assert any("expert ELM" in name for name in legend) == (elm_expert and crowd)
+        late = drawn["late_untagged_high_frequency"]
+        if late:
+            assert late["minimum_duration_ms"] == 150
+            assert late["last_time_ms"] - late["first_time_ms"] >= 150
         for t in drawn["elm_peak_times_ms"]:
             assert not any(a <= t < b for a, b in drawn["elm_uncertain_spans_ms"])
         caption_file = args.records / f"{shot}.caption.tex"
@@ -197,11 +262,17 @@ def main():
                 "caption_words": words,
                 "projection_violations": 0,
                 "unmeasured_ntm_pixels": 0,
+                "measured_n3_outline_pixels": 0,
+                "layout": geometry,
                 "regimes_shown": drawn["regimes_shown"],
                 "harmonic_support": drawn["harmonic_support"],
                 "render_source_commit": record["git"],
                 "sawtooth_source": crashes["files"],
                 "sawtooth_states": saw["state_intervals_ms"],
+                "sawtooth_track_shown": present_saw,
+                "sawtooth_display_intervals_ms": saw["display_intervals_ms"],
+                "sawtooth_display_merge": saw["display_merge"],
+                "confinement_intervals_ms": confine["state_intervals_ms"],
                 "sawtooth_state_duration_ms": {
                     state: sum(
                         r["end_ms"] - r["start_ms"]

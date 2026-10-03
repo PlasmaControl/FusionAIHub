@@ -28,6 +28,122 @@ NTM_THRESHOLD = 0.63
 SAWTOOTH_THRESHOLD = 0.6
 ELM_VETO_MS = 5.0
 ECE_MATCH_MS = 3.0
+SAWTOOTH_DISPLAY_MIN_MS = 10.0
+LATE_LINE_MIN_MS = 150.0
+
+
+def state_intervals(track: lf.Track, window: tuple[float, float]) -> list[dict]:
+    """Clipped source categories with the track's own state/regime names."""
+    codes = {ABSENT: "absent", **track.spec.states}
+    if track.spec.key != "confinement" or track.spec.title == "H-mode":
+        codes[NOT_OBSERVABLE] = "unassessed"
+    return [
+        {
+            "start_ms": max(r.t_start, window[0]),
+            "end_ms": min(r.t_end, window[1]),
+            "category": r.category,
+            "state": codes.get(r.category, str(r.category)),
+        }
+        for r in track.rows
+        if r.t_end > window[0] and r.t_start < window[1]
+    ]
+
+
+def has_present_time(track: lf.Track, window: tuple[float, float]) -> bool:
+    """A source PRESENT interval has positive duration inside the view."""
+    return any(
+        r.category == PRESENT and min(r.t_end, window[1]) > max(r.t_start, window[0])
+        for r in track.rows
+    )
+
+
+def sawtooth_display(track: lf.Track, window: tuple[float, float]):
+    """Merge sub-10 ms state slivers into the longer touching neighbour.
+
+    Display only: source rows stay exact. Process shortest sliver first, ties
+    left to right; equal neighbour durations prefer the earlier state. Never
+    bridge a gap in assessment. Independently verified crash ticks stay exact.
+    """
+    rows = [
+        replace(r, t_start=max(r.t_start, window[0]), t_end=min(r.t_end, window[1]))
+        for r in track.rows
+        if r.t_end > window[0] and r.t_start < window[1]
+    ]
+    changes = []
+    while True:
+        merged = []
+        for row in rows:
+            if (
+                merged
+                and merged[-1].category == row.category
+                and abs(merged[-1].t_end - row.t_start) < 1e-6
+            ):
+                merged[-1] = replace(merged[-1], t_end=row.t_end)
+            else:
+                merged.append(row)
+        rows = merged
+        candidates = []
+        for i, row in enumerate(rows):
+            duration = row.t_end - row.t_start
+            neighbours = [
+                j
+                for j in (i - 1, i + 1)
+                if 0 <= j < len(rows)
+                and abs(
+                    min(row.t_end, rows[j].t_end) - max(row.t_start, rows[j].t_start)
+                )
+                < 1e-6
+            ]
+            if duration < SAWTOOTH_DISPLAY_MIN_MS and neighbours:
+                candidates.append((duration, i, neighbours))
+        if not candidates:
+            break
+        _, i, neighbours = min(candidates)
+        j = max(neighbours, key=lambda j: (rows[j].t_end - rows[j].t_start, -j))
+        row = rows[i]
+        category = rows[j].category
+        changes.append(
+            {
+                "start_ms": row.t_start,
+                "end_ms": row.t_end,
+                "from": row.category,
+                "to": category,
+            }
+        )
+        rows[i] = replace(row, category=category)
+    return replace(track, rows=tuple(rows)), changes
+
+
+def late_untagged_lines(mask, t_ms, f_khz, late_absent) -> dict | None:
+    """Data-derived frequency bounds of ≥150 ms late, untagged components."""
+    from scipy import ndimage
+
+    t, f = np.asarray(t_ms), np.asarray(f_khz)
+    eligible = mask & np.asarray(late_absent)[None, :]
+    eligible &= (f >= mt.BANDS[mt.AE][0])[:, None]
+    labels, _ = ndimage.label(eligible, structure=np.ones((3, 3)))
+    kept = np.zeros_like(mask, dtype=bool)
+    for label, bounds in enumerate(ndimage.find_objects(labels), 1):
+        if bounds is None:
+            continue
+        _, cols = bounds
+        if t[cols.stop - 1] - t[cols.start] >= LATE_LINE_MIN_MS:
+            kept[bounds] |= labels[bounds] == label
+    if not kept.any():
+        return None
+    rr, cc = np.nonzero(kept)
+    return {
+        "band_khz": [float(f[rr].min()), float(f[rr].max())],
+        "pixels": int(kept.sum()),
+        "columns": int(kept.any(0).sum()),
+        "first_time_ms": float(t[cc].min()),
+        "last_time_ms": float(t[cc].max()),
+        "minimum_duration_ms": LATE_LINE_MIN_MS,
+        "rule": "8-connected coherent components in the AE detector band; "
+        "late ABSENT times after the last PRESENT AE interval; "
+        "continuous component duration >=150 ms",
+        "reason": "AE detector absent; time coincidence is required",
+    }
 
 
 def elm_category(row: lf.Row) -> int:
@@ -71,7 +187,14 @@ def confinement_track(paths: Paths, shot: int) -> lf.Track:
     source = lf.Source(
         lf.GENERATED, "D-alpha L-H transition detector (dalpha_lh)", lambda p: fallback
     )
-    return lf.Track(replace(spec, title="H-mode"), source, fallback, rows)
+    return lf.Track(
+        replace(
+            spec, title="H-mode", states={ABSENT: "absent", **lf.BINARY, 5: "uncertain"}
+        ),
+        source,
+        fallback,
+        rows,
+    )
 
 
 def stored_ae_track(paths: Paths, shot: int) -> lf.Track | None:
@@ -392,7 +515,7 @@ def harmonic_support(n_map, mask, times, frequencies):
 
 def sawtooth_caption(record: dict) -> str:
     """Summarise displayed physics states without equating a proxy to cutoff."""
-    rows = record.get("state_intervals_ms", [])
+    rows = record.get("display_intervals_ms", record.get("state_intervals_ms", []))
     if not rows:
         return "Sawtooth unassessed."
     states = {r["state"] for r in rows}
@@ -418,13 +541,14 @@ def sawtooth_caption(record: dict) -> str:
     if "unassessed" in states and guard.get("cutoff_proxy"):
         text += ", where a conservative density proxy limits ECE observability"
         if "bt_missing" in guard.get("status", "").lower():
-            text += " (no Bt available)"
+            text += " (Bt not in the local corpus)"
     return text + "."
 
 
 def caption(shot: int, records: dict, drawn: dict) -> str:
     """Source-specific paper prose, without internal source identifiers."""
     sources = []
+    tagged = drawn.get("blobs", {}).get("tagged")
     for key, name in (
         (mt.AE, "AE"),
         (mt.NTM, "NTM"),
@@ -434,9 +558,11 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     ):
         if key == mt.SAWTOOTH:
             continue
+        if key in (mt.AE, mt.NTM) and tagged is not None and not tagged.get(key):
+            continue
         record = records.get(key)
         if record is None:
-            description = "unassessed"
+            continue
         elif record["tier"] == lf.SILVER:
             description = "expert"
         elif record["tier"] == lf.LEGACY:
@@ -469,12 +595,19 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             f"DIII-D shot {shot}. Raw bands normalised separately; "
             "TokEye's U-Net extracts coherent modes."
         ),
-        "; ".join(sources) + ".",
-        (
-            "Pink ≥80 kHz: AE time/band overlap; n measured ≤30 kHz. "
-            "NTM outlines here require dominant n=1 or 2."
-        ),
     ]
+    if drawn.get("layout", {}).get("processed_omitted_band_khz"):
+        sentences.append("Processed 30–55 kHz omitted.")
+    if sources:
+        sentences.append("; ".join(sources) + ".")
+    if tagged is None or tagged.get(mt.AE):
+        sentences.append(
+            "Pink: AE time overlap in detector band ≥80 kHz; tint follows "
+            "the detector's 25 ms bins."
+        )
+    sentences.append("n measured ≤30 kHz.")
+    if tagged is None or tagged.get(mt.NTM):
+        sentences.append("NTM outlines require dominant and pixel n=1/2.")
     harmonic = drawn.get("harmonic_support", {})
     if harmonic.get("support_ms", 0) >= harmonic.get("minimum_support_ms", 50):
         step = harmonic.get("caption_frequency_step_khz", 1.0)
@@ -483,21 +616,29 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
             f"The n=2 ridge near {frequency:.0f} kHz is consistent with a second "
             "harmonic of n=1."
         )
-    if records.get(mt.SAWTOOTH):
+    if records.get(mt.SAWTOOTH) and drawn.get("sawtooth_track_shown", True):
         sentences.append(sawtooth_caption(records[mt.SAWTOOTH]))
-    if drawn.get("catalog_sawtooth_frame_model_shown") is False:
-        sentences.append("Catalog generated sawtooth frame model not shown.")
-    if drawn.get("late_untagged_high_frequency"):
+    late = drawn.get("late_untagged_high_frequency")
+    if late:
+        lo, hi = late["band_khz"]
         sentences.append(
-            "Late 170–250 kHz lines stay untagged where AE detector is absent."
+            f"Late {lo:.0f}–{hi:.0f} kHz lines stay untagged where AE detector is absent."
         )
     if drawn.get("sawtooth_strip_shown"):
         sentences.append("Ticks exclude crashes within 5 ms of D-alpha peaks.")
-    sentences.append(
-        "Hatching: uncertain; blank: unassessed/unobservable; "
-        "circles: expert ELM interval (one span for many ELMs); "
-        "triangles: D-alpha peaks from a threshold (not annotated)."
-    )
+    keys = []
+    states = drawn.get("display_state_keys")
+    if states is None or "uncertain" in states:
+        keys.append("Hatching: uncertain")
+    if states is None or "blank" in states:
+        keys.append("blank: unassessed/unobservable")
+    elm = records.get("edge_localized_mode", {})
+    if elm.get("tier") == lf.SILVER and drawn.get("elm_crowd_spans_ms", True):
+        keys.append("circles: expert ELM interval (one span for many ELMs)")
+    if drawn.get("elm_peaks_in_label", True):
+        keys.append("triangles: threshold D-alpha peaks (not annotated)")
+    if keys:
+        sentences.append("; ".join(keys) + ".")
     text = " ".join(sentences)
     if len(text.split()) > 150:
         raise ValueError(f"caption exceeds 150 words: {len(text.split())}")
