@@ -59,6 +59,7 @@ def patch_models(text, model_lines, caveat):
             if date:
                 line = re.sub(r"\d{4}_\d{2}_\d{2}", date.group(), line, count=1)
         entries[name] = line
+    entries.pop("elm-ours-onset", None)
     bes_line = entries.pop("elm-ours (BES subset)", None)
     if bes_line is not None:
         ordered = {}
@@ -169,7 +170,7 @@ def dsm_card(dsm, native):
         "non-crowd start lies in that interval. Reviewed non-crowd starts",
         "are annotation boundaries without independent physical-onset truth.",
         "",
-        f"Exact-export 50 ms AUROC is **{exact['auroc']:.3f}**, CI **null**:",
+        f"Exact-export 50 ms AUROC is {exact['auroc']:.3f}, CI null:",
         (
             f"descriptive only on {exact['n_shots']} shots reused in source fitting and "
             f"{exact['rows']:,} rows"
@@ -177,7 +178,7 @@ def dsm_card(dsm, native):
         "(" + ", ".join(map(str, exact["shots"])) + ").",
         "196541 entered optimizer fitting; the other three entered checkpoint",
         "selection; all entered source normalization. Five shots have exact exports,",
-        "but 192751 has no scored overlap: the exact-export panel and figure",
+        "but 192751 has no scored overlap: the exact-export JSON",
         "therefore contain four shots. No operating threshold is selected.",
         "",
         "| Native panel | Horizon | Shots | Rows | AUROC [95% physical-shot CI] |",
@@ -212,6 +213,84 @@ def dsm_card(dsm, native):
     return path
 
 
+def audit_lines(records):
+    native = records["native_detection"]
+    lines = [
+        "### Native DSM detection comparator",
+        "",
+        f"The timestamp-aware 1 ms audit finds at least 112/124 inputs on {native['shots_at_least_90_percent']} reviewed shots; 37 have complete 124-input scored bins. Missing column names and shot counts are retained in `dsm/native_detection.json:coverage,missing_column_shot_counts`.",
+        "The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-input shots only, with random weights and optimizer-training-only normalization. The fixed 25-epoch recipe uses the original five outer folds and their inner-validation shot partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No source weights/statistics or blind-test shots are reused.",
+        "Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's 100-row centered smoothing within each shot, rather than concatenated source phases. This reconstructs native diagnostic inputs, not bit-identical historical exported rows. Bin scores average 50 native row probabilities; measured support and target are identical for every compared method.",
+        "",
+        "| Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |",
+        "|---|---:|---|---|---|",
+    ]
+    for tag in ("all119", "bes73"):
+        panel = native["sets"][tag]
+        for key, label in (
+            ("elm-ours", "elm-ours"),
+            ("elm-dsm-detect", "elm-dsm (60-input 1×128 adaptation)"),
+            ("elm-dsm-native-detect", "elm-dsm (124-input [100,1000] detection)"),
+            ("elm-elmo", "ELM-O"),
+        ):
+            row = panel["methods"].get(key)
+            if row:
+                cells = [metric(row, m) for m in ("auroc", "auprc", "f1")]
+                lines.append(
+                    f"| {tag} / {label} | {panel['n_shots']} / {panel['bins']:,} | "
+                    + " | ".join(cells)
+                    + " |"
+                )
+    lines += [
+        "",
+        "This smaller support panel is a secondary control; it does not replace the primary all119/bes73 benchmark. A single fixed native refit does not measure the best achievable DSM performance.",
+        "",
+    ]
+    return lines
+
+
+def add_audits(lines, records):
+    position = lines.index("### Signal provenance and numerical preprocessing")
+    lines[position:position] = audit_lines(records)
+    rejection = records["rejection"]
+    position = lines.index(
+        "Intervals use 1,000 physical-shot resamples, with valid/undefined counts."
+    )
+    block = [
+        "### Diagnostic rejection and inference sensitivity",
+        "",
+        "Counts use all119 primary coverage (119 shots / 12,409 bins). A bin is affected if any valid 0.1 ms input cell is screened or clipped. Clipping caps/floors samples and discards no shot or bin; clipping counts below exclude already screened chords. Per-shot native magnitudes and pre-screen clipping counts are in `ours/rejection_sensitivity.json`.",
+        "",
+        "| Chord | Screen shots / bins | Clipping shots / bins | Threshold |",
+        "|---|---:|---:|---|",
+    ]
+    for name, row in rejection["totals"].items():
+        block.append(
+            f"| {name} | {row['screen_shots']} / {row['screen_bins']} | {row['clipping_shots']} / {row['clipping_bins']} | {row['threshold']} |"
+        )
+    block += [
+        "",
+        "The failed-digitiser heuristic applies only to DENV2F/3F: median absolute native 0.1 ms cell mean >1e16. The primary U-Net zero-fills both features of a rejected chord; it does not fill a fitted physical mean. With that screen disabled, rejected chords are used raw under the same scaling/clipping and whole-shot inference. Frozen weights, thresholds and all119 bins remain fixed; only six shots change inputs and there is no retraining.",
+    ]
+    before, after = (
+        rejection["methods"][k] for k in ("screen-enabled", "screen-disabled")
+    )
+    block.append(
+        "Disabled-screen AUROC, AUPRC and F1 are "
+        + ", ".join(metric(after, m) for m in ("auroc", "auprc", "f1"))
+        + "; changes from the screened baseline are "
+        + ", ".join(
+            f"{rejection['metric_change_disabled_minus_enabled'][m]:+.5f}"
+            for m in ("auroc", "auprc", "f1")
+        )
+        + ", respectively. False-alarm bin rate changes from "
+        + f"{before['point']['false_alarm_bin_rate']:.3f} to {after['point']['false_alarm_bin_rate']:.3f}. This sensitivity does not establish physical calibration or prove that screened chords are faulty."
+    )
+    block += ["", ""]
+    lines[position:position] = block
+    return lines
+
+
 def main():
     files = {
         "ours": "ours/evaluation.json",
@@ -225,6 +304,8 @@ def main():
         "density": "density_units.json",
         "filterscope": "filterscope_metadata.json",
         "history": "training_history.json",
+        "native_detection": "dsm/native_detection.json",
+        "rejection": "ours/rejection_sensitivity.json",
     }
     records = {
         key: json.loads((OUTPUTS / value).read_text()) for key, value in files.items()
@@ -232,11 +313,8 @@ def main():
     ours, dsm, native, smith = (records[k] for k in ("ours", "dsm", "native", "smith"))
     all_ours = ours["sets"]["all119"]["methods"]["elm-ours"]
     head = smith["methods"]["elm-ours-onset"]["events"]["2"]
-    frozen = smith["methods"]["elm-ours"]["occupancy_1ms"]
     audit = smith["onset_window_audit"]
     swap = records["swap"]["interval_audit"]["known_review_majority"]
-    exact = native["reviewed_exact_export"]["horizons"]["h50ms"]
-    mean_auc = ours["sets"]["all119"]["fold_auroc_sensitivity"]["mean"]
     all_common = dsm["sets"]["all119"]
     bes_common = dsm["sets"]["bes73"]
     paired = []
@@ -278,37 +356,10 @@ def main():
         "`elm-ours` delivers BES-free ELMy-occupancy probability; the requested",
         "finer physical-onset trace is **not delivered to the catalog**.",
         "",
-        "Current numbers and what each means (sources below):",
-        "",
-        (
-            f"- {all_ours['point']['auroc']:.3f} AUROC: reviewed occupancy, "
-            f"{ours['sets']['all119']['n_shots']} shots / "
-            f"{ours['sets']['all119']['bins']:,} interior 50 ms bins."
-        ),
-        f"- {metric(all_ours, 'f1')} F1: fold thresholds selected on inner validation.",
-        f"- {mean_auc:.3f}: mean per-fold AUROC sensitivity to pooling fold scores.",
-        (
-            f"- {all_common['methods']['elm-ours']['point']['auroc']:.3f} / "
-            f"{bes_common['methods']['elm-ours']['point']['auroc']:.3f}: elm-ours "
-            "AUROC on all / BES-subset DSM-common bins."
-        ),
-        (
-            f"- {all_common['methods']['elm-dsm-detect']['point']['auroc']:.3f} / "
-            f"{bes_common['methods']['elm-dsm-detect']['point']['auroc']:.3f}: "
-            "reduced-input DSM detection adaptation on all / BES-common bins."
-        ),
-        f"- {exact['auroc']:.3f}: native DSM forward-presence AUROC, four shots, no CI.",
-        f"- {metric(frozen, 'auroc')}: frozen review-to-Smith occupancy AUROC.",
-        f"- {metric(head, 'recall')}: Smith-trained onset recall in selected windows.",
-        (
-            f"- {audit['max_absolute_error_ms']:.2f} ms / "
-            f"{100 * audit['correct_1ms_cell_fraction']:.0f}%: max matched error / correct "
-            "1 ms cell."
-        ),
-        (
-            f"- {swap['M']} / {swap['P']}: legacy/review disagreements; eight-shot swap "
-            "is inconclusive."
-        ),
+        f"Primary reviewed-occupancy benchmark: all119 has {ours['sets']['all119']['bins']:,} interior 50 ms bins, AUROC {metric(all_ours, 'auroc')}, AUPRC {metric(all_ours, 'auprc')}, and F1 {metric(all_ours, 'f1')}.",
+        f"The primary bes73 panel has {ours['sets']['bes73']['bins']:,} bins; its elm-ours AUROC is {metric(ours['sets']['bes73']['methods']['elm-ours'], 'auroc')} and F1 is {metric(ours['sets']['bes73']['methods']['elm-ours'], 'f1')}.",
+        "DSM common-bin results are secondary occupancy controls; native detection is evaluated on a smaller identical-support panel, separately from historical forward-risk results.",
+        "Smith onset recall describes selected windows only, and the eight-shot legacy swap measures reference-definition disagreement; neither confirms continuous-discharge physical-onset performance.",
         "",
         "## Scope and review benchmark",
         "",
@@ -335,12 +386,12 @@ def main():
         "run days cross folds in both developmental analyses",
         "(16 review days; 21 of 31 Smith days).",
         "",
-        "`elm-ours` **matches ELM-O without BES; extends coverage to all 119 shots**.",
-        f"On the same {bes_common['bins']:,} bins from {bes_common['n_shots']} BES shots,",
+        "`elm-ours` is statistically indistinguishable from ELM-O on bes73 (paired CIs include 0; equivalence untested), while extending BES-free coverage to all 119 shots.",
+        f"On the secondary common-bin control ({bes_common['bins']:,} bins on {bes_common['n_shots']} BES shots),",
         f"paired elm-ours minus ELM-O differences are {paired_text}.",
         "Every interval includes zero; this does not establish superiority.",
-        "Each 50 ms bin lies wholly inside a reviewed span and shared signal",
-        "coverage, with valid rows in both DSM input variants. elm-ours calls",
+        "Primary 50 ms bins lie wholly inside reviewed spans and signal coverage;",
+        "secondary common bins additionally require both DSM row variants. elm-ours calls",
         "a bin present when its mean probability reaches the selected threshold;",
         "the DSM adaptation thresholds one aligned row score computed from",
         "50 ms input means. ELM-O and the clock use any detected-span touch.",
@@ -357,39 +408,57 @@ def main():
         ("elm-feature-only", "elm-feature"),
         ("elm-elmo", "elm-elmo"),
     )
-    for tag in ("all119", "bes73"):
-        panel = dsm["sets"][tag]
-        for key, label in rows:
-            row = (
-                records["feature"]["sets"]["common"][tag]["methods"][key]
-                if key == "elm-feature-only"
-                else panel["methods"].get(key)
-            )
-            if row is None:
-                continue
-            cells = [metric(row, key) for key in ("auroc", "auprc", "f1")]
-            lines.append(
-                f"| {tag} / {label} | {panel['n_shots']} / "
-                f"{panel['bins']:,} | " + " | ".join(cells) + " |"
-            )
-            if tag == "all119" or key in ("elm-ours", "elm-elmo"):
-                model_label = (
-                    "elm-ours (BES subset)"
-                    if tag == "bes73" and key == "elm-ours"
-                    else label
+    for scope, source in (("primary", ours), ("common", dsm)):
+        if scope == "common":
+            lines += [
+                "",
+                "### Secondary DSM common-bin control",
+                "",
+                "| Coverage / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |",
+                "|---|---:|---|---|---|",
+            ]
+        for tag in ("all119", "bes73"):
+            panel = source["sets"][tag]
+            for key, label in rows:
+                row = (
+                    records["feature"]["sets"][scope][tag]["methods"][key]
+                    if key == "elm-feature-only"
+                    else panel["methods"].get(key)
                 )
-                model_lines.append(
-                    f"- {model_label} | 2026_10_03 | AUROC: {cells[0]} | "
-                    f"AUPRC: {cells[1]} | F1: {cells[2]} "
-                    f"({panel['n_shots']} shots / "
-                    f"{panel['bins']:,} common bins)"
+                if row is None:
+                    continue
+                cells = [metric(row, m) for m in ("auroc", "auprc", "f1")]
+                lines.append(
+                    f"| {tag} / {label} | {panel['n_shots']} / "
+                    f"{panel['bins']:,} | " + " | ".join(cells) + " |"
                 )
+                if scope == "primary" and (
+                    tag == "all119" or key in ("elm-ours", "elm-elmo")
+                ):
+                    model_label = (
+                        "elm-ours (BES subset)"
+                        if tag == "bes73" and key == "elm-ours"
+                        else label
+                    )
+                    role = (
+                        "baseline; "
+                        if key == "always present"
+                        else "control; "
+                        if key == "elm-feature-only"
+                        else ""
+                    )
+                    model_lines.append(
+                        f"- {model_label} | 2026_10_03 | AUROC: {cells[0]} | "
+                        f"AUPRC: {cells[1]} | F1: {cells[2]} "
+                        f"({role}primary {tag}; {panel['n_shots']} shots / {panel['bins']:,} bins)"
+                    )
+    reduced = all_common["methods"]["elm-dsm-detect"]
     model_lines.append(
-        "- elm-ours-onset | 2026_10_03 | Recall ±2/5 ms: "
-        + metric(head, "recall")
-        + f" | Matched errors ≤{audit['max_absolute_error_ms']:.2f} ms; "
-        f"{100 * audit['correct_1ms_cell_fraction']:.0f}% correct 1 ms "
-        "cell (211 Smith shots; developmental selected-window shot CV)"
+        "- elm-dsm (60-input 1×128 refit, detection) | 2026_10_03 | AUROC: "
+        + metric(reduced, "auroc")
+        + " | F1: "
+        + metric(reduced, "f1")
+        + f" (secondary control; {all_common['n_shots']} shots / {all_common['bins']:,} common bins)"
     )
     refit = dsm["sets"]["all119"]["methods"]["elm-dsm"]
     model_lines.append(
@@ -408,10 +477,10 @@ def main():
         "on 50 ms rows: 60 input columns and one 128-unit layer. PCPHD02/03",
         "are measured on all 119 shots; DENV2F and DENV3F means supply the two",
         "density columns on 115 shots per chord, with four per chord mean-filled.",
-        "The source DSM trained on native 1 ms rows with 124 inputs and layers",
+        "The historical source DSM trained on native 1 ms rows with 124 inputs and layers",
         "[100, 1000] for WPQH breakthrough-ELM forecasting. The detection row",
         "is not an objective-only retrain of that model; comparative claims",
-        "apply to this reduced-input 50 ms adaptation. Historical survival and",
+        "apply to this reduced-input 50 ms adaptation; the native detection refit is compared below. Historical survival and",
         "detection variants that reuse source weights or statistics remain",
         "supplemental; their upstream normalization includes two blind-cohort",
         "shots. Native presence and non-crowd-start targets use forward (t,t+h].",
@@ -441,12 +510,12 @@ def main():
         "",
         "## Smith onset and transfer",
         "",
-        "Frozen review-to-Smith transfer is independent: no shared review shots",
-        "or run days. The Smith-trained head is developmental shot CV with",
+        "Frozen occupancy transfer is omitted for target mismatch: 50 ms occupancy cannot resolve approximately 8.5 ms Smith windows with brief ELM regions.",
+        "The frozen reviewed-span start output is also omitted. The experimental elm-ours-onset head is developmental shot CV with",
         "within-Smith run-day sharing. Overlap with ELM-O's historical tuning",
         "events is unknown because event membership was not retained.",
         "",
-        f"The head recalls {metric(head, 'recall')} of 2,316 hand-labelled windows",
+        f"At ±2 ms, the experimental head recalls {metric(head, 'recall')} of 2,316 hand-labelled windows",
         (
             "on 211 shots. Every matched error is within "
             f"{audit['max_absolute_error_ms']:.2f} ms; "
@@ -484,7 +553,9 @@ def main():
         "",
         "- `ours/evaluation.json:sets`: original occupancy and per-fold AUROCs.",
         "- `dsm/evaluation.json:{sets,detectors,own_target}`: common bins and refits.",
-        "- `dsm/native_evaluation.json`: native forward targets and memberships.",
+        "- `dsm/native_evaluation.json`: historical native forward targets and memberships.",
+        "- `dsm/native_detection.json`: native-input audit and detection refit.",
+        "- `ours/rejection_sensitivity.json`: per-chord rejection and frozen inference sensitivity.",
         "- `ours/feature_only.json`, `ours/annotation_strata.json`: controls and labels.",
         "- `smith/evaluation.json:{methods,onset_window_audit,onset_run_day_audit,protocol}`: onset scope.",
         "- `swap/evaluation.json:{swap,interval_audit}`: fixed-prediction swap.",
@@ -503,24 +574,28 @@ def main():
         "The original ELM-O benchmark doc is retained with a dated update.",
         "",
     ]
+    lines = add_audits(lines, records)
     doc = REPO / "docs/labeler/elm_ours.md"
     doc.write_text("\n".join(lines))
     readme = REPO / "data/events/edge_localized_mode/README.md"
     caveat = (
         "Brackets are 95% shot-bootstrap intervals. Review results are "
         "developmental shot-CV occupancy estimates (97% crowd positives; "
-        "clock-seeded review). `elm-ours` matches ELM-O without BES; "
-        "extends coverage to all 119 shots. On the common BES subset, paired "
+        "clock-seeded review). Primary benchmark: all119 (12,409 bins) and bes73 (6,843 bins); DSM common-bin results are secondary controls. `elm-ours` is statistically indistinguishable from ELM-O on bes73 (paired CIs include 0; equivalence untested), while extending BES-free coverage to all 119 shots. On the secondary common BES subset, paired "
         f"elm-ours minus ELM-O is {paired_text}; every interval includes zero. "
         "Source: [dsm/evaluation.json](../../../outputs/labeler/elm/dsm/"
         "evaluation.json), `sets.bes73.paired`. Catalog physical-onset output "
         "is withheld. Every Smith method's precision/F1 is conditional on "
         "selected windows; continuous-discharge precision/F1 is unavailable. "
-        "Inputs, run-day sharing and timing limits: "
+        "The experimental Smith onset head is omitted from catalog model claims. Inputs, run-day sharing and timing limits: "
         "[elm_ours.md](../../../docs/labeler/elm_ours.md)."
     )
     readme.write_text(patch_models(readme.read_text(), model_lines, caveat))
     card = dsm_card(dsm, native)
+    card_text = card.read_text().split("\n### Native DSM detection comparator\n", 1)[0]
+    card.write_text(
+        card_text.rstrip() + "\n\n" + "\n".join(audit_lines(records)).rstrip() + "\n"
+    )
     manifest = {
         "git": git_sha(),
         "sources": {

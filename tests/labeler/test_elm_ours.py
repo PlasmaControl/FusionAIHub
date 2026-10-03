@@ -59,6 +59,19 @@ def test_failed_chord_is_zeroed_and_gap_is_invalid():
     assert start[1] - stop[0] == pytest.approx(20, abs=1.5)
 
 
+def test_screen_disabled_retains_raw_chord_with_same_clipping_and_coverage():
+    record = _record()
+    record[3][1] = 1e18
+    screened = inputs.channels(*record)
+    raw = inputs.channels(*record, screen_density=False)
+    valid = raw[inputs.VALID].astype(bool)
+    assert (raw[inputs.DENSITY[1], valid] == inputs.DENSITY_RANGE[1]).all()
+    assert not screened[inputs.DENSITY[1]].any()
+    assert np.array_equal(raw[inputs.VALID], screened[inputs.VALID])
+    unaffected = [*inputs.FS_LEVEL, *inputs.FS_CONTRAST, inputs.DENSITY[0]]
+    assert np.array_equal(raw[unaffected], screened[unaffected])
+
+
 def test_review_table_kinds(tmp_path):
     rows = [
         (1, 0, 100, 0, None),

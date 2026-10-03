@@ -150,11 +150,15 @@ def channels(
     fs: np.ndarray,
     t_int_ms: np.ndarray,
     density: np.ndarray,
+    *,
+    screen_density: bool = True,
 ) -> np.ndarray:
     """The `(N_CHANNELS, n)` float32 input of one shot from its two records.
 
     `fs` is `(3, T)` (FS02-FS04) at `t_fs_ms`, `density` `(2, T')` (DENV2F, DENV3F)
     at `t_int_ms`, both in ms on the shot's clock.
+    `screen_density=False` retains rejected chords for inference sensitivity;
+    scaling, clipping, baselines and coverage remain unchanged.
     """
     n = grid_length(t_fs_ms, t_int_ms)
     fmax, fcount = block_reduce(t_fs_ms, fs, n, "max")
@@ -172,7 +176,8 @@ def channels(
     d[:, dcount == 0] = np.median(d[:, dcount > 0], axis=1, keepdims=True)
     hp = d - running_mean(d, HP_S)
     d = np.clip(d, *DENSITY_RANGE)
-    d[bad], hp[bad] = 0.0, 0.0
+    if screen_density:
+        d[bad], hp[bad] = 0.0, 0.0
     out[list(DENSITY)] = d
     out[list(DENSITY_HP)] = np.clip(HP_GAIN * hp, -10.0, 10.0)
     out[:, ~covered] = 0.0

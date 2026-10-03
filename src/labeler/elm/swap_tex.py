@@ -44,13 +44,13 @@ def method_label(key: str, *, multiline: bool = False) -> str:
     if multiline:
         label = {
             NAME["detect"]: (
-                r"\shortstack[l]{elm-dsm (60-input $1\times128$\\refit, detection)}"
+                r"elm-dsm (60-input $1\times128$)"
             ),
             NAME["exposed"]: (
-                r"\shortstack[l]{elm-dsm (source statistics,\\detection)}"
+                "elm-dsm (source stats)"
             ),
             NAME["init"]: (
-                r"\shortstack[l]{elm-dsm (source weights\\and statistics, detection)}"
+                "elm-dsm (source weights/stats)"
             ),
         }.get(key, label)
     if key in EXPOSED:

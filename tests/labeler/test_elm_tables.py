@@ -97,47 +97,54 @@ def paper_module():
     return module
 
 
-def test_main_occupancy_table_has_two_panels_and_only_six_core_rows():
+def test_main_occupancy_table_uses_primary_panels_and_omits_unavailable_elmo():
     root = SOURCE.parent.parent
     ours = json.loads((root / "ours/evaluation.json").read_text())
     dsm = json.loads((root / "dsm/evaluation.json").read_text())
     feature = json.loads((root / "ours/feature_only.json").read_text())
     text = paper_module().benchmark_table(ours, dsm, feature)
-    assert text.count("common bins") == 2
-    visible_rows = (
-        text.replace(r"\shortstack[l]{", "")
-        .replace(r"\\", " ")
-        .replace("} &", " &")
-    )
+    assert text.count("primary bins") == 2
+    visible_rows = text
     for name in (
         "elm-ours",
-        "elm-elmo",
-        r"elm-dsm (60-input $1\times128$ refit, detection)",
         "elm-clock",
         "always-present",
         "elm-feature",
     ):
         assert visible_rows.count(name + " & ") == 2
-    assert "detection init" not in text and "source exposure" not in text
+    assert visible_rows.count("elm-elmo & ") == 1
+    assert "elm-dsm (60-input" not in text
     caption = text.split(r"\caption{", 1)[1].rsplit(r"}\label", 1)[0]
-    # Decimal points are not sentence breaks; the caption has four sentences.
-    import re
-
-    assert len(re.split(r"(?<=[.!?])\s+", caption)) == 4
     for tag in ("all119", "bes73"):
-        assert f"{dsm['sets'][tag]['bins']:,}" in caption
+        assert f"{ours['sets'][tag]['bins']:,}" in caption
     assert "50 ms bins wholly inside reviewed spans" in caption
     assert "inner-validation F1" in caption and "shot-bootstrap" in caption
     assert "bin-mean probability" in caption and r"$\geq$ threshold" in caption
-    assert "aligned score" in caption and "input means" in caption
     assert "any detected-span touch" in caption
     assert "Review was seeded by the clock" in caption
-    for metric, label in (("auroc", "AUROC"), ("auprc", "AUPRC"), ("f1", "F1")):
-        delta = dsm["sets"]["bes73"]["paired"][f"elm-ours - elm-elmo: {metric}"]
-        lo, hi = delta["ci95"]
-        assert f"{label} {delta['value']:+.3f} [{lo:.3f}, {hi:.3f}]" in caption
+    assert (
+        "developmental shot-grouped CV on the 119 reviewed shots; no untouched run-day or adjudicated continuous-interval confirmation"
+        in caption
+    )
+    assert "fold 4 selected epoch 0" in caption
+    assert "0.021--0.482" in caption
     assert "cv2" not in caption and "unresolved" not in caption
     assert "domain shift" not in text and "192721:" not in text
+
+
+def test_smith_table_has_no_mismatched_frozen_rows_or_duplicate_tolerances():
+    smith = json.loads((SOURCE.parent.parent / "smith/evaluation.json").read_text())
+    text = paper_module().smith_table(smith)
+    assert "elm-ours &" not in text and "elm-ours (onset" not in text
+    assert "elm-ours-onset &" in text
+    assert r"$\pm$5 ms" not in text
+    assert "target mismatch" in text
+
+
+def test_multiline_method_request_still_uses_single_line_with_exposure_marker():
+    text = swap_tex.method_label("elm-dsm-detect-exposed", multiline=True)
+    assert r"\shortstack" not in text
+    assert text.endswith(r"$^{\ddagger}$")
 
 
 def test_native_paper_table_omits_four_shot_exact_export():
