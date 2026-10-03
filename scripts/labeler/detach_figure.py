@@ -155,7 +155,7 @@ def strip(ax, start_ms, state, label) -> None:
             )
     ax.set_ylim(0, 1)
     ax.set_yticks([])
-    ax.set_ylabel(label, rotation=0, ha="right", va="center", labelpad=4)
+    ax.set_ylabel(label, rotation=0, ha="right", va="center", labelpad=4, fontsize=8.5)
     for side in ("left", "bottom"):
         ax.spines[side].set_visible(False)
     ax.tick_params(axis="x", length=0, labelbottom=False)
@@ -290,7 +290,7 @@ def main() -> None:
         5,
         3,
         height_ratios=[0.8, 1.3, 1.1, 3.4, 1.25],
-        left=0.115,
+        left=0.135,
         right=0.985,
         top=0.93,
         bottom=0.075,
