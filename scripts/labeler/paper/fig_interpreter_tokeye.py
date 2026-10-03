@@ -13,7 +13,7 @@ One non-blind cohort shot over a few seconds, in three groups on one time axis:
   `skimage.morphology.remove_small_objects` and small-hole filling, connected
   components), the toroidal-n view (the review page's n map, gated by the same
   mask) in place of the 0-30 kHz band. Highlights intersect PRESENT label
-  times with AE >=80 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
+  times with AE >=60 kHz or NTM <=30 kHz; NTM requires dominant and pixel n=1 or 2.
   Optional ECE-supported, ELM-vetoed crash candidates appear on a thin strip. D-alpha
   carries the ELM label's span and the D-alpha peaks in
   it, and the confinement regimes shade it;
@@ -86,9 +86,13 @@ PRESETS = {
     201978: (1500.0, 3300.0),
     203187: (1700.0, 3150.0),
 }
-#: The spectrogram is folded here: below it the zoom pass (0.12 kHz/bin, reliable to
-#: about 55 kHz), above it the wide pass (0.49 kHz/bin, to 250 kHz).
-FOLD_KHZ = 55.0
+#: The spectrogram is folded here, at the AE/NTM split: below it the zoom pass
+#: (0.12 kHz/bin; its decimation filter rolls off from about 50 kHz, Nyquist
+#: 62.5 kHz), above it the wide pass (0.49 kHz/bin, to 250 kHz).
+FOLD_KHZ = 60.0
+#: The zoom pass is drawn up to here; its top few kHz are the decimation filter's
+#: roll-off (a dark strip), so the wide pass fills the rest of the 30-60 panel.
+ZOOM_TOP_KHZ = 55.0
 TOP_KHZ = 250.0
 N_VIEW_KHZ = 30.0  # the n map's band
 #: The columns an image is pooled to for the page (a 3 s wide pass has 12,000).
@@ -113,10 +117,13 @@ EVENT_NAMES = {
 }
 TIER_NAMES = {lf.SILVER: "expert", lf.LEGACY: "imported", lf.GENERATED: "detector"}
 #: The confinement regimes, in grey: darker is better confined.
-REGIME_GREYS = {1: "#3c3c3c", 2: "#929292", 3: "#6e6e6e", 4: "#8a8a8a", 5: "#d0d0d0"}
+REGIME_GREYS = {1: "#2e2e2e", 2: "#bcbcbc", 3: "#5c5c5c", 4: "#8c8c8c", 5: "#d8d8d8"}
 ABSENT_GREY = "#e4e4e4"
 NTM_CONTOUR_COLOUR = EVENT_COLOURS[mode_tags.NTM]
 NTM_CONTOUR_LW = 0.9
+#: The thin dashed outline of the rest of a tagged component the detector clip cuts.
+NTM_DASHED_LW = 0.7
+NTM_DASHED_STYLE = (0, (3, 1.6))
 #: Outlines enclosing fewer print pixels (150 dpi) than this are not drawn.
 NTM_OUTLINE_MIN_PX = 100
 HEADINGS = {
@@ -349,6 +356,7 @@ class Band:
         self.all_t = z[f"{name}_t_ms"]
         self.all_f = f
         self.cols = cols
+        self.edges = None  # exact (lo, hi) kHz to stretch the image over, if set
         self.k = max(1, len(self.t) // IMAGE_COLUMNS)
         lo_v, hi_v = np.percentile(self.raw, (3, 99.8))
         self.norm = np.clip((self.raw - lo_v) / (hi_v - lo_v), 0, 1)
@@ -356,12 +364,8 @@ class Band:
     def extent(self) -> tuple[float, float, float, float]:
         dt = float(np.median(np.diff(self.t)))
         df = float(np.median(np.diff(self.f)))
-        return (
-            self.t[0] - dt / 2,
-            self.t[-1] + dt / 2,
-            self.f[0] - df / 2,
-            self.f[-1] + df / 2,
-        )
+        lo, hi = self.edges or (self.f[0] - df / 2, self.f[-1] + df / 2)
+        return (self.t[0] - dt / 2, self.t[-1] + dt / 2, lo, hi)
 
     def blobs(self, spans: dict, n_read=None) -> list[mode_tags.Blob]:
         """The blobs of this band's mask, tagged by `spans`' events."""
@@ -462,50 +466,89 @@ def event_clip(ax, spans, event):
     return PlotPath.make_compound_path(*rects) if rects else PlotPath(np.empty((0, 2)))
 
 
-def project(ax, band, mask, event, spans, edge=False, record=None):
+def display_support(ax, band, mask):
+    """`mask` max-pooled to the print pixels of `ax` (so narrow ridges survive),
+    holes filled, with the pooling indices, the labelled regions and their sizes."""
+    pos = ax.get_position()
+    # The processed panel displays only 0–30 of the zoom band's 0–60 kHz.
+    visible_share = (band.f[-1] - band.f[0]) / np.diff(ax.get_ylim())[0]
+    nf = min(
+        len(band.f), max(1, round(pos.height * HEIGHT_IN * DPI_PNG * visible_share))
+    )
+    nt = min(len(band.t), max(1, round(pos.width * PAGE_IN * DPI_PNG)))
+    ri = np.linspace(0, mask.shape[0], nf, endpoint=False).astype(int)
+    ci = np.linspace(0, mask.shape[1], nt, endpoint=False).astype(int)
+    display = np.maximum.reduceat(np.maximum.reduceat(mask, ri, axis=0), ci, axis=1)
+    display = ndimage.binary_fill_holes(display)
+    regions, count = ndimage.label(display, structure=np.ones((3, 3)))
+    sizes = np.bincount(regions.ravel(), minlength=count + 1)
+    return display, ri, ci, regions, sizes
+
+
+def contour_of(ax, band, display, **style_kw):
+    """The outer contour of a print-pixel `display` mask over `band`'s extent."""
+    nf, nt = display.shape
+    x0, x1, y0, y1 = band.extent()
+    # Pad with zero so contours also close at the view's edges.
+    x = x0 + (np.arange(-1, nt + 1) + 0.5) * (x1 - x0) / nt
+    y = y0 + (np.arange(-1, nf + 1) + 0.5) * (y1 - y0) / nf
+    return ax.contour(
+        x,
+        y,
+        np.pad(display, 1),
+        levels=[0.5],
+        colors=NTM_CONTOUR_COLOUR,
+        **style_kw,
+    )
+
+
+def project(ax, band, mask, event, spans, edge=False, record=None, full=None):
     """Opaque event tint or a solid outer contour around pooled support.
 
     A contour is drawn only around regions of at least `NTM_OUTLINE_MIN_PX`
     print pixels (display only: tags, counts and the tag arrays are unchanged);
-    `record` receives the rule and how many regions it left unoutlined.
+    `record` receives the rule and how many regions it left unoutlined. `full`
+    (edge only) is the support of the whole tagged components, whatever the
+    time: where it reaches beyond `mask` (the detector-positive clip cuts a
+    component) a thin dashed contour of the rest is drawn under the solid one.
     """
     if not mask.any():
         return mask
     if edge:
-        pos = ax.get_position()
-        # The processed panel displays only 0–30 of the zoom band's 0–55 kHz.
-        visible_share = (band.f[-1] - band.f[0]) / np.diff(ax.get_ylim())[0]
-        nf = min(
-            len(band.f), max(1, round(pos.height * HEIGHT_IN * DPI_PNG * visible_share))
-        )
-        nt = min(len(band.t), max(1, round(pos.width * PAGE_IN * DPI_PNG)))
-        # Max pooling preserves narrow ridges when reduced to print pixels.
-        ri = np.linspace(0, mask.shape[0], nf, endpoint=False).astype(int)
-        ci = np.linspace(0, mask.shape[1], nt, endpoint=False).astype(int)
-        display = np.maximum.reduceat(np.maximum.reduceat(mask, ri, axis=0), ci, axis=1)
-        display = ndimage.binary_fill_holes(display)
-        regions, count = ndimage.label(display, structure=np.ones((3, 3)))
-        sizes = np.bincount(regions.ravel(), minlength=count + 1)
+        display, ri, ci, regions, sizes = display_support(ax, band, mask)
         small = np.flatnonzero(sizes < NTM_OUTLINE_MIN_PX)
         small = small[small > 0]
         if record is not None:
             record.update(
                 min_px=NTM_OUTLINE_MIN_PX,
-                regions=int(count),
+                regions=int(len(sizes) - 1),
                 omitted_fragments=int(small.size),
                 omitted_sizes_px=sorted(int(sizes[i]) for i in small),
             )
         display &= ~np.isin(regions, small)
-        x0, x1, y0, y1 = band.extent()
-        # Pad with zero so contours also close at the view's edges.
-        x = x0 + (np.arange(-1, nt + 1) + 0.5) * (x1 - x0) / nt
-        y = y0 + (np.arange(-1, nf + 1) + 0.5) * (y1 - y0) / nf
-        artist = ax.contour(
-            x,
-            y,
-            np.pad(display, 1),
-            levels=[0.5],
-            colors=NTM_CONTOUR_COLOUR,
+        if full is not None and (full & ~mask).any():
+            whole, _, _, whole_regions, whole_sizes = display_support(ax, band, full)
+            keep = np.flatnonzero(whole_sizes >= NTM_OUTLINE_MIN_PX)
+            keep = keep[keep > 0]
+            whole &= np.isin(whole_regions, keep)
+            beyond = [int(k) for k in keep if (whole_regions == k)[~display].any()]
+            if record is not None:
+                record["dashed_regions"] = len(beyond)
+            if beyond:
+                contour_of(
+                    ax,
+                    band,
+                    np.isin(whole_regions, beyond),
+                    linewidths=NTM_DASHED_LW,
+                    linestyles=[NTM_DASHED_STYLE],
+                    zorder=4.5,
+                )
+        elif record is not None:
+            record["dashed_regions"] = 0
+        artist = contour_of(
+            ax,
+            band,
+            display,
             linewidths=NTM_CONTOUR_LW,
             linestyles="-",
             zorder=5,
@@ -513,10 +556,10 @@ def project(ax, band, mask, event, spans, edge=False, record=None):
         artist.set_clip_path(event_clip(ax, spans, event), ax.transData)
         # Audit the measured support of the outlined region; a contour stroke
         # borders that region and does not assign n to its surrounding pixels.
-        keep = display[
+        keep_px = display[
             (np.searchsorted(ri, np.arange(mask.shape[0]), side="right") - 1).clip(0)
         ][:, (np.searchsorted(ci, np.arange(mask.shape[1]), side="right") - 1).clip(0)]
-        return mask & ~ndimage.binary_erosion(mask) & keep
+        return mask & ~ndimage.binary_erosion(mask) & keep_px
     shown = mask
     rgba = np.zeros((*shown.shape, 4), np.float32)
     rgba[..., :3] = to_rgb(EVENT_COLOURS[event])
@@ -639,13 +682,13 @@ def track_bars(ax, track: lf.Track, colour: str, regimes=None, bar=BAR) -> None:
             )
 
 
-def draw_frequency_panels(ax, low: Band, high: Band) -> None:
-    """Matching frequency scales with marked magnification changes at 30/55 kHz."""
+def draw_frequency_panels(ax, low: Band, high: Band, strip: Band) -> None:
+    """Matching frequency scales with marked magnification changes at 30/60 kHz."""
     for prefix in ("raw", "pr"):
         hi, mid, lo = (f"{prefix}_{part}" for part in ("hi", "mid", "lo"))
         for name, limits, ticks in (
             (hi, (FOLD_KHZ, TOP_KHZ), [100, 150, 200, 250]),
-            (mid, (N_VIEW_KHZ, FOLD_KHZ), [40, 55]),
+            (mid, (N_VIEW_KHZ, FOLD_KHZ), [40, 60]),
             (lo, (0, N_VIEW_KHZ), [0, 10, 20, 30]),
         ):
             ax[name].set_ylim(*limits)
@@ -670,6 +713,7 @@ def draw_frequency_panels(ax, low: Band, high: Band) -> None:
         painter = draw_raw if prefix == "raw" else draw_processed
         painter(ax[hi], high)
         painter(ax[mid], low)
+        painter(ax[mid], strip)  # 55-60 kHz from the wide pass, over the roll-off
         painter(ax[lo], low)
 
 
@@ -687,6 +731,7 @@ def draw_legends(
     regime_names,
     t0,
     t1,
+    ntm_dashed=False,
 ):
     """Source-aware signal/event keys and aligned label-state keys."""
     da = ax["da_pr"]
@@ -699,7 +744,7 @@ def draw_legends(
         event_handles.append(
             Patch(
                 fc=EVENT_COLOURS[mode_tags.AE],
-                label="AE (detector-positive\ntime; detector band\n≥80 kHz)",
+                label="AE (detector-positive\ntime; mask ≥60 kHz)",
             )
         )
     if projected["zoom"][mode_tags.NTM].any():
@@ -714,6 +759,17 @@ def draw_legends(
                 Line2D([], [], color=NTM_CONTOUR_COLOUR, ls="-", lw=NTM_CONTOUR_LW),
             )
         )
+        if ntm_dashed:
+            event_handles.append(
+                Line2D(
+                    [],
+                    [],
+                    color=NTM_CONTOUR_COLOUR,
+                    ls=NTM_DASHED_STYLE,
+                    lw=NTM_DASHED_LW,
+                    label="rest of NTM component",
+                )
+            )
     legend_options = {
         "loc": "upper left",
         "ncols": 1,
@@ -918,6 +974,8 @@ def draw(
 
     low = Band(z, "zoom", 0.0, FOLD_KHZ, t0, t1)
     high = Band(z, "wide", FOLD_KHZ, TOP_KHZ + 1, t0, t1)
+    strip = Band(z, "wide", ZOOM_TOP_KHZ, FOLD_KHZ, t0, t1)
+    strip.edges = (ZOOM_TOP_KHZ, FOLD_KHZ)
     spans = {e: present_spans(by_key[e]) for e in (mode_tags.AE, mode_tags.NTM)}
     n_original = n_sig.rows[0] if n_sig.rows else None
     blobs_low = low.blobs(spans, n_original)
@@ -926,6 +984,11 @@ def draw(
         band.name: {
             e: band.tag_image(bs, e, spans[e]) for e in (mode_tags.AE, mode_tags.NTM)
         }
+        for band, bs in ((low, blobs_low), (high, blobs_high))
+    }
+    everywhere = [(-math.inf, math.inf)]
+    whole_ntm = {
+        band.name: band.tag_image(bs, mode_tags.NTM, everywhere)
         for band, bs in ((low, blobs_low), (high, blobs_high))
     }
     harmonic = figure_sources.harmonic_support(
@@ -955,7 +1018,7 @@ def draw(
     layout = {
         "h_raw": 0.32, "raw_hi": 1.20, "raw_mid": 0.70, "raw_lo": 1.35,
         "g1": 0.1, "da_raw": 0.38,
-        "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
+        "g2": 0.2, "nbi": 0.38, "h_proc": 0.52,
         "pr_hi": 1.20, "pr_mid": 0.70, "pr_lo": 1.35,
         "crashes": 0.24 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
@@ -1000,7 +1063,7 @@ def draw(
             style_axes(a)
 
         # ---- raw
-        draw_frequency_panels(ax, low, high)
+        draw_frequency_panels(ax, low, high, strip)
         ax["raw_hi"].text(
             1.02,
             0.85,
@@ -1013,7 +1076,8 @@ def draw(
         )
         scale_note = leader(
             ax["raw_mid"],
-            "0–55 kHz: higher-\nresolution spectrogram;\n0–30 stretched,\n30–55 compressed",
+            "0–55 kHz: higher-\nresolution spectrogram;\n"
+            "0–30 stretched,\n30–60 compressed",
             (t1, 45),
             y=0.75,
         )
@@ -1056,6 +1120,7 @@ def draw(
                 spans[mode_tags.NTM],
                 edge=True,
                 record=ntm_outline_regions.setdefault(band.name, {}),
+                full=whole_ntm[band.name],
             )
         ae_annotation = (annotations or {}).get("ae_label")
         strip = ax["crashes"]
@@ -1294,9 +1359,13 @@ def draw(
             regime_names,
             t0,
             t1,
+            ntm_dashed=any(
+                r.get("dashed_regions", 0) for r in ntm_outline_regions.values()
+            ),
         )
         fig.draw_without_rendering()
         ae_label = None
+        ae_chip = None
         if ae_annotation and projected["wide"][mode_tags.AE].any():
             ae_label = next(
                 text
@@ -1304,18 +1373,23 @@ def draw(
                 for text in key.texts
                 if text.get_text().startswith("AE (detector-positive")
             )
-            bounds = ae_label.get_window_extent().transformed(
-                fig.transFigure.inverted()
-            )
-            ax["pr_hi"].annotate(
-                "",
-                xy=(ae_annotation["time_ms"], ae_annotation["frequency_khz"]),
-                xytext=(0.787, (bounds.y0 + bounds.y1) / 2),
-                textcoords=fig.transFigure,
-                arrowprops={"arrowstyle": "->", "color": "#999999", "lw": 0.5},
-                annotation_clip=False,
+            ae_chip = ax["pr_hi"].text(
+                ae_annotation["time_ms"],
+                ae_annotation["frequency_khz"],
+                "AE",
+                fontsize=FONT,
+                color="black",
+                ha="center",
+                va="center",
+                bbox={
+                    "boxstyle": "round,pad=0.12",
+                    "fc": EVENT_COLOURS[mode_tags.AE],
+                    "ec": "white",
+                    "lw": 0.5,
+                },
                 zorder=9,
             )
+            fig.draw_without_rendering()
         n_legend = next(
             (
                 key
@@ -1332,6 +1406,8 @@ def draw(
             "processed_omitted_band_khz": [],
             "processed_restored_strip_khz": [N_VIEW_KHZ, FOLD_KHZ],
             "frequency_scale_breaks_khz": [N_VIEW_KHZ, FOLD_KHZ],
+            "zoom_pass_top_khz": ZOOM_TOP_KHZ,
+            "wide_pass_strip_khz": [ZOOM_TOP_KHZ, FOLD_KHZ],
             "ece_candidate_key_placement": "in strip" if len(crashes) else None,
             "frequency_panels": {
                 name: {
@@ -1393,15 +1469,25 @@ def draw(
                 .transformed(fig.transFigure.inverted())
                 .extents
             ),
-            "ae_in_panel_label": None,
+            "ae_in_panel_label": None
+            if ae_chip is None
+            else {
+                "text": ae_chip.get_text(),
+                "anchor_ms_khz": [
+                    ae_annotation["time_ms"],
+                    ae_annotation["frequency_khz"],
+                ],
+                "bounds": list(
+                    ae_chip.get_bbox_patch()
+                    .get_window_extent()
+                    .transformed(fig.transFigure.inverted())
+                    .extents
+                ),
+            },
             "ae_margin_label": None
             if ae_label is None
             else {
                 "text": ae_label.get_text(),
-                "leader_anchor_ms_khz": [
-                    ae_annotation["time_ms"],
-                    ae_annotation["frequency_khz"],
-                ],
                 "bounds": list(
                     ae_label.get_window_extent()
                     .transformed(fig.transFigure.inverted())
@@ -1531,8 +1617,8 @@ def draw(
         "layout": layout_record,
         "catalog_sawtooth_frame_model_shown": False,
         "late_untagged_high_frequency": late,
-        "n2_harmonic_consistent": harmonic["support_ms"]
-        >= harmonic["minimum_support_ms"],
+        "n2_harmonic_consistent": figure_sources.harmonic_consistent(harmonic),
+        "n3_harmonic_consistent": figure_sources.harmonic_consistent(harmonic3),
         "harmonic_support": harmonic,
         "harmonic3_support": harmonic3,
         "persistent_line_rows": {
@@ -1550,6 +1636,12 @@ def draw(
             "min_px": NTM_OUTLINE_MIN_PX,
             "omitted_fragments": sum(
                 r.get("omitted_fragments", 0) for r in ntm_outline_regions.values()
+            ),
+            "dashed_rule": "a thin dashed outline of the rest of a tagged "
+            "component's measured n=1/2 support (all time, NTM band) where the "
+            "detector-positive clip cuts it; display only",
+            "dashed_regions": sum(
+                r.get("dashed_regions", 0) for r in ntm_outline_regions.values()
             ),
             "bands": ntm_outline_regions,
         },
@@ -1749,6 +1841,7 @@ def draft_caption(shot: int, records, drawn) -> str:
     text = re.sub(r"\bn=([0-9/]+)", r"$n=\1$", text)
     text = text.replace("mode number n ", "mode number $n$ ")
     text = text.replace("≥", r"$\geq$").replace("≤", r"$\leq$")
+    text = text.replace("–", "--")
     text = text.replace("→", r"$\rightarrow$")
     text = text.replace("<60", "$<60$")
     label = f"fig:interpreter-{shot}"
@@ -1787,7 +1880,8 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--sawtooth-labels",
         type=Path,
-        help="same physics source as crashes (legacy alias; cannot replace independently)",
+        help="same physics source as crashes (legacy alias; cannot replace "
+        "independently)",
     )
     parser.add_argument("--ae-labels", type=Path, help="isolated ae-ours inference CSV")
     parser.add_argument(
@@ -1863,27 +1957,26 @@ def main(argv=None) -> int:
         annotations,
     )
     records = drawn.pop("tracks")
-    caption = draft_caption(args.shot, records, drawn)
-    caption_file = out / "caption.tex"
-    with atomic_path(caption_file) as tmp:
-        Path(tmp).write_text(caption)
-    appendix = figure_sources.appendix_notes(args.shot, records, drawn)
-    appendix_file = out / "appendix.txt"
-    with atomic_path(appendix_file) as tmp:
-        Path(tmp).write_text(appendix + "\n")
     detector_training = {}
     for key in (mode_tags.AE, mode_tags.NTM):
         track = records.get(key) or {}
         if track.get("tier") != lf.GENERATED:
             continue
-        if key == mode_tags.AE and not track["what"].startswith("ae-ours"):
-            continue  # fallback training is outside the primary detector disclosure
         if key == mode_tags.AE and track["what"].startswith("ae-ours"):
             training_file = Path(
                 "src/labeler/models/d3d_ae_activity_seldnet/training_shots.txt"
             )
             trained_shots = [int(s) for s in training_file.read_text().split()]
             weights = json.loads(Path(track["metadata"]).read_text())["checkpoint"]
+        elif key == mode_tags.AE:
+            # The frame detector's own split: the shots it trained on.
+            from labeler.ae.xpower.train import read_split
+
+            weights = Path(track["path"])
+            training_file = weights.parent / "split.csv"
+            trained_shots = sorted(
+                s for s, v in read_split(training_file).items() if v == "train"
+            )
         else:
             meta = json.loads(Path(track["metadata"]).read_text())
             weights = meta.get("model") or meta["weights"]
@@ -1898,6 +1991,16 @@ def main(argv=None) -> int:
             "checkpoint": str(weights),
             "checkpoint_sha256": sha256_of(Path(weights)),
         }
+    caption = draft_caption(args.shot, records, drawn)
+    caption_file = out / "caption.tex"
+    with atomic_path(caption_file) as tmp:
+        Path(tmp).write_text(caption)
+    appendix = figure_sources.appendix_notes(
+        args.shot, records, drawn, detector_training
+    )
+    appendix_file = out / "appendix.txt"
+    with atomic_path(appendix_file) as tmp:
+        Path(tmp).write_text(appendix + "\n")
     checkpoint = roster.tokeye_file(paths)
     record = {
         "shot": args.shot,

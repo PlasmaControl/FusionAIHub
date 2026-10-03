@@ -32,6 +32,11 @@ ELM_VETO_MS = 5.0
 ECE_MATCH_MS = 3.0
 SAWTOOTH_DISPLAY_MIN_MS = 0.0
 HARMONIC_MIN_SUPPORT_MS = 50.0
+#: A ridge pair is called consistent with a harmonic in the caption only where
+#: at least this share of the columns that measure both ridges pass the ratio.
+HARMONIC_MIN_PASSING_FRACTION = 0.6
+#: A ridge passes where |f(n)/f(1) - n| <= this share of n.
+HARMONIC_RATIO_TOLERANCE = 0.05
 CAPTION_MAX_WORDS = 120
 
 
@@ -462,7 +467,6 @@ def projection_audit(mask, times, frequencies, raw_spans, band):
         "pixels": len(rr),
         "outside_present": int((~inside).sum()),
         "outside_band": int(((f < band[0]) | (f >= band[1])).sum()),
-        "pixels_55_to_60": int(((f >= 55) & (f < 60)).sum()),
     }
 
 
@@ -470,11 +474,13 @@ def harmonic_support(n_map, mask, times, frequencies, order=2):
     """Coincident measured n=1 and n=`order` ridges at an `order`:1 frequency ratio.
 
     This is a plotted-frequency inference, not independent island confirmation.
-    Require |f_n/f_1 - order| <= 0.05 * order and at least 50 ms of sampled
-    support (the 2:1 tolerance is the 0.1 recorded since the first version).
+    A column passes where |f_n/f_1 - order| <= 0.05 * order (the 2:1 tolerance
+    is the 0.1 recorded since the first version); the caller decides how much
+    passing support, in time and as a share of the jointly measured columns,
+    it needs (`harmonic_consistent`).
     """
     t, f = np.asarray(times), np.asarray(frequencies)
-    tolerance = 0.05 * order
+    tolerance = HARMONIC_RATIO_TOLERANCE * order
     result = {
         "frequency_ratio_tolerance": tolerance,
         "minimum_support_ms": HARMONIC_MIN_SUPPORT_MS,
@@ -588,7 +594,7 @@ def sawtooth_row_source(rows: list[dict], guard: dict | None) -> str:
     """The physics sawtooth row's source text; blank time is named, not left silent."""
     unassessed = any(r["state"] == "unassessed" for r in rows)
     if unassessed and (guard or {}).get("cutoff_proxy"):
-        return "physics labels\nblank: not assessable\n(ECE cut-off)"
+        return "physics; blank: ECE cut-off"
     return "physics labels"
 
 
@@ -627,13 +633,25 @@ def _has_present(record: dict | None) -> bool:
     return any(r["state"] == "present" for r in rows)
 
 
+def harmonic_consistent(support: dict | None) -> bool:
+    """A ridge pair that sits at a multiple of the n=1 frequency for at least the
+    minimum time AND for at least `HARMONIC_MIN_PASSING_FRACTION` of the columns
+    that measure both ridges (a record without that share is not consistent)."""
+    support = support or {}
+    floor = support.get("minimum_support_ms", HARMONIC_MIN_SUPPORT_MS)
+    share = support.get("passing_fraction")
+    return (
+        support.get("support_ms", 0) >= floor
+        and share is not None
+        and share >= HARMONIC_MIN_PASSING_FRACTION
+    )
+
+
 def harmonic_clause(drawn: dict) -> str:
     """Name the ridges whose recorded support puts them at multiples of n=1."""
     ridges = []
     for n, key in ((2, "harmonic_support"), (3, "harmonic3_support")):
-        support = drawn.get(key) or {}
-        floor = support.get("minimum_support_ms", HARMONIC_MIN_SUPPORT_MS)
-        if support.get("support_ms", 0) >= floor:
+        if harmonic_consistent(drawn.get(key)):
             ridges.append(n)
     if ridges == [2, 3]:
         return "n=2 and n=3 ridges are consistent with harmonics of the n=1 mode"
@@ -657,8 +675,9 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     sentences = [
         f"DIII-D shot {shot}.",
         (
-            "Top: raw Mirnov spectrogram (axis split at 30 and 55 kHz; bands "
-            "normalised separately), D-alpha, NBI power."
+            "Top: raw Mirnov spectrogram (three frequency scales: 0–30 kHz "
+            "stretched, 30–60 and 60–250 kHz compressed; bands normalised "
+            "separately), D-alpha, NBI power."
         ),
         (
             "Middle: TokEye coherent-mode mask after small-object removal; below "
@@ -668,12 +687,18 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
     if ae:
         if ae_record.get("tier") == lf.GENERATED:
             bin_ms = ae_record.get("temporal_bin_ms") or 25
+            trained = ""
+            if ae_record.get("what", "").startswith("ae-ours"):
+                trained = (
+                    "; trained on TokEye-mask-derived targets, so not "
+                    "independent of TokEye"
+                )
             sentences.append(
-                "Pink: mask pixels ≥80 kHz while the CO2 AE detector is "
-                f"positive ({bin_ms:g} ms bins)."
+                "Pink: mask pixels ≥60 kHz while the CO2 AE detector (80–250 kHz "
+                f"input band{trained}) is positive ({bin_ms:g} ms bins)."
             )
         else:
-            sentences.append("Pink: mask pixels ≥80 kHz inside labelled AE time.")
+            sentences.append("Pink: mask pixels ≥60 kHz inside labelled AE time.")
     if ntm:
         if ntm_record.get("tier") == lf.GENERATED:
             detector = "the NTM detector"
@@ -748,14 +773,70 @@ def _chain_note(drawn: dict) -> str:
     return text
 
 
-def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
-    """Keep source caveats and measured shot details outside the paper caption."""
+def _harmonic_text(support: dict | None, order: int) -> str | None:
+    """One ridge's frequency-ratio support in the appendix: where it passes, over
+    the time both ridges are measured. Nothing where too little time is measured
+    to say anything."""
+    support = support or {}
+    joint = support.get("joint_support_ms", 0)
+    if joint < support.get("minimum_support_ms", HARMONIC_MIN_SUPPORT_MS):
+        return None
+    share = support.get("passing_fraction")
+    percent = f"{HARMONIC_RATIO_TOLERANCE:.0%}"
+    text = (
+        f"n={order} lies within {percent} of {order}×f(n=1) in "
+        f"{support.get('support_ms', 0):.0f} of {joint:.0f} ms where both are "
+        "measured"
+    )
+    detail = []
+    if share is not None:
+        detail.append(f"{share:.0%}")
+    if "n1_median_khz" in support and f"n{order}_median_khz" in support:
+        detail.append(
+            f"median n=1 {support['n1_median_khz']:.1f} kHz, "
+            f"n={order} {support[f'n{order}_median_khz']:.1f} kHz"
+        )
+    return text + (f" ({'; '.join(detail)})" if detail else "")
+
+
+def training_note(training: dict | None) -> str:
+    """Whether the figure's shot was in each detector's training set."""
+    names = {mt.AE: "AE", mt.NTM: "NTM"}
+    known = {
+        names[key]: bool(record["figure_shot_in_training"])
+        for key, record in (training or {}).items()
+        if key in names and "figure_shot_in_training" in record
+    }
+    inside = [name for name, value in known.items() if value]
+    outside = [name for name, value in known.items() if not value]
+    if not known:
+        return ""
+    if not inside:
+        if len(outside) == 2:
+            return "This shot is in neither the AE nor the NTM detector's training set."
+        return f"This shot is not in the {outside[0]} detector's training set."
+    text = f"This shot is in the {' and '.join(inside)} detector's training set"
+    if outside:
+        text += f" and not in the {' or '.join(outside)} detector's"
+    return text + "."
+
+
+def appendix_notes(
+    shot: int, records: dict, drawn: dict, training: dict | None = None
+) -> str:
+    """Keep source caveats and measured shot details outside the paper caption.
+
+    `training` is the record's `detector_training`: whether this shot was in each
+    detector's training set."""
     notes = [
         f"DIII-D shot {shot}. Raw bands are normalised separately.",
         (
             "Toroidal mode number n is measured by the Mirnov array. "
-            "The 0–30 kHz range is vertically expanded; 30–55 kHz is compressed. "
-            "Both use the higher-resolution spectrogram."
+            "The frequency axis has three scales: 0–30 kHz stretched, 30–60 kHz "
+            "and 60–250 kHz compressed; 0–55 kHz uses the higher-resolution "
+            "spectrogram and 55–60 kHz the wide-range one, because the "
+            "higher-resolution pass's decimation filter rolls off above about "
+            "50 kHz."
         ),
         _chain_note(drawn),
     ]
@@ -785,30 +866,25 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
     if ntm.get("tier") == lf.GENERATED:
         thresholds.append(f"NTM {ntm.get('decision_threshold') or NTM_THRESHOLD:g}")
     notes.append("Operating probability thresholds: " + "; ".join(thresholds) + ".")
-    if ae_detector:
+    tagged = drawn.get("blobs", {}).get("tagged")
+    ae_highlighted = tagged is None or bool(tagged.get(mt.AE))
+    if ae_detector and ae_highlighted:
         bin_ms = ae.get("temporal_bin_ms", 25 if ae_ours else None)
-        text = (
-            "AE highlights intersect detector-positive time and detector band ≥80 kHz"
-        )
+        text = "AE highlights intersect detector-positive time and mask pixels ≥60 kHz"
         if bin_ms is not None:
             text += f" in {bin_ms:g} ms bins"
         notes.append(text + ".")
+        notes.append(
+            "The detector's input band is 80–250 kHz; pink starts at 60 kHz (the "
+            "AE/NTM split and the scale break), so mask pixels at 60–80 kHz are "
+            "highlighted by time coincidence with the detector, not detected by it."
+        )
         if ae_ours:
-            notes.append(
-                "The 80 kHz AE floor matches the ae-ours input band (80–250 kHz); "
-                "55–80 kHz cascade lines stay white even during detector-positive "
-                "time."
-            )
             notes.append(
                 "AE targets used TokEye's mask; highlights are not independent "
                 "physical confirmation."
             )
         else:
-            notes.append(
-                "The 80 kHz AE floor matches the frame detector's input band "
-                "(80–250 kHz); 55–80 kHz cascade lines stay white even during "
-                "detector-positive time."
-            )
             notes.append(
                 "The frame detector was trained on the owner's reviewed AE labels; "
                 "TokEye's mask only up-weights its MHD-absent frames. Highlights "
@@ -833,27 +909,29 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
                 f"({display['omitted_fragments']} fragments omitted here); "
                 "tags, counts and audits are unchanged."
             )
-        support = drawn.get("harmonic_support") or {}
-        if support.get("support_ms", 0) >= support.get("minimum_support_ms", 50):
-            text = (
-                f"The n=2 ridge sits near twice the n=1 frequency (n=1 "
-                f"{support['n1_median_khz']:.1f} kHz, n=2 "
-                f"{support['n2_median_khz']:.1f} kHz, {support['support_ms']:.0f} ms "
-                "of joint support)"
-            )
-            third = drawn.get("harmonic3_support") or {}
-            if third.get("support_ms", 0) >= third.get("minimum_support_ms", 50):
-                text += (
-                    f"; where n=1 and n=3 are both measured the n=3 ridge sits "
-                    f"near three times the n=1 frequency (n=1 "
-                    f"{third['n1_median_khz']:.1f} kHz, n=3 "
-                    f"{third['n3_median_khz']:.1f} kHz, "
-                    f"{third['support_ms']:.0f} ms of joint support)"
-                )
+        dashed = (drawn.get("ntm_outline_display") or {}).get("dashed_regions", 0)
+        if dashed:
             notes.append(
-                text + ". These are consistent with harmonics of the n=1 mode, "
-                "not separate islands."
+                "Dashed orange outlines show the rest of a tagged component's "
+                "measured n=1 or 2 support, outside NTM-positive time: the "
+                "detector's timing cuts the tag, not the mode."
             )
+        harmonics = [
+            text
+            for order, key in ((2, "harmonic_support"), (3, "harmonic3_support"))
+            if (text := _harmonic_text(drawn.get(key), order))
+        ]
+        if harmonics:
+            notes.append(
+                "Frequency ratios of the measured-n ridges, in NTM-positive time: "
+                + "; ".join(harmonics)
+                + ". A frequency ratio cannot separate harmonics of one island "
+                "from phase-locked coupled modes; the poloidal number m needs "
+                "EFIT q or the poloidal array."
+            )
+    note = training_note(training)
+    if note:
+        notes.append(note)
     if drawn.get("lmode_inferred"):
         notes.append(
             "L-mode (inferred) uses pre-transition H-mode-detector absent shading."
@@ -904,8 +982,11 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
         )
     if drawn.get("ae_physical_review_caveat"):
         notes.append(drawn["ae_physical_review_caveat"])
-    notes.append(
-        "Open circles delimit expert spans containing many ELMs; downward "
-        "triangles mark threshold D-alpha peaks."
-    )
+    marks = []
+    if drawn.get("elm_crowd_spans_ms"):
+        marks.append("Open circles delimit expert spans containing many ELMs")
+    if drawn.get("elm_peaks_in_label"):
+        marks.append("downward triangles mark threshold D-alpha peaks")
+    if marks:
+        notes.append("; ".join(marks) + ".")
     return " ".join(notes)

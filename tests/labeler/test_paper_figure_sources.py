@@ -199,6 +199,8 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
             "sawtooth_strip_shown": False,
             "harmonic_support": {
                 "support_ms": 100,
+                "joint_support_ms": 125,
+                "passing_fraction": 0.8,
                 "minimum_support_ms": 50,
                 "n1_median_khz": 7.5,
                 "n2_median_khz": 15,
@@ -552,7 +554,8 @@ def test_appendix_discloses_ae_bins_and_data_derived_late_band():
             "late_untagged_high_frequency": {"band_khz": [105, 125]},
         },
     )
-    assert "detector band ≥80 kHz" in text
+    assert "mask pixels ≥60 kHz" in text
+    assert "input band is 80–250 kHz" in text
     assert "25 ms bins" in text
     assert "105–125 kHz" in text
     primary = fs.appendix_notes(
@@ -622,7 +625,19 @@ def _primary_records(ae="ae-ours"):
     }
 
 
-_HARMONIC = {"support_ms": 326.0, "minimum_support_ms": 50.0}
+#: The primary's measured support: it passes the time floor, not the share.
+_HARMONIC = {
+    "support_ms": 326.0,
+    "joint_support_ms": 700.0,
+    "passing_fraction": 0.46,
+    "minimum_support_ms": 50.0,
+}
+_HARMONIC_STRONG = {
+    "support_ms": 500.0,
+    "joint_support_ms": 700.0,
+    "passing_fraction": 0.71,
+    "minimum_support_ms": 50.0,
+}
 
 
 def test_primary_caption_describes_the_figure_and_its_highlights():
@@ -635,18 +650,21 @@ def test_primary_caption_describes_the_figure_and_its_highlights():
     }
     text = fs.caption(201978, _primary_records(), drawn)
     assert text == (
-        "DIII-D shot 201978. Top: raw Mirnov spectrogram (axis split at 30 and 55 "
-        "kHz; bands normalised separately), D-alpha, NBI power. Middle: TokEye "
+        "DIII-D shot 201978. Top: raw Mirnov spectrogram (three frequency "
+        "scales: 0–30 kHz stretched, 30–60 and 60–250 kHz compressed; bands "
+        "normalised separately), D-alpha, NBI power. Middle: TokEye "
         "coherent-mode mask after small-object removal; below 30 kHz coloured by "
-        "toroidal mode number n (Mirnov array). Pink: mask pixels ≥80 kHz while "
-        "the CO2 AE detector is positive (25 ms bins). Orange outlines: n=1/2 "
-        "pixels while the NTM detector (held-out F1 0.46, below our 0.7 bar) is "
-        "positive. Highlights mark time/band coincidence only; n=2 and n=3 "
-        "ridges are consistent with harmonics of the n=1 mode. Bottom: label "
-        "tracks with sources."
+        "toroidal mode number n (Mirnov array). Pink: mask pixels ≥60 kHz while "
+        "the CO2 AE detector (80–250 kHz input band; trained on TokEye-mask-"
+        "derived targets, so not independent of TokEye) is positive (25 ms "
+        "bins). Orange outlines: n=1/2 pixels while the NTM detector (held-out "
+        "F1 0.46, below our 0.7 bar) is positive. Highlights mark time/band "
+        "coincidence only. Bottom: label tracks with sources."
     )
+    assert len(text.split()) <= fs.CAPTION_MAX_WORDS
     for shorthand in ("below bar", "circularity", "four-state", "first ELM"):
         assert shorthand not in text
+    assert "harmonic" not in text and "separate islands" not in text
 
 
 def test_caption_has_no_shot_specific_branches():
@@ -665,14 +683,26 @@ def test_caption_has_no_shot_specific_branches():
 
 
 def test_harmonic_clause_follows_the_recorded_support_of_each_ridge():
-    one = {"harmonic_support": _HARMONIC}
-    both = {**one, "harmonic3_support": _HARMONIC}
-    weak = {"support_ms": 20.0, "minimum_support_ms": 50.0}
+    one = {"harmonic_support": _HARMONIC_STRONG}
+    both = {**one, "harmonic3_support": _HARMONIC_STRONG}
+    weak = {"support_ms": 20.0, "minimum_support_ms": 50.0, "passing_fraction": 1.0}
     assert "the n=2 ridge is consistent with a harmonic" in fs.caption(1, {}, one)
     assert "n=2 and n=3 ridges are consistent with harmonics" in fs.caption(1, {}, both)
     assert "harmonic" not in fs.caption(1, {}, {"harmonic_support": weak})
-    third = {"harmonic_support": weak, "harmonic3_support": _HARMONIC}
+    third = {"harmonic_support": weak, "harmonic3_support": _HARMONIC_STRONG}
     assert "the n=3 ridge is consistent with a harmonic" in fs.caption(1, {}, third)
+
+
+def test_harmonic_caption_needs_the_passing_share_as_well_as_the_time():
+    assert fs.HARMONIC_MIN_PASSING_FRACTION == 0.6
+    assert fs.harmonic_consistent(_HARMONIC_STRONG)
+    # 326 ms is over the 50 ms floor, but only 46 % of the jointly measured time
+    assert not fs.harmonic_consistent(_HARMONIC)
+    assert not fs.harmonic_consistent({**_HARMONIC_STRONG, "passing_fraction": 0.59})
+    assert fs.harmonic_consistent({**_HARMONIC_STRONG, "passing_fraction": 0.6})
+    assert not fs.harmonic_consistent({"support_ms": 500.0})
+    assert not fs.harmonic_consistent(None)
+    assert "harmonic" not in fs.caption(1, {}, {"harmonic_support": _HARMONIC})
 
 
 def test_harmonic_support_accepts_a_three_to_one_ridge():
@@ -700,9 +730,8 @@ def test_ae_text_follows_the_ae_source():
     frame = fs.appendix_notes(1, _primary_records("the AE frame model"), {})
     assert "AE targets used TokEye's mask" in ours
     assert "AE targets used TokEye's mask" not in frame
-    assert "matches the ae-ours input band" in ours
+    assert "input band is 80–250 kHz" in ours and "input band is 80–250 kHz" in frame
     assert "ae-ours" not in frame
-    assert "frame detector's input band" in frame
     assert "trained on the owner's reviewed AE labels" in frame
     assert "up-weights its MHD-absent frames" in frame
     assert "CO2 neural detector" in ours and "CO2 frame detector" in frame
@@ -741,17 +770,102 @@ def test_appendix_states_the_ntm_outline_display_rule_and_harmonic_numbers():
             "n2_median_khz": 18.5,
         },
         "harmonic3_support": {
-            **_HARMONIC,
+            "support_ms": 232.0,
+            "joint_support_ms": 571.0,
+            "passing_fraction": 232 / 571,
+            "minimum_support_ms": 50.0,
             "n1_median_khz": 7.8,
             "n3_median_khz": 23.0,
         },
     }
     text = fs.appendix_notes(1, _primary_records(), drawn)
     assert "fewer than 100 print pixels are not drawn (9 fragments omitted" in text
-    assert "n=1 9.1 kHz, n=2 18.5 kHz" in text
-    assert "n=1 7.8 kHz, n=3 23.0 kHz" in text
-    assert "near three times the n=1 frequency" in text
-    assert "not separate islands" in text
+    assert (
+        "n=2 lies within 5% of 2×f(n=1) in 326 of 700 ms where both are measured "
+        "(46%; median n=1 9.1 kHz, n=2 18.5 kHz)"
+    ) in text
+    assert (
+        "n=3 lies within 5% of 3×f(n=1) in 232 of 571 ms where both are measured "
+        "(41%; median n=1 7.8 kHz, n=3 23.0 kHz)"
+    ) in text
+    assert "not separate islands" not in text and "consistent with" not in text
+    assert "cannot separate harmonics of one island from phase-locked coupled" in text
+    assert "EFIT q or the poloidal array" in text
+
+
+def test_appendix_names_no_ridge_with_too_little_joint_support():
+    drawn = {"harmonic_support": {"joint_support_ms": 20.0, "support_ms": 20.0}}
+    assert "lies within" not in fs.appendix_notes(1, _primary_records(), drawn)
+    assert "phase-locked" not in fs.appendix_notes(1, _primary_records(), drawn)
+
+
+def test_appendix_explains_the_dashed_outline_only_when_one_is_drawn():
+    drawn = {
+        "ntm_outline_display": {
+            "min_px": 100,
+            "omitted_fragments": 0,
+            "dashed_regions": 1,
+        }
+    }
+    text = fs.appendix_notes(1, _primary_records(), drawn)
+    assert "Dashed orange outlines show the rest of a tagged component" in text
+    none = {
+        "ntm_outline_display": {
+            "min_px": 100,
+            "omitted_fragments": 0,
+            "dashed_regions": 0,
+        }
+    }
+    assert "Dashed" not in fs.appendix_notes(1, _primary_records(), none)
+
+
+def test_appendix_pink_floor_is_the_split_and_explains_the_detector_band():
+    text = fs.appendix_notes(1, _primary_records(), {})
+    assert "mask pixels ≥60 kHz" in text
+    assert "input band is 80–250 kHz" in text and "60–80 kHz" in text
+    assert "stay white" not in text
+    caption = fs.caption(1, _primary_records(), {})
+    assert "Pink: mask pixels ≥60 kHz while the CO2 AE detector (80–250 kHz" in caption
+    assert "trained on TokEye-mask-derived targets" in caption
+    frame = fs.caption(1, _primary_records("the AE frame model"), {})
+    assert "80–250 kHz input band)" in frame and "TokEye-mask" not in frame
+
+
+def test_appendix_drops_the_ae_sentences_where_nothing_is_pink():
+    drawn = {"blobs": {"tagged": {fs.mt.AE: 0, fs.mt.NTM: 0}}}
+    text = fs.appendix_notes(1, _primary_records(), drawn)
+    assert "AE highlights" not in text and "input band is 80–250" not in text
+    assert "AE targets used TokEye's mask" not in text
+
+
+def test_appendix_elm_marks_are_named_only_where_drawn():
+    both = {"elm_crowd_spans_ms": [{"span_ms": [1, 2]}], "elm_peaks_in_label": 3}
+    text = fs.appendix_notes(1, {}, both)
+    assert "Open circles delimit expert spans containing many ELMs" in text
+    assert "downward triangles mark threshold D-alpha peaks" in text
+    circles = fs.appendix_notes(1, {}, {"elm_crowd_spans_ms": [{"span_ms": [1, 2]}]})
+    assert "circles" in circles and "triangles" not in circles
+    peaks = fs.appendix_notes(1, {}, {"elm_peaks_in_label": 2})
+    assert "triangles" in peaks and "circles" not in peaks
+    assert "circles" not in fs.appendix_notes(1, {}, {"elm_peaks_in_label": 0})
+
+
+def test_appendix_states_whether_the_shot_was_in_each_detectors_training():
+    shot = {"figure_shot_in_training": False}
+    inside = {"figure_shot_in_training": True}
+    both_out = {fs.mt.AE: shot, fs.mt.NTM: shot}
+    assert "This shot is in neither the AE nor the NTM detector's training set." in (
+        fs.appendix_notes(1, {}, {}, both_out)
+    )
+    ntm_in = {fs.mt.AE: shot, fs.mt.NTM: inside}
+    assert (
+        "This shot is in the NTM detector's training set and not in the AE detector's."
+    ) in fs.appendix_notes(1, {}, {}, ntm_in)
+    assert fs.training_note({fs.mt.AE: shot}) == (
+        "This shot is not in the AE detector's training set."
+    )
+    assert fs.training_note({}) == "" and fs.training_note(None) == ""
+    assert "training set" not in fs.appendix_notes(1, {}, {})
 
 
 def test_ntm_source_text_names_the_bar_from_the_evaluation():
@@ -768,9 +882,8 @@ def test_ntm_source_text_names_the_bar_from_the_evaluation():
 def test_sawtooth_row_source_names_why_it_is_blank():
     rows = [{"state": "uncertain"}, {"state": "unassessed"}]
     guard = {"cutoff_proxy": True}
-    assert fs.sawtooth_row_source(rows, guard) == (
-        "physics labels\nblank: not assessable\n(ECE cut-off)"
-    )
+    assert fs.sawtooth_row_source(rows, guard) == "physics; blank: ECE cut-off"
+    assert "\n" not in fs.sawtooth_row_source(rows, guard)
     assert fs.sawtooth_row_source(rows, None) == "physics labels"
     assert fs.sawtooth_row_source([{"state": "absent"}], guard) == "physics labels"
 
@@ -795,7 +908,7 @@ def test_raster_ae_audit_detects_leaks_in_final_pixels():
     rgb[4, 5] = [0.87, 0.66, 0.78]
     rgb[4, 16] = [0.87, 0.66, 0.78]  # Outside PRESENT time.
     rgb[18, 5] = [0.87, 0.66, 0.78]  # Below the AE band.
-    got = fs.raster_ae_audit(rgb, [0, 0, 1, 1], [0, 200], [55, 250], [(40, 80)])
+    got = fs.raster_ae_audit(rgb, [0, 0, 1, 1], [0, 200], [0, 250], [(40, 80)])
     assert got["pink_pixels"] == 3
     assert got["outside_present"] == 1
     assert got["below_detector_band"] == 1

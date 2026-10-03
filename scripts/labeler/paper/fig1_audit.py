@@ -19,6 +19,7 @@ import fig_interpreter_tokeye as renderer
 import numpy as np
 from PIL import Image
 
+from labeler.ae.xpower.train import read_split
 from labeler.config import Paths, sha256_of
 from labeler.paper import figure_sources as fs
 from labeler.paper import label_figure as lf
@@ -126,10 +127,18 @@ def main():
             for key in record.keys() - presentation:
                 new, old = record[key], baseline[key]
                 if key == "filter":
-                    # The display rule text gained the minimum outline size;
-                    # every filtering parameter must match.
-                    new = {k: v for k, v in new.items() if k != "outline_display_rule"}
-                    old = {k: v for k, v in old.items() if k != "outline_display_rule"}
+                    # The display rule text gained the minimum outline size and
+                    # the owner moved the AE display floor and the scale fold to
+                    # 60 kHz; every other filtering parameter must match.
+                    assert new["fold_khz"] == 60.0, shot
+                    assert new["bands_khz"][mt.AE] == [60.0, None], shot
+                    moved = {"outline_display_rule", "fold_khz"}
+                    new = {k: v for k, v in new.items() if k not in moved}
+                    old = {k: v for k, v in old.items() if k not in moved}
+                    for side in (new, old):
+                        side["bands_khz"] = {
+                            k: v for k, v in side["bands_khz"].items() if k != mt.AE
+                        }
                 assert new == old, (shot, "changed input", key)
             for key, track in record["tracks"].items():
                 display = {"display_intervals_ms", "display_merge"}
@@ -148,7 +157,25 @@ def main():
             }
             # Records added after the baseline; each is checked below.
             added = {"harmonic3_support", "persistent_line_rows"}
-            for key in record["drawn"].keys() - presentation - added:
+            # The 60 kHz AE floor and fold change what counts as AE: the tag
+            # counts, the late untagged band and the projection audit.  The
+            # harmonic gate is new.  Everything else must be unchanged.
+            moved = {
+                "blobs",
+                "late_untagged_high_frequency",
+                "projection_audit",
+                "n2_harmonic_consistent",
+                "n3_harmonic_consistent",
+            }
+            new_tags = record["drawn"]["blobs"]["tagged"]
+            old_tags = baseline["drawn"]["blobs"]["tagged"]
+            assert new_tags[mt.NTM] == old_tags[mt.NTM], (shot, "NTM tags changed")
+            assert new_tags[mt.SAWTOOTH] == old_tags[mt.SAWTOOTH], shot
+            assert new_tags[mt.AE] >= old_tags[mt.AE], (shot, "AE tags shrank")
+            late = record["drawn"]["late_untagged_high_frequency"]
+            if late:
+                assert late["band_khz"][0] < 61, shot
+            for key in record["drawn"].keys() - presentation - added - moved:
                 assert record["drawn"][key] == baseline["drawn"][key], (
                     shot,
                     "changed scientific drawing record",
@@ -253,15 +280,17 @@ def main():
         assert geometry["n_panel_height_in"] >= 0.6
         assert geometry["n_panel_band_khz"] == [0, 30]
         assert geometry["processed_omitted_band_khz"] == []
-        assert geometry["processed_restored_strip_khz"] == [30, 55]
+        assert geometry["processed_restored_strip_khz"] == [30, 60]
+        assert geometry["zoom_pass_top_khz"] == 55
+        assert geometry["wide_pass_strip_khz"] == [55, 60]
         panels = geometry["frequency_panels"]
-        for part, limits in (("hi", [55, 250]), ("mid", [30, 55]), ("lo", [0, 30])):
+        for part, limits in (("hi", [60, 250]), ("mid", [30, 60]), ("lo", [0, 30])):
             raw_panel, processed = panels[f"raw_{part}"], panels[f"pr_{part}"]
             assert raw_panel["band_khz"] == processed["band_khz"] == limits
             assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
             assert raw_panel["ticks_khz"] == processed["ticks_khz"]
         for prefix in ("raw", "pr"):
-            assert panels[f"{prefix}_mid"]["ticks_khz"] == [40, 55]
+            assert panels[f"{prefix}_mid"]["ticks_khz"] == [40, 60]
             assert panels[f"{prefix}_lo"]["ticks_khz"] == [0, 10, 20, 30]
             ticks = sorted(
                 geometry["lower_frequency_tick_bounds"][prefix],
@@ -282,7 +311,7 @@ def main():
                 shot,
                 label["text"],
             )
-        assert geometry["frequency_scale_breaks_khz"] == [30, 55]
+        assert geometry["frequency_scale_breaks_khz"] == [30, 60]
         for label in geometry["regime_text_bounds"]:
             for patch in geometry["elm_box_bounds"]:
                 a, b = label["bounds"], patch
@@ -294,23 +323,21 @@ def main():
                 shot,
                 "peak triangles touch box",
             )
-        assert geometry["ae_in_panel_label"] is None
         anchor = record["annotations"]["shot"].get("ae_label")
         if anchor:
-            label = geometry["ae_margin_label"]
-            assert label["leader_anchor_ms_khz"] == [
-                anchor["time_ms"],
-                anchor["frequency_khz"],
-            ]
-            assert label["bounds"][0] > panels["pr_hi"]["bounds"][2]
-            # The anchor sits on an early cascade line, before the late
-            # detector-negative lines that the leader should not point at.
+            # A small "AE" chip inside the upper processed panel, no leader line.
+            chip = geometry["ae_in_panel_label"]
+            assert chip["text"] == "AE"
+            assert chip["anchor_ms_khz"] == [anchor["time_ms"], anchor["frequency_khz"]]
+            hi = panels["pr_hi"]["bounds"]
+            assert hi[0] < chip["bounds"][0] < chip["bounds"][2] < hi[2]
+            assert hi[1] < chip["bounds"][1] < chip["bounds"][3] < hi[3]
+            assert "leader_anchor_ms_khz" not in geometry["ae_margin_label"]
+            assert geometry["ae_margin_label"]["bounds"][0] > hi[2]
             spans = record["tracks"][mt.AE]["present_spans_ms"]
             assert any(a <= anchor["time_ms"] < b for a, b in spans)
-            late_start = (drawn["late_untagged_high_frequency"] or {}).get(
-                "first_time_ms"
-            )
-            assert late_start is None or anchor["time_ms"] < late_start - 500
+        else:
+            assert geometry["ae_in_panel_label"] is None
         n_key = geometry["n_key_bounds"]
         if n_key is not None:
             panel = panels["pr_lo"]["bounds"]
@@ -332,14 +359,17 @@ def main():
         ntm_source = record["tracks"][mt.NTM]
         if ntm_source["tier"] == lf.GENERATED:
             assert sources_text[mt.NTM]["text"] == "detector (suggestions)"
-        saw_row = sources_text[mt.SAWTOOTH]["text"].replace("\n", " ")
+        assert "\n" not in sources_text[mt.SAWTOOTH]["text"], (
+            "sawtooth source on one line"
+        )
+        saw_row = sources_text[mt.SAWTOOTH]["text"]
         if saw["tier"] == lf.GENERATED:
             expected = fs.sawtooth_row_source(
                 saw["display_intervals_ms"], saw["density_guard"]
             )
-            assert saw_row == expected.replace("\n", " ")
+            assert saw_row == expected
         assert geometry["scale_note"].replace("-\n", "-").replace("\n", " ") == (
-            "0–55 kHz: higher-resolution spectrogram; 0–30 stretched, 30–55 compressed"
+            "0–55 kHz: higher-resolution spectrogram; 0–30 stretched, 30–60 compressed"
         )
         n_labels = [
             x for x in geometry["legend_labels"] if x.startswith("n=") or x == "other n"
@@ -360,7 +390,7 @@ def main():
                 assert width <= 0 or height <= 0, (left["text"], right["text"])
         legend = [label.replace("\n", " ") for label in geometry["legend_labels"]]
         tags = drawn["blobs"]["tagged"]
-        assert ("AE (detector-positive time; detector band ≥80 kHz)" in legend) == bool(
+        assert ("AE (detector-positive time; mask ≥60 kHz)" in legend) == bool(
             tags[mt.AE]
         )
         ntm_key = (
@@ -432,7 +462,9 @@ def main():
         assert "Circles:" not in caption and "Triangles:" not in caption
         appendix_file = args.records / f"{shot}.appendix.txt"
         appendix = appendix_file.read_text()
-        assert appendix.strip() == fs.appendix_notes(shot, record["tracks"], drawn)
+        assert appendix.strip() == fs.appendix_notes(
+            shot, record["tracks"], drawn, record["detector_training"]
+        )
         assert fs.sawtooth_caption(saw) in appendix
         thresholds = ["TokEye 0.2"]
         for key, name in ((mt.AE, "AE"), (mt.NTM, "NTM")):
@@ -448,9 +480,19 @@ def main():
         )
         ae_ours = record["tracks"][mt.AE]["what"].startswith("ae-ours")
         assert ("AE targets used TokEye's mask" in appendix) == ae_ours
-        assert ("matches the ae-ours input band" in appendix) == ae_ours
-        if not ae_ours:
-            assert "trained on the owner's reviewed AE labels" in appendix
+        assert "input band is 80–250 kHz" in appendix
+        assert "mask pixels ≥60 kHz" in appendix
+        assert ("trained on TokEye-mask-derived targets" in caption) == ae_ours
+        assert "not separate islands" not in appendix
+        assert "not separate islands" not in caption
+        for name, key in (("n2", "harmonic_support"), ("n3", "harmonic3_support")):
+            assert drawn[f"{name}_harmonic_consistent"] == fs.harmonic_consistent(
+                drawn[key]
+            )
+        # The caption names a harmonic ridge only above the passing-share gate.
+        assert ("harmonic" in caption) == (
+            bool(tags[mt.NTM]) and bool(fs.harmonic_clause(drawn))
+        )
         assert "persistent-row step" in appendix
         assert "not an identified pickup line" in appendix
         with np.load(record["tokeye"]["cache"]) as cache:
@@ -486,36 +528,55 @@ def main():
             assert "held-out F1" in caption
             evaluation = json.loads(Path(ntm["performance"]["evaluation"]).read_text())
             assert ntm["performance"]["f1"] == evaluation["scores"]["ntm_frames"]["f1"]
+        # Every generated AE/NTM track records whether the shot was in the
+        # detector's training set, from the training list itself.
+        for key in (mt.AE, mt.NTM):
+            if record["tracks"][key]["tier"] != lf.GENERATED:
+                assert key not in record["detector_training"]
+                continue
+            training = record["detector_training"][key]
+            source = Path(training["training_source"])
+            assert sha256_of(source) == training["training_source_sha256"]
+            if source.suffix == ".txt":
+                shots = [int(x) for x in source.read_text().split()]
+            elif source.suffix == ".csv":
+                shots = sorted(s for s, v in read_split(source).items() if v == "train")
+            else:
+                shots = json.loads(source.read_text())["shots"]["train"]
+            assert training["training_shots"] == shots
+            assert training["figure_shot_in_training"] is (shot in shots)
+            assert (
+                sha256_of(Path(training["checkpoint"])) == training["checkpoint_sha256"]
+            )
+        if record["detector_training"]:
+            assert fs.training_note(record["detector_training"]) in appendix
         if shot == 201978:
             assert "CO2 neural detector" in appendix
             assert (
-                "Pink: mask pixels $\\geq$80 kHz while the CO2 AE detector is "
-                "positive (25 ms bins)." in caption
+                "Pink: mask pixels $\\geq$60 kHz while the CO2 AE detector "
+                "(80--250 kHz input band; trained on TokEye-mask-derived targets, "
+                "so not independent of TokEye) is positive (25 ms bins)." in caption
             )
             assert "(held-out F1 0.46, below our 0.7 bar) is positive." in caption
-            assert (
-                "Highlights mark time/band coincidence only; $n=2$ and $n=3$ "
-                "ridges are consistent with harmonics of the $n=1$ mode." in caption
+            assert "Highlights mark time/band coincidence only." in caption
+            # 46 % and 41 % of the jointly measured time pass the 5 % ratio test:
+            # below the 0.6 gate, so the caption makes no harmonic claim.
+            assert "harmonics" not in caption
+            assert drawn["n2_harmonic_consistent"] is False
+            assert "in 326 of 700 ms where both are measured (46%" in appendix
+            assert "in 232 of 571 ms where both are measured (41%" in appendix
+            assert "cannot separate harmonics of one island from phase-locked" in (
+                appendix
             )
+            assert "three frequency scales" in caption
             assert "The largest D-alpha spike (2297 ms) precedes the expert span" in (
                 appendix
             )
             assert "No sawtooth is labelled present in this window" in appendix
             assert "detector F1" not in " ".join(legend)
             for key in (mt.AE, mt.NTM):
-                training = record["detector_training"][key]
-                source = Path(training["training_source"])
-                assert sha256_of(source) == training["training_source_sha256"]
-                shots = (
-                    [int(x) for x in source.read_text().split()]
-                    if source.suffix == ".txt"
-                    else json.loads(source.read_text())["shots"]["train"]
-                )
-                assert training["training_shots"] == shots and 201978 not in shots
-                assert training["figure_shot_in_training"] is False
-                assert (
-                    sha256_of(Path(training["checkpoint"]))
-                    == training["checkpoint_sha256"]
+                assert record["detector_training"][key]["figure_shot_in_training"] is (
+                    False
                 )
         assert (
             sha256_of(Path(record["annotations"]["path"]))
@@ -666,7 +727,8 @@ def main():
             {
                 "primary_shot": 201978,
                 "ae_threshold": AE_THRESHOLD,
-                "ae_threshold_source": "scripts/labeler/ae_baselines_evaluate.py, SELDnet",
+                "ae_threshold_source": "scripts/labeler/ae_baselines_evaluate.py, "
+                "SELDnet",
                 "renders": audited,
                 "checked_sources": checked_sources,
                 "blind_test_shots_used": 0,
@@ -688,7 +750,8 @@ def main():
         + "\n"
     )
     print(
-        f"Audited {len(audited)} non-blind renders; zero array/raster AE clipping violations"
+        f"Audited {len(audited)} non-blind renders; "
+        "zero array/raster AE clipping violations"
     )
     if reproducibility:
         print("Primary PDF and PNG rebuild identically byte-for-byte")
