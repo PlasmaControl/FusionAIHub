@@ -68,3 +68,42 @@ def match_alarms(alarms, onsets, *, post_ms=100.0):
         if not explained:
             unmatched.append(alarm)
     return per_onset, unmatched
+
+
+def shot_outcome(alarms, target_onsets, explanation_onsets, *, ignore_after_ms=None):
+    """Considered alarms, onset warnings and a mutually exclusive target-shot category.
+
+    Alarms after `ignore_after_ms` are retained as `ignored`, without affecting any
+    scored outcome. An Early alarm is unexplained by every explanation onset and
+    more than 400 ms before a future target onset. A shot is Detected if any target
+    has a 10--400 ms warning; otherwise Early if it has any Early alarm; otherwise
+    Missed. Shots without targets are No target. Thus early alarms can coexist with
+    a Detected shot. Matching is per target, not one-to-one: the same alarm can warn
+    multiple targets with overlapping warning windows. `false` retains every
+    unexplained alarm (including Early), not a verified false-positive label.
+    """
+    times = sorted(float(a) for a in alarms)
+    considered = [a for a in times if ignore_after_ms is None or a <= ignore_after_ms]
+    ignored = [a for a in times if ignore_after_ms is not None and a > ignore_after_ms]
+    warnings, _ = match_alarms(considered, target_onsets)
+    _, unexplained = match_alarms(considered, explanation_onsets)
+    early = [
+        a for a in unexplained if any(a < t - MAX_WARNING_MS for t in target_onsets)
+    ]
+    category = (
+        "Detected"
+        if any(w is not None for w in warnings)
+        else "Early"
+        if early
+        else "Missed"
+        if len(target_onsets)
+        else "No target"
+    )
+    return {
+        "alarms": considered,
+        "warning_ms": warnings,
+        "false": unexplained,
+        "early": early,
+        "ignored": ignored,
+        "category": category,
+    }

@@ -68,23 +68,26 @@ def confusion(score, label, cutoff):
     return tpr, fpr, precision, f1
 
 
-def _interval(values, point, level):
-    """`{"estimate", "low", "high"}`: `point` with the percentile interval of `values`."""
+def _interval(values, point, level, method="percentile"):
+    """`{"estimate", "low", "high"}` with a percentile or reflected basic interval."""
     values = np.asarray(values, dtype=float)
     values = values[np.isfinite(values)]
     if not len(values):
         return {"estimate": point, "low": float("nan"), "high": float("nan")}
     tail = 100 * (1 - level) / 2
     low, high = np.percentile(values, [tail, 100 - tail])
+    if method == "basic":
+        low, high = 2 * point - high, 2 * point - low
     return {"estimate": point, "low": float(low), "high": float(high)}
 
 
-def _summarise(estimate, draws, level):
+def _summarise(estimate, draws, level, method="percentile"):
     if isinstance(estimate, dict):
         return {
-            k: _interval([d[k] for d in draws], estimate[k], level) for k in estimate
+            k: _interval([d[k] for d in draws], estimate[k], level, method)
+            for k in estimate
         }
-    return _interval(draws, estimate, level)
+    return _interval(draws, estimate, level, method)
 
 
 def shot_bootstrap(groups, statistic, *, replicates=1000, seed=0, level=0.95):
@@ -115,15 +118,27 @@ def _difference(first, second):
 
 
 def paired_bootstrap(
-    groups_a, groups_b, statistic, *, replicates=1000, seed=0, level=0.95
+    groups_a,
+    groups_b,
+    statistic,
+    *,
+    replicates=1000,
+    seed=0,
+    level=0.95,
+    method="percentile",
 ):
-    """Percentile interval of `statistic(a) - statistic(b)` over shared shot resamples.
+    """Interval of `statistic(a) - statistic(b)` over shared shot resamples.
 
     `groups_a` and `groups_b` score the same shots in the same order (two models on one
     cross-validation); every replicate draws one set of shots and applies it to both, so
     the interval is for the difference between the models, not for each on its own.
     The result has the shape of `shot_bootstrap`'s, for the difference `a - b`.
+    `method="percentile"` preserves the default; `method="basic"` reflects the
+    bootstrap percentile endpoints about the observed difference. Basic intervals
+    can extend outside a metric's natural range and are not bias-corrected BCa.
     """
+    if method not in {"percentile", "basic"}:
+        raise ValueError("method must be 'percentile' or 'basic'")
     for name, records in groups_a.items():
         if len(records) != len(groups_b.get(name, [])):
             raise ValueError(f"stratum {name!r} holds different shots in the two sets")
@@ -139,4 +154,4 @@ def paired_bootstrap(
         sample_a = {n: [groups_a[n][i] for i in idx] for n, idx in picks.items()}
         sample_b = {n: [groups_b[n][i] for i in idx] for n, idx in picks.items()}
         draws.append(_difference(statistic(sample_a), statistic(sample_b)))
-    return _summarise(estimate, draws, level)
+    return _summarise(estimate, draws, level, method)

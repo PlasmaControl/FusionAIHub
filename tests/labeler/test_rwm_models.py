@@ -188,3 +188,36 @@ def test_paired_bootstrap_rejects_different_shot_sets():
     second = {"hanson": [{"x": 1.0}]}
     with pytest.raises(ValueError, match="different shots"):
         metrics.paired_bootstrap(first, second, lambda g: 0.0, replicates=2)
+
+
+def test_paired_basic_bootstrap_reflects_a_skewed_distribution():
+    first, second = {"hanson": [0.0, 0.0, 0.0, 4.0]}, {"hanson": [0.0] * 4}
+
+    def mean(groups):
+        return float(np.mean(groups["hanson"]))
+
+    percentile = metrics.paired_bootstrap(first, second, mean, replicates=1000, seed=3)
+    basic = metrics.paired_bootstrap(
+        first, second, mean, replicates=1000, seed=3, method="basic"
+    )
+    assert percentile == {"estimate": 1.0, "low": 0.0, "high": 3.0}
+    assert basic == {"estimate": 1.0, "low": -1.0, "high": 2.0}
+    dictionary = metrics.paired_bootstrap(
+        first,
+        second,
+        lambda g: {"mean": mean(g)},
+        replicates=1000,
+        seed=3,
+        method="basic",
+    )
+    assert dictionary["mean"] == basic
+
+
+def test_paired_bootstrap_rejects_an_unknown_interval_method():
+    with pytest.raises(ValueError, match="method"):
+        metrics.paired_bootstrap(
+            {"a": [1.0]},
+            {"a": [0.0]},
+            lambda g: np.mean(g["a"]),
+            method="unknown",
+        )

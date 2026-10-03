@@ -183,7 +183,7 @@ def test_shot_records_carry_the_alarm_count_and_scored_span():
     groups = ev.shot_records(table, alarms, onsets, onsets)
     record = groups["hanson"][0]
     assert record["alarms"] == 0
-    assert record["span_ms"] == pytest.approx(790.0)
+    assert record["span_ms"] == pytest.approx(600.0)  # last onset +100 minus start
 
 
 def test_primary_fit_ignores_comparison_slices_and_their_feature_values():
@@ -210,15 +210,18 @@ def test_comparison_scores_cannot_tune_primary_thresholds_or_alarm_rules():
 
 
 def test_alarm_targets_and_explanations_are_separate():
-    t = np.array([0.0, 100.0, 200.0, 300.0])
-    traces = {7: (t, np.array([0.0, 1.0, 0.0, 0.0]))}
+    t = np.arange(0.0, 310.0, 10.0)
+    traces = {7: (t, (t == 100.0).astype(float))}
     targets = {7: [1000.0]}
     explanations = {7: [200.0, 1000.0]}  # n=2 can explain but not reward
     outcome = ev.score_alarms(
         traces, targets, (0.5, 0.5, 0.0), explanation_onsets=explanations
     )
+    assert outcome[7]["alarms"] == [100.0]
     assert outcome[7]["warning_ms"] == [None]
     assert outcome[7]["false"] == []
+    assert outcome[7]["early"] == []
+    assert outcome[7]["category"] == "Missed"
     chosen = ev.choose_rule(
         traces, targets, np.array([0.1, 0.8]), explanation_onsets=explanations
     )
@@ -252,3 +255,162 @@ def test_conditional_metrics_and_broad_sensitivity_use_their_own_masks():
     sizes = ev.counts(groups)
     assert sizes["high_beta_positive_slices"] == 1
     assert sizes["high_beta_negative_slices"] == 1
+
+
+def test_primary_alarms_stop_after_last_explanation_but_comparison_keeps_trace():
+    t = np.arange(0.0, 1210.0, 10.0)
+    score = np.isin(t, [50.0, 200.0, 700.0, 1000.0, 1100.0]).astype(float)
+    traces = {7: (t, score), 8: (t, score)}
+    targets = {7: [500.0]}
+    explanations = {7: [500.0, 900.0]}
+    roles = {7: "hanson", 8: "comparison"}
+    primary = ev.score_alarms(
+        traces,
+        targets,
+        (0.5, 0.5, 0.0),
+        explanation_onsets=explanations,
+        shot_roles=roles,
+    )
+    assert primary[7]["alarms"] == [50.0, 200.0, 700.0, 1000.0]
+    assert primary[7]["ignored"] == [1100.0]
+    assert primary[7]["early"] == [50.0]
+    assert primary[7]["false"] == [50.0]
+    assert primary[7]["category"] == "Detected"
+    assert primary[7]["span_ms"] == 1000.0
+    assert primary[8]["alarms"] == [50.0, 200.0, 700.0, 1000.0, 1100.0]
+    assert primary[8]["ignored"] == [] and primary[8]["span_ms"] == 1200.0
+    full = ev.score_alarms(
+        traces,
+        targets,
+        (0.5, 0.5, 0.0),
+        explanation_onsets=explanations,
+        shot_roles=roles,
+        alarm_scope="full",
+    )
+    assert full[7]["false"] == [50.0, 1100.0]
+    assert full[7]["ignored"] == [] and full[7]["span_ms"] == 1200.0
+
+
+def test_rule_tuning_ignores_primary_aftermath_and_retunes_full_trace():
+    t = np.arange(0.0, 1210.0, 10.0)
+    score = np.zeros(len(t))
+    score[(t >= 500.0) & (t <= 510.0)] = 0.85
+    score[(t >= 1100.0) & (t <= 1170.0)] = 0.85
+    traces = {7: (t, score)}
+    negatives = np.array([0.1] * 90 + [0.8] * 8 + [0.9] * 2)
+    primary = ev.choose_rule(traces, {7: [600.0]}, negatives)
+    full = ev.choose_rule(traces, {7: [600.0]}, negatives, alarm_scope="full")
+    outcome = ev.score_alarms(traces, {7: [600.0]}, primary)
+    assert outcome[7]["warning_ms"] == [100.0]
+    assert outcome[7]["ignored"] == [1100.0]
+    assert primary != full
+
+
+def test_shot_categories_carry_early_ignored_and_multiple_target_counts():
+    table, _ = _table(n_hanson=4, n_comparison=1)
+    table["score"] = 0.0
+    table["called"] = False
+    targets = {0: [600.0, 800.0], 1: [600.0], 2: [600.0], 3: []}
+    for shot, times in {
+        0: [100.0, 400.0, 700.0],
+        1: [100.0, 800.0],
+        2: [600.0],
+        3: [300.0],
+        4: [800.0],
+    }.items():
+        table.loc[(table.shot == shot) & table.t_ms.isin(times), "score"] = 1.0
+    explanations = {**targets, 3: [500.0]}
+    outcomes = ev.score_alarms(
+        ev.shot_traces(table, table.score.to_numpy()),
+        targets,
+        (0.5, 0.5, 0.0),
+        explanation_onsets=explanations,
+        shot_roles=table.drop_duplicates("shot").set_index("shot").role.to_dict(),
+    )
+    groups = ev.shot_records(table, outcomes, targets, explanations)
+    assert [r["category"] for r in groups["hanson"]] == [
+        "Detected",
+        "Early",
+        "Missed",
+        "No target",
+    ]
+    assert groups["hanson"][0]["warning_ms"] == [200.0, 400.0]
+    assert groups["hanson"][0]["early_alarms"] == 1
+    assert groups["hanson"][1]["ignored_alarms"] == 1
+    assert groups["hanson"][1]["span_ms"] == 600.0
+    sizes = ev.counts(groups)
+    assert sizes["hanson_target_shots"] == 3
+    assert sizes["hanson_detected_shots"] == 1
+    assert sizes["hanson_early_shots"] == 1
+    assert sizes["hanson_missed_shots"] == 1
+    assert sizes["hanson_no_target_shots"] == 1
+    assert sizes["hanson_early_alarms"] == 2
+    assert sizes["hanson_ignored_alarms"] == 1
+    stats = ev.statistic(groups)
+    assert stats["hanson_shot_detection_rate"] == pytest.approx(1 / 3)
+    assert stats["hanson_shot_early_rate"] == pytest.approx(1 / 3)
+    assert stats["hanson_shot_miss_rate"] == pytest.approx(1 / 3)
+    assert stats["onset_detection_rate"] == 0.5
+    assert stats["comparison_alarm_incidence"] == 1.0
+
+
+def test_run_day_outer_holdout_keeps_siblings_out_of_training():
+    table, onsets = _table(n_hanson=12, n_comparison=0)
+    table["run_day"] = table.shot // 3
+    seen = []
+
+    class TracedRule(ev.Rule):
+        def fit(self, train):
+            self.train_shots = set(train.shot)
+            return super().fit(train)
+
+        def score(self, frame):
+            seen.append((self.train_shots, set(frame.shot)))
+            return super().score(frame)
+
+    oof, _, rules = ev.cross_validate(
+        table,
+        lambda seed: TracedRule("betan_over_li"),
+        onsets,
+        outer_groups="run_day",
+        inner=2,
+    )
+    assert len(rules) == 4 and len(oof) == len(table)
+    assert oof.groupby("run_day").fold.nunique().eq(1).all()
+    assert oof.groupby("fold").run_day.nunique().eq(1).all()
+    for train, test in seen:
+        assert not train & test
+    # Each outer fit is the one scoring a complete three-shot run day.
+    for train, test in seen:
+        if len(test) == 3:
+            assert not {s // 3 for s in train} & {s // 3 for s in test}
+    mapped, _, _ = ev.cross_validate(
+        table,
+        lambda seed: ev.Rule("betan_over_li"),
+        onsets,
+        outer_groups={shot: shot // 3 for shot in range(12)},
+        inner=2,
+    )
+    assert mapped.set_index(["shot", "t_ms"]).fold.equals(
+        oof.set_index(["shot", "t_ms"]).fold
+    )
+
+
+def test_explicit_outer_shot_folds_cover_every_shot_once():
+    table, onsets = _table(n_hanson=6, n_comparison=0)
+    folds = [[0, 1], [2, 3], [4, 5]]
+    oof, _, _ = ev.cross_validate(
+        table,
+        lambda seed: ev.Rule("betan_over_li"),
+        onsets,
+        outer_shot_folds=folds,
+        inner=2,
+    )
+    assert oof.groupby("fold").shot.unique().apply(list).tolist() == folds
+    with pytest.raises(ValueError, match="exactly once"):
+        ev.cross_validate(
+            table,
+            lambda seed: ev.Rule("betan_over_li"),
+            onsets,
+            outer_shot_folds=[[0, 1], [1, 2, 3, 4, 5]],
+        )

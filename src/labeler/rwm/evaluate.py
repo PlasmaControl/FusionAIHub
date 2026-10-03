@@ -192,34 +192,83 @@ def shot_traces(table, scores):
     return out
 
 
-def score_alarms(traces, target_onsets, rule, *, explanation_onsets=None):
+def score_alarms(
+    traces,
+    target_onsets,
+    rule,
+    *,
+    explanation_onsets=None,
+    shot_roles=None,
+    alarm_scope="primary",
+):
     """Alarm outcomes per shot for a `(k_low, k_high, hold_ms)` rule.
 
-    Returns `{shot: {"alarms": [...], "warning_ms": [per onset or None],
-    "false": [unmatched alarm times]}}`.
+    Primary Hanson scoring ignores alarms after the last explanation onset +100 ms
+    (n=1 and n=2), a small tolerance beyond the pre-last-target slice mask. Comparison
+    traces retain their full span. `alarm_scope="full"` (or "full_trace") preserves
+    the previous full-Hanson-trace definition for sensitivity. `shot_roles` maps
+    shot IDs to roles; absent it, onset-map members are assumed Hanson.
+
+    Outcomes contain considered `alarms`, per-target `warning_ms`, unexplained
+    `false`, `early`, `ignored`, `category` and considered `span_ms`. The category
+    follows `alarm.shot_outcome`; comparison categories are Alarm/No alarm and
+    describe incidence on unlabelled shots, never verified false positives.
     """
+    if alarm_scope not in {"primary", "full", "full_trace"}:
+        raise ValueError("alarm_scope must be 'primary' or 'full'")
     k_low, k_high, hold = rule
     explanation_onsets = (
         target_onsets if explanation_onsets is None else explanation_onsets
     )
     out = {}
     for shot, (t, s) in traces.items():
+        role = (
+            shot_roles[shot]
+            if shot_roles is not None
+            else "hanson"
+            if shot in target_onsets or shot in explanation_onsets
+            else "comparison"
+        )
+        explanations = explanation_onsets.get(shot, [])
+        end = (
+            float(max(explanations) + labels.POST_MS)
+            if alarm_scope == "primary" and role == "hanson" and len(explanations)
+            else None
+        )
         times = alarm.hysteresis_alarms(
             t, s, k_low, k_high, hold, max_gap_ms=MAX_GAP_MS
         )
-        per_onset, _ = alarm.match_alarms(times, target_onsets.get(shot, []))
-        _, unmatched = alarm.match_alarms(times, explanation_onsets.get(shot, []))
-        out[shot] = {"alarms": times, "warning_ms": per_onset, "false": unmatched}
+        outcome = alarm.shot_outcome(
+            times, target_onsets.get(shot, []), explanations, ignore_after_ms=end
+        )
+        t = np.asarray(t, dtype=float)
+        start = float(t.min()) if len(t) else 0.0
+        stop = float(t.max()) if len(t) else start
+        if end is not None:
+            stop = min(stop, end)
+        outcome["span_ms"] = max(0.0, stop - start)
+        if role == "comparison":
+            outcome["category"] = "Alarm" if outcome["alarms"] else "No alarm"
+        out[shot] = outcome
     return out
 
 
-def choose_rule(traces, target_onsets, negative_scores, *, explanation_onsets=None):
+def choose_rule(
+    traces,
+    target_onsets,
+    negative_scores,
+    *,
+    explanation_onsets=None,
+    shot_roles=None,
+    alarm_scope="primary",
+):
     """The `(k_low, k_high, hold_ms)` maximising shot-level detection minus false alarms.
 
     The objective is the share of onsets warned in time minus the share of shots with
     any unexplained alarm, over the shots of `traces` (inner out-of-fold scores of the
     training shots). Levels are quantiles of `negative_scores`; ties go to the first
-    rule tried, which has the higher level.
+    rule tried, which has the higher level. The chosen `alarm_scope` applies during
+    tuning as well as evaluation; ignored aftermath never incurs a primary penalty.
     """
     finite = negative_scores[np.isfinite(negative_scores)]
     if not len(finite):
@@ -235,6 +284,8 @@ def choose_rule(traces, target_onsets, negative_scores, *, explanation_onsets=No
             target_onsets,
             (k_low, k_high, float(hold)),
             explanation_onsets=explanation_onsets,
+            shot_roles=shot_roles,
+            alarm_scope=alarm_scope,
         )
         warned = [w is not None for o in outcome.values() for w in o["warning_ms"]]
         false = [bool(o["false"]) for o in outcome.values()]
@@ -258,6 +309,42 @@ def _fit_score(make_model, train, test, seed):
     return model.score(test)
 
 
+def _outer_folds(table, shots, info, outer, seed, outer_groups, outer_shot_folds):
+    """Outer shot indices, optionally leaving out a whole supplied group at a time."""
+    if outer_groups is not None and outer_shot_folds is not None:
+        raise ValueError("supply outer_groups or outer_shot_folds, not both")
+    if outer_shot_folds is not None:
+        supplied = [list(f) for f in outer_shot_folds]
+        flat = [int(s) for fold in supplied for s in fold]
+        if (
+            len(supplied) < 2
+            or any(not f for f in supplied)
+            or len(flat) != len(shots)
+            or len(set(flat)) != len(shots)
+            or set(flat) != set(shots)
+        ):
+            raise ValueError("outer_shot_folds must contain every shot exactly once")
+        lookup = {int(shot): i for i, shot in enumerate(shots)}
+        return [np.array([lookup[int(s)] for s in f], dtype=int) for f in supplied]
+    if outer_groups is not None:
+        if isinstance(outer_groups, str):
+            if table.groupby("shot")[outer_groups].nunique(dropna=False).ne(1).any():
+                raise ValueError("outer_groups must have one group per shot")
+            groups = info[outer_groups]
+        else:
+            groups = pd.Series(outer_groups).reindex(shots)
+        if groups.isna().any():
+            raise ValueError(
+                "outer_groups must cover every shot without missing groups"
+            )
+        distinct = sorted(groups.unique(), key=str)
+        if len(distinct) < 2:
+            raise ValueError("outer_groups must contain at least two groups")
+        return [np.flatnonzero(groups.to_numpy() == group) for group in distinct]
+    strata = (info.role + "_" + info.campaign.astype(str)).to_numpy()
+    return make_folds(shots, strata, outer, seed)
+
+
 def cross_validate(
     table,
     make_model,
@@ -267,6 +354,9 @@ def cross_validate(
     outer=OUTER_FOLDS,
     inner=INNER_FOLDS,
     seed=0,
+    alarm_scope="primary",
+    outer_groups=None,
+    outer_shot_folds=None,
 ):
     """Out-of-fold scores, slice calls and alarms for every shot of `table`.
 
@@ -274,16 +364,25 @@ def cross_validate(
     `target_onsets` is the headline n=1 set, used for tuning and detection.
     `explanation_onsets` may also contain n=2 events: they can explain alarms but
     never reward detection. Comparison shots never tune primary thresholds or rules.
+    `alarm_scope` controls both tuning and scoring, as in `score_alarms`.
+    `outer_groups` is a table column name or a shot-to-group map: each group is held
+    out once, overriding `outer` (e.g. four run days yield four folds). Alternatively,
+    `outer_shot_folds` lists explicit disjoint held-out shot sets covering every shot.
+    Inner threshold/rule selection remains nested and shot-grouped in all cases.
     Returns `(oof, alarms, rules)` where
     `oof` is the table's rows with `score`, `fold` and `called` columns, `alarms` the
     `{shot: outcome}` map and `rules` the per-fold `(cutoff, rule)` choices.
     """
     if getattr(make_model(0), "binary", False):
-        return _fixed_call(table, make_model(0), target_onsets, explanation_onsets)
+        return _fixed_call(
+            table, make_model(0), target_onsets, explanation_onsets, alarm_scope
+        )
     shots = np.array(sorted(table.shot.unique()))
     info = table.drop_duplicates("shot").set_index("shot").loc[shots]
-    strata = (info.role + "_" + info.campaign.astype(str)).to_numpy()
-    folds = make_folds(shots, strata, outer, seed)
+    folds = _outer_folds(
+        table, shots, info, outer, seed, outer_groups, outer_shot_folds
+    )
+    shot_roles = info.role.to_dict()
     pieces, alarms, rules = [], {}, []
     for fold_number, held in enumerate(folds):
         test_shots = shots[held]
@@ -322,6 +421,8 @@ def cross_validate(
             target_onsets,
             negatives,
             explanation_onsets=explanation_onsets,
+            shot_roles=shot_roles,
+            alarm_scope=alarm_scope,
         )
         scores = _fit_score(
             make_model, train, test, seed + 1000 * (fold_number + 1) + 999
@@ -335,13 +436,15 @@ def cross_validate(
                 target_onsets,
                 rule,
                 explanation_onsets=explanation_onsets,
+                shot_roles=shot_roles,
+                alarm_scope=alarm_scope,
             )
         )
         rules.append({"fold": fold_number, "cutoff": float(cutoff), "rule": list(rule)})
     return pd.concat(pieces, ignore_index=True), alarms, rules
 
 
-def _fixed_call(table, model, target_onsets, explanation_onsets):
+def _fixed_call(table, model, target_onsets, explanation_onsets, alarm_scope):
     """A binary rule needs no folds: its call is the score, its alarm the first call."""
     scores = model.score(table)
     piece = table.assign(score=scores, fold=0)
@@ -351,6 +454,8 @@ def _fixed_call(table, model, target_onsets, explanation_onsets):
         target_onsets,
         (0.5, 0.5, 0.0),
         explanation_onsets=explanation_onsets,
+        shot_roles=table.drop_duplicates("shot").set_index("shot").role.to_dict(),
+        alarm_scope=alarm_scope,
     )
     return piece, alarms, [{"fold": 0, "cutoff": 0.5, "rule": [0.5, 0.5, 0.0]}]
 
@@ -362,7 +467,9 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
     """Per-shot records for the bootstrap: `{"hanson": [...], "comparison": [...]}`.
 
     A record holds the shot's labelled slices (`score`, `label`, `called`) and its
-    alarm outcome, with warning times only for `target_onsets`.
+    alarm outcome, with warning times only for `target_onsets`. Categories and Early
+    counts follow `alarm.shot_outcome`; target-shot categories are mutually exclusive,
+    while the onset detection count retains every target (and overlapping warnings).
     """
     groups = {"hanson": [], "comparison": []}
     for shot, index in oof.groupby("shot").indices.items():
@@ -384,7 +491,19 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
                 "warning_ms": warnings,
                 "false_alarms": len(outcome["false"]),
                 "alarms": len(outcome["alarms"]),
-                "span_ms": float(rows.t_ms.max() - rows.t_ms.min()),
+                "early_alarms": len(outcome.get("early", [])),
+                "ignored_alarms": len(outcome.get("ignored", [])),
+                "category": outcome.get(
+                    "category",
+                    "Detected"
+                    if any(w is not None for w in warnings)
+                    else "Missed"
+                    if warnings
+                    else "No target",
+                ),
+                "span_ms": outcome.get(
+                    "span_ms", float(rows.t_ms.max() - rows.t_ms.min())
+                ),
             }
         )
     return groups
@@ -452,7 +571,7 @@ def statistic(groups):
     out["slice_fpr"] = fp / (fp + tn) if fp + tn else np.nan
     out["slice_precision"] = tp / (tp + fp) if tp + fp else np.nan
     out["slice_f1"] = 2 * tp / (2 * tp + fp + fn) if tp + fp + fn else np.nan
-    # The paper's per-shot scoring.
+    # Onset detection retains all targets; shot categories use any-hit precedence.
     warnings = [w for r in hanson for w in r["warning_ms"]]
     detected = [w for w in warnings if w is not None]
     out["onset_detection_rate"] = len(detected) / len(warnings) if warnings else np.nan
@@ -462,6 +581,26 @@ def statistic(groups):
     )
     out["warning_ms_mean"] = float(np.mean(detected)) if detected else np.nan
     out["warning_ms_median"] = float(np.median(detected)) if detected else np.nan
+    target_shots = [r for r in hanson if r["warning_ms"]]
+    for category, key in (
+        ("Detected", "detection"),
+        ("Early", "early"),
+        ("Missed", "miss"),
+    ):
+        out[f"hanson_shot_{key}_rate"] = (
+            float(np.mean([r["category"] == category for r in target_shots]))
+            if target_shots
+            else np.nan
+        )
+    for key in ("early", "ignored"):
+        out[f"hanson_{key}_alarm_incidence"] = (
+            float(np.mean([r[f"{key}_alarms"] > 0 for r in hanson]))
+            if hanson
+            else np.nan
+        )
+        out[f"hanson_{key}_alarms_per_shot"] = (
+            float(np.mean([r[f"{key}_alarms"] for r in hanson])) if hanson else np.nan
+        )
     out["hanson_unexplained_alarm_incidence"] = (
         float(np.mean([r["false_alarms"] > 0 for r in hanson])) if hanson else np.nan
     )
@@ -491,11 +630,21 @@ def counts(groups):
         "comparison_slices": len(_stack(comparison, "score")),
         "target_onsets": len(warnings),
         "onsets_warned": sum(w is not None for w in warnings),
+        "hanson_target_shots": sum(bool(r["warning_ms"]) for r in hanson),
+        "hanson_detected_shots": sum(r["category"] == "Detected" for r in hanson),
+        "hanson_early_shots": sum(r["category"] == "Early" for r in hanson),
+        "hanson_missed_shots": sum(r["category"] == "Missed" for r in hanson),
+        "hanson_no_target_shots": sum(not r["warning_ms"] for r in hanson),
         "hanson_shots_with_an_unexplained_alarm": sum(
             r["false_alarms"] > 0 for r in hanson
         ),
         "comparison_shots_with_an_alarm": sum(r["alarms"] > 0 for r in comparison),
     }
+    for key in ("early", "ignored"):
+        out[f"hanson_{key}_alarms"] = sum(r[f"{key}_alarms"] for r in hanson)
+        out[f"hanson_shots_with_an_{key}_alarm"] = sum(
+            r[f"{key}_alarms"] > 0 for r in hanson
+        )
     primary = np.isin(label, [labels.POSITIVE, labels.NEGATIVE])
     for name, mask, target in (
         (
