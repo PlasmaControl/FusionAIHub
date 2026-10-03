@@ -509,6 +509,61 @@ def refresh_context(out_dir: Path) -> int:
     return 0
 
 
+def archive_duplicate_records(paths: Paths, out_dir: Path) -> int:
+    """Keep one current evaluation; preserve immutable snapshots outside git."""
+    archive = paths.root / "round4/elm/archive/dsm"
+    archive.mkdir(parents=True, exist_ok=True)
+    mappings = {}
+    for name in (
+        "evaluation_trained.json",
+        "evaluation_exposed.json",
+        "evaluation_before_input_repair.json",
+    ):
+        source = out_dir / name
+        if not source.exists():
+            continue
+        digest = sha256_of(source)
+        target = archive / f"{source.stem}_{digest[:12]}.json"
+        if target.exists() and sha256_of(target) != digest:
+            raise ValueError(f"immutable archive content differs: {target}")
+        if not target.exists():
+            target.write_bytes(source.read_bytes())
+        if sha256_of(target) != digest:
+            raise ValueError(f"archive verification failed: {target}")
+        mappings[str(source)] = {"path": str(target), "sha256": digest}
+        source.unlink()
+    current_path = out_dir / "evaluation.json"
+    current = json.loads(current_path.read_text())
+    previous = current.get("archived_records", {})
+    previous.update(mappings)
+    current["archived_records"] = previous
+    old = previous.get(str(out_dir / "evaluation_before_input_repair.json"))
+    if old:
+        current["detection_input_repair"].update(
+            prior_record=old["path"], prior_record_sha256=old["sha256"]
+        )
+    current["archive_provenance"] = {
+        "git": git_sha(full=True),
+        "script_sha256": sha256_of(__file__),
+        "scientific_results_unchanged": True,
+    }
+    current_path.write_text(json.dumps(current, indent=1))
+    fits_path = paths.root / "round4/elm/dsm/fits.json"
+    fits = json.loads(fits_path.read_text())
+    fits["detection_input_repair"] = current["detection_input_repair"]
+    fits_path.write_text(json.dumps(fits, indent=1))
+    comparison_path = out_dir / "detection_input_comparison.json"
+    if comparison_path.exists():
+        comparison = json.loads(comparison_path.read_text())
+        if old:
+            comparison["before_record"] = old["path"]
+            comparison["before_record_sha256"] = old["sha256"]
+        comparison["after_inputs"] = current["detection_input_repair"]
+        comparison_path.write_text(json.dumps(comparison, indent=1))
+    print(json.dumps({"archived": previous, "current": str(current_path)}))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--run", required=True, help="the `labeler.elm.train` run (folds)")
@@ -516,6 +571,7 @@ def main(argv=None) -> int:
     ap.add_argument("--epochs", type=int, default=dsm.FitConfig.epochs)
     ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     ap.add_argument("--refresh-context", action="store_true")
+    ap.add_argument("--archive-records", action="store_true")
     ap.add_argument(
         "--rescore",
         action="store_true",
@@ -533,6 +589,8 @@ def main(argv=None) -> int:
     )
     args = ap.parse_args(argv)
     paths = Paths.from_env()
+    if args.archive_records:
+        return archive_duplicate_records(paths, args.out_dir)
     if args.refresh_context:
         return refresh_context(args.out_dir)
     if args.refresh_own_target:
@@ -592,7 +650,17 @@ def main(argv=None) -> int:
         repaired_cache.mkdir(parents=True, exist_ok=True)
         for s, r in raw_rows.items():
             dsm.save_rows(r, repaired_cache / f"{s}.npz")
-        before_inputs = args.out_dir / "evaluation_before_input_repair.json"
+        previous_evaluation = (
+            json.loads((args.out_dir / "evaluation.json").read_text())
+            if (args.out_dir / "evaluation.json").exists()
+            else {}
+        )
+        archived_before = previous_evaluation.get("detection_input_repair") or {}
+        before_inputs = Path(
+            archived_before.get(
+                "prior_record", args.out_dir / "evaluation_before_input_repair.json"
+            )
+        )
         if (args.out_dir / "evaluation.json").exists() and not before_inputs.exists():
             before_inputs.write_bytes((args.out_dir / "evaluation.json").read_bytes())
         trained = fit_detectors(
@@ -725,13 +793,17 @@ def main(argv=None) -> int:
         )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))
-    before_path = args.out_dir / "evaluation_before_input_repair.json"
+    repair = fits.get("detection_input_repair") or {}
+    before_path = Path(
+        repair.get("prior_record", args.out_dir / "evaluation_before_input_repair.json")
+    )
     if before_path.exists() and fits.get("detection_input_repair"):
         before = json.loads(before_path.read_text())
         comparison = {
             "git": git_sha(full=True),
             "script_sha256": sha256_of(__file__),
             "before_record": str(before_path),
+            "before_record_sha256": sha256_of(before_path),
             "after_record": str(args.out_dir / "evaluation.json"),
             "before_inputs": "no D-alpha; slow CO2 missing on 75/119 shots",
             "after_inputs": fits["detection_input_repair"],
@@ -779,6 +851,8 @@ def main(argv=None) -> int:
                 f"  {m:20s}",
                 {k: round(v, 3) for k, v in pt.items() if k != "prevalence"},
             )
+    if fits.get("detection_input_repair"):
+        archive_duplicate_records(paths, args.out_dir)
     return 0
 
 
