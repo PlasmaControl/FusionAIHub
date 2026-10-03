@@ -1,181 +1,165 @@
 # AE supervision swap
 
-Status: **incomplete experiment, executable workflow and saved-baseline scoring
-finished**. All three SLURM training attempts failed because the binding Pixi
-`labelmaker` environment contains `torch 2.14.0+cpu`. Allocating a GPU does not
-make this build CUDA-enabled. No new checkpoints were trained, and the clean
-supervision experiment cannot yet establish whether the detector ranking reverses.
+The three activity-supervision arms completed three seeds each under clean 100/20 shot selection. Both references are evaluated on all 60 original validation shots and the 19 shared held-out shots.
 
-Records: [evaluation.json](../../outputs/labeler/ae/supervision_swap/evaluation.json)
-and [manifest.json](../../outputs/labeler/ae/supervision_swap/manifest.json).
-Real-data target checks are recorded in
-[verification.json](../../outputs/labeler/ae/supervision_swap/verification.json).
-They include the exact shot lists, input hashes, thresholds, attempted runs,
-and paired differences. External artifacts and logs are under
-`/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/aeswap/`.
+Source for every result below: [evaluation.json](../../outputs/labeler/ae/supervision_swap/evaluation.json). It embeds the completed run records, execution IDs, selected epochs, thresholds, per-seed scores and paired differences. [manifest.json](../../outputs/labeler/ae/supervision_swap/manifest.json) contains the exact shot lists and frozen input hashes; [verification.json](../../outputs/labeler/ae/supervision_swap/verification.json) checks target equality and split isolation.
 
-## Frozen data and selection
+## Frozen protocol
 
-The current main-checkout `alfven_eigenmode/review/labels.csv` was snapshotted
-without changing it. It has **877 CSV rows, 371 present intervals, 506 absent
-rows, and 180 shots**; these distinguish total rows from positive intervals.
-Neither total matches the brief's anticipated 943/954 interval count. Its SHA256 is
-`b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a`.
-The snapshot is `round4/aeswap/inputs/dense.csv`. Interval counts alone do not
-measure a change in frame coverage.
+The current dense snapshot has 877 CSV rows, 371 present intervals and 180 shots. Its SHA256 is `b4308ff52d766779f33a92e9441a916bb07c854dcc1a98a2f61109bb6431e93a`. These observed counts differ from the brief's anticipated interval count. No source table was edited.
 
-The original 120 training shots are permuted with NumPy seed **20261003**, then
-split into **100 train / 20 selection**. The original **60 validation shots** are
-reserved for evaluation. None of these 180 shots belongs to the fixed catalog's
-blind test split. Exact lists and per-shot dataset SHA256s are in the manifest.
+NumPy split seed 20261003 freezes 100 training, 20 selection and 60 evaluation shots. None overlaps the fixed catalog's blind test split. Seeds 0, 1 and 2 change initialization and sampled training windows; every arm uses the same split. The original one-seed manifest was archived before extending its seed list.
 
-| Group | Scorable 10 ms frames | Dense present | Legacy present |
-|---|---:|---:|---:|
-| Training | 20,000 | 8,506 | 4,499 |
-| Selection | 4,000 | 1,855 | 754 |
-| Evaluation | 12,000 | 8,352 | 2,348 |
+Only activity supervision changes: legacy is the audit's at-least-half annotation rule at 10 ms, expanded to native columns; dense uses the catalog any-touch state rule and masks unknown states; threeway retains native annotation/TokEye agreement and masks disagreement. The original annotation-and-TokEye frequency target and weights are identical in every arm. Each input covers 0–2 s with 7,820 native columns.
 
-Source: `manifest.json`, `frame_counts`. Frames cover 0–2 s only.
+The original AeSeldNet recipe uses four CO2 channels, 348 frequency bins, frequency pools (6, 2, 29), two bidirectional GRUs, SCE plus the unchanged frequency objective, 710-column windows, eight windows per shot, batch 16, AdamW 1e-4, weight decay 1e-4, cosine decay to 1e-6, 30 epochs maximum and patience five. The selected epoch minimizes combined loss on the 20 selection shots. The CUDA interpreter is `envs/phase3/bin/python`, with `PYTHONPATH=<worktree>/src`; the launcher retains `AESWAP_PIXI_ENV` as an explicit alternative. CUDA allocations are capped at 10 GiB. Autocast uses bfloat16 when the runtime reports support, otherwise float32.
 
-## Training and threshold protocol
+Each seed's threshold maximizes 10 ms selection F1 against its own activity target, with the highest threshold breaking ties. Threeway requires at least half the native columns to have agreement weight and a majority of those agreeing columns to be positive. The score is mean native probability; the frozen threshold is used against both evaluation references. No evaluation frames select epochs or thresholds.
 
-`scripts/labeler/ae_supervision_swap.py` reuses `ae_train.py` and the shipped
-`AeSeldNet` architecture: four CO2 channels, 348 frequency bins, frequency pool
-sizes `(6, 2, 29)`, two bidirectional GRUs, and activity/frequency outputs. The
-recipe remains SCE, 710-column windows, eight windows per shot, batch size 16,
-AdamW at 1e-4 with weight decay 1e-4, cosine decay to 1e-6, up to 30 epochs, and
-patience five. Epoch selection minimizes the original combined loss evaluated
-only on the 20 selection shots.
+Garcia probabilities use saved spectrogram predictions: maximum over the first four AE classes, mean over four chords, nearest output-bin centre on the 10 ms grid. Only 19 evaluation shots and six selection shots have available predictions held out from Garcia's training. The other 41 evaluation shots cannot be scored for these saved models. Legacy-calibrated older thresholds remain frozen against dense labels.
 
-Only activity supervision changes:
+## Completed runs and operating points
 
-- **Legacy:** the audit's native-column annotation is averaged onto 10 ms
-  frames; at least half the columns must be annotated. Classes 1–4 count as AE;
-  LFM is excluded. These binary frame targets are expanded to the native input
-  grid. Unannotated frames are training negatives by this experimental convention.
-- **Dense:** the current reviewed spans use the catalog's any-touch frame rule;
-  uncertain, unobservable, and unassessed frames have zero weight. Overlapping
-  individual/crowd intervals are combined by state precedence.
-- **Threeway:** preserve the original native-column annotation/TokEye agreement:
-  positive when both are active, negative when neither is active, and ignore
-  disagreements.
+Epoch numbers are zero-based, as in the trainer.
 
-Every arm retains exactly the original frequency target and its
-`annotated & active & finite_frequency` weight. This holds auxiliary supervision
-fixed, preventing a second changed target from confounding the activity swap.
-`verify` checks this equality on all real train/selection records and checks that
-the threeway arm matches the original target builder exactly.
+| Supervision | Seed | Selected epoch | Threshold | Execution | GPU |
+|---|---:|---:|---:|---|---|
+| dense | 0 | 19 | 0.203014240 | 2952146_1 (job 2952150) | NVIDIA A100-PCIE-40GB |
+| dense | 1 | 6 | 0.584994057 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| dense | 2 | 13 | 0.058173278 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| legacy | 0 | 17 | 0.023511697 | 2952146_0 (job 2952149) | NVIDIA A100-PCIE-40GB |
+| legacy | 1 | 17 | 0.190000283 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| legacy | 2 | 2 | 0.077075437 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| threeway | 0 | 13 | 0.362064370 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| threeway | 1 | 9 | 0.385975281 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
+| threeway | 2 | 26 | 0.477263172 | head node, GPU 0 | Tesla V100S-PCIE-32GB |
 
-After epoch selection, the threshold maximizes 10 ms selection F1 against each
-arm's own activity target, with ties choosing the highest threshold. For
-threeway, at least half a frame's native columns must have agreement weight,
-and at least half those agreeing columns must be positive. The score is the
-frame's mean native probability. This threshold is frozen for both evaluation
-references; evaluation frames never tune it. The hard call is mean probability
-at least the selected threshold, rather than the previous benchmark's majority
-of native hard calls.
+Legacy/dense seed 0 ran on A100; fallback runs used V100. The CUDA runtime probe records that this Torch build reports V100 bfloat16 support through emulation despite lacking native support. The as-built trainer therefore selects bfloat16 autocast on V100 too. The earlier report's hypothetical float32 fallback does not describe these actual runs. See evaluation.json:gpu_probe and each run's runtime metadata. Device types and kernel implementations differ; the observed across-seed SD includes environment variation.
 
-One seed (0) is frozen because CUDA execution failed before training. The
-workflow supports three seeds in a fresh manifest (`prepare --seeds 0 1 2`),
-and a three-at-a-time SLURM array. Missing arms remain unavailable in JSON and
-the LaTeX table.
+Older selection thresholds:
 
-## Saved Garcia detectors
+- ae-rcn: `0.5281208929558328`, shots 172000, 176039, 176044, 176053, 176548, 176551.
+- ae-lstm: `0.5118714645504951`, shots 172000, 176039, 176044, 176053, 176548, 176551.
 
-The available spectrogram predictions are used for `ae-rcn` and `ae-lstm`.
-AE probability is the maximum of the first four class outputs, then the mean
-over the four CO2 chords. The output bin nearest each 10 ms frame centre is used.
-Saved row ordering is checked against Garcia's saved truth and hashed source
-arrays. Cross-power variants are outside this primary swap comparison.
+## Scores and uncertainty
 
-Only **19 of the 60 evaluation shots** have predictions and were held out from
-Garcia's training. The other 41 cannot be scored from the available files.
-Older thresholds use only the six available shots from the 20-shot selection
-set, also held out from Garcia's training:
-`172000, 176039, 176044, 176053, 176548, 176551`.
-There are 1,200 selection frames, 175 legacy positives. The thresholds, selected
-against legacy supervision, are **0.5281208929558328** for RCN and
-**0.5118714645504951** for LSTM. They are used against both references.
-This limited selection coverage and resulting calibration uncertainty are material.
+Entries for retrains are mean ± sample SD over three seeds, followed by a 95% pooled bootstrap interval. Each of 1,000 replicates resamples whole evaluation shots and the observed training seed IDs with replacement. The statistic averages each seed's pooled-frame metric. All arms share shot draws and seed indices (seed 20261004); saved baselines have only shot uncertainty. Frames and seed copies are never treated as independent observations. Per-seed shot-only intervals remain in JSON. Three seeds give limited precision for training variability.
 
-On the shared held-out set, both references score 3,800 frames: 2,595 dense
-positives and 796 legacy positives. The 19 shots are:
-`170660, 170661, 170663, 170666, 170669, 170677, 170678, 170718, 170725,
-170729, 170730, 170792, 170793, 170798, 170801, 170803, 175241, 175245, 178879`.
+### All 60 evaluation shots
 
-All intervals below are 95% shot-bootstrap intervals: **1,000 replicates**, seed
-**20261004**, pooled frame metrics within each draw. Paired differences use
-identical shot draws. Source: `evaluation.json`, `results.fair_19.references`.
+Shots: 170659, 170660, 170661, 170662, 170663, 170664, 170665, 170666, 170667, 170669, 170671, 170672, 170675, 170677, 170678, 170679, 170714, 170715, 170716, 170717, 170718, 170719, 170720, 170721, 170722, 170724, 170725, 170727, 170729, 170730, 170790, 170791, 170792, 170793, 170794, 170795, 170797, 170798, 170799, 170801, 170803, 170805, 170806, 170807, 170808, 170809, 170810, 170811, 170813, 170814, 175239, 175240, 175241, 175244, 175245, 175250, 175251, 175252, 178872, 178879.
 
-| Model | Reference | AUROC [95% CI] | AUPRC [95% CI] | Selection-threshold F1 [95% CI] |
+Scorable frames and positives: dense: 12000 frames, 8352 positives; legacy: 12000 frames, 2348 positives.
+
+| Model / supervision | Reference | AUROC | AUPRC | F1 |
 |---|---|---|---|---|
-| ae-rcn | Dense | 0.862 [0.810, 0.907] | 0.930 [0.906, 0.955] | 0.350 [0.244, 0.466] |
-| ae-lstm | Dense | 0.736 [0.654, 0.802] | 0.855 [0.835, 0.885] | 0.382 [0.260, 0.521] |
-| ae-rcn | Legacy | 0.911 [0.878, 0.939] | 0.691 [0.554, 0.798] | 0.571 [0.439, 0.660] |
-| ae-lstm | Legacy | 0.898 [0.854, 0.930] | 0.668 [0.509, 0.779] | 0.602 [0.435, 0.718] |
+| ae-ours-legacy | dense | 0.711 ± 0.225 [0.466, 0.885] | 0.837 ± 0.157 [0.685, 0.952] | 0.757 ± 0.158 [0.593, 0.877] |
+| ae-ours-dense | dense | 0.982 ± 0.008 [0.970, 0.991] | 0.992 ± 0.003 [0.985, 0.997] | 0.955 ± 0.013 [0.932, 0.973] |
+| ae-ours-threeway | dense | 0.975 ± 0.004 [0.956, 0.988] | 0.989 ± 0.001 [0.977, 0.996] | 0.948 ± 0.004 [0.922, 0.967] |
+| ae-ours-legacy | legacy | 0.629 ± 0.144 [0.469, 0.753] | 0.374 ± 0.162 [0.194, 0.526] | 0.382 ± 0.053 [0.314, 0.463] |
+| ae-ours-dense | legacy | 0.632 ± 0.012 [0.562, 0.702] | 0.257 ± 0.003 [0.192, 0.341] | 0.408 ± 0.011 [0.353, 0.472] |
+| ae-ours-threeway | legacy | 0.647 ± 0.014 [0.584, 0.706] | 0.287 ± 0.022 [0.212, 0.379] | 0.407 ± 0.007 [0.350, 0.471] |
 
-RCN minus LSTM AUROC is **0.125 [0.058, 0.200]** against dense labels and
-**0.013 [-0.012, 0.039]** against legacy labels. F1 differences are
-**-0.032 [-0.079, 0.016]** and **-0.031 [-0.102, 0.066]**, respectively.
-The selection-calibrated operating points give much lower dense F1 than the
-older benchmark's published operating points; those are different protocols.
-These baseline results alone do not answer the supervision-swap question.
+Paired differences use the same pooled draws:
 
-The generated `round4/aeswap/table_supervision_swap.tex` shows these results and
-explicit missing entries for every untrained `ae-ours` arm. It requires booktabs.
-The optional `ae-lstm-retrained` experiment was deferred because the required
-training environment cannot execute CUDA.
+| First model minus second | Reference | AUROC | AUPRC | F1 |
+|---|---|---|---|---|
+| ae-ours-legacy minus ae-ours-dense | dense | -0.271 ± 0.230 [-0.524, -0.099] | -0.155 ± 0.159 [-0.310, -0.042] | -0.198 ± 0.146 [-0.346, -0.086] |
+| ae-ours-legacy minus ae-ours-threeway | dense | -0.263 ± 0.221 [-0.505, -0.094] | -0.152 ± 0.156 [-0.305, -0.038] | -0.191 ± 0.154 [-0.342, -0.075] |
+| ae-ours-dense minus ae-ours-threeway | dense | 0.007 ± 0.011 [-0.009, 0.028] | 0.003 ± 0.004 [-0.004, 0.014] | 0.007 ± 0.009 [-0.013, 0.026] |
+| ae-ours-legacy minus ae-ours-dense | legacy | -0.003 ± 0.152 [-0.160, 0.118] | 0.117 ± 0.164 [-0.057, 0.241] | -0.026 ± 0.063 [-0.086, 0.038] |
+| ae-ours-legacy minus ae-ours-threeway | legacy | -0.017 ± 0.158 [-0.187, 0.107] | 0.087 ± 0.184 [-0.107, 0.227] | -0.024 ± 0.060 [-0.086, 0.035] |
+| ae-ours-dense minus ae-ours-threeway | legacy | -0.015 ± 0.012 [-0.040, 0.010] | -0.030 ± 0.020 [-0.058, -0.002] | 0.002 ± 0.007 [-0.016, 0.018] |
 
-## Reproduction and controller continuation
+### Shared 19 held-out shots
 
-From this worktree, set:
+Shots: 170660, 170661, 170663, 170666, 170669, 170677, 170678, 170718, 170725, 170729, 170730, 170792, 170793, 170798, 170801, 170803, 175241, 175245, 178879.
+
+Scorable frames and positives: dense: 3800 frames, 2595 positives; legacy: 3800 frames, 796 positives.
+
+| Model / supervision | Reference | AUROC | AUPRC | F1 |
+|---|---|---|---|---|
+| ae-ours-legacy | dense | 0.672 ± 0.209 [0.452, 0.849] | 0.813 ± 0.156 [0.637, 0.934] | 0.739 ± 0.141 [0.570, 0.849] |
+| ae-ours-dense | dense | 0.982 ± 0.003 [0.964, 0.995] | 0.992 ± 0.001 [0.980, 0.998] | 0.955 ± 0.007 [0.920, 0.979] |
+| ae-ours-threeway | dense | 0.981 ± 0.004 [0.965, 0.992] | 0.992 ± 0.001 [0.980, 0.997] | 0.938 ± 0.005 [0.891, 0.969] |
+| ae-rcn | dense | 0.862 [0.810, 0.907] | 0.930 [0.906, 0.955] | 0.350 [0.244, 0.466] |
+| ae-lstm | dense | 0.736 [0.654, 0.802] | 0.855 [0.835, 0.885] | 0.382 [0.260, 0.521] |
+| ae-ours-legacy | legacy | 0.646 ± 0.145 [0.481, 0.807] | 0.435 ± 0.196 [0.220, 0.655] | 0.411 ± 0.059 [0.312, 0.531] |
+| ae-ours-dense | legacy | 0.685 ± 0.017 [0.547, 0.809] | 0.336 ± 0.014 [0.182, 0.554] | 0.443 ± 0.009 [0.339, 0.555] |
+| ae-ours-threeway | legacy | 0.713 ± 0.021 [0.593, 0.828] | 0.374 ± 0.037 [0.206, 0.586] | 0.456 ± 0.015 [0.341, 0.593] |
+| ae-rcn | legacy | 0.911 [0.878, 0.939] | 0.691 [0.554, 0.798] | 0.571 [0.439, 0.660] |
+| ae-lstm | legacy | 0.898 [0.854, 0.930] | 0.668 [0.509, 0.779] | 0.602 [0.435, 0.718] |
+
+Paired differences use the same pooled draws:
+
+| First model minus second | Reference | AUROC | AUPRC | F1 |
+|---|---|---|---|---|
+| ae-ours-legacy minus ae-ours-dense | dense | -0.311 ± 0.210 [-0.530, -0.136] | -0.179 ± 0.156 [-0.351, -0.061] | -0.217 ± 0.134 [-0.369, -0.111] |
+| ae-ours-legacy minus ae-ours-threeway | dense | -0.309 ± 0.205 [-0.526, -0.131] | -0.178 ± 0.154 [-0.348, -0.060] | -0.199 ± 0.136 [-0.360, -0.093] |
+| ae-ours-legacy minus ae-rcn | dense | -0.190 ± 0.209 [-0.408, -0.002] | -0.117 ± 0.156 [-0.287, 0.009] | 0.389 ± 0.141 [0.182, 0.562] |
+| ae-ours-legacy minus ae-lstm | dense | -0.065 ± 0.209 [-0.287, 0.121] | -0.042 ± 0.156 [-0.212, 0.078] | 0.357 ± 0.141 [0.144, 0.540] |
+| ae-ours-dense minus ae-ours-threeway | dense | 0.002 ± 0.006 [-0.014, 0.015] | 0.001 ± 0.002 [-0.006, 0.006] | 0.018 ± 0.002 [-0.012, 0.054] |
+| ae-ours-dense minus ae-rcn | dense | 0.120 ± 0.003 [0.072, 0.176] | 0.062 ± 0.001 [0.039, 0.084] | 0.606 ± 0.007 [0.455, 0.728] |
+| ae-ours-dense minus ae-lstm | dense | 0.246 ± 0.003 [0.174, 0.326] | 0.137 ± 0.001 [0.111, 0.156] | 0.574 ± 0.007 [0.403, 0.714] |
+| ae-ours-threeway minus ae-rcn | dense | 0.119 ± 0.004 [0.069, 0.174] | 0.062 ± 0.001 [0.039, 0.085] | 0.588 ± 0.005 [0.437, 0.714] |
+| ae-ours-threeway minus ae-lstm | dense | 0.244 ± 0.004 [0.171, 0.329] | 0.136 ± 0.001 [0.110, 0.155] | 0.556 ± 0.005 [0.393, 0.704] |
+| ae-rcn minus ae-lstm | dense | 0.125 [0.058, 0.200] | 0.075 [0.045, 0.096] | -0.032 [-0.079, 0.016] |
+| ae-ours-legacy minus ae-ours-dense | legacy | -0.040 ± 0.157 [-0.233, 0.117] | 0.100 ± 0.200 [-0.135, 0.277] | -0.032 ± 0.068 [-0.116, 0.059] |
+| ae-ours-legacy minus ae-ours-threeway | legacy | -0.067 ± 0.166 [-0.267, 0.086] | 0.061 ± 0.232 [-0.206, 0.263] | -0.045 ± 0.073 [-0.149, 0.050] |
+| ae-ours-legacy minus ae-rcn | legacy | -0.265 ± 0.145 [-0.426, -0.109] | -0.255 ± 0.196 [-0.461, -0.053] | -0.160 ± 0.059 [-0.261, -0.033] |
+| ae-ours-legacy minus ae-lstm | legacy | -0.253 ± 0.145 [-0.419, -0.093] | -0.233 ± 0.196 [-0.448, 0.001] | -0.191 ± 0.059 [-0.306, -0.041] |
+| ae-ours-dense minus ae-ours-threeway | legacy | -0.027 ± 0.016 [-0.068, -0.002] | -0.038 ± 0.037 [-0.086, 0.015] | -0.013 ± 0.010 [-0.044, 0.012] |
+| ae-ours-dense minus ae-rcn | legacy | -0.226 ± 0.017 [-0.357, -0.119] | -0.355 ± 0.014 [-0.462, -0.202] | -0.128 ± 0.009 [-0.218, -0.032] |
+| ae-ours-dense minus ae-lstm | legacy | -0.213 ± 0.017 [-0.341, -0.098] | -0.332 ± 0.014 [-0.472, -0.160] | -0.159 ± 0.009 [-0.250, -0.054] |
+| ae-ours-threeway minus ae-rcn | legacy | -0.199 ± 0.021 [-0.308, -0.099] | -0.316 ± 0.037 [-0.431, -0.171] | -0.115 ± 0.015 [-0.199, -0.012] |
+| ae-ours-threeway minus ae-lstm | legacy | -0.186 ± 0.021 [-0.297, -0.077] | -0.294 ± 0.037 [-0.442, -0.127] | -0.146 ± 0.015 [-0.239, -0.040] |
+| ae-rcn minus ae-lstm | legacy | 0.013 [-0.012, 0.039] | 0.023 [-0.064, 0.109] | -0.031 [-0.102, 0.066] |
+
+## Interpretation
+
+On the shared 19 shots, threeway ae-ours minus ae-rcn is 0.119 ± 0.004 [0.069, 0.174] against dense and -0.199 ± 0.021 [-0.308, -0.099] against legacy. The clean-selection AUROC ranking reversal is supported by both paired intervals.
+
+On the shared 19 shots, threeway ae-ours minus ae-lstm is 0.244 ± 0.004 [0.171, 0.329] against dense and -0.186 ± 0.021 [-0.297, -0.077] against legacy. The clean-selection AUROC ranking reversal is supported by both paired intervals.
+
+Dense-supervised minus threeway ae-ours on the 60 shots, against dense: AUROC 0.007 ± 0.011 [-0.009, 0.028]; AUPRC 0.003 ± 0.004 [-0.004, 0.014]; F1 0.007 ± 0.009 [-0.013, 0.026]. None of these paired intervals resolves an improvement over threeway.
+
+Dense-supervised minus threeway ae-ours on the shared 19 shots, against dense: AUROC 0.002 ± 0.006 [-0.014, 0.015]; AUPRC 0.001 ± 0.002 [-0.006, 0.006]; F1 0.018 ± 0.002 [-0.012, 0.054]. None of these paired intervals resolves an improvement over threeway.
+
+Dense-supervised minus legacy-supervised ae-ours on the 60 shots, against dense: AUROC 0.271 ± 0.230 [0.099, 0.524]; AUPRC 0.155 ± 0.159 [0.042, 0.310]; F1 0.198 ± 0.146 [0.086, 0.346].
+
+Dense-supervised minus legacy-supervised ae-ours on the 60 shots, against legacy: AUROC 0.003 ± 0.152 [-0.118, 0.160]; AUPRC -0.117 ± 0.164 [-0.241, 0.057]; F1 0.026 ± 0.063 [-0.038, 0.086].
+
+Dense-supervised minus legacy-supervised ae-ours on the shared 19 shots, against dense: AUROC 0.311 ± 0.210 [0.136, 0.530]; AUPRC 0.179 ± 0.156 [0.061, 0.351]; F1 0.217 ± 0.134 [0.111, 0.369].
+
+Dense-supervised minus legacy-supervised ae-ours on the shared 19 shots, against legacy: AUROC 0.040 ± 0.157 [-0.117, 0.233]; AUPRC -0.100 ± 0.200 [-0.277, 0.135]; F1 0.032 ± 0.068 [-0.059, 0.116].
+
+On the shared 19 shots against dense, the AUROC point-estimate ranking is ae-ours-dense (0.982) > ae-ours-threeway (0.981) > ae-rcn (0.862) > ae-lstm (0.736) > ae-ours-legacy (0.672).
+
+On the shared 19 shots against dense, the AUPRC point-estimate ranking is ae-ours-dense (0.992) > ae-ours-threeway (0.992) > ae-rcn (0.930) > ae-lstm (0.855) > ae-ours-legacy (0.813).
+
+On the shared 19 shots against dense, the F1 point-estimate ranking is ae-ours-dense (0.955) > ae-ours-threeway (0.938) > ae-ours-legacy (0.739) > ae-lstm (0.382) > ae-rcn (0.350).
+
+On the shared 19 shots against legacy, the AUROC point-estimate ranking is ae-rcn (0.911) > ae-lstm (0.898) > ae-ours-threeway (0.713) > ae-ours-dense (0.685) > ae-ours-legacy (0.646).
+
+On the shared 19 shots against legacy, the AUPRC point-estimate ranking is ae-rcn (0.691) > ae-lstm (0.668) > ae-ours-legacy (0.435) > ae-ours-threeway (0.374) > ae-ours-dense (0.336).
+
+On the shared 19 shots against legacy, the F1 point-estimate ranking is ae-lstm (0.602) > ae-rcn (0.571) > ae-ours-threeway (0.456) > ae-ours-dense (0.443) > ae-ours-legacy (0.411).
+
+Legacy supervision has substantial observed training variability. Its seed 2 selected epoch 2 under the unchanged combined-loss rule; all completed seeds remain in the mean, SD and pooled intervals. The contrasts estimate behavior under this frozen training and selection recipe, including early stopping and target-specific calibration, rather than the best achievable legacy-trained model.
+
+These rankings use clean selection for every ae-ours arm. Their paired intervals above determine which gaps remain uncertain; a point-estimate ordering alone does not establish a difference. F1 also reflects calibration against each model's training target. Garcia probabilities come from fixed saved models, with thresholds calibrated on the six available selection shots. This experiment isolates supervision within ae-ours and resolves its selection overlap, while comparisons across architectures retain different training recipes.
+
+
+## Reproduction
+
+From this worktree with the prescribed scratch TMPDIR, LABELER_ROOT, LABELER_LABEL_TABLES, LABELER_NO_FETCH=1 and PYTHONPATH=$PWD/src:
 
 ```bash
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/aeswap
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
-export LABELER_NO_FETCH=1
-export PYTHONPATH="$PWD/src"
-export OMP_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-```
-
-Preparation is already complete and refuses to overwrite its frozen manifest.
-To score or verify:
-
-```bash
+# Existing manifest already freezes seeds 0, 1, 2.
+sbatch scripts/labeler/ae_supervision_swap.sbatch
+# After every run finishes:
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python scripts/labeler/ae_supervision_swap.py verify
 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python scripts/labeler/ae_supervision_swap.py evaluate
 ```
 
-SLURM array **2952124**, tasks 0–2, reached `stellar-m01g1` and failed with
-`required Pixi environment has no CUDA torch`. Each arm's `attempt.json` records
-the failure. The GPU-0 head-node fallback uses the same CPU-only environment and
-therefore cannot resolve it.
-
-The controller must authorize a CUDA-enabled Pixi environment instead of the
-binding `-e labelmaker` before training. The existing manifest's `default`
-environment specifies CUDA PyTorch. These are exact continuation commands for
-that authorized exception, without installing or fetching anything:
-
-```bash
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e default python -c 'import torch, pandas, scipy, h5py; assert torch.cuda.is_available(); print(torch.__version__)'
-AESWAP_PIXI_ENV=default sbatch scripts/labeler/ae_supervision_swap.sbatch
-# After all three runs have finished:
-pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python scripts/labeler/ae_supervision_swap.py evaluate
-```
-
-No CUDA environment exception was exercised by the implementer. If that array
-remains pending beyond 30 minutes, the equivalent head-node command for each
-arm is:
-
-```bash
-for arm in legacy dense threeway; do
-    CUDA_VISIBLE_DEVICES=0 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e default python -u scripts/labeler/ae_supervision_swap.py train --supervision "$arm" --seed 0 > "$LABELER_ROOT/round4/aeswap/head-$arm.log" 2>&1
-    bash "$LABELER_ROOT/scratch/bin/tmpsweep.sh"
-done
-```
-
-The trainer caps CUDA allocations at 10 GiB and uses eight workers. On a V100,
-which lacks bfloat16 support, it uses float32; A100 jobs use bfloat16 autocast.
-The architecture, objective and optimizer recipe stay identical across arms.
+Completed runs cannot be silently overwritten. A pending task exceeding 30 minutes is cancelled before running that seed with CUDA_VISIBLE_DEVICES=0 on the shared head node. A short worktree symlink resolves multiprocessing socket paths into the prescribed scratch temp directory; actual temp files stay there.

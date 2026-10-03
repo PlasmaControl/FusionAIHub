@@ -1,14 +1,15 @@
 {
   "code_sha256": {
-    "scripts/labeler/ae_supervision_swap.py": "7f70d66230708308771fdeed6a20401504410f25a7423a2e034e5f73b7faee85",
+    "scripts/labeler/ae_supervision_swap.py": "ee28e98dcf45ffe5079938d82b3c1bc95e448a21aff9225bc794d95c694ebf68",
+    "scripts/labeler/ae_supervision_swap_report.py": "8ef32dcc96e735f29fe89c6a4d2c17f5c687f2f0468f3f5cbf46965803afe7c6",
     "scripts/labeler/ae_train.py": "3a66eec91ee51fd98a1a0d7e03aea28ea3c79ea67d1c66ac84943e9476693ccf",
     "src/labeler/ae/model.py": "9789ed80721a87b7bfb0e07927d2d1469b3c3b51deb65edea5d33860c99c235f",
-    "src/labeler/ae/supervision.py": "c0c4ae93d7d8597db6883af4b1a1010ce01e58e46c0895a45026f73c2d2884f3"
+    "src/labeler/ae/supervision.py": "86a968b62648bb51635f9d29bac9dfa438fec3b2a63bdd564a45b8b8ad47b573"
   },
   "frequency_supervision_identical": true,
-  "generated": "2026-10-03T12:32:51.688125+00:00",
-  "git": "16c4aef6d511ef359f241d8619cdad3e4deed7e2",
-  "manifest_sha256": "d2c10dce3e2161fd3ec3f3b6fc39dcdd4712b00c9c9dc6a78fbe3a20ec2b4e40",
+  "generated": "2026-10-03T22:10:27.291728+00:00",
+  "git": "bdad6f9309edef717db787e89d91b0f15dec823e",
+  "manifest_sha256": "25ef6c73048bcc100c7d34c36483dafdee1bbc4ba2591177f398f6836cb1dc3e",
   "results": {
     "dense": {
       "selection": {
