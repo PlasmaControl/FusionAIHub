@@ -1304,6 +1304,87 @@ async function overlappingAnnotations() {
   }
 }
 
+async function detachmentCameras(shot = 170815, demo = false) {
+  if (!demo) await visit("detachment", shot);
+  await until(`S.video && S.video.cards.some(c => c.img?.naturalWidth > 0)`);
+  check("detachment offers all four states", same(await js("S.categories"),
+    {1: "attached", 2: "detached", 3: "marfe", 4: "uncertain"}));
+  check("cameras have small manifests and lazy pixels", await js(`
+    S.meta.video.cameras.every(c => c.channels.every(ch => !ch.frames)) &&
+    S.video.cards.some(c => c.img?.src.startsWith("blob:"))`));
+  check("missing cameras explain their absence", await js(`
+    S.video.cards.filter(c => !c.channel).every(c => c.note.textContent.includes("No frames"))`));
+  const middle = await js(`S.video.times[Math.floor(S.video.times.length / 2)]`);
+  await js(`$("video-time").value = ${middle};
+    $("video-time").dispatchEvent(new Event("input", {bubbles: true}));`);
+  await until(`S.video.cards.filter(c => c.channel).every(c =>
+    Math.abs(Number(c.img.dataset.frameTime) - Number(c.note.textContent.split(" ")[0])) <= 0.06 && c.img.complete)`);
+  check("slider seeks the native camera clock and persistent timeline cursor", await js(`
+    Math.abs(S.video.time - ${middle}) < 0.01 && !$("cursor").hidden &&
+    Math.abs(parseFloat($("cursor").style.left) - ($("axis-row").getBoundingClientRect().left + px(S.video.time))) < 1`));
+  const channelCard = await js(`S.video.cards.findIndex(c => c.camera.channels.length > 1)`);
+  if (channelCard >= 0) {
+    await js(`(() => {
+      const card = S.video.cards[${channelCard}], select = card.figure.querySelector("select");
+      select.value = card.camera.channels.at(-1).channel;
+      select.dispatchEvent(new Event("change", {bubbles: true}));
+    })()`);
+    await until(`S.video.cards[${channelCard}].img.complete &&
+      S.video.cards[${channelCard}].channel === S.video.cards[${channelCard}].camera.channels.at(-1)`);
+    check("camera channel selectors retain the shared time", await js(`Math.abs(S.video.time - ${middle}) < 0.01`));
+  }
+  const target = await js(`S.video.times[Math.floor(S.video.times.length / 3)]`);
+  const [x, y] = await js(`(() => {
+    const r = $("rows").querySelector("canvas")?.getBoundingClientRect() ||
+      $("axis-row").getBoundingClientRect();
+    return [r.left + px(${target}), r.top + r.height / 2];
+  })()`);
+  await mouse("mousePressed", x, y, {buttons: 1});
+  await mouse("mouseReleased", x, y, {buttons: 0});
+  check("clicking a timeline seeks without changing labels", await js(`
+    Math.abs(S.video.time - ${target}) < 2 && !dirty()`));
+  await js(`$("video-play").click()`);
+  await until(`S.video.time > ${target} + 0.1`);
+  await js(`$("video-play").click()`);
+  const paused = await js("S.video.time");
+  await sleep(150);
+  check("play steps forward and pause stops the clock", await js(`
+    S.video.timer === null && S.video.time === ${paused} &&
+    $("video-play").getAttribute("aria-pressed") === "false"`));
+  // Fast seeks must finish on the latest request, even when an older fetch arrives late.
+  await js(`window.realVideoFetch = window.fetch.bind(window);
+    window.fetch = async (input, options) => {
+      const result = await window.realVideoFetch(input, options);
+      if (String(input).startsWith("/api/frame?") &&
+          new URL(String(input), location.origin).searchParams.get("t_ms") === String(S.video?.times[0]))
+        await new Promise(ok => setTimeout(ok, 150));
+      return result;
+    };
+    seekVideo(S.video.times[0]); seekVideo(${middle});`);
+  await sleep(250);
+  check("late frame responses cannot replace a newer seek", await js(`
+    S.video.cards.filter(c => c.channel).every(c =>
+      Math.abs(Number(c.img.dataset.frameTime) - Number(c.note.textContent.split(" ")[0])) <= 0.06) &&
+      Math.abs(S.video.time - ${middle}) < 0.01`));
+  await js("window.fetch = window.realVideoFetch");
+  if (demo) {
+    await until(`S.video.cards.filter(c => c.channel).every(c => c.img.complete)`);
+    const screenshot = await send("Page.captureScreenshot", {format: "png"});
+    writeFileSync(CASE, Buffer.from(screenshot.data, "base64"));
+    return;
+  }
+  await press("2");
+  await draw(80, 160);
+  await press("s");
+  await until("!S.saving && !dirty()");
+  check("detached labels are saved on the usual timeline", await js(`
+    S.meta.saved.intervals.some(([a,b,c]) => c === 2 && Math.abs(a-80) <= 2 && Math.abs(b-160) <= 2)`));
+  await js(`$("video-play").click()`);
+  await visit("alfven_eigenmode", 170815);
+  check("navigation clears playback, previews and pinned cursor", await js(`
+    S.video === null && $("video-panel").hidden && $("video-cameras").children.length === 0`));
+}
+
 try {
   await within(send("Runtime.enable"), "first page command (Runtime.enable)");
   await send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -1338,8 +1419,10 @@ try {
       sessionStorage.setItem("labeler:who", "Grace Hopper");
     ` });
   }
-  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#alfven_eigenmode/170815` });
-  if (SCENARIO !== "race") await opened(170815);
+  const demoShot = Number(process.env.DETACHMENT_DEMO_SHOT || 190010);
+  const initial = SCENARIO === "detachment-demo" ? `detachment/${demoShot}` : "alfven_eigenmode/170815";
+  await send("Page.navigate", { url: `${BASE}/?token=${TOKEN}#${initial}` });
+  if (SCENARIO !== "race") await opened(SCENARIO === "detachment-demo" ? demoShot : 170815);
   if (SCENARIO === "race") await navigationRace();
   else if (SCENARIO === "inflight") await inflight();
   else if (SCENARIO === "pending") await pendingResponses();
@@ -1349,6 +1432,8 @@ try {
   else if (SCENARIO === "equilibrium") await equilibriumEditors();
   else if (SCENARIO === "crowds") await crowdAnnotations();
   else if (SCENARIO === "overlaps") await overlappingAnnotations();
+  else if (SCENARIO === "detachment") await detachmentCameras();
+  else if (SCENARIO === "detachment-demo") await detachmentCameras(demoShot, true);
   else await currentServer();
 } catch (error) {
   check("the page did what was asked", false, String(error));

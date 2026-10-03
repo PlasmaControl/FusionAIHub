@@ -26,6 +26,15 @@
   </span>
 </header>
 <main id="top">
+  <section id="video-panel" aria-label="Detachment cameras" hidden>
+    <div id="video-controls">
+      <button id="video-play" type="button" aria-pressed="false">Play</button>
+      <label for="video-time">Time (ms)</label>
+      <input id="video-time" type="range" step="any" aria-label="Camera time in milliseconds">
+      <output id="video-clock" for="video-time"></output>
+    </div>
+    <div id="video-cameras"></div>
+  </section>
   <div id="rows"></div>
   <canvas id="axis-row" aria-hidden="true"></canvas>
 </main>
@@ -67,6 +76,7 @@
     <tr><td>Drag on a label lane</td><td>Add, move or resize a span in that lane; either foot moves the shared window. Individual and Crowd spans can overlap.</td></tr>
     <tr><td>Shift-drag on the rows</td><td>Add a span</td></tr>
     <tr><td>Drag on the rows</td><td>Pan</td></tr>
+    <tr><td>Detachment cameras</td><td>Drag the time slider or click the timeline to seek the nearest frame. Play steps through stored frames. Labels use the same timeline lanes.</td></tr>
     <tr><td><kbd>Ctrl</kbd>/<kbd>⌘</kbd> wheel</td><td>Zoom</td></tr>
     <tr><td>Double-click</td><td>Fit the window</td></tr>
     <tr><td><kbd>Shift</kbd> <kbd>←</kbd> <kbd>→</kbd></td><td>Pan</td></tr>

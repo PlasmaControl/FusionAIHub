@@ -107,6 +107,18 @@ canvas { display: block; width: 100%; }
 #rows canvas { cursor: grab; }
 #rows canvas:active { cursor: grabbing; }
 
+#video-panel { padding: 8px 12px; border-bottom: 1px solid var(--rule); }
+#video-panel[hidden] { display: none; }
+#video-controls { display: flex; align-items: center; gap: 10px; }
+#video-time { flex: 1; min-width: 60px; padding: 0; }
+#video-clock { min-width: 90px; text-align: right; }
+#video-cameras { display: flex; gap: 12px; margin-top: 8px; }
+.camera { flex: 1; min-width: 0; margin: 0; }
+.camera figcaption { display: flex; align-items: center; gap: 6px; }
+.camera img { display: block; width: 100%; height: 180px; object-fit: contain; background: #000; }
+.camera p { color: var(--muted); margin: 4px 0; }
+body.busy #video-panel { opacity: 0.35; pointer-events: none; }
+
 #rows .failure { margin: 0; padding: 40px 12px 40px var(--gutter); color: var(--muted); }
 body.busy #rows, body.busy .track canvas { opacity: 0.35; pointer-events: none; }
 

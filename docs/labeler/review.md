@@ -492,6 +492,24 @@ whose saved or source annotations overlap. This prevents a cached older page
 from silently flattening the lanes. Restart an older server and reload the page
 to use overlapping annotations.
 
+## Detachment cameras
+
+The `detachment` editor offers spans **1 attached, 2 detached, 3 marfe,
+4 uncertain**; unmarked time is unassessed. Drag **Time (ms)** or click the
+timeline to seek the nearest camera frame and move the cursor across all
+panels. **Play/Pause** steps through the stored frames. Labels still use the
+usual timeline lanes, saves and history.
+
+Each available `bolo`, `tangtv` or `irtv` image channel uses a fixed per-shot
+grayscale scale. Missing/stub cameras have an explicit unavailable card.
+The corpus's raw bolometer traces are context, not images or calibrated
+radiated power. Optional indicator files add validity-gated Afrac, divertor
+radiated power and TangTV front height. Movies stay in the per-shot store;
+the page requests one frame at a time. Camera controls require server API 9.
+
+See [Detachment camera review](detachment_review.md) for data contracts,
+launch commands and the isolated real-shot screenshot check.
+
 ## The row store
 
 The page reads rows from `$LABELER_ROOT/spectrograms/<event>/<shot>.h5`. Each

@@ -228,6 +228,7 @@ const S = {
   savedRows: new Map(), // event -> shot -> {count, row}, from acknowledged saves
   shot: null,
   meta: null, // what /api/shot said: grid, t_range, rows, source, saved, state, last_save
+  video: null, // camera cards, selected time and playback; detachment only
   label: null, // the label being edited, always normalised
   selected: -1,
   view: [0, 1], // the ms on screen
@@ -550,6 +551,7 @@ function stillOpening() {
 }
 
 function leave() {
+  clearVideo();
   closeDialog($("versions"));
   S.versions = [];
   S.versionsAt = null;
@@ -597,6 +599,7 @@ async function openEvent(event, shot) {
 
 /** Show `shot` (or no shot) with nothing to edit, and the note `text` where the rows go. */
 function showNothing(shot, text) {
+  clearVideo();
   cancelAnimationFrame(S.frame);
   Object.assign(S, { shot, meta: null, data: null, overview: null, label: null,
     undo: [], selected: -1, asked: "", frame: 0, masks: null, tokeye: null });
@@ -610,6 +613,7 @@ function showNothing(shot, text) {
 }
 
 async function openShot(shot) {
+  clearVideo();
   const ticket = ++S.ticket;
   leave();
   if (shot == null) {
@@ -634,6 +638,7 @@ async function openShot(shot) {
     buildRows();
     arrive();
     fit();
+    buildVideo();
     fetchRows(0);
     prefetch();
     loadMasks(ticket);
@@ -653,6 +658,10 @@ function arrive() {
   history.replaceState(null, "", `#${S.event}${S.shot == null ? "" : `/${S.shot}`}`);
   $("shot").value = S.shot ?? "";
   showHeader();
+  if (S.api >= 7) {
+    $("stale").hidden = S.event !== "detachment" || S.api >= 9;
+    $("stale").textContent = "Restart the server for detachment cameras";
+  }
   renderQueue();
   $("queue").querySelector(".current")?.scrollIntoView({ block: "nearest" });
 }
@@ -806,8 +815,8 @@ function buildRows() {
 function sizeRows() {
   if (!S.meta) return;
   const base = S.meta.rows.map((row) => (row.kind === "image" ? IMAGE_H : TRACE_H));
-  const room = $("top").clientHeight - $("axis-row").offsetHeight;
-  const scale = Math.max(1, room / base.reduce((a, b) => a + b, 0));
+  const room = $("top").clientHeight - $("axis-row").offsetHeight - $("video-panel").offsetHeight;
+  const scale = Math.max(1, room / (base.reduce((a, b) => a + b, 0) || 1));
   [...$("rows").children].forEach((canvas, i) => {
     canvas.style.height = `${Math.floor(base[i] * scale)}px`;
   });
@@ -841,6 +850,7 @@ function render() {
     drawTrack($("source-track"), S.meta.source, false);
     drawTrack($("label-track"), S.label, true, S.api >= 8 ? 0 : undefined);
     if (S.api >= 8) drawTrack($("crowd-track"), S.label, true, 1);
+    showVideoCursor();
   });
 }
 
@@ -1361,6 +1371,7 @@ function onRowsDown(event) {
 
 function onLabelDown(event) {
   if (event.button !== 0 || !S.meta) return;
+  if (S.video) { pauseVideo(); seekVideo(timeAt(event.clientX)); }
   const rect = event.currentTarget.getBoundingClientRect();
   const lane = S.api >= 8 ? Number(event.currentTarget.dataset.lane) : undefined;
   const hit = hitTest(S.label, event.clientX - rect.left, event.clientY - rect.top, rect.height, px, lane);
@@ -1436,7 +1447,10 @@ function dragTo(clientX) {
 function endDrag(event) {
   const d = S.drag;
   S.drag = null;
-  if (d?.kind === "pan" && d.canvas && !d.moved && event?.type === "pointerup") return clickMask(d);
+  if (d?.kind === "pan" && !d.moved && event?.type === "pointerup") {
+    if (S.video) { pauseVideo(); return seekVideo(timeAt(event.clientX)); }
+    if (d.canvas) return clickMask(d);
+  }
   if (!d || d.kind === "pan" || same(d.base, S.label)) return;
   keepForUndo(d.base);
   touch();
@@ -1617,10 +1631,143 @@ function showCursor(clientX) {
   const x = clientX - axis.left;
   cursor.hidden = !S.meta || x < GUTTER || x > axis.width - RIGHT;
   if (cursor.hidden) return;
-  const top = $("top").getBoundingClientRect().top;
+  const top = $("rows").getBoundingClientRect().top;
   const bottom = $(S.api >= 8 ? "crowd-track" : "label-track").getBoundingClientRect().bottom;
   Object.assign(cursor.style, { left: `${clientX}px`, top: `${top}px`, height: `${bottom - top}px` });
   $("cursor-time").textContent = `${Math.round(timeAt(clientX))} ms`;
+}
+
+// -- detachment cameras: small manifests, one lazy frame per camera
+
+function pauseVideo() {
+  if (S.video) {
+    clearTimeout(S.video.timer);
+    S.video.timer = null;
+  }
+  $("video-play").textContent = "Play";
+  $("video-play").setAttribute("aria-pressed", "false");
+}
+
+function clearVideo() {
+  pauseVideo();
+  for (const card of S.video?.cards || []) {
+    card.abort?.abort();
+    if (card.url) URL.revokeObjectURL(card.url);
+  }
+  S.video = null;
+  $("video-panel").hidden = true;
+  $("video-cameras").replaceChildren();
+  $("cursor").hidden = true;
+}
+
+function buildVideo() {
+  if (S.event !== "detachment" || !S.meta?.video || S.api < 9) return;
+  const cards = [];
+  const clocks = [];
+  for (const camera of S.meta.video.cameras) {
+    const figure = document.createElement("figure");
+    figure.className = "camera";
+    const caption = document.createElement("figcaption");
+    caption.textContent = camera.name;
+    const note = document.createElement("p");
+    const card = { camera, figure, note, channel: camera.channels[0], key: "", seq: 0 };
+    figure.append(caption);
+    if (!card.channel) {
+      note.textContent = `No frames for this camera: ${camera.reason}`;
+    } else {
+      const select = document.createElement("select");
+      select.setAttribute("aria-label", `${camera.name} channel`);
+      for (const channel of camera.channels) {
+        const option = document.createElement("option");
+        option.value = channel.channel;
+        option.textContent = `ch ${channel.channel}`;
+        select.append(option);
+        clocks.push(...channel.times_ms);
+      }
+      select.addEventListener("change", () => {
+        card.channel = camera.channels.find((c) => c.channel === Number(select.value));
+        card.key = "";
+        seekVideo(S.video.time);
+      });
+      caption.append(select);
+      card.img = document.createElement("img");
+      card.img.alt = `${camera.name} camera frame`;
+      figure.append(card.img);
+    }
+    figure.append(note);
+    cards.push(card);
+  }
+  S.video = { cards, times: [...new Set(clocks)].sort((a, b) => a - b), timer: null };
+  $("video-cameras").replaceChildren(...cards.map((card) => card.figure));
+  $("video-panel").hidden = false;
+  const slider = $("video-time");
+  [slider.min, slider.max] = S.meta.t_range;
+  slider.disabled = !clocks.length;
+  $("video-play").disabled = !clocks.length;
+  sizeCanvases();
+  seekVideo(clocks.length ? S.video.times[0] : S.meta.t_range[0]);
+}
+
+function seekVideo(t) {
+  if (!S.video || pendingNavigation()) return;
+  S.video.time = clamp(Number(t), ...S.meta.t_range);
+  $("video-time").value = S.video.time;
+  $("video-clock").textContent = `${S.video.time.toFixed(1)} ms`;
+  for (const card of S.video.cards) if (card.channel) loadVideoFrame(card);
+  showVideoCursor();
+}
+
+async function loadVideoFrame(card) {
+  const { channel, times_ms: times } = card.channel;
+  let right = times.findIndex((t) => t >= S.video.time);
+  if (right < 0) right = times.length - 1;
+  if (right && Math.abs(S.video.time - times[right - 1]) <= Math.abs(times[right] - S.video.time)) right--;
+  const key = `${channel}/${right}`;
+  const outside = S.video.time < times[0] || S.video.time > times.at(-1);
+  card.note.textContent = `${times[right].toFixed(1)} ms · nearest frame${outside ? " · outside camera coverage" : ""}`;
+  if (card.key === key) return;
+  card.key = key;
+  card.abort?.abort();
+  card.abort = new AbortController();
+  const seq = ++card.seq, ticket = S.ticket;
+  const query = new URLSearchParams({ event: S.event, shot: S.shot,
+    camera: card.camera.name, channel, t_ms: times[right] });
+  try {
+    const response = await api(`/api/frame?${query}`, { signal: card.abort.signal });
+    const blob = await response.blob();
+    if (ticket !== S.ticket || seq !== card.seq || !S.video) return;
+    const url = URL.createObjectURL(blob);
+    if (card.url) URL.revokeObjectURL(card.url);
+    card.url = url;
+    card.img.src = url;
+    card.img.dataset.frameTime = response.headers.get("X-Frame-Time-Ms");
+  } catch (error) {
+    if (error.name === "AbortError" || ticket !== S.ticket || seq !== card.seq) return;
+    card.key = "";
+    card.note.textContent = `Frame unavailable: ${error.message}`;
+  }
+}
+
+function showVideoCursor() {
+  if (!S.video || !S.meta) return;
+  const axis = $("axis-row").getBoundingClientRect();
+  showCursor(axis.left + px(S.video.time));
+}
+
+function playVideo() {
+  if (!S.video || !S.video.times.length) return;
+  if (S.video.timer != null) return pauseVideo();
+  if (S.video.time >= S.video.times.at(-1)) seekVideo(S.video.times[0]);
+  $("video-play").textContent = "Pause";
+  $("video-play").setAttribute("aria-pressed", "true");
+  const step = () => {
+    if (!S.video || pendingNavigation()) return pauseVideo();
+    const next = S.video.times.find((t) => t > S.video.time + 0.001);
+    if (next == null) return pauseVideo();
+    const delay = Math.max(50, next - S.video.time);
+    S.video.timer = setTimeout(() => { seekVideo(next); step(); }, delay);
+  };
+  step();
 }
 
 function toggleKeys() {
@@ -1873,11 +2020,17 @@ function wire() {
   }
   window.addEventListener("pointermove", (event) => {
     if (S.drag) dragTo(event.clientX);
+    if (S.video) return showVideoCursor();
     if (S.drag || event.target.closest?.("#top, .track")) showCursor(event.clientX);
     else $("cursor").hidden = true;
   });
   window.addEventListener("hashchange", followHash);
-  document.documentElement.addEventListener("pointerleave", () => ($("cursor").hidden = true));
+  document.documentElement.addEventListener("pointerleave", () => {
+    if (!S.video) $("cursor").hidden = true;
+  });
+  $("video-time").addEventListener("input", () => { pauseVideo(); seekVideo($("video-time").value); });
+  $("video-play").addEventListener("click", playVideo);
+  $("top").addEventListener("scroll", showVideoCursor);
   window.addEventListener("pointerup", endDrag);
   window.addEventListener("pointercancel", endDrag);
   document.addEventListener("keydown", onKey);
