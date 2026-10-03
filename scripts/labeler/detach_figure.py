@@ -388,7 +388,7 @@ def main() -> None:
                 "width_in": 6.75,
                 "min_font_pt": 7,
                 "bolometer_row": "omitted: no chord endpoints/calibration in BOLOM node survey or local plasma_tv resources",
-                "irtv_row": "omitted: IRTV HEATFLUX node on 189057 has no data; corpus is a stub",
+                "irtv_row": "omitted: IRTV HEATFLUX attempt on 189057 returned NODATA; no heat-flux record obtained for the selected shot",
                 "raw_overlay": "no camera projection calibration available",
                 "efit_source": "EFIT02, or explicitly recorded EFIT01 fallback",
                 "notes": notes,

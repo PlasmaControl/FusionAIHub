@@ -243,3 +243,22 @@ def test_exported_camera_geometry_excludes_efit_sentinels(bins):
     }
     out = bins.geometry_aux(geo, np.array([0.0, 50.0]))
     assert out["aux_zxpt1"][0] - out["aux_zvsod"][0] == pytest.approx(0.253)
+
+
+def test_aux_geometry_uses_accepted_slice_even_outside_bin(bins, monkeypatch):
+    monkeypatch.setattr(
+        bins, "load_inversion", lambda shot: {"times_ms": np.array([25.0, 45.0])}
+    )
+    t = np.array([55.0, 75.0])  # No native EFIT sample inside the 0..50 ms bin.
+    geo = {
+        "rvsod": (t, np.array([1.3, 1.4])),
+        "zvsod": (t, np.array([-1.363, -1.25])),
+        "rxpt1": (t, np.array([1.2, 1.2])),
+        "zxpt1": (t, np.array([-1.1, -1.1])),
+    }
+    out = bins.frame_geometry_aux(
+        1, np.array([0.0, 50.0]), geo, np.array([True, False])
+    )
+    value, known = out["aux_zvsod"]
+    assert known.tolist() == [True]
+    assert value[0] == pytest.approx(-1.363)

@@ -77,14 +77,43 @@ def add_envelope(out):
     out["tangtv_in_envelope"] = envelope
 
 
-def refresh_geometry(directory, width):
+def frame_geometry_aux(shot, edges, geo, accepted):
+    """Medians of the exact EFIT slices belonging to accepted camera frames."""
+    inv = load_inversion(shot)
+    rec = inv if inv is not None else load_surrogate(shot)
+    if rec is None or accepted is None or not accepted.any():
+        return {}
+    ft = rec["times_ms"]
+    et = geo["rxpt1"][0]
+    near = np.abs(et[None, :] - ft[:, None]).argmin(axis=1)
+    out = {}
+    for key in ("rvsod", "zvsod", "rxpt1", "zxpt1"):
+        value, count = core.bin_median(ft, geo[key][1][near], edges, keep=accepted)
+        out[f"aux_{key}"] = (value.astype(np.float32), count > 0)
+    return out
+
+
+def refresh_geometry(directory, width, shots):
     """Refresh auxiliary medians/envelope from cached EFIT, leaving votes intact."""
     for path in sorted(directory.glob("*.npz")):
+        if int(path.stem) not in shots:
+            continue
         with np.load(path) as f:
             out = {k: f[k] for k in f.files}
         edges = np.r_[out["start_ms"], out["start_ms"][-1] + width]
-        geo, _ = signals.tangtv_geometry(int(path.stem))
+        shot = int(path.stem)
+        cache = signals.load_cache(shot)
+        geo, _ = signals.tangtv_geometry(shot, cache)
         out.update(geometry_aux(geo, edges))
+        if out["tangtv_valid"].any():
+            ind, _, accepted = tangtv_for(
+                shot, edges, cache, signals.elm_mask(shot), with_frame_mask=True
+            )
+            assert np.array_equal(ind.valid, out["tangtv_valid"]), shot
+            for key, (value, keep) in frame_geometry_aux(
+                shot, edges, geo, accepted
+            ).items():
+                out[key][keep] = value[keep]
         add_envelope(out)
         tmp = path.with_name(f".{path.name}.tmp.npz")
         np.savez_compressed(tmp, **out)
@@ -450,6 +479,10 @@ def process(
         )
     # Unlocalised real-time DTS is deliberately excluded from all claims.
     out.update(geometry_aux(geo, edges))
+    for key, (value, keep) in frame_geometry_aux(
+        shot, edges, geo, frame_quality
+    ).items():
+        out[key][keep] = value[keep]
     add_envelope(out)
     target = (out_dir or root() / "bins") / f"{shot}.npz"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -484,10 +517,10 @@ def main() -> int:
     )
     args = parser.parse_args()
     out_dir = Path(args.out_dir) if args.out_dir else root() / "bins"
-    if args.refresh_geometry:
-        refresh_geometry(out_dir, args.width_ms)
-        return 0
     shots = [int(s) for s in Path(args.shots_file).read_text().split()]
+    if args.refresh_geometry:
+        refresh_geometry(out_dir, args.width_ms, set(shots))
+        return 0
     if not args.redo:
         shots = [s for s in shots if not (out_dir / f"{s}.npz").is_file()]
     log = (

@@ -290,6 +290,22 @@ def main():
         "tangtv_valid_elm_majority": int(
             np.sum(valid[:, 2] & (frame.aux_elm_share.to_numpy() > 0.5))
         ),
+        "tangtv_valid_short_or_missing_aux_leg": int(
+            np.sum(
+                bins.tangtv_valid.to_numpy()
+                & (
+                    ~np.isfinite(bins.aux_zxpt1 - bins.aux_zvsod)
+                    | (bins.aux_zxpt1 - bins.aux_zvsod < 0.1 - 1e-6)
+                )
+            )
+        ),
+        "surrogate_valid_outside_envelope": int(
+            np.sum(
+                bins.tangtv_valid.to_numpy()
+                & bins.tangtv_source.eq("surrogate").to_numpy()
+                & ~bins.tangtv_in_envelope.to_numpy()
+            )
+        ),
         "temporal_imputations": int(
             np.sum(frame.state_temporal_imputation.to_numpy() != state)
         ),
