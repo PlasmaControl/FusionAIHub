@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Render named RWM tables and a paper LaTeX table from the fix-round JSON."""
+"""Render named RWM tables and a paper LaTeX table from the evaluation JSON."""
 
 from __future__ import annotations
 
@@ -18,6 +18,25 @@ NAMES = (
     "rwm-rule-betan-over-li",
     "rwm-rule-rwm-candidates",
 )
+RULE_NAMES = {
+    "rwm-rule-elapsed-time": "Elapsed time",
+    "rwm-rule-betan": "βN",
+    "rwm-rule-betan-over-li": "βN/li",
+    "rwm-rule-rwm-candidates": "RWM screen",
+}
+LATEX_NAMES = {
+    **RULE_NAMES,
+    "rwm-brf": r"\texttt{rwm-brf}",
+    "rwm-rule-betan": r"$\beta_N$",
+    "rwm-rule-betan-over-li": r"$\beta_N/l_i$",
+}
+
+
+def paper_name(value, latex=False):
+    names = LATEX_NAMES if latex else RULE_NAMES
+    for name in sorted(names, key=len, reverse=True):
+        value = value.replace(name, names[name])
+    return value
 
 
 def interval(metric, digits=3):
@@ -165,7 +184,9 @@ def campaign_pairs(record):
 
 def table(header, rows):
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
-    return "\n".join(lines + ["| " + " | ".join(row) + " |" for row in rows])
+    return "\n".join(
+        lines + ["| " + " | ".join(paper_name(c) for c in row) + " |" for row in rows]
+    )
 
 
 def scores(configs, prefix="slice", conditional=False):
@@ -276,6 +297,13 @@ def forest_alarm_splits(record):
         rows.append(
             [
                 label,
+                "/".join(
+                    str(n[f"hanson_{k}_shots"]) for k in ("detected", "early", "missed")
+                ),
+                "/".join(
+                    str(n[f"hanson_any_alarm_{k}_shots"])
+                    for k in ("detected", "early", "missed")
+                ),
                 f"{n['onsets_warned']}/{n['target_onsets']}",
                 *(
                     interval(metrics[k], 0 if k == "warning_ms_median" else 3)
@@ -286,6 +314,8 @@ def forest_alarm_splits(record):
     rows.append(
         [
             "five-split point range",
+            "—",
+            "—",
             "—",
             *(
                 split_range(
@@ -301,6 +331,8 @@ def forest_alarm_splits(record):
     return table(
         [
             "evaluation",
+            "first alarm Detected/Early/Missed",
+            "any alarm Detected/Early/Missed (sensitivity)",
             "onsets warned",
             "onset detection (95% CI)",
             "detection minus random reference (95% percentile CI)",
@@ -467,17 +499,18 @@ def grouped_scores(groups, intervals=True):
     )
 
 
-def shot_categories(configs):
+def shot_categories(configs, any_alarm=False):
     rows = []
     for name in NAMES:
         n = configs[name]["counts"]
         denominator = n["hanson_target_shots"]
+        prefix = "hanson_any_alarm" if any_alarm else "hanson"
         rows.append(
             [
                 name,
-                f"{n['hanson_detected_shots']}/{denominator}",
-                f"{n['hanson_missed_shots']}/{denominator}",
-                f"{n['hanson_early_shots']}/{denominator}",
+                f"{n[prefix + '_detected_shots']}/{denominator}",
+                f"{n[prefix + '_missed_shots']}/{denominator}",
+                f"{n[prefix + '_early_shots']}/{denominator}",
                 str(n["hanson_no_target_shots"]),
                 f"{n['comparison_shots_with_an_alarm']}/{n['comparison_shots']}",
             ]
@@ -494,8 +527,13 @@ def shot_categories(configs):
         rows,
     ) + (
         "\n\nDetected, Early and Missed are mutually exclusive on Hanson shots "
-        "with an n=1 target: any Detected alarm takes precedence over Early, "
-        "then Missed. Early means more than 400 ms before a listed onset. "
+        "with an n=1 target. "
+        + (
+            "Sensitivity: any warning wins, otherwise any Early alarm, then Missed. "
+            if any_alarm
+            else "The first considered alarm decides the primary shot category. "
+        )
+        + "Early means unexplained and more than 400 ms before a future target. "
         "The FP column reports unlabelled-shot alarm incidence, not a verified "
         "stable-shot false-positive rate."
     )
@@ -622,13 +660,7 @@ def latex_cell(m, stacked=False, bound_digits=2):
 
 def write_latex(record, out_dir):
     configs, legacy = record["configs"], record["legacy"]
-    labels = {
-        "rwm-brf": r"\texttt{rwm-brf}",
-        "rwm-rule-elapsed-time": "Elapsed time",
-        "rwm-rule-betan": r"$\beta_N$",
-        "rwm-rule-betan-over-li": r"$\beta_N/l_i$",
-        "rwm-rule-rwm-candidates": "RWM screen",
-    }
+    labels = LATEX_NAMES
     keys = (
         "slice_auroc",
         "broad_auroc",
@@ -641,15 +673,16 @@ def write_latex(record, out_dir):
         r"\begin{table*}[t]",
         r"\centering",
         r"\small",
-        r"\setlength{\tabcolsep}{3pt}",
-        r"\begin{tabular}{@{}lccccccc@{}}",
+        r"\setlength{\tabcolsep}{1.5pt}",
+        r"\begin{tabular}{@{}lcccccccc@{}}",
         r"\toprule",
-        r"\multicolumn{8}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
+        r"\multicolumn{9}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
         r"\midrule",
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
             r"\shortstack{Broad\\AUROC} & "
-            r"\shortstack{Within-shot mean AUROC\\(primary point estimate)} & "
+            r"\shortstack{Within-shot\\mean AUROC\\(primary point)} & "
+            r"\shortstack{Phase-controlled\\AUROC} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
             r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\"
         ),
@@ -663,6 +696,8 @@ def write_latex(record, out_dir):
         ]
         within = config["within_shot_auroc"]["primary"]
         cells.insert(2, f"${within['mean']:.3f}$")
+        phase = config["phase_controlled_auroc"]
+        cells.insert(3, latex_cell(phase, stacked=True, bound_digits=3))
         lines.append(labels[name] + " & " + " & ".join(cells) + r" \\")
         lines.append(r"\addlinespace[1.5pt]")
         provenance[name] = {
@@ -677,16 +712,20 @@ def write_latex(record, out_dir):
             "estimate": within["mean"],
             "n_shots": within["n_shots"],
         }
+        provenance[name]["phase_controlled_auroc"] = {
+            "json_path": f"configs.{name}.phase_controlled_auroc",
+            **phase,
+        }
     lines += [
         r"\midrule",
-        r"\multicolumn{8}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\",
+        r"\multicolumn{9}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\",
         r"\midrule",
-        r"Model & AUROC & -- & -- & AUPRC & F1 & TPR & FPR \\",
+        r"Model & AUROC & -- & -- & -- & AUPRC & F1 & TPR & FPR \\",
         r"\midrule",
         "NSTX RUS forest & "
-        f"${legacy['slice_auroc']:.3f}$ & -- & -- & -- & -- & "
+        f"${legacy['slice_auroc']:.3f}$ & -- & -- & -- & -- & -- & "
         f"${legacy['slice_tpr']:.3f}$ & ${legacy['slice_fpr']:.3f}$" + r" \\",
-        r"\multicolumn{8}{@{}l}{Detected unstable shots: "
+        r"\multicolumn{9}{@{}l}{Detected unstable shots: "
         f"{legacy['onsets_warned']}/{legacy['target_onsets']}; "
         "stable shots with false alarms: "
         f"{legacy['stable_shots_with_an_alarm']}/"
@@ -698,13 +737,15 @@ def write_latex(record, out_dir):
         r"Positives: 100 ms before listed onsets. Primary assumed negatives "
         r"end at the last $n=1$ "
         r"onset; broad adds post-onset and $n=2$-only time, with unchanged "
-        r"exclusions. Brackets: 95\% shot-bootstrap intervals at fixed predictions. "
-        r"Within-shot point means weight two-class shots equally. No AUROC advantage "
-        r"over the strongest scalar, or onset-specific warning skill, was "
-        r"established. Paired within-shot intervals place the forest below "
-        r"$\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad "
-        r"$\beta_N/l_i$ is distinguishable (Supplement). Legacy uses different inputs and "
-        r"validation; results are not comparable."
+        r"exclusions. Brackets: exploratory 95\% shot-bootstrap intervals at fixed "
+        r"predictions, unadjusted for multiplicity. Within-shot means weight "
+        r"two-class shots equally; elapsed time's 0.931 is an artefact of the "
+        r"primary mask's cutoff at the last onset. Within shot, the forest is "
+        r"0.02--0.07 below $\beta_N$ and $\beta_N/l_i$ on both masks (one of four "
+        r"unadjusted intervals excludes zero). Phase-controlled AUROC compares "
+        r"pairs within campaign and 200 ms elapsed-time bins; all paired "
+        r"forest-minus-scalar intervals include zero (Supplement). Legacy uses "
+        r"different inputs and validation."
     )
     lines += [
         r"\caption{" + caption + "}",
@@ -749,7 +790,8 @@ def write_supplemental_latex(record, out_dir):
     def write(name, columns, header, rows, caption, source, long=False):
         environment = "longtable" if long else "tabular"
         lines = [r"\begingroup"] if long else [r"\begin{table*}[t]", r"\centering"]
-        lines += [r"\small", r"\setlength{\tabcolsep}{4pt}"]
+        spacing = "2pt" if name == "split_summary" else "4pt"
+        lines += [r"\small", r"\setlength{\tabcolsep}{" + spacing + "}"]
         lines += [r"\begin{" + environment + "}{@{}" + columns + "@{}}"]
         if long:
             lines += [r"\caption{" + caption + r"} \\"]
@@ -766,7 +808,10 @@ def write_supplemental_latex(record, out_dir):
                 r"\bottomrule",
                 r"\endlastfoot",
             ]
-        lines += [" & ".join(row) + r" \\" for row in rows]
+        lines += [
+            " & ".join(paper_name(cell, latex=True) for cell in row) + r" \\"
+            for row in rows
+        ]
         if not long:
             lines += [r"\bottomrule"]
         lines += [r"\end{" + environment + "}"]
@@ -818,7 +863,7 @@ def write_supplemental_latex(record, out_dir):
                 campaign.capitalize(),
                 "Forest holdout",
                 *(
-                    latex_cell(scores["metrics"][k], stacked=True)
+                    latex_cell(scores["metrics"][k])
                     for k in (keys[0], "broad_auroc", *keys[1:])
                 ),
             ]
@@ -830,7 +875,6 @@ def write_supplemental_latex(record, out_dir):
                 f"Seed {seed}",
                 latex_cell(
                     metrics[keys[0]],
-                    stacked=True,
                     bound_digits=4 if seed == "3" else 3,
                 ),
                 (
@@ -838,16 +882,12 @@ def write_supplemental_latex(record, out_dir):
                         record["paired"]["rwm-brf - rwm-rule-elapsed-time"][
                             "broad_auroc"
                         ],
-                        stacked=True,
                         bound_digits=3,
                     )
                     if seed == "0"
                     else "--"
                 ),
-                *(
-                    latex_cell(metrics[k], stacked=True, bound_digits=3)
-                    for k in keys[1:]
-                ),
+                *(latex_cell(metrics[k], bound_digits=3) for k in keys[1:]),
             ]
         )
     rows.append(
@@ -864,7 +904,7 @@ def write_supplemental_latex(record, out_dir):
             "Pooled difference",
             "Run-record holdout",
             *(
-                latex_cell(holdout["paired_time"][k], stacked=True)
+                latex_cell(holdout["paired_time"][k])
                 for k in (keys[0], "broad_auroc", *keys[1:])
             ),
         ]
@@ -883,7 +923,8 @@ def write_supplemental_latex(record, out_dir):
         rows,
         r"Forest scores and forest-minus-elapsed-time differences. Ranges are "
         r"point estimates across seeds 0--4, not confidence intervals. Brackets: "
-        r"95\% shot-bootstrap intervals at fixed predictions; individual scores "
+        r"exploratory 95\% shot-bootstrap intervals, unadjusted for multiplicity, "
+        r"at fixed predictions; individual scores "
         r"use percentile intervals, paired differences use basic intervals. "
         r"High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. "
         r"Holdout retains four records across three dates; broad paired "
@@ -912,6 +953,9 @@ def write_supplemental_latex(record, out_dir):
                 f"${record['configs'][name]['within_shot_auroc'][m]['mean']:.3f}$"
                 for m in ("primary", "broad")
             ),
+            latex_cell(
+                record["configs"][name]["phase_controlled_auroc"], bound_digits=3
+            ),
         ]
         for name in NAMES
     ]
@@ -922,25 +966,45 @@ def write_supplemental_latex(record, out_dir):
                 latex_cell(pair["within_shot_auroc"][mask], bound_digits=3)
                 for mask in ("primary", "broad")
             ),
+            latex_cell(pair["phase_controlled_auroc"], bound_digits=3),
         ]
         for name, pair in record["paired"].items()
     ]
     write(
         "within_shot",
-        "lcc",
-        ["Model / rule (or difference)", "Primary mean AUROC", "Broad mean AUROC"],
+        "lccc",
+        [
+            "Model / rule (or difference)",
+            "Primary mean AUROC",
+            "Broad mean AUROC",
+            "Phase-controlled AUROC",
+        ],
         rows,
         r"Within-shot AUROC means on the reference split; each of 30 two-class "
-        r"Hanson shots receives equal weight. Model means are point estimates; "
+        r"Hanson shots receives equal weight. Within-shot model means are point "
+        r"estimates; "
         r"differences have 95\% basic paired shot-bootstrap intervals "
-        f"({n_bootstrap:,} replicates, seed 0). The forest is below "
-        r"$\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad "
-        r"$\beta_N/l_i$ is distinguishable. It is below elapsed time on primary "
-        r"and above it on broad. One-class shots are omitted; comparisons are unlabelled.",
+        f"({n_bootstrap:,} replicates, seed 0), unadjusted for multiplicity. "
+        r"Within shot, the forest is 0.02--0.07 below $\beta_N$ and $\beta_N/l_i$ "
+        r"on both masks (one of four unadjusted intervals excludes zero). "
+        r"Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the "
+        r"last onset. Phase control uses primary positive-negative pairs within "
+        r"campaign and 200 ms elapsed-time bins, weighted by pair counts. "
+        r"Individual phase intervals are percentile; all three basic paired "
+        r"forest-minus-scalar phase intervals include zero. One-class cells "
+        r"are omitted; phase resampling is stratified by campaign.",
         {
             "paired_within_shot_auroc": {
                 name: pair["within_shot_auroc"]
                 for name, pair in record["paired"].items()
+            },
+            "phase_controlled_auroc": {
+                name: row["phase_controlled_auroc"]
+                for name, row in record["configs"].items()
+            },
+            "paired_phase_controlled_auroc": {
+                name: row["phase_controlled_auroc"]
+                for name, row in record["paired"].items()
             },
             **{
                 f"configs.{name}.within_shot_auroc": {
@@ -985,9 +1049,11 @@ def write_supplemental_latex(record, out_dir):
             r"\shortstack{Above-proxy conditional\\AUROC difference}",
         ],
         rows,
-        r"Forest minus elapsed time by campaign. Brackets: 95\% basic paired "
+        r"Forest minus elapsed time by campaign. Brackets: exploratory 95\% "
+        r"basic paired "
         f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed "
-        r"fitted predictions. High-$\beta$: $\beta_N\geq0.8$ shot p95; "
+        r"fitted predictions, unadjusted for multiplicity. High-$\beta$: "
+        r"$\beta_N\geq0.8$ shot p95; "
         r"above-proxy: $\beta_N/l_i>4$. All five 2014 point differences are "
         r"negative in both conditional strata; all five 2018 split-seed "
         r"intervals include zero. The included 2018 run-record holdout "
@@ -1028,6 +1094,13 @@ def write_supplemental_latex(record, out_dir):
         rows.append(
             [
                 label,
+                "/".join(
+                    str(n[f"hanson_{k}_shots"]) for k in ("detected", "early", "missed")
+                ),
+                "/".join(
+                    str(n[f"hanson_any_alarm_{k}_shots"])
+                    for k in ("detected", "early", "missed")
+                ),
                 f"{n['onsets_warned']}/{n['target_onsets']}",
                 *(latex_cell(metrics[k], bound_digits=3) for k in keys[:2]),
                 interval(metrics[keys[2]], 0),
@@ -1038,14 +1111,18 @@ def write_supplemental_latex(record, out_dir):
         [
             "Five-split point range",
             "--",
+            "--",
+            "--",
             *(latex_range(ranges[k], 0 if k == keys[2] else 3) for k in keys),
         ]
     )
     write(
         "alarms",
-        "lcccc",
+        "lcccccc",
         [
             "Evaluation",
+            r"\shortstack{First alarm\\D/E/M}",
+            r"\shortstack{Any alarm\\D/E/M}",
             r"\shortstack{Onsets\\warned}",
             r"\shortstack{Onset\\detection}",
             r"\shortstack{Detection minus\\random reference}",
@@ -1053,8 +1130,12 @@ def write_supplemental_latex(record, out_dir):
         ],
         rows,
         r"Forest alarms across all five splits and the run-record holdout. "
+        r"D/E/M: Detected/Early/Missed among 30 target shots. The first considered "
+        r"alarm decides the primary shot category; any-warning precedence is a "
+        r"sensitivity. Per-onset counts retain all alarms. "
         r"Brackets: 95\% percentile shot-bootstrap intervals, including "
-        r"detection-minus-reference, conditional on fixed fitted predictions. "
+        r"detection-minus-reference, conditional on fixed fitted predictions "
+        r"and unadjusted for multiplicity. "
         r"Between-model differences elsewhere use basic paired intervals. "
         r"No improvement "
         r"over the approximate rate-matched random reference was established: "
@@ -1063,7 +1144,10 @@ def write_supplemental_latex(record, out_dir):
         r"four rules were compared on the reference split only; their alarm "
         r"results were not replayed over seeds 1--4.",
         {
-            "configs.rwm-brf": {s: r["metrics"] for s, r in runs.items()},
+            "configs.rwm-brf": {
+                s: {"metrics": r["metrics"], "counts": r["counts"]}
+                for s, r in runs.items()
+            },
             "split_sensitivity.alarm_ranges": ranges,
             "leave_one_run_record_out.metrics": record["leave_one_run_record_out"][
                 "metrics"
@@ -1134,6 +1218,7 @@ def main():
     configs = record["configs"]
     c = configs["rwm-brf"]
     run_out = record["leave_one_run_record_out"]
+    rotation = json.loads((OUT / "rotation_ablation.json").read_text())
     sections = {
         "Five-split AUROC ranges — rwm-brf (seeds 0–4)": split_scores(record),
         "Five-split paired AUROC — forest minus elapsed time": split_pairs(record),
@@ -1180,6 +1265,50 @@ def main():
                 for name, pair in record["paired"].items()
             ],
         ),
+        "Phase-controlled primary AUROC — within campaign and 200 ms time bins": table(
+            ["model / rule", "AUROC (95% percentile shot CI)"],
+            [
+                [name, interval(configs[name]["phase_controlled_auroc"])]
+                for name in NAMES
+            ],
+        ),
+        "Paired phase-controlled AUROC — forest minus scalar": table(
+            ["forest minus scalar", "AUROC difference (95% basic paired shot CI)"],
+            [
+                [name, interval(pair["phase_controlled_auroc"])]
+                for name, pair in record["paired"].items()
+            ],
+        ),
+        "Comparison pool — reference forest alarms by run title": table(
+            ["run title", "unlabelled shots", "shots with an alarm", "alarm incidence"],
+            [
+                [
+                    title,
+                    str(row["n_shots"]),
+                    str(row["n_alarm_shots"]),
+                    point(row["alarm_incidence"]),
+                ]
+                for title, row in c["comparison_by_run_title"].items()
+            ],
+        ),
+        "Rotation sensitivity — one reference-split no-rotation CV": table(
+            ["mask", "original AUROC", "no-rotation AUROC", "paired change"],
+            [
+                [
+                    mask,
+                    interval(rotation["reference_metrics"][key]),
+                    interval(rotation["metrics"][key]),
+                    interval(rotation["paired_change"][key]),
+                ]
+                for mask, key in (("primary", "slice_auroc"), ("broad", "broad_auroc"))
+            ],
+        )
+        + (
+            "\n\nSource: outputs/labeler/rwm/rotation_ablation.json. "
+            "Change is no rotation minus original forest; identical outer shots, "
+            "inner splits and seeds. Input-dependence sensitivity does not "
+            "measure upstream timing bias."
+        ),
         "Broad-mask run-record holdout — forest minus elapsed time": table(
             ["AUROC difference (95% basic paired CI)"],
             [[interval(run_out["paired_time"]["broad_auroc"])]],
@@ -1215,6 +1344,9 @@ def main():
         ),
         "Piccione-style per-shot categories — primary alarm definition": (
             shot_categories(configs)
+        ),
+        "Any-alarm per-shot categories — labelled sensitivity": (
+            shot_categories(configs, any_alarm=True)
         ),
         "Alarm definition sensitivity — rwm-brf": alarm_sensitivity(c),
         "Legacy NSTX — separately sourced published reference": legacy_table(
@@ -1288,10 +1420,14 @@ def main():
         "Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% "
         f"shot-bootstrap intervals ({record['protocol']['bootstrap_replicates']:,} "
         "resamples), conditional on fixed "
-        "fitted predictions. Individual metrics and detection-minus-reference use "
+        "fitted predictions; exploratory, unadjusted for multiple comparisons. "
+        "Individual metrics and detection-minus-reference use "
         "percentile intervals; between-model differences use basic paired intervals. "
         "Within-shot means/medians weight each two-class Hanson shot equally; "
         "one-class shots are omitted from those summaries, with counts in JSON. "
+        "Phase-controlled AUROC compares only positive-negative pairs within "
+        "campaign x 200 ms elapsed-time bin, weighted by pair count; phase "
+        "shot resampling is stratified by campaign. "
         "High-beta "
         "means beta_N >= 0.8 times the shot's whole-window beta_N p95; "
         "above-proxy means beta_N/li > 4. Negative slices are assumed negative.\n\n"
@@ -1312,6 +1448,12 @@ def main():
         "supplemental_latex": write_supplemental_latex(record, out_dir),
         "markdown": str(args.out),
         "sections": list(sections),
+        "rotation_ablation_source": {
+            "path": "outputs/labeler/rwm/rotation_ablation.json",
+            "sha256": hashlib.sha256(
+                (OUT / "rotation_ablation.json").read_bytes()
+            ).hexdigest(),
+        },
     }
     provenance["rendered_latex"] = {}
     for name, artifact in {
@@ -1346,6 +1488,11 @@ def main():
             ("table_validation", "tables-validation.log"),
             ("latex_compile", "tables-latex.log"),
             ("visual_inspection", "tables-visual.log"),
+            ("saved_rescore", "fix8-rescore.log"),
+            ("no_rotation_fit", "fix8-no-rotation.log"),
+            ("saved_ablation_rescore", "fix8-ablation-rescore.log"),
+            ("prediction_hashes", "fix8-hashes.log"),
+            ("independent_review", "fix8-independent-review.log"),
         )
         if (tmp_dir / filename).is_file()
     }

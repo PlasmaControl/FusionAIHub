@@ -6,13 +6,15 @@
 - **Run-record holdout:** each of four logbook records is held out in turn; two records share a date.
 - **Rate-matched reference:** approximate uniform random alarms with each target shot's alarm count and scored span.
 - **Within-shot AUROC:** rank slices separately in each two-class Hanson shot, then average with equal shot weight.
+- **Phase-controlled AUROC:** compare primary positive-negative pairs within campaign and 200 ms elapsed-time bins, weighted by pair count.
 
 This retrospective forest forecasts listed n=1 onsets in 33 Hanson shots; four
 rules were compared. Reference-split pooled AUROC is **0.760 primary / 0.740 broad**.
-Primary-mask elapsed time ranks almost perfectly within shot (median **1.0**).
+Elapsed time's **0.931** within-shot mean is an artefact of the primary mask's
+cutoff at the last onset (median **1.0**).
 No AUROC advantage over the strongest scalar, or onset-specific warning skill,
-was established. Paired within-shot intervals place the forest below beta_N/l_i
-on primary; neither beta_N mask nor broad beta_N/l_i is distinguishable.
+was established. Within shot, the forest is **0.02–0.07 below βN and βN/li on both
+masks (one of four unadjusted intervals excludes zero)**.
 Negative coverage, physical duration and online input timing remain unverified.
 Sources: `E#/configs/<model>/{metrics,within_shot_auroc}` and
 `E#/paired/rwm-brf - <scalar>/within_shot_auroc`; E is defined below.
@@ -32,6 +34,8 @@ JSON references use these aliases:
   `scripts/labeler/rwm_figure.py`.
 - **P**: [presentation.json](../../outputs/labeler/rwm/presentation.json), written
   by `scripts/labeler/rwm_tables.py`.
+- **A**: [rotation_ablation.json](../../outputs/labeler/rwm/rotation_ablation.json),
+  written by `scripts/labeler/rwm_rotation_ablation.py`.
 
 All score, alarm, campaign, per-run-record and paired tables are in
 [tables.md](../../outputs/labeler/rwm/tables.md). Split-0 tables describe a fixed
@@ -51,19 +55,50 @@ Sources: `S#/{hanson,comparison,cohort_overlap,slices}` and
 `E#/configs/rwm-brf/counts`.
 
 Comparison shots are matched without reuse, within campaign, on flat-top p95
-beta_N and beta_N/l_i, from the Hanson run records or related RWM experiment
-records. This greedy match does not create verified stable controls or ensure
+beta_N and beta_N/l_i, from the Hanson run records and selected high-beta,
+kinetic-RWM, high-li and impurity-seeding experiment records. This greedy match
+does not create verified stable controls or ensure
 exchangeable missing labels. Campaign balance and the unchosen pool are in
 `S#/comparison/balance`; shot-level matches and run IDs are in
 `data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.shots.csv`.
+
+The selected pool includes **31 kinetic-RWM marginal-stability shots**, **28
+high-li-approach shots**, **15 impurity-seeding shots**, and **17 shots from the
+Hanson run records**; the latter overlaps the title groups below. Remaining shots
+share high-qmin or non-inductive high-beta scenario titles with Hanson records.
+These are distinct physical regimes and may contain unlisted RWMs or RFA;
+impurity-seeding days are not RWM experiments. Title membership therefore does
+not make these stable controls.
+
+| Run title (logbook text) | Selected comparisons | Forest alarm shots | Alarm incidence |
+|---|---|---|---|
+| control of divertor radiation with impurity seeding in high betap scenario | 15 | 0/15 | 0.000 |
+| explore access to beta_n~5 using high-li approach | 28 | 1/28 | 0.036 |
+| explore access to bn~5 using high qmin approach - day 1 | 2 | 1/2 | 0.500 |
+| explore access to bn~5 using high qmin approach - day 2 | 19 | 3/19 | 0.158 |
+| extend fully non-inductive high beta-p scenario to 1ma, q95=5 | 34 | 9/34 | 0.265 |
+| rwm control development for high βp scenario | 3 | 1/3 | 0.333 |
+| testing kinetic rwm stabilization theory at marginal stability | 31 | 4/31 | 0.129 |
+
+These are reference-split forest alarms over each comparison's full analysis
+span: **19/132**, with no verified negative coverage. Run titles can recur on
+other records; title groups are distinct, while the 17 Hanson-record comparisons
+are a cross-cutting same-day selection. Sources:
+`E#/configs/rwm-brf/{comparison_by_run_title,comparison_by_pool_role,counts}`;
+run identifiers are in the shot roster.
+
+The Hanson-record subset has **8/17** alarmed shots (**0.471**), versus **11/115**
+(**0.096**) in the other selected records. These rates are conditional on pool
+selection and unlabelled coverage, rather than stable-shot false-positive rates.
+Source: `E#/configs/rwm-brf/comparison_by_pool_role`.
 
 Inputs are beta_N, l_i, q95, qmin, W_MHD, |Ip|, beta_N/l_i, beta_N−4l_i, N1RMS,
 N2RMS and ZIPFIT toroidal rotation at the configured radii. RMS features use trailing
 means, peaks and log slopes: these are trailing calculations on offline inputs,
 not proof of real-time availability. N1RMS/N2RMS are postprocessed amplitudes with
 uncertain upstream timing; ZIPFIT's upstream time smoothing is acausal, with
-unbounded timing bias here. No rotation ablation is needed for this negative
-baseline because no skill or rotation benefit is claimed.
+unbounded timing bias here. A separate reference-split CV excludes both rotation
+columns to measure input dependence; its paired AUROC changes are reported below.
 Analysis-span selection and the
 candidate screen's whole-flat-top threshold are also retrospective. This is a
 Piccione-style forest on generic 0D inputs; only beta_N and an RMS amplitude
@@ -230,11 +265,17 @@ scores. Sources: `E#/protocol/{alarm_grid,alarm_tuning,primary_alarm_scope,
 full_trace_alarm_sensitivity}`.
 
 Per-shot Detected/Early/Missed categories are mutually exclusive on n=1 target
-shots: any accepted warning wins, otherwise an unexplained alarm >400 ms before a
-future target makes Early, otherwise Missed. Raw Early counts remain visible on
-Detected shots. n=2-only shots are No target. Comparison FP means alarm incidence
+shots: the **first considered alarm** decides, following the Piccione/Montes
+single-trigger reading. It makes Detected if it warns any n=1 target by 10–400 ms,
+Early if unexplained and >400 ms before a future target, otherwise Missed.
+An alarm explained only by n=2 can therefore make Missed; later alarms cannot
+upgrade the shot category. No alarm also makes Missed. n=2-only shots are No
+target. The re-arming trace and all per-onset warning counts remain available;
+the former any-warning precedence is explicitly labelled as a category
+sensitivity. Raw Early counts remain visible. Comparison FP means alarm incidence
 on unlabelled shots, not verified stable-shot FPR. Sources:
-`E#/protocol/shot_categories`, `E#/configs/<model>/{counts,per_shot}`.
+`E#/protocol/{shot_categories,any_alarm_category_sensitivity}`,
+`E#/configs/<model>/{counts,per_shot,metrics}`.
 
 Individual/campaign intervals are percentile CIs from **1,000 shot resamples**,
 within Hanson and comparison strata, including shots with no eligible slices in a
@@ -243,7 +284,10 @@ shot-bootstrap intervals.
 Between-model paired differences share shot draws and use **basic** bootstrap
 CIs (reflected percentile endpoints). All intervals condition on fixed fitted OOF
 predictions; they do not include refitting, fold selection or run-population
-uncertainty. The random-alarm reference keeps each target shot's alarm count and
+uncertainty. These are **exploratory intervals, unadjusted for multiple
+comparisons** across models, masks, campaigns and sensitivities; nominal exclusion
+of zero does not establish multiplicity-adjusted significance.
+The random-alarm reference keeps each target shot's alarm count and
 places alarms independently/uniformly over its scored span, intersecting each
 onset's warning window with that span; it is approximate.
 Warning-time CIs condition on detected onsets. Sources: `E#/protocol`,
@@ -258,9 +302,9 @@ Reference-split within-shot means (30 two-class Hanson shots, equal shot weights
 |---|---|---|
 | rwm-brf | 0.784 | 0.719 |
 | Elapsed time | 0.931 | 0.417 |
-| beta_N | 0.814 | 0.739 |
-| beta_N/l_i | 0.855 | 0.786 |
-| Candidate screen | 0.500 | 0.499 |
+| βN | 0.814 | 0.739 |
+| βN/li | 0.855 | 0.786 |
+| RWM screen | 0.500 | 0.499 |
 
 Forest minus scalar within-shot mean AUROC (95% basic paired shot-bootstrap
 intervals; 1,000 replicates, seed 0; 30 shared two-class shots per mask):
@@ -268,15 +312,50 @@ intervals; 1,000 replicates, seed 0; 30 shared two-class shots per mask):
 | Scalar | Primary difference | Broad difference |
 |---|---|---|
 | Elapsed time | -0.147 [-0.200, -0.084] | +0.302 [+0.217, +0.384] |
-| beta_N | -0.031 [-0.109, +0.045] | -0.020 [-0.095, +0.058] |
-| beta_N/l_i | -0.071 [-0.133, -0.010] | -0.067 [-0.137, +0.002] |
+| βN | -0.031 [-0.109, +0.045] | -0.020 [-0.095, +0.058] |
+| βN/li | -0.071 [-0.133, -0.010] | -0.067 [-0.137, +0.002] |
 
-Paired within-shot intervals place the forest below beta_N/l_i on primary;
-neither beta_N mask nor broad beta_N/l_i is distinguishable. The forest is below
+Within shot, the forest is **0.02–0.07 below βN and βN/li on both masks (one of four
+unadjusted intervals excludes zero)**. The forest is below
 elapsed time on primary and above it on broad. Primary truncation makes time
-almost perfect within shot (median **1.0**). These are differences of equal-shot
+almost perfect within shot: its **0.931** mean is an artefact of the primary
+mask's cutoff at the last onset (median **1.0**). These are differences of equal-shot
 means, separate from pooled AUROC differences. Source:
 `E#/paired/rwm-brf - <scalar>/within_shot_auroc`.
+
+
+Phase control uses only primary Hanson slices with finite elapsed time, in bins
+**[200k, 200(k+1)) ms** since the first |Ip| ≥0.5 MA sample, separately in each
+campaign. It sums within-cell concordant pairs (half credit for ties) and divides
+by the total positive-negative pair count; one-class cells contribute no pairs.
+Thus it makes no comparison across phase bins or campaigns. Intervals use
+**1,000 shot resamples within campaign**, retaining each campaign's shot count;
+individual intervals are percentile and paired differences are basic.
+
+| Model / rule | Phase-controlled AUROC | Forest minus scalar |
+|---|---|---|
+| rwm-brf | 0.544 [0.453, 0.629] | — |
+| Elapsed time | 0.582 [0.552, 0.650] | -0.037 [-0.125, 0.091] |
+| βN | 0.541 [0.439, 0.643] | 0.004 [-0.112, 0.134] |
+| βN/li | 0.595 [0.494, 0.696] | -0.051 [-0.167, 0.072] |
+| RWM screen | 0.500 [0.500, 0.500] | — |
+
+All three forest-minus-scalar intervals include zero. This phase- and
+campaign-controlled ranking establishes no forest advantage; the nominal
+intervals are unadjusted for multiplicity. It remains conditional on the assumed
+negative mask, rather than a test of onset-specific alarm skill. Sources:
+`E#/protocol/phase_controlled_auroc`, `E#/configs/<model>/phase_controlled_auroc`,
+`E#/paired/rwm-brf - <scalar>/phase_controlled_auroc`.
+
+A **single reference-split nested CV without `rot_core_khz` and `rot_mid_khz`**
+keeps the original outer shot sets, inner splits, seeds, hyperparameters and
+training-only imputation. Original models are unchanged. Primary AUROC becomes
+**0.752 [0.700, 0.803]**, change **−0.008 [−0.021, +0.005]**; broad AUROC becomes
+**0.754 [0.686, 0.810]**, change **+0.014 [−0.001, +0.028]**. Changes are no rotation
+minus original forest, with **1,000 fixed-prediction basic paired shot resamples**.
+Both intervals include zero. This bounds input dependence on ZIPFIT rotation for
+one split; it does not quantify upstream timing bias or eliminate other acausal
+inputs. Sources: `A#/{removed_columns,protocol,metrics,paired_change}`.
 
 Broad pooled paired forest-minus-time AUROC is
 **+0.350 [0.287, 0.414]** (run-record holdout **+0.362 [0.304, 0.428]**), while
@@ -346,9 +425,9 @@ Reference split-0 scores (95% shot CIs; `E#/configs/<model>/metrics`):
 |---|---|---|---|---|
 | rwm-brf | 0.760 [0.706, 0.809] | 0.740 [0.668, 0.799] | 0.163 [0.123, 0.220] | 0.275 [0.227, 0.337] |
 | Elapsed time | 0.759 [0.712, 0.815] | 0.390 [0.333, 0.440] | 0.228 [0.212, 0.307] | 0.267 [0.217, 0.331] |
-| beta_N | 0.707 [0.639, 0.772] | 0.715 [0.641, 0.776] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] |
-| beta_N/l_i | 0.723 [0.664, 0.784] | 0.752 [0.688, 0.815] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] |
-| Candidate screen | 0.500 [0.500, 0.500] | 0.498 [0.495, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] |
+| βN | 0.707 [0.639, 0.772] | 0.715 [0.641, 0.776] | 0.166 [0.128, 0.246] | 0.246 [0.194, 0.312] |
+| βN/li | 0.723 [0.664, 0.784] | 0.752 [0.688, 0.815] | 0.159 [0.127, 0.232] | 0.261 [0.212, 0.328] |
+| RWM screen | 0.500 [0.500, 0.500] | 0.498 [0.495, 0.500] | 0.084 [0.070, 0.102] | 0.000 [0.000, 0.000] |
 
 Elapsed time's higher point AUPRC does not establish a difference: forest-minus-
 time AUPRC is **−0.065 [−0.100, 0.016]** under the basic paired bootstrap. Its top
@@ -372,8 +451,10 @@ include 0). The run-record holdout warns **8/48**: detection **0.167
 Sources: `E#/split_sensitivity/alarm_ranges` and
 `E#/leave_one_run_record_out/{counts,metrics}`.
 
-The reference split (seed 0) warns **9/48** onsets: **6 Detected / 22 Missed /
-2 Early** among 30 n=1 target shots, plus 3 No target. Detection is **0.188
+The reference split (seed 0) warns **9/48** onsets using all alarms; the first
+considered alarm gives **2 Detected / 6 Early / 22 Missed** among 30 n=1 target
+shots, plus 3 No target. The any-alarm category sensitivity gives
+**6 Detected / 2 Early / 22 Missed**. Per-onset detection is **0.188
 [0.049, 0.333]**, approximate reference **0.190 [0.080, 0.302]**, difference
 **−0.002 [−0.058, 0.052]**, median warning **356 ms [286, 389]**. All four
 rules were compared on the reference split only; their alarm results were not
@@ -438,19 +519,19 @@ inputs require no fetching. Build/fit with `rwm_build.py`, `rwm_growth.py`,
 `rwm_evaluate.py --workers 5 --replicates 1000`; render with `rwm_tables.py` and
 `rwm_figure.py`, all under `scripts/labeler/`.
 
-This round runs `rwm_build.py` for the physical export, then
-`rwm_evaluate.py --rescore-saved --workers 5 --replicates 1000` for paired
-within-shot intervals. Saved predictions, forecast labels, fitted parameters and
-thresholds remain unchanged; there is no refitting, retuning or fetching. Render
-with `rwm_tables.py` and `rwm_figure.py`.
+To recompute metrics from fixed predictions and fold rules, use
+`rwm_evaluate.py --rescore-saved --workers 5 --replicates 1000`.
+The rotation sensitivity uses `rwm_rotation_ablation.py` for one reference-split
+CV; its `--rescore-saved` option reuses that sensitivity's predictions.
+Render with `rwm_tables.py` and `rwm_figure.py`.
 
 Large artifacts live under `$LABELER_ROOT/round4/rwm/`. The figure
 `rwm_onset_scores.{pdf,png}` shows six Hanson and two comparison shots selected by
 shot number/matching, rather than score. F records caption, source rows and
-selection. The figure caption flags 156785 alongside 156796 and 158022; it
+selection. The figure caption describes 156785 alongside 156796 and 158022; it
 illustrates scores, not verified physical growth extent. The main paper table
-`table_rwm.tex` uses one aligned tabular for primary, broad and within-shot mean
-AUROC, AUPRC, F1, TPR/FPR, and a separate Legacy block. Supplements
+`table_rwm.tex` uses one aligned tabular for primary, broad, within-shot mean and
+phase-controlled AUROC, AUPRC, F1, TPR/FPR, and a separate Legacy block. Supplements
 (`table_rwm_split_summary.tex`, `table_rwm_within_shot.tex`,
 `table_rwm_campaign_pairs.tex`, `table_rwm_alarms.tex`,
 `table_rwm_onset_actual.tex`, `table_rwm_onset_window.tex`) hold split/campaign
@@ -459,40 +540,3 @@ Small LaTeX sources are committed under `outputs/labeler/rwm/`; compiled PDFs an
 150-dpi PNGs live under `$LABELER_ROOT/round4/rwm/`. P records each cell's source,
 artifact hashes and compilation/visual checks. Compile with `booktabs` and
 `longtable` in a minimal standalone document.
-
-## Appendix: fix history
-
-- **Round 1:** separated confirmed points, conventional weak extent and assumed
-  absence; removed comparison-negative fitting and development-biased nnPU
-  claims; added phase rules, conditional scores and growth-search controls.
-- **Round 2:** tiled explicit unassessed physical time and preserved evidence in
-  the reader; added campaign/run-record checks, primary/full alarm scopes,
-  per-shot categories, F1 and separately sourced NSTX Legacy results.
-- **Round 3:** replaced single-split qualitative headlines with five-split ranges
-  and paired elapsed-time results, qualified alarms with their random reference,
-  named the holdout by run record, documented matching/span asymmetry and the
-  pre-onset convention, and aligned/compiled the paper table. This protocol is the
-  current readout; earlier report sections are historical snapshots.
-
-- **Round 4:** added paired campaign/run-record references and five-split alarm
-  ranges; described the 2014 conditional failure and seed-3 borderline interval;
-  changed unverified pre-onset physical windows to uncertain; added onset physics
-  with explicit sampling times, documented offline input timing/rotation units,
-  and probed candidate n=1 archive amplitudes without claiming validated sensor
-  provenance. The current tables include slice TPR/FPR and labelled paired strata.
-
-- **Round 5:** made the primary-mask time-ranking mechanism explicit; added
-  per-shot AUROC and broad paired comparisons; corrected interval descriptions,
-  campaign-holdout captions and physics notes; renamed uncertain-window exports
-  and regenerated scoped LaTeX sources.
-
-- **Round 6:** shortened the lead/caption; displayed broad and within-shot scores;
-  moved ranges to supplements; clarified nonsignificance, 2014 inversion, rule
-  multiplicity, unexplained collapses, actuator context, recorded rotation units
-  and the two category-2 evidence tiers. Fits and evaluation results are unchanged.
-
-- **Round 7:** added paired shot-bootstrap intervals for within-shot differences
-  by saved-prediction replay, qualified the scalar comparisons, added one minimal
-  10 ms present slice per onset, renamed task-specific rules and Legacy stable-shot
-  keys, and clipped random-alarm warning windows to each scored span. Forecast
-  labels and classifier scores remain unchanged.

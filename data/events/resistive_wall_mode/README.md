@@ -17,9 +17,9 @@ often ends a high-beta_N discharge in a disruption; error-field amplification
 First identified in the mid 1990s in DIII-D wall-stabilised high-beta experiments
 and on the HBT-EP and PBX-M devices.
 
-Typically found via low-frequency (0-10 kHz) n = 1 magnetics - saddle loops and
-poloidal probe arrays - as a slowly growing, slowly rotating or locked mode near the
-no-wall limit.
+RWMs are locked or slowly rotating (≪ 100 Hz), detected with low-frequency n = 1
+magnetics such as saddle loops and poloidal probe arrays near the no-wall limit.
+The 0–10 kHz band describes tearing modes, rather than RWM rotation.
 
 ## Data Provenance
 ### Dataset 1
@@ -38,7 +38,7 @@ no-wall limit.
 
 **Author**: built here from Dataset 1 and DIII-D inputs fetched for 208 candidate shots (raw cache `$LABELER_ROOT/raw`).
 
-**Description**: Onset-derived uncertain windows (ONSET_TIME detection meaning unconfirmed), assumed-absent spans before the first Hanson precursor, explicit category 4 unassessed precursor/post-onset time, and unlabelled screen spans on matched comparison shots. The review reader preserves the interval CSV's JSON `attrs.evidence_tier`; only Dataset 1's onset points are verified evidence. No post-onset physical absence is inferred without termination evidence. Counts, matching, frozen-cohort checks and input audit: `outputs/labeler/rwm/shots.json`.
+**Description**: One minimal category-1 present slice [o, o+10 ms) per onset records presence without measuring duration; category-2 pre-onset windows remain uncertain (ONSET_TIME detection meaning unconfirmed). The export also contains assumed-absent spans before the first Hanson precursor, explicit category 4 unassessed precursor/post-onset time, and unlabelled screen spans on matched comparison shots. The review reader preserves the interval CSV's JSON `attrs.evidence_tier`; only Dataset 1's onset points are verified evidence. No post-onset physical absence is inferred without termination evidence. Counts, matching, frozen-cohort checks and input audit: `outputs/labeler/rwm/shots.json`.
 
 **Publications**:
 
@@ -56,13 +56,20 @@ no-wall limit.
 - rwm-rule-rwm-candidates | 2026_10_03 | Primary AUROC: 0.500 [0.500, 0.500] | Broad AUROC: 0.498 [0.495, 0.500] | AUPRC: 0.084 [0.070, 0.102] | F1: 0.000 [0.000, 0.000]
 
 No AUROC advantage over the strongest scalar, or onset-specific warning skill,
-was established. Paired within-shot intervals place the forest below beta_N/l_i
-on the primary mask; neither beta_N mask nor broad beta_N/l_i is distinguishable.
+was established. Within shot, the forest is **0.02–0.07 below βN and βN/li on both
+masks (one of four unadjusted intervals excludes zero)**. Intervals are exploratory,
+unadjusted for multiple comparisons.
 Primary/broad point means are forest **0.784/0.719**, beta_N **0.814/0.739**,
-beta_N/l_i **0.855/0.786**, elapsed time **0.931/0.417**. Elapsed time's primary
-median is **1.0**, reflecting negatives truncated at the last onset.
+beta_N/l_i **0.855/0.786**, elapsed time **0.931/0.417**. Elapsed time's **0.931**
+primary mean is an artefact of the mask's cutoff at the last onset (median **1.0**).
 Sources: `evaluation.json/configs/<model>/within_shot_auroc` and
 `evaluation.json/paired/rwm-brf - <scalar>/within_shot_auroc`.
+
+
+Within campaign and 200 ms elapsed-time bins, primary AUROC is **0.544
+[0.453, 0.629]** for the forest, versus **0.582** elapsed time, **0.541** βN and
+**0.595** βN/li. All paired forest-minus-scalar intervals include zero. Source:
+`evaluation.json/{configs/<model>,paired/rwm-brf - <scalar>}/phase_controlled_auroc`.
 
 In 2014 high-beta, the forest is below chance on the reference split
 (**0.311 [0.22, 0.41]**); the scalar rules are near chance. Forest detection ranges
@@ -82,7 +89,7 @@ development code and contribute to none of these results.
 
 - `betan`, `li`, `q95`, `qmin`, `wmhd`, `ip`, with beta_N/l_i and beta_N-4l_i derived.
 - `n1rms`, `n2rms`: postprocessed magnetic RMS, trailing mean, peak and log-slope calculations; upstream timing is uncertain. N1RMS is not a direct RWM sensor.
-- ZIPFIT toroidal rotation at fixed rho=0.25 (core) and rho=0.625 (mid-radius, not an identified q=2 surface); its upstream time smoothing is acausal, with timing bias unbounded here. The inherited `rot_*_khz` columns retain recorded `units_from_source=kHz`; krad/s is an unresolved physical-unit hypothesis, and no conversion is applied. No rotation ablation is needed because no skill or rotation benefit is claimed.
+- ZIPFIT toroidal rotation at fixed rho=0.25 (core) and rho=0.625 (mid-radius, not an identified q=2 surface); its upstream time smoothing is acausal, with timing bias unbounded here. The inherited `rot_*_khz` columns retain recorded `units_from_source=kHz`; krad/s is an unresolved physical-unit hypothesis, and no conversion is applied. A reference-split CV without rotation yields primary AUROC 0.752, change −0.008 [−0.021, +0.005], and broad AUROC 0.754, change +0.014 [−0.001, +0.028] (no rotation minus original forest; `outputs/labeler/rwm/rotation_ablation.json/{metrics,paired_change}`). This sensitivity measures input dependence, not upstream timing bias.
 - `dusbradial` is excluded: it is zero on most 2014 traces and flagged corrupted for 176030-176912, including all 2018 Hanson shots. The exact zero/nonzero audit is in `shots.json/input_audit`. The isolated OPERATIONS CN1BAMP/ILN1BAMP/IUN1BAMP probe succeeded on three Hanson shots, but corrected RWM-sensor semantics remain unverified; no candidate was added to model inputs (see `outputs/labeler/rwm/sensor_probe.json`).
 
 **rules**: beta_N, beta_N/l_i, elapsed time since the first |Ip| ≥0.5 MA sample, and the existing `rwm_candidates` call. The analysis span and the candidate screen's whole-flat-top median/MAD threshold are retrospective; the screen is not a causal alarm comparator.
@@ -97,7 +104,8 @@ spans. Forecast labels remain separate: a 100 ms horizon, pre-last-onset
 negatives, and aftermath/n=2 exclusions. Five outer and three inner shot-grouped
 folds keep tuning inside training shots; five split seeds and four run-record
 holdouts assess sensitivity. Offline magnetic timing and acausal ZIPFIT limit
-online interpretation. This round rescores saved predictions without refitting.
+online interpretation. Per-shot Detected/Early/Missed uses the first considered
+alarm; any-alarm precedence is a labelled sensitivity.
 See [protocol and reproduction](../../../docs/labeler/rwm_baseline.md) and
 [evaluation.json](../../../outputs/labeler/rwm/evaluation.json) for scores and intervals.
 

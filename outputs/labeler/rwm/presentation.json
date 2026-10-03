@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "903c353f982b3dd893c89009bb3d099f86e842d5684cf0d7fc21f1a9cec0dea4",
+  "source_sha256": "1a726d4de3539219a6e57a5b4738d5ca326f22d9ae4b154cca1a2ea1cdd829b6",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -47,6 +47,12 @@
           "json_path": "configs.rwm-brf.within_shot_auroc.primary.mean",
           "estimate": 0.7836439827099465,
           "n_shots": 30
+        },
+        "phase_controlled_auroc": {
+          "json_path": "configs.rwm-brf.phase_controlled_auroc",
+          "estimate": 0.5441252317428455,
+          "low": 0.4534909213385078,
+          "high": 0.6288685755799931
         }
       },
       "rwm-rule-elapsed-time": {
@@ -90,6 +96,12 @@
           "json_path": "configs.rwm-rule-elapsed-time.within_shot_auroc.primary.mean",
           "estimate": 0.9309497992055623,
           "n_shots": 30
+        },
+        "phase_controlled_auroc": {
+          "json_path": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
+          "estimate": 0.5816013604873221,
+          "low": 0.5519475509028573,
+          "high": 0.6496287629716558
         }
       },
       "rwm-rule-betan": {
@@ -133,6 +145,12 @@
           "json_path": "configs.rwm-rule-betan.within_shot_auroc.primary.mean",
           "estimate": 0.8144481602535586,
           "n_shots": 30
+        },
+        "phase_controlled_auroc": {
+          "json_path": "configs.rwm-rule-betan.phase_controlled_auroc",
+          "estimate": 0.5405776495351203,
+          "low": 0.4394491783838339,
+          "high": 0.6427899899636456
         }
       },
       "rwm-rule-betan-over-li": {
@@ -176,6 +194,12 @@
           "json_path": "configs.rwm-rule-betan-over-li.within_shot_auroc.primary.mean",
           "estimate": 0.8546671454496839,
           "n_shots": 30
+        },
+        "phase_controlled_auroc": {
+          "json_path": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
+          "estimate": 0.5946625963562358,
+          "low": 0.4939690191534765,
+          "high": 0.6956327521842156
         }
       },
       "rwm-rule-rwm-candidates": {
@@ -219,11 +243,17 @@
           "json_path": "configs.rwm-rule-rwm-candidates.within_shot_auroc.primary.mean",
           "estimate": 0.5,
           "n_shots": 30
+        },
+        "phase_controlled_auroc": {
+          "json_path": "configs.rwm-rule-rwm-candidates.phase_controlled_auroc",
+          "estimate": 0.5,
+          "low": 0.5,
+          "high": 0.5
         }
       }
     },
-    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\\% shot-bootstrap intervals at fixed predictions. Within-shot point means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established. Paired within-shot intervals place the forest below $\\beta_N/l_i$ on primary; neither $\\beta_N$ mask nor broad $\\beta_N/l_i$ is distinguishable (Supplement). Legacy uses different inputs and validation; results are not comparable.",
-    "caption_words": 80,
+    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: exploratory 95\\% shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Within-shot means weight two-class shots equally; elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Within shot, the forest is 0.02--0.07 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (one of four unadjusted intervals excludes zero). Phase-controlled AUROC compares pairs within campaign and 200 ms elapsed-time bins; all paired forest-minus-scalar intervals include zero (Supplement). Legacy uses different inputs and validation.",
+    "caption_words": 100,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -263,7 +293,7 @@
     "split_summary": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
-      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: 95\\% shot-bootstrap intervals at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only.",
+      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only.",
       "source": {
         "split_sensitivity.auroc_ranges": {
           "pooled": {
@@ -679,16 +709,31 @@
               "high": 343.0
             },
             "hanson_shot_detection_rate": {
+              "estimate": 0.1,
+              "low": 0.0,
+              "high": 0.22580645161290322
+            },
+            "hanson_any_alarm_shot_detection_rate": {
               "estimate": 0.2,
               "low": 0.06890804597701154,
               "high": 0.35714285714285715
             },
             "hanson_shot_early_rate": {
+              "estimate": 0.13333333333333333,
+              "low": 0.03225806451612903,
+              "high": 0.27586206896551724
+            },
+            "hanson_any_alarm_shot_early_rate": {
               "estimate": 0.03333333333333333,
               "low": 0.0,
               "high": 0.1072420634920634
             },
             "hanson_shot_miss_rate": {
+              "estimate": 0.7666666666666667,
+              "low": 0.6071428571428571,
+              "high": 0.896551724137931
+            },
+            "hanson_any_alarm_shot_miss_rate": {
               "estimate": 0.7666666666666667,
               "low": 0.6071428571428571,
               "high": 0.896551724137931
@@ -822,16 +867,31 @@
                 "high": 305.54999999999995
               },
               "hanson_shot_detection_rate": {
+                "estimate": 0.05555555555555555,
+                "low": 0.0,
+                "high": 0.16666666666666666
+              },
+              "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.0,
                 "high": 0.35
               },
               "hanson_shot_early_rate": {
+                "estimate": 0.1111111111111111,
+                "low": 0.0,
+                "high": 0.2777777777777778
+              },
+              "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.0,
                 "low": 0.0,
                 "high": 0.0
               },
               "hanson_shot_miss_rate": {
+                "estimate": 0.8333333333333334,
+                "low": 0.65,
+                "high": 1.0
+              },
+              "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.8333333333333334,
                 "low": 0.65,
                 "high": 1.0
@@ -964,16 +1024,31 @@
                 "high": 343.0
               },
               "hanson_shot_detection_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.0,
+                "high": 0.38461538461538464
+              },
+              "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.25,
                 "low": 0.0,
                 "high": 0.5
               },
               "hanson_shot_early_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.0,
+                "high": 0.4166666666666667
+              },
+              "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.08333333333333333,
                 "low": 0.0,
                 "high": 0.2505681818181813
               },
               "hanson_shot_miss_rate": {
+                "estimate": 0.6666666666666666,
+                "low": 0.38461538461538464,
+                "high": 0.9166666666666666
+              },
+              "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.6666666666666666,
                 "low": 0.38461538461538464,
                 "high": 0.9166666666666666
@@ -1107,16 +1182,31 @@
               "high": 196.0999999999999
             },
             "hanson_shot_detection_rate": {
+              "estimate": 0.0,
+              "low": -0.13333333333333333,
+              "high": 0.1334482758620689
+            },
+            "hanson_any_alarm_shot_detection_rate": {
               "estimate": 0.1,
               "low": -0.02580645161290321,
               "high": 0.2
             },
             "hanson_shot_early_rate": {
+              "estimate": 0.06666666666666667,
+              "low": -0.06666666666666665,
+              "high": 0.1690806878306878
+            },
+            "hanson_any_alarm_shot_early_rate": {
               "estimate": -0.03333333333333333,
               "low": -0.06666666666666667,
               "high": 0.04047619047619047
             },
             "hanson_shot_miss_rate": {
+              "estimate": -0.06666666666666665,
+              "low": -0.16908068783068786,
+              "high": 0.06666666666666676
+            },
+            "hanson_any_alarm_shot_miss_rate": {
               "estimate": -0.06666666666666665,
               "low": -0.16908068783068786,
               "high": 0.06666666666666676
@@ -1168,7 +1258,7 @@
     "within_shot": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
-      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0). The forest is below $\\beta_N/l_i$ on primary; neither $\\beta_N$ mask nor broad $\\beta_N/l_i$ is distinguishable. It is below elapsed time on primary and above it on broad. One-class shots are omitted; comparisons are unlabelled.",
+      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.02--0.07 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (one of four unadjusted intervals excludes zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 200 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
       "source": {
         "paired_within_shot_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
@@ -1212,6 +1302,50 @@
               "low": -0.13702868990745856,
               "high": 0.00219867902272064
             }
+          }
+        },
+        "phase_controlled_auroc": {
+          "rwm-brf": {
+            "estimate": 0.5441252317428455,
+            "low": 0.4534909213385078,
+            "high": 0.6288685755799931
+          },
+          "rwm-rule-elapsed-time": {
+            "estimate": 0.5816013604873221,
+            "low": 0.5519475509028573,
+            "high": 0.6496287629716558
+          },
+          "rwm-rule-betan": {
+            "estimate": 0.5405776495351203,
+            "low": 0.4394491783838339,
+            "high": 0.6427899899636456
+          },
+          "rwm-rule-betan-over-li": {
+            "estimate": 0.5946625963562358,
+            "low": 0.4939690191534765,
+            "high": 0.6956327521842156
+          },
+          "rwm-rule-rwm-candidates": {
+            "estimate": 0.5,
+            "low": 0.5,
+            "high": 0.5
+          }
+        },
+        "paired_phase_controlled_auroc": {
+          "rwm-brf - rwm-rule-elapsed-time": {
+            "estimate": -0.03747612874447659,
+            "low": -0.12450675806146302,
+            "high": 0.09122205862995181
+          },
+          "rwm-brf - rwm-rule-betan": {
+            "estimate": 0.0035475822077252195,
+            "low": -0.11209051487950976,
+            "high": 0.13417312841722806
+          },
+          "rwm-brf - rwm-rule-betan-over-li": {
+            "estimate": -0.0505373646133902,
+            "low": -0.16685823212246848,
+            "high": 0.07225576089990518
           }
         },
         "configs.rwm-brf.within_shot_auroc": {
@@ -1279,7 +1413,7 @@
     "campaign_pairs": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_campaign_pairs.tex",
-      "caption": "Forest minus elapsed time by campaign. Brackets: 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
+      "caption": "Forest minus elapsed time by campaign. Brackets: exploratory 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
       "source": {
         "split_sensitivity.paired_time_by_campaign": {
           "2014": {
@@ -1678,717 +1812,972 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All four rules were compared on the reference split only; their alarm results were not replayed over seeds 1--4.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. D/E/M: Detected/Early/Missed among 30 target shots. The first considered alarm decides the primary shot category; any-warning precedence is a sensitivity. Per-onset counts retain all alarms. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions and unadjusted for multiplicity. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All four rules were compared on the reference split only; their alarm results were not replayed over seeds 1--4.",
       "source": {
         "configs.rwm-brf": {
           "0": {
-            "slice_auroc": {
-              "estimate": 0.7602021883920076,
-              "low": 0.7058712054691425,
-              "high": 0.809161269108473
+            "metrics": {
+              "slice_auroc": {
+                "estimate": 0.7602021883920076,
+                "low": 0.7058712054691425,
+                "high": 0.809161269108473
+              },
+              "slice_auprc": {
+                "estimate": 0.16304825671489243,
+                "low": 0.12255501411878099,
+                "high": 0.21989172028956308
+              },
+              "broad_auroc": {
+                "estimate": 0.7395949926583862,
+                "low": 0.6684464461630325,
+                "high": 0.7990014888281666
+              },
+              "broad_auprc": {
+                "estimate": 0.06507217205517342,
+                "low": 0.042721200834610715,
+                "high": 0.10329684532486956
+              },
+              "high_beta_auroc": {
+                "estimate": 0.6021780297512571,
+                "low": 0.4910802032725228,
+                "high": 0.6881463994312261
+              },
+              "high_beta_auprc": {
+                "estimate": 0.16785884001570783,
+                "low": 0.12267115467999315,
+                "high": 0.2279026522395914
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.5455878667229984,
+                "low": 0.41598876744340335,
+                "high": 0.6421652382793495
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.17610580154667518,
+                "low": 0.12954093193398886,
+                "high": 0.24013785290265766
+              },
+              "slice_tpr": {
+                "estimate": 0.75625,
+                "low": 0.6456429450369155,
+                "high": 0.86875
+              },
+              "slice_fpr": {
+                "estimate": 0.3421503330161751,
+                "low": 0.2614966232303802,
+                "high": 0.42092874813984527
+              },
+              "slice_precision": {
+                "estimate": 0.16797778806108282,
+                "low": 0.133228141878858,
+                "high": 0.21863721969635289
+              },
+              "slice_f1": {
+                "estimate": 0.27489587277546385,
+                "low": 0.22652481957565895,
+                "high": 0.3366447880743131
+              },
+              "onset_detection_rate": {
+                "estimate": 0.1875,
+                "low": 0.04875145180023232,
+                "high": 0.3333333333333333
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.18965877180492585,
+                "low": 0.07954273659426815,
+                "high": 0.3024669369763545
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": -0.002158771804925852,
+                "low": -0.05818040847971017,
+                "high": 0.052070112093482064
+              },
+              "warning_ms_mean": {
+                "estimate": 308.09444444444443,
+                "low": 251.107,
+                "high": 362.55833333333334
+              },
+              "warning_ms_median": {
+                "estimate": 356.0,
+                "low": 286.0,
+                "high": 389.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.06666666666666667,
+                "low": 0.0,
+                "high": 0.1724137931034483
+              },
+              "hanson_any_alarm_shot_detection_rate": {
+                "estimate": 0.2,
+                "low": 0.06666666666666667,
+                "high": 0.35489631336405525
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.2,
+                "low": 0.06451612903225806,
+                "high": 0.3548387096774194
+              },
+              "hanson_any_alarm_shot_early_rate": {
+                "estimate": 0.06666666666666667,
+                "low": 0.0,
+                "high": 0.17865259740259734
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.7333333333333333,
+                "low": 0.5666666666666667,
+                "high": 0.8928571428571429
+              },
+              "hanson_any_alarm_shot_miss_rate": {
+                "estimate": 0.7333333333333333,
+                "low": 0.5666666666666667,
+                "high": 0.8928571428571429
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.21212121212121213,
+                "low": 0.09090909090909091,
+                "high": 0.36363636363636365
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.5454545454545454,
+                "low": 0.18181818181818182,
+                "high": 0.9704545454545448
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.3333333333333333,
+                "low": 0.18181818181818182,
+                "high": 0.5151515151515151
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 1.878787878787879,
+                "low": 0.6060606060606061,
+                "high": 3.5166666666666653
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.24242424242424243,
+                "low": 0.09090909090909091,
+                "high": 0.3939393939393939
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.8787878787878788,
+                "low": 0.24242424242424243,
+                "high": 1.696969696969697
+              },
+              "comparison_alarm_incidence": {
+                "estimate": 0.14393939393939395,
+                "low": 0.08333333333333333,
+                "high": 0.21212121212121213
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": 0.6363636363636364,
+                "low": 0.30284090909090927,
+                "high": 1.0378787878787878
+              }
             },
-            "slice_auprc": {
-              "estimate": 0.16304825671489243,
-              "low": 0.12255501411878099,
-              "high": 0.21989172028956308
-            },
-            "broad_auroc": {
-              "estimate": 0.7395949926583862,
-              "low": 0.6684464461630325,
-              "high": 0.7990014888281666
-            },
-            "broad_auprc": {
-              "estimate": 0.06507217205517342,
-              "low": 0.042721200834610715,
-              "high": 0.10329684532486956
-            },
-            "high_beta_auroc": {
-              "estimate": 0.6021780297512571,
-              "low": 0.4910802032725228,
-              "high": 0.6881463994312261
-            },
-            "high_beta_auprc": {
-              "estimate": 0.16785884001570783,
-              "low": 0.12267115467999315,
-              "high": 0.2279026522395914
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.5455878667229984,
-              "low": 0.41598876744340335,
-              "high": 0.6421652382793495
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.17610580154667518,
-              "low": 0.12954093193398886,
-              "high": 0.24013785290265766
-            },
-            "slice_tpr": {
-              "estimate": 0.75625,
-              "low": 0.6456429450369155,
-              "high": 0.86875
-            },
-            "slice_fpr": {
-              "estimate": 0.3421503330161751,
-              "low": 0.2614966232303802,
-              "high": 0.42092874813984527
-            },
-            "slice_precision": {
-              "estimate": 0.16797778806108282,
-              "low": 0.133228141878858,
-              "high": 0.21863721969635289
-            },
-            "slice_f1": {
-              "estimate": 0.27489587277546385,
-              "low": 0.22652481957565895,
-              "high": 0.3366447880743131
-            },
-            "onset_detection_rate": {
-              "estimate": 0.1875,
-              "low": 0.04875145180023232,
-              "high": 0.3333333333333333
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.18965877180492585,
-              "low": 0.07954273659426815,
-              "high": 0.3024669369763545
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": -0.002158771804925852,
-              "low": -0.05818040847971017,
-              "high": 0.052070112093482064
-            },
-            "warning_ms_mean": {
-              "estimate": 308.09444444444443,
-              "low": 251.107,
-              "high": 362.55833333333334
-            },
-            "warning_ms_median": {
-              "estimate": 356.0,
-              "low": 286.0,
-              "high": 389.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.2,
-              "low": 0.06666666666666667,
-              "high": 0.35489631336405525
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.06666666666666667,
-              "low": 0.0,
-              "high": 0.17865259740259734
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.7333333333333333,
-              "low": 0.5666666666666667,
-              "high": 0.8928571428571429
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.21212121212121213,
-              "low": 0.09090909090909091,
-              "high": 0.36363636363636365
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.5454545454545454,
-              "low": 0.18181818181818182,
-              "high": 0.9704545454545448
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.3333333333333333,
-              "low": 0.18181818181818182,
-              "high": 0.5151515151515151
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 1.878787878787879,
-              "low": 0.6060606060606061,
-              "high": 3.5166666666666653
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.24242424242424243,
-              "low": 0.09090909090909091,
-              "high": 0.3939393939393939
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.8787878787878788,
-              "low": 0.24242424242424243,
-              "high": 1.696969696969697
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.14393939393939395,
-              "low": 0.08333333333333333,
-              "high": 0.21212121212121213
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 0.6363636363636364,
-              "low": 0.30284090909090927,
-              "high": 1.0378787878787878
+            "counts": {
+              "hanson_shots": 33,
+              "comparison_shots": 132,
+              "positive_slices": 480,
+              "negative_slices": 5255,
+              "excluded_slices": 9184,
+              "comparison_slices": 68006,
+              "target_onsets": 48,
+              "onsets_warned": 9,
+              "hanson_target_shots": 30,
+              "hanson_detected_shots": 2,
+              "hanson_early_shots": 6,
+              "hanson_missed_shots": 22,
+              "hanson_no_target_shots": 3,
+              "hanson_shots_with_an_unexplained_alarm": 8,
+              "comparison_shots_with_an_alarm": 19,
+              "hanson_any_alarm_detected_shots": 6,
+              "hanson_any_alarm_early_shots": 2,
+              "hanson_any_alarm_missed_shots": 22,
+              "hanson_early_alarms": 18,
+              "hanson_shots_with_an_early_alarm": 7,
+              "hanson_ignored_alarms": 62,
+              "hanson_shots_with_an_ignored_alarm": 11,
+              "broad_positive_slices": 480,
+              "broad_negative_slices": 13848,
+              "broad_prevalence": 0.03350083752093802,
+              "high_beta_positive_slices": 365,
+              "high_beta_negative_slices": 2351,
+              "high_beta_prevalence": 0.13438880706921943,
+              "above_proxy_positive_slices": 365,
+              "above_proxy_negative_slices": 1913,
+              "above_proxy_prevalence": 0.16022827041264268,
+              "prevalence": 0.08369659982563209
             }
           },
           "1": {
-            "slice_auroc": {
-              "estimate": 0.787127339042182,
-              "low": 0.737339691639711,
-              "high": 0.8317169058907558
+            "metrics": {
+              "slice_auroc": {
+                "estimate": 0.787127339042182,
+                "low": 0.737339691639711,
+                "high": 0.8317169058907558
+              },
+              "slice_auprc": {
+                "estimate": 0.18208972013840233,
+                "low": 0.1452040697069264,
+                "high": 0.23576398832363993
+              },
+              "broad_auroc": {
+                "estimate": 0.7715524504140189,
+                "low": 0.7044017914427724,
+                "high": 0.8220113060786872
+              },
+              "broad_auprc": {
+                "estimate": 0.0746940812761727,
+                "low": 0.049761493867521635,
+                "high": 0.1197806947355545
+              },
+              "high_beta_auroc": {
+                "estimate": 0.651469791344983,
+                "low": 0.5572291965046964,
+                "high": 0.7308028602531655
+              },
+              "high_beta_auprc": {
+                "estimate": 0.1888675682139903,
+                "low": 0.14854712785542273,
+                "high": 0.24805484185652746
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.6032395505875445,
+                "low": 0.4948876904920942,
+                "high": 0.6991601586254963
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.19765383378201223,
+                "low": 0.15515777918187887,
+                "high": 0.26176328412055744
+              },
+              "slice_tpr": {
+                "estimate": 0.8104166666666667,
+                "low": 0.7,
+                "high": 0.9130961791831356
+              },
+              "slice_fpr": {
+                "estimate": 0.3082778306374881,
+                "low": 0.23118487520420342,
+                "high": 0.38392559520826247
+              },
+              "slice_precision": {
+                "estimate": 0.19362867098058736,
+                "low": 0.15651171294817845,
+                "high": 0.24929432437886828
+              },
+              "slice_f1": {
+                "estimate": 0.31257533145841704,
+                "low": 0.26145777345733695,
+                "high": 0.38256826463489657
+              },
+              "onset_detection_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.046485200845665986,
+                "high": 0.302376137512639
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.13554028224631146,
+                "low": 0.05895974343394192,
+                "high": 0.22414945114901733
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.031126384420355202,
+                "low": -0.04240892397503199,
+                "high": 0.11807471265783069
+              },
+              "warning_ms_mean": {
+                "estimate": 194.24374999999998,
+                "low": 115.48333333333328,
+                "high": 254.5
+              },
+              "warning_ms_median": {
+                "estimate": 179.25,
+                "low": 75.0,
+                "high": 343.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.03842592592592596,
+                "high": 0.3125
+              },
+              "hanson_any_alarm_shot_detection_rate": {
+                "estimate": 0.2,
+                "low": 0.0666129032258065,
+                "high": 0.34375
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.03571428571428571,
+                "high": 0.30775862068965515
+              },
+              "hanson_any_alarm_shot_early_rate": {
+                "estimate": 0.13333333333333333,
+                "low": 0.03223286290322583,
+                "high": 0.27586206896551724
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.6666666666666666,
+                "low": 0.5,
+                "high": 0.8275862068965517
+              },
+              "hanson_any_alarm_shot_miss_rate": {
+                "estimate": 0.6666666666666666,
+                "low": 0.5,
+                "high": 0.8275862068965517
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.18181818181818182,
+                "low": 0.06060606060606061,
+                "high": 0.3333333333333333
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.5757575757575758,
+                "low": 0.12121212121212122,
+                "high": 1.2121212121212122
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.3333333333333333,
+                "low": 0.18181818181818182,
+                "high": 0.48484848484848486
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 1.393939393939394,
+                "low": 0.42424242424242425,
+                "high": 2.9401515151515145
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.21212121212121213,
+                "low": 0.09090909090909091,
+                "high": 0.36363636363636365
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.9696969696969697,
+                "low": 0.18181818181818182,
+                "high": 2.0303030303030303
+              },
+              "comparison_alarm_incidence": {
+                "estimate": 0.2803030303030303,
+                "low": 0.20454545454545456,
+                "high": 0.3560606060606061
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": 1.7424242424242424,
+                "low": 1.0833333333333333,
+                "high": 2.4318181818181817
+              }
             },
-            "slice_auprc": {
-              "estimate": 0.18208972013840233,
-              "low": 0.1452040697069264,
-              "high": 0.23576398832363993
-            },
-            "broad_auroc": {
-              "estimate": 0.7715524504140189,
-              "low": 0.7044017914427724,
-              "high": 0.8220113060786872
-            },
-            "broad_auprc": {
-              "estimate": 0.0746940812761727,
-              "low": 0.049761493867521635,
-              "high": 0.1197806947355545
-            },
-            "high_beta_auroc": {
-              "estimate": 0.651469791344983,
-              "low": 0.5572291965046964,
-              "high": 0.7308028602531655
-            },
-            "high_beta_auprc": {
-              "estimate": 0.1888675682139903,
-              "low": 0.14854712785542273,
-              "high": 0.24805484185652746
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.6032395505875445,
-              "low": 0.4948876904920942,
-              "high": 0.6991601586254963
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.19765383378201223,
-              "low": 0.15515777918187887,
-              "high": 0.26176328412055744
-            },
-            "slice_tpr": {
-              "estimate": 0.8104166666666667,
-              "low": 0.7,
-              "high": 0.9130961791831356
-            },
-            "slice_fpr": {
-              "estimate": 0.3082778306374881,
-              "low": 0.23118487520420342,
-              "high": 0.38392559520826247
-            },
-            "slice_precision": {
-              "estimate": 0.19362867098058736,
-              "low": 0.15651171294817845,
-              "high": 0.24929432437886828
-            },
-            "slice_f1": {
-              "estimate": 0.31257533145841704,
-              "low": 0.26145777345733695,
-              "high": 0.38256826463489657
-            },
-            "onset_detection_rate": {
-              "estimate": 0.16666666666666666,
-              "low": 0.046485200845665986,
-              "high": 0.302376137512639
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.13554028224631146,
-              "low": 0.05895974343394192,
-              "high": 0.22414945114901733
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": 0.031126384420355202,
-              "low": -0.04240892397503199,
-              "high": 0.11807471265783069
-            },
-            "warning_ms_mean": {
-              "estimate": 194.24374999999998,
-              "low": 115.48333333333328,
-              "high": 254.5
-            },
-            "warning_ms_median": {
-              "estimate": 179.25,
-              "low": 75.0,
-              "high": 343.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.2,
-              "low": 0.0666129032258065,
-              "high": 0.34375
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.13333333333333333,
-              "low": 0.03223286290322583,
-              "high": 0.27586206896551724
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.6666666666666666,
-              "low": 0.5,
-              "high": 0.8275862068965517
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.18181818181818182,
-              "low": 0.06060606060606061,
-              "high": 0.3333333333333333
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.5757575757575758,
-              "low": 0.12121212121212122,
-              "high": 1.2121212121212122
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.3333333333333333,
-              "low": 0.18181818181818182,
-              "high": 0.48484848484848486
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 1.393939393939394,
-              "low": 0.42424242424242425,
-              "high": 2.9401515151515145
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.21212121212121213,
-              "low": 0.09090909090909091,
-              "high": 0.36363636363636365
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.9696969696969697,
-              "low": 0.18181818181818182,
-              "high": 2.0303030303030303
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.2803030303030303,
-              "low": 0.20454545454545456,
-              "high": 0.3560606060606061
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 1.7424242424242424,
-              "low": 1.0833333333333333,
-              "high": 2.4318181818181817
+            "counts": {
+              "hanson_shots": 33,
+              "comparison_shots": 132,
+              "positive_slices": 480,
+              "negative_slices": 5255,
+              "excluded_slices": 9184,
+              "comparison_slices": 68006,
+              "target_onsets": 48,
+              "onsets_warned": 8,
+              "hanson_target_shots": 30,
+              "hanson_detected_shots": 5,
+              "hanson_early_shots": 5,
+              "hanson_missed_shots": 20,
+              "hanson_no_target_shots": 3,
+              "hanson_shots_with_an_unexplained_alarm": 7,
+              "comparison_shots_with_an_alarm": 37,
+              "hanson_any_alarm_detected_shots": 6,
+              "hanson_any_alarm_early_shots": 4,
+              "hanson_any_alarm_missed_shots": 20,
+              "hanson_early_alarms": 19,
+              "hanson_shots_with_an_early_alarm": 6,
+              "hanson_ignored_alarms": 46,
+              "hanson_shots_with_an_ignored_alarm": 11,
+              "broad_positive_slices": 480,
+              "broad_negative_slices": 13848,
+              "broad_prevalence": 0.03350083752093802,
+              "high_beta_positive_slices": 365,
+              "high_beta_negative_slices": 2351,
+              "high_beta_prevalence": 0.13438880706921943,
+              "above_proxy_positive_slices": 365,
+              "above_proxy_negative_slices": 1913,
+              "above_proxy_prevalence": 0.16022827041264268,
+              "prevalence": 0.08369659982563209
             }
           },
           "2": {
-            "slice_auroc": {
-              "estimate": 0.7726976292419917,
-              "low": 0.7226837032846792,
-              "high": 0.8182598679369001
+            "metrics": {
+              "slice_auroc": {
+                "estimate": 0.7726976292419917,
+                "low": 0.7226837032846792,
+                "high": 0.8182598679369001
+              },
+              "slice_auprc": {
+                "estimate": 0.16811568033315555,
+                "low": 0.13750899370309574,
+                "high": 0.21890190786217206
+              },
+              "broad_auroc": {
+                "estimate": 0.7569735551463509,
+                "low": 0.6906883227866358,
+                "high": 0.809080922471949
+              },
+              "broad_auprc": {
+                "estimate": 0.06568301872063377,
+                "low": 0.04572895920451463,
+                "high": 0.09820389516070918
+              },
+              "high_beta_auroc": {
+                "estimate": 0.6310203177895737,
+                "low": 0.5375690873782902,
+                "high": 0.708582113297978
+              },
+              "high_beta_auprc": {
+                "estimate": 0.1732460155241267,
+                "low": 0.13811276608780548,
+                "high": 0.23065301887882889
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.5722318097515915,
+                "low": 0.4676392291814046,
+                "high": 0.6606874827463314
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.17977602353236946,
+                "low": 0.14390492796884127,
+                "high": 0.24066064073768084
+              },
+              "slice_tpr": {
+                "estimate": 0.8520833333333333,
+                "low": 0.7431737012987013,
+                "high": 0.9456275303643725
+              },
+              "slice_fpr": {
+                "estimate": 0.38705994291151286,
+                "low": 0.3152611315969693,
+                "high": 0.44875224228845073
+              },
+              "slice_precision": {
+                "estimate": 0.16741711011051985,
+                "low": 0.13619795199367818,
+                "high": 0.21544042927075246
+              },
+              "slice_f1": {
+                "estimate": 0.27984946972288743,
+                "low": 0.233908696541248,
+                "high": 0.3433134090260985
+              },
+              "onset_detection_rate": {
+                "estimate": 0.20833333333333334,
+                "low": 0.0850620567375887,
+                "high": 0.3396320754716981
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.17004983659295378,
+                "low": 0.07903660281664737,
+                "high": 0.2622371238129709
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.03828349674037956,
+                "low": -0.011749951009294025,
+                "high": 0.09430624911870472
+              },
+              "warning_ms_mean": {
+                "estimate": 231.15499999999997,
+                "low": 153.78482142857138,
+                "high": 306.89401785714284
+              },
+              "warning_ms_median": {
+                "estimate": 302.04999999999995,
+                "low": 56.44999999999982,
+                "high": 340.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.13333333333333333,
+                "low": 0.03225806451612903,
+                "high": 0.27586206896551724
+              },
+              "hanson_any_alarm_shot_detection_rate": {
+                "estimate": 0.23333333333333334,
+                "low": 0.09991935483870976,
+                "high": 0.4
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.03571428571428571,
+                "high": 0.3103448275862069
+              },
+              "hanson_any_alarm_shot_early_rate": {
+                "estimate": 0.06666666666666667,
+                "low": 0.0,
+                "high": 0.1724137931034483
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.7,
+                "low": 0.5185185185185185,
+                "high": 0.8621839080459769
+              },
+              "hanson_any_alarm_shot_miss_rate": {
+                "estimate": 0.7,
+                "low": 0.5185185185185185,
+                "high": 0.8621839080459769
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.18181818181818182,
+                "low": 0.06060606060606061,
+                "high": 0.3333333333333333
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.42424242424242425,
+                "low": 0.12121212121212122,
+                "high": 0.8181818181818182
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.36363636363636365,
+                "low": 0.21212121212121213,
+                "high": 0.5151515151515151
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 2.1515151515151514,
+                "low": 1.121212121212121,
+                "high": 3.3636363636363638
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.24242424242424243,
+                "low": 0.12121212121212122,
+                "high": 0.3939393939393939
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.48484848484848486,
+                "low": 0.18181818181818182,
+                "high": 0.8787878787878788
+              },
+              "comparison_alarm_incidence": {
+                "estimate": 0.17424242424242425,
+                "low": 0.10606060606060606,
+                "high": 0.24242424242424243
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": 0.7424242424242424,
+                "low": 0.3558712121212123,
+                "high": 1.143939393939394
+              }
             },
-            "slice_auprc": {
-              "estimate": 0.16811568033315555,
-              "low": 0.13750899370309574,
-              "high": 0.21890190786217206
-            },
-            "broad_auroc": {
-              "estimate": 0.7569735551463509,
-              "low": 0.6906883227866358,
-              "high": 0.809080922471949
-            },
-            "broad_auprc": {
-              "estimate": 0.06568301872063377,
-              "low": 0.04572895920451463,
-              "high": 0.09820389516070918
-            },
-            "high_beta_auroc": {
-              "estimate": 0.6310203177895737,
-              "low": 0.5375690873782902,
-              "high": 0.708582113297978
-            },
-            "high_beta_auprc": {
-              "estimate": 0.1732460155241267,
-              "low": 0.13811276608780548,
-              "high": 0.23065301887882889
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.5722318097515915,
-              "low": 0.4676392291814046,
-              "high": 0.6606874827463314
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.17977602353236946,
-              "low": 0.14390492796884127,
-              "high": 0.24066064073768084
-            },
-            "slice_tpr": {
-              "estimate": 0.8520833333333333,
-              "low": 0.7431737012987013,
-              "high": 0.9456275303643725
-            },
-            "slice_fpr": {
-              "estimate": 0.38705994291151286,
-              "low": 0.3152611315969693,
-              "high": 0.44875224228845073
-            },
-            "slice_precision": {
-              "estimate": 0.16741711011051985,
-              "low": 0.13619795199367818,
-              "high": 0.21544042927075246
-            },
-            "slice_f1": {
-              "estimate": 0.27984946972288743,
-              "low": 0.233908696541248,
-              "high": 0.3433134090260985
-            },
-            "onset_detection_rate": {
-              "estimate": 0.20833333333333334,
-              "low": 0.0850620567375887,
-              "high": 0.3396320754716981
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.17004983659295378,
-              "low": 0.07903660281664737,
-              "high": 0.2622371238129709
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": 0.03828349674037956,
-              "low": -0.011749951009294025,
-              "high": 0.09430624911870472
-            },
-            "warning_ms_mean": {
-              "estimate": 231.15499999999997,
-              "low": 153.78482142857138,
-              "high": 306.89401785714284
-            },
-            "warning_ms_median": {
-              "estimate": 302.04999999999995,
-              "low": 56.44999999999982,
-              "high": 340.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.23333333333333334,
-              "low": 0.09991935483870976,
-              "high": 0.4
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.06666666666666667,
-              "low": 0.0,
-              "high": 0.1724137931034483
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.7,
-              "low": 0.5185185185185185,
-              "high": 0.8621839080459769
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.18181818181818182,
-              "low": 0.06060606060606061,
-              "high": 0.3333333333333333
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.42424242424242425,
-              "low": 0.12121212121212122,
-              "high": 0.8181818181818182
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.36363636363636365,
-              "low": 0.21212121212121213,
-              "high": 0.5151515151515151
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 2.1515151515151514,
-              "low": 1.121212121212121,
-              "high": 3.3636363636363638
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.24242424242424243,
-              "low": 0.12121212121212122,
-              "high": 0.3939393939393939
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.48484848484848486,
-              "low": 0.18181818181818182,
-              "high": 0.8787878787878788
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.17424242424242425,
-              "low": 0.10606060606060606,
-              "high": 0.24242424242424243
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 0.7424242424242424,
-              "low": 0.3558712121212123,
-              "high": 1.143939393939394
+            "counts": {
+              "hanson_shots": 33,
+              "comparison_shots": 132,
+              "positive_slices": 480,
+              "negative_slices": 5255,
+              "excluded_slices": 9184,
+              "comparison_slices": 68006,
+              "target_onsets": 48,
+              "onsets_warned": 10,
+              "hanson_target_shots": 30,
+              "hanson_detected_shots": 4,
+              "hanson_early_shots": 5,
+              "hanson_missed_shots": 21,
+              "hanson_no_target_shots": 3,
+              "hanson_shots_with_an_unexplained_alarm": 8,
+              "comparison_shots_with_an_alarm": 23,
+              "hanson_any_alarm_detected_shots": 7,
+              "hanson_any_alarm_early_shots": 2,
+              "hanson_any_alarm_missed_shots": 21,
+              "hanson_early_alarms": 14,
+              "hanson_shots_with_an_early_alarm": 6,
+              "hanson_ignored_alarms": 71,
+              "hanson_shots_with_an_ignored_alarm": 12,
+              "broad_positive_slices": 480,
+              "broad_negative_slices": 13848,
+              "broad_prevalence": 0.03350083752093802,
+              "high_beta_positive_slices": 365,
+              "high_beta_negative_slices": 2351,
+              "high_beta_prevalence": 0.13438880706921943,
+              "above_proxy_positive_slices": 365,
+              "above_proxy_negative_slices": 1913,
+              "above_proxy_prevalence": 0.16022827041264268,
+              "prevalence": 0.08369659982563209
             }
           },
           "3": {
-            "slice_auroc": {
-              "estimate": 0.8057447272438947,
-              "low": 0.7602458680510323,
-              "high": 0.8459850684497461
+            "metrics": {
+              "slice_auroc": {
+                "estimate": 0.8057447272438947,
+                "low": 0.7602458680510323,
+                "high": 0.8459850684497461
+              },
+              "slice_auprc": {
+                "estimate": 0.23011569033422574,
+                "low": 0.180795076134187,
+                "high": 0.30326193672548574
+              },
+              "broad_auroc": {
+                "estimate": 0.7976802456431735,
+                "low": 0.7385049109910871,
+                "high": 0.8416888251734389
+              },
+              "broad_auprc": {
+                "estimate": 0.09280211965359957,
+                "low": 0.06080376692670291,
+                "high": 0.14739867772825346
+              },
+              "high_beta_auroc": {
+                "estimate": 0.6957441601650128,
+                "low": 0.6073629710534433,
+                "high": 0.7680804401601152
+              },
+              "high_beta_auprc": {
+                "estimate": 0.25753637609515845,
+                "low": 0.2043436653561096,
+                "high": 0.32797018973700603
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.6571948241663027,
+                "low": 0.5571503827853951,
+                "high": 0.743582703800713
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.2723117233867035,
+                "low": 0.21168584368863447,
+                "high": 0.34970137261124745
+              },
+              "slice_tpr": {
+                "estimate": 0.81875,
+                "low": 0.7183248299319728,
+                "high": 0.9181864564007421
+              },
+              "slice_fpr": {
+                "estimate": 0.35794481446241677,
+                "low": 0.28201805055660484,
+                "high": 0.4335024959484699
+              },
+              "slice_precision": {
+                "estimate": 0.17282321899736147,
+                "low": 0.13943556727009995,
+                "high": 0.22608847571589472
+              },
+              "slice_f1": {
+                "estimate": 0.28540305010893247,
+                "low": 0.23780276347247667,
+                "high": 0.35245622620435285
+              },
+              "onset_detection_rate": {
+                "estimate": 0.2708333333333333,
+                "low": 0.15789473684210525,
+                "high": 0.39218900675024104
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.221586685519821,
+                "low": 0.13282107110097685,
+                "high": 0.3099521487700705
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.04924664781351232,
+                "low": -0.05442772050480813,
+                "high": 0.14249776381072116
+              },
+              "warning_ms_mean": {
+                "estimate": 236.10769230769228,
+                "low": 167.31452083333332,
+                "high": 290.73541666666665
+              },
+              "warning_ms_median": {
+                "estimate": 239.0,
+                "low": 113.5,
+                "high": 347.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.26666666666666666,
+                "low": 0.12893145161290331,
+                "high": 0.41935483870967744
+              },
+              "hanson_any_alarm_shot_detection_rate": {
+                "estimate": 0.36666666666666664,
+                "low": 0.21410098522167503,
+                "high": 0.5357142857142857
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.03571428571428571,
+                "high": 0.3002586206896549
+              },
+              "hanson_any_alarm_shot_early_rate": {
+                "estimate": 0.06666666666666667,
+                "low": 0.0,
+                "high": 0.15625
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.5666666666666667,
+                "low": 0.3793103448275862,
+                "high": 0.7272727272727273
+              },
+              "hanson_any_alarm_shot_miss_rate": {
+                "estimate": 0.5666666666666667,
+                "low": 0.3793103448275862,
+                "high": 0.7272727272727273
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.18181818181818182,
+                "low": 0.06060606060606061,
+                "high": 0.3037878787878781
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.21212121212121213,
+                "low": 0.06060606060606061,
+                "high": 0.3939393939393939
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.3939393939393939,
+                "low": 0.24242424242424243,
+                "high": 0.5757575757575758
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 1.7878787878787878,
+                "low": 1.0,
+                "high": 2.788636363636363
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.21212121212121213,
+                "low": 0.09090909090909091,
+                "high": 0.36363636363636365
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.2727272727272727,
+                "low": 0.09090909090909091,
+                "high": 0.48484848484848486
+              },
+              "comparison_alarm_incidence": {
+                "estimate": 0.24242424242424243,
+                "low": 0.16666666666666666,
+                "high": 0.3181818181818182
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": 0.8409090909090909,
+                "low": 0.553030303030303,
+                "high": 1.1666666666666667
+              }
             },
-            "slice_auprc": {
-              "estimate": 0.23011569033422574,
-              "low": 0.180795076134187,
-              "high": 0.30326193672548574
-            },
-            "broad_auroc": {
-              "estimate": 0.7976802456431735,
-              "low": 0.7385049109910871,
-              "high": 0.8416888251734389
-            },
-            "broad_auprc": {
-              "estimate": 0.09280211965359957,
-              "low": 0.06080376692670291,
-              "high": 0.14739867772825346
-            },
-            "high_beta_auroc": {
-              "estimate": 0.6957441601650128,
-              "low": 0.6073629710534433,
-              "high": 0.7680804401601152
-            },
-            "high_beta_auprc": {
-              "estimate": 0.25753637609515845,
-              "low": 0.2043436653561096,
-              "high": 0.32797018973700603
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.6571948241663027,
-              "low": 0.5571503827853951,
-              "high": 0.743582703800713
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.2723117233867035,
-              "low": 0.21168584368863447,
-              "high": 0.34970137261124745
-            },
-            "slice_tpr": {
-              "estimate": 0.81875,
-              "low": 0.7183248299319728,
-              "high": 0.9181864564007421
-            },
-            "slice_fpr": {
-              "estimate": 0.35794481446241677,
-              "low": 0.28201805055660484,
-              "high": 0.4335024959484699
-            },
-            "slice_precision": {
-              "estimate": 0.17282321899736147,
-              "low": 0.13943556727009995,
-              "high": 0.22608847571589472
-            },
-            "slice_f1": {
-              "estimate": 0.28540305010893247,
-              "low": 0.23780276347247667,
-              "high": 0.35245622620435285
-            },
-            "onset_detection_rate": {
-              "estimate": 0.2708333333333333,
-              "low": 0.15789473684210525,
-              "high": 0.39218900675024104
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.221586685519821,
-              "low": 0.13282107110097685,
-              "high": 0.3099521487700705
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": 0.04924664781351232,
-              "low": -0.05442772050480813,
-              "high": 0.14249776381072116
-            },
-            "warning_ms_mean": {
-              "estimate": 236.10769230769228,
-              "low": 167.31452083333332,
-              "high": 290.73541666666665
-            },
-            "warning_ms_median": {
-              "estimate": 239.0,
-              "low": 113.5,
-              "high": 347.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.36666666666666664,
-              "low": 0.21410098522167503,
-              "high": 0.5357142857142857
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.06666666666666667,
-              "low": 0.0,
-              "high": 0.15625
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.5666666666666667,
-              "low": 0.3793103448275862,
-              "high": 0.7272727272727273
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.18181818181818182,
-              "low": 0.06060606060606061,
-              "high": 0.3037878787878781
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.21212121212121213,
-              "low": 0.06060606060606061,
-              "high": 0.3939393939393939
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.3939393939393939,
-              "low": 0.24242424242424243,
-              "high": 0.5757575757575758
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 1.7878787878787878,
-              "low": 1.0,
-              "high": 2.788636363636363
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.21212121212121213,
-              "low": 0.09090909090909091,
-              "high": 0.36363636363636365
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.2727272727272727,
-              "low": 0.09090909090909091,
-              "high": 0.48484848484848486
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.24242424242424243,
-              "low": 0.16666666666666666,
-              "high": 0.3181818181818182
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 0.8409090909090909,
-              "low": 0.553030303030303,
-              "high": 1.1666666666666667
+            "counts": {
+              "hanson_shots": 33,
+              "comparison_shots": 132,
+              "positive_slices": 480,
+              "negative_slices": 5255,
+              "excluded_slices": 9184,
+              "comparison_slices": 68006,
+              "target_onsets": 48,
+              "onsets_warned": 13,
+              "hanson_target_shots": 30,
+              "hanson_detected_shots": 8,
+              "hanson_early_shots": 5,
+              "hanson_missed_shots": 17,
+              "hanson_no_target_shots": 3,
+              "hanson_shots_with_an_unexplained_alarm": 7,
+              "comparison_shots_with_an_alarm": 32,
+              "hanson_any_alarm_detected_shots": 11,
+              "hanson_any_alarm_early_shots": 2,
+              "hanson_any_alarm_missed_shots": 17,
+              "hanson_early_alarms": 7,
+              "hanson_shots_with_an_early_alarm": 6,
+              "hanson_ignored_alarms": 59,
+              "hanson_shots_with_an_ignored_alarm": 13,
+              "broad_positive_slices": 480,
+              "broad_negative_slices": 13848,
+              "broad_prevalence": 0.03350083752093802,
+              "high_beta_positive_slices": 365,
+              "high_beta_negative_slices": 2351,
+              "high_beta_prevalence": 0.13438880706921943,
+              "above_proxy_positive_slices": 365,
+              "above_proxy_negative_slices": 1913,
+              "above_proxy_prevalence": 0.16022827041264268,
+              "prevalence": 0.08369659982563209
             }
           },
           "4": {
-            "slice_auroc": {
-              "estimate": 0.7929715746907707,
-              "low": 0.746212181165139,
-              "high": 0.8353180173496263
+            "metrics": {
+              "slice_auroc": {
+                "estimate": 0.7929715746907707,
+                "low": 0.746212181165139,
+                "high": 0.8353180173496263
+              },
+              "slice_auprc": {
+                "estimate": 0.1834610599106267,
+                "low": 0.14547109952373122,
+                "high": 0.24183584885724904
+              },
+              "broad_auroc": {
+                "estimate": 0.7708158067350279,
+                "low": 0.7071247518616819,
+                "high": 0.8221447996522305
+              },
+              "broad_auprc": {
+                "estimate": 0.06928567265668582,
+                "low": 0.04809945242764505,
+                "high": 0.10025055604663097
+              },
+              "high_beta_auroc": {
+                "estimate": 0.6637979757957849,
+                "low": 0.5669695963092155,
+                "high": 0.7445501350253432
+              },
+              "high_beta_auprc": {
+                "estimate": 0.19240959694338208,
+                "low": 0.14798497474668137,
+                "high": 0.25719671359059393
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.6141053641630086,
+                "low": 0.5017070968650995,
+                "high": 0.7123190280344447
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.19812566400338522,
+                "low": 0.15429914988002838,
+                "high": 0.2681586457046813
+              },
+              "slice_tpr": {
+                "estimate": 0.8604166666666667,
+                "low": 0.7476020408163265,
+                "high": 0.9543487795575897
+              },
+              "slice_fpr": {
+                "estimate": 0.36974310180780207,
+                "low": 0.28806559526432113,
+                "high": 0.45250245169345915
+              },
+              "slice_precision": {
+                "estimate": 0.17529711375212223,
+                "low": 0.13831374671408692,
+                "high": 0.23614654937018437
+              },
+              "slice_f1": {
+                "estimate": 0.2912552891396333,
+                "low": 0.2378344094421894,
+                "high": 0.3730791024194559
+              },
+              "onset_detection_rate": {
+                "estimate": 0.125,
+                "low": 0.02498475609756099,
+                "high": 0.2450255102040815
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.06826167685615678,
+                "low": 0.026418218874060186,
+                "high": 0.11460152009863228
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.05673832314384322,
+                "low": -0.021031613484542966,
+                "high": 0.1580933265082225
+              },
+              "warning_ms_mean": {
+                "estimate": 169.89999999999998,
+                "low": 47.249999999999886,
+                "high": 269.57482142857145
+              },
+              "warning_ms_median": {
+                "estimate": 135.20000000000005,
+                "low": 38.049999999999955,
+                "high": 341.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.13333333333333333,
+                "low": 0.03225806451612903,
+                "high": 0.25944444444444426
+              },
+              "hanson_any_alarm_shot_detection_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.03571428571428571,
+                "high": 0.3103987068965517
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.03333333333333333,
+                "low": 0.0,
+                "high": 0.12140762463343091
+              },
+              "hanson_any_alarm_shot_early_rate": {
+                "estimate": 0.03333333333333333,
+                "low": 0.0,
+                "high": 0.10354064039408858
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.8333333333333334,
+                "low": 0.6896012931034484,
+                "high": 0.9642857142857143
+              },
+              "hanson_any_alarm_shot_miss_rate": {
+                "estimate": 0.8,
+                "low": 0.6428571428571429,
+                "high": 0.9333333333333333
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.06060606060606061,
+                "low": 0.0,
+                "high": 0.15151515151515152
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.09090909090909091,
+                "low": 0.0,
+                "high": 0.2431818181818175
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.21212121212121213,
+                "low": 0.09090909090909091,
+                "high": 0.36363636363636365
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 0.7272727272727273,
+                "low": 0.18181818181818182,
+                "high": 1.5765151515151508
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.09090909090909091,
+                "low": 0.0,
+                "high": 0.21212121212121213
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.18181818181818182,
+                "low": 0.0,
+                "high": 0.4249999999999993
+              },
+              "comparison_alarm_incidence": {
+                "estimate": 0.09090909090909091,
+                "low": 0.045454545454545456,
+                "high": 0.14393939393939395
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": 0.18181818181818182,
+                "low": 0.07575757575757576,
+                "high": 0.3333333333333333
+              }
             },
-            "slice_auprc": {
-              "estimate": 0.1834610599106267,
-              "low": 0.14547109952373122,
-              "high": 0.24183584885724904
-            },
-            "broad_auroc": {
-              "estimate": 0.7708158067350279,
-              "low": 0.7071247518616819,
-              "high": 0.8221447996522305
-            },
-            "broad_auprc": {
-              "estimate": 0.06928567265668582,
-              "low": 0.04809945242764505,
-              "high": 0.10025055604663097
-            },
-            "high_beta_auroc": {
-              "estimate": 0.6637979757957849,
-              "low": 0.5669695963092155,
-              "high": 0.7445501350253432
-            },
-            "high_beta_auprc": {
-              "estimate": 0.19240959694338208,
-              "low": 0.14798497474668137,
-              "high": 0.25719671359059393
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.6141053641630086,
-              "low": 0.5017070968650995,
-              "high": 0.7123190280344447
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.19812566400338522,
-              "low": 0.15429914988002838,
-              "high": 0.2681586457046813
-            },
-            "slice_tpr": {
-              "estimate": 0.8604166666666667,
-              "low": 0.7476020408163265,
-              "high": 0.9543487795575897
-            },
-            "slice_fpr": {
-              "estimate": 0.36974310180780207,
-              "low": 0.28806559526432113,
-              "high": 0.45250245169345915
-            },
-            "slice_precision": {
-              "estimate": 0.17529711375212223,
-              "low": 0.13831374671408692,
-              "high": 0.23614654937018437
-            },
-            "slice_f1": {
-              "estimate": 0.2912552891396333,
-              "low": 0.2378344094421894,
-              "high": 0.3730791024194559
-            },
-            "onset_detection_rate": {
-              "estimate": 0.125,
-              "low": 0.02498475609756099,
-              "high": 0.2450255102040815
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.06826167685615678,
-              "low": 0.026418218874060186,
-              "high": 0.11460152009863228
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": 0.05673832314384322,
-              "low": -0.021031613484542966,
-              "high": 0.1580933265082225
-            },
-            "warning_ms_mean": {
-              "estimate": 169.89999999999998,
-              "low": 47.249999999999886,
-              "high": 269.57482142857145
-            },
-            "warning_ms_median": {
-              "estimate": 135.20000000000005,
-              "low": 38.049999999999955,
-              "high": 341.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.16666666666666666,
-              "low": 0.03571428571428571,
-              "high": 0.3103987068965517
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.03333333333333333,
-              "low": 0.0,
-              "high": 0.10354064039408858
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.8,
-              "low": 0.6428571428571429,
-              "high": 0.9333333333333333
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.06060606060606061,
-              "low": 0.0,
-              "high": 0.15151515151515152
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.09090909090909091,
-              "low": 0.0,
-              "high": 0.2431818181818175
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.21212121212121213,
-              "low": 0.09090909090909091,
-              "high": 0.36363636363636365
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 0.7272727272727273,
-              "low": 0.18181818181818182,
-              "high": 1.5765151515151508
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.09090909090909091,
-              "low": 0.0,
-              "high": 0.21212121212121213
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.18181818181818182,
-              "low": 0.0,
-              "high": 0.4249999999999993
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.09090909090909091,
-              "low": 0.045454545454545456,
-              "high": 0.14393939393939395
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 0.18181818181818182,
-              "low": 0.07575757575757576,
-              "high": 0.3333333333333333
+            "counts": {
+              "hanson_shots": 33,
+              "comparison_shots": 132,
+              "positive_slices": 480,
+              "negative_slices": 5255,
+              "excluded_slices": 9184,
+              "comparison_slices": 68006,
+              "target_onsets": 48,
+              "onsets_warned": 6,
+              "hanson_target_shots": 30,
+              "hanson_detected_shots": 4,
+              "hanson_early_shots": 1,
+              "hanson_missed_shots": 25,
+              "hanson_no_target_shots": 3,
+              "hanson_shots_with_an_unexplained_alarm": 3,
+              "comparison_shots_with_an_alarm": 12,
+              "hanson_any_alarm_detected_shots": 5,
+              "hanson_any_alarm_early_shots": 1,
+              "hanson_any_alarm_missed_shots": 24,
+              "hanson_early_alarms": 3,
+              "hanson_shots_with_an_early_alarm": 2,
+              "hanson_ignored_alarms": 24,
+              "hanson_shots_with_an_ignored_alarm": 7,
+              "broad_positive_slices": 480,
+              "broad_negative_slices": 13848,
+              "broad_prevalence": 0.03350083752093802,
+              "high_beta_positive_slices": 365,
+              "high_beta_negative_slices": 2351,
+              "high_beta_prevalence": 0.13438880706921943,
+              "above_proxy_positive_slices": 365,
+              "above_proxy_negative_slices": 1913,
+              "above_proxy_prevalence": 0.16022827041264268,
+              "prevalence": 0.08369659982563209
             }
           }
         },
@@ -2577,16 +2966,31 @@
             "high": 343.0
           },
           "hanson_shot_detection_rate": {
+            "estimate": 0.1,
+            "low": 0.0,
+            "high": 0.22580645161290322
+          },
+          "hanson_any_alarm_shot_detection_rate": {
             "estimate": 0.2,
             "low": 0.06890804597701154,
             "high": 0.35714285714285715
           },
           "hanson_shot_early_rate": {
+            "estimate": 0.13333333333333333,
+            "low": 0.03225806451612903,
+            "high": 0.27586206896551724
+          },
+          "hanson_any_alarm_shot_early_rate": {
             "estimate": 0.03333333333333333,
             "low": 0.0,
             "high": 0.1072420634920634
           },
           "hanson_shot_miss_rate": {
+            "estimate": 0.7666666666666667,
+            "low": 0.6071428571428571,
+            "high": 0.896551724137931
+          },
+          "hanson_any_alarm_shot_miss_rate": {
             "estimate": 0.7666666666666667,
             "low": 0.6071428571428571,
             "high": 0.896551724137931
@@ -4580,6 +4984,10 @@
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
     "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
     "Paired within-shot mean AUROC differences (95% basic shot CIs)",
+    "Phase-controlled primary AUROC \u2014 within campaign and 200 ms time bins",
+    "Paired phase-controlled AUROC \u2014 forest minus scalar",
+    "Comparison pool \u2014 reference forest alarms by run title",
+    "Rotation sensitivity \u2014 one reference-split no-rotation CV",
     "Broad-mask run-record holdout \u2014 forest minus elapsed time",
     "High-beta conditional scores \u2014 all models",
     "Above no-wall-proxy conditional scores \u2014 all models",
@@ -4595,6 +5003,7 @@
     "n=1 onset-window physics \u2014 first pre-onset window slice, by campaign",
     "n=1 onset and window coverage summary \u2014 by campaign",
     "Piccione-style per-shot categories \u2014 primary alarm definition",
+    "Any-alarm per-shot categories \u2014 labelled sensitivity",
     "Alarm definition sensitivity \u2014 rwm-brf",
     "Legacy NSTX \u2014 separately sourced published reference",
     "Paired differences \u2014 rwm-brf versus rules, primary",
@@ -4610,61 +5019,65 @@
     "Campaign sensitivity \u2014 rwm-brf, seed 4 (95% shot CIs)",
     "Leave-one-run-record-out \u2014 by campaign (95% shot CIs)"
   ],
+  "rotation_ablation_source": {
+    "path": "outputs/labeler/rwm/rotation_ablation.json",
+    "sha256": "b5b839fd2101f49483efb6269046e9a20c90c141b7c88455f78b16381007aeb3"
+  },
   "rendered_latex": {
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "11ce1ca14b8e81341b8eaaa8ed4c300084f87b9e4b1b5fc142ccd97614f6765e"
+        "sha256": "34f22ac248febdf6c1145d7533c0acee3569f7894b01a2b0d6dbeba09746767f"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "c1910889f11171a6cf4dcbd54135cde1e2ed9a367576749406dcc3fef2d37550"
+        "sha256": "9a3ee84f31648f11f901864124ba753c797bec4b3dd2cf888c1daff3eb9c7bbd"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "4ad0e72a2e10b675fdcc3f221c7625f429e832091b84ad23160af26ad6d76c22"
+        "sha256": "6dc437a2103eb7acdacdaa0d167faf1beac69cf64908bf30102eb2ba542c113f"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
-        "sha256": "03db58ccce2142f784d6e40aa50ad997e26b44d240f7e884da732a398d53a42c"
+        "sha256": "5d739e5e7842b0b8cfab2d621c790dec265ea7e642c74fd5a3837995bc2bd920"
       }
     ],
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "df67d5d4725b1250733cf4064481dd49bab7f455efe8a2db3cb446508b98df1a"
+        "sha256": "093a992cfd85b9b4c3ebf01d36849ab1d24edef5a8a0a1fa32a313df177b9dc2"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "5eb31bf2d25bb4cd5446c36d97e8ff828866c9cfe6e4d838f8a827792ff78c82"
+        "sha256": "93ee5e04608e9f7072dafe7c9cc3a04efca4ec9b5b1a10a71147f5574680e9ee"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "3ca2d8034866840ad72a0a8525b0c5fe053ada41ae43f9020bb7a6966b42df41"
+        "sha256": "09da706d0715c1b46b41dac6feef25df34699cbb4b244cf8266c354c168bdf9b"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
-        "sha256": "c48e98f16073084b90346baf88981d58d6c640715da8e0f8575c27fb4e33d5ec"
+        "sha256": "1e0a10acca3193f27239b07abc563fd4471051400f655b20d28c558af1ba5d6e"
       }
     ],
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "783043c7b1544c192dc6320420d92b5e562309811b5f59fc9acd8cb7e0b1f863"
+        "sha256": "3f9510fabcb9682f9ea1d0a30c7db769e4f721df283c488e494d42674a68805e"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "94f39c4248d464f947b6d33cd16bc478522c36d934e3277628842ecf0eb42abe"
+        "sha256": "e51eaaabd3dfdb7910078c4d4d8aa3f2dd32d8cebca8dd781949fa462cd6579c"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "f90b9c9b3bee88b426cfb13fb8311259fd8a9f52291e30fb48e6f06c7fd49f29"
+        "sha256": "aa43f232a55afbc5c541071f3c43b93bbcc6c04a53ffd7725557842ed11af2d7"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -4674,7 +5087,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "b5e8ac9e4a2d717e0f54d7fdfb7f08456dca77b0a01f9e2a572c566ce5219c53"
+        "sha256": "736116c8bb15419a379eeb1ef3b64990a6a12c821ec1bf95d5cc018c62fe20fe"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -4685,7 +5098,7 @@
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": ".....................................................                    [100%]\n53 passed in 5.42s"
+      "output": "......................................                                   [100%]\n38 passed in 5.16s"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -4693,7 +5106,7 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "9 files already formatted"
+      "output": "8 files already formatted"
     },
     "table_ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-ruff.log",
@@ -4701,11 +5114,11 @@
     },
     "table_ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-format.log",
-      "output": "9 files already formatted"
+      "output": "8 files already formatted"
     },
     "table_validation": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-validation.log",
-      "output": "PASS: all 16 saved prediction/slice artifacts byte-identical after rule filename renames.\nPASS: all forecast metrics/CIs, masks/counts, fold rules, alarm outcomes and within-shot point estimates exactly unchanged.\nReference-only corrections: [{\"path\": \"/configs/rwm-brf/split_seeds/3/chance_detection\", \"before\": 0.22163192494075643, \"after\": 0.221586685519821}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/estimate\", \"before\": 0.22163192494075643, \"after\": 0.221586685519821}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/low\", \"before\": 0.13282233359644482, \"after\": 0.13282107110097685}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/uniform_alarm_reference/high\", \"before\": 0.30999511199372615, \"after\": 0.3099521487700705}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.04920140839257689, \"after\": 0.04924664781351232}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/low\", \"before\": -0.05448821207337323, \"after\": -0.05442772050480813}, {\"path\": \"/configs/rwm-brf/split_seeds/3/metrics/detection_minus_uniform_reference/high\", \"before\": 0.14240745896662313, \"after\": 0.14249776381072116}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.2339751922826633, \"after\": 0.23389167335170563}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/low\", \"before\": 0.11812872826608037, \"after\": 0.11806814351934021}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.3495059172099604, \"after\": 0.3494334048809753}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.003205961513432526, \"after\": -0.003122442582474849}, {\"path\": \"/configs/rwm-brf/split_seeds/3/by_campaign/2014/metrics/detection_minus_uniform_reference/low\", \"before\": -0.16220816283133568, \"after\": -0.16213515576582604}, {\"path\": \"/configs/rwm-brf/split_seeds/4/chance_detection\", \"before\": 0.06830691627709219, \"after\": 0.06826167685615678}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/uniform_alarm_reference/estimate\", \"before\": 0.06830691627709219, \"after\": 0.06826167685615678}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/uniform_alarm_reference/high\", \"before\": 0.11473345498650489, \"after\": 0.11460152009863228}, {\"path\": \"/configs/rwm-brf/split_seeds/4/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.06248239912473326, \"after\": 0.06239888019377557}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.14157675290834595, \"after\": 0.14129095651492687}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": 0.05290221625988213, \"after\": 0.05298573519083982}, {\"path\": \"/configs/rwm-brf/split_seeds/4/by_campaign/2014/metrics/detection_minus_uniform_reference/high\", \"before\": 0.13000446898305798, \"after\": 0.13009432739858456}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/estimate\", \"before\": 0.08858947264134288, \"after\": 0.08857849291161317}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/low\", \"before\": 0.07475282134654891, \"after\": 0.07472684914631315}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/uniform_alarm_reference/high\", \"before\": 0.10150938596263834, \"after\": 0.10147792567582091}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.026089472641342884, \"after\": -0.02607849291161317}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/low\", \"before\": -0.08790808920418597, \"after\": -0.08788190195050781}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/metrics/detection_minus_uniform_reference/high\", \"before\": 0.04552951364476956, \"after\": 0.04553951536434785}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/estimate\", \"before\": 0.1062569511549499, \"after\": 0.10623668088467965}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/low\", \"before\": 0.08355722183982721, \"after\": 0.08355676750618321}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/uniform_alarm_reference/high\", \"before\": 0.12593485370863822, \"after\": 0.12593428085317404}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/detection_minus_uniform_reference/estimate\", \"before\": -0.06779541269341144, \"after\": -0.06777514242314119}, {\"path\": \"/configs/rwm-rule-elapsed-time/full_trace_alarm_sensitivity/by_campaign/2014/metrics/detection_minus_uniform_reference/low\", \"before\": -0.12194803760526728, \"after\": -0.12193149176254954}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/estimate\", \"before\": 0.04920140839257689, \"after\": 0.04924664781351232}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/low\", \"before\": -0.05448821207337323, \"after\": -0.05442772050480813}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/3/high\", \"before\": 0.14240745896662313, \"after\": 0.14249776381072116}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/by_seed/4/estimate\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}, {\"path\": \"/split_sensitivity/alarm_ranges/detection_minus_uniform_reference/max\", \"before\": 0.05669308372290781, \"after\": 0.05673832314384322}]\nPASS: six 1000-replicate basic paired within-shot intervals; plasma-scalar claim matches their signs.\nPASS: physical CSV tiles coverage without overlaps; 54 present 10 ms slices; pre-onset, absent and comparison rows unchanged.\nPASS: model/Legacy naming, interval-qualified claims, point-estimate header, README scores and 112-word Method.\nPASS: seven current one-page PDF/150-dpi PNG table pairs; hashes and source mirrors; clean diff."
+      "output": "PASS: all 34370 pre-existing noncategory result leaves unchanged\nPASS: any-alarm sensitivity preserves every original category\nPASS: all five first-alarm D/E/M counts match reviewer replay\nrwm-brf phase AUROC 0.544125 cells 24 pairs 71739\nrwm-rule-elapsed-time phase AUROC 0.581601 cells 24 pairs 71739\nrwm-rule-betan phase AUROC 0.540578 cells 24 pairs 71739\nrwm-rule-betan-over-li phase AUROC 0.594663 cells 24 pairs 71739\nrwm-rule-rwm-candidates phase AUROC 0.5 cells 24 pairs 71739\nPASS: comparison title counts total 132, alarms total 19; same_day 17 8\nPASS: no-rotation rows, outer folds and masks exactly match reference; no rotation predictors\nPASS: figure caption 73 words, no process wording\nPASS: paper tables use plain rule names; split holdout cells are one line\nPASS: docs multiplicity qualifier and no round history/process language\nPASS: saved replay and single reference ablation verification complete"
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-latex.log",
@@ -4713,7 +5126,27 @@
     },
     "visual_inspection": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-visual.log",
-      "output": "Fix round 7: viewed all eight regenerated PNGs using view_image.\nMain table: primary, broad and within-shot columns align; within-shot column explicitly says point estimate. Caption and Legacy block fit without clipping or overlap.\nWithin-shot supplement: all six paired intervals are legible; primary beta_N/l_i excludes zero, other plasma-scalar intervals cross zero.\nSplit/campaign/alarms and both onset tables: legible, one page each, no overlap or clipping.\nOnset-score figure: eight panels, axes and reference lines remain legible."
+      "output": "Viewed all eight final PNGs via view_image: rwm_onset_scores.png and table_rwm,\ntable_rwm_split_summary, table_rwm_within_shot, table_rwm_campaign_pairs,\ntable_rwm_alarms, table_rwm_onset_actual, table_rwm_onset_window (each -1.png).\nMain-table initial clipping and split-summary overfull box fixed with shorter\nheader and column spacing, without reducing font size. Viewed revised main,\nsplit, within-shot and campaign PNGs; revised remaining three PNGs also viewed.\nFinal compilation: seven one-page PDFs, no layout warnings. Cells/intervals,\nfirst/any D/E/M sensitivity, plain rule names, phase column, captions and axes\nare legible; no overlap or clipping. Figure caption 73 words, no process wording."
+    },
+    "saved_rescore": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-rescore.log",
+      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json\nPASS: no fit or tuning call during saved rescoring"
+    },
+    "no_rotation_fit": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-no-rotation.log",
+      "output": "completed the single no-rotation CV refit\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json"
+    },
+    "saved_ablation_rescore": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-ablation-rescore.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json\nPASS: no fit or tuning call during saved rescoring"
+    },
+    "prediction_hashes": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-hashes.log",
+      "output": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/slices.parquet: OK"
+    },
+    "independent_review": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-independent-review.log",
+      "output": "Read-only independent review by /root/fix8_review (gpt-6-astra):\nCritical: none. Important: none. Minor: none warranting a change.\nVerified first-alarm counts including n=2 explanation; original results invariant;\nphase pair weighting/ties/bootstrap shot duplicates and exact intervals; all no-\nrotation input rows/folds/masks aligned, only two rotation predictors excluded;\nexisting-result refit guard and saved replay; 73-word figure caption.\nDid not inspect PNG appearance (parent inspected), repeat fitting/full tests or\nperform external diagnostic-timing validation. No files changed by reviewer."
     }
   }
 }

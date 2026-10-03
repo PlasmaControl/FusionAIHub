@@ -202,25 +202,17 @@ def main():
         ),
         "first_panel_onset_physics": first_onset,
         "caption": (
-            "Held-out rwm-brf scores (solid blue) and beta_N/li (dashed orange). "
-            "Vertical lines mark listed n=1 onsets; grey spans show the 100 ms "
-            "forecast target, not verified instability intervals. Bottom panels "
-            "are unlabelled comparison shots; their zero is the matched Hanson "
-            "onset time, not an onset on those shots. The dotted orange line is "
-            "the no-wall proxy beta_N/li=4 on the right axis, not a score "
-            "threshold (it aligns with score 0.5 on the left axis). "
-            "Examples were chosen by shot number, "
-            "not model performance; this figure does not estimate warning skill. "
-            "The first panel, 156785, has beta_N "
-            f"{first_onset['onset_betan']:.2f} and beta_N/li "
-            f"{first_onset['onset_betan_over_li']:.2f} at its listed onset, far below "
-            "the conventional proxy, whose applicability is uncertain for "
-            "high-qmin, low-li plasmas. On 156796 and 158022, beta_N/li "
-            "collapses about 400 ms before the listed onset are of unidentified "
-            "cause, inside assumed-negative time; a reason for expert "
-            "timing/coverage review."
+            "Held-out forest scores (blue) and βN/li (orange) on shots selected "
+            "by number. Vertical lines mark n=1 onsets; grey spans are 100 ms "
+            "forecast targets. Bottom panels are unlabelled comparisons centred "
+            "on matched Hanson onsets. The dotted βN/li=4 proxy uses the right "
+            "axis, aligning with score 0.5. 156785's onset is below this proxy; "
+            "unexplained collapses on 156796 and 158022 precede listed onsets "
+            "by about 400 ms. Neither physical duration nor warning skill "
+            "is established."
         ),
     }
+    metadata["caption_words"] = len(metadata["caption"].split())
     (OUT / "figure.json").write_text(json.dumps(metadata, indent=2) + "\n")
     print(f"wrote {stem}.pdf and {stem}.png")
 
