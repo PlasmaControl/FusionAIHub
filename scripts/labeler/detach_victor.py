@@ -5,12 +5,14 @@
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_victor.py train              # torch, one GPU
 
-The model class of Victor and Scotti (2024), a CNN on divertor camera images, written
-from the paper's description and trained here on the detachment label: a four-layer
-2-D CNN reads one TangTV frame (corpus `tangtv` channel 2, the lower-divertor view,
-nearest to the bin centre, black level removed, square-rooted, 4 x 4 block means to
-60 x 180) and predicts attached, detached or marfe. The target is the combined label
-where it is a certain state.
+The model of Victor and Scotti (2024), a small CNN on raw divertor camera frames
+(two 3 x 3 convolutions, 2 x 2 max pool, dropout 0.25, flatten, a hidden linear layer,
+a softmax; the digest in `.tmp/label_papers/outside/` gives no widths, these are
+chosen here), here with three outputs and trained on the detachment label instead of
+their hand-labelled binary one: it reads one TangTV frame (corpus `tangtv` channel 2,
+the lower-divertor view, nearest to the bin centre, black level removed, square-rooted,
+8 x 8 block means to 30 x 90) and predicts attached, detached or marfe. The target is
+the combined label where it is a certain state.
 
 Two caveats are scored, not hidden. (1) The TangTV indicator is one of the label's
 three voters and is itself read from these frames, so the label and the input share
@@ -42,7 +44,7 @@ import pandas as pd
 REPO = Path(__file__).resolve().parents[2]
 RESULT = REPO / "docs" / "labeler" / "results" / "detachment_victor.json"
 BLACK = 16.0
-BLOCK = 4
+BLOCK = 8
 MAX_GAP_MS = 30.0
 EPOCHS = 12
 FOLDS = 5
@@ -109,15 +111,22 @@ def train() -> None:
     class Net(nn.Module):
         def __init__(self):
             super().__init__()
-            layers, c = [], 1
-            for out in (16, 32, 64, 64):
-                layers += [nn.Conv2d(c, out, 3, stride=2, padding=1), nn.ReLU()]
-                c = out
-            self.body = nn.Sequential(*layers)
+            h, w = 240 // BLOCK - 4, 720 // BLOCK - 4  # two valid 3 x 3 convolutions
+            self.body = nn.Sequential(
+                nn.Conv2d(1, 16, 3),
+                nn.ReLU(),
+                nn.Conv2d(16, 32, 3),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Dropout(0.25),
+                nn.Flatten(),
+                nn.Linear(32 * (h // 2) * (w // 2), 64),
+                nn.ReLU(),
+            )
             self.head = nn.Linear(64, 3)
 
         def forward(self, a):
-            return self.head(self.body(a).mean(dim=(2, 3)))
+            return self.head(self.body(a))
 
     def fit_predict(train_idx, test_idx, seed):
         torch.manual_seed(seed)
