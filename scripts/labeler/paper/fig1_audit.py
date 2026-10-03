@@ -139,6 +139,11 @@ def main():
                         side["bands_khz"] = {
                             k: v for k, v in side["bands_khz"].items() if k != mt.AE
                         }
+                if key == "detector_training":
+                    # Round 11 records the frame AE detector's membership too:
+                    # earlier entries are unchanged and only AE may be added.
+                    assert set(new) - set(old) <= {mt.AE}, shot
+                    new = {k: v for k, v in new.items() if k in old}
                 assert new == old, (shot, "changed input", key)
             for key, track in record["tracks"].items():
                 display = {"display_intervals_ms", "display_merge"}
@@ -174,7 +179,9 @@ def main():
             assert new_tags[mt.AE] >= old_tags[mt.AE], (shot, "AE tags shrank")
             late = record["drawn"]["late_untagged_high_frequency"]
             if late:
-                assert late["band_khz"][0] < 61, shot
+                old_late = baseline["drawn"]["late_untagged_high_frequency"]
+                assert 60 <= late["band_khz"][0] <= old_late["band_khz"][0], shot
+                assert late["pixels"] >= old_late["pixels"], shot
             for key in record["drawn"].keys() - presentation - added - moved:
                 assert record["drawn"][key] == baseline["drawn"][key], (
                     shot,
@@ -281,8 +288,8 @@ def main():
         assert geometry["n_panel_band_khz"] == [0, 30]
         assert geometry["processed_omitted_band_khz"] == []
         assert geometry["processed_restored_strip_khz"] == [30, 60]
-        assert geometry["zoom_pass_top_khz"] == 55
-        assert geometry["wide_pass_strip_khz"] == [55, 60]
+        assert geometry["zoom_pass_top_khz"] == 50
+        assert geometry["wide_pass_strip_khz"] == [50, 60]
         panels = geometry["frequency_panels"]
         for part, limits in (("hi", [60, 250]), ("mid", [30, 60]), ("lo", [0, 30])):
             raw_panel, processed = panels[f"raw_{part}"], panels[f"pr_{part}"]
@@ -369,7 +376,7 @@ def main():
             )
             assert saw_row == expected
         assert geometry["scale_note"].replace("-\n", "-").replace("\n", " ") == (
-            "0–55 kHz: higher-resolution spectrogram; 0–30 stretched, 30–60 compressed"
+            "0–50 kHz: higher-resolution spectrogram; 0–30 stretched, 30–60 compressed"
         )
         n_labels = [
             x for x in geometry["legend_labels"] if x.startswith("n=") or x == "other n"
@@ -479,10 +486,15 @@ def main():
             record["tracks"][mt.NTM]["tier"] == lf.GENERATED
         )
         ae_ours = record["tracks"][mt.AE]["what"].startswith("ae-ours")
-        assert ("AE targets used TokEye's mask" in appendix) == ae_ours
-        assert "input band is 80–250 kHz" in appendix
-        assert "mask pixels ≥60 kHz" in appendix
-        assert ("trained on TokEye-mask-derived targets" in caption) == ae_ours
+        ae_text = record["tracks"][mt.AE]["tier"] == lf.GENERATED and bool(tags[mt.AE])
+        assert ("AE targets used TokEye's mask" in appendix) == (ae_ours and ae_text)
+        if ae_text and not ae_ours:
+            assert "trained on the owner's reviewed AE labels" in appendix
+        assert ("input band is 80–250 kHz" in appendix) == ae_text
+        assert ("mask pixels ≥60 kHz" in appendix) == ae_text
+        assert ("trained on TokEye-mask-derived targets" in caption) == (
+            ae_ours and bool(tags[mt.AE])
+        )
         assert "not separate islands" not in appendix
         assert "not separate islands" not in caption
         for name, key in (("n2", "harmonic_support"), ("n3", "harmonic3_support")):

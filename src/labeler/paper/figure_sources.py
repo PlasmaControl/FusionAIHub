@@ -833,8 +833,8 @@ def appendix_notes(
         (
             "Toroidal mode number n is measured by the Mirnov array. "
             "The frequency axis has three scales: 0–30 kHz stretched, 30–60 kHz "
-            "and 60–250 kHz compressed; 0–55 kHz uses the higher-resolution "
-            "spectrogram and 55–60 kHz the wide-range one, because the "
+            "and 60–250 kHz compressed; 0–50 kHz uses the higher-resolution "
+            "spectrogram and 50–60 kHz the wide-range one, because the "
             "higher-resolution pass's decimation filter rolls off above about "
             "50 kHz."
         ),

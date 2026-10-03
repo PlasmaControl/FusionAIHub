@@ -92,7 +92,7 @@ PRESETS = {
 FOLD_KHZ = 60.0
 #: The zoom pass is drawn up to here; its top few kHz are the decimation filter's
 #: roll-off (a dark strip), so the wide pass fills the rest of the 30-60 panel.
-ZOOM_TOP_KHZ = 55.0
+ZOOM_TOP_KHZ = 50.0
 TOP_KHZ = 250.0
 N_VIEW_KHZ = 30.0  # the n map's band
 #: The columns an image is pooled to for the page (a 3 s wide pass has 12,000).
@@ -713,7 +713,7 @@ def draw_frequency_panels(ax, low: Band, high: Band, strip: Band) -> None:
         painter = draw_raw if prefix == "raw" else draw_processed
         painter(ax[hi], high)
         painter(ax[mid], low)
-        painter(ax[mid], strip)  # 55-60 kHz from the wide pass, over the roll-off
+        painter(ax[mid], strip)  # 50-60 kHz from the wide pass, clear of the roll-off
         painter(ax[lo], low)
 
 
@@ -1076,7 +1076,7 @@ def draw(
         )
         scale_note = leader(
             ax["raw_mid"],
-            "0–55 kHz: higher-\nresolution spectrogram;\n"
+            "0–50 kHz: higher-\nresolution spectrogram;\n"
             "0–30 stretched,\n30–60 compressed",
             (t1, 45),
             y=0.75,
