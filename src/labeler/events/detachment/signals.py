@@ -82,16 +82,28 @@ def decimate_median(t_ms: np.ndarray, y: np.ndarray, dt_ms: float, *, mean=False
     return t, reduce(y[:, :n].reshape(y.shape[0], -1, step), axis=2)
 
 
-def window_mean(t_src, y_src, t_dst, width_ms):
-    """Mean of `y_src` over `width_ms` centred on each `t_dst` (NaN where empty)."""
+def window_mean(t_src, y_src, t_dst, width_ms, *, keep=None):
+    """Centered mean with complete source coverage; missing windows remain NaN.
+
+    A keep mask removes measured ELM samples from radiation means. It does not
+    turn missing source samples into measurements. Gaps/boundaries are checked
+    before reduction, independently of the mask.
+    """
+    from .core import sample_windows_known
+
     t_src = np.asarray(t_src, dtype=float)
-    y = np.nan_to_num(np.asarray(y_src, dtype=float))
-    csum = np.r_[0.0, np.cumsum(y)]
-    lo = np.searchsorted(t_src, np.asarray(t_dst) - width_ms / 2, side="left")
-    hi = np.searchsorted(t_src, np.asarray(t_dst) + width_ms / 2, side="right")
-    n = hi - lo
+    y = np.asarray(y_src, dtype=float)
+    good = np.isfinite(y)
+    selected = good if keep is None else good & np.asarray(keep, dtype=bool)
+    csum = np.r_[0.0, np.cumsum(np.where(selected, y, 0.0))]
+    counts = np.r_[0, np.cumsum(selected)]
+    starts, stops = np.asarray(t_dst) - width_ms / 2, np.asarray(t_dst) + width_ms / 2
+    lo = np.searchsorted(t_src, starts, side="left")
+    hi = np.searchsorted(t_src, stops, side="right")
+    n = counts[hi] - counts[lo]
+    known = sample_windows_known(t_src, good, starts, stops)
     with np.errstate(invalid="ignore", divide="ignore"):
-        return np.where(n > 0, (csum[hi] - csum[lo]) / n, np.nan)
+        return np.where(known & (n > 0), (csum[hi] - csum[lo]) / n, np.nan)
 
 
 def beam_power(shot: int, cache, t_dst, width_ms: float):
@@ -103,7 +115,7 @@ def beam_power(shot: int, cache, t_dst, width_ms: float):
     corpus = corpus_group(shot, "pinj")
     if corpus is not None:
         t, y = corpus
-        return window_mean(t, np.nansum(y, axis=0), t_dst, width_ms)
+        return window_mean(t, np.sum(y, axis=0), t_dst, width_ms)
     if "pinj_total" in cache and np.isfinite(cache["pinj_total"][1]).any():
         t, y = cache["pinj_total"]
         return window_mean(t, y, t_dst, width_ms) * 1e3
@@ -132,13 +144,14 @@ def heating_power(shot: int, cache=None):
     beams = beam_power(shot, cache, t, 20.0)
     if beams is None:
         return None
-    pheat = np.nan_to_num(beams) + np.nan_to_num(poh)
+    pheat = beams + poh
     if "echpwr" in cache:
         te, ye = cache["echpwr"]
         ech = window_mean(te, ye, t, 20.0) * 1e3
-        pheat = pheat + np.where(np.nan_to_num(ech) > ECH_NOISE_KW * 1e3, ech, 0.0)
+        ech = np.where(np.isfinite(ech), np.maximum(ech, 0.0), np.nan)
+        pheat = pheat + np.where(ech > ECH_NOISE_KW * 1e3, ech, ech * 0.0)
     tw, w = (np.asarray(v, dtype=float) for v in cache["wmhd"])
-    smooth = np.convolve(np.nan_to_num(w), np.ones(5) / 5.0, mode="same")
+    smooth = np.convolve(w, np.ones(5) / 5.0, mode="same")
     dwdt = np.gradient(smooth, tw / 1000.0)
     dwdt[:3] = dwdt[-3:] = 0.0
     return t, pheat, pheat - np.interp(t, tw, dwdt)
@@ -282,16 +295,27 @@ def elm_mask(shot: int, cache=None):
         if stop <= start:
             return None
         t = np.arange(start, stop + 0.05, 0.1)
-        got = t, np.vstack([np.interp(t, tc, yc) for tc, yc in records])
+        rows = []
+        for tc, yc in records:
+            row = np.interp(t, tc, yc)
+            step_c = float(np.median(np.diff(tc)))
+            for j in np.flatnonzero(np.diff(tc) > max(2 * step_c, 2.0)):
+                row[(t > tc[j]) & (t < tc[j + 1])] = np.nan
+            rows.append(row)
+        got = t, np.vstack(rows)
     t, y = got
     live = [r for r in y if np.isfinite(r).mean() > 0.9 and np.nanmedian(r) > 0]
     if not live:
         return None
-    x = np.nanmedian([np.nan_to_num(r) / np.nanmedian(r) for r in live], axis=0)
+    normalized = np.asarray([r / np.nanmedian(r) for r in live])
+    x = np.ma.median(np.ma.masked_invalid(normalized), axis=0).filled(np.nan)
+    available = np.isfinite(x)
+    # Fill only for the running-filter calculation; restore unknown samples below.
+    filtered_input = np.interp(t, t[available], x[available])
     step = float(np.median(np.diff(t)))
-    base = median_filter(x, size=max(3, round(50.0 / step)), mode="nearest")
+    base = median_filter(filtered_input, size=max(3, round(50.0 / step)), mode="nearest")
     resid = x - base
-    sigma = 1.4826 * np.median(np.abs(resid - np.median(resid)))
+    sigma = 1.4826 * np.nanmedian(np.abs(resid - np.nanmedian(resid)))
     flag = (resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)) & (
         resid > thresholds.ELM_MIN_REL_RISE * base
     )
@@ -301,7 +325,7 @@ def elm_mask(shot: int, cache=None):
         size=2 * half + 1,
         mode="constant",
     )
-    return t, widened.astype(bool)
+    return t, np.where(available, widened.astype(float), np.nan)
 
 
 def tangtv_geometry(shot, cache=None):

@@ -11,7 +11,8 @@ N = len(EDGES) - 1
 
 
 def series(value, dt=10.0, t1=5000.0):
-    t = np.arange(0.0, t1, dt)
+    # Cover the centered 250 ms normalization window at both label-grid edges.
+    t = np.arange(-150.0, t1 + 150.0, dt)
     return t, np.full(t.shape, value, dtype=float)
 
 
@@ -132,7 +133,7 @@ def test_afrac_invalid_without_inputs_or_reference():
     assert set(afrac.afrac_indicator(EDGES, t, jsat, tn, ne, None, None).reason) == {
         "no_power"
     }
-    short = core.bin_edges(0.0, 1000.0)  # 1 s < AFRAC_MIN_MS
+    short = core.bin_edges(0.0, 1000.0)
     ind = afrac.afrac_indicator(
         short,
         t,
@@ -144,7 +145,7 @@ def test_afrac_invalid_without_inputs_or_reference():
         elm_t_ms=clean_elm()[0],
         elm_flag=clean_elm()[1],
     )
-    assert set(ind.reason) == {"short_reference"} and not ind.valid.any()
+    assert ind.valid.all()  # No unsourced three-second duration gate.
     _, weak = series(0.1e6)
     low = afrac.afrac_indicator(
         EDGES,
@@ -345,6 +346,69 @@ def test_window_mean_and_empty_windows():
     y = np.arange(10.0)
     m = signals.window_mean(t, y, np.array([50.0, 500.0]), 20.0)
     assert m[0] == pytest.approx(5.0) and np.isnan(m[1])
+
+
+def test_power_window_preserves_nan_and_internal_gaps():
+    t = np.arange(101.0)
+    y = np.ones(len(t))
+    y[(t >= 40) & (t <= 60)] = np.nan
+    assert np.isnan(signals.window_mean(t, y, [50.0], 20.0)[0])
+    keep = (t < 40) | (t > 60)
+    assert np.isnan(signals.window_mean(t[keep], y[keep], [50.0], 50.0)[0])
+
+
+def test_heating_missing_beam_samples_are_not_zero(monkeypatch):
+    t = np.arange(0.0, 401.0, 10.0)
+    beam = np.full((2, len(t)), 1e6)
+    beam[:, (t >= 180) & (t <= 220)] = np.nan
+    monkeypatch.setattr(signals, "corpus_group", lambda *a, **kw: (t, beam))
+    cache = {"poh": (t, np.full(len(t), 1e5)), "wmhd": (t, np.ones(len(t)))}
+    _, heat, _ = signals.heating_power(1, cache)
+    assert np.isnan(heat[t == 200]).all()
+    assert heat[t == 100] == pytest.approx([2.1e6])
+
+
+def test_elm_nan_gap_remains_unknown_without_poisoning_other_bins(monkeypatch):
+    t = np.arange(0.0, 1000.1, 0.1)
+    y = np.ones((4, len(t)))
+    y[:, (t >= 100) & (t < 150)] = np.nan
+    monkeypatch.setattr(signals, "corpus_group", lambda *a, **kw: (t, y))
+    tm, flag = signals.elm_mask(1, cache={})
+    known = core.elm_bin_known(np.arange(0.0, 301.0, 50.0), tm, flag)
+    assert known.tolist() == [True, True, False, True, True, True]
+    assert np.isnan(flag[(tm >= 100) & (tm < 150)]).all()
+    assert core.elm_at([125.0], tm, flag).all()
+
+
+def test_prad_uses_quarter_second_power_mean_at_beam_blip():
+    t = np.arange(0.0, 1001.0)
+    power = np.where((t >= 500) & (t < 550), 1.4e6, 1e6)
+    edges = np.array([500.0, 550.0])
+    ind = prad.prad_indicator(
+        edges, t, np.full(len(t), 0.48e6), t, power, t, np.zeros(len(t))
+    )
+    assert ind.valid[0]
+    assert 0.43 < ind.value[0] < 0.46
+    assert ind.vote[0] == core.ABSTAIN
+
+
+def test_prad_rejects_large_negative_offset_and_uncovered_power():
+    t = np.arange(0.0, 1001.0)
+    edges = np.array([500.0, 550.0])
+    p = np.full(len(t), 1e6)
+    ind = prad.prad_indicator(
+        edges, t, np.full(len(t), -0.1e6), t, p, t, np.zeros(len(t))
+    )
+    assert not ind.valid[0] and ind.reason[0] == "negative_radiation"
+    ind = prad.prad_indicator(
+        edges, t, np.full(len(t), -0.01e6), t, p, t, np.zeros(len(t))
+    )
+    assert ind.valid[0] and ind.value[0] == 0.0
+    p[(t >= 600) & (t <= 625)] = np.nan
+    ind = prad.prad_indicator(
+        edges, t, np.full(len(t), 0.5e6), t, p, t, np.zeros(len(t))
+    )
+    assert not ind.valid[0] and ind.reason[0] == "no_input_power"
 
 
 def test_input_power_gate_constants_are_ordered():

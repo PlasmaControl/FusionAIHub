@@ -43,17 +43,19 @@ def fingerprint(path: Path) -> dict:
     }
 
 
-def metrics(table: np.ndarray) -> dict:
+def metrics(table: np.ndarray, reference_classes=None) -> dict:
     """A 3 x 4 table: truth rows, predictions 1..3 plus abstention column."""
     n_ref = float(table.sum())
     cast = table[:, :3]
     n_vote = float(cast.sum())
     n_correct = float(np.trace(cast))
+    if reference_classes is None:
+        reference_classes = tuple(k for k in range(3) if table[k].sum())
     f1 = {}
     for k, name in enumerate(STATES):
         denominator = table[k].sum() + cast[:, k].sum()
-        f1[name] = float(2 * cast[k, k] / denominator) if denominator else None
-    supported = [f1[name] for k, name in enumerate(STATES) if table[k].sum()]
+        f1[name] = float(2 * cast[k, k] / denominator) if table[k].sum() else None
+    supported = [f1[list(STATES)[k]] for k in reference_classes]
     expected = float(cast.sum(axis=1) @ cast.sum(axis=0)) / n_vote**2 if n_vote else 1
     kappa = (
         float((n_correct / n_vote - expected) / (1 - expected))
@@ -69,7 +71,9 @@ def metrics(table: np.ndarray) -> dict:
     binary_f1 = {}
     for k, name in enumerate(("attached", "not_attached")):
         denominator = binary[k].sum() + binary[:, k].sum()
-        binary_f1[name] = float(2 * binary[k, k] / denominator) if denominator else None
+        binary_f1[name] = (
+            float(2 * binary[k, k] / denominator) if binary[k].sum() else None
+        )
     return {
         "n_reference_points": int(n_ref),
         "n_cast_votes": int(n_vote),
@@ -79,7 +83,9 @@ def metrics(table: np.ndarray) -> dict:
         "agreement_on_cast_votes": n_correct / n_vote if n_vote else None,
         "kappa_on_cast_votes": kappa,
         "f1_with_abstentions_as_false_negatives": f1,
-        "macro_f1_supported_states": float(np.mean(supported)) if supported else None,
+        "macro_f1_supported_states": float(np.mean(supported))
+        if supported and all(v is not None for v in supported)
+        else None,
         "confusion_truth_by_prediction": table.astype(int).tolist(),
         "binary_attached_vs_not_attached": {
             "strict_accuracy_all_references": float(np.trace(binary[:, :2]) / n_ref)
@@ -94,6 +100,8 @@ def metrics(table: np.ndarray) -> dict:
 def bootstrap(tables: np.ndarray, seed: int, replicates: int) -> dict:
     """Resample entire shots, retaining missing predictions in each denominator."""
     rng = np.random.default_rng(seed)
+    total = tables.sum(axis=0)
+    reference_classes = tuple(k for k in range(3) if total[k].sum())
     values = {
         name: []
         for name in (
@@ -112,7 +120,7 @@ def bootstrap(tables: np.ndarray, seed: int, replicates: int) -> dict:
     if len(tables) >= 2:
         for _ in range(replicates):
             resampled = tables[rng.integers(len(tables), size=len(tables))].sum(axis=0)
-            score = metrics(resampled)
+            score = metrics(resampled, reference_classes)
             score.update(
                 {
                     f"f1_{key}": value
@@ -138,6 +146,8 @@ def bootstrap(tables: np.ndarray, seed: int, replicates: int) -> dict:
         "replicates": replicates if len(tables) >= 2 else 0,
         "seed": seed,
         "n_shots": len(tables),
+        "reference_classes": [list(STATES)[k] for k in reference_classes],
+        "missing_class_support": "class F1 undefined; macro requires every frozen class",
         "warning": (
             "Only two reference shots; intervals are descriptive and cannot "
             "support population-accuracy claims."

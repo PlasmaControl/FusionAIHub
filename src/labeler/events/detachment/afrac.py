@@ -20,8 +20,8 @@ and do not vote. Differences from published Afrac remain:
   A finite probe spacing can under-read the current and bias detached votes.
 * `C` is not Eldon's fitted attached-current constant but a local proxy level, the
   `AFRAC_REFERENCE_QUANTILE` of the model-normalised Jsat over its valid bins.
-  At least 3 s of eligible samples are needed. A shot detached throughout can
-  be mis-called attached in its top tail.
+  There is no literature-backed minimum-duration gate. A shot detached
+  throughout can be mis-called attached in its top tail.
 * `<ne>` is the line-integrated CO2 density (V2 chord) and `P_SOL` is the heating
   power minus dW/dt, core radiation not subtracted; both enter only as ratios.
 
@@ -98,9 +98,7 @@ def afrac_indicator(
     """Afrac indicator on a bin grid.
 
     Reasons on an invalid bin: `no_probes`, `no_density`, `no_power`, `low_power`,
-    `ramp`, `elm`, `elm_unknown`, `no_samples`, `short_reference` (under
-    AFRAC_MIN_MS of valid bins
-    to set the attached level on).
+    `ramp`, `elm`, `elm_unknown`, `no_samples`.
     """
     n = len(edges) - 1
     value = np.full(n, np.nan)
@@ -142,8 +140,7 @@ def afrac_indicator(
     reason[(reason == "") & ~(np.nan_to_num(peak) > 0)] = "no_samples"
     reason[~elm_bin_known(edges, elm_t_ms, elm_flag)] = "elm_unknown"
     ok = (reason == "") & np.isfinite(raw)
-    if ok.sum() * float(edges[1] - edges[0]) < th.AFRAC_MIN_MS:
-        reason[ok] = "short_reference"
+    if not ok.any():
         return assemble("afrac", value, nothing, reason, np.zeros(n))
     reference = np.quantile(raw[ok], th.AFRAC_REFERENCE_QUANTILE)
     value = raw / reference

@@ -118,9 +118,15 @@ def main() -> None:
                 np.mean(out.state_lm.to_numpy()[assessed] == core.UNCERTAIN)
             ),
             "flicker_per_s": flicker(out, width),
-            "pairwise": {
-                k: {f: v[f] for f in ("both_vote_bins", "agreement", "kappa")}
-                for k, v in dl.pairwise_agreement(votes, valid).items()
+            "pairwise_by_tangtv_tier": {
+                str(tier): {
+                    k: {f: v[f] for f in ("both_vote_bins", "agreement", "kappa")}
+                    for k, v in dl.pairwise_agreement(
+                        votes[frame.tangtv_tier.eq(tier)],
+                        valid[frame.tangtv_tier.eq(tier)],
+                    ).items()
+                }
+                for tier in sorted(frame.tangtv_tier.unique())
             },
         }
     reference = labelled[50]

@@ -18,6 +18,7 @@ from .core import (
     DETACHED,
     Indicator,
     assemble,
+    bin_centres,
     bin_fraction,
     bin_mean,
     elm_at,
@@ -48,10 +49,12 @@ def prad_indicator(
 ) -> Indicator:
     """Prad indicator on a bin grid.
 
-    Bolometer samples inside an ELM are dropped before the bin mean (a mean, not a
-    median: it is a power); a bin whose samples are mostly in ELMs is invalid. The
-    reason on an invalid bin is one of `no_bolometer`, `no_input_power`,
-    `low_power`, `elm`, `elm_unknown`, `no_samples`.
+    Radiation and heating use centered 250 ms means (an acausal local tau_E-scale
+    choice). Radiation drops measured ELM samples; uncovered heating/radiation
+    windows stay invalid. A bin mostly in ELMs is invalid. Reasons include
+    `no_bolometer`, `no_input_power`, `low_power`, `elm`, `elm_unknown`,
+    `no_samples`, `negative_radiation`. Negative radiation below the documented
+    0.05 MW offset tolerance is rejected; smaller negative offsets become zero.
     """
     n = len(edges) - 1
     value = np.full(n, np.nan)
@@ -63,16 +66,27 @@ def prad_indicator(
         return assemble("prad", value, np.zeros(n, bool), reason, np.zeros(n))
     prad_t_ms = np.asarray(prad_t_ms, dtype=float)
     in_elm = elm_at(prad_t_ms, elm_t_ms, elm_flag)
-    prad, count = bin_mean(prad_t_ms, prad_w, edges, keep=~in_elm)
-    p_in, _ = bin_mean(power_t_ms, p_in_w, edges)
+    from .signals import window_mean
+
+    centres = bin_centres(edges)
+    prad = window_mean(
+        prad_t_ms, prad_w, centres, th.PRAD_AVERAGING_MS, keep=~in_elm
+    )
+    _, count = bin_mean(prad_t_ms, prad_w, edges, keep=~in_elm)
+    p_in = window_mean(power_t_ms, p_in_w, centres, th.PRAD_AVERAGING_MS)
     elm_share = (
         bin_fraction(prad_t_ms, in_elm, edges) if elm_t_ms is not None else np.zeros(n)
     )
     with np.errstate(invalid="ignore", divide="ignore"):
-        value = prad / p_in
+        corrected = np.where(
+            prad >= -th.RADIATION_NEGATIVE_TOL_W, np.maximum(prad, 0.0), prad
+        )
+        value = corrected / p_in
     reason[:] = ""
     reason[~np.isfinite(p_in)] = "no_input_power"
     reason[np.isfinite(p_in) & (p_in < th.MIN_INPUT_POWER_W)] = "low_power"
+    reason[~np.isfinite(prad) & (reason == "")] = "no_samples"
+    reason[prad < -th.RADIATION_NEGATIVE_TOL_W] = "negative_radiation"
     reason[np.nan_to_num(elm_share) > th.MAX_ELM_FRACTION] = "elm"
     reason[(count == 0) & (reason == "")] = "no_samples"
     reason[~elm_bin_known(edges, elm_t_ms, elm_flag)] = "elm_unknown"

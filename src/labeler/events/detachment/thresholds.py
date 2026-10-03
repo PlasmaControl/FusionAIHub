@@ -24,8 +24,6 @@ AFRAC_DETACHED_MAX = 0.5
 #: therefore mis-called attached in its top tail: a stated limitation of this
 #: indicator, which is why it never decides alone.
 AFRAC_REFERENCE_QUANTILE = 0.90
-#: Least valid time (ms, any bin width) the reference quantile may rest on.
-AFRAC_MIN_MS = 3000.0
 
 # --- Prad,div (Eldon 2019, NME 18 285; Chen 2026 NF 66 036014) ---------------------
 #: Local Prad,div,L/P_in thresholds initially motivated by Chen 2026 shot
@@ -38,6 +36,14 @@ PRAD_DETACHED_MIN = 0.50
 #: Below this input power the ratio is noise (the bolometer offset, ~0.05 MW, is a
 #: tenth of it), and Prad,div cannot be normalised.
 MIN_INPUT_POWER_W = 0.5e6
+#: Local acausal tau_E-scale averaging choice, not a fitted time constant. Both
+#: radiation and heating use the same centered 250 ms window to avoid beam-blip
+#: labels. Chen 2026 reports Prad leading DZ by ~50 ms; smoothing is not a lag fix.
+PRAD_AVERAGING_MS = 250.0
+#: Operational offset tolerance, not a measured calibration uncertainty: 0.05 MW,
+#: consistent with the offset scale used above for the input-power floor. More
+#: negative averaged radiation is invalid; small negative offsets are clipped to 0.
+RADIATION_NEGATIVE_TOL_W = 0.05e6
 
 # --- TangTV DZ (Chen 2026) ---------------------------------------------------------
 #: DZ = 1 - (ZX - ZE)/(ZX - ZS): 0 at the strike point (attached), 1 at the X-point.

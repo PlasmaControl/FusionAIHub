@@ -447,8 +447,13 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "n_requested_shots": len(eligible),
         "table_kind": "intervals",
         "coverage": (
-            "Bins where at least two of the three indicators (Afrac, Prad,div, "
-            "TangTV front) are valid. Time with no row was not assessed; it is not "
+            "Exploratory labels; no independent benchmark. In practice, coverage "
+            "is two indicators: Prad,div and TangTV; the uncalibrated Jsat proxy "
+            "can also cast provisional lower-shelf votes. Assessed bins have "
+            "at least two valid measurements on eligible shots (at least 20 "
+            "assessed bins and 20 valid bins per contributing indicator). "
+            "Certainty requires upper-shelf TangTV plus f_div corroboration. "
+            "Time with no row was not assessed; it is not "
             "attached. 4 (uncertain) includes conflicting compatible votes, "
             "insufficient support, candidate MARFE, lower_shelf_window pending "
             "owner sign-off, unknown ELM coverage and the Afrac+Prad-only weak tier. "
@@ -636,6 +641,14 @@ def main() -> None:
         "fit_bins_train_val_outside": pairwise_agreement(
             votes[fit_mask], valid[fit_mask]
         ),
+        "by_tangtv_tier": {
+            str(t): pairwise_agreement(
+                votes[work.tangtv_tier.eq(t)], valid[work.tangtv_tier.eq(t)]
+            )
+            for t in sorted(work.tangtv_tier.unique())
+        },
+        "paper_tier": "upper_shelf",
+        "scope": "exploratory indicator agreement; no independent benchmark",
     }
     (records / "agreement.json").write_text(dumps(agreement, indent=1))
 

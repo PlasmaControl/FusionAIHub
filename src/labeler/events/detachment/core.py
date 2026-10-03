@@ -160,7 +160,40 @@ def elm_at(t_ms: np.ndarray, elm_t_ms, elm_flag) -> np.ndarray:
     nearer_before = np.abs(elm_t_ms[before] - t_ms) <= np.abs(elm_t_ms[after] - t_ms)
     index = np.where(nearer_before, before, after)
     known = np.isfinite(t_ms) & (t_ms >= elm_t_ms[0]) & (t_ms <= elm_t_ms[-1])
-    return ~known | np.asarray(elm_flag, dtype=bool)[index]
+    flags = np.asarray(elm_flag, dtype=float)
+    known &= np.isfinite(flags[index])
+    step = float(np.median(np.diff(elm_t_ms)))
+    known &= np.abs(elm_t_ms[index] - t_ms) <= max(step, 1.0)
+    return ~known | (flags[index] > 0)
+
+
+def sample_windows_known(t_ms, available, starts, stops) -> np.ndarray:
+    """Complete sample availability in half-open windows, without extrapolation.
+
+    Half a native sample is allowed at record boundaries. A missing sample or
+    an internal gap longer than two native samples invalidates intersecting
+    windows. Availability is independent of whether a measured value is zero.
+    """
+    t = np.asarray(t_ms, dtype=float)
+    available = np.asarray(available, dtype=bool)
+    starts, stops = np.asarray(starts), np.asarray(stops)
+    known = np.zeros(starts.shape, bool)
+    if (
+        len(t) < 2
+        or len(available) != len(t)
+        or not np.isfinite(t).all()
+        or np.any(np.diff(t) <= 0)
+    ):
+        return known
+    step = float(np.median(np.diff(t)))
+    known = (starts >= t[0] - step / 2) & (stops <= t[-1] + step / 2)
+    lo = np.searchsorted(t, starts, side="left")
+    hi = np.searchsorted(t, stops, side="left")
+    missing = np.r_[0, np.cumsum(~available)]
+    known &= (hi > lo) & (missing[hi] == missing[lo])
+    for i in np.flatnonzero(np.diff(t) > max(2 * step, 2.0)):
+        known &= ~((starts < t[i + 1]) & (stops > t[i]))
+    return known
 
 
 def elm_bin_known(edges, elm_t_ms, elm_flag) -> np.ndarray:
@@ -172,21 +205,9 @@ def elm_bin_known(edges, elm_t_ms, elm_flag) -> np.ndarray:
     n = len(edges) - 1
     if elm_t_ms is None or elm_flag is None:
         return np.zeros(n, bool)
-    t = np.asarray(elm_t_ms, dtype=float)
-    flag = np.asarray(elm_flag)
-    if (
-        len(t) < 2
-        or len(flag) != len(t)
-        or not np.isfinite(t).all()
-        or not np.isfinite(flag).all()
-        or np.any(np.diff(t) <= 0)
-    ):
-        return np.zeros(n, bool)
-    step = float(np.median(np.diff(t)))
-    known = (edges[:-1] >= t[0] - step / 2) & (edges[1:] <= t[-1] + step / 2)
-    for i in np.flatnonzero(np.diff(t) > max(2 * step, 2.0)):
-        known &= ~((edges[:-1] < t[i + 1]) & (edges[1:] > t[i]))
-    return known
+    return sample_windows_known(
+        elm_t_ms, np.isfinite(elm_flag), edges[:-1], edges[1:]
+    )
 
 
 def bin_fraction(t_ms: np.ndarray, flag: np.ndarray, edges: np.ndarray) -> np.ndarray:

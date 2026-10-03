@@ -483,6 +483,7 @@ def process(
     out["tangtv_marfe_candidate"] = candidate
     out["tangtv_marfe_spatial"] = spatial
     out["tangtv_marfe_second_cue"] = second
+    out["tangtv_marfe_back_transition"] = back_transition
     maps = signals.load_flux_map(shot)
     out["tangtv_marfe_efit_source"] = np.full(
         n, "none" if maps is None else str(maps.get("source", "EFIT01"))
@@ -497,7 +498,28 @@ def process(
     # the quantities behind the indicators, for the figure and the failure analysis
     out["aux_ip_a"] = core.bin_median(t_ip, ip, edges)[0].astype(np.float32)
     if p_t is not None:
-        out["aux_p_in_w"] = core.bin_mean(p_t, p_in, edges)[0].astype(np.float32)
+        out["aux_p_in_w"] = signals.window_mean(
+            p_t, p_in, core.bin_centres(edges), th.PRAD_AVERAGING_MS
+        ).astype(np.float32)
+    for name in ("prad_divl", "prad_tot"):
+        out[f"aux_{name}_w"] = np.full(n, np.nan, np.float32)
+        if name in cache:
+            rt, ry = cache[name]
+            out[f"aux_{name}_w"] = signals.window_mean(
+                rt,
+                ry,
+                core.bin_centres(edges),
+                th.PRAD_AVERAGING_MS,
+                keep=~core.elm_at(rt, elm_t, elm_flag),
+            ).astype(np.float32)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        div, total = out["aux_prad_divl_w"], out["aux_prad_tot_w"]
+        out["aux_prad_div_fraction_total"] = np.where(
+            (total > 0) & (div >= -th.RADIATION_NEGATIVE_TOL_W),
+            np.maximum(div, 0.0) / total,
+            np.nan,
+        )
+    out["prad_averaging_ms"] = np.full(n, th.PRAD_AVERAGING_MS, np.float32)
     if n_t is not None:
         out["aux_ne"] = core.bin_median(n_t, n_y, edges)[0].astype(np.float32)
     if probes is not None:
