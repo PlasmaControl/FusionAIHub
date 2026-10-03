@@ -1,0 +1,544 @@
+{
+ "classes": [
+  "L",
+  "H",
+  "QH",
+  "WP"
+ ],
+ "kept_windows": 58474,
+ "kept_shots": 109,
+ "thresholds": {
+  "L": 0.7656660800262775,
+  "H": 0.9185988864343559,
+  "QH": 0.5051552066554998,
+  "WP": 0.6983407515344172
+ },
+ "confident_joint": [
+  [
+   4988,
+   752,
+   506,
+   30
+  ],
+  [
+   1219,
+   38676,
+   430,
+   982
+  ],
+  [
+   498,
+   259,
+   2362,
+   622
+  ],
+  [
+   56,
+   197,
+   548,
+   2157
+  ]
+ ],
+ "calibrated_joint": [
+  [
+   5329.0,
+   803.4,
+   540.6,
+   32.1
+  ],
+  [
+   1292.2,
+   40999.9,
+   455.8,
+   1041.0
+  ],
+  [
+   641.0,
+   333.4,
+   3040.1,
+   800.6
+  ],
+  [
+   59.9,
+   210.8,
+   586.3,
+   2307.9
+  ]
+ ],
+ "estimated_label_noise": 0.11624105741297351,
+ "intervals_scored": 251,
+ "intervals_flagged": 25,
+ "by_status": [
+  {
+   "status": "agreement",
+   "intervals": 203,
+   "flagged": 21,
+   "flagged_share": 0.10344827586206896,
+   "seconds": 202.524721,
+   "flagged_seconds": 16.277765
+  },
+  {
+   "status": "single_source",
+   "intervals": 48,
+   "flagged": 4,
+   "flagged_share": 0.08333333333333333,
+   "seconds": 46.840204,
+   "flagged_seconds": 2.5110840000000003
+  }
+ ],
+ "by_source": [
+  {
+   "sources": "jalal|kevin_bes|kevin_workbook",
+   "intervals": 16,
+   "flagged": 3,
+   "flagged_share": 0.1875,
+   "seconds": 20.604764000000003,
+   "flagged_seconds": 4.904867
+  },
+  {
+   "sources": "jalal|kevin_workbook",
+   "intervals": 187,
+   "flagged": 18,
+   "flagged_share": 0.0962566844919786,
+   "seconds": 181.919957,
+   "flagged_seconds": 11.372897999999998
+  },
+  {
+   "sources": "kevin_bes",
+   "intervals": 48,
+   "flagged": 4,
+   "flagged_share": 0.08333333333333333,
+   "seconds": 46.840204,
+   "flagged_seconds": 2.5110840000000003
+  }
+ ],
+ "pairs": {
+  "QH->WP": {
+   "flagged": 2,
+   "of_given": 19
+  },
+  "WP->QH": {
+   "flagged": 3,
+   "of_given": 15
+  },
+  "L->H": {
+   "flagged": 6,
+   "of_given": 58
+  },
+  "H->L": {
+   "flagged": 2,
+   "of_given": 159
+  },
+  "H->QH": {
+   "flagged": 1,
+   "of_given": 159
+  },
+  "QH->H": {
+   "flagged": 0,
+   "of_given": 19
+  }
+ },
+ "row": "base",
+ "folds": 5,
+ "margin_ms": 20.0,
+ "min_windows": 5,
+ "min_share": 0.5,
+ "git": "15d597fc",
+ "created": "2026-10-03T16:48:47+00:00",
+ "flagged": {
+  "all_flagged": [
+   {
+    "shot": 189602,
+    "interval": 2,
+    "t_start": 1795.156,
+    "t_end": 1853.448,
+    "given": "L",
+    "other": "H",
+    "windows": 5,
+    "share_given": 0.0,
+    "share_other": 1.0,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 195948,
+    "interval": 30,
+    "t_start": 1600.134,
+    "t_end": 1683.0,
+    "given": "L",
+    "other": "H",
+    "windows": 11,
+    "share_given": 0.0,
+    "share_other": 1.0,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192718,
+    "interval": 0,
+    "t_start": 1174.0,
+    "t_end": 1887.0,
+    "given": "WP",
+    "other": "H",
+    "windows": 164,
+    "share_given": 0.0,
+    "share_other": 1.0,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192098,
+    "interval": 0,
+    "t_start": 697.0,
+    "t_end": 1293.0,
+    "given": "H",
+    "other": "QH",
+    "windows": 136,
+    "share_given": 0.0,
+    "share_other": 1.0,
+    "sources": "kevin_bes",
+    "status": "single_source"
+   },
+   {
+    "shot": 190856,
+    "interval": 1,
+    "t_start": 1500.045,
+    "t_end": 1587.0,
+    "given": "L",
+    "other": "H",
+    "windows": 12,
+    "share_given": 0.0,
+    "share_other": 1.0,
+    "sources": "jalal|kevin_bes|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 191376,
+    "interval": 1,
+    "t_start": 300.049,
+    "t_end": 2058.0,
+    "given": "L",
+    "other": "H",
+    "windows": 420,
+    "share_given": 0.0,
+    "share_other": 0.998,
+    "sources": "jalal|kevin_bes|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 185871,
+    "interval": 2,
+    "t_start": 2110.039,
+    "t_end": 5170.0,
+    "given": "H",
+    "other": "L",
+    "windows": 737,
+    "share_given": 0.0,
+    "share_other": 0.989,
+    "sources": "jalal|kevin_bes|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 185871,
+    "interval": 1,
+    "t_start": 1752.0,
+    "t_end": 2110.039,
+    "given": "H",
+    "other": "L",
+    "windows": 78,
+    "share_given": 0.0,
+    "share_other": 0.987,
+    "sources": "kevin_bes",
+    "status": "single_source"
+   },
+   {
+    "shot": 190856,
+    "interval": 0,
+    "t_start": 105.0,
+    "t_end": 1500.045,
+    "given": "L",
+    "other": "QH",
+    "windows": 331,
+    "share_given": 0.0,
+    "share_other": 0.979,
+    "sources": "kevin_bes",
+    "status": "single_source"
+   },
+   {
+    "shot": 196493,
+    "interval": 0,
+    "t_start": 1520.0,
+    "t_end": 2518.0,
+    "given": "L",
+    "other": "H",
+    "windows": 234,
+    "share_given": 0.0,
+    "share_other": 0.979,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192098,
+    "interval": 1,
+    "t_start": 1683.0,
+    "t_end": 1845.0,
+    "given": "WP",
+    "other": "QH",
+    "windows": 30,
+    "share_given": 0.067,
+    "share_other": 0.933,
+    "sources": "kevin_bes",
+    "status": "single_source"
+   },
+   {
+    "shot": 195865,
+    "interval": 2,
+    "t_start": 4401.636,
+    "t_end": 4633.0,
+    "given": "WP",
+    "other": "QH",
+    "windows": 47,
+    "share_given": 0.0,
+    "share_other": 0.915,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 195649,
+    "interval": 11,
+    "t_start": 2235.228,
+    "t_end": 4785.0,
+    "given": "H",
+    "other": "WP",
+    "windows": 613,
+    "share_given": 0.106,
+    "share_other": 0.878,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190510,
+    "interval": 0,
+    "t_start": 800.046,
+    "t_end": 982.0,
+    "given": "L",
+    "other": "QH",
+    "windows": 35,
+    "share_given": 0.029,
+    "share_other": 0.857,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190508,
+    "interval": 1,
+    "t_start": 833.633,
+    "t_end": 1539.0,
+    "given": "L",
+    "other": "QH",
+    "windows": 163,
+    "share_given": 0.086,
+    "share_other": 0.847,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190507,
+    "interval": 3,
+    "t_start": 1372.233,
+    "t_end": 1787.372,
+    "given": "QH",
+    "other": "L",
+    "windows": 92,
+    "share_given": 0.011,
+    "share_other": 0.761,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190507,
+    "interval": 4,
+    "t_start": 1798.632,
+    "t_end": 1999.972,
+    "given": "QH",
+    "other": "L",
+    "windows": 40,
+    "share_given": 0.125,
+    "share_other": 0.725,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190507,
+    "interval": 6,
+    "t_start": 2090.133,
+    "t_end": 4244.0,
+    "given": "QH",
+    "other": "L",
+    "windows": 516,
+    "share_given": 0.062,
+    "share_other": 0.7,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192763,
+    "interval": 1,
+    "t_start": 1175.0,
+    "t_end": 1841.0,
+    "given": "QH",
+    "other": "WP",
+    "windows": 153,
+    "share_given": 0.301,
+    "share_other": 0.699,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 195649,
+    "interval": 10,
+    "t_start": 2145.227,
+    "t_end": 2227.974,
+    "given": "H",
+    "other": "WP",
+    "windows": 11,
+    "share_given": 0.364,
+    "share_other": 0.636,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192942,
+    "interval": 2,
+    "t_start": 1500.11,
+    "t_end": 1559.0,
+    "given": "L",
+    "other": "WP",
+    "windows": 5,
+    "share_given": 0.0,
+    "share_other": 0.6,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 190507,
+    "interval": 5,
+    "t_start": 2010.077,
+    "t_end": 2078.871,
+    "given": "QH",
+    "other": "L",
+    "windows": 7,
+    "share_given": 0.0,
+    "share_other": 0.571,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 195865,
+    "interval": 1,
+    "t_start": 2592.0,
+    "t_end": 4400.772,
+    "given": "WP",
+    "other": "QH",
+    "windows": 432,
+    "share_given": 0.037,
+    "share_other": 0.558,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192710,
+    "interval": 1,
+    "t_start": 1250.0,
+    "t_end": 1500.0,
+    "given": "QH",
+    "other": "WP",
+    "windows": 51,
+    "share_given": 0.137,
+    "share_other": 0.529,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 189329,
+    "interval": 18,
+    "t_start": 1842.039,
+    "t_end": 1988.773,
+    "given": "L",
+    "other": "H",
+    "windows": 26,
+    "share_given": 0.423,
+    "share_other": 0.5,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   }
+  ],
+  "qh_wp": [
+   {
+    "shot": 192098,
+    "interval": 1,
+    "t_start": 1683.0,
+    "t_end": 1845.0,
+    "given": "WP",
+    "other": "QH",
+    "windows": 30,
+    "share_given": 0.067,
+    "share_other": 0.933,
+    "sources": "kevin_bes",
+    "status": "single_source"
+   },
+   {
+    "shot": 195865,
+    "interval": 2,
+    "t_start": 4401.636,
+    "t_end": 4633.0,
+    "given": "WP",
+    "other": "QH",
+    "windows": 47,
+    "share_given": 0.0,
+    "share_other": 0.915,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192763,
+    "interval": 1,
+    "t_start": 1175.0,
+    "t_end": 1841.0,
+    "given": "QH",
+    "other": "WP",
+    "windows": 153,
+    "share_given": 0.301,
+    "share_other": 0.699,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 195865,
+    "interval": 1,
+    "t_start": 2592.0,
+    "t_end": 4400.772,
+    "given": "WP",
+    "other": "QH",
+    "windows": 432,
+    "share_given": 0.037,
+    "share_other": 0.558,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   },
+   {
+    "shot": 192710,
+    "interval": 1,
+    "t_start": 1250.0,
+    "t_end": 1500.0,
+    "given": "QH",
+    "other": "WP",
+    "windows": 51,
+    "share_given": 0.137,
+    "share_other": 0.529,
+    "sources": "jalal|kevin_workbook",
+    "status": "agreement"
+   }
+  ]
+ }
+}

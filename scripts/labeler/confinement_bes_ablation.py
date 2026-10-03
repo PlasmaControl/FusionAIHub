@@ -74,8 +74,9 @@ class Row:
     name: str
     label: str
     data: str = "500k"  # sampling rate of the features: 500k (corpus) or 1m (native)
-    # corpus: the shots the corpus holds BES for; both: those of them fetched at 1 MHz
-    # too (the matched set of the 500 kHz / 1 MHz comparison); all: every fetched shot
+    # corpus: the shots the corpus holds BES for (every one of them is also fetched at
+    # 1 MHz, so the 500 kHz and 1 MHz rows train on the same shots); all: every fetched
+    # shot
     shots: str = "corpus"
     # rows [lo, hi) of the 8 x 8 array: the first retrain used rows 1-6
     rows: tuple[int, int] = (1, 7)
@@ -136,31 +137,6 @@ def _chain() -> dict[str, Row]:
         label="+ paper split protocol (500 kHz, corpus shots)",
         protocol="paper",
     )
-    # the native-rate question on the shots that exist at both rates, so that the two rows
-    # train on the same shots
-    matched = replace(base, shots="both")
-    rows["base_m"] = replace(
-        matched, name="base_m", label="first retrain, shots at both rates"
-    )
-    rows["only_g_m"] = replace(
-        matched,
-        name="only_g_m",
-        label="+ native 1 MHz (shots at both rates)",
-        data="1m",
-    )
-    chain = rows["cum_abcdr"]
-    rows["cum_abcdr_m"] = replace(
-        chain,
-        name="cum_abcdr_m",
-        label="+ a, b, c, d, r (shots at both rates)",
-        shots="both",
-    )
-    rows["cum_abcdrg_m"] = replace(
-        rows["cum_abcdr_m"],
-        name="cum_abcdrg_m",
-        label="+ native 1 MHz (shots at both rates)",
-        data="1m",
-    )
     return rows
 
 
@@ -194,10 +170,8 @@ def load(row: Row):
     """Window table, memory-mapped features, channel power and the row's index into the
     dataset, all restricted to the row's shot set."""
     table, feats, power = bw.open_dataset(dataset_dir(row.data))
-    if row.shots in ("corpus", "both"):
+    if row.shots == "corpus":
         allowed = fetched_shots(WORK / "bes500k")
-        if row.shots == "both":
-            allowed &= fetched_shots(WORK / "bes1mhz")
         keep = table.shot.isin(allowed).to_numpy()
         index = np.flatnonzero(keep)
         table = table.iloc[index].reset_index(drop=True)
