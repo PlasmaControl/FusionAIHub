@@ -215,15 +215,6 @@ def ensemble(data, train, val, device):
     return [train_one(data, train, val, seed, device) for seed in HYPER["seeds"]]
 
 
-def split_inner(shots, seed):
-    """`(train, validation)`: a seeded tenth of the shots held back."""
-    rng = np.random.default_rng(seed)
-    order = rng.permutation(len(shots))
-    k = max(1, round(HYPER["val_fraction"] * len(shots)))
-    val = [shots[i] for i in order[:k]]
-    return [shots[i] for i in order[k:]], val
-
-
 def pick_threshold(data, val_scores, val):
     stats = [
         scoring.shot_stats(
@@ -330,7 +321,7 @@ def main(argv=None) -> int:
     for k in range(FOLDS):
         held = [s for s in dev if folds[s] == k]
         pool = [s for s in dev if folds[s] != k]
-        train, val = split_inner(pool, seed=100 + k)
+        train, val = scoring.inner_split(pool, 100 + k, HYPER["val_fraction"])
         nets = ensemble(data, train, val, device)
         val_scores = predict(nets, data, val, device)
         thr = pick_threshold(data, val_scores, val)
@@ -367,7 +358,7 @@ def main(argv=None) -> int:
         **{f"s{s}": oof[s].astype(np.float32) for s in dev},
     )
     if args.final:
-        train, val = split_inner(dev, seed=999)
+        train, val = scoring.inner_split(dev, 999, HYPER["val_fraction"])
         nets = ensemble(data, train, val, device)
         thr = pick_threshold(data, predict(nets, data, val, device), val)
         scores = predict(nets, data, test, device)

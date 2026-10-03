@@ -186,3 +186,12 @@ def test_evaluate_without_tious_has_no_segmental_f1_and_records_the_bin_width():
     assert not any(key.startswith("segf1") for key in rows)
     assert rows["bin_ms"] == 25.0
     assert rows["f1"]["value"] == full["f1"]["value"] == 1.0
+
+
+def test_inner_split_holds_back_a_seeded_tenth_and_loses_no_shot():
+    shots = list(range(100, 150))
+    train, val = scoring.inner_split(shots, 7)
+    assert len(val) == 5 and sorted(train + val) == shots
+    assert (train, val) == scoring.inner_split(shots, 7)
+    assert val != scoring.inner_split(shots, 8)[1]
+    assert len(scoring.inner_split([1, 2], 0)[1]) == 1

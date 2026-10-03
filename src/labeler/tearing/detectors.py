@@ -104,6 +104,8 @@ class KerasDetector(nn.Module):
         gen = torch.Generator().manual_seed(seed)
         self.keys: dict[str, list[str]] = {}
         for name, shapes in graph.weights.items():
+            if name not in self.layers or not shapes:  # e.g. Keras' top-level group
+                continue
             self.keys[name] = sorted(shapes)
             cls = self.layers[name]["class_name"]
             for short, tensor in shapes.items():
@@ -246,7 +248,7 @@ def fit(
     `inputs` is a tuple of arrays with rows first, `y` the 0/1 targets. The loss is the
     mean binary cross-entropy on the logit. Training stops after `patience` epochs
     without improvement; the best weights (and batch-norm statistics) are restored.
-    Returns `{"epochs", "best_epoch", "best_val_loss", "train_loss"}`.
+    Returns `{"epochs", "best_epoch", "best_val_loss", "train_loss", "val_loss"}`.
     """
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
@@ -269,7 +271,7 @@ def fit(
         return total / max(len(y_va), 1)
 
     best, best_state, best_epoch, stale = np.inf, None, -1, 0
-    history = []
+    history, val_history = [], []
     for epoch in range(max_epochs):
         module.train()
         order = rng.permutation(len(y_tr))
@@ -288,6 +290,7 @@ def fit(
             seen += len(idx)
         history.append(running / max(seen, 1))
         current = val_loss()
+        val_history.append(current)
         if current < best - 1e-6:
             best, best_epoch, stale = current, epoch, 0
             best_state = {k: v.detach().clone() for k, v in module.state_dict().items()}
@@ -303,4 +306,5 @@ def fit(
         "best_epoch": best_epoch,
         "best_val_loss": float(best),
         "train_loss": [float(h) for h in history],
+        "val_loss": [float(v) for v in val_history],
     }

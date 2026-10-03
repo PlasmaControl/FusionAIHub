@@ -41,6 +41,14 @@ def shot_folds(shots, k: int = 5, seed: int = 0) -> dict[int, int]:
     return {ordered[i]: int(rank % k) for rank, i in enumerate(order)}
 
 
+def inner_split(shots, seed: int, fraction: float = 0.1) -> tuple[list, list]:
+    """`(train, validation)`: a seeded `fraction` of the shots held back, at least one."""
+    shots = list(shots)
+    order = np.random.default_rng(seed).permutation(len(shots))
+    k = max(1, round(fraction * len(shots)))
+    return [shots[i] for i in order[k:]], [shots[i] for i in order[:k]]
+
+
 def bin_centres(window, bin_ms: float = BIN_MS) -> np.ndarray:
     """Centres (ms) of the bins wholly inside `window`, on an absolute `bin_ms` grid."""
     lo = np.ceil(window[0] / bin_ms) * bin_ms

@@ -90,6 +90,7 @@ def _tiny_graph() -> keras_h5.KerasGraph:
         name: {short: torch.zeros(shape) for short, shape in group.items()}
         for name, group in shapes.items()
     }
+    weights["top_level_model_weights"] = {}  # a group the files carry, with no layer
     return keras_h5.KerasGraph(
         config=config,
         weights=weights,
