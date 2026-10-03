@@ -21,7 +21,13 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from torch.nn import functional as F
 
-from labeler.sawtooth.metrics import aggregate, event_cells, score_histogram, spans_at
+from labeler.sawtooth.metrics import (
+    aggregate,
+    bin_times,
+    event_cells,
+    score_histogram,
+    spans_at,
+)
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 
 MODELS = ("saw-hl3", "saw-ours")
@@ -467,6 +473,7 @@ def evaluate(args):
     for name in args.models:
         rows = {1: [], 2: []}
         class_cells = np.zeros((3, 3), dtype=int)
+        shot_class_cells = []
         for shot in split["training_cohort"]:
             fold = split["folds"][shot]
             path = args.work / "predictions" / name / f"fold_{fold}" / f"{shot}.npz"
@@ -474,9 +481,9 @@ def evaluate(args):
                 raise FileNotFoundError(path)
             pred = np.load(path)
             rec = record(args.work, shot)
-            t = pred["t"][10::20]
+            t = bin_times((pred["t"][0], pred["t"][-1]))
             truth = spans_at(t, [(r["start_s"], r["end_s"]) for r in rec["intervals"]])
-            hist = score_histogram(truth, pred["presence"][10::20])
+            hist = score_histogram(truth, np.interp(t, pred["t"], pred["presence"]))
             ref = [r["time_s"] for r in rec["crashes"]]
             for tolerance in (1, 2):
                 rows[tolerance].append(
@@ -495,7 +502,10 @@ def evaluate(args):
                 _, _, classes = targets(
                     pred["class_t"], rec, summary["period_boundary_ms"]
                 )
-                np.add.at(class_cells, (classes, pred["class_prob"].argmax(axis=1)), 1)
+                cells = np.zeros((3, 3), dtype=int)
+                np.add.at(cells, (classes, pred["class_prob"].argmax(axis=1)), 1)
+                class_cells += cells
+                shot_class_cells.append(cells)
         score = {
             f"crash_tolerance_{tolerance}ms": aggregate(rows[tolerance])
             for tolerance in (1, 2)
@@ -505,6 +515,15 @@ def evaluate(args):
             score["three_class_window_accuracy"] = float(
                 class_cells.trace() / class_cells.sum()
             )
+            cells = np.stack(shot_class_cells)
+            rng = np.random.default_rng(SEED)
+            accuracy = []
+            for _ in range(1000):
+                totals = cells[rng.integers(0, len(cells), size=len(cells))].sum(axis=0)
+                accuracy.append(float(totals.trace() / totals.sum()))
+            score["three_class_accuracy_ci95"] = np.quantile(
+                accuracy, [0.025, 0.975]
+            ).tolist()
         review = pd.read_csv(REVIEW)
         expert = []
         for shot in split["expert_shots"]:
@@ -527,10 +546,15 @@ def evaluate(args):
                 for r in recs.itertuples()
                 if r.category in (0, 1)
             ]
-            bins = t[10::20]
+            bins = bin_times(
+                (
+                    max(t[0], recs.t_start.min() / 1000),
+                    min(t[-1], recs.t_end.max() / 1000),
+                )
+            )
             valid = spans_at(bins, known)
             hist = score_histogram(
-                spans_at(bins, positive)[valid], present[10::20][valid]
+                spans_at(bins, positive)[valid], np.interp(bins, t, present)[valid]
             )
             # Ensemble timing scores are only support checks because review has
             # no point annotations. Do not turn span support into crash precision.
@@ -570,6 +594,7 @@ def evaluate(args):
                 }
             )
         independent = aggregate(expert)
+        independent.pop("crash_cells")
         independent["crash"] = {
             "recall": None,
             "precision": None,

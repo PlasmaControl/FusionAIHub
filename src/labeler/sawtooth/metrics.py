@@ -9,6 +9,17 @@ from ..scoring.events import match
 HISTOGRAM_BINS = 512
 
 
+def bin_times(window_s, bin_ms=2.0):
+    """Centers of one absolute-time bin grid within half-open waveform coverage."""
+    lo, hi = window_s
+    step = bin_ms / 1000
+    first = int(np.ceil((lo - step / 2) / step - 1e-9))
+    centers = (
+        first + np.arange(max(0, int(np.ceil((hi - lo) / step)) + 1))
+    ) * step + step / 2
+    return centers[(centers >= lo - 1e-12) & (centers < hi)]
+
+
 def event_cells(reference_s, estimate_s, tolerance_ms=2.0):
     pairing = match(
         np.asarray(reference_s) * 1000, np.asarray(estimate_s) * 1000, tolerance_ms
@@ -29,6 +40,49 @@ def point_metrics(cells):
         "precision": float(tp / (tp + fp)) if tp + fp else 0.0,
         "recall": float(tp / (tp + fn)) if tp + fn else 0.0,
         "f1": float(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else 0.0,
+    }
+
+
+def interval_cells(reference, estimate, minimum_iou=0.1):
+    """One-to-one interval matching, descending intersection over union."""
+    reference, estimate = list(reference), list(estimate)
+    possible = []
+    for i, (a, b) in enumerate(reference):
+        for j, (c, d) in enumerate(estimate):
+            overlap = max(0.0, min(b, d) - max(a, c))
+            union = max(b, d) - min(a, c)
+            iou = overlap / union if union > 0 else 0.0
+            if iou >= minimum_iou:
+                possible.append((-iou, i, j))
+    used_ref, used_est = set(), set()
+    for _, i, j in sorted(possible):
+        if i not in used_ref and j not in used_est:
+            used_ref.add(i)
+            used_est.add(j)
+    return np.array(
+        [len(used_ref), len(estimate) - len(used_est), len(reference) - len(used_ref)],
+        dtype=float,
+    )
+
+
+def bootstrap_cells(rows, *, replicates=1000, seed=20261003):
+    """Precision/recall/F1 with equal-probability shot bootstrap draws."""
+    cells = np.stack([r["cells"] for r in rows])
+    result = point_metrics(cells.sum(axis=0))
+    samples = {k: [] for k in result}
+    rng = np.random.default_rng(seed)
+    for _ in range(replicates):
+        selected = rng.integers(0, len(rows), size=len(rows))
+        for k, v in point_metrics(cells[selected].sum(axis=0)).items():
+            samples[k].append(v)
+    return {
+        "metrics": result,
+        "cells": cells.sum(axis=0).astype(int).tolist(),
+        "ci95": {
+            k: np.quantile(v, [0.025, 0.975]).tolist() for k, v in samples.items()
+        },
+        "replicates": replicates,
+        "seed": seed,
     }
 
 

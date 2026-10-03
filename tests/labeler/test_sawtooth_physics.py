@@ -1,7 +1,14 @@
 import numpy as np
 import pytest
 
-from labeler.sawtooth.metrics import aggregate, event_cells, score_histogram
+from labeler.events.panels.ece_geometry import Geometry
+from labeler.sawtooth.metrics import (
+    aggregate,
+    bin_times,
+    event_cells,
+    interval_cells,
+    score_histogram,
+)
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 from labeler.sawtooth.physics import detect, inversion_profile, trains
 
@@ -100,3 +107,41 @@ def test_models_shapes_gradients_and_gaussian_target():
     target = soft_crash_target(t, [0.005])
     assert target[50] == 1
     assert target[20] == 0
+
+
+def test_interval_matches_do_not_count_multiple_fragments_as_multiple_recalled_spans():
+    cells = interval_cells([(0.0, 1.0)], [(0.0, 0.3), (0.5, 0.8)], 0.1)
+    assert cells.tolist() == [1, 1, 0]
+
+
+def test_core_proxy_rejects_edges_without_calibrated_core_geometry():
+    t, y = synthetic()
+    assert not detect(t, y, shot=1, core_channels=[0, 1]).crashes
+
+
+def test_presence_grid_does_not_depend_on_native_clock_roundoff():
+    assert np.allclose(bin_times((0.0060000001, 0.012)), [0.007, 0.009, 0.011])
+
+
+@pytest.mark.parametrize(
+    "surface,reason",
+    [(0.25, None), (np.nan, "no_q1_surface"), (0.8, "q1_radius_mismatch")],
+)
+def test_calibrated_radius_acceptance_and_q1_vetoes(surface, reason):
+    t, y = synthetic()
+    positions = np.array([0.8, 0.7, 0.04, 0.08, 0.16, 0.36, 0.49, 0.64])
+    psi = np.repeat(positions[:, None], 2, axis=1)
+    geometry = Geometry(
+        np.array([0.0, 400.0]),
+        np.where(psi < 0.25, 0.8, 1.2),
+        psi,
+        np.array([surface, surface]),
+    )
+    found = detect(t, y, shot=1, geometry=geometry)
+    if reason is None:
+        assert len(found.crashes) == 4
+        assert found.crashes[0].attrs["inversion_rho"] == pytest.approx(np.sqrt(0.26))
+        assert found.crashes[0].attrs["q1_rho"] == 0.5
+    else:
+        assert not found.crashes
+        assert found.rejected[reason] == 4

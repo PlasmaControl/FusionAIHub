@@ -27,7 +27,10 @@ from labeler.events.panels import ece_geometry
 from labeler.events.verify import NoDataError
 from labeler.sawtooth.metrics import (
     aggregate,
+    bin_times,
+    bootstrap_cells,
     event_cells,
+    interval_cells,
     score_histogram,
     spans_at,
 )
@@ -212,7 +215,7 @@ def process_shot(job):
     return result
 
 
-def export_csv(records, destination):
+def export_csv(records, destination, *, compact=False):
     destination.mkdir(parents=True, exist_ok=True)
     columns = ["shot", "category", "t_start", "t_end", "crowd", "confidence", "attrs"]
     part, bytes_used, handle = 0, 0, None
@@ -227,6 +230,11 @@ def export_csv(records, destination):
                 for r in record["intervals"]
             ]
             for start, end, crowd, confidence, attrs in rows:
+                if compact:
+                    attrs = {
+                        key: attrs[key]
+                        for key in ("inversion_rho", "inversion_channel", "period_ms")
+                    }
                 if handle is None or bytes_used > 1_400_000:
                     if handle is not None:
                         handle.close()
@@ -252,6 +260,10 @@ def export_csv(records, destination):
     finally:
         if handle is not None:
             handle.close()
+    # Remove only obsolete shards made by this writer, after successful export.
+    for path in destination.glob("labels-*.csv"):
+        if int(path.stem.split("-")[-1]) >= part:
+            path.unlink()
 
 
 def labels(args):
@@ -267,6 +279,8 @@ def labels(args):
     )
     if args.shots:
         shots = sorted(set(args.shots))
+    if args.shards > 1:
+        shots = [s for i, s in enumerate(shots) if i % args.shards == args.shard]
     windows = {
         int(r.shot): (r.window_start_ms / 1000, r.window_end_ms / 1000)
         for r in cohort.itertuples()
@@ -304,23 +318,36 @@ def labels(args):
         ),
         "split_counts": cohort.split.value_counts().to_dict(),
         "rule": asdict(Rule()),
+        "adaptations": {
+            "core_proxy_channels": list(range(20, 36)),
+            "minimum_ip_ma_when_measured": 0.3,
+            "ece_valid_range_kev": [0, 100],
+            "model_and_detector_sample_rate_hz": FS,
+            "first_ece_sampling_hz": 5 * FS,
+            "radius_units": "sqrt(normalized poloidal flux), only if calibrated",
+            "sxr_use": "optional corroboration, not independent crash labels",
+        },
         "seconds": round(time.monotonic() - begun, 1),
         "source_records": str(args.work / "shots"),
         "signals": str(args.work / "signals"),
     }
     scope = "population" if args.population else "cohort"
+    if args.shards > 1:
+        scope += f"_shard_{args.shard}"
     save_json(args.work / f"{scope}_labels.json", summary)
     save_json(REPO / f"outputs/labeler/sawtooth/{scope}_labels.json", summary)
     if not args.population:
         export_csv(
-            records, REPO / "data/events/sawtooth_oscillation/extend_saw_physics"
+            records,
+            REPO / "data/events/sawtooth_oscillation/extend_saw_physics",
+            compact=True,
         )
         save_json(
             REPO / "outputs/labeler/sawtooth/noise_calibration.json",
             noise_calibration(),
         )
     else:
-        export_csv(records, args.work / "population_labels")
+        export_csv(records, args.work / f"{scope}_labels")
     print(
         json.dumps(
             {k: v for k, v in summary.items() if not isinstance(v, list)},
@@ -342,15 +369,14 @@ def validate(args):
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     review = pd.read_csv(REVIEW)
     reviewed = []
+    span_rows = []
     for record in records_at(args.work, sorted(review.shot.unique())):
         rows = review[review.shot == record["shot"]]
         if "window_s" not in record:
             continue
         lo, hi = record["window_s"]
-        t = np.arange(
-            max(lo, rows.t_start.min() / 1000) + 0.001,
-            min(hi, rows.t_end.max() / 1000),
-            0.002,
+        t = bin_times(
+            (max(lo, rows.t_start.min() / 1000), min(hi, rows.t_end.max() / 1000))
         )
         positive = [
             (r.t_start / 1000, r.t_end / 1000)
@@ -374,6 +400,23 @@ def validate(args):
             any(max(a, s["start_s"]) < min(b, s["end_s"]) for s in record["intervals"])
             for a, b in positive
         ]
+        estimates = [
+            (max(lo, start, r["start_s"]), min(hi, end, r["end_s"]))
+            for r in record["intervals"]
+            for start, end in known
+            if max(lo, start, r["start_s"]) < min(hi, end, r["end_s"])
+        ]
+        references = [
+            (max(lo, start), min(hi, end))
+            for start, end in positive
+            if max(lo, start) < min(hi, end)
+        ]
+        span_rows.append(
+            {
+                "shot": record["shot"],
+                "cells": interval_cells(references, estimates, 0.1),
+            }
+        )
         reviewed.append(
             {
                 "shot": record["shot"],
@@ -386,6 +429,9 @@ def validate(args):
             }
         )
     expert = aggregate(reviewed)
+    expert.pop("crash_cells")
+    expert["span_matching"] = bootstrap_cells(span_rows)
+    expert["span_matching"]["minimum_iou"] = 0.1
     expert["crash_recall"] = None
     expert["crash_f1"] = None
     expert["crash"] = {
@@ -422,7 +468,7 @@ def validate(args):
             e.t0_s for e in old.itertuples() if lo <= e.t0_s <= hi and e.t0_s == e.t1_s
         )
         estimate = [r["time_s"] for r in record["crashes"]]
-        bins = np.arange(lo + 0.001, hi, 0.002)
+        bins = bin_times((lo, hi))
         # Old crash times imply trains under the SAME span construction.
         from labeler.sawtooth.physics import trains
 
@@ -496,7 +542,7 @@ def gallery(args):
         data = np.load(args.work / "signals" / f"{shot}.npz")
         t, y = data["t"], data["y"].astype(float)
         fig, axes = plt.subplots(
-            2, 1, figsize=(7, 3.5), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
+            2, 1, figsize=(3.5, 3.5), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
         )
         for rows, color, name in (
             (slice(20, 28), "#0072B2", "ECE core proxy"),
@@ -550,13 +596,20 @@ def gallery(args):
             axes[1].text(
                 0.02,
                 0.90,
-                "ECE radius and q = 1 surface unavailable",
+                "Radius / q = 1 mapping unavailable",
                 transform=axes[1].transAxes,
                 fontsize=7,
             )
         axes[0].set_ylabel("ECE Te (keV)")
         axes[0].text(0.02, 0.93, f"Shot {shot}", transform=axes[0].transAxes)
-        axes[0].legend(loc="upper right", frameon=False)
+        axes[0].legend(loc="upper right", frameon=False, handlelength=1)
+        qmin = local_scalar(shot, "qmin", Paths.from_env())
+        if qmin is not None:
+            qaxis = axes[1].twinx()
+            qaxis.plot(qmin[0] * 1000, qmin[1], color="#333333", lw=0.6)
+            qaxis.axhline(1.05, color="#333333", ls=":", lw=0.6)
+            qaxis.set_ylabel("EFIT q-min", fontsize=7)
+            qaxis.set_ylim(0, 2)
         axes[1].set_xlabel("Time (ms)")
         fig.tight_layout()
         for extension in ("pdf", "png"):
@@ -583,9 +636,13 @@ def main():
     parser.add_argument("--workers", type=int, default=8)
     parser.add_argument("--population", action="store_true")
     parser.add_argument("--shots", nargs="+", type=int)
+    parser.add_argument("--shard", type=int, default=0)
+    parser.add_argument("--shards", type=int, default=1)
     args = parser.parse_args()
     if not 1 <= args.workers <= 8:
         parser.error("workers must be 1..8")
+    if not 0 <= args.shard < args.shards or args.shards > 1 and not args.population:
+        parser.error("shard must lie in 0..shards-1; sharding is population-only")
     if args.stage == "labels":
         labels(args)
     elif args.stage == "validate":

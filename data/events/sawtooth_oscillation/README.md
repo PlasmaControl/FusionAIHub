@@ -31,10 +31,13 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 ## Models
 **stable**: none
 
-**latest**: none
+**latest**: saw-ours (research candidate; weak independent validation)
 
 **all**:
 - ece_sawtooth | 2026_09_12 (rule; omnimode inversion test, envelope-once port)
+- saw_physics | 2026_10_03 (Gude-inspired additive ECE candidate labels; SXR corroboration)
+- saw-hl3 | 2026_10_03 (paper-based CNN + bidirectional LSTM; DIII-D input/timing adaptations)
+- saw-ours | 2026_10_03 (PhaseNet-style multichannel ECE crash picker and train-presence head)
 
 ## Inputs
 **ece_sawtooth**:
@@ -46,6 +49,13 @@ rises in the outer ones; the 1/1 precursor is visible on magnetics at 2-20 kHz.
 - `ECE Te, ch 20-23`, `ECE Te, ch 24-27`, `ECE Te, ch 28-31`, `ECE Te, ch 32-35`
 - `SXR` (optional)
 
+**saw-hl3**:
+- ECE 20–27 mean, ECE 8–15 mean (uncalibrated core/outer proxies)
+- Mirnov 0–1 mean, cached Ip in MA (optional; missing values use training means)
+
+**saw-ours**:
+- All 48 ECE channels, 100 ms context at 10 kHz
+
 ## Method
 `ece_sawtooth` (`labeler.events.heuristics.sawtooth_events`), a port of the
 omnimode `mrms.ece` inversion test with the envelope computed ONCE per shot
@@ -56,7 +66,26 @@ candidate bins where >= 2 channels lose > 2% of their level in one bin, at least
 next to rising ones. Each crash is a point event with `confidence` = the fraction of
 finite channels that took part, and `attrs["inversion_channel_lo"]`,
 `attrs["inversion_channel_stop"]` bound the dropping block (end-exclusive).
-On shot 198658 it finds 45 sawtooth with a median period of 76 ms.
+Crash-by-crash agreement with the omnimode reference is checked by
+[`sawtooth_reference_check.py`](../../../scripts/labeler/sawtooth_reference_check.py)
+and its committed reference record.
+
+`labeler.sawtooth.physics.detect` adds Gaussian edge filtering, locally adaptive
+POSR significance, multichannel coincidence, a contiguous loss/gain inversion
+profile, and quasi-periodic trains of at least three crashes. Local q-min above
+1.05 vetoes candidates. Calibrated ECE psi and EFIT q profiles support a q=1
+radius test in library code; those inputs were unavailable in this run, so
+physical inversion radii remain null. The CSV shards in `extend_saw_physics/`
+contain both point candidates (`crowd=False`) and train spans (`crowd=True`).
+They are additive research labels and do not replace production labels.
+
+Both learned models use shot-grouped cross-validation on the fixed training
+cohort, with fixed validation shots for checkpoint and crash-threshold choice.
+All expert-reviewed shots and the blind test split are excluded from training
+and tuning. Expert tables contain spans, so true expert crash recall/precision
+cannot be measured. Independent span validation is weak; no stable model is
+recommended. See [method, adaptations and reproduction](../../../docs/labeler/sawtooth_physics.md)
+and [JSON-backed result tables](../../../docs/labeler/sawtooth_results.md).
 
 ## Alias
 sawtooth, sawtooth, sawtooth oscillation, sawtooth crash, st crash, sawtooth-free
