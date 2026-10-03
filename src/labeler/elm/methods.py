@@ -136,10 +136,11 @@ def onset_summary(per_shot: np.ndarray, boot: np.ndarray) -> dict:
 
     def rates(total):
         tp, fp, fn = total
+        f1_denominator = 2 * tp + fp + fn
         return {
             "precision": tp / (tp + fp) if tp + fp else float("nan"),
             "recall": tp / (tp + fn) if tp + fn else float("nan"),
-            "f1": 2 * tp / max(2 * tp + fp + fn, 1),
+            "f1": 2 * tp / f1_denominator if f1_denominator else float("nan"),
         }
 
     point = rates(per_shot.sum(axis=0))

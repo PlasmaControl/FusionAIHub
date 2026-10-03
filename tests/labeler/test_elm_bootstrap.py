@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from labeler.elm import labels, score, swap
+from labeler.elm import labels, methods, score, swap
 
 
 def _part(shot, truth):
@@ -47,6 +47,22 @@ def test_positive_shot_count_controls_intervals_even_in_a_large_negative_set():
     assert not result["descriptive_only"] and result["positive_shots"] == 5
     assert result["ci95"]["auroc"] == [1.0, 1.0]
     assert sum(result["bootstrap_draw_counts"]["auroc"].values()) == 30
+
+
+def test_onset_bootstrap_counts_eventless_draws_as_undefined_f1():
+    boot = np.array([[0, 0], [0, 1], [1, 1]])
+    per_shot = np.array([[1, 1, 1], [0, 0, 0]])
+    result = methods.onset_summary(per_shot, boot)
+
+    assert result["point"]["f1"] == 0.5
+    assert result["bootstrap_draw_counts"]["f1"] == {"valid": 2, "undefined": 1}
+    empty = methods.onset_summary(np.zeros((2, 3), dtype=int), boot)
+    assert np.isnan(empty["point"]["f1"])
+    assert empty["bootstrap_draw_counts"]["f1"] == {"valid": 0, "undefined": 3}
+    # False alarms make F1=0 defined, even when no true event was annotated.
+    alarms = methods.onset_summary(np.array([[0, 1, 0], [0, 0, 0]]), boot)
+    assert alarms["point"]["f1"] == 0.0
+    assert alarms["bootstrap_draw_counts"]["f1"] == {"valid": 2, "undefined": 1}
 
 
 def test_paired_hard_metric_matches_pooled_counts_for_each_shot_draw():
