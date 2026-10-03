@@ -49,7 +49,7 @@ def shot_table(
     hanson: bool = False,
     step_ms: float = features.STEP_MS,
 ) -> pd.DataFrame:
-    """The causal feature rows of one shot with their labels.
+    """Trailing calculations on one shot's offline inputs, with forecast labels.
 
     `label` is `labels.slice_labels` over the listed onsets, with negatives assumed
     absent on Hanson shots. Complete reviewed coverage has not been established.

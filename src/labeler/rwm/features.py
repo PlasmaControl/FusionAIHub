@@ -1,15 +1,16 @@
-"""Causal time-slice features for the RWM baseline, built from stored scalars.
+"""Trailing time-slice calculations on offline inputs for the RWM baseline.
 
 Piccione et al. 2022 resample every input causally to 5 ms and use betaN, its
 no-wall and with-wall limits, the rotation and collisionality inside the
 pedestal, and the RMS and peak frequency of the low-frequency odd-n magnetics.
 DIII-D stores betaN, l_i, q95, W_MHD and the ZIPFIT rotation on the EFIT and
 ZIPFIT cadence (20 ms or slower) and the n = 1 and n = 2 magnetic RMS at 1 kHz,
-so this module builds one row per grid time from what a real-time system would
-have seen by then: a value is held from its last sample (and dropped when that
-is too old), a rate is a trailing window. ZIPFIT's upstream time smoothing is
-mildly acausal; holding its samples cannot remove that smoothing. The high-current
-analysis window also uses the whole-shot peak and is retrospective.
+so this module holds a value from its last sample (dropping stale values) and
+calculates rates over trailing windows. This does not establish real-time input
+availability: N1RMS/N2RMS are postprocessed magnetic amplitudes with uncertain
+upstream timing, and ZIPFIT's time smoothing is mildly acausal. Holding samples
+cannot remove that processing. The high-current analysis window also uses the
+whole-shot peak and is retrospective.
 
 Every function takes plain arrays (time in milliseconds) and is vectorised.
 """
@@ -186,7 +187,7 @@ def time_since_flattop(t_ms, ip, grid_ms, threshold_a=0.5e6):
 
 
 def slice_table(signals, *, step_ms=STEP_MS, ip_fraction=0.5):
-    """One causal feature row per grid time, over the shot's high-current window.
+    """One offline-input feature row per grid time in the high-current window.
 
     `signals` maps a canonical feature name to `(t_ms, y)` with `y` one scalar trace,
     or `(33, T)` for `rot_zipfit` (rows on the ZIPFIT radial grid `rho_grid`), plus the

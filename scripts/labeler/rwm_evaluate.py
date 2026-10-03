@@ -26,8 +26,8 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.config import Paths
 from labeler.events import rwm
+from labeler.rwm import data, features, labels, metrics
 from labeler.rwm import evaluate as ev
-from labeler.rwm import features, labels, metrics
 
 # DUSBRADIAL is zero on most 2014 traces and flagged corrupted on 2018 Hanson shots.
 ALL = tuple(f for f in features.FEATURES if f != "lock_v")
@@ -35,7 +35,7 @@ FOREST = {"n_estimators": 300, "max_depth": 8, "min_leaf": 5}
 SEED = 0
 CONFIGS = {
     "rwm-brf": {"kind": "brf", "columns": ALL, "comparison": False},
-    "rule-time-since-flattop": {"kind": "rule", "column": features.TIME_COLUMN},
+    "rule-elapsed-time": {"kind": "rule", "column": features.TIME_COLUMN},
     "rule-betan": {"kind": "rule", "column": "betan"},
     "rule-betan-over-li": {"kind": "rule", "column": "betan_over_li"},
     "rule-rwm-candidates": {
@@ -164,6 +164,9 @@ def run_config(args):
     if saved:
         oof, alarms, rules = replay(saved, target, every)
         oof_path = Path(saved["predictions"])
+        if name == "rule-elapsed-time":
+            oof_path = _STATE["out_dir"] / f"predictions_{name}_seed{seed}.parquet"
+            oof.to_parquet(oof_path, index=False)
     else:
         oof, alarms, rules = ev.cross_validate(
             table, factory(config), target, explanation_onsets=every, seed=seed
@@ -182,7 +185,7 @@ def run_config(args):
         **summary,
     }
     if seed == SEED:
-        if name == "rule-time-since-flattop":
+        if name == "rule-elapsed-time":
             primary = oof[(oof.role == "hanson") & oof.label.isin([0, 1])]
             top = primary.nlargest(60, "score")
             result["top_score_concentration"] = {
@@ -196,6 +199,9 @@ def run_config(args):
                 full_saved, target, every, "full_trace"
             )
             full_path = Path(full_saved["predictions"])
+            if name == "rule-elapsed-time":
+                full_path = _STATE["out_dir"] / f"predictions_{name}_full_trace.parquet"
+                full_oof.to_parquet(full_path, index=False)
         else:
             full_oof, full_alarms, full_rules = ev.cross_validate(
                 table,
@@ -227,7 +233,7 @@ def run_pair(args):
     return f"{first} - {second}", clean(interval)
 
 
-def run_records(_):
+def run_records(time_groups):
     """Four held-out Hanson run records; no same-record siblings train or tune."""
     target, other = _STATE["onsets"], _STATE["other"]
     every = {
@@ -255,7 +261,20 @@ def run_records(_):
             seed=SEED,
             outer_groups="run_record",
         )
-    result, _ = summarise(oof, alarms, target, rules)
+    result, groups = summarise(oof, alarms, target, rules)
+    # The holdout excludes comparisons; pair the identical Hanson elapsed ranks.
+    reference = {k: time_groups[k] if k == "hanson" else [] for k in groups}
+    result["paired_time"] = metrics.paired_bootstrap(
+        groups,
+        reference,
+        ev.statistic,
+        replicates=_STATE["replicates"],
+        seed=SEED,
+        method="basic",
+    )
+    result["paired_time_by_campaign"] = ev.paired_time_by_campaign(
+        groups, reference, replicates=_STATE["replicates"], seed=SEED
+    )
     path = _STATE["out_dir"] / "predictions_rwm-brf_leave_run_record_out.parquet"
     oof.to_parquet(path, index=False)
     result["predictions"] = str(path)
@@ -282,7 +301,7 @@ def run_records(_):
     return clean(result)
 
 
-def split_summary(config, paired_by_seed):
+def split_summary(config, paired_by_seed, paired_by_campaign):
     """Point-estimate ranges across all splits, separate from shot-sampling CIs."""
     runs = {str(SEED): config, **config["split_seeds"]}
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
@@ -316,7 +335,43 @@ def split_summary(config, paired_by_seed):
         "auroc_ranges": ranges,
         "paired_time_by_seed": paired_by_seed,
         "paired_time_ranges": paired_ranges,
+        "paired_time_by_campaign": paired_by_campaign,
+        "alarm_ranges": {
+            key: {
+                "by_seed": {s: r["metrics"][key] for s, r in runs.items()},
+                "min": min(r["metrics"][key]["estimate"] for r in runs.values()),
+                "max": max(r["metrics"][key]["estimate"] for r in runs.values()),
+                "all_cis_include_zero": all(
+                    r["metrics"][key]["low"] <= 0 <= r["metrics"][key]["high"]
+                    for r in runs.values()
+                ),
+            }
+            for key in (
+                "onset_detection_rate",
+                "detection_minus_uniform_reference",
+                "warning_ms_median",
+            )
+        },
     }
+
+
+def run_campaign_pair(args):
+    seed, first, second = args
+    return str(seed), clean(
+        ev.paired_time_by_campaign(
+            first, second, replicates=_STATE["replicates"], seed=SEED
+        )
+    )
+
+
+def run_onset_physics(_):
+    table = ev.relabel(
+        _STATE["slices"], _STATE["onsets"], _STATE["other"], labels.HORIZON_MS
+    )
+    signals = {
+        shot: data.load_signals(shot, Paths.from_env()) for shot in _STATE["onsets"]
+    }
+    return clean(ev.onset_physics(table, _STATE["onsets"], signals))
 
 
 def screen_audit(_):
@@ -379,9 +434,15 @@ def main() -> None:
     paths = Paths.from_env()
     slices_path = args.slices or paths.root / "round4" / "rwm" / "slices.parquet"
     names = args.only or list(CONFIGS)
+    if "rwm-brf" in names and "rule-elapsed-time" not in names:
+        names = [*names, "rule-elapsed-time"]
     if args.rescore_saved and args.only:
         parser.error("--rescore-saved requires the complete saved configuration set")
     saved_record = json.loads(args.out.read_text()) if args.rescore_saved else None
+    if saved_record and "rule-time-since-flattop" in saved_record["configs"]:
+        saved_record["configs"]["rule-elapsed-time"] = saved_record["configs"].pop(
+            "rule-time-since-flattop"
+        )
     jobs = [(n, CONFIGS[n], SEED) for n in names]
     if "rwm-brf" in names:
         jobs += [("rwm-brf", CONFIGS["rwm-brf"], s) for s in SPLIT_SEEDS]
@@ -395,12 +456,14 @@ def main() -> None:
         pairs = [(a, b, kept[a], kept[b]) for a, b in PAIRS if a in kept and b in kept]
         paired = dict(pool.map(run_pair, pairs, chunksize=1))
         leave_run_record_out = (
-            pool.map(run_records, [None])[0] if "rwm-brf" in names else None
+            pool.map(run_records, [kept["rule-elapsed-time"]])[0]
+            if "rwm-brf" in names
+            else None
         )
         time_pairs = [
-            (str(s), "time", g, kept["rule-time-since-flattop"])
+            (str(s), "time", g, kept["rule-elapsed-time"])
             for n, s, _, g in done
-            if n == "rwm-brf" and "rule-time-since-flattop" in kept
+            if n == "rwm-brf" and "rule-elapsed-time" in kept
         ]
         paired_time = {
             name.split(" - ")[0]: {
@@ -411,7 +474,21 @@ def main() -> None:
             }
             for name, row in pool.map(run_pair, time_pairs, chunksize=1)
         }
+        campaigns_by_seed = dict(
+            pool.map(
+                run_campaign_pair,
+                [(int(s), a, b) for s, _, a, b in time_pairs],
+                chunksize=1,
+            )
+        )
+        paired_campaigns = {
+            year: {s: row[year] for s, row in campaigns_by_seed.items()}
+            for year in sorted(
+                {year for row in campaigns_by_seed.values() for year in row}
+            )
+        }
         screen = pool.map(screen_audit, [None])[0]
+        physics = pool.map(run_onset_physics, [None])[0]
     results = {n: r for n, s, r, _ in done if s == SEED}
     for name, seed, result, _ in done:
         if seed != SEED:
@@ -461,11 +538,14 @@ def main() -> None:
         "paired": paired,
         "paired_method": "basic",
         "leave_one_run_record_out": leave_run_record_out,
-        "split_sensitivity": split_summary(results["rwm-brf"], paired_time)
+        "split_sensitivity": split_summary(
+            results["rwm-brf"], paired_time, paired_campaigns
+        )
         if paired_time
         else None,
         "legacy": legacy_record(),
         "screen_audit": screen,
+        "onset_physics": physics,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(

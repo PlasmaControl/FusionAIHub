@@ -10,6 +10,57 @@ from labeler.rwm import evaluate as ev
 from labeler.rwm import features, labels
 
 
+def test_campaign_pairs_keep_shot_draws_inside_each_campaign():
+    table, onsets = _table(n_hanson=4, n_comparison=0)
+    # Give the two campaigns opposite ranking errors; pooling hides the failure.
+    table["score"] = np.where(table.campaign == 2014, -table.label, table.label)
+    table["called"] = False
+    alarms = ev.score_alarms(
+        ev.shot_traces(table, table.score.to_numpy()), onsets, (100, 100, 0)
+    )
+    first = ev.shot_records(table, alarms, onsets)
+    second = ev.shot_records(table.assign(score=table.label), alarms, onsets)
+    result = ev.paired_time_by_campaign(first, second, replicates=20)
+    assert result["2014"]["slice_auroc"]["estimate"] == -1.0
+    assert result["2018"]["slice_auroc"]["estimate"] == 0.0
+    second["hanson"].reverse()
+    with pytest.raises(ValueError, match="shot order"):
+        ev.paired_time_by_campaign(first, second, replicates=20)
+
+
+def test_onset_physics_separates_window_snapshot_from_actual_onset():
+    table = pd.DataFrame(
+        {
+            "shot": [1, 1, 1],
+            "campaign": [2014] * 3,
+            "t_ms": [80.0, 90.0, 100.0],
+            "betan": [3.0, 5.0, 5.0],
+            "li": [1.0] * 3,
+            "betan_over_li": [3.0, 5.0, 5.0],
+            features.TIME_COLUMN: [30.0, 40.0, 50.0],
+            "high_beta": [False] * 3,
+        }
+    )
+    signals = {
+        1: {
+            "betan": (np.array([80.0, 95.0]), np.array([3.0, 5.0])),
+            "li": (np.array([80.0, 95.0]), np.array([1.0, 1.0])),
+            "ip": (np.array([50.0, 100.0]), np.array([0.6e6, 0.6e6])),
+        }
+    }
+    result = ev.onset_physics(table, {1: [100.0]}, signals)
+    row = result["rows"][0]
+    assert row["sample_ms"] == 80.0
+    assert row["betan_over_li"] == 3.0 and row["below_proxy"]
+    assert row["onset_betan_over_li"] == 5.0 and not row["onset_below_proxy"]
+    assert row["onset_elapsed_time_ms"] == 50.0
+    assert row["n_high_beta_pre_onset_slices"] == 0
+    assert result["by_campaign"]["2014"]["no_high_beta_pre_onset_fraction"] == 1.0
+    signals[1]["betan"] = (np.array([0.0]), np.array([5.0]))
+    missing = ev.onset_physics(table, {1: [100.0]}, signals)["rows"][0]
+    assert missing["onset_efit_missing"] and not missing["onset_below_proxy"]
+
+
 def _table(n_hanson=12, n_comparison=24, seed=0):
     """Shots with one onset at 600 ms; betan/li climbs towards it in Hanson shots."""
     rng = np.random.default_rng(seed)

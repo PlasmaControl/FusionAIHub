@@ -570,6 +570,123 @@ def _stack(records, key):
     return np.concatenate([r[key] for r in records]) if records else np.array([])
 
 
+def paired_time_by_campaign(first, second, *, replicates=1000, seed=0):
+    """Forest-minus-reference slice intervals with draws restricted by campaign.
+
+    Both prediction sets must contain the same ordered shots in each role. These
+    basic paired intervals condition on the fixed fitted predictions and masks.
+    """
+    for role in first.keys() | second.keys():
+        a = [(r["shot"], r["campaign"]) for r in first.get(role, [])]
+        b = [(r["shot"], r["campaign"]) for r in second.get(role, [])]
+        if a != b:
+            raise ValueError("paired campaign records must have the same shot order")
+    campaigns = sorted({r["campaign"] for rows in first.values() for r in rows})
+    out = {}
+    for year in campaigns:
+        parts = [
+            {k: [r for r in v if r["campaign"] == year] for k, v in groups.items()}
+            for groups in (first, second)
+        ]
+        interval = metrics.paired_bootstrap(
+            *parts, statistic, replicates=replicates, seed=seed, method="basic"
+        )
+        out[str(year)] = {
+            k: v
+            for k, v in interval.items()
+            if k.startswith(("slice_", "high_beta_", "above_proxy_"))
+            and k.endswith(("auroc", "auprc"))
+        }
+    return out
+
+
+def onset_physics(table, onsets, signals_by_shot):
+    """Offline-held inputs at each merged n=1 point and its pre-onset window.
+
+    Onset values hold original EFIT samples to the exact listed time with the same
+    age limit as the features. The separate window snapshot uses the first cached
+    10 ms slice in [o-20, o); it must not be described as the value at onset.
+    High-beta coverage counts slices in the separate 100 ms forecast window.
+    """
+    rows = []
+    for shot in sorted(onsets):
+        frame = table[table.shot == shot].sort_values("t_ms")
+        signals = signals_by_shot[shot]
+        for onset in onsets[shot]:
+            window = frame[
+                (frame.t_ms >= onset - labels.GROWTH_MS) & (frame.t_ms < onset)
+            ]
+            snapshot = window.iloc[0] if len(window) else None
+            values = {
+                key: float(
+                    features.hold(*signals[key], [onset], features.EFIT_MAX_AGE_MS)[0]
+                )
+                for key in ("betan", "li")
+            }
+            ratio = (
+                values["betan"] / values["li"]
+                if values["li"] > 0
+                else float("nan")
+            )
+            missing = not np.isfinite(ratio)
+            row = {
+                "shot": int(shot),
+                "campaign": int(frame.campaign.iloc[0]),
+                "onset_ms": float(onset),
+                "sample_ms": float(snapshot.t_ms) if snapshot is not None else None,
+                **{
+                    k: float(snapshot[k]) if snapshot is not None else float("nan")
+                    for k in ("betan", "li", "betan_over_li")
+                },
+                "elapsed_time_ms": float(snapshot[features.TIME_COLUMN])
+                if snapshot is not None
+                else float("nan"),
+                "onset_betan": values["betan"],
+                "onset_li": values["li"],
+                "onset_betan_over_li": ratio,
+                "onset_elapsed_time_ms": float(
+                    features.time_since_flattop(*signals["ip"], [onset])[0]
+                ),
+                "onset_efit_missing": missing,
+                "onset_below_proxy": bool(not missing and ratio < 4),
+                "n_high_beta_pre_onset_slices": int(
+                    (
+                        (frame.t_ms >= onset - labels.HORIZON_MS)
+                        & (frame.t_ms < onset)
+                        & frame.high_beta
+                    ).sum()
+                ),
+            }
+            row["efit_missing"] = not np.isfinite(row["betan_over_li"])
+            row["below_proxy"] = bool(
+                not row["efit_missing"] and row["betan_over_li"] < 4
+            )
+            rows.append(row)
+    by_campaign = {}
+    for year in sorted({r["campaign"] for r in rows}):
+        part = [r for r in rows if r["campaign"] == year]
+        no_high_beta = sum(r["n_high_beta_pre_onset_slices"] == 0 for r in part)
+        by_campaign[str(year)] = {
+            "onsets": len(part),
+            "below_proxy": sum(r["below_proxy"] for r in part),
+            "efit_missing": sum(r["efit_missing"] for r in part),
+            "onset_below_proxy": sum(r["onset_below_proxy"] for r in part),
+            "onset_efit_missing": sum(r["onset_efit_missing"] for r in part),
+            "no_high_beta_pre_onset_slices": no_high_beta,
+            "no_high_beta_pre_onset_fraction": no_high_beta / len(part),
+        }
+    return {
+        "scope": f"all {len(rows)} merged Hanson n=1 onset points, by campaign",
+        "snapshot_scope": "first cached 10 ms slice in [o-20 ms, o); separate from onset inputs",
+        "onset_scope": "last EFIT sample at or before exact onset; age <= EFIT_MAX_AGE_MS; offline-held inputs",
+        "efit_max_age_ms": features.EFIT_MAX_AGE_MS,
+        "elapsed_time_scope": "time since first |Ip| >= 0.5 MA sample",
+        "high_beta_coverage_scope": "slices in [o-100 ms, o) with beta_N >= 0.8 times whole-window p95",
+        "rows": rows,
+        "by_campaign": by_campaign,
+    }
+
+
 def statistic(groups):
     """Every reported number of one configuration, from per-shot records.
 
