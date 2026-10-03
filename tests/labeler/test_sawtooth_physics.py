@@ -1,0 +1,102 @@
+import numpy as np
+import pytest
+
+from labeler.sawtooth.metrics import aggregate, event_cells, score_histogram
+from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
+from labeler.sawtooth.physics import detect, inversion_profile, trains
+
+
+def synthetic():
+    t = np.arange(0, 0.4, 0.0001)
+    y = np.ones((8, len(t))) * 2
+    # Core drop and recovery, outer rise at the same times.
+    for crash in (0.08, 0.16, 0.24, 0.32):
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.018), 0)
+        y[2:5] -= 0.5 * transient
+        y[5:7] += 0.3 * transient
+    y += np.random.default_rng(10).normal(0, 0.005, y.shape)
+    return t, y
+
+
+def test_crashes_and_train_with_point_and_span_attrs():
+    t, y = synthetic()
+    found = detect(t, y, shot=1)
+    assert len(found.crashes) == 4
+    assert (
+        np.max(
+            np.abs(np.array([r.t0_s for r in found.crashes]) - [0.08, 0.16, 0.24, 0.32])
+        )
+        < 0.0005
+    )
+    assert len(found.intervals) == 1
+    assert found.intervals[0].attrs["crowd"] is True
+    assert all(r.attrs["crowd"] is False for r in found.crashes)
+    assert found.intervals[0].attrs["period_ms"] == pytest.approx(80, abs=1)
+    assert all(r.attrs["inversion_rho"] is None for r in found.crashes)
+
+
+def test_qmin_veto_and_missing_geometry_do_not_fabricate_radius():
+    t, y = synthetic()
+    qmin = (np.array([0.0, 0.4]), np.array([1.2, 1.2]))
+    found = detect(t, y, shot=1, qmin=qmin)
+    assert not found.crashes
+    assert found.rejected["qmin_above_one"] == 4
+
+
+def test_global_drop_and_channel_noise_rejected():
+    step = np.full(8, -0.5)
+    assert inversion_profile(step, np.full(8, 2.0))[0] == "redistribution"
+    t, y = synthetic()
+    y[5:7] = 2
+    assert not detect(t, y, shot=1).crashes
+
+
+def test_period_trains_do_not_bridge_gap_or_isolated_crash():
+    assert trains([0.1, 0.2, 0.3, 0.8, 0.9, 1.0]) == [(0, 3), (3, 6)]
+    assert trains([0.1, 0.2]) == []
+    assert trains([0.1, 0.2, 0.21, 0.22]) == []
+
+
+def test_nonuniform_sampling_and_missing_filter_support():
+    t, y = synthetic()
+    bad = t.copy()
+    bad[100:] += 0.001
+    with pytest.raises(ValueError, match="uniform"):
+        detect(bad, y, shot=1)
+    y[:, (t > 0.078) & (t < 0.082)] = np.nan
+    found = detect(t, y, shot=1)
+    assert len(found.crashes) == 3
+
+
+def test_one_to_one_matching_and_shot_bootstrap():
+    cells = event_cells([0.1, 0.2], [0.101, 0.102, 0.2], 2.0)
+    assert cells.tolist() == [2, 1, 0]
+    rows = [
+        {"shot": 1, "cells": cells, "histogram": score_histogram([0, 1], [0.1, 0.9])}
+    ]
+    result = aggregate(rows, replicates=10)
+    assert result["crash"]["f1"] == 0.8
+    assert result["presence"]["auroc"] == 1
+    assert result["ci95"]["crash_f1"] == [0.8, 0.8]
+
+
+def test_models_shapes_gradients_and_gaussian_target():
+    import torch
+
+    torch.set_num_threads(2)
+    for model, x, expected in (
+        (HL3(), torch.randn(2, 4, 200), (2, 3)),
+        (PhasePicker(), torch.randn(2, 48, 1000), (2, 3, 1000)),
+    ):
+        prediction = model(x)
+        assert tuple(prediction.shape) == expected
+        prediction.square().mean().backward()
+        assert all(
+            torch.isfinite(p.grad).all()
+            for p in model.parameters()
+            if p.grad is not None
+        )
+    t = np.arange(100) * 0.0001
+    target = soft_crash_target(t, [0.005])
+    assert target[50] == 1
+    assert target[20] == 0
