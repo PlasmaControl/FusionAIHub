@@ -49,6 +49,7 @@ if str(REPO / "src") not in sys.path:
 
 from labeler.confinement import bes_protocol as bp
 from labeler.confinement import bes_windows as bw
+from labeler.confinement import scoring
 
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
@@ -62,6 +63,8 @@ SEED = 20261001
 REPEATS = 5
 TRANSITION_MS = 20.0
 BUILDUP_MS = 100.0
+#: Margins (ms inside an interval end) at which a row's own population is re-scored.
+MARGINS_MS = (0.0, 20.0, 50.0, 100.0, 200.0)
 
 
 @dataclass(frozen=True)
@@ -124,6 +127,14 @@ def _chain() -> dict[str, Row]:
     for name, change, label in steps:
         cur = replace(cur, name=f"cum_{name}", label=label, **change)
         rows[cur.name] = cur
+    # the paper's split on the corpus shots at 500 kHz: a protocol-matched number that
+    # needs no further fetch
+    rows["cum_abcdrf"] = replace(
+        rows["cum_abcdr"],
+        name="cum_abcdrf",
+        label="+ paper split protocol (500 kHz, corpus shots)",
+        protocol="paper",
+    )
     return rows
 
 
@@ -266,7 +277,7 @@ def git_sha() -> str | None:
         return None
 
 
-def score_row(row: Row) -> dict | None:
+def score_row(row: Row, rank: bool = False) -> dict | None:
     """Both scorings of a finished row; None if a fold is missing."""
     out = RUNS / row.name
     names = (
@@ -291,6 +302,12 @@ def score_row(row: Row) -> dict | None:
     crit = pd.Series(crit_score, index=key)
     pkey = pd.MultiIndex.from_arrays([pred.shot, pred.start_ms.round(3)])
     on_paper = crit.reindex(pkey).fillna(False).to_numpy().astype(bool)
+    end = table.start_ms + table.dt_ms * 1024
+    inside = pd.Series(
+        np.minimum(table.start_ms - table.t_start, table.t_end - end).to_numpy(),
+        index=key,
+    )
+    depth = inside.reindex(pkey).to_numpy()
     result = {
         "row": asdict(row),
         "windows_predicted": len(pred),
@@ -299,6 +316,17 @@ def score_row(row: Row) -> dict | None:
             guess, truth, shots, on_paper, replicates=REPLICATES
         ),
         "all_windows": bp.summarise(guess, truth, shots, None, replicates=REPLICATES),
+        # the own population with the windows nearest an interval end dropped
+        "margin_sensitivity": {
+            f"{int(m)}": {
+                k: v
+                for k, v in bp.summarise(
+                    guess, truth, shots, own & (depth >= m), replicates=REPLICATES
+                ).items()
+                if k in ("windows", "shots", "macro_f1", "ci95")
+            }
+            for m in MARGINS_MS
+        },
         "training": [
             {
                 k: v
@@ -308,6 +336,11 @@ def score_row(row: Row) -> dict | None:
             for n in names
         ],
     }
+    if rank:
+        result["ranking"] = {
+            "population": "own",
+            **scoring.rank_with_ci(probs[own], truth[own], shots[own], replicates=1000),
+        }
     if row.protocol == "paper":
         per = []
         for n in names:
@@ -324,7 +357,7 @@ def score_row(row: Row) -> dict | None:
 def summarize(args: argparse.Namespace) -> None:
     results = {}
     for name, row in ROWS.items():
-        res = score_row(row)
+        res = score_row(row, rank=name in args.rank)
         if res is not None:
             results[name] = res
     record = {
@@ -360,7 +393,13 @@ def main(argv: list[str] | None = None) -> int:
         "--steps", type=int, default=None, help="cap the steps (smoke tests)"
     )
     r.add_argument("--runs-dir", type=Path, default=None, help="write predictions here")
-    sub.add_parser("summarize")
+    s = sub.add_parser("summarize")
+    s.add_argument(
+        "--rank",
+        nargs="*",
+        default=["cum_abcdr", "cum_abcdrf", "cum_abcdrgef"],
+        help="rows that also get AUROC / AUPRC with bootstrap intervals",
+    )
     args = ap.parse_args(argv)
     if args.stage == "consolidate":
         consolidate(args)

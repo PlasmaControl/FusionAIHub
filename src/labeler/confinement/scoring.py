@@ -7,8 +7,6 @@ lacks); ``one_vs_rest`` gives them per class and averaged over the classes that 
 
 from __future__ import annotations
 
-from itertools import pairwise
-
 import numpy as np
 
 CLASSES = ("L", "H", "QH", "WP")
@@ -24,9 +22,10 @@ def auroc(score: np.ndarray, positive: np.ndarray) -> float:
     sorted_scores = score[order]
     ranks = np.empty(len(score), dtype=np.float64)
     # average ranks over ties
-    boundaries = np.flatnonzero(np.r_[True, np.diff(sorted_scores) != 0, True])
-    for lo, hi in pairwise(boundaries):
-        ranks[order[lo:hi]] = 0.5 * (lo + hi + 1)
+    fresh = np.r_[True, sorted_scores[1:] != sorted_scores[:-1]]
+    first = np.flatnonzero(fresh)
+    last = np.r_[first[1:], len(score)]
+    ranks[order] = (0.5 * (first + last + 1))[np.cumsum(fresh) - 1]
     return float((ranks[positive].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
 
 
@@ -57,4 +56,38 @@ def one_vs_rest(probs: np.ndarray, truth: np.ndarray) -> dict:
     for key in ("auroc", "auprc"):
         values = [v for v in out[key].values() if np.isfinite(v)]
         out[key]["macro"] = float(np.mean(values)) if values else float("nan")
+    return out
+
+
+def rank_with_ci(
+    probs: np.ndarray,
+    truth: np.ndarray,
+    shots: np.ndarray,
+    *,
+    replicates: int = 1000,
+    seed: int = 20261001,
+) -> dict:
+    """``one_vs_rest`` of the windows plus 95 % shot-bootstrap intervals of the macro
+    AUROC and AUPRC (a replicate draws the shots with replacement and keeps all of each
+    drawn shot's windows)."""
+    out = one_vs_rest(probs, truth)
+    ids = np.unique(shots)
+    order = np.argsort(shots, kind="stable")
+    bounds = np.searchsorted(shots[order], ids)
+    ends = np.r_[bounds[1:], len(order)]
+    members = [order[a:b] for a, b in zip(bounds, ends, strict=True)]
+    rng = np.random.default_rng(seed)
+    macro = {"auroc": [], "auprc": []}
+    for _ in range(replicates):
+        pick = np.concatenate(
+            [members[i] for i in rng.integers(len(ids), size=len(ids))]
+        )
+        draw = one_vs_rest(probs[pick], truth[pick])
+        for key, values in macro.items():
+            values.append(draw[key]["macro"])
+    out["ci95"] = {
+        key: [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]
+        for key, v in macro.items()
+    }
+    out["replicates"] = replicates
     return out

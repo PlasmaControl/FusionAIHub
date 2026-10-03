@@ -105,3 +105,17 @@ def test_calibrated_joint_keeps_label_counts_and_total():
     assert cal.sum(axis=1) == pytest.approx([20.0, 5.0])
     assert cal[0, 1] / cal[0].sum() == pytest.approx(0.2)
     assert confident.calibrate_joint(np.zeros((2, 2)), counts).sum() == 0.0
+
+
+def test_rank_with_ci_brackets_the_point_estimate_and_resamples_whole_shots():
+    rng = np.random.default_rng(3)
+    shots = np.repeat(np.arange(12), 40)
+    truth = np.tile(np.arange(4), 120)
+    probs = rng.dirichlet(np.ones(4), size=480) * 0.4
+    probs[np.arange(480), truth] += 0.6 * rng.random(480)
+    probs /= probs.sum(1, keepdims=True)
+    out = scoring.rank_with_ci(probs, truth, shots, replicates=60)
+    lo, hi = out["ci95"]["auroc"]
+    assert lo <= out["auroc"]["macro"] <= hi
+    assert 0.5 < lo and hi <= 1.0
+    assert out["replicates"] == 60
