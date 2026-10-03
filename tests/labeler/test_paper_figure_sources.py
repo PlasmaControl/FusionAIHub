@@ -740,12 +740,17 @@ def test_appendix_states_the_ntm_outline_display_rule_and_harmonic_numbers():
             "n1_median_khz": 9.1,
             "n2_median_khz": 18.5,
         },
-        "harmonic3_support": {**_HARMONIC, "n3_median_khz": 23.0},
+        "harmonic3_support": {
+            **_HARMONIC,
+            "n1_median_khz": 7.8,
+            "n3_median_khz": 23.0,
+        },
     }
     text = fs.appendix_notes(1, _primary_records(), drawn)
     assert "fewer than 100 print pixels are not drawn (9 fragments omitted" in text
     assert "n=1 9.1 kHz, n=2 18.5 kHz" in text
-    assert "n=3 ridge sits near three times it (23.0 kHz" in text
+    assert "n=1 7.8 kHz, n=3 23.0 kHz" in text
+    assert "near three times the n=1 frequency" in text
     assert "not separate islands" in text
 
 

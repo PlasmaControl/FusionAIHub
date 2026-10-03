@@ -844,9 +844,11 @@ def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
             third = drawn.get("harmonic3_support") or {}
             if third.get("support_ms", 0) >= third.get("minimum_support_ms", 50):
                 text += (
-                    f"; the n=3 ridge sits near three times it "
-                    f"({third['n3_median_khz']:.1f} kHz, "
-                    f"{third['support_ms']:.0f} ms)"
+                    f"; where n=1 and n=3 are both measured the n=3 ridge sits "
+                    f"near three times the n=1 frequency (n=1 "
+                    f"{third['n1_median_khz']:.1f} kHz, n=3 "
+                    f"{third['n3_median_khz']:.1f} kHz, "
+                    f"{third['support_ms']:.0f} ms of joint support)"
                 )
             notes.append(
                 text + ". These are consistent with harmonics of the n=1 mode, "
