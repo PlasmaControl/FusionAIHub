@@ -595,18 +595,18 @@ def raster_ae_audit(rgb, bounds, window, frequencies, spans) -> dict:
 
 def ntm_description(record: dict) -> str:
     """Qualify detector suggestions using their recorded evaluation and bar."""
-    text = "NTM detector suggestions"
+    text = "NTM candidate suggestions"
     qualifiers = []
     score = (record.get("performance") or {}).get("f1")
     if score is not None:
-        qualifiers.append(f"F1 {score:.2f}")
+        qualifiers.append(f"detector F1 {score:.2f}")
     if (record.get("primary_bars") or {}).get("N1") is False:
-        qualifiers.append("below acceptance bar")
+        qualifiers.append("below bar")
     return text + (f" ({', '.join(qualifiers)})" if qualifiers else "")
 
 
 def sawtooth_caption(record: dict) -> str:
-    """Summarise exact source states, including an omitted row's assessment."""
+    """Summarise exact source states, for the appendix."""
     rows = record.get("state_intervals_ms", [])
     durations = {
         state: sum(r["end_ms"] - r["start_ms"] for r in rows if r["state"] == state)
@@ -631,124 +631,134 @@ def sawtooth_caption(record: dict) -> str:
     if durations["unassessed"] and guard.get("cutoff_proxy"):
         source += "; ECE density proxy"
         if "bt_missing" in guard.get("status", "").lower():
-            source += "; Bt unavailable"
+            source += "; Bt not in local corpus"
     return f"Sawtooth: {summary} ({source})."
 
 
 def caption(shot: int, records: dict, drawn: dict) -> str:
-    """Source-specific paper prose, without internal source identifiers."""
-    sources = []
+    """Explain the three tiers and each track's source in concise paper prose."""
     tagged = drawn.get("blobs", {}).get("tagged")
+    ae = tagged is None or bool(tagged.get(mt.AE))
+    ntm = tagged is None or bool(tagged.get(mt.NTM))
+    sentences = [
+        f"DIII-D shot {shot}: raw signals → TokEye-processed modes → event labels.",
+        "The 0–30 kHz range is vertically expanded.",
+    ]
+    highlights = []
+    if ae:
+        highlights.append("Pink AE highlights")
+    if ntm:
+        highlights.append("orange NTM outlines")
+    if highlights:
+        sentences.append(" and ".join(highlights) + " show time/band coincidence only.")
+    if ntm:
+        sentences.append("Outlines require measured n=1 or 2 at ≤30 kHz.")
+    sources = []
     for key, name in (
         (mt.AE, "AE"),
         (mt.NTM, "NTM"),
-        ("confinement", "Regime"),
+        ("confinement", "H-mode"),
         ("edge_localized_mode", "ELMs"),
+        (mt.SAWTOOTH, "sawtooth"),
     ):
-        if key in (mt.AE, mt.NTM) and tagged is not None and not tagged.get(key):
-            continue
         record = records.get(key)
-        if record is None:
+        if record is None or (key == mt.AE and not ae) or (key == mt.NTM and not ntm):
             continue
-        if key == mt.NTM and record["tier"] == lf.GENERATED:
-            sources.append(ntm_description(record))
-            continue
-        if record["tier"] == lf.SILVER:
-            description = "expert"
-        elif record["tier"] == lf.LEGACY:
-            description = "imported"
+        tier = record.get("tier")
+        if tier == lf.SILVER:
+            source = "expert"
+        elif tier == lf.LEGACY:
+            source = "imported labels"
+        elif key == mt.SAWTOOTH and record.get("what", "").startswith("physics"):
+            source = "physics labels"
+        elif key == mt.NTM:
+            source = ntm_description(record).removeprefix("NTM ")
         elif key == mt.AE:
-            description = (
-                "neural detector on CO2 interferometer data"
-                if record["what"].startswith("ae-ours")
-                else "frame detector on CO2 interferometer data"
+            source = (
+                "CO2 neural detector"
+                if record.get("what", "").startswith("ae-ours")
+                else "CO2 frame detector"
             )
-            if record["what"].startswith("ae-ours"):
-                description += f" (p≥{AE_THRESHOLD}; targets used TokEye's mask)"
-            elif record.get("decision_threshold") is not None:
-                description += f" (p≥{record['decision_threshold']})"
         elif key == "confinement":
-            description = "D-alpha detector"
-            if drawn.get("regimes_shown") == []:
-                description += " (uncertain here)"
+            source = "D-alpha detector"
         else:
-            description = "detector"
+            source = "detector"
         if key == "confinement":
             name = (
-                record["title"].capitalize()
-                if record["title"] == "regime"
-                else record["title"]
+                record.get("title", name).capitalize()
+                if record.get("title") == "regime"
+                else record.get("title", name)
             )
-        sources.append(f"{name}: {description}")
-    sentences = [
-        f"DIII-D shot {shot}. Raw bands normalised separately; TokEye extracts coherent modes.",
-    ]
+        sources.append(f"{name}: {source}")
     if sources:
-        sentences.append("; ".join(sources) + ".")
-    if tagged is None or tagged.get(mt.AE):
-        ae = records.get(mt.AE) or {}
+        sentences.append("Tracks: " + "; ".join(sources) + ".")
+    if mt.SAWTOOTH in records:
+        sentences.append(
+            "Hatching marks uncertain states; blank marks unassessed time."
+        )
+    text = " ".join(sentences)
+    if len(text.split()) > 85:
+        raise ValueError(f"caption exceeds 85 words: {len(text.split())}")
+    return text
+
+
+def appendix_notes(shot: int, records: dict, drawn: dict) -> str:
+    """Keep source caveats and measured shot details outside the paper caption."""
+    notes = [f"DIII-D shot {shot}. Raw bands are normalised separately."]
+    ae = records.get(mt.AE) or {}
+    if ae.get("tier") == lf.GENERATED:
         bin_ms = ae.get(
             "temporal_bin_ms", 25 if ae.get("what", "").startswith("ae-ours") else None
         )
-        text = "Pink: AE overlap in detector band ≥80 kHz"
-        if bin_ms is not None and ae.get("tier") == lf.GENERATED:
-            text += f" in {bin_ms:g} ms bins"
-        sentences.append(text + ".")
-    if tagged is None or tagged.get(mt.NTM):
-        sentences.append(
-            "Dashed outlines: measured and dominant n=1 or 2, ≤30 kHz (shared inputs)."
+        text = (
+            "AE highlights intersect detector-positive time and detector band ≥80 kHz"
         )
-    else:
-        sentences.append("Measured n: ≤30 kHz.")
+        if bin_ms is not None:
+            text += f" in {bin_ms:g} ms bins"
+        notes.append(text + ".")
+        notes.append(
+            "AE targets used TokEye's mask; highlights are not independent "
+            "physical confirmation."
+        )
+    if records.get(mt.NTM, {}).get("tier") == lf.GENERATED:
+        notes.append(
+            ntm_description(records[mt.NTM])
+            + "; shared magnetic inputs, not independent confirmation."
+        )
     if drawn.get("lmode_inferred"):
-        sentences.append("L-mode (inferred): pre-transition H-mode-absent shading.")
+        notes.append(
+            "L-mode (inferred) uses pre-transition H-mode-detector absent shading."
+        )
     if records.get(mt.SAWTOOTH) is not None:
-        text = sawtooth_caption(records[mt.SAWTOOTH])
-        if not drawn.get("sawtooth_track_shown", True):
-            text = text.removesuffix(".") + "; row omitted."
-        sentences.append(text)
+        notes.append(sawtooth_caption(records[mt.SAWTOOTH]))
     late = drawn.get("late_untagged_high_frequency")
     if late:
         lo, hi = late["band_khz"]
-        if shot == 201978:
-            sentences.append(
-                "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled."
-            )
-        else:
-            sentences.append(
-                f"Late magnetics-only {lo:.0f}–{hi:.0f} kHz pixels remain unlabelled."
-            )
+        notes.append(
+            f"The {lo:.0f}–{hi:.0f} kHz support comprises late magnetic structures "
+            "without a positive AE-detector label."
+        )
     if drawn.get("sawtooth_strip_shown"):
-        sentences.append(
-            "ECE-supported crash candidates: channel-order geometry; ±5 ms D-alpha veto."
+        notes.append(
+            "ECE-supported crash candidates use channel-order geometry and a "
+            "±5 ms D-alpha veto; they are unvalidated research evidence."
         )
     if drawn.get("first_large_peak_before_expert_ms") is not None:
         peak = drawn["largest_dalpha_peak_ms"]
         start = drawn["expert_elm_start_ms"]
-        sentences.append(
+        notes.append(
             f"The largest D-alpha spike ({int(np.floor(peak + 0.5))} ms) precedes "
             f"the expert ELM interval (from {start:.0f} ms)."
         )
     if drawn.get("elm_hmode_conflicts_ms"):
-        sentences.append(
-            "Expert ELM intervals overlap H-mode-detector absent time; sources disagree."
+        notes.append(
+            "Expert ELM intervals overlap H-mode-detector absent time; "
+            "sources disagree."
         )
     if drawn.get("ae_physical_review_caveat"):
-        sentences.append(drawn["ae_physical_review_caveat"])
-    keys = []
-    states = drawn.get("display_state_keys")
-    if states is None or "uncertain" in states:
-        keys.append("Hatching: uncertain")
-    if states is None or "blank" in states:
-        keys.append("Blank: unassessed/unobservable")
-    elm = records.get("edge_localized_mode", {})
-    if elm.get("tier") == lf.SILVER and drawn.get("elm_crowd_spans_ms", True):
-        keys.append("Circles: expert spans containing many ELMs")
-    if drawn.get("elm_peaks_in_label", True):
-        keys.append("Triangles: threshold D-alpha peaks")
-    if keys:
-        sentences.append("; ".join(keys) + ".")
-    text = " ".join(sentences)
-    if len(text.split()) > 150:
-        raise ValueError(f"caption exceeds 150 words: {len(text.split())}")
-    return text
+        notes.append(drawn["ae_physical_review_caveat"])
+    notes.append(
+        "Open circles delimit expert spans containing many ELMs; downward "
+        "triangles mark threshold D-alpha peaks."
+    )
+    return " ".join(notes)

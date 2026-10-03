@@ -208,7 +208,7 @@ def test_caption_follows_sources_and_actual_acceptance_bars(tier):
     assert len(text.split()) <= 150
     assert "Regime:" in text
     assert "Ticks" not in text
-    assert ("below acceptance bar" in text) == (tier == fs.lf.GENERATED)
+    assert ("below bar" in text) == (tier == fs.lf.GENERATED)
     assert "harmonic" not in text
     assert "n=1/2" not in text
     for internal in ("ntm_frames", "dalpha_lh", "MPI66M", "N1", "S1", "PRESENT"):
@@ -374,8 +374,8 @@ def test_tokeye_fingerprints_change_with_waveform_or_inference_code(tmp_path):
     assert code["preprocessing"] != changed["preprocessing"]
 
 
-def test_hidden_sawtooth_and_preinterval_spike_are_disclosed():
-    text = fs.caption(
+def test_sawtooth_states_and_preinterval_spike_are_disclosed_in_appendix():
+    text = fs.appendix_notes(
         42,
         {
             fs.mt.SAWTOOTH: {
@@ -397,7 +397,7 @@ def test_hidden_sawtooth_and_preinterval_spike_are_disclosed():
     )
     assert "Sawtooth: uncertain 832 ms, unassessed 968 ms" in text
     assert "physics labels" in text and "ECE density proxy" in text
-    assert "; row omitted" in text and "no present time" not in text
+    assert "row omitted" not in text and "no present time" not in text
     assert (
         "The largest D-alpha spike (2297 ms) precedes the expert ELM interval "
         "(from 2308 ms)" in text
@@ -424,7 +424,7 @@ def test_sawtooth_caption_uses_window_states_and_qualified_proxy():
     text = fs.sawtooth_caption(record)
     assert "absent 799 ms, uncertain 10 ms, unassessed 991 ms" in text
     assert "ECE density proxy" in text
-    assert "Bt unavailable" in text
+    assert "Bt not in local corpus" in text
     assert "is cut off" not in text
     record["state_intervals_ms"] = [
         {"start_ms": 1500, "end_ms": 3300, "state": "absent"}
@@ -542,13 +542,13 @@ def test_caption_omits_absent_highlights_and_expert_elm_claims():
     assert "Pink" not in text and "NTM outlines" not in text
     assert "ELMs: detector" in text
     assert "circles" not in text and "expert ELM" not in text
-    assert "Triangles:" in text
+    assert "Triangles:" not in text
     assert "frame model not shown" not in text
 
 
-def test_caption_discloses_ae_bins_and_data_derived_late_band():
+def test_appendix_discloses_ae_bins_and_data_derived_late_band():
     record = {"tier": fs.lf.GENERATED, "what": "ae-ours", "title": "AE"}
-    text = fs.caption(
+    text = fs.appendix_notes(
         42,
         {fs.mt.AE: record},
         {
@@ -559,13 +559,13 @@ def test_caption_discloses_ae_bins_and_data_derived_late_band():
     assert "detector band ≥80 kHz" in text
     assert "25 ms bins" in text
     assert "105–125 kHz" in text
-    assert "neural detector on CO2 interferometer data" in text
-    primary = fs.caption(
+    primary = fs.appendix_notes(
         201978,
         {fs.mt.AE: record},
         {"late_untagged_high_frequency": {"band_khz": [80, 250]}},
     )
-    assert "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled" in primary
+    assert "late magnetic structures without a positive AE-detector label" in primary
+    assert "magnetics-only" not in primary
     assert "170–250" not in text
 
 
@@ -576,7 +576,7 @@ def test_caption_uses_the_fallback_detectors_recorded_bin_duration():
         "title": "AE",
         "temporal_bin_ms": 10,
     }
-    text = fs.caption(
+    text = fs.appendix_notes(
         42,
         {fs.mt.AE: record},
         {
@@ -588,7 +588,7 @@ def test_caption_uses_the_fallback_detectors_recorded_bin_duration():
 
 
 def test_caption_discloses_elm_hmode_conflicts_and_inferred_lmode():
-    text = fs.caption(
+    text = fs.appendix_notes(
         201973,
         {},
         {
@@ -598,6 +598,39 @@ def test_caption_discloses_elm_hmode_conflicts_and_inferred_lmode():
     )
     assert "Expert ELM intervals overlap H-mode-detector absent time" in text
     assert "L-mode (inferred)" in text
+
+
+def test_caption_explains_tiers_and_retains_sources_without_appendix_caveats():
+    records = {
+        fs.mt.AE: {"tier": fs.lf.GENERATED, "what": "ae-ours", "title": "AE"},
+        fs.mt.NTM: {
+            "tier": fs.lf.GENERATED,
+            "what": "detector",
+            "title": "NTM",
+            "performance": {"f1": 0.457472},
+            "primary_bars": {"N1": False},
+        },
+        "confinement": {"tier": fs.lf.GENERATED, "what": "D-alpha", "title": "H-mode"},
+        "edge_localized_mode": {"tier": fs.lf.SILVER, "what": "expert"},
+        fs.mt.SAWTOOTH: {"tier": fs.lf.GENERATED, "what": "physics states"},
+    }
+    text = fs.caption(
+        42,
+        records,
+        {
+            "first_large_peak_before_expert_ms": 11,
+            "largest_dalpha_peak_ms": 2297,
+            "expert_elm_start_ms": 2308,
+        },
+    )
+    assert 65 <= len(text.split()) <= 85
+    assert "raw signals → TokEye-processed modes → event labels" in text
+    assert "0–30 kHz" in text and "vertically expanded" in text
+    assert "time/band coincidence only" in text
+    assert "orange" in text and "Pink" in text
+    assert "candidate suggestions (detector F1 0.46, below bar)" in text
+    assert "ELMs: expert" in text and "sawtooth: physics labels" in text
+    assert all(s not in text for s in ("row omitted", "Circles:", "Triangles:"))
 
 
 def test_raster_ae_audit_detects_leaks_in_final_pixels():
