@@ -278,7 +278,7 @@ def train_fold(data, train, val, cfg: Config, device, log=print):
     sched = torch.optim.lr_scheduler.OneCycleLR(
         opt, max_lr=cfg.lr, total_steps=total, pct_start=0.15
     )
-    best, best_state, history = -1.0, None, []
+    best, best_state, best_row, history = -1.0, None, None, []
     for epoch in range(cfg.epochs):
         model.train()
         t0, parts = time.time(), []
@@ -311,12 +311,18 @@ def train_fold(data, train, val, cfg: Config, device, log=print):
                 {k: round(v, 4) if isinstance(v, float) else v for k, v in row.items()}
             )
         )
-        if ap > best:
+        if np.isfinite(ap) and ap > best:
             best = ap
             best_state = {
                 k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
             best_row = row
+    if best_row is None:
+        raise ValueError(
+            "no finite inner-validation AUPRC; cannot select an ELM checkpoint. "
+            "Check that inner-validation shots have scored present bins and "
+            "finite model scores."
+        )
     return best_state, history, best_row
 
 
@@ -327,7 +333,11 @@ def run(args: argparse.Namespace) -> int:
         iters=args.iters,
         batch=args.batch,
         lr=args.lr,
-        seed=args.seed,
+        seed=(
+            args.seed
+            if getattr(args, "training_seed", None) is None
+            else args.training_seed
+        ),
     )
     device = torch.device(args.device)
     data = load(paths)
@@ -337,6 +347,7 @@ def run(args: argparse.Namespace) -> int:
     (out / "pred").mkdir(exist_ok=True)
     record = {
         "config": asdict(cfg),
+        "partition_seed": args.seed,
         "git": git_sha(),
         "folds": folds,
         "shots": len(data),
@@ -363,7 +374,7 @@ def run(args: argparse.Namespace) -> int:
             f"fold {k}: {len(train)} train, {len(val)} inner-val, {len(test)} test",
             flush=True,
         )
-        fold_cfg = Config(**{**asdict(cfg), "seed": args.seed + 100 * k})
+        fold_cfg = Config(**{**asdict(cfg), "seed": cfg.seed + 100 * k})
         state, history, best = train_fold(data, train, val, fold_cfg, device)
         fold_dir = out / f"fold{k}"
         fold_dir.mkdir(exist_ok=True)
@@ -407,7 +418,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--iters", type=int, default=Config.iters)
     ap.add_argument("--batch", type=int, default=Config.batch)
     ap.add_argument("--lr", type=float, default=Config.lr)
-    ap.add_argument("--seed", type=int, default=SEED)
+    ap.add_argument(
+        "--seed", type=int, default=SEED,
+        help="shot-partition seed (also the default training seed)",
+    )
+    ap.add_argument(
+        "--training-seed", type=int,
+        help="weight initialisation, dropout and crop seed; preserves shot partitions",
+    )
     ap.add_argument("--device", default="cuda")
     return run(ap.parse_args(argv))
 
