@@ -46,12 +46,19 @@ signature, and on the radial saddle loops once locked.
 ## Models
 **stable**: d3d_tearing_onset_cnn1d | 2022_12_01
 
-**latest**: d3d_tearing_time_to_event_dsm | 2026_09_05
+**latest**: tm-ours | 2026_10_03 (experimental interval detector)
 
 **all**:
 - d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
 - d3d_tearing_time_to_event_dsm | 2026_09_05 (survival forecast; 250 ms / 500 ms / 1 s)
 - d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
+- tm-onsetcnn | 2026_10_03 (prior CNN architecture retrained for detection at t)
+- tm-dsm | 2026_10_03 (prior survival embedding with a detection head at t)
+- tm-ours | 2026_10_03 (Mirnov spectrogram detector, 10 ms bins)
+
+The three short names identify the benchmark training scripts and saved
+cross-validation predictions, rather than deployed registry adapters. Published
+weights remain available through the three original model IDs above.
 
 ## Inputs
 **d3d_tearing_onset_cnn1d**:
@@ -85,6 +92,30 @@ Three claims:
 
 `validate.alarm_quality` scores the published labels against archived onsets
 (`tm_label` on the 1,503 shots shared with the tearing archive).
+
+**Whole-interval labels** (`extend_tm_interval/tm_interval.csv`, the 500-shot cohort;
+the lab's earlier labels are onsets or forecasts, these say when a mode is present):
+a rule on the n = 1 and n = 2 magnetic RMS (`\MHD::N1RMS`, `N2RMS`, gauss, 1 kHz; the
+processed magnetic traces used for rotating tearing modes), `labeler.tearing.rule`, with
+hysteresis: a seed is the smoothed RMS above 12 G (n = 1, Farre-Kaga et al. 2025; Fu et
+al. 2020 used 10 G) or 6 G (n = 2, a lab choice, not published), runs less than 50 ms
+apart being one; the mode is the stretch around the seed's peak that stays above a tenth
+of that peak (never below 1 G), and counts only if it lasts 50 ms. An interval ends at
+decay, when the plasma ends, or at locking (`locked` set when the mode's frequency,
+`\MHD::N1FREQ` / `N2FREQ`, fell to ≤1 kHz near its end; this is a frequency proxy,
+not saddle-loop confirmation). The onset is a point event
+(`iscrowd` 0, at the interval's start), the interval a span (`iscrowd` 1); both carry
+`n`. `m` requires EFIT q at an independently observed island radius, such as an ECE
+flattening location. No island radius is resolved here, so `m` is empty; a unique
+candidate rational surface alone does not identify it. The rest of each shot's
+window is absent, the ramp-up
+uncertain where the rule fires in it, and stretches the RMS record did not cover not
+observable. Counts, thresholds, the agreement with Seo's and the survival onsets and
+the detector benchmark are in
+[tearing_detection.md](../../../docs/labeler/tearing_detection.md). The detectors
+trained on these labels are `tm-ours` (Mirnov-array spectrogram features, per 10 ms
+bin) and the two prior architectures retrained for detection, `tm-onsetcnn` and
+`tm-dsm`. Their targets are mode presence at t, with horizon zero.
 
 ## Alias
 tearing mode, tearing, tm, ntm, neoclassical tearing mode, 2/1, 3/2, locked mode, magnetic island

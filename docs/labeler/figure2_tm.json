@@ -1,0 +1,106 @@
+{
+  "made_by": "scripts/labeler/tm_benchmark.py",
+  "models": [
+    {
+      "model": "Onset CNN",
+      "legacy": {
+        "f1": {
+          "value": 0.6111967128916281,
+          "lo": 0.4368766505555833,
+          "hi": 0.749534664889375,
+          "valid_replicates": 1000
+        },
+        "shots": 79,
+        "held_out": false,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_published_tm-onsetcnn_legacy_cohort.json"
+      },
+      "tokamak_si": {
+        "f1": {
+          "value": 0.7251599319782979,
+          "lo": 0.6560665879502493,
+          "hi": 0.7863245422644557,
+          "valid_replicates": 1000
+        },
+        "shots": 286,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-onsetcnn_cv.json"
+      }
+    },
+    {
+      "model": "Survival MLP",
+      "legacy": {
+        "f1": {
+          "value": 0.0,
+          "lo": 0.0,
+          "hi": 0.0,
+          "valid_replicates": 1000
+        },
+        "shots": 219,
+        "held_out": true,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_published_tm-dsm-500ms_legacy.json"
+      },
+      "tokamak_si": {
+        "f1": {
+          "value": 0.6465267918178472,
+          "lo": 0.5788205871630587,
+          "hi": 0.702585688358985,
+          "valid_replicates": 1000
+        },
+        "shots": 341,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-dsm_cv.json"
+      }
+    },
+    {
+      "model": "Magnetic detector",
+      "legacy": null,
+      "tokamak_si": {
+        "f1": {
+          "value": 0.7536227089260901,
+          "lo": 0.7067375968111369,
+          "hi": 0.7967489256367413,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_ours_magnetics_cv.json"
+      }
+    },
+    {
+      "model": "RMS threshold (12 G)",
+      "legacy": null,
+      "tokamak_si": {
+        "f1": {
+          "value": 0.3734514236035644,
+          "lo": 0.30860424069016695,
+          "hi": 0.44091157337397197,
+          "valid_replicates": 1000
+        },
+        "shots": 450,
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_n1rms_12g_dev.json"
+      }
+    }
+  ],
+  "coverage": {
+    "ours": {
+      "labelled_shots": 500,
+      "labelled_seconds": 2747.69,
+      "definition": "observable 10 ms bins; uncertain and unobservable excluded"
+    },
+    "ours_population": {
+      "labelled_shots": 4848,
+      "labelled_seconds": 26621.63,
+      "definition": "observable 10 ms bins; uncertain and unobservable excluded"
+    },
+    "legacy_seo": {
+      "labelled_shots": 92,
+      "labelled_seconds": 169.72500000000002,
+      "definition": "matched archived tm_label samples, each 25 ms; growth-phase target"
+    },
+    "legacy_survival": {
+      "labelled_shots": 200,
+      "labelled_seconds": 1200.0,
+      "definition": "native survival-label samples; an onset target, not present spans"
+    }
+  },
+  "scope": "fixed cohort comparison, plus separately named population supplement; all splits for coverage only, no model test scores",
+  "note": "Legacy and interval targets differ; this is not a paired performance gain. Null means no legacy model. CNN legacy overlap is unknown; DSM legacy uses 500 ms horizon. Coverage includes quiet labelled time, not just positives.",
+  "source": "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
+}

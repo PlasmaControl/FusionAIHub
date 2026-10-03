@@ -1,0 +1,170 @@
+{
+  "reference": "seo",
+  "shots_set": "cohort",
+  "exclude_test": false,
+  "tolerance_ms": 100.0,
+  "n_shots_considered": 500,
+  "git_sha": "cc9927b3",
+  "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
+  "skipped": 408,
+  "skipped_reasons_first_10": {
+    "185805": "no archived rows",
+    "185835": "no archived rows",
+    "185838": "no archived rows",
+    "185857": "no archived rows",
+    "185866": "no archived rows",
+    "185943": "no archived rows",
+    "185993": "no archived rows",
+    "186013": "no archived rows",
+    "186025": "no archived rows",
+    "186093": "no archived rows"
+  },
+  "agreement": {
+    "n1": {
+      "n_shots_covered": 92,
+      "reference_onsets": 29,
+      "matched": 28,
+      "missed": 1,
+      "matched_fraction": 0.9655172413793104,
+      "error_ms": {
+        "median": 81.50000000000023,
+        "q25": -26.250000000000455,
+        "q75": 212.4999999999999,
+        "min": -92.0,
+        "max": 585.0,
+        "mean_abs": 152.17857142857133,
+        "within_ms": {
+          "25": 0.10714285714285714,
+          "50": 0.32142857142857145,
+          "100": 0.5357142857142857,
+          "250": 0.8214285714285714
+        },
+        "reference_after_interval_start_fraction": 0.6428571428571429
+      },
+      "compared_intervals": 41,
+      "intervals_with_an_onset": 27,
+      "intervals_without_an_onset": 14,
+      "intervals_without_an_onset_fraction": 0.34146341463414637,
+      "intervals_without_an_onset_on_reference_mode_shots": 4,
+      "intervals_without_an_onset_on_reference_quiet_shots": 10,
+      "shots": {
+        "reference_mode_and_ours": 28,
+        "reference_mode_not_ours": 1,
+        "ours_not_reference": 5,
+        "neither": 58
+      },
+      "missed_reasons": {
+        "outside_window": 0,
+        "interval_starts_later": 1,
+        "short_burst": 0,
+        "below_onset_level": 0,
+        "no_record": 0
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 92,
+      "reference_onsets": 29,
+      "matched": 28,
+      "missed": 1,
+      "matched_fraction": 0.9655172413793104,
+      "error_ms": {
+        "median": 81.50000000000023,
+        "q25": -26.250000000000455,
+        "q75": 212.4999999999999,
+        "min": -92.0,
+        "max": 585.0,
+        "mean_abs": 152.17857142857133,
+        "within_ms": {
+          "25": 0.10714285714285714,
+          "50": 0.32142857142857145,
+          "100": 0.5357142857142857,
+          "250": 0.8214285714285714
+        },
+        "reference_after_interval_start_fraction": 0.6428571428571429
+      },
+      "compared_intervals": 56,
+      "intervals_with_an_onset": 31,
+      "intervals_without_an_onset": 25,
+      "intervals_without_an_onset_fraction": 0.44642857142857145,
+      "intervals_without_an_onset_on_reference_mode_shots": 6,
+      "intervals_without_an_onset_on_reference_quiet_shots": 19,
+      "shots": {
+        "reference_mode_and_ours": 28,
+        "reference_mode_not_ours": 1,
+        "ours_not_reference": 14,
+        "neither": 49
+      }
+    }
+  },
+  "agreement_strict": {
+    "n1": {
+      "n_shots_covered": 92,
+      "reference_onsets": 29,
+      "matched": 18,
+      "missed": 11,
+      "matched_fraction": 0.6206896551724138,
+      "error_ms": {
+        "median": 143.49999999999977,
+        "q25": 93.00000000000057,
+        "q75": 280.2499999999996,
+        "min": 4.999999999999545,
+        "max": 585.0,
+        "mean_abs": 211.5555555555553,
+        "within_ms": {
+          "25": 0.05555555555555555,
+          "50": 0.1111111111111111,
+          "100": 0.2777777777777778,
+          "250": 0.7222222222222222
+        },
+        "reference_after_interval_start_fraction": 1.0
+      },
+      "compared_intervals": 38,
+      "intervals_with_an_onset": 16,
+      "intervals_without_an_onset": 22,
+      "intervals_without_an_onset_fraction": 0.5789473684210527,
+      "intervals_without_an_onset_on_reference_mode_shots": 13,
+      "intervals_without_an_onset_on_reference_quiet_shots": 9,
+      "shots": {
+        "reference_mode_and_ours": 27,
+        "reference_mode_not_ours": 2,
+        "ours_not_reference": 4,
+        "neither": 59
+      }
+    },
+    "any_n": {
+      "n_shots_covered": 92,
+      "reference_onsets": 29,
+      "matched": 21,
+      "missed": 8,
+      "matched_fraction": 0.7241379310344828,
+      "error_ms": {
+        "median": 211.0,
+        "q25": 101.99999999999955,
+        "q75": 442.9999999999991,
+        "min": 4.999999999999545,
+        "max": 2505.0,
+        "mean_abs": 495.47619047619014,
+        "within_ms": {
+          "25": 0.047619047619047616,
+          "50": 0.09523809523809523,
+          "100": 0.23809523809523808,
+          "250": 0.6190476190476191
+        },
+        "reference_after_interval_start_fraction": 1.0
+      },
+      "compared_intervals": 53,
+      "intervals_with_an_onset": 19,
+      "intervals_without_an_onset": 34,
+      "intervals_without_an_onset_fraction": 0.6415094339622641,
+      "intervals_without_an_onset_on_reference_mode_shots": 16,
+      "intervals_without_an_onset_on_reference_quiet_shots": 18,
+      "shots": {
+        "reference_mode_and_ours": 27,
+        "reference_mode_not_ours": 2,
+        "ours_not_reference": 13,
+        "neither": 50
+      }
+    }
+  },
+  "agreement_strict_tolerance_ms": 0.0
+}
