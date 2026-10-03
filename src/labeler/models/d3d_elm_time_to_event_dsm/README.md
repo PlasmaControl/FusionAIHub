@@ -323,47 +323,49 @@ mode, and a stop at the first non-finite loss.
 
 ### Reduced-input reviewed-label detection adaptation
 
-These are developmental shot-CV occupancy estimates on five fixed folds.
-Preliminary outer-fold predictions were available before the reported recipe
-was fixed and could have informed inputs, scaling, architecture, selection
-or evaluation; the saved records do not establish their influence.
-Inner-validation AUPRC selects checkpoints
-at zero-based epochs 35, 31, 2, 24, 0; inner-validation F1 selects
-thresholds 0.067, 0.122, 0.482, 0.021, 0.395. Each fold fits its own normalization and starts
-from random weights. No blind-cohort shots enter these fits.
+These are developmental shot-CV occupancy estimates on five fixed folds. Preliminary
+outer-fold predictions were available before the reported recipe was fixed and could
+have informed inputs, scaling, architecture, selection or evaluation; the saved records
+do not establish their influence. Inner-validation AUPRC selects checkpoints at
+zero-based epochs 35, 31, 2, 24, 0; inner-validation F1 selects thresholds 0.067, 0.122,
+0.482, 0.021, 0.395. Each fold fits its own normalization and starts from random
+weights. No blind-cohort shots enter these fits.
 
-| Common panel | Shots | 50 ms bins | AUROC [95% shot CI] | F1 [95% shot CI] |
-|---|---:|---:|---|---|
-| All reviewed | 119 | 11,653 | 0.845 [0.796, 0.893] | 0.742 [0.681, 0.798] |
-| BES subset only | 73 | 6,527 | 0.840 [0.777, 0.892] | 0.783 [0.711, 0.842] |
+| Common panel | Shots | 50 ms bins | AUROC [95% shot CI] | AUPRC | F1 |
+|---|---:|---:|---|---|---|
+| All reviewed | 119 | 11,653 | 0.845 [0.796, 0.893] | 0.748 [0.651, 0.832] | 0.742 [0.681, 0.798] |
+| BES subset only | 73 | 6,527 | 0.840 [0.777, 0.892] | 0.731 [0.612, 0.836] | 0.783 [0.711, 0.842] |
 
-Source: [dsm/evaluation.json](../../../../outputs/labeler/elm/dsm/evaluation.json), `detectors.elm-dsm-detect` and `sets`.
-The detector uses 60 input columns, including measured PCPHD02/03 on
-119 shots and DENV2F/3F means on 115 per chord (four mean-filled).
-This is elm-dsm (60-input 1×128 refit, detection), a reduced-input
-adaptation trained and evaluated on 50 ms rows. The source model
-trained on native 1 ms rows with 124 inputs and layers [100, 1000]
-for WPQH breakthrough-ELM forecasting; this is not an objective-only
-retrain of that model. Fast-density units and filterscope sightlines
-are unverified in retained metadata; fixed input scaling, clipping and
-magnitude screening do not establish physical calibration.
-The companion occupancy U-Net omits FS01 because its retained cache
-contains FS02–04 only. Its fast-density inputs divide native values
-by `1e14`, clip to `[-3, 12]`, and clip ten times the 0.2 s high-pass
-to `[-10, 10]`; chords with median absolute native magnitude above
-`1e16` are zeroed by a heuristic failed-digitiser screen.
-Offline metadata audits made no new fetches and changed no saved
-inputs or weights. Sources: `density_units.json`,
-`filterscope_metadata.json` and `src/labeler/elm/inputs.py`.
-No independently validated physical-onset detector is delivered,
-and run days cross folds in both developmental analyses
-(16 review days; 21 of 31 Smith days).
+Source: [dsm/evaluation.json](../../../../outputs/labeler/elm/dsm/evaluation.json),
+`detectors.elm-dsm-detect` and `sets`. These DSM detection rows are lower bounds on DSM
+detection skill under our recipe, not the best achievable DSM performance. With
+post-warm-up checkpoint selection and 3 further seeds the all119 AUROC has mean 0.865
+(range 0.857–0.870); the native comparator below is refitted the same way.
+
+The detector uses 60 input columns. PCPHD02/03 means come from a fresh fetch on 111 of
+119 shots and from the upstream WPQH PCPHD02/03 export on 8; DENV2F and DENV3F means
+supply the two density columns on 115 and 115 shots, with 4 and 4 rejected (failed
+digitiser) and mean-filled. This is elm-dsm (60-input 1×128 refit, detection), a
+reduced-input adaptation trained and evaluated on 50 ms rows. The source model trained
+on native 1 ms rows with 124 inputs and layers [100, 1000] for WPQH breakthrough-ELM
+forecasting; this is not an objective-only retrain of that model. Fast-density units and
+filterscope sightlines are unverified in retained metadata; fixed input scaling,
+clipping and magnitude screening do not establish physical calibration.
+
+The companion occupancy U-Net omits FS01 because its retained cache contains FS02–04
+only. Its fast-density inputs divide native values by `1e14`, clip to `[-3, 12]`, and
+clip ten times the 0.2 s high-pass to `[-10, 10]`; chords with median absolute native
+magnitude above `1e16` are zeroed by a heuristic failed-digitiser screen. Offline
+metadata audits made no new fetches and changed no saved inputs or weights. Sources:
+`density_units.json`, `filterscope_metadata.json` and `src/labeler/elm/inputs.py`. No
+independently validated physical-onset detector is delivered, and run days cross folds
+in both developmental analyses (16 of 94 review days; 21 of 31 Smith days).
 
 ### Limited-input survival refit (selection evidence)
 
-The served checkpoint is after 1 epoch
-of a 7-epoch run, selected at best_epoch=0. Its 80 physical source-validation
-shots selected the checkpoint; they are not independent test evidence.
+The served checkpoint is after 1 epoch of a 7-epoch run, selected at best_epoch=0. Its
+80 physical source-validation shots selected the checkpoint; they are not independent
+test evidence.
 
 | Horizon | AUROC [95% physical-shot CI] |
 |---|---|
@@ -376,23 +378,21 @@ Source: `dsm/evaluation.json:own_target.horizons`.
 
 ### Native original-checkpoint audit
 
-The original 124-input, 1 ms checkpoint has embedding layers [100, 1000].
-The limited-input survival refit and reviewed detector instead use one
-128-unit layer. Native evaluation uses model9 parameter setting 1 with
-ReLU6; the Keras conversion's unbounded ReLU is not substituted.
+The original 124-input, 1 ms checkpoint has embedding layers [100, 1000]. The
+limited-input survival refit and reviewed detector instead use one 128-unit layer.
+Native evaluation uses model9 parameter setting 1 with ReLU6; the Keras conversion's
+unbounded ReLU is not substituted.
 
-The corrected forward presence target asks whether a reviewed present
-span intersects (t, t+h]; the separate onset target asks whether a
-non-crowd start lies in that interval. Reviewed non-crowd starts
-are annotation boundaries without independent physical-onset truth.
+The corrected forward presence target asks whether a reviewed present span intersects
+(t, t+h]; the separate onset target asks whether a non-crowd start lies in that
+interval. Reviewed non-crowd starts are annotation boundaries without independent
+physical-onset truth.
 
-Exact-export 50 ms AUROC is 0.607, CI null:
-descriptive only on 4 shots reused in source fitting and 11,565 rows
-(190637, 190643, 192721, 196541).
-196541 entered optimizer fitting; the other three entered checkpoint
-selection; all entered source normalization. Five shots have exact exports,
-but 192751 has no scored overlap: the exact-export JSON
-therefore contain four shots. No operating threshold is selected.
+Exact-export 50 ms AUROC is 0.607, CI null: descriptive only on 4 shots reused in source
+fitting and 11,565 rows (190637, 190643, 192721, 196541). 196541 entered optimizer
+fitting; the other three entered checkpoint selection; all entered source normalization.
+Five shots have exact exports, but 192751 has no scored overlap, so the exact-export
+JSON contains four shots. No operating threshold is selected.
 
 | Native panel | Horizon | Shots | Rows | AUROC [95% physical-shot CI] |
 |---|---|---:|---:|---|
@@ -405,13 +405,64 @@ therefore contain four shots. No operating threshold is selected.
 | Source selection target | 20 ms | 326 | 694,596 | 0.939 [0.927, 0.949] |
 | Source selection target | 50 ms | 326 | 685,337 | 0.955 [0.945, 0.964] |
 
-Reconstruction is a sensitivity: source smoothing of concatenated
-phase rows differs from within-shot NBI smoothing. Source validation
-retains the original reversed chronological split and selected weights.
-It is not independent evaluation. Coverage, inputs, targets and memberships
-are in [native_evaluation.json](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
-Reproduce scoring without training with `elm_dsm_evaluate.py --rescore`
-and `elm_dsm_native.py`; render this block with `elm_protocol.py`.
+Reconstruction is a sensitivity: source smoothing of concatenated phase rows differs
+from within-shot NBI smoothing. Source validation retains the original reversed
+chronological split and selected weights; it is not independent evaluation. Coverage,
+inputs, targets and memberships are in
+[native_evaluation.json](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
+Reproduce scoring without training with `elm_dsm_evaluate.py --rescore` and
+`elm_dsm_native.py`; render this block with `elm_protocol.py`.
+
+### Native DSM detection comparator
+
+The timestamp-aware 1 ms audit finds at least 112/124 inputs on 48 reviewed shots; 37
+have complete 124-input scored bins. Missing column names and shot counts are in
+`dsm/native_detection.json:coverage,missing_column_shot_counts`.
+
+The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-input
+shots only, with random weights and optimizer-training-only normalization. The fixed
+25-epoch recipe uses the original five outer folds and their inner-validation shot
+partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No
+source weights or statistics and no blind-test shots are reused.
+
+Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and
+retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's
+100-row centered smoothing within each shot rather than across concatenated source
+phases. This reconstructs native diagnostic inputs, not bit-identical historical
+exported rows. Bin scores average the 50 native row probabilities; measured support and
+target are identical for every compared method.
+
+| Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
+|---|---|---|---|---|
+| all119 / elm-ours | 37 / 3,576 | 0.936 [0.862, 0.981] | 0.853 [0.632, 0.976] | 0.833 [0.727, 0.908] |
+| all119 / elm-dsm (60-input 1×128 refit, detection) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
+| all119 / elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
+| bes73 / elm-ours | 37 / 3,339 | 0.929 [0.848, 0.980] | 0.854 [0.632, 0.976] | 0.837 [0.730, 0.913] |
+| bes73 / elm-dsm (60-input 1×128 refit, detection) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
+| bes73 / elm-dsm (124-input [100,1000] detection) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
+| bes73 / ELM-O | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
+
+This smaller support panel is a secondary control and does not replace the primary
+all119/bes73 benchmark.
+
+### DSM baselines retrained with post-warm-up selection
+
+Both detection variants were refitted with three further seeds on the same outer folds
+and recipe, choosing the epoch that ends the best three-epoch mean inner-validation
+AUPRC window lying wholly at or after the warm-up (6 of 40 epochs for the 60-input
+adaptation, 4 of 25 for the native refit); the reported fit takes the raw best epoch.
+Ranges are over seeds, not intervals. Selected epochs span 8–37 and 6–24; native
+thresholds span 0.0002–1.000, an erratic operating point.
+
+| Detector | Shots / bins | Fit | AUROC | AUPRC | F1 |
+|---|---|---|---|---|---|
+| elm-dsm (60-input 1×128 refit, detection) | 119 / 11,653 | reported (raw selection) | 0.845 | 0.748 | 0.742 |
+| elm-dsm (60-input 1×128 refit, detection) | 119 / 11,653 | post-warm-up repeats, mean (range) | 0.865 (0.857–0.870) | 0.740 (0.722–0.751) | 0.755 (0.749–0.763) |
+| elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | reported (raw selection) | 0.734 | 0.598 | 0.664 |
+| elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | post-warm-up repeats, mean (range) | 0.715 (0.707–0.725) | 0.598 (0.595–0.600) | 0.626 (0.603–0.642) |
+
+These DSM detection rows are lower bounds on DSM detection skill under our recipe, not
+the best achievable DSM performance. Source: `dsm/baseline_seeds.json`.
 
 ### BES ablation, refitted on the correct columns (2026-09-06)
 
@@ -509,21 +560,3 @@ here are labeler's. Attribute to the PlasmaControl group, Princeton.
 ## Contact
 
 `nc1514@princeton.edu`.
-
-### Native DSM detection comparator
-
-The timestamp-aware 1 ms audit finds at least 112/124 inputs on 48 reviewed shots; 37 have complete 124-input scored bins. Missing column names and shot counts are retained in `dsm/native_detection.json:coverage,missing_column_shot_counts`.
-The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-input shots only, with random weights and optimizer-training-only normalization. The fixed 25-epoch recipe uses the original five outer folds and their inner-validation shot partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No source weights/statistics or blind-test shots are reused.
-Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's 100-row centered smoothing within each shot, rather than concatenated source phases. This reconstructs native diagnostic inputs, not bit-identical historical exported rows. Bin scores average 50 native row probabilities; measured support and target are identical for every compared method.
-
-| Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
-|---|---:|---|---|---|
-| all119 / elm-ours | 37 / 3,576 | 0.936 [0.862, 0.981] | 0.853 [0.632, 0.976] | 0.833 [0.727, 0.908] |
-| all119 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
-| all119 / elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
-| bes73 / elm-ours | 37 / 3,339 | 0.929 [0.848, 0.980] | 0.854 [0.632, 0.976] | 0.837 [0.730, 0.913] |
-| bes73 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
-| bes73 / elm-dsm (124-input [100,1000] detection) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
-| bes73 / ELM-O | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
-
-This smaller support panel is a secondary control; it does not replace the primary all119/bes73 benchmark. A single fixed native refit does not measure the best achievable DSM performance.

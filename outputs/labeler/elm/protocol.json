@@ -1,5 +1,6 @@
 {
- "git": "a64369c3",
+ "git": "2a3ff77536dcf8b9f1959d718fdb0cdab8693bd8",
+ "script_sha256": "bab7453a5972031ff2ceeb6aca6fa60cc6e169713d90641084981fc09ccfa7a2",
  "sources": {
   "ours": {
    "path": "ours/evaluation.json",
@@ -9,21 +10,13 @@
    "path": "dsm/evaluation.json",
    "sha256": "d2c86b42c3c8a1986deb7e6ad2f1723f523627d367e62d3388211d53bb6a5c38"
   },
-  "native": {
-   "path": "dsm/native_evaluation.json",
-   "sha256": "88ff35bf41794ed988ee0c15acc500574553c6791db324e1959368c5b775f963"
-  },
   "swap": {
    "path": "swap/evaluation.json",
-   "sha256": "91f48d45e993ce165203cfeba91d95a35a0632ee932f00acddad18ef7b844c28"
+   "sha256": "635e44bb0947021927242f6c3a81ea76ab2a7f00500e6729f74dc6a1d7ec7a78"
   },
   "feature": {
    "path": "ours/feature_only.json",
-   "sha256": "17ca7652e7cb5f7cba99affdb1e4a075d6dba5f6d63414bf819d3aca5fb61a2d"
-  },
-  "smith": {
-   "path": "smith/evaluation.json",
-   "sha256": "2f4ff55a6d0e53acc6eb8bf3cb9c0eb3294ed29e6dce1e28ef25b6678e732f90"
+   "sha256": "37bfc63c483660eb685764d92dd4d77b4675448dc06d000d24a613b12ce6ee31"
   },
   "strata": {
    "path": "ours/annotation_strata.json",
@@ -52,12 +45,40 @@
   "rejection": {
    "path": "ours/rejection_sensitivity.json",
    "sha256": "7790ae334fb8a28058730e321a04b9ef98a0f6e03f310dc5ee1a0df3ec3579a1"
+  },
+  "seeds": {
+   "path": "ours/seed_repeats.json",
+   "sha256": "5cc854e7761c687e6339da3bf544f62f49a3f988f96b773d90c3654fb026c7e2"
+  },
+  "native": {
+   "path": "dsm/native_evaluation.json",
+   "sha256": "88ff35bf41794ed988ee0c15acc500574553c6791db324e1959368c5b775f963"
+  },
+  "smith": {
+   "path": "smith/evaluation.json",
+   "sha256": "2f4ff55a6d0e53acc6eb8bf3cb9c0eb3294ed29e6dce1e28ef25b6678e732f90"
+  },
+  "moved": {
+   "path": "ours/moved_boundary_stratum.json",
+   "sha256": "53763cbda39c0c3f70d5f7c6e8fbebc54f25eac24eeae2a9132058a2c05ec147"
+  },
+  "tiled": {
+   "path": "ours/tiled_inference.json",
+   "sha256": "f0e84d6800c07f55589fa7dd98d18fc9d7c33945d71b23f5b9170674923f67e1"
+  },
+  "run_day": {
+   "path": "ours/run_day_cv.json",
+   "sha256": "d1b1f96e169595d1a4572c83623c738d6529b9ce8564696c9a23172af885d542"
+  },
+  "dsm_seeds": {
+   "path": "dsm/baseline_seeds.json",
+   "sha256": "60dd339bed0bbdb05ef9cc948e41009da473b566ae90f7a53b2617d675ab5fac"
   }
  },
  "artifacts": {
-  "docs/labeler/elm_ours.md": "d9a5e4e9eb02dbe483f1cfeb7c1859d2ca8d45bf12aa22352245ad70ad133f99",
-  "data/events/edge_localized_mode/README.md": "c28f355f2d6408df9a3722f0444f2d6eb8d2ba8f44b7c2cad0cd5dd3a3d4eaf4",
-  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "43c95899a876e77d4aba105c3e4af3dcef888d83e23c952c23bf4f40d12f9030"
+  "docs/labeler/elm_ours.md": "e0e260c5cb42a0da07e91b56cf6bd05f1abb93929e5042113fb48f29fcc1a506",
+  "data/events/edge_localized_mode/README.md": "2d9a434b916365ec72d16b3508982d0bae482b8420596fff3082df735b917a55",
+  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "16e01f4a0c6e0f5d909f7ba8a1f80c7c07c83aab3e41caf53b13602ab11a6d5a"
  },
  "model_names": {
   "elm-ours": "elm-ours",
