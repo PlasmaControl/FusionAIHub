@@ -12,6 +12,7 @@ inner cross-validation, so a held-out shot never sets a threshold that scores it
 from __future__ import annotations
 
 import itertools
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -748,6 +749,20 @@ PHASE_BIN_MS = 100.0
 PHASE_MIN_SLICES = 5
 
 
+def first_onset_mask(oof, target_onsets):
+    """Primary Hanson slices strictly before the first merged n=1 onset.
+
+    This sensitivity removes inter-onset negatives and repeat-onset positives
+    without changing fitted scores, exclusions, or the forecast horizon.
+    """
+    first = {shot: min(times) for shot, times in target_onsets.items() if len(times)}
+    return (
+        (oof.role == "hanson")
+        & oof.label.isin([labels.NEGATIVE, labels.POSITIVE])
+        & (oof.t_ms < oof.shot.map(first))
+    )
+
+
 def phase_controlled_auroc(groups, *, bin_ms=PHASE_BIN_MS, min_slices=PHASE_MIN_SLICES):
     """Primary Hanson AUROC using only within-campaign, within-time-bin pairs.
 
@@ -756,6 +771,8 @@ def phase_controlled_auroc(groups, *, bin_ms=PHASE_BIN_MS, min_slices=PHASE_MIN_
     with one class or fewer than five eligible slices by default, and slices with
     missing elapsed time. Ties get half credit. With bin_ms=None only campaign
     control remains. Elapsed-time AUROC measures the residual-phase floor.
+    Repeated shot records are bootstrap copies: keep within-copy pairs and all
+    pairs between different shots, but exclude same-shot cross-copy pairs.
     """
     records = groups.get("hanson", [])
     if not records:
@@ -766,8 +783,12 @@ def phase_controlled_auroc(groups, *, bin_ms=PHASE_BIN_MS, min_slices=PHASE_MIN_
     campaign = np.concatenate(
         [np.full(len(r["label"]), r["campaign"]) for r in records]
     )
+    shot = np.concatenate([np.full(len(r["label"]), r["shot"]) for r in records])
+    copies = Counter(r["shot"] for r in records)
+    repeated = {s: k for s, k in copies.items() if k > 1}
     keep = np.isin(label, [labels.NEGATIVE, labels.POSITIVE]) & np.isfinite(elapsed)
     score, label, campaign = score[keep], label[keep], campaign[keep]
+    shot = shot[keep]
     bins = np.zeros(keep.sum()) if bin_ms is None else np.floor(elapsed[keep] / bin_ms)
     concordant, pairs = 0.0, 0
     for year in np.unique(campaign):
@@ -776,7 +797,17 @@ def phase_controlled_auroc(groups, *, bin_ms=PHASE_BIN_MS, min_slices=PHASE_MIN_
             y = label[cell] == labels.POSITIVE
             weight = int(y.sum()) * int((~y).sum())
             if weight and cell.sum() >= min_slices:
-                concordant += weight * metrics.auroc(score[cell], y)
+                cell_score, cell_shot = score[cell], shot[cell]
+                wins = weight * metrics.auroc(cell_score, y)
+                for shot_id, multiplicity in repeated.items():
+                    same = cell_shot == shot_id
+                    n_pos = int(y[same].sum()) // multiplicity
+                    n_neg = int((~y[same]).sum()) // multiplicity
+                    cross_copy = multiplicity * (multiplicity - 1) * n_pos * n_neg
+                    if cross_copy:
+                        wins -= cross_copy * metrics.auroc(cell_score[same], y[same])
+                        weight -= cross_copy
+                concordant += wins
                 pairs += weight
     return concordant / pairs if pairs else float("nan")
 
@@ -794,6 +825,7 @@ def phase_controlled_bootstrap(
 
     Both models must use identical ordered Hanson shots, primary masks and time
     coordinates. Comparison shots never enter the metric or the resamples.
+    Same-shot cross-copy pairs are excluded in every resample.
     """
     a = first.get("hanson", [])
     if second is not None:

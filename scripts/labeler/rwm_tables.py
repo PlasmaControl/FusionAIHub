@@ -78,6 +78,56 @@ def forest_runs(record):
     return {"0": config, **config["split_seeds"]}
 
 
+def phase_headline(record, latex=False):
+    summary = record["split_sensitivity"]
+    phase = summary["phase_controlled_auroc"]
+    time = summary["paired_phase"]["rwm-rule-elapsed-time"]
+    beta = summary["paired_phase"]["rwm-rule-betan-over-li"]
+    n = len(summary["seeds"])
+    above = (
+        "every split"
+        if time["positive_estimates"] == n
+        else f"{time['positive_estimates']} of {n} splits"
+    )
+    text = (
+        f"Phase-controlled AUROC {split_range(phase, 2)} over {n} splits "
+        f"(seed {phase['lowest_seed']} lowest); above the elapsed-time floor on "
+        f"{above}, CI excluding zero on "
+        f"{time['cis_excluding_zero']} of {n}; "
+        + (
+            "never distinguishable from βN/li alone"
+            if beta["cis_excluding_zero"] == 0
+            else f"βN/li difference CI excludes zero on {beta['cis_excluding_zero']} of {n}"
+        )
+        + "."
+    )
+    return text.replace("βN/li", r"$\beta_N/l_i$").replace("–", "--") if latex else text
+
+
+def phase_split_table(record):
+    summary = record["split_sensitivity"]
+    phase, pairs = summary["phase_controlled_auroc"], summary["paired_phase"]
+    keys = ("rwm-rule-elapsed-time", "rwm-rule-betan-over-li")
+    return table(
+        ["Evaluation", "Forest phase AUROC", "Forest − elapsed time", "Forest − βN/li"],
+        [
+            [
+                f"Seed {s}",
+                interval(v),
+                *(interval(pairs[k]["by_seed"][s]) for k in keys),
+            ]
+            for s, v in phase["by_seed"].items()
+        ]
+        + [
+            [
+                "Run-record holdout",
+                interval(phase["holdout"]),
+                *(interval(pairs[k]["holdout"]) for k in keys),
+            ]
+        ],
+    )
+
+
 def split_scores(record):
     ranges = record["split_sensitivity"]["auroc_ranges"]
     return (
@@ -769,8 +819,10 @@ def write_documentation(record, comparison):
     )
     chunks = {
         "lead": (
-            "This retrospective baseline has no established skill beyond "
-            "discharge phase: `rwm-brf` has phase-controlled AUROC "
+            "This retrospective baseline has a small, split-dependent margin "
+            "over elapsed time and no established skill beyond βN/li. "
+            + phase_headline(record)
+            + " Reference split (seed 0): `rwm-brf` "
             f"**{interval(forest['phase_controlled_auroc'])}** in "
             f"**{protocol['phase_bin_ms']:g} ms bins**, with at least "
             f"**{protocol['phase_min_slices']} eligible slices per bin**. "
@@ -780,6 +832,7 @@ def write_documentation(record, comparison):
             "is phase-confounded. The task is when an RWM comes in a Hanson "
             "shot that has one; physical duration, negative coverage and "
             "online input timing remain unverified. Sources: "
+            "`E#/split_sensitivity/{phase_controlled_auroc,paired_phase}`, "
             "`E#/configs/{rwm-brf,rwm-rule-elapsed-time}/phase_controlled_auroc` "
             "and `E#/configs/rwm-brf/metrics/slice_auroc`; E is defined below."
         ),
@@ -787,6 +840,8 @@ def write_documentation(record, comparison):
             ["Model / rule", "Phase AUROC (95% CI)", "Forest minus rule (95% CI)"],
             phase_rows,
         )
+        + "\n\n"
+        + phase_split_table(record)
         + "\n\n"
         + phase_width_table(record),
         "sensitivity": sensitivity,
@@ -802,6 +857,60 @@ def write_documentation(record, comparison):
             "(`E#/screen_audit` and that screen's `counts`)."
         ),
     }
+    audit = record["forecast_label_audit"]
+    missing, rotation = audit["efit_missing"], audit["rotation_raw"]["rot_core_khz"]
+    first, first_time = forest["first_onset_only"], elapsed["first_onset_only"]
+    growth_record = json.loads((OUT / "growth.json").read_text())
+    growth = growth_record["betan"]
+    chunks.update(
+        {
+            "forecast": (
+                f"Primary forecast labels contain **{audit['negative_after_first']:,}/"
+                f"{audit['n_negative']:,} negatives ({audit['negative_after_first'] / audit['n_negative']:.1%})** "
+                "after a first n=1 onset and "
+                f"**{audit['positive_before_repeats']}/{audit['n_positive']} positives "
+                f"({audit['positive_before_repeats'] / audit['n_positive']:.1%})** preceding repeat onsets. "
+                "These labels concern the next onset; inter-onset physical state "
+                "remains category 4 (unassessed) in the interval export. Restricting "
+                "the same saved reference-split scores to primary slices strictly "
+                "before the first n=1 onset gives pooled forest AUROC "
+                f"**{interval(first['pooled_auroc'])}** versus elapsed time "
+                f"**{interval(first_time['pooled_auroc'])}**, on "
+                f"{first['n_positive']} positives / {first['n_negative']:,} assumed "
+                f"negatives across {first['n_shots']} shots; no refit or tuning. "
+                "Sources: `E#/forecast_label_audit` and "
+                "`E#/configs/{rwm-brf,rwm-rule-elapsed-time}/first_onset_only`."
+            ),
+            "missingness": (
+                f"EFIT inputs are missing in {missing['positive_fraction']:.0%} of "
+                f"positive slices versus {missing['negative_fraction']:.0%} of "
+                "negatives (at least one missing βN, li, q95, qmin or W_MHD input); "
+                "median imputation could act as a weak missingness signal "
+                "(`E#/forecast_label_audit/efit_missing`)."
+            ),
+            "rotation_units": (
+                "The `TROTFIT` units field says kHz, but core magnitudes "
+                f"(median {rotation['median']:.0f}, maximum {rotation['max']:.0f}) "
+                "match krad/s, the ZIPFIT convention; kHz would imply supersonic "
+                "toroidal velocity. Legacy `rot_*_khz` names retain raw values "
+                "without conversion and do not establish physical units. The "
+                "forest is invariant to a positive constant unit conversion "
+                "(`E#/forecast_label_audit/rotation_raw`; namespace metadata)."
+            ),
+            "collapse": (
+                f"βN falls at least 20% by 40 ms after **{growth['dropping_onsets']}/"
+                f"{growth['eligible_onsets']} eligible onsets "
+                f"({growth['fraction_dropping_20pct_by_p40']:.1%})**, relative to "
+                f"the value 100 ms before onset; **{growth['unknown_onsets']} of "
+                f"{growth_record['onsets']['n1']} n=1 onsets** are unknown. "
+                "Both reference values require finite "
+                f"bracketing samples separated by at most {growth['max_bracket_gap_ms']:g} ms, "
+                "with no extrapolation. This supports alignment with a plasma "
+                "event while leaving mode identity and growth-start timing "
+                "unresolved (`G#/betan`)."
+            ),
+        }
+    )
     doc = REPO / "docs/labeler/rwm_baseline.md"
     body = doc.read_text()
     for name, text in chunks.items():
@@ -822,8 +931,10 @@ def write_documentation(record, comparison):
         model_lines.append(
             f"- {name} | 2026_10_03 | Phase-controlled AUROC: "
             f"{interval(config['phase_controlled_auroc'])} | "
-            f"Primary AUROC: {interval(config['metrics']['slice_auroc'])}"
-            + (" (no established skill beyond phase)" if name == "rwm-brf" else "")
+            f"AUROC: {interval(config['metrics']['slice_auroc'])} (primary; phase-confounded) | "
+            f"AUPRC: {interval(config['metrics']['slice_auprc'])} | "
+            f"F1: {interval(config['metrics']['slice_f1'])}"
+            + (" | " + phase_headline(record) if name == "rwm-brf" else "")
         )
     models = (
         "## Models\n**stable**: none\n\n**latest**: rwm-brf\n\n**all**:\n\n"
@@ -923,13 +1034,22 @@ def write_latex(record, out_dir):
         r"\end{tabular}",
     ]
     protocol = record["protocol"]
+    n = configs["rwm-brf"]["counts"]
     caption = (
-        r"Within-RWM-shot timing with assumed negatives; no established skill "
-        r"beyond phase. Phase control compares pairs within campaign and "
+        r"Within-RWM-shot timing with assumed negatives. "
+        + phase_headline(record, latex=True)
+        + " "
+        r"Phase control compares pairs within campaign and "
         f"{protocol['phase_bin_ms']:g} ms bins "
         f"(at least {protocol['phase_min_slices']} slices); elapsed time measures "
         r"the residual-phase floor. Primary negatives end at the last target "
-        r"onset; broad adds later Hanson time. Cutoffs use inner-fold primary "
+        f"onset: {n['positive_slices']:,} positive / {n['negative_slices']:,} "
+        f"assumed-negative slices (prevalence {n['positive_slices'] / (n['positive_slices'] + n['negative_slices']):.2%}".replace(
+            "%", r"\%"
+        )
+        + "). Broad adds later Hanson time and "
+        f"{record['forecast_label_audit']['broad_n2_only_negatives']:,} negatives "
+        r"from $n=2$-only shots. Cutoffs use inner-fold primary "
         r"slices. Brackets: exploratory shot-bootstrap intervals at fixed "
         r"predictions, unadjusted for multiplicity. Legacy differs in machine, "
         r"inputs and validation."
@@ -974,11 +1094,21 @@ def write_supplemental_latex(record, out_dir):
     artifacts = {}
     n_bootstrap = record["protocol"]["bootstrap_replicates"]
 
-    def write(name, columns, header, rows, caption, source, long=False):
+    def write(name, columns, header, rows, caption, source, long=False, panel=None):
         environment = "longtable" if long else "tabular"
         lines = [r"\begingroup"] if long else [r"\begin{table*}[t]", r"\centering"]
         spacing = "2pt" if name in ("split_summary", "alarms") else "4pt"
         lines += [r"\small", r"\setlength{\tabcolsep}{" + spacing + "}"]
+        if panel:
+            lines += [
+                r"\begin{tabular}{@{}lccc@{}}",
+                r"\toprule",
+                r"Evaluation & Forest phase AUROC & Forest $-$ elapsed time & Forest $-$ $\beta_N/l_i$ \\",
+                r"\midrule",
+                *(" & ".join(row) + r" \\" for row in panel),
+                r"\bottomrule",
+                r"\end{tabular}\par\vspace{5pt}",
+            ]
         lines += [r"\begin{" + environment + "}{@{}" + columns + "@{}}"]
         if long:
             lines += [r"\caption{" + caption + r"} \\"]
@@ -1021,6 +1151,28 @@ def write_supplemental_latex(record, out_dir):
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
     summary = record["split_sensitivity"]
     holdout = record["leave_one_run_record_out"]
+    phase = summary["phase_controlled_auroc"]
+    pairs = summary["paired_phase"]
+    phase_panel = [
+        [
+            f"Seed {s}",
+            latex_cell(v, bound_digits=3),
+            *(
+                latex_cell(pairs[k]["by_seed"][s], bound_digits=3)
+                for k in ("rwm-rule-elapsed-time", "rwm-rule-betan-over-li")
+            ),
+        ]
+        for s, v in phase["by_seed"].items()
+    ] + [
+        [
+            "Run-record holdout",
+            latex_cell(phase["holdout"], bound_digits=3),
+            *(
+                latex_cell(pairs[k]["holdout"], bound_digits=3)
+                for k in ("rwm-rule-elapsed-time", "rwm-rule-betan-over-li")
+            ),
+        ]
+    ]
     rows = []
     broad_ranges = {}
     for campaign, ranges in summary["auroc_ranges"].items():
@@ -1108,7 +1260,11 @@ def write_supplemental_latex(record, out_dir):
             r"\shortstack{Above-proxy conditional\\AUROC}",
         ],
         rows,
-        r"Forest scores and forest-minus-elapsed-time differences. Ranges are "
+        r"Phase-controlled scores and paired phase differences (top); pooled "
+        r"forest scores and forest-minus-elapsed-time differences (bottom). "
+        + phase_headline(record, latex=True)
+        + " "
+        r"Ranges are "
         r"point estimates across seeds 0--4, not confidence intervals. Brackets: "
         r"exploratory 95\% shot-bootstrap intervals, unadjusted for multiplicity, "
         r"at fixed predictions; individual scores "
@@ -1118,6 +1274,8 @@ def write_supplemental_latex(record, out_dir):
         r"intervals are available for seed 0 and holdout only. The primary "
         r"seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
         {
+            "split_sensitivity.phase_controlled_auroc": phase,
+            "split_sensitivity.paired_phase": pairs,
             "split_sensitivity.auroc_ranges": summary["auroc_ranges"],
             "broad_ranges": broad_ranges,
             "paired.rwm-brf - rwm-rule-elapsed-time.broad_auroc": record["paired"][
@@ -1133,6 +1291,7 @@ def write_supplemental_latex(record, out_dir):
                 "paired_time": holdout["paired_time"],
             },
         },
+        panel=phase_panel,
     )
     within_pairs = [
         pair["within_shot_auroc"][mask]
@@ -1364,9 +1523,7 @@ def write_supplemental_latex(record, out_dir):
         r"No improvement "
         r"over the approximate rate-matched random reference was established: "
         r"all five difference intervals include zero; equivalence is not "
-        r"established. Warning medians condition on detected onsets. All "
-        r"continuous scalar rules were compared on the reference split only; their alarm "
-        r"results were not replayed over other split seeds. Comparison and Hanson "
+        r"established. Comparison and Hanson "
         r"incidences are unlabelled-shot incidences, not verified false-positive "
         r"rates. Warning medians are conditional on the matching window; the "
         r"reference-split median is "
@@ -1539,6 +1696,9 @@ def main():
                 [name, interval(configs[name]["phase_controlled_auroc"])]
                 for name in NAMES
             ],
+        ),
+        "Phase split sensitivity — five seeds and run-record holdout": phase_split_table(
+            record
         ),
         "Phase-bin-width sensitivity — primary mask, campaign control retained": phase_width_table(
             record
@@ -1736,6 +1896,10 @@ def main():
                 (OUT / "comparison_sensitivity.json").read_bytes()
             ).hexdigest(),
         },
+        "growth_source": {
+            "path": "outputs/labeler/rwm/growth.json",
+            "sha256": hashlib.sha256((OUT / "growth.json").read_bytes()).hexdigest(),
+        },
         "external_evaluation_details": record["external_details"],
         "paper_tables": ["table_rwm.tex", "table_rwm_alarms.tex"],
         "other_tables_scope": "repository-only supplements",
@@ -1765,18 +1929,20 @@ def main():
             "output": (tmp_dir / filename).read_text().strip(),
         }
         for name, filename in (
-            ("covering_tests", "fix10-covering-tests.log"),
-            ("ruff_check", "fix10-ruff.log"),
-            ("python_format", "fix10-format.log"),
-            ("table_and_record_validation", "fix10-validation.log"),
-            ("empty_warning_generation", "fix10-empty-green.log"),
-            ("latex_compile", "fix10-latex.log"),
-            ("visual_inspection", "fix10-visual.log"),
-            ("baseline_saved_replay", "fix10-rescore.log"),
-            ("comparison_saved_replay", "fix10-comparison-replay.log"),
-            ("rotation_saved_replay", "fix10-rotation-replay.log"),
-            ("final_code_review", "fix10-review.log"),
-            ("artifact_hashes", "fix10-artifact-hashes.log"),
+            ("covering_tests", "fix11-covering-tests.log"),
+            ("ruff_check", "fix11-ruff.log"),
+            ("python_format", "fix11-format.log"),
+            ("table_and_record_validation", "fix11-validation.log"),
+            ("latex_compile", "fix11-latex.log"),
+            ("visual_inspection", "fix11-visual.log"),
+            ("baseline_saved_replay", "fix11-rescore.log"),
+            ("comparison_saved_replay", "fix11-comparison-replay.log"),
+            ("rotation_saved_replay", "fix11-rotation-replay.log"),
+            ("growth_regeneration", "fix11-growth.log"),
+            ("empty_efit_generation", "fix11-empty-efit-green.log"),
+            ("final_code_review", "fix11-review.log"),
+            ("saved_prediction_preservation", "fix11-predictions.log"),
+            ("artifact_hashes", "fix11-artifact-hashes.log"),
         )
         if (tmp_dir / filename).is_file()
     }

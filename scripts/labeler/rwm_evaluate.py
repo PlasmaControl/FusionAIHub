@@ -225,6 +225,38 @@ def run_config(args):
         **summary,
     }
     if seed == SEED:
+        if name in ("rwm-brf", "rwm-rule-elapsed-time"):
+            mask = ev.first_onset_mask(oof, target)
+            first_groups = {
+                "hanson": [
+                    {
+                        "score": part.loc[mask.loc[part.index], "score"].to_numpy(),
+                        "label": part.loc[mask.loc[part.index], "label"].to_numpy(),
+                    }
+                    for _, part in oof[oof.role == "hanson"].groupby("shot")
+                ]
+            }
+
+            def first_statistic(draws):
+                rows = draws["hanson"]
+                return metrics.auroc(
+                    np.concatenate([r["score"] for r in rows]),
+                    np.concatenate([r["label"] for r in rows]),
+                )
+
+            selected = oof[mask]
+            result["first_onset_only"] = {
+                "scope": "primary Hanson slices strictly before first merged n=1 onset; unchanged saved scores",
+                "n_positive": int(selected.label.eq(labels.POSITIVE).sum()),
+                "n_negative": int(selected.label.eq(labels.NEGATIVE).sum()),
+                "n_shots": int(selected.shot.nunique()),
+                "pooled_auroc": metrics.shot_bootstrap(
+                    first_groups,
+                    first_statistic,
+                    replicates=_STATE["replicates"],
+                    seed=SEED,
+                ),
+            }
         if name == "rwm-rule-elapsed-time":
             primary = oof[(oof.role == "hanson") & oof.label.isin([0, 1])]
             top = primary.nlargest(60, "score")
@@ -276,7 +308,7 @@ def run_pair(args):
     return f"{first} - {second}", clean(interval)
 
 
-def run_records(time_groups):
+def run_records(references):
     """Four held-out Hanson run records; no same-record siblings train or tune."""
     target, other = _STATE["onsets"], _STATE["other"]
     every = {
@@ -306,6 +338,7 @@ def run_records(time_groups):
         )
     result, groups = summarise(oof, alarms, target, rules)
     # The holdout excludes comparisons; pair the identical Hanson elapsed ranks.
+    time_groups, beta_groups = references
     reference = {k: time_groups[k] if k == "hanson" else [] for k in groups}
     result["paired_time"] = metrics.paired_bootstrap(
         groups,
@@ -318,6 +351,15 @@ def run_records(time_groups):
     result["paired_time_by_campaign"] = ev.paired_time_by_campaign(
         groups, reference, replicates=_STATE["replicates"], seed=SEED
     )
+    result["paired_phase"] = {
+        name: ev.phase_controlled_bootstrap(
+            groups, baseline, replicates=_STATE["replicates"], seed=SEED
+        )
+        for name, baseline in (
+            ("rwm-rule-elapsed-time", time_groups),
+            ("rwm-rule-betan-over-li", beta_groups),
+        )
+    }
     path = _STATE["out_dir"] / "predictions_rwm-brf_leave_run_record_out.parquet"
     if saved_record is None:
         oof.to_parquet(path, index=False)
@@ -345,7 +387,7 @@ def run_records(time_groups):
     return clean(result)
 
 
-def split_summary(config, paired_by_seed, paired_by_campaign):
+def split_summary(config, paired_by_seed, paired_by_campaign, phase_pairs, holdout):
     """Point-estimate ranges across all splits, separate from shot-sampling CIs."""
     runs = {str(SEED): config, **config["split_seeds"]}
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
@@ -380,6 +422,28 @@ def split_summary(config, paired_by_seed, paired_by_campaign):
         "paired_time_by_seed": paired_by_seed,
         "paired_time_ranges": paired_ranges,
         "paired_time_by_campaign": paired_by_campaign,
+        "phase_controlled_auroc": {
+            "by_seed": {s: r["phase_controlled_auroc"] for s, r in runs.items()},
+            "min": min(r["phase_controlled_auroc"]["estimate"] for r in runs.values()),
+            "max": max(r["phase_controlled_auroc"]["estimate"] for r in runs.values()),
+            "lowest_seed": min(
+                runs, key=lambda s: runs[s]["phase_controlled_auroc"]["estimate"]
+            ),
+            "holdout": holdout["phase_controlled_auroc"],
+        },
+        "paired_phase": {
+            name: {
+                "by_seed": rows,
+                "holdout": holdout["paired_phase"][name],
+                "min": min(r["estimate"] for r in rows.values()),
+                "max": max(r["estimate"] for r in rows.values()),
+                "positive_estimates": sum(r["estimate"] > 0 for r in rows.values()),
+                "cis_excluding_zero": sum(
+                    r["low"] > 0 or r["high"] < 0 for r in rows.values()
+                ),
+            }
+            for name, rows in phase_pairs.items()
+        },
         "alarm_ranges": {
             key: {
                 "by_seed": {s: r["metrics"][key] for s, r in runs.items()},
@@ -460,6 +524,47 @@ def screen_audit(_):
     }
 
 
+def forecast_audit(_):
+    """Slice-level label, input-missingness and raw-rotation audits, no fitting."""
+    table = ev.relabel(
+        _STATE["slices"], _STATE["onsets"], _STATE["other"], labels.HORIZON_MS
+    )
+    primary = (table.role == "hanson") & table.label.isin([0, 1])
+    before = ev.first_onset_mask(table, _STATE["onsets"])
+    positive, negative = primary & table.label.eq(1), primary & table.label.eq(0)
+    efit = ["betan", "li", "q95", "qmin", "wmhd_mj"]
+    missing = ~np.isfinite(table[efit]).all(axis=1)
+    return {
+        "scope": "primary Hanson 10 ms slices; after first merged n=1 onset",
+        "negative_after_first": int((negative & ~before).sum()),
+        "positive_before_repeats": int((positive & ~before).sum()),
+        "n_positive": int(positive.sum()),
+        "n_negative": int(negative.sum()),
+        "broad_n2_only_negatives": int(
+            (
+                (table.role == "hanson")
+                & table.label.eq(labels.EXCLUDED)
+                & table.label_broad.eq(0)
+                & ~table.shot.isin(_STATE["onsets"])
+            ).sum()
+        ),
+        "efit_missing": {
+            "scope": "at least one missing beta_N/li/q95/qmin/W_MHD input",
+            "positive": int((missing & positive).sum()),
+            "negative": int((missing & negative).sum()),
+            "positive_fraction": float(missing[positive].mean()),
+            "negative_fraction": float(missing[negative].mean()),
+        },
+        "rotation_raw": {
+            column: {
+                "median": float(table[column].median()),
+                "max": float(table[column].max()),
+            }
+            for column in ("rot_core_khz", "rot_mid_khz")
+        },
+    }
+
+
 def legacy_record():
     """Published NSTX cells from the local Piccione digest, not fitted DIII-D data."""
     return {
@@ -518,8 +623,10 @@ def main() -> None:
         return
     slices_path = args.slices or paths.root / "round4" / "rwm" / "slices.parquet"
     names = args.only or list(CONFIGS)
-    if "rwm-brf" in names and "rwm-rule-elapsed-time" not in names:
-        names = [*names, "rwm-rule-elapsed-time"]
+    if "rwm-brf" in names:
+        for reference in ("rwm-rule-elapsed-time", "rwm-rule-betan-over-li"):
+            if reference not in names:
+                names = [*names, reference]
     if args.rescore_saved and args.only:
         parser.error("--rescore-saved requires the complete saved configuration set")
     saved_record = load_evaluation(args.out) if args.rescore_saved else None
@@ -572,7 +679,10 @@ def main() -> None:
         pairs = [(a, b, kept[a], kept[b]) for a, b in PAIRS if a in kept and b in kept]
         paired = dict(pool.map(run_pair, pairs, chunksize=1))
         leave_run_record_out = (
-            pool.map(run_records, [kept["rwm-rule-elapsed-time"]])[0]
+            pool.map(
+                run_records,
+                [(kept["rwm-rule-elapsed-time"], kept["rwm-rule-betan-over-li"])],
+            )[0]
             if "rwm-brf" in names
             else None
         )
@@ -581,6 +691,7 @@ def main() -> None:
             for n, s, _, g in done
             if n == "rwm-brf" and "rwm-rule-elapsed-time" in kept
         ]
+        time_results = pool.map(run_pair, time_pairs, chunksize=1)
         paired_time = {
             name.split(" - ")[0]: {
                 k: v
@@ -588,7 +699,21 @@ def main() -> None:
                 if k.startswith(("slice_", "high_beta_", "above_proxy_"))
                 and k.endswith(("auroc", "auprc"))
             }
-            for name, row in pool.map(run_pair, time_pairs, chunksize=1)
+            for name, row in time_results
+        }
+        beta_pairs = [
+            (str(s), "beta", g, kept["rwm-rule-betan-over-li"])
+            for n, s, _, g in done
+            if n == "rwm-brf"
+        ]
+        phase_pairs = {
+            "rwm-rule-elapsed-time": {
+                n.split(" - ")[0]: r["phase_controlled_auroc"] for n, r in time_results
+            },
+            "rwm-rule-betan-over-li": {
+                n.split(" - ")[0]: r["phase_controlled_auroc"]
+                for n, r in pool.map(run_pair, beta_pairs, chunksize=1)
+            },
         }
         campaigns_by_seed = dict(
             pool.map(
@@ -605,6 +730,7 @@ def main() -> None:
         }
         screen = pool.map(screen_audit, [None])[0]
         physics = pool.map(run_onset_physics, [None])[0]
+        label_audit = pool.map(forecast_audit, [None])[0]
     results = {n: r for n, s, r, _ in done if s == SEED}
     for name, seed, result, _ in done:
         if seed != SEED:
@@ -643,7 +769,8 @@ def main() -> None:
                 "pair-count-weighted cell AUROC; omit cells with fewer than "
                 f"{ev.PHASE_MIN_SLICES} slices or one class and missing "
                 "time; 1000 campaign-stratified shot resamples, seed 0; individual "
-                "percentile and forest-minus-scalar basic paired intervals"
+                "percentile and forest-minus-scalar basic paired intervals; "
+                "within-copy or different-shot pairs only, no same-shot cross-copy pairs"
             ),
             "phase_bin_ms": ev.PHASE_BIN_MS,
             "phase_min_slices": ev.PHASE_MIN_SLICES,
@@ -699,13 +826,18 @@ def main() -> None:
         "paired_method": "basic",
         "leave_one_run_record_out": leave_run_record_out,
         "split_sensitivity": split_summary(
-            results["rwm-brf"], paired_time, paired_campaigns
+            results["rwm-brf"],
+            paired_time,
+            paired_campaigns,
+            phase_pairs,
+            leave_run_record_out,
         )
         if paired_time
         else None,
         "legacy": legacy_record(),
         "screen_audit": screen,
         "onset_physics": physics,
+        "forecast_label_audit": label_audit,
     }
     write_evaluation(clean(record), args.out, details_path)
     print(f"wrote {args.out}")

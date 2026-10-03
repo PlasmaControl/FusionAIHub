@@ -34,6 +34,7 @@ CONTROLS_PER_SHOT = 300
 CONTROL_EXCLUSION_MS = 170.0  # 150 ms search lookback + 20 ms trailing fit
 SEED = 0
 SEARCH_OFFSETS_MS = np.arange(-150.0, 30.0, 2.0)
+BETA_MAX_GAP_MS = 50.0
 
 
 def _quartiles(values) -> dict:
@@ -133,6 +134,9 @@ def main() -> None:
         )
         for onset, ntor in zip(group.t_ms, group.ntor):
             maximum, offset = _search_slopes(t, y, [onset])
+            beta = features.bracketed_interpolate(
+                tb, betan, [onset - 100, onset, onset + 40], BETA_MAX_GAP_MS
+            )
             row = {
                 "shot": int(shot),
                 "onset_ms": float(onset),
@@ -144,9 +148,9 @@ def main() -> None:
                         t, y, [onset], features.GROWTH_WINDOW_MS, features.LOG_FLOOR_G
                     )[0]
                 ),
-                "betan_m100": float(np.interp(onset - 100, tb, betan)),
-                "betan_0": float(np.interp(onset, tb, betan)),
-                "betan_p40": float(np.interp(onset + 40, tb, betan)),
+                "betan_m100": float(beta[0]),
+                "betan_0": float(beta[1]),
+                "betan_p40": float(beta[2]),
             }
             for lag in LAGS_MS:
                 row[f"log_ratio_{lag}"] = float(_log_ratio(t, y, [onset], lag)[0])
@@ -157,6 +161,8 @@ def main() -> None:
     frame.to_csv(out_dir / "growth_onsets.csv", index=False)
     pd.DataFrame(control_rows).to_csv(out_dir / "growth_controls.csv", index=False)
     n1 = frame[frame.ntor == 1]
+    eligible = np.isfinite(n1.betan_m100) & np.isfinite(n1.betan_p40)
+    dropping = eligible & (n1.betan_p40 < 0.8 * n1.betan_m100)
     result = {
         "script": "scripts/labeler/rwm_growth.py",
         "onsets": {
@@ -194,11 +200,17 @@ def main() -> None:
         ),
         "log_ratio_n1": {},
         "betan": {
+            "interpolation": "finite bracketing samples only; no extrapolation",
+            "max_bracket_gap_ms": BETA_MAX_GAP_MS,
+            "collapse_scope": "merged n=1 onsets with finite beta at o-100 and o+40 ms",
+            "eligible_onsets": int(eligible.sum()),
+            "unknown_onsets": int((~eligible).sum()),
+            "dropping_onsets": int(dropping.sum()),
             "m100": _quartiles(n1.betan_m100),
             "at_onset": _quartiles(n1.betan_0),
             "p40": _quartiles(n1.betan_p40),
-            "fraction_dropping_20pct_by_p40": float(
-                np.mean(n1.betan_p40 < 0.8 * n1.betan_m100)
+            "fraction_dropping_20pct_by_p40": (
+                float(dropping.sum() / eligible.sum()) if eligible.any() else None
             ),
         },
     }

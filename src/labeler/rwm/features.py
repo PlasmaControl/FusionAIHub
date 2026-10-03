@@ -13,6 +13,9 @@ cannot remove that processing. The high-current analysis window also uses the
 whole-shot peak and is retrospective.
 
 Every function takes plain arrays (time in milliseconds) and is vectorised.
+Legacy `rot_*_khz` columns retain raw TROTFIT values, whose units field says kHz
+but whose magnitudes match the ZIPFIT krad/s convention. No conversion is made;
+the forest's ranking is invariant to a positive constant unit conversion.
 """
 
 from __future__ import annotations
@@ -54,6 +57,42 @@ FEATURES = (
     "rot_mid_khz",
     "lock_v",
 )
+
+
+def bracketed_interpolate(t_src_ms, y_src, t_grid_ms, max_gap_ms):
+    """Offline interpolation between finite samples; no extrapolation or long gaps.
+
+    Exact finite samples are accepted, including endpoints. Other queries need
+    finite samples on both sides separated by at most `max_gap_ms`. This uses
+    future samples and is only for retrospective physical-alignment analysis.
+    """
+    t, y = np.asarray(t_src_ms, dtype=float), np.asarray(y_src, dtype=float)
+    finite = np.isfinite(t) & np.isfinite(y)
+    t, y = t[finite], y[finite]
+    grid = np.asarray(t_grid_ms, dtype=float)
+    out = np.full(grid.shape, np.nan)
+    if not len(t):
+        return out
+    right = np.searchsorted(t, grid, side="left")
+    clipped = np.clip(right, 0, len(t) - 1)
+    exact = np.isfinite(grid) & (t[clipped] == grid)
+    out[exact] = y[clipped[exact]]
+    left = np.clip(right - 1, 0, len(t) - 1)
+    gap = t[clipped] - t[left]
+    bracket = (
+        np.isfinite(grid)
+        & ~exact
+        & (right > 0)
+        & (right < len(t))
+        & (gap > 0)
+        & (gap <= max_gap_ms)
+    )
+    out[bracket] = y[left[bracket]] + (
+        (grid[bracket] - t[left[bracket]])
+        / gap[bracket]
+        * (y[clipped[bracket]] - y[left[bracket]])
+    )
+    return out
 
 
 def hold(t_src_ms, y_src, t_grid_ms, max_age_ms):

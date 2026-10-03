@@ -331,13 +331,13 @@ FEATURES: tuple[FeatureSpec, ...] = (
         name="rot_zipfit", kind="profile", units="kHz",
         sources=("archive", "fdp"),
         locators=("zipfit_trotfit_rho", r"\ZIPFIT01::TOP.PROFILES.TROTFIT"),
-        notes="stands in for cer_rot_csaps_1d. Units are kHz, not krad/s "
-              "and not km/s: MEASURED from the node's own units field "
-              "(the TROTFIT node reports `kHz`), which "
-              "settles the question carried from Task 8 - magnitude alone "
-              "could not, since v = omega*R with R ~ 1.75 m puts all three "
-              "readings in the same range. The model's domain rule "
-              "`absmax < 150` therefore reads as 150 kHz. No scale factor "
+        notes="stands in for cer_rot_csaps_1d. The TROTFIT units field says "
+              "kHz, retained as metadata, but RWM core magnitudes (median "
+              "75, maximum 174) match the ZIPFIT krad/s convention: kHz "
+              "would imply supersonic toroidal velocities. kHz and krad/s "
+              "differ by 2*pi; metadata alone does not settle physical units. "
+              "The domain rule `absmax < 150` is a raw-value cutoff, not "
+              "a verified 150 kHz limit. No scale factor "
               "against the archive (ratio 1.000000), 1.1e-2 median relative "
               "difference over 120 shots. The THINNEST of the thirteen: "
               "absent on 26 of the 120 sampled shots and single-sliced on "

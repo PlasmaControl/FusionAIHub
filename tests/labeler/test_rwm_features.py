@@ -8,6 +8,18 @@ import pytest
 from labeler.rwm import features as f
 
 
+def test_bracketed_interpolation_caps_finite_gaps_and_never_extrapolates():
+    t = np.array([0, 50, 101, 110, 200], dtype=float)
+    y = np.array([0, 10, 20, np.nan, 30], dtype=float)
+    grid = np.array([-1, 0, 25, 50, 75, 101, 110, 200, 201, np.nan])
+    out = f.bracketed_interpolate(t, y, grid, max_gap_ms=50)
+    assert out[[1, 2, 3, 5, 7]].tolist() == [0, 5, 10, 20, 30]
+    assert np.isnan(out[[0, 4, 6, 8, 9]]).all()
+    assert np.isnan(f.bracketed_interpolate([], [], [0], max_gap_ms=50)[0])
+    single = f.bracketed_interpolate([10], [2], [9, 10, 11], max_gap_ms=50)
+    assert np.isnan(single[[0, 2]]).all() and single[1] == 2
+
+
 def test_hold_takes_the_last_value_and_drops_a_stale_one():
     t = np.array([0.0, 20.0, 40.0, 200.0])
     y = np.array([1.0, 2.0, 3.0, 4.0])

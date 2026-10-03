@@ -128,6 +128,40 @@ def test_phase_default_uses_100_ms_and_bootstrap_keeps_the_same_bins():
         assert result == {"estimate": expected, "low": expected, "high": expected}
 
 
+@pytest.mark.parametrize(("scores", "expected"), [([2, 1], 2 / 7), ([2, 2], 1 / 7)])
+def test_phase_resamples_exclude_pairs_between_copies_of_the_same_shot(
+    scores, expected
+):
+    first = {
+        "shot": 1,
+        "campaign": 2014,
+        "score": scores,
+        "label": [1, 0],
+        "elapsed_time_ms": [10, 20],
+    }
+    second = {**first, "shot": 2, "score": [0, 3]}
+    # Two copies of shot 1: two within-copy and five other eligible pairs.
+    assert ev.phase_controlled_auroc(
+        {"hanson": [first, first, second]}, min_slices=1
+    ) == pytest.approx(expected)
+    assert ev.phase_controlled_auroc({"hanson": [first, first]}, min_slices=1) == (
+        1.0 if scores == [2, 1] else 0.5
+    )
+
+
+def test_first_onset_mask_excludes_inter_onset_negatives_and_repeat_positives():
+    table = pd.DataFrame(
+        {
+            "shot": [1] * 7 + [2],
+            "role": ["hanson"] * 7 + ["comparison"],
+            "t_ms": [0, 90, 100, 150, 200, 290, 300, 0],
+            "label": [0, 1, -1, -1, 0, 1, -1, -2],
+        }
+    )
+    result = ev.first_onset_mask(table, {1: [300, 100]})
+    assert result.tolist() == [True, True, False, False, False, False, False, False]
+
+
 def test_phase_control_drops_bins_with_fewer_than_five_eligible_slices():
     groups = {
         "hanson": [
