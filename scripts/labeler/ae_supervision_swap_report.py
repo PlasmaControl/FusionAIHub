@@ -77,7 +77,8 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "combined loss on the 20 selection shots. The CUDA interpreter is "
             "`envs/phase3/bin/python`, with `PYTHONPATH=<worktree>/src`; the launcher "
             "retains `AESWAP_PIXI_ENV` as an explicit alternative. CUDA allocations "
-            "are capped at 10 GiB. V100 uses float32; supported devices use bfloat16."
+            "are capped at 10 GiB. Autocast uses bfloat16 when the runtime reports "
+            "support, otherwise float32."
         ),
         "",
         (
@@ -100,17 +101,38 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
         "",
         "## Completed runs and operating points",
         "",
-        "| Supervision | Seed | Selected epoch | Threshold | Execution |",
-        "|---|---:|---:|---:|---|",
+        "Epoch numbers are zero-based, as in the trainer.",
+        "",
+        "| Supervision | Seed | Selected epoch | Threshold | Execution | GPU |",
+        "|---|---:|---:|---:|---|---|",
     ]
     for name, run in sorted(record["runs"].items()):
         ex = run["execution"]
         job = ex["slurm_job_id"] or "head node, GPU 0"
+        if ex["slurm_array_job_id"]:
+            job = (
+                f"{ex['slurm_array_job_id']}_{ex['slurm_array_task_id']} "
+                f"(job {ex['slurm_job_id']})"
+            )
+        gpu = run["training_environment"]["gpu"]
         doc.append(
             f"| {run['supervision']} | {run['seed']} | "
             f"{run['selected_epoch']} | {run['threshold']['threshold']:.9f} | "
-            f"{job} |"
+            f"{job} | {gpu} |"
         )
+    doc += [
+        "",
+        (
+            "Legacy/dense seed 0 ran on A100; fallback runs used V100. The CUDA "
+            "runtime probe records that this Torch build reports V100 bfloat16 "
+            "support through emulation despite lacking native support. The "
+            "as-built trainer therefore selects bfloat16 autocast on V100 too. "
+            "The earlier report's hypothetical float32 fallback does not describe "
+            "these actual runs. See evaluation.json:gpu_probe and each run's "
+            "runtime metadata. Device types and kernel implementations differ; "
+            "the observed across-seed SD includes environment variation."
+        ),
+    ]
     doc += ["", "Older selection thresholds:"]
     for name in ("ae-rcn", "ae-lstm"):
         threshold = record["thresholds"][name]

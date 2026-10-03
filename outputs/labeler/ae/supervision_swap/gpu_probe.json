@@ -1,0 +1,22 @@
+{
+  "bf16_default": true,
+  "bf16_native": false,
+  "capability": [
+    7,
+    0
+  ],
+  "code_sha256": {
+    "scripts/labeler/ae_supervision_swap.py": "ee28e98dcf45ffe5079938d82b3c1bc95e448a21aff9225bc794d95c694ebf68",
+    "scripts/labeler/ae_supervision_swap_report.py": "7d8057f7d3b050862fa4c3b5f77170935cdd30346df0cfcd9d14829c2aa71d23",
+    "scripts/labeler/ae_train.py": "3a66eec91ee51fd98a1a0d7e03aea28ea3c79ea67d1c66ac84943e9476693ccf",
+    "src/labeler/ae/model.py": "9789ed80721a87b7bfb0e07927d2d1469b3c3b51deb65edea5d33860c99c235f",
+    "src/labeler/ae/supervision.py": "86a968b62648bb51635f9d29bac9dfa438fec3b2a63bdd564a45b8b8ad47b573"
+  },
+  "cuda": "12.6",
+  "generated": "2026-10-03T15:37:57.241185+00:00",
+  "git": "4833ca01a5d33d772e2302ef74f13a9ff2341ff3",
+  "gpu": "Tesla V100S-PCIE-32GB",
+  "python": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/envs/phase3/bin/python",
+  "selected_autocast_dtype": "bfloat16",
+  "torch": "2.14.0+cu126"
+}

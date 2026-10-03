@@ -353,6 +353,26 @@ def verify(args) -> None:
     print(json.dumps(record, indent=2))
 
 
+def probe(args) -> None:
+    """Record the actual CUDA precision gate, including emulated support."""
+    if not torch.cuda.is_available():
+        raise SystemExit("probe requires the CUDA interpreter")
+    supported = torch.cuda.is_bf16_supported()
+    record = {
+        **provenance(),
+        "python": sys.executable,
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "gpu": torch.cuda.get_device_name(0),
+        "capability": list(torch.cuda.get_device_capability(0)),
+        "bf16_default": supported,
+        "bf16_native": torch.cuda.is_bf16_supported(including_emulation=False),
+        "selected_autocast_dtype": "bfloat16" if supported else "float32",
+    }
+    write_json(args.out_dir / "gpu_probe.json", record)
+    print(json.dumps(record, indent=2))
+
+
 def train(args) -> None:
     # multiprocessing adds /pymp-*/listener-* to TMPDIR; the prescribed scratch
     # path exceeds AF_UNIX's 108-byte limit. Actual files still live in TMPDIR.
@@ -384,7 +404,15 @@ def train(args) -> None:
         "supervision": args.supervision,
         "seed": args.seed,
         "manifest_sha256": sha256(manifest_path),
-        "environment": {"torch": torch.__version__, "cuda": torch.cuda.is_available()},
+        "environment": {
+            "torch": torch.__version__,
+            "cuda": torch.cuda.is_available(),
+            "autocast_dtype": (
+                "bfloat16" if torch.cuda.is_bf16_supported() else "float32"
+            )
+            if torch.cuda.is_available()
+            else None,
+        },
         "execution": {
             "python": sys.executable,
             "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
@@ -485,11 +513,19 @@ def evaluate(args) -> None:
                     }
                 continue
             run = json.loads(path.read_text())
-            runs[name] = run
             if run["status"] != "finished" or run["manifest_sha256"] != sha256(
                 manifest_path
             ):
                 raise ValueError(f"run {name} is unfinished or uses another manifest")
+            training_path = Path(run["training"]["path"])
+            if sha256(training_path) != run["training"]["sha256"]:
+                raise ValueError(f"training metadata changed for {name}")
+            training = json.loads(training_path.read_text())
+            runs[name] = {
+                **run,
+                "training_environment": training["environment"],
+                "epochs_completed": len(training["history"]),
+            }
             source = Path(run["probabilities"]["path"])
             if sha256(source) != run["probabilities"]["sha256"]:
                 raise ValueError(f"probabilities changed for {name}")
@@ -575,8 +611,19 @@ def evaluate(args) -> None:
                 "Pooled intervals resample shots and the three observed seed IDs; "
                 "three seeds give limited precision for training variability."
             ),
+            (
+                "GPU types differ across runs; actual capability and precision "
+                "policy are recorded in gpu_probe.json and runtime metadata."
+            ),
         ],
     }
+    probe_path = args.out_dir / "gpu_probe.json"
+    if probe_path.exists():
+        record["gpu_probe"] = {
+            "path": str(probe_path),
+            "sha256": sha256(probe_path),
+            "record": json.loads(probe_path.read_text()),
+        }
     write_json(args.out_dir / "evaluation.json", record)
     write_json(args.record, record)
     lines = [
@@ -674,6 +721,7 @@ def main(argv=None) -> None:
     fit.add_argument("--supervision", choices=SUPERVISIONS, required=True)
     fit.add_argument("--seed", type=int, default=0)
     commands.add_parser("verify")
+    commands.add_parser("probe")
     score = commands.add_parser("evaluate")
     score.add_argument("--replicates", type=int, default=1000)
     score.add_argument(
@@ -687,6 +735,7 @@ def main(argv=None) -> None:
         "extend-seeds": extend_seeds,
         "train": train,
         "verify": verify,
+        "probe": probe,
         "evaluate": evaluate,
     }[args.command](args)
 
