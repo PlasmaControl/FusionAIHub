@@ -12,9 +12,10 @@ Reads the candidate pool (`labeler.rwm.shots.choose`, written by
 3. stacks the causal slice features of the chosen shots (`labeler.rwm.data`) with the
    `rwm_candidates` screen's call, into ``$LABELER_ROOT/round4/rwm/slices.parquet``;
 4. writes conventional weak windows before listed onsets (category 1)
-   and assumed-absent time outside the precursor and aftermath (category 0)
-   on the Hanson shots, and the screen's uncertain spans (category 2) on the comparison
-   shots, which are unlabelled.
+   and assumed-absent time before the first precursor (category 0) on Hanson shots.
+   Explicit unassessed intervals (category 4) preserve every hole and all post-onset
+   physical state; comparison screen spans are uncertain (category 2), with remaining
+   comparison time explicitly unassessed.
 
     python scripts/labeler/rwm_build.py
 """
@@ -162,9 +163,16 @@ def main() -> None:
                 assumed_absent=True,
             )
         else:
-            rows += [
-                (shot, labels.UNCERTAIN, float(a), float(b))
+            lo, hi = row.flattop_start_ms, row.flattop_end_ms
+            spans = [
+                (max(lo, a), min(hi, b))
                 for a, b in spans_by_shot.get(shot, [])
+                if max(lo, a) < min(hi, b)
+            ]
+            rows += [(shot, labels.UNCERTAIN, float(a), float(b)) for a, b in spans]
+            rows += [
+                (shot, labels.UNASSESSED, float(a), float(b))
+                for a, b in labels._subtract((lo, hi), spans)
             ]
     windows = pd.DataFrame(rows, columns=["shot", "category", "t_start", "t_end"])
     windows[["t_start", "t_end"]] = windows[["t_start", "t_end"]].round(3)
@@ -174,6 +182,7 @@ def main() -> None:
             labels.PRESENT: "conventional_weak",
             labels.ABSENT: "assumed_absent",
             labels.UNCERTAIN: "unlabelled_screen",
+            labels.UNASSESSED: "unassessed",
         }
     )
     windows["attrs"] = tiers.map(
@@ -265,6 +274,15 @@ def main() -> None:
             ),
             "assumed_absent_spans": int((hanson_rows.category == labels.ABSENT).sum()),
             "verified_absent_spans": 0,
+            "hanson_unassessed_spans": int(
+                (hanson_rows.category == labels.UNASSESSED).sum()
+            ),
+            "comparison_unassessed_spans": int(
+                (
+                    (windows.category == labels.UNASSESSED)
+                    & ~windows.shot.isin(hanson_shots)
+                ).sum()
+            ),
             "candidate_spans_on_comparison_shots": int(
                 (windows.category == labels.UNCERTAIN).sum()
             ),
@@ -275,7 +293,8 @@ def main() -> None:
         "evidence": {
             "verified": "Hanson listed onset points only; no verified negative coverage",
             "windows": "20 ms tau_w convention, not measured growth intervals",
-            "negative_assumption": "onset listing is complete on Hanson shots",
+            "negative_assumption": "onset listing is complete only before first onset precursor for physical category 0; not termination evidence",
+            "unassessed": "explicit category 4 for precursors and post-onset physical state through end of analysis; comparison time outside screen spans",
             "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
             "comparison": "unlabelled, never primary supervised negatives",
         },
@@ -329,7 +348,12 @@ def main() -> None:
         },
     }
     meta = {
-        "categories": {"0": "absent", "1": "present", "2": "uncertain"},
+        "categories": {
+            "0": "absent",
+            "1": "present",
+            "2": "uncertain",
+            "4": "unassessed",
+        },
         "category": "resistive_wall_mode",
         "columns": [
             "shot",
@@ -356,19 +380,20 @@ def main() -> None:
                 "measured growth interval; see outputs/labeler/rwm/growth.json)"
             ),
             "absent": (
-                f"the high-current window (Ip at least half its peak) outside "
-                f"[onset - {labels.HORIZON_MS:g}, onset + {labels.POST_MS:g}] ms of every "
-                "listed onset; the precursor before a growth window and the aftermath "
-                "carry no row (not assessed). Assumed absent: assumes complete "
-                "onset listing on Hanson shots, without verified negative coverage"
+                f"high-current time only before the first listed onset minus "
+                f"{labels.HORIZON_MS:g} ms, assuming complete onset listing. "
+                "No post-onset physical absence is inferred without mode termination evidence"
             ),
             "uncertain": "rwm_candidates screen spans, comparison shots only",
+            "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later conventional weak windows; comparison time outside screen spans",
         },
         "evidence_tiers": {
             "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
-            "assumed_absent": "Hanson time away from onsets; completeness assumption",
+            "assumed_absent": "Hanson time before first precursor; completeness assumption",
             "unlabelled_screen": "screen candidates on comparison shots; not negatives",
+            "unassessed": "no assessed physical state or termination evidence",
         },
+        "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
         "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
         "summary": "outputs/labeler/rwm/shots.json",
     }

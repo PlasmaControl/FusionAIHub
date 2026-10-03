@@ -10,9 +10,11 @@ things:
   `HORIZON_MS` (100 ms there). Primary negatives are earlier than the last target
   onset. Slices after it are excluded; a broader negative set is a sensitivity.
 
-Only the listed onset points are verified evidence. Negatives on Hanson shots are
-assumed absent, conditional on the onset list being complete, not reviewed coverage.
-Comparison shots are unlabelled; their slices stay `UNLABELLED`.
+Only the listed onset points are verified evidence. Physical absence before the
+first precursor is assumed, conditional on onset-list completeness. After an onset
+the physical state stays unassessed without evidence of recovery or termination;
+later forecast negatives do not establish physical absence. Comparison shots are
+unlabelled; their slices stay `UNLABELLED`.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ UNLABELLED = -2
 
 #: Interval-table categories written by `window_rows`.
 PRESENT, ABSENT, UNCERTAIN = 1, 0, 2
+UNASSESSED = 4
 
 
 def slice_labels(
@@ -148,17 +151,29 @@ def window_rows(
 ):
     """Interval-table rows `(shot, category, t_start, t_end)` for one shot.
 
-    Category 1 is each conventional weak window. With `assumed_absent=True`
-    category 0 is the shot's flat-top `flattop = (start, end)` ms outside every
-    `[onset - horizon, onset + post]`; the precursor stretch before a growth window
-    and the aftermath of an onset carry no row, which the interval-table convention
-    reads as not assessed. Category 0 assumes the onset list is complete on Hanson
-    shots; it never denotes verified coverage. Comparison shots have no such row.
+    Category 1 is each conventional weak window. With `assumed_absent=True`,
+    category 0 covers flat-top time before the first onset's precursor, conditional
+    on onset-list completeness; it never denotes verified coverage. Every remaining
+    stretch is explicitly category 4 (unassessed), including time after the first
+    onset, except later weak windows. An onset list supplies no termination evidence.
+
+    The rows tile the flat-top and any weak windows extending beyond it. With no
+    flat-top they tile only the weak windows' bounding span. `post_ms` is retained
+    for caller compatibility, but a forecast exclusion duration cannot establish
+    physical recovery and does not change these state intervals.
     """
-    rows = [
-        (shot, PRESENT, a, b) for a, b in growth_windows(onsets_ms, growth_ms=growth_ms)
-    ]
-    if assumed_absent and flattop is not None:
-        holes = [(o - horizon_ms, o + post_ms) for o in onsets_ms]
-        rows += [(shot, ABSENT, a, b) for a, b in _subtract(flattop, holes)]
+    onsets = sorted(float(o) for o in onsets_ms)
+    windows = growth_windows(onsets, growth_ms=growth_ms)
+    rows = [(shot, PRESENT, a, b) for a, b in windows]
+    bounds = windows + ([flattop] if flattop is not None else [])
+    if not bounds:
+        return rows
+    coverage = (min(a for a, _ in bounds), max(b for _, b in bounds))
+    absent = []
+    if assumed_absent and flattop is not None and onsets:
+        end = min(flattop[1], onsets[0] - horizon_ms)
+        if end > flattop[0]:
+            absent = _subtract((flattop[0], end), windows)
+            rows += [(shot, ABSENT, a, b) for a, b in absent]
+    rows += [(shot, UNASSESSED, a, b) for a, b in _subtract(coverage, windows + absent)]
     return sorted(rows, key=lambda r: (r[2], r[3]))

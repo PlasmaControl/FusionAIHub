@@ -51,7 +51,7 @@ def test_growth_windows_merge_overlaps_and_keep_separate_ones():
     ]
 
 
-def test_window_rows_mark_growth_present_and_only_examined_shots_absent():
+def test_window_rows_do_not_infer_physical_recovery_from_the_forecast_horizon():
     rows = lab.window_rows(
         7,
         [300.0],
@@ -63,11 +63,14 @@ def test_window_rows_mark_growth_present_and_only_examined_shots_absent():
     )
     assert rows == [
         (7, lab.ABSENT, 100.0, 200.0),
+        (7, 4, 200.0, 280.0),
         (7, lab.PRESENT, 280.0, 300.0),
-        (7, lab.ABSENT, 400.0, 800.0),
+        (7, 4, 300.0, 800.0),
     ]
-    # An unexamined shot carries no absent row, and no onset means no present row.
-    assert lab.window_rows(8, [], (100.0, 800.0), assumed_absent=False) == []
+    # An unexamined shot's physical state stays explicitly unassessed.
+    assert lab.window_rows(8, [], (100.0, 800.0), assumed_absent=False) == [
+        (8, 4, 100.0, 800.0),
+    ]
 
 
 def test_window_rows_drop_a_hole_wider_than_the_flattop():
@@ -80,7 +83,28 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
         horizon_ms=100.0,
         post_ms=100.0,
     )
-    assert rows == [(7, lab.PRESENT, 130.0, 150.0)]
+    assert rows == [
+        (7, 4, 100.0, 130.0),
+        (7, lab.PRESENT, 130.0, 150.0),
+        (7, 4, 150.0, 200.0),
+    ]
+
+
+def test_later_onsets_do_not_establish_absence_after_an_earlier_onset():
+    assert lab.window_rows(7, [300.0, 600.0], (100.0, 800.0), assumed_absent=True) == [
+        (7, lab.ABSENT, 100.0, 200.0),
+        (7, 4, 200.0, 280.0),
+        (7, lab.PRESENT, 280.0, 300.0),
+        (7, 4, 300.0, 580.0),
+        (7, lab.PRESENT, 580.0, 600.0),
+        (7, 4, 600.0, 800.0),
+    ]
+
+
+def test_an_empty_onset_list_does_not_establish_physical_absence():
+    assert lab.window_rows(7, [], (100.0, 800.0), assumed_absent=True) == [
+        (7, 4, 100.0, 800.0),
+    ]
 
 
 def test_other_onsets_are_excluded_but_never_positive():
