@@ -429,7 +429,7 @@ def native_detection_table(record) -> str:
         f"Secondary native DSM detection comparison. The 1 ms audit finds at least "
         f"112/124 inputs on {record['shots_at_least_90_percent']} reviewed shots; "
         "37 have complete-input scored bins. Both DSM rows are occupancy detection "
-        "refits: 60-input $1\times128$ adaptation on 50 ms means, and native "
+        r"refits: 60-input $1\times128$ adaptation on 50 ms means, and native "
         "124-input [100,1000] architecture on 1 ms means. All methods use identical "
         "supported shots/bins. Native weights start randomly; normalization uses "
         "optimizer-training shots only, with the original outer/inner partitions. "

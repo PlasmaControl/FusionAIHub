@@ -5,7 +5,6 @@
 \toprule
 Method & Window AUROC & Window AUPRC & Window occupancy F1 \\
 \midrule
-elm-ours & 0.505 {\scriptsize[0.493, 0.517]} & 0.143 {\scriptsize[0.138, 0.149]} & 0.257 {\scriptsize[0.250, 0.264]} \\
 elm-ours-onset & 0.982 {\scriptsize[0.979, 0.983]} & 0.918 {\scriptsize[0.912, 0.923]} & 0.791 {\scriptsize[0.781, 0.800]} \\
 elm-elmo & 0.883 {\scriptsize[0.874, 0.891]} & 0.798 {\scriptsize[0.783, 0.811]} & 0.866 {\scriptsize[0.855, 0.877]} \\
 \bottomrule\end{tabular}\par\smallskip
@@ -13,12 +12,8 @@ elm-elmo & 0.883 {\scriptsize[0.874, 0.891]} & 0.798 {\scriptsize[0.783, 0.811]}
 \toprule
 Method & Tolerance & Conditional precision & Recall & Conditional F1 & Median $|e|$ (ms) \\
 \midrule
-elm-ours & $\pm$2 ms & 0.000 {\scriptsize[0.000, 0.000]} & 0.000 {\scriptsize[0.000, 0.000]} & 0.000 {\scriptsize[0.000, 0.000]} & -- \\
-elm-ours & $\pm$5 ms & 0.500 {\scriptsize[0.450, 0.550]} & 0.074 {\scriptsize[0.058, 0.091]} & 0.129 {\scriptsize[0.102, 0.156]} & 4.753 \\
 elm-ours-onset & $\pm$2 ms & 1.000 {\scriptsize[1.000, 1.000]} & 0.930 {\scriptsize[0.915, 0.945]} & 0.964 {\scriptsize[0.956, 0.972]} & 0.244 \\
-elm-ours-onset & $\pm$5 ms & 1.000 {\scriptsize[1.000, 1.000]} & 0.930 {\scriptsize[0.915, 0.945]} & 0.964 {\scriptsize[0.956, 0.972]} & 0.244 \\
 elm-elmo & $\pm$2 ms & 0.958 {\scriptsize[0.945, 0.970]} & 0.987 {\scriptsize[0.971, 0.996]} & 0.972 {\scriptsize[0.962, 0.981]} & 0.075 \\
-elm-elmo & $\pm$5 ms & 0.958 {\scriptsize[0.945, 0.970]} & 0.987 {\scriptsize[0.971, 0.996]} & 0.972 {\scriptsize[0.962, 0.981]} & 0.075 \\
-\bottomrule\end{tabular}\caption{Smith windows: frozen review-to-Smith transfer (elm-ours) is independent of review shots and run days. The Smith-trained head is developmental shot CV with 21 of 31 Smith run days crossing folds; overlap with ELM-O's historical tuning events is unknown because event membership was not retained. All metrics are conditional on selected windows; continuous-discharge precision/F1 are unavailable for every method, because false positives count only inside windows, with 30,436 additional out-of-window head firings. Head recall is 0.930; all matched errors are within 0.82 ms and 94\% are in the correct 1 ms cell. Occupancy and onset targets differ. Brackets: shot-bootstrap intervals.}
+\bottomrule\end{tabular}\caption{Smith selected windows: frozen review-occupancy rows are omitted for target mismatch (50 ms occupancy versus approximately 8.5 ms windows). The experimental elm-ours-onset head is developmental shot CV with 21 of 31 Smith run days crossing folds; overlap with ELM-O's historical tuning events is unknown because event membership was not retained. All metrics are conditional on selected windows; continuous-discharge precision/F1 are unavailable for every method, because false positives count only inside windows, with 30,436 additional out-of-window head firings. Head recall is 0.930; all matched errors are within 0.82 ms and 94\% are in the correct 1 ms cell. Only $\pm2$ ms matching is shown. The head is withheld from catalog claims. Brackets: shot-bootstrap intervals.}
 \label{tab:elm-smith}
 \end{table*}

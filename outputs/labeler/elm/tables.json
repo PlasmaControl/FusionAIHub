@@ -1,17 +1,17 @@
 {
- "git": "a2a483d5",
+ "git": "a64369c3",
  "sources": {
   "ours": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
-   "sha256": "bc6af0eb49175b60cfc5c241123a34cfab4095de69d61be050e6b194911d468a"
+   "sha256": "69e25a98a136b8f0f34f15fd5f882fb7c1cde29c84e4788e84f2e0690000e636"
   },
   "dsm": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
-   "sha256": "17b07ef490c776adb949f2ae798bf9f4841ab9094fcf88121cf471a0d8820328"
+   "sha256": "d2c86b42c3c8a1986deb7e6ad2f1723f523627d367e62d3388211d53bb6a5c38"
   },
   "swap": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/evaluation.json",
-   "sha256": "a3b6ab1bc32ffb1a75872f13bf5b7f1fce269f07e4fc34b10299016b06f57d2d"
+   "sha256": "91f48d45e993ce165203cfeba91d95a35a0632ee932f00acddad18ef7b844c28"
   },
   "feature": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/feature_only.json",
@@ -37,46 +37,66 @@
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/training_history.json",
    "sha256": "b276bf9bd1b618dc6b6be5f32d22dacb148800d79905b9774f3a1bbb26cdbc80"
   },
+  "native_detection": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_detection.json",
+   "sha256": "5b7261a646f9da1e6df08eafb3223865869c5847d0e52fccbf02beaebfe76a5b"
+  },
+  "rejection": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/rejection_sensitivity.json",
+   "sha256": "7790ae334fb8a28058730e321a04b9ef98a0f6e03f310dc5ee1a0df3ec3579a1"
+  },
   "native": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_evaluation.json",
    "sha256": "88ff35bf41794ed988ee0c15acc500574553c6791db324e1959368c5b775f963"
   },
   "smith": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/smith/evaluation.json",
-   "sha256": "2dff76cfd893f0ab93cd8a3d714cce0901d6107138457d7818fdd8052003ea83"
+   "sha256": "2f4ff55a6d0e53acc6eb8bf3cb9c0eb3294ed29e6dce1e28ef25b6678e732f90"
   }
  },
  "tables": {
   "table_elm_annotation_modes.tex": "09c999ab02a30bc9eb58c2d400d0146f1806d37b8782360371ca234e3b172da4",
-  "table_elm_benchmark.tex": "32190fc26cd873e39babc8c16d7aed76b1361707428c7bc0c9a3252e2a6cf2d0",
-  "table_elm_dsm_native.tex": "3f32b8e9c6c6ad008a609df85162099a635a0b4b9fc43fa547d8db6f38d060fd",
+  "table_elm_benchmark.tex": "2c1c47890094cdf37f87bed24514b873c272eb5ece66cf7c278691ef0fd123ef",
+  "table_elm_common_control.tex": "9b4f01f69bb158dd4f0580b65e08e900f8b532fde16929b6c39a62ea066007db",
+  "table_elm_dsm_native.tex": "178e7dd1054d7030c267f5985c64f305c0c00028046aeee2432429d3e5e51235",
   "table_elm_dsm_own_target.tex": "fe7364551944e5bfd6fdd3958bf0917f17fd74d5e22b9dc1f9fffb213a98c4d1",
+  "table_elm_native_detection.tex": "1e0ca4edb8b25b7a6c127432bdb51491f55dd000df42f5667e76dec3c83d7d21",
   "table_elm_per_kind.tex": "0822e0acdf6384f0c6760e3243bed7ddccf96dfa0082a418809e364e140b93e5",
-  "table_elm_smith.tex": "a99315f7637e50c9b7d1a09777445f3a3199ffc25c28749656f477bff6c00c09",
+  "table_elm_rejection.tex": "a94f90c492484fe7084a95058ab61fe5bb31bfec5d2ef8fa56e7a4c3bfc600a0",
+  "table_elm_smith.tex": "7e6ee0ca8e378f418c53fca659273e368c3ddae6797a7a8c4ce3c335224b032b",
   "table_elm_supplemental.tex": "4ffe06f5abbab2153eff7d37f53cfdb58e2cde917379823ecd0e9cb09feb8485",
-  "table_elm_swap.tex": "998df8351178fdfc95bd62af997fbfd7c5819f97cff743295c5a069797ba657f",
-  "table_elm_swap_full.tex": "35794c34f62be29dd6e24095af05ad1016ac4d31a1e688e844285ea1f63c4879",
-  "table_elm_swap_rankings.tex": "d3446eef9ea96403e04b672d0b831d03f896ef2d98ba3d64e7e20a5801b7505e",
-  "table_elm_swap_sensitivity.tex": "73c94d281cb75d74e180c0c012610b44e2467135421db3d2f24aabf683b16719"
+  "table_elm_swap.tex": "4e22200a3564047d6a263eaa213efff5ccf788f3c2f3aad7602b66829a4456d8",
+  "table_elm_swap_full.tex": "eb18fa6160f70b54f6a31913354df721d88dd4f71cb8ea1cdbe571fe7892faf1",
+  "table_elm_swap_rankings.tex": "7ffa5fbade01df8b583d326b03bd4e21ac5e095c96ffa0b53c60910e0000c44e",
+  "table_elm_swap_sensitivity.tex": "0fa80bc1333ada2fdcf5068cb86d15f48b9c1fc478e6d137bbf9125c7e16b02e"
  },
  "caption_word_counts": {
   "table_elm_annotation_modes.tex": [
    66
   ],
   "table_elm_benchmark.tex": [
-   98
+   95
+  ],
+  "table_elm_common_control.tex": [
+   57
   ],
   "table_elm_dsm_native.tex": [
-   108
+   106
   ],
   "table_elm_dsm_own_target.tex": [
    94
   ],
+  "table_elm_native_detection.tex": [
+   103
+  ],
   "table_elm_per_kind.tex": [
    46
   ],
+  "table_elm_rejection.tex": [
+   96
+  ],
   "table_elm_smith.tex": [
-   99
+   113
   ],
   "table_elm_supplemental.tex": [
    36
@@ -96,7 +116,7 @@
  },
  "shared_notes": {
   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
-  "sha256": "345bceec1e1805a9231bcea5c44de48ca4cd21008932409be3f56e8c4069d973"
+  "sha256": "172cfe4e03edfd056dbc888de368dff9bfbe506e90dd0f31ee3a01f585a5cc1f"
  },
  "benchmark_json_paths": [
   "ours/evaluation.json:sets.all119.methods",

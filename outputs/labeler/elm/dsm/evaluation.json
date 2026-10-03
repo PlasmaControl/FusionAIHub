@@ -1,6 +1,6 @@
 {
- "git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
- "created": "2026-10-03T21:13:51+00:00",
+ "git": "a64369c3c4fd4a265836508564fbfe556244b9c9",
+ "created": "2026-10-03T22:10:28+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
  "cohort_test_shots_used": 0,
@@ -229,7 +229,7 @@
   }
  },
  "evaluation_provenance": {
-  "producing_git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
+  "producing_git": "a64369c3c4fd4a265836508564fbfe556244b9c9",
   "files": {
    "script": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_evaluate.py",
@@ -32668,7 +32668,7 @@
  },
  "archived_records": {},
  "archive_provenance": {
-  "git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
+  "git": "a64369c3c4fd4a265836508564fbfe556244b9c9",
   "script_sha256": "1e50d51ab0b08db7d39b2374cb390a4e463dcd19363d97a5c4880e38a7222b5d",
   "scientific_results_unchanged": true
  }

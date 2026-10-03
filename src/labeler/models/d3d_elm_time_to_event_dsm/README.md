@@ -386,12 +386,12 @@ span intersects (t, t+h]; the separate onset target asks whether a
 non-crowd start lies in that interval. Reviewed non-crowd starts
 are annotation boundaries without independent physical-onset truth.
 
-Exact-export 50 ms AUROC is **0.607**, CI **null**:
+Exact-export 50 ms AUROC is 0.607, CI null:
 descriptive only on 4 shots reused in source fitting and 11,565 rows
 (190637, 190643, 192721, 196541).
 196541 entered optimizer fitting; the other three entered checkpoint
 selection; all entered source normalization. Five shots have exact exports,
-but 192751 has no scored overlap: the exact-export panel and figure
+but 192751 has no scored overlap: the exact-export JSON
 therefore contain four shots. No operating threshold is selected.
 
 | Native panel | Horizon | Shots | Rows | AUROC [95% physical-shot CI] |
@@ -509,3 +509,21 @@ here are labeler's. Attribute to the PlasmaControl group, Princeton.
 ## Contact
 
 `nc1514@princeton.edu`.
+
+### Native DSM detection comparator
+
+The timestamp-aware 1 ms audit finds at least 112/124 inputs on 48 reviewed shots; 37 have complete 124-input scored bins. Missing column names and shot counts are retained in `dsm/native_detection.json:coverage,missing_column_shot_counts`.
+The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-input shots only, with random weights and optimizer-training-only normalization. The fixed 25-epoch recipe uses the original five outer folds and their inner-validation shot partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No source weights/statistics or blind-test shots are reused.
+Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's 100-row centered smoothing within each shot, rather than concatenated source phases. This reconstructs native diagnostic inputs, not bit-identical historical exported rows. Bin scores average 50 native row probabilities; measured support and target are identical for every compared method.
+
+| Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
+|---|---:|---|---|---|
+| all119 / elm-ours | 37 / 3,576 | 0.936 [0.862, 0.981] | 0.853 [0.632, 0.976] | 0.833 [0.727, 0.908] |
+| all119 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
+| all119 / elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
+| bes73 / elm-ours | 37 / 3,339 | 0.929 [0.848, 0.980] | 0.854 [0.632, 0.976] | 0.837 [0.730, 0.913] |
+| bes73 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
+| bes73 / elm-dsm (124-input [100,1000] detection) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
+| bes73 / ELM-O | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
+
+This smaller support panel is a secondary control; it does not replace the primary all119/bes73 benchmark. A single fixed native refit does not measure the best achievable DSM performance.

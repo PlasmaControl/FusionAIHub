@@ -3,18 +3,10 @@
 `elm-ours` delivers BES-free ELMy-occupancy probability; the requested
 finer physical-onset trace is **not delivered to the catalog**.
 
-Current numbers and what each means (sources below):
-
-- 0.941 AUROC: reviewed occupancy, 119 shots / 12,409 interior 50 ms bins.
-- 0.830 [0.778, 0.871] F1: fold thresholds selected on inner validation.
-- 0.953: mean per-fold AUROC sensitivity to pooling fold scores.
-- 0.939 / 0.939: elm-ours AUROC on all / BES-subset DSM-common bins.
-- 0.845 / 0.840: reduced-input DSM detection adaptation on all / BES-common bins.
-- 0.607: native DSM forward-presence AUROC, four shots, no CI.
-- 0.505 [0.493, 0.517]: frozen review-to-Smith occupancy AUROC.
-- 0.930 [0.915, 0.945]: Smith-trained onset recall in selected windows.
-- 0.82 ms / 94%: max matched error / correct 1 ms cell.
-- 60 / 14: legacy/review disagreements; eight-shot swap is inconclusive.
+Primary reviewed-occupancy benchmark: all119 has 12,409 interior 50 ms bins, AUROC 0.941 [0.906, 0.967], AUPRC 0.877 [0.774, 0.949], and F1 0.830 [0.778, 0.871].
+The primary bes73 panel has 6,843 bins; its elm-ours AUROC is 0.941 [0.898, 0.972] and F1 is 0.845 [0.786, 0.896].
+DSM common-bin results are secondary occupancy controls; native detection is evaluated on a smaller identical-support panel, separately from historical forward-risk results.
+Smith onset recall describes selected windows only, and the eight-shot legacy swap measures reference-definition disagreement; neither confirms continuous-discharge physical-onset performance.
 
 ## Scope and review benchmark
 
@@ -48,15 +40,29 @@ No independently validated physical-onset detector is delivered, and
 run days cross folds in both developmental analyses
 (16 review days; 21 of 31 Smith days).
 
-`elm-ours` **matches ELM-O without BES; extends coverage to all 119 shots**.
-On the same 6,527 bins from 73 BES shots,
+`elm-ours` is statistically indistinguishable from ELM-O on bes73 (paired CIs include 0; equivalence untested), while extending BES-free coverage to all 119 shots.
+On the secondary common-bin control (6,527 bins on 73 BES shots),
 paired elm-ours minus ELM-O differences are AUROC +0.025 [-0.013, 0.071], AUPRC +0.044 [-0.056, 0.131], F1 +0.007 [-0.044, 0.063].
 Every interval includes zero; this does not establish superiority.
-Each 50 ms bin lies wholly inside a reviewed span and shared signal
-coverage, with valid rows in both DSM input variants. elm-ours calls
+Primary 50 ms bins lie wholly inside reviewed spans and signal coverage;
+secondary common bins additionally require both DSM row variants. elm-ours calls
 a bin present when its mean probability reaches the selected threshold;
 the DSM adaptation thresholds one aligned row score computed from
 50 ms input means. ELM-O and the clock use any detected-span touch.
+
+| Coverage / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
+|---|---:|---|---|---|
+| all119 / elm-ours | 119 / 12,409 | 0.941 [0.906, 0.967] | 0.877 [0.774, 0.949] | 0.830 [0.778, 0.871] |
+| all119 / elm-clock | 119 / 12,409 | -- | -- | 0.757 [0.680, 0.827] |
+| all119 / always-present | 119 / 12,409 | 0.500 [0.500, 0.500] | 0.376 [0.322, 0.430] | 0.546 [0.487, 0.601] |
+| all119 / elm-feature | 119 / 12,409 | 0.833 [0.783, 0.878] | 0.695 [0.606, 0.779] | 0.703 [0.640, 0.758] |
+| bes73 / elm-ours | 73 / 6,843 | 0.941 [0.898, 0.972] | 0.875 [0.751, 0.961] | 0.845 [0.786, 0.896] |
+| bes73 / elm-clock | 73 / 6,843 | -- | -- | 0.708 [0.602, 0.800] |
+| bes73 / always-present | 73 / 6,843 | 0.500 [0.500, 0.500] | 0.402 [0.325, 0.479] | 0.573 [0.491, 0.648] |
+| bes73 / elm-feature | 73 / 6,843 | 0.831 [0.770, 0.886] | 0.706 [0.603, 0.819] | 0.713 [0.628, 0.788] |
+| bes73 / elm-elmo | 73 / 6,843 | 0.918 [0.877, 0.951] | 0.833 [0.753, 0.890] | 0.842 [0.789, 0.885] |
+
+### Secondary DSM common-bin control
 
 | Coverage / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
 |---|---:|---|---|---|
@@ -76,13 +82,31 @@ The detection DSM is a reduced-input adaptation trained and evaluated
 on 50 ms rows: 60 input columns and one 128-unit layer. PCPHD02/03
 are measured on all 119 shots; DENV2F and DENV3F means supply the two
 density columns on 115 shots per chord, with four per chord mean-filled.
-The source DSM trained on native 1 ms rows with 124 inputs and layers
+The historical source DSM trained on native 1 ms rows with 124 inputs and layers
 [100, 1000] for WPQH breakthrough-ELM forecasting. The detection row
 is not an objective-only retrain of that model; comparative claims
-apply to this reduced-input 50 ms adaptation. Historical survival and
+apply to this reduced-input 50 ms adaptation; the native detection refit is compared below. Historical survival and
 detection variants that reuse source weights or statistics remain
 supplemental; their upstream normalization includes two blind-cohort
 shots. Native presence and non-crowd-start targets use forward (t,t+h].
+
+### Native DSM detection comparator
+
+The timestamp-aware 1 ms audit finds at least 112/124 inputs on 48 reviewed shots; 37 have complete 124-input scored bins. Missing column names and shot counts are retained in `dsm/native_detection.json:coverage,missing_column_shot_counts`.
+The native [100,1000] ReLU6 architecture was refitted for occupancy on complete-input shots only, with random weights and optimizer-training-only normalization. The fixed 25-epoch recipe uses the original five outer folds and their inner-validation shot partitions; checkpoint AUPRC and F1 thresholds are selected only on inner validation. No source weights/statistics or blind-test shots are reused.
+Inputs are timestamp-aware 1 ms means from stored original corpus H5 records and retained PCPHD02/03. Standardized inputs are clipped at ±10; NBI uses the source's 100-row centered smoothing within each shot, rather than concatenated source phases. This reconstructs native diagnostic inputs, not bit-identical historical exported rows. Bin scores average 50 native row probabilities; measured support and target are identical for every compared method.
+
+| Matched panel / method | Shots / bins | AUROC [95% shot CI] | AUPRC | F1 |
+|---|---:|---|---|---|
+| all119 / elm-ours | 37 / 3,576 | 0.936 [0.862, 0.981] | 0.853 [0.632, 0.976] | 0.833 [0.727, 0.908] |
+| all119 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,576 | 0.823 [0.735, 0.899] | 0.704 [0.525, 0.849] | 0.759 [0.628, 0.852] |
+| all119 / elm-dsm (124-input [100,1000] detection) | 37 / 3,576 | 0.734 [0.610, 0.856] | 0.598 [0.396, 0.822] | 0.664 [0.509, 0.784] |
+| bes73 / elm-ours | 37 / 3,339 | 0.929 [0.848, 0.980] | 0.854 [0.632, 0.976] | 0.837 [0.730, 0.913] |
+| bes73 / elm-dsm (60-input 1×128 adaptation) | 37 / 3,339 | 0.805 [0.708, 0.889] | 0.706 [0.530, 0.850] | 0.763 [0.634, 0.854] |
+| bes73 / elm-dsm (124-input [100,1000] detection) | 37 / 3,339 | 0.715 [0.584, 0.844] | 0.604 [0.401, 0.825] | 0.667 [0.512, 0.789] |
+| bes73 / ELM-O | 37 / 3,339 | 0.890 [0.818, 0.948] | 0.808 [0.677, 0.910] | 0.818 [0.722, 0.889] |
+
+This smaller support panel is a secondary control; it does not replace the primary all119/bes73 benchmark. A single fixed native refit does not measure the best achievable DSM performance.
 
 ### Signal provenance and numerical preprocessing
 
@@ -102,6 +126,22 @@ screening or weights and made no new fetches. Sources:
 `density_units.json`, `filterscope_metadata.json`, and
 `src/labeler/elm/inputs.py`.
 
+### Diagnostic rejection and inference sensitivity
+
+Counts use all119 primary coverage (119 shots / 12,409 bins). A bin is affected if any valid 0.1 ms input cell is screened or clipped. Clipping caps/floors samples and discards no shot or bin; clipping counts below exclude already screened chords. Per-shot native magnitudes and pre-screen clipping counts are in `ours/rejection_sensitivity.json`.
+
+| Chord | Screen shots / bins | Clipping shots / bins | Threshold |
+|---|---:|---:|---|
+| FS02 | 0 / 0 | 67 / 1363 | log floor: native x < 1e12; no upper clip |
+| FS03 | 0 / 0 | 71 / 1267 | log floor: native x < 1e12; no upper clip |
+| FS04 | 0 / 0 | 54 / 1472 | log floor: native x < 1e12; no upper clip |
+| DENV2F | 4 / 463 | 16 / 20 | native x / 1e14 outside [-3,12]; 10*high-pass outside [-10,10] |
+| DENV3F | 5 / 523 | 9 / 174 | native x / 1e14 outside [-3,12]; 10*high-pass outside [-10,10] |
+
+The failed-digitiser heuristic applies only to DENV2F/3F: median absolute native 0.1 ms cell mean >1e16. The primary U-Net zero-fills both features of a rejected chord; it does not fill a fitted physical mean. With that screen disabled, rejected chords are used raw under the same scaling/clipping and whole-shot inference. Frozen weights, thresholds and all119 bins remain fixed; only six shots change inputs and there is no retraining.
+Disabled-screen AUROC, AUPRC and F1 are 0.936 [0.900, 0.963], 0.869 [0.765, 0.941], 0.823 [0.770, 0.864]; changes from the screened baseline are -0.00516, -0.00819, -0.00704, respectively. False-alarm bin rate changes from 0.113 to 0.122. This sensitivity does not establish physical calibration or prove that screened chords are faulty.
+
+
 Intervals use 1,000 physical-shot resamples, with valid/undefined counts.
 Each endpoint needs five denominator-bearing shots; false-alarm rates
 on negative-only shots retain their intervals. The saved per-fold AUROCs
@@ -109,12 +149,12 @@ provide a sensitivity to pooling differently calibrated fold scores.
 
 ## Smith onset and transfer
 
-Frozen review-to-Smith transfer is independent: no shared review shots
-or run days. The Smith-trained head is developmental shot CV with
+Frozen occupancy transfer is omitted for target mismatch: 50 ms occupancy cannot resolve approximately 8.5 ms Smith windows with brief ELM regions.
+The frozen reviewed-span start output is also omitted. The experimental elm-ours-onset head is developmental shot CV with
 within-Smith run-day sharing. Overlap with ELM-O's historical tuning
 events is unknown because event membership was not retained.
 
-The head recalls 0.930 [0.915, 0.945] of 2,316 hand-labelled windows
+At ±2 ms, the experimental head recalls 0.930 [0.915, 0.945] of 2,316 hand-labelled windows
 on 211 shots. Every matched error is within 0.82 ms; 94% lie in the correct 1 ms cell.
 **Every method's precision/F1 is conditional on selected windows;**
 **continuous-discharge precision/F1 is unavailable for every method.**
@@ -145,7 +185,9 @@ All paths below are relative to `outputs/labeler/elm/`:
 
 - `ours/evaluation.json:sets`: original occupancy and per-fold AUROCs.
 - `dsm/evaluation.json:{sets,detectors,own_target}`: common bins and refits.
-- `dsm/native_evaluation.json`: native forward targets and memberships.
+- `dsm/native_evaluation.json`: historical native forward targets and memberships.
+- `dsm/native_detection.json`: native-input audit and detection refit.
+- `ours/rejection_sensitivity.json`: per-chord rejection and frozen inference sensitivity.
 - `ours/feature_only.json`, `ours/annotation_strata.json`: controls and labels.
 - `smith/evaluation.json:{methods,onset_window_audit,onset_run_day_audit,protocol}`: onset scope.
 - `swap/evaluation.json:{swap,interval_audit}`: fixed-prediction swap.

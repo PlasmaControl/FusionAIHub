@@ -5,22 +5,19 @@
 \toprule
 Method & AUROC & AUPRC & F1 \\
 \midrule
-\multicolumn{4}{l}{All reviewed: 119 shots/11,653 common bins} \\
-elm-ours & 0.939 {\scriptsize[0.901, 0.966]} & 0.878 {\scriptsize[0.775, 0.951]} & 0.834 {\scriptsize[0.782, 0.875]} \\
-elm-elmo & -- & -- & -- \\
-\shortstack[l]{elm-dsm (60-input $1\times128$\\refit, detection)} & 0.845 {\scriptsize[0.796, 0.893]} & 0.748 {\scriptsize[0.651, 0.832]} & 0.742 {\scriptsize[0.681, 0.798]} \\
-elm-clock & -- & -- & 0.759 {\scriptsize[0.683, 0.829]} \\
-always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.391 {\scriptsize[0.332, 0.450]} & 0.562 {\scriptsize[0.499, 0.621]}$^{\dagger}$ \\
-elm-feature & 0.833 {\scriptsize[0.782, 0.879]} & 0.704 {\scriptsize[0.612, 0.789]} & 0.713 {\scriptsize[0.649, 0.770]} \\
+\multicolumn{4}{l}{All reviewed: 119 shots/12,409 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.906, 0.967]} & 0.877 {\scriptsize[0.774, 0.949]} & 0.830 {\scriptsize[0.778, 0.871]} \\
+elm-clock & -- & -- & 0.757 {\scriptsize[0.680, 0.827]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.376 {\scriptsize[0.322, 0.430]} & 0.546 {\scriptsize[0.487, 0.601]}$^{\dagger}$ \\
+elm-feature & 0.833 {\scriptsize[0.783, 0.878]} & 0.695 {\scriptsize[0.606, 0.779]} & 0.703 {\scriptsize[0.640, 0.758]} \\
 \midrule
-\multicolumn{4}{l}{BES subset: 73 shots/6,527 common bins} \\
-elm-ours & 0.939 {\scriptsize[0.893, 0.972]} & 0.876 {\scriptsize[0.752, 0.962]} & 0.848 {\scriptsize[0.790, 0.899]} \\
-elm-elmo & 0.914 {\scriptsize[0.869, 0.948]} & 0.833 {\scriptsize[0.755, 0.892]} & 0.841 {\scriptsize[0.786, 0.885]} \\
-\shortstack[l]{elm-dsm (60-input $1\times128$\\refit, detection)} & 0.840 {\scriptsize[0.777, 0.892]} & 0.731 {\scriptsize[0.612, 0.836]} & 0.783 {\scriptsize[0.711, 0.842]} \\
-elm-clock & -- & -- & 0.714 {\scriptsize[0.610, 0.806]} \\
-always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.417 {\scriptsize[0.336, 0.500]} & 0.588 {\scriptsize[0.502, 0.666]}$^{\dagger}$ \\
-elm-feature & 0.829 {\scriptsize[0.767, 0.888]} & 0.712 {\scriptsize[0.609, 0.825]} & 0.723 {\scriptsize[0.638, 0.798]} \\
+\multicolumn{4}{l}{BES subset: 73 shots/6,843 primary bins} \\
+elm-ours & 0.941 {\scriptsize[0.898, 0.972]} & 0.875 {\scriptsize[0.751, 0.961]} & 0.845 {\scriptsize[0.786, 0.896]} \\
+elm-elmo & 0.918 {\scriptsize[0.877, 0.951]} & 0.833 {\scriptsize[0.753, 0.890]} & 0.842 {\scriptsize[0.789, 0.885]} \\
+elm-clock & -- & -- & 0.708 {\scriptsize[0.602, 0.800]} \\
+always-present & 0.500 {\scriptsize[0.500, 0.500]} & 0.402 {\scriptsize[0.325, 0.479]} & 0.573 {\scriptsize[0.491, 0.648]}$^{\dagger}$ \\
+elm-feature & 0.831 {\scriptsize[0.770, 0.886]} & 0.706 {\scriptsize[0.603, 0.819]} & 0.713 {\scriptsize[0.628, 0.788]} \\
 \bottomrule
-\end{tabular}\caption{Reviewed occupancy uses 50 ms bins wholly inside reviewed spans and shared signal coverage (11,653 bins on 119 shots; 6,527 on 73 BES shots). Five-fold shot-grouped cross-validation selects thresholds by inner-validation F1, with 95\% intervals from 1,000 shot-bootstrap resamples; paired elm-ours minus ELM-O on the BES subset is AUROC +0.025 [-0.013, 0.071], AUPRC +0.044 [-0.056, 0.131], F1 +0.007 [-0.044, 0.063]. Hard calls use bin-mean probability $\geq$ threshold for elm-ours and the aligned score from 50 ms input means $\geq$ threshold for the DSM adaptation; ELM-O and the clock use any detected-span touch. Review was seeded by the clock.}
+\end{tabular}\caption{Primary occupancy benchmark: developmental shot-grouped CV on the 119 reviewed shots; no untouched run-day or adjudicated continuous-interval confirmation. Reviewed occupancy uses 50 ms bins wholly inside reviewed spans and signal coverage (12,409 all119; 6,843 bes73). Five folds select thresholds by inner-validation F1; brackets are 95\% intervals from 1,000 shot-bootstrap resamples. Hard calls use bin-mean probability $\geq$ threshold for elm-ours; ELM-O and the clock use any detected-span touch. Review was seeded by the clock. The secondary 60-input DSM adaptation is fragile: fold 4 selected epoch 0; thresholds range 0.021--0.482. Baselines/controls: always-present and elm-feature; ELM-O requires BES.}
 \label{tab:elm-benchmark}
 \end{table*}

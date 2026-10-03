@@ -3,12 +3,12 @@
   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_table_proofs.py",
   "sha256": "145323bfe95daeb5f76585db72699de8e4237ca6406aeda27b2b263ef69ea466"
  },
- "created": "2026-10-03T21:23:25+00:00",
+ "created": "2026-10-03T22:17:56+00:00",
  "proof_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs",
  "compile_protocol": "article 10 pt; 8.5x11 in; 0.65 in margins; booktabs/amsmath; two pdflatex passes",
  "raster_dpi": 150,
- "table_and_note_files": 12,
- "png_page_count": 12,
+ "table_and_note_files": 15,
+ "png_page_count": 16,
  "compile_failures": 0,
  "warning_count": 0,
  "all_pages_viewed": true,
@@ -266,12 +266,35 @@
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_annotation_modes.pdf",
-    "sha256": "d98e0bdecb9061af63d533d4e2980cc20d581a17b27523c737413343311e18ff"
+    "sha256": "35106c69c250de572b9f178718dfabdddaf3bc316646fe727ef94408c09c209e"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_annotation_modes-1.png",
-     "sha256": "799bd922f630c54c03649760175ffcf77d1ae7065dfe968a62933b1b0646898d",
+     "sha256": "c8be05e65a74f33278a9d7c7583a51fc350077b01bb4449f3f7e09bcb931cfe6",
+     "viewed": true
+    }
+   ],
+   "pages": 1,
+   "compile_passes": 2,
+   "compile_exit_code": 0,
+   "warning_count": 0,
+   "warnings": [],
+   "viewed": true
+  },
+  {
+   "source": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_common_control.tex",
+    "sha256": "9b4f01f69bb158dd4f0580b65e08e900f8b532fde16929b6c39a62ea066007db"
+   },
+   "pdf": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_common_control.pdf",
+    "sha256": "92e0718bf617a513e31201e9f6e039b49bdeab1461b405d3aaf50cc0579c9d3b"
+   },
+   "pngs": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_common_control-1.png",
+     "sha256": "0003a716629df9950ee1b439c42b75ba29a9786787b58eb0a91eacb8f1cd47ff",
      "viewed": true
     }
    ],
@@ -285,16 +308,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_dsm_native.tex",
-    "sha256": "3f32b8e9c6c6ad008a609df85162099a635a0b4b9fc43fa547d8db6f38d060fd"
+    "sha256": "178e7dd1054d7030c267f5985c64f305c0c00028046aeee2432429d3e5e51235"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_native.pdf",
-    "sha256": "3cdedc3b36d69ae20b01a91b5e4323a02efc7e7aa7703a1a46f98c400aeea509"
+    "sha256": "b6e64a6f2066e42a0d14c0a025ddf3ab2bf052a2a8cfaec21dd598d6d3a75a43"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_native-1.png",
-     "sha256": "e23016d7efae857b9544a0a69984bbe5b3e02fc29d01b1a97fa0be968f2a8ee1",
+     "sha256": "94dd12e536a8c4c343c1a45d697b38b44b8a95557f239e917852d3ccdf178acf",
      "viewed": true
     }
    ],
@@ -312,12 +335,35 @@
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_own_target.pdf",
-    "sha256": "aa9cd81b265bc298c3b98d975948130681df2729e110064cd36390c6f6ca0196"
+    "sha256": "d1fbe2094267bb87b5241789dad930ab6d140d7f25acd52633f693d3385cb4cf"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_own_target-1.png",
-     "sha256": "9b45067dd0396bd53085a08c5e58ed081c1bed12cbe72ac90fce41d2f7e8266c",
+     "sha256": "6d881ac51cb905fb202294b81ffef94d0a74b3175671396d91b7d46636caf9cb",
+     "viewed": true
+    }
+   ],
+   "pages": 1,
+   "compile_passes": 2,
+   "compile_exit_code": 0,
+   "warning_count": 0,
+   "warnings": [],
+   "viewed": true
+  },
+  {
+   "source": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_native_detection.tex",
+    "sha256": "1e0ca4edb8b25b7a6c127432bdb51491f55dd000df42f5667e76dec3c83d7d21"
+   },
+   "pdf": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_native_detection.pdf",
+    "sha256": "d39b4c3c2386ff7218431b11379630d96c21daf3d93796fcc579142c0b3b6fa6"
+   },
+   "pngs": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_native_detection-1.png",
+     "sha256": "b639c18940e4e3cbe73a92ae4d55e629e62129896223eed98be88d005df08c0b",
      "viewed": true
     }
    ],
@@ -335,12 +381,35 @@
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_per_kind.pdf",
-    "sha256": "edd0d6e5ed8e778cc9a36717c7ae76d78e8db17be9a60a85ed95257a21fbded1"
+    "sha256": "4680ec94bfc9ea9706a1ceebfb390a3c46cb0efab897f10280a2d65e781e013e"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_per_kind-1.png",
-     "sha256": "f8aab42b24b810309e04ba5804b9fb199ee2d5f5db3206e25895ddf8a4ce92ed",
+     "sha256": "a229dbcfbdf2f4be3e1d4531171965823c902f101f183a8c4bab9247252530cd",
+     "viewed": true
+    }
+   ],
+   "pages": 1,
+   "compile_passes": 2,
+   "compile_exit_code": 0,
+   "warning_count": 0,
+   "warnings": [],
+   "viewed": true
+  },
+  {
+   "source": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_rejection.tex",
+    "sha256": "a94f90c492484fe7084a95058ab61fe5bb31bfec5d2ef8fa56e7a4c3bfc600a0"
+   },
+   "pdf": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_rejection.pdf",
+    "sha256": "b5343950950d1ae891d04b97ec1b57208e7b5543cedfae5d92d9a0b3dd77aace"
+   },
+   "pngs": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_rejection-1.png",
+     "sha256": "3555f66b5428d1e9714dc7be62839079106e2f424d53ce05c78a8bebfbf6630f",
      "viewed": true
     }
    ],
@@ -354,16 +423,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_smith.tex",
-    "sha256": "a99315f7637e50c9b7d1a09777445f3a3199ffc25c28749656f477bff6c00c09"
+    "sha256": "7e6ee0ca8e378f418c53fca659273e368c3ddae6797a7a8c4ce3c335224b032b"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_smith.pdf",
-    "sha256": "4850ddec6708a35dde679f738806950a8ea0f2ed216a5f767033b249898bfaa9"
+    "sha256": "a182c6049a0642d63f49b52c9f7a755b87db47d9b5a5de30c943cbc4e571c59c"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_smith-1.png",
-     "sha256": "0ab9583b05044cca86eaa9543b60ea54a2dc01628fa65be689ebae8f1c79a199",
+     "sha256": "d6ae72b547cd2cff36f7ed19875a11c736ff8d8a00784089f99e26c0f8dce534",
      "viewed": true
     }
    ],
@@ -381,12 +450,12 @@
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_supplemental.pdf",
-    "sha256": "85ed188276cf71602d0c14643a9395db0e30ef72ffea55e0124e40b4fb93bc99"
+    "sha256": "8b91af5eb2e67d922358a4a53e2189fa29ae5b7a5db1254533f41c20cd1f5a6e"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_supplemental-1.png",
-     "sha256": "19bd23889a872df9238794f4f2391ec71360746c1c65fba584cf927c3bc09246",
+     "sha256": "3a69174c5ef77606131f92597efade17cc86fdc997f6bc227bd5a6589e5229a1",
      "viewed": true
     }
    ],
@@ -400,20 +469,25 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
-    "sha256": "345bceec1e1805a9231bcea5c44de48ca4cd21008932409be3f56e8c4069d973"
+    "sha256": "172cfe4e03edfd056dbc888de368dff9bfbe506e90dd0f31ee3a01f585a5cc1f"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/elm_table_notes.pdf",
-    "sha256": "6714f801af70f3769bdfc520572d95e135e03f32b056b4c6688d48bd16880ecb"
+    "sha256": "147ef6f23c5efe359e35d0876c638f3da93ffb04a167f1e639a24e64d579f08b"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/elm_table_notes-1.png",
-     "sha256": "e40c7bcf2be12045e656a88b4055ed1b4995fe94b8de566121207de02ad5df2c",
+     "sha256": "9a016e1ad896593f4dbc3cd45a78e7dad0c55526f78d4e09de9b848c50a25704",
+     "viewed": true
+    },
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/elm_table_notes-2.png",
+     "sha256": "da48d23cb2d61edf8e959566432787d5eaa2c5a7e6fd97763272c103f334d23c",
      "viewed": true
     }
    ],
-   "pages": 1,
+   "pages": 2,
    "compile_passes": 2,
    "compile_exit_code": 0,
    "warning_count": 0,
@@ -423,16 +497,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap.tex",
-    "sha256": "998df8351178fdfc95bd62af997fbfd7c5819f97cff743295c5a069797ba657f"
+    "sha256": "4e22200a3564047d6a263eaa213efff5ccf788f3c2f3aad7602b66829a4456d8"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap.pdf",
-    "sha256": "262a19b106adf5d9285c128a763533e793f0b177b4c44a70519e989431fbf407"
+    "sha256": "1766f3a332373050affa5b38fe763a07c952ac856d94fc13855e6db9295d6d16"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap-1.png",
-     "sha256": "fec7003f00c94947b6af3796488447a0b2c5732020b235c7dbb481ba77254537",
+     "sha256": "79890b4ae2dda10f6c843cfa7b8bcfe144a33e730bd9537df0803bf42a44e1bd",
      "viewed": true
     }
    ],
@@ -446,16 +520,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_full.tex",
-    "sha256": "35794c34f62be29dd6e24095af05ad1016ac4d31a1e688e844285ea1f63c4879"
+    "sha256": "eb18fa6160f70b54f6a31913354df721d88dd4f71cb8ea1cdbe571fe7892faf1"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full.pdf",
-    "sha256": "3e6b7013f1a51b6b3d9ecc836b19b7a3b007ac0c51891b9bbb8bbb6f1fb67c2c"
+    "sha256": "d618606a46cc2af96c068a58e5d27d9491e31ac7f92d8f778267470f06d17549"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full-1.png",
-     "sha256": "517d4ec8670156fe2de2256d679c7c648aea197e9c8d23d37db052191f020e9f",
+     "sha256": "96a22c5d7e83b683e5320efb70346ead44186b75ec0efc4484faaedc476d6fdb",
      "viewed": true
     }
    ],
@@ -469,16 +543,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_rankings.tex",
-    "sha256": "d3446eef9ea96403e04b672d0b831d03f896ef2d98ba3d64e7e20a5801b7505e"
+    "sha256": "7ffa5fbade01df8b583d326b03bd4e21ac5e095c96ffa0b53c60910e0000c44e"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings.pdf",
-    "sha256": "6e27cef29a242fa74c3de044d8c1efd6d22454e2b6c1696c0a0dc8f8cda9293c"
+    "sha256": "b1773346f397fc3b2ee766296e1556129ef1b70f24f05fbd4dbd8fbb138b9d89"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings-1.png",
-     "sha256": "15401f0ba374c5383c02732eb0860a22d43c0c88fb0cb458634d3289bf5e22ae",
+     "sha256": "1c69818e171493446f0c29ce2201e4f76717cbf0f6d0e4d8eee274c72280afbe",
      "viewed": true
     }
    ],
@@ -492,16 +566,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_sensitivity.tex",
-    "sha256": "73c94d281cb75d74e180c0c012610b44e2467135421db3d2f24aabf683b16719"
+    "sha256": "0fa80bc1333ada2fdcf5068cb86d15f48b9c1fc478e6d137bbf9125c7e16b02e"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_sensitivity.pdf",
-    "sha256": "42aa1e07ccff3b8dddc2d13a6f20f15602cb12384591664d342571156dd406c8"
+    "sha256": "b936056ca08e9566a1a7545a961c67bab7c3b72e414c4136ba984d1088ef3b6d"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_sensitivity-1.png",
-     "sha256": "a1ca0ee50157addefda0e471a105d642213dd0af599d033f9e22a662b5c2b8fc",
+     "sha256": "ca9eef86a1e5ab4cf6df79b6bee2f34304d5a658b0bf81a996efb7f1b5f90d28",
      "viewed": true
     }
    ],
@@ -515,16 +589,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/table_elm_benchmark.tex",
-    "sha256": "32190fc26cd873e39babc8c16d7aed76b1361707428c7bc0c9a3252e2a6cf2d0"
+    "sha256": "2c1c47890094cdf37f87bed24514b873c272eb5ece66cf7c278691ef0fd123ef"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_benchmark.pdf",
-    "sha256": "55e810ae117995c2de6e460fee3f9590eef0d800b4bfbe7e5315502d37328f1b"
+    "sha256": "6f213fad807ea0043e7ea8cdabd8bfd67a29166b0d1a01715cd489c770a74b9c"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_benchmark-1.png",
-     "sha256": "95284f895d2131b6fb8f1c2c223cd98f1b24279ca4247a94e9e6d273daa32639",
+     "sha256": "41b8af768eced7b9cce11cd6a4eff0c2a44f646da0f698257b4908caf284dc6d",
      "viewed": true
     }
    ],
@@ -536,5 +610,5 @@
    "viewed": true
   }
  ],
- "viewed_at": "2026-10-03T21:26:10+00:00"
+ "viewed_at": "2026-10-03T22:21:33+00:00"
 }

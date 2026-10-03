@@ -1,7 +1,8 @@
 \paragraph{ELM evaluation protocol.}\label{app:elm-table-notes}
-Reviewed occupancy uses 50 ms bins wholly inside known spans and signal coverage;
-the main panels additionally require valid survival and repaired detection DSM
-rows. Crowd annotations supply 97\% of positive bins. Review began from the clock:
+Primary reviewed occupancy uses all119 (12,409 bins) and bes73 (6,843 bins),
+with 50 ms bins wholly inside known spans and signal coverage. The secondary
+common-bin control additionally requires valid survival and repaired detection
+DSM rows (11,653 all119; 6,527 bes73). Crowd annotations supply 97\% of positive bins. Review began from the clock:
 within 1 ms, 56\% of crowd starts, 44\% of ends and 33\% of both edges match its
 boundaries. This development reference depends on D-alpha evidence; reviewed
 non-crowd starts are annotation boundaries without independent physical-onset truth.
@@ -17,6 +18,13 @@ the saved records do not establish whether or how much they influenced those
 choices. The primary occupancy checkpoints and thresholds remain frozen.
 No independently validated physical-onset detector is delivered, and run days
 cross folds in both developmental analyses (16 review days; 21 of 31 Smith days).
+Primary absent-span alarm rates are 0.596 for elm-ours and 0.105 for the clock
+on all119; ELM-O is 0.440 on bes73. These use sufficiently covered absent spans
+and any detection touching them, not the absent-bin false-positive rate
+(ours/evaluation.json:sets.*.methods.*.point.absent\_span\_alarm\_rate).
+Primary bes73 paired elm-ours minus ELM-O differences are AUROC
++0.023 [-0.014,0.067], AUPRC +0.043 [-0.058,0.129], and F1 +0.002
+[-0.052,0.058]; paired CIs include zero and equivalence is untested.
 A trailing-three-epoch selection after warm-up is reported as a sensitivity,
 not chosen on its outer-fold performance. Feature-only uses one within-bin
 FS02--04 log D-alpha max-minus-median feature and L2 logistic regression on
@@ -44,6 +52,13 @@ columns on 115 shots per chord, with four per chord mean-filled.
 The source model instead trained on native 1 ms rows with 124 inputs and
 layers [100,1000] for WPQH breakthrough-ELM forecasting. The detection
 adaptation is not an objective-only retrain of that model.
+The secondary native detection refit uses the [100,1000] architecture, random
+weights and training-only normalization on complete 124-input 1 ms rows;
+all compared methods share its supported shots/bins (native\_detection.json).
+The native audit meets the 90\%/30-shot gate (48 shots); complete-input bins
+support 37 shots. Source weights and statistics are not reused. The retained
+60-input $1\times128$ adaptation remains a separate row. Labels ``source stats''
+and ``source weights/stats'' in swap tables denote historical detection variants.
 For hard bin calls, elm-ours thresholds its mean probability, while the DSM
 adaptation thresholds one aligned row score computed from 50 ms input means.
 Historical survival
@@ -52,7 +67,7 @@ supplemental; their normalization includes two blind-cohort shots.
 50 ms means and centered-NBI lookahead also differ from native training.
 Native risks use forward reviewed-presence or non-crowd-start targets in
 $(t,t+h]$. Five exact exports are available; 192751 has no scored reviewed
-overlap, leaving four shots in the exact-export JSON and figure.
+overlap, leaving four shots in the exact-export JSON.
 Those four contributed to source training, normalization or checkpoint
 selection and supply descriptive evidence only.
 
@@ -67,15 +82,22 @@ Frozen review-to-Smith transfer shares neither review shots nor review run days.
 The overlap with ELM-O's historical tuning events is unknown because event
 membership was not retained. Window occupancy uses 1 ms cells and differs from
 the crowd-dominated 50 ms review target. Event metrics use one-to-one onset
-matching at 2 and 5 ms and report timing errors; ELM-O uses its published fixed
-setting. Frozen occupancy transfer fails against Smith event regions, and the
-frozen auxiliary onset output is not delivered. The Smith-trained head recalls
+matching at 2 ms and report timing errors; ELM-O uses its published fixed
+setting. Frozen occupancy transfer is omitted for target mismatch: 50 ms
+occupancy versus approximately 8.5 ms selected windows with brief ELM regions.
+The frozen auxiliary span-start output is also omitted. The experimental
+Smith-trained elm-ours-onset head recalls
 0.930 of selected-window events; matched errors are within 0.82 ms, with 94\%
 in the correct 1 ms cell. Every method's precision/F1 is conditional on selected
 windows: false positives are counted only within those windows, while 30,436
 additional head firings outside them lack negative truth.
 Continuous-discharge precision/F1 are unavailable for every method.
 Catalog onset output is withheld.
+
+Per-chord screen and clipping counts and the frozen disabled-screen sensitivity
+are reported in the accompanying per-chord table and
+ours/rejection\_sensitivity.json. Clipping caps/floors values; it rejects no bins.
+The screen zero-fills density features, rather than fitting a physical mean.
 
 Finding 1 uses all-covered known 50 ms cells with at least 25 ms reviewed present;
 unknown time stays unknown. Finding 2 includes both strict interior and known

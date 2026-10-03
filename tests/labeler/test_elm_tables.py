@@ -156,6 +156,15 @@ def test_native_paper_table_omits_four_shot_exact_export():
     assert "within horizon" in text and "Non-crowd starts" in text
 
 
+def test_native_detection_caption_keeps_latex_multiplication_command():
+    native = json.loads(
+        (SOURCE.parent.parent / "dsm/native_detection.json").read_text()
+    )
+    text = paper_module().native_detection_table(native)
+    assert r"60-input $1\times128$ adaptation" in text
+    assert "\t" not in text
+
+
 def test_smith_and_per_kind_captions_have_specific_limits():
     root = SOURCE.parent.parent
     smith = json.loads((root / "smith/evaluation.json").read_text())
