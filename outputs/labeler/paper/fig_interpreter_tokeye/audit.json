@@ -11,7 +11,7 @@
     3300.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
-   "record_sha256": "771177dc27b13b0ec66a8dc576128d3b8639ec82dc9429b34b93c685a1ba7fdf",
+   "record_sha256": "aa1dff19ff184e099142d56e0d507eca5ff69ad1ceae52ca7781f94683621fcb",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 319,
@@ -20,10 +20,10 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 49,
-   "caption_words": 90,
+   "caption_words": 92,
    "projection_violations": 0,
    "raster_ae_audit": {
-    "pink_pixels": 6050,
+    "pink_pixels": 6005,
     "outside_present": 0,
     "below_detector_band": 0,
     "boundary_tolerance_pixels": 1,
@@ -305,6 +305,58 @@
       ]
      }
     ],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18710542652158077,
+       0.8473422222222222,
+       0.20478219419834845
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "detector (suggestions)",
+      "bounds": [
+       0.78512,
+       0.17022902421936636,
+       0.9495644444444444,
+       0.18790579189613404
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.1533526219171519,
+       0.8473422222222222,
+       0.17102938959391958
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "expert",
+      "bounds": [
+       0.78512,
+       0.13647621961493747,
+       0.8322727777777778,
+       0.15415298729170518
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "physics labels\nblank: not assessable\n(ECE cut-off)",
+      "bounds": [
+       0.78512,
+       0.08480390901095537,
+       0.9406755555555555,
+       0.1378342120412584
+      ]
+     }
+    ],
     "ntm_key_black_swatch": true,
     "n_key_bounds": [
      0.792,
@@ -316,8 +368,8 @@
     "ae_margin_label": {
      "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
      "leader_anchor_ms_khz": [
-      2775,
-      180
+      2100,
+      200
      ],
      "bounds": [
       0.810724279835391,
@@ -660,7 +712,7 @@
     "role": "primary"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json",
@@ -4477,7 +4529,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/appendix.txt",
-    "sha256": "10264869c32d5e559044fe8bf94415aa8ae0abbcad2d29df71edeb99b30ce721"
+    "sha256": "0e70ebd3b9a3d9bbd7aada7de27d60d8f94aa2d1ccc3ab73dcec1572529f7a02"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -4579,8 +4631,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "4ac7578cb96130bb16e6b028ceca1d9ef8d7376be2b5b4c60b201488f4faf6ef",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "85911172949c7687ee70bb23b79d69a3f79a856099715fc646ecf4e052bab125"
    }
   },
   {
@@ -4591,7 +4643,7 @@
     3350.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
-   "record_sha256": "43d0bde3798b90821a9b3256def51edd00b1a5af49b8a6ef482965f6e1093d36",
+   "record_sha256": "8f175cf003ac319286c13cdd558773d56997c3a90d30577160aa4cd1a0ff15c1",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 154,
@@ -4600,7 +4652,7 @@
    },
    "verified_crashes": 3,
    "elm_peak_count": 65,
-   "caption_words": 58,
+   "caption_words": 105,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 3987,
@@ -4882,6 +4934,58 @@
       "region_x_bounds": [
        0.2105828571428572,
        0.3682057142857144
+      ]
+     }
+    ],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18537515286323655,
+       0.8473422222222222,
+       0.20305192054000423
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "detector (suggestions)",
+      "bounds": [
+       0.78512,
+       0.16888325581843197,
+       0.9495644444444444,
+       0.18656002349519968
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.15239135877362736,
+       0.8473422222222222,
+       0.17006812645039504
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "expert",
+      "bounds": [
+       0.78512,
+       0.1358994617288228,
+       0.8322727777777778,
+       0.1535762294055905
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "physics labels\nblank: not assessable\n(ECE cut-off)",
+      "bounds": [
+       0.78512,
+       0.08461165638225056,
+       0.9406755555555555,
+       0.13764195941255358
       ]
      }
     ],
@@ -5266,7 +5370,7 @@
      3350.0
     ]
    ],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json",
@@ -9071,7 +9175,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/appendix.txt",
-    "sha256": "c727fd685ff5b63a04345380c5f2f6235ea3556d56afe8218b7f8def9ac241c9"
+    "sha256": "e912fd96e0819d95ebd5ba3d40bd0f3253c4b27ccf7197cff6f659c76ee877c4"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -9173,8 +9277,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "95f47bcdf93a3fa4886be29709e7bb5fe0047d1d1c6b970cdbc0461058be1d9c",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "ec322b2b20e8499d0d2c90babf991247f38d9b6e92ee4ace475e908559d05d10"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "8b53c74f302e10dc184d731bcc658dc9379134739a258cfa72021cfbbec63d54",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "b5dce8812f3d70636bab5b765272cb7a429e2720bcd0cfcc80535ee62db81d5c"
    }
   },
   {
@@ -9185,7 +9289,7 @@
     3150.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
-   "record_sha256": "c62ec202358378f6d233d052c69ec3bf82d72ba88626121418d40874f7be5200",
+   "record_sha256": "1331d98b752b2a1d2f814a8fbddc09afa7c169cdc7c17cc7a8fe8794caa464a3",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 262,
@@ -9194,7 +9298,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 6,
-   "caption_words": 65,
+   "caption_words": 112,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 6062,
@@ -9476,6 +9580,58 @@
       "region_x_bounds": [
        0.39158620689655177,
        0.6224275862068965
+      ]
+     }
+    ],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18710542652158077,
+       0.8473422222222222,
+       0.20478219419834845
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "detector (suggestions)",
+      "bounds": [
+       0.78512,
+       0.17022902421936636,
+       0.9495644444444444,
+       0.18790579189613404
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.1533526219171519,
+       0.8473422222222222,
+       0.17102938959391958
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "expert",
+      "bounds": [
+       0.78512,
+       0.13647621961493747,
+       0.8322727777777778,
+       0.15415298729170518
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "physics labels\nblank: not assessable\n(ECE cut-off)",
+      "bounds": [
+       0.78512,
+       0.08480390901095537,
+       0.9406755555555555,
+       0.1378342120412584
       ]
      }
     ],
@@ -9826,7 +9982,7 @@
      3080.0
     ]
    ],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json",
@@ -13607,7 +13763,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/appendix.txt",
-    "sha256": "a93ca7fd717709499920772988a9f82692d7963a3a663dbc6c37a4ff2cf717c4"
+    "sha256": "558f66892283bb38853ead278c8e4b6bcb9da3aa8de91f9022e18d51338d1e51"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -13668,8 +13824,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "0a3165b59cd400607b8d2e79bd902d750416390d0a8adb311f2f650ac1671d98",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "4e492e72e9e03fa9a2f0d8ffe5a20ce534b4a85aa4ec9d11fe31daa9b9ca1c3a"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "f934c93ebfb60a2bb1d58fc3015e411829eefc79684eb897653f92845b47bedd",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "a5c286cb5d005838ab7fb1c4e6d96e32283274de4005a4f651d9afc9abea82f8"
    }
   },
   {
@@ -13680,7 +13836,7 @@
     3900.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
-   "record_sha256": "f3569e4e30fbb74aa30701c3725f8347664645ba2957d269c16d62ba92d8bd9e",
+   "record_sha256": "4bd191e6065fbbee86771c2a917b20b9ce4e777c1c99326e8b0fecda3ea571ae",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 307,
@@ -13689,7 +13845,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 0,
-   "caption_words": 53,
+   "caption_words": 77,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 2080,
@@ -13947,6 +14103,58 @@
      ]
     },
     "regime_text_bounds": [],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18710542652158077,
+       0.8473422222222222,
+       0.20478219419834845
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "imported",
+      "bounds": [
+       0.78512,
+       0.17022902421936636,
+       0.8517866666666667,
+       0.18790579189613404
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.1533526219171519,
+       0.8473422222222222,
+       0.17102938959391958
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "expert",
+      "bounds": [
+       0.78512,
+       0.13647621961493747,
+       0.8322727777777778,
+       0.15415298729170518
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "expert",
+      "bounds": [
+       0.78512,
+       0.11959981731272303,
+       0.8322727777777778,
+       0.13727658498949072
+      ]
+     }
+    ],
     "ntm_key_black_swatch": true,
     "n_key_bounds": [
      0.792,
@@ -14235,7 +14443,7 @@
     "role": "imported-NTM alternate; possible pickup"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json",
@@ -14277,7 +14485,7 @@
    "detector_training": {},
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/appendix.txt",
-    "sha256": "4ebb89c9cb7853c3b606f82065f2e794e80dd8aea66201046c178ead54e0bcee"
+    "sha256": "4d20dd59193c335eda2a809d5d4b2c9dd40bbf857c7068f689728a30615495f5"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -14342,8 +14550,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "f20cf68aafb853227904c3e91c8c9a66851a49193991a7dd20cdf0ae3eb63509",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "f2ba0e02d84941df092344356203238b3b779dd06c69fcdeb32b8ea802ad4bfd"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "1d41c9d259be8bf2c9b9a0eaf112f0acbc39d69d6570176001781ac8308b147f",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "3a9d120a958a8c8876f54a1d465b63238948644876ed7b69d72107399c5cfa12"
    }
   },
   {
@@ -14354,7 +14562,7 @@
     2900.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/191376.json",
-   "record_sha256": "26d3b911d80820ed56518738555ee3dd9fd86c4c2e3fe095cce70fce750747b9",
+   "record_sha256": "09ab6da085b67cf0e84cdfb07d45284019b4dcf0c68438f1891e6631adeaf0be",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 0,
@@ -14363,7 +14571,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 2,
-   "caption_words": 28,
+   "caption_words": 43,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 0,
@@ -14645,6 +14853,58 @@
       "region_x_bounds": [
        0.39828571428571424,
        0.6748571428571428
+      ]
+     }
+    ],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18710542652158077,
+       0.8473422222222222,
+       0.20478219419834845
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "detector (suggestions)",
+      "bounds": [
+       0.78512,
+       0.17022902421936636,
+       0.9495644444444444,
+       0.18790579189613404
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "imported",
+      "bounds": [
+       0.78512,
+       0.1533526219171519,
+       0.8517866666666667,
+       0.17102938959391958
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.13647621961493747,
+       0.8473422222222222,
+       0.15415298729170518
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "physics labels",
+      "bounds": [
+       0.78512,
+       0.11959981731272303,
+       0.8873422222222223,
+       0.13727658498949072
       ]
      }
     ],
@@ -14982,7 +15242,7 @@
     "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
@@ -18567,7 +18827,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/appendix.txt",
-    "sha256": "c245d5d444a8593b269ecf030830baa1b8e46fb4d98a1ce5ee57551e50b544ce"
+    "sha256": "dc120c53e5c9188537dc706d723c6743e9137a9588baab69497c0929ae85bdee"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -18634,8 +18894,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "9e7785b40573945f010ffc6e06c40c3b756ace5db584eb23fbdb47c44f6ef744",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "d749ea530026600ffdc3bed46fefe4315da8dfb3879963a97532e45a02f629cb"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "8abc150b441203b242b4e49442bf94fc8f5e742a43f91c74523fbbf8ce19113c",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "8ad2cb51e03c44c8403494523e371f35768da13051532d36b5b9c92bf757e49f"
    }
   },
   {
@@ -18646,7 +18906,7 @@
     3700.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/191782.json",
-   "record_sha256": "3c81f2328ebbf19ac34564807b30b1ad9ab19cb479c803034ebd17ed65e36dd7",
+   "record_sha256": "5a31d0d2856f321fd74dbaa640021adea23a0efc605be26a151f48ef5e77da56",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 0,
@@ -18655,7 +18915,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 0,
-   "caption_words": 28,
+   "caption_words": 43,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 0,
@@ -18937,6 +19197,58 @@
       "region_x_bounds": [
        0.35897162105263164,
        0.6075368421052632
+      ]
+     }
+    ],
+    "track_source_text_bounds": [
+     {
+      "track": "alfven_eigenmode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.18710542652158077,
+       0.8473422222222222,
+       0.20478219419834845
+      ]
+     },
+     {
+      "track": "neoclassical_tearing_mode",
+      "text": "detector (suggestions)",
+      "bounds": [
+       0.78512,
+       0.17022902421936636,
+       0.9495644444444444,
+       0.18790579189613404
+      ]
+     },
+     {
+      "track": "confinement",
+      "text": "imported",
+      "bounds": [
+       0.78512,
+       0.1533526219171519,
+       0.8517866666666667,
+       0.17102938959391958
+      ]
+     },
+     {
+      "track": "edge_localized_mode",
+      "text": "detector",
+      "bounds": [
+       0.78512,
+       0.13647621961493747,
+       0.8473422222222222,
+       0.15415298729170518
+      ]
+     },
+     {
+      "track": "sawtooth_oscillation",
+      "text": "physics labels",
+      "bounds": [
+       0.78512,
+       0.11959981731272303,
+       0.8873422222222223,
+       0.13727658498949072
       ]
      }
     ],
@@ -19226,7 +19538,7 @@
     "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "c7cb0acd",
+   "render_source_commit": "c89ec51f",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
@@ -22811,7 +23123,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/appendix.txt",
-    "sha256": "47d70a1cc972fa11ddb74fcdf1385d240d7da54522875bc2d693a652ae526c6a"
+    "sha256": "dc3e6bf660ddcd36975108e0717aac5cbaa1228aed800803f120f901620b42be"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -23160,8 +23472,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "ec7b47a28620727f10a304cf8baa681057d2722f8b382a5195c540efa4263eef",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "298d45f897afab436473b7a5148979f3ee9c50eebea362b884758b6bc9e01d3d"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "c10e0237e516e43f8b1c254cc022178f66666684edac8c878e072010d96bc515",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "3ba0bb9d1ef742f9f6ecb9027d772b813f3fd72fe73a82d8cde43f4aabe8b5c7"
    }
   }
  ],
@@ -23860,7 +24172,7 @@
    "--tmax",
    "3300.0",
    "--out",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix10-primary-rebuild",
    "--annotations",
    "docs/labeler/fig1_annotations.json",
    "--ae-labels",
@@ -23869,17 +24181,17 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots"
   ],
   "before": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "4ac7578cb96130bb16e6b028ceca1d9ef8d7376be2b5b4c60b201488f4faf6ef",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "85911172949c7687ee70bb23b79d69a3f79a856099715fc646ecf4e052bab125"
   },
   "after": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "4ac7578cb96130bb16e6b028ceca1d9ef8d7376be2b5b4c60b201488f4faf6ef",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "85911172949c7687ee70bb23b79d69a3f79a856099715fc646ecf4e052bab125"
   },
   "identical": true,
   "rebuild_files": [
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild/fig_interpreter.pdf",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild/fig_interpreter.png"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix10-primary-rebuild/fig_interpreter.pdf",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix10-primary-rebuild/fig_interpreter.png"
   ]
  },
  "scientific_data_unchanged_from": "41ba206779910882b9a826fe668970da848f38af"

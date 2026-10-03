@@ -12,7 +12,7 @@
  },
  "annotations": {
   "path": "docs/labeler/fig1_annotations.json",
-  "sha256": "754c5e859e2347a808f7e4b2437c2c41d9cedb42f8aedc3eedc8addbe6f43006",
+  "sha256": "d6ba081bf49c7c83844d3ef3f15522863ab54fb040036d52c5b67b8572415919",
   "shot": {
    "publication_suitability": {
     "suitable_alternate": false,
@@ -3647,7 +3647,7 @@
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
   "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
   "ae_highlight_rule": "pixel tint only; no component bounding boxes",
-  "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; fill holes; solid orange #E69F00 outer contour, 0.9 pt; clip to raw time/band spans; pixel audit covers outlined region support, not contour stroke",
+  "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; fill holes; solid orange #E69F00 outer contour, 0.9 pt; clip to raw time/band spans; display only: regions under 100 print pixels are not outlined, tags unchanged; pixel audit covers outlined region support, not contour stroke",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -4016,11 +4016,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/caption.tex",
-  "sha256": "925f4a386b0663cb0a2014cc1b218401882974a2909215f190c0bddebdc59a05"
+  "sha256": "da9c79332b15e53b415331f4736c51d7fb24f8698860b2b28f3b4072615ac6f8"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/appendix.txt",
-  "sha256": "c245d5d444a8593b269ecf030830baa1b8e46fb4d98a1ce5ee57551e50b544ce"
+  "sha256": "dc120c53e5c9188537dc706d723c6743e9137a9588baab69497c0929ae85bdee"
  },
  "drawn": {
   "figure": [
@@ -4028,8 +4028,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "9e7785b40573945f010ffc6e06c40c3b756ace5db584eb23fbdb47c44f6ef744",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "d749ea530026600ffdc3bed46fefe4315da8dfb3879963a97532e45a02f629cb"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "8abc150b441203b242b4e49442bf94fc8f5e742a43f91c74523fbbf8ce19113c",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "8ad2cb51e03c44c8403494523e371f35768da13051532d36b5b9c92bf757e49f"
   },
   "blobs": {
    "wide_above_fold": 323,
@@ -4335,6 +4335,58 @@
      ]
     }
    ],
+   "track_source_text_bounds": [
+    {
+     "track": "alfven_eigenmode",
+     "text": "detector",
+     "bounds": [
+      0.78512,
+      0.18710542652158077,
+      0.8473422222222222,
+      0.20478219419834845
+     ]
+    },
+    {
+     "track": "neoclassical_tearing_mode",
+     "text": "detector (suggestions)",
+     "bounds": [
+      0.78512,
+      0.17022902421936636,
+      0.9495644444444444,
+      0.18790579189613404
+     ]
+    },
+    {
+     "track": "confinement",
+     "text": "imported",
+     "bounds": [
+      0.78512,
+      0.1533526219171519,
+      0.8517866666666667,
+      0.17102938959391958
+     ]
+    },
+    {
+     "track": "edge_localized_mode",
+     "text": "detector",
+     "bounds": [
+      0.78512,
+      0.13647621961493747,
+      0.8473422222222222,
+      0.15415298729170518
+     ]
+    },
+    {
+     "track": "sawtooth_oscillation",
+     "text": "physics labels",
+     "bounds": [
+      0.78512,
+      0.11959981731272303,
+      0.8873422222222223,
+      0.13727658498949072
+     ]
+    }
+   ],
    "ntm_key_black_swatch": false,
    "n_key_bounds": [
     0.792,
@@ -4584,6 +4636,30 @@
    "passing_columns": 0,
    "passing_fraction": null
   },
+  "harmonic3_support": {
+   "frequency_ratio_tolerance": 0.15000000000000002,
+   "minimum_support_ms": 50.0,
+   "caption_frequency_step_khz": 1.0,
+   "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+   "support_ms": 0.0,
+   "joint_support_ms": 0.0,
+   "joint_columns": 0,
+   "passing_columns": 0,
+   "passing_fraction": null
+  },
+  "persistent_line_rows": {
+   "wide": 6,
+   "zoom": 17
+  },
+  "ntm_outline_display": {
+   "rule": "display only: an outlined region needs at least min_px print pixels (150 dpi, after max pooling and hole filling); smaller regions are left unoutlined; tags and counts unchanged",
+   "min_px": 100,
+   "omitted_fragments": 0,
+   "bands": {
+    "wide": {},
+    "zoom": {}
+   }
+  },
   "n3_components_unoutlined": 1,
   "n3_outline_rule": "both dominant n and outlined support must be n=1 or 2",
   "n_map": {
@@ -4732,11 +4808,11 @@
    }
   }
  },
- "git": "c7cb0acd",
+ "git": "c89ec51f",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "74a6a2996b10958f9b8ee14675332342beee1f02dff807d218eeaec1f83b62d1",
-  "src/labeler/paper/figure_sources.py": "5bc8234a3c5613c23866bb5e04f7c3201e2300975c20b9ea2db78336d8698150",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "2287666733c6935519f9a8ed359ef2f56a17596a6ade5fd006ec5122b0be009c",
+  "src/labeler/paper/figure_sources.py": "fb49db075681dfeb44d32d3201ba3d8a91ce12bba174c529f45beac8fb2dfb1c",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

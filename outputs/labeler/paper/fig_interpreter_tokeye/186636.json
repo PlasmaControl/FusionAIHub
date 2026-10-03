@@ -12,7 +12,7 @@
  },
  "annotations": {
   "path": "docs/labeler/fig1_annotations.json",
-  "sha256": "754c5e859e2347a808f7e4b2437c2c41d9cedb42f8aedc3eedc8addbe6f43006",
+  "sha256": "d6ba081bf49c7c83844d3ef3f15522863ab54fb040036d52c5b67b8572415919",
   "shot": {
    "publication_suitability": {
     "suitable_alternate": true,
@@ -87,7 +87,7 @@
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
   "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
   "ae_highlight_rule": "pixel tint only; no component bounding boxes",
-  "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; fill holes; solid orange #E69F00 outer contour, 0.9 pt; clip to raw time/band spans; pixel audit covers outlined region support, not contour stroke",
+  "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; fill holes; solid orange #E69F00 outer contour, 0.9 pt; clip to raw time/band spans; display only: regions under 100 print pixels are not outlined, tags unchanged; pixel audit covers outlined region support, not contour stroke",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -580,11 +580,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/caption.tex",
-  "sha256": "8ee40d01b684e7cbb5160b7853e4784e076bae96d3b21ee5792b762f9b525375"
+  "sha256": "2efad124dd741fcd114e6efc33210ab1ce209ccd2e22be5088bcd86974ef029d"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/appendix.txt",
-  "sha256": "4ebb89c9cb7853c3b606f82065f2e794e80dd8aea66201046c178ead54e0bcee"
+  "sha256": "4d20dd59193c335eda2a809d5d4b2c9dd40bbf857c7068f689728a30615495f5"
  },
  "drawn": {
   "figure": [
@@ -592,8 +592,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "f20cf68aafb853227904c3e91c8c9a66851a49193991a7dd20cdf0ae3eb63509",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "f2ba0e02d84941df092344356203238b3b779dd06c69fcdeb32b8ea802ad4bfd"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "1d41c9d259be8bf2c9b9a0eaf112f0acbc39d69d6570176001781ac8308b147f",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "3a9d120a958a8c8876f54a1d465b63238948644876ed7b69d72107399c5cfa12"
   },
   "blobs": {
    "wide_above_fold": 929,
@@ -882,6 +882,58 @@
     ]
    },
    "regime_text_bounds": [],
+   "track_source_text_bounds": [
+    {
+     "track": "alfven_eigenmode",
+     "text": "detector",
+     "bounds": [
+      0.78512,
+      0.18710542652158077,
+      0.8473422222222222,
+      0.20478219419834845
+     ]
+    },
+    {
+     "track": "neoclassical_tearing_mode",
+     "text": "imported",
+     "bounds": [
+      0.78512,
+      0.17022902421936636,
+      0.8517866666666667,
+      0.18790579189613404
+     ]
+    },
+    {
+     "track": "confinement",
+     "text": "detector",
+     "bounds": [
+      0.78512,
+      0.1533526219171519,
+      0.8473422222222222,
+      0.17102938959391958
+     ]
+    },
+    {
+     "track": "edge_localized_mode",
+     "text": "expert",
+     "bounds": [
+      0.78512,
+      0.13647621961493747,
+      0.8322727777777778,
+      0.15415298729170518
+     ]
+    },
+    {
+     "track": "sawtooth_oscillation",
+     "text": "expert",
+     "bounds": [
+      0.78512,
+      0.11959981731272303,
+      0.8322727777777778,
+      0.13727658498949072
+     ]
+    }
+   ],
    "ntm_key_black_swatch": true,
    "n_key_bounds": [
     0.792,
@@ -1140,6 +1192,41 @@
    "n1_median_khz": 9.526791648077122,
    "n2_median_khz": 18.920898175707485
   },
+  "harmonic3_support": {
+   "frequency_ratio_tolerance": 0.15000000000000002,
+   "minimum_support_ms": 50.0,
+   "caption_frequency_step_khz": 1.0,
+   "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+   "support_ms": 5.120000070842252,
+   "joint_support_ms": 102.40000141684504,
+   "joint_columns": 100,
+   "passing_columns": 5,
+   "passing_fraction": 0.05,
+   "n1_median_khz": 9.033203000015186,
+   "n3_median_khz": 28.198241797344703
+  },
+  "persistent_line_rows": {
+   "wide": 0,
+   "zoom": 0
+  },
+  "ntm_outline_display": {
+   "rule": "display only: an outlined region needs at least min_px print pixels (150 dpi, after max pooling and hole filling); smaller regions are left unoutlined; tags and counts unchanged",
+   "min_px": 100,
+   "omitted_fragments": 3,
+   "bands": {
+    "wide": {},
+    "zoom": {
+     "min_px": 100,
+     "regions": 5,
+     "omitted_fragments": 3,
+     "omitted_sizes_px": [
+      2,
+      2,
+      39
+     ]
+    }
+   }
+  },
   "n3_components_unoutlined": 9,
   "n3_outline_rule": "both dominant n and outlined support must be n=1 or 2",
   "n_map": {
@@ -1216,7 +1303,7 @@
    "zoom": {
     "outside_measured_n": 0,
     "above_n_view_band": 0,
-    "rendered_outline_pixels": 1424,
+    "rendered_outline_pixels": 1315,
     "measured_n3_outline_pixels": 0
    },
    "wide": {
@@ -1246,11 +1333,11 @@
    }
   }
  },
- "git": "c7cb0acd",
+ "git": "c89ec51f",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "74a6a2996b10958f9b8ee14675332342beee1f02dff807d218eeaec1f83b62d1",
-  "src/labeler/paper/figure_sources.py": "5bc8234a3c5613c23866bb5e04f7c3201e2300975c20b9ea2db78336d8698150",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "2287666733c6935519f9a8ed359ef2f56a17596a6ade5fd006ec5122b0be009c",
+  "src/labeler/paper/figure_sources.py": "fb49db075681dfeb44d32d3201ba3d8a91ce12bba174c529f45beac8fb2dfb1c",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }
