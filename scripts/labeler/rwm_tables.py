@@ -381,7 +381,7 @@ def legacy(configs: dict) -> str:
 def growth(g: dict) -> str:
     rows = [
         [
-            "maximum growth rate of N1RMS before the onset (per s)",
+            "largest 20 ms growth rate of N1RMS, -150 to +30 ms from the onset (per s)",
             plain(g["max_growth_per_s_n1"]["q1"], 0),
             plain(g["max_growth_per_s_n1"]["median"], 0),
             plain(g["max_growth_per_s_n1"]["q3"], 0),

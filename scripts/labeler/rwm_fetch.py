@@ -10,7 +10,7 @@ node while logged in; it stops after several shots in a row fetch nothing, which
 lapsed login looks like::
 
     pixi run --frozen -e labelmaker fdp run python scripts/labeler/rwm_fetch.py \\
-        --shots-csv $LABELER_ROOT/round4/rwm/shots.csv --workers 3 --pace 1
+        --shots-csv $LABELER_ROOT/round4/rwm/shots_pool.csv --workers 3 --pace 1
 """
 
 from __future__ import annotations

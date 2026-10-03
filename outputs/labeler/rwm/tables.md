@@ -11,7 +11,7 @@
 <!-- growth (growth.json) -->
 | quantity (48 n=1 onsets) | first quartile | median | third quartile |
 |---|---|---|---|
-| maximum growth rate of N1RMS before the onset (per s) | 91 | 112 | 174 |
+| largest 20 ms growth rate of N1RMS, -150 to +30 ms from the onset (per s) | 91 | 112 | 174 |
 | e-folding time at that rate (ms) | 5.8 | 9.0 | 11.0 |
 | time of the maximum growth relative to the onset (ms) | -103.5 | -39.0 | 0.0 |
 | beta_N 100 ms before the onset | 2.55 | 2.74 | 3.01 |

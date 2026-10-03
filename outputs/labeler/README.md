@@ -15,6 +15,9 @@
   the SELDNet training comparison (`ae/README.md`, `ae/training/README.md`);
 - `tabpfn/`: the TabPFN-against-the-CNN study (Study A on the CNN's archived inputs, Study B on
   labelmaker's reconstructed inputs), with its own README.
+- `rwm/`: the resistive-wall-mode baseline (`growth.json`, `shots.json`, `evaluation.json`,
+  `tables.md`), written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py` and read
+  through `docs/labeler/rwm_baseline.md`.
 
 In the presentation figures, blue is a model on its own archived training inputs (its
 ceiling), orange is labelmaker's reconstruction (what gets published), and violet is either
