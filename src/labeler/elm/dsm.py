@@ -44,6 +44,7 @@ import hashlib
 import json
 import pickle
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +60,7 @@ from ..features.store import FeatureArray
 from ..models import elm_inputs
 from ..models.d3d_elm_time_to_event_dsm import spec
 from ..models.runners import dsm_pickle
+from ..timebase import window_mean
 from . import labels, methods, score
 
 SLUG = spec.SLUG
@@ -252,6 +254,11 @@ def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_P
         reps = np.array(
             [hist_auroc(pos[d_], neg[d_]) for d_ in _resample(len(shots), boot_draws)]
         )
+        bootstrap = score.bootstrap_summary(
+            {"auroc": reps},
+            n_shots=len(shots),
+            positive_shots=int((pos.sum(axis=1) > 0).sum()),
+        )
         out["horizons"][f"h{int(h)}ms"] = {
             "horizon_ms": h,
             "queried_at_ms": h + T_OFFSET_MS,
@@ -260,7 +267,10 @@ def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_P
             "censored_within_h": int((~e & (t <= h)).sum()),
             "auroc": exact,
             "auroc_histogram": point,
-            "auroc_ci95": score._ci(reps),
+            "auroc_ci95": bootstrap["ci95"]["auroc"],
+            "bootstrap_draw_counts": bootstrap["bootstrap_draw_counts"],
+            "descriptive_only": bootstrap["descriptive_only"],
+            "positive_shots": bootstrap["positive_shots"],
             "auprc": ap,
             "prevalence": float(case[keep].mean()),
         }
@@ -566,6 +576,118 @@ def window_labels(spans: pd.DataFrame) -> np.ndarray:
         inside = (start >= r.t_start - 1e-9) & (ROW_T_MS <= r.t_end + 1e-9)
         out[inside] = 0 if r.kind == "absent" else 1
     return out
+
+
+def future_review_targets(spans, times, horizon_ms: float, *, onsets=False):
+    """Horizon-specific review target in ``(t, t+h]``, unknown outside coverage.
+
+    Occupancy asks whether any present interval intersects the future window;
+    onset asks whether a non-crowd start is strictly after t and at or before t+h.
+    Every window must be fully reviewed. Crowd time is unknown for onset targets.
+    Span starts are annotation boundaries, not independently verified ELM onsets.
+    """
+    times = np.asarray(times, dtype=float)
+    if horizon_ms <= 0:
+        raise ValueError("forecast horizon must be positive")
+    kinds = ("absent", "non_crowd") if onsets else labels.SCORED_KINDS
+    known = spans[spans.kind.isin(kinds)]
+    a, b = labels.merge_intervals(known.t_start, known.t_end, tol=1e-9)
+    out = np.full(len(times), -1, dtype=np.int8)
+    for lo, hi in zip(a, b, strict=True):
+        out[(times >= lo) & (times + horizon_ms <= hi)] = 0
+    for row in known[known.kind != "absent"].itertuples():
+        hit = (row.t_start > times) if onsets else (row.t_end > times)
+        hit &= row.t_start <= times + horizon_ms
+        out[(out >= 0) & hit] = 1
+    return out
+
+
+@lru_cache(maxsize=1)
+def upstream_photodiodes():
+    """Read the immutable source photodiode records once per process."""
+    path = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/dalpha_wpqh.pkl")
+    with path.open("rb") as handle:
+        return pickle.load(handle)
+
+
+def repair_detection_inputs(paths: Paths, rows: Rows) -> Rows:
+    """Supply measured D-alpha and fast V2/V3 only for isolated detector refits.
+
+    Keep historical survival serving unchanged. PCPHD02/03 are preferred; FS02/03
+    50 ms means are explicitly named substitutes where photodiodes are missing.
+    DENV2F/3F means retain their native ordinate. A live source-unit probe reports
+    V, unlike the cm^-2 training CO2 columns; numerical agreement is audited by
+    elm_dsm_input_audit.py. No physical conversion is guessed. Fold normalization
+    fits measured values directly. Missing windows narrow usable rows.
+    """
+    from . import inputs, prepare
+
+    path = prepare.signals_dir(paths) / f"{rows.shot}.npz"
+    with np.load(path) as record:
+        tf, ti = record["t_fs_ms"], record["t_int_ms"]
+        fs, density = record["filterscopes"], record["interferometer"]
+    x = rows.x.copy()
+    usable = rows.usable.copy()
+    filled, missing = set(rows.filled), set(rows.missing)
+    resolvers = dict(rows.resolvers)
+    index = {name: i for i, name in enumerate(spec.COLUMNS)}
+    sources = [(path, sha256_of(path))]
+    for j, name in enumerate(("pcphd02", "pcphd03")):
+        cache = (
+            paths.root
+            / "round4/elm/dsm/native_photodiodes"
+            / (f"{rows.shot}_{name}.npz")
+        )
+        if cache.exists():
+            with np.load(cache) as photo:
+                times, values = photo["x"], photo["y"].ravel()
+            source = f"{name.upper()} fetched photodiode"
+            sources.append((cache, sha256_of(cache)))
+        else:
+            photo = upstream_photodiodes().get(str(rows.shot), {}).get(name, {})
+            if np.asarray(photo.get("data", [])).size > 2:
+                times, values = photo["times"], photo["data"]
+                source = f"{name.upper()} upstream photodiode"
+            else:
+                times, values = tf, fs[j]
+                source = f"FS{j + 2:02d} substitute for {name.upper()}"
+        value = window_mean(times, np.ravel(values), ROW_T_MS - WINDOW_MS, WINDOW_MS)
+        col = name + elm_inputs.SUFFIX
+        x[:, index[col]] = np.nan_to_num(value)
+        usable &= np.isfinite(value)
+        filled.discard(col)
+        resolvers[name] = source + "; 50 ms mean"
+    for j, chord in enumerate(("v2", "v3")):
+        value = window_mean(ti, density[j], ROW_T_MS - WINDOW_MS, WINDOW_MS)
+        col = f"co2_density_slow_{chord}{elm_inputs.SUFFIX}"
+        if np.nanmedian(np.abs(density[j])) > inputs.BAD_DENSITY:
+            # Same fixed failed-digitiser screen as elm-ours; it is not tuned
+            # against labels and the omitted column is explicit in the audit.
+            x[:, index[col]] = 0.0
+            filled.add(col)
+            missing.add(f"co2_{chord}")
+            resolvers[f"co2_{chord}"] = f"DENV{j + 2}F rejected: failed digitiser"
+            continue
+        x[:, index[col]] = np.nan_to_num(value)
+        usable &= np.isfinite(value)
+        filled.discard(col)
+        missing.discard(f"co2_{chord}")
+        resolvers[f"co2_{chord}"] = f"DENV{j + 2}F; 50 ms mean; native ordinate"
+    signature = hashlib.sha256(
+        json.dumps(
+            [rows.source_signature, [(str(p), s) for p, s in sources], resolvers],
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
+    return replace(
+        rows,
+        x=x,
+        usable=usable,
+        missing=tuple(sorted(missing)),
+        filled=tuple(sorted(filled)),
+        resolvers=resolvers,
+        source_signature=signature,
+    )
 
 
 # -------------------------------------------------------------- detector

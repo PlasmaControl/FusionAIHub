@@ -116,9 +116,17 @@ def areas_by_shot(truth, values, shots):
         numerator, denominator, out=np.full(len(draws), np.nan), where=denominator > 0
     )
     point = score.roc_auc(truth, values)
+    audit = score.bootstrap_summary(
+        {"auroc": reps},
+        n_shots=len(ids),
+        positive_shots=int((pos.sum(axis=1) > 0).sum()),
+    )
     return {
         "auroc": point,
-        "auroc_ci95": score._ci(reps),
+        "auroc_ci95": audit["ci95"]["auroc"],
+        "bootstrap_draw_counts": audit["bootstrap_draw_counts"],
+        "descriptive_only": audit["descriptive_only"],
+        "positive_shots": audit["positive_shots"],
         "auprc": score.average_precision(truth, values),
         "rows": len(truth),
         "cases": int(truth.sum()),
@@ -236,22 +244,29 @@ def reconstruct(shot, photodiodes, paths, norm):
     return raw, x
 
 
-def review_targets(spans, times):
-    truth = np.full(len(times), -1, dtype=np.int8)
-    for r in spans.itertuples():
-        if r.kind in labels.SCORED_KINDS:
-            inside = (times >= r.t_start) & (times + 1 <= r.t_end)
-            truth[inside] = int(r.kind != "absent")
-    return truth
+def review_targets(spans, times, *, onsets=False):
+    return np.stack(
+        [
+            dsm.future_review_targets(spans, times, h, onsets=onsets)
+            for h in dsm.HORIZONS_MS
+        ],
+        axis=1,
+    )
 
 
 def review_summary(parts):
+    if not parts:
+        return {}
     truth, values, shots = zip(*parts)
+    truth, values, shots = map(np.concatenate, (truth, values, shots))
     return {
         f"h{int(h)}ms": areas_by_shot(
-            np.concatenate(truth), np.concatenate(values)[:, j], np.concatenate(shots)
+            truth[truth[:, j] >= 0, j],
+            values[truth[:, j] >= 0, j],
+            shots[truth[:, j] >= 0],
         )
         for j, h in enumerate(dsm.HORIZONS_MS)
+        if (truth[:, j] >= 0).any()
     }
 
 
@@ -309,14 +324,21 @@ def main():
         "reviewed_exact_export": {},
         "reviewed_reconstructed": {},
         "reconstruction_export_agreement": {},
+        "review_target": "any reviewed present in (t, t+h]; complete reviewed "
+        "future-window coverage required at each horizon",
+        "onset_target": "non-crowd span start in (t, t+h], on per-ELM reviewed "
+        "portions of shots with non-crowd spans; complete absent/non-crowd "
+        "coverage required and crowd time excluded; annotation starts are not "
+        "verified physical ELM onsets",
     }
-    parts = []
+    parts, onset_parts = [], []
     for shot in export_shots:
         keep = source_shots == shot
         times = source["final_times_list"][keep]
-        truth = review_targets(review[review.shot == shot], times)
+        spans = review[review.shot == shot]
+        truth = review_targets(spans, times)
         x = source["final_x_normalized"][keep]
-        ok = truth >= 0
+        ok = (truth >= 0).any(axis=1)
         coverage[str(shot)]["exact_export_reviewed_rows"] = int(ok.sum())
         if not ok.any():
             coverage[str(shot)]["exact_export_blocked_reason"] = (
@@ -325,23 +347,34 @@ def main():
             continue
         values = risk(graph, x[ok])
         parts.append((truth[ok], values, np.full(ok.sum(), shot)))
+        if (spans.kind == "non_crowd").any():
+            onset_parts.append(
+                (
+                    review_targets(spans, times[ok], onsets=True),
+                    values,
+                    np.full(ok.sum(), shot),
+                )
+            )
         print("exact export", shot, ok.sum(), flush=True)
     record["reviewed_exact_export"] = {
         "method": "elm-dsm native exact export",
         "source_exposed": True,
+        "role": "appendix audit only: four exact-export source-exposed shots",
         "threshold": "none; continuous-score metrics only",
         "horizons": review_summary(parts),
+        "non_crowd_start_horizons": review_summary(onset_parts),
     }
-    reconstructed = []
+    reconstructed, reconstructed_onsets = [], []
     for shot in shots:
         if not coverage[str(shot)]["reconstructable"]:
             continue
         raw, x = reconstruct(shot, photodiodes, paths, source["normalizations"])
-        truth = review_targets(review[review.shot == shot], np.arange(6000))
+        spans = review[review.shot == shot]
+        truth = review_targets(spans, np.arange(6000))
         checked = [i for i, n in enumerate(COLUMNS) if not n.startswith("pcphd")]
         co2 = [i for i, n in enumerate(COLUMNS) if n.startswith("co2_")]
         ok = (
-            (truth >= 0)
+            (truth >= 0).any(axis=1)
             & np.isfinite(x).all(axis=1)
             & (np.abs(x[:, checked]) <= 10).all(axis=1)
         )
@@ -353,6 +386,14 @@ def main():
             continue
         values = risk(graph, x[ok])
         reconstructed.append((truth[ok], values, np.full(ok.sum(), shot)))
+        if (spans.kind == "non_crowd").any():
+            reconstructed_onsets.append(
+                (
+                    review_targets(spans, np.arange(6000)[ok], onsets=True),
+                    values,
+                    np.full(ok.sum(), shot),
+                )
+            )
         coverage[str(shot)]["reconstructed_reviewed_rows"] = int(ok.sum())
         if shot in export_shots:
             keep = source_shots == shot
@@ -377,6 +418,7 @@ def main():
         "protocol": "original H5 columns and PCPHD02/03; source count-based 6000-bin means; original normalization then 100-sample within-shot NBI smoothing; no mean fill or clipping",
         "caveat": "source NBI smoothing concatenated filtered phase rows across boundaries; serving reconstructs within-shot rows before native domain filtering, so agreement audit must be read with this panel",
         "horizons": review_summary(reconstructed) if reconstructed else {},
+        "non_crowd_start_horizons": review_summary(reconstructed_onsets),
     }
     if not args.skip_own_target:
         values = risk(graph, source["final_x_normalized"][:cutoff])

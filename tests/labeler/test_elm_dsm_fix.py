@@ -238,3 +238,89 @@ def test_physical_shot_bootstrap_groups_multiple_phases():
     assert shots.tolist() == [190643, 192721]
     assert pos.sum(axis=1).tolist() == [1, 1]
     assert neg.sum(axis=1).tolist() == [1, 1]
+
+
+def test_native_forecast_target_looks_forward_and_masks_unreviewed_time():
+    spans = pd.DataFrame(
+        {
+            "t_start": [0.0, 10.0, 12.0, 30.0],
+            "t_end": [10.0, 12.0, 20.0, 40.0],
+            "kind": ["absent", "non_crowd", "absent", "absent"],
+        }
+    )
+    times = np.array([4.0, 5.0, 9.0, 10.0, 11.0, 12.0, 16.0, 25.0, 32.0])
+    np.testing.assert_array_equal(
+        dsm.future_review_targets(spans, times, 5.0),
+        [0, 1, 1, 1, 1, 0, -1, -1, 0],
+    )
+    np.testing.assert_array_equal(
+        dsm.future_review_targets(spans, times, 5.0, onsets=True),
+        [0, 1, 1, 0, 0, 0, -1, -1, 0],
+    )
+
+
+def test_native_onset_target_does_not_treat_crowds_as_negative():
+    spans = pd.DataFrame(
+        {
+            "t_start": [0.0, 10.0, 20.0],
+            "t_end": [10.0, 20.0, 30.0],
+            "kind": ["absent", "crowd", "non_crowd"],
+        }
+    )
+    assert dsm.future_review_targets(spans, [8.0], 5, onsets=True)[0] == -1
+
+
+def test_repaired_detector_uses_photodiodes_and_density_not_source_statistics(
+    tmp_path, monkeypatch
+):
+    paths = Paths(root=tmp_path)
+    folder = tmp_path / "benchmarks/elm/elmo/signals"
+    folder.mkdir(parents=True)
+    t = np.arange(-100, 6001, dtype=float)
+    np.savez_compressed(
+        folder / "7.npz",
+        t_fs_ms=t,
+        t_int_ms=t,
+        filterscopes=np.stack([np.full(len(t), x) for x in (3, 4, 5)]),
+        interferometer=np.stack([np.full(len(t), x) for x in (6e13, 7e13)]),
+    )
+    photo = tmp_path / "round4/elm/dsm/native_photodiodes"
+    photo.mkdir(parents=True)
+    np.savez_compressed(photo / "7_pcphd02.npz", x=t, y=np.full((1, len(t)), 8))
+    monkeypatch.setattr(dsm, "upstream_photodiodes", dict)
+    raw = dsm.Rows(
+        7,
+        np.zeros((240, 60)),
+        np.ones(240, bool),
+        np.ones(240, bool),
+        ("co2_v2", "co2_v3"),
+        {},
+        tuple(dsm.spec.ALWAYS_MEAN_FILLED)
+        + ("co2_density_slow_v2_downsampled", "co2_density_slow_v3_downsampled"),
+    )
+    got = dsm.repair_detection_inputs(paths, raw)
+    cols = {n: i for i, n in enumerate(dsm.spec.COLUMNS)}
+    for name, value in (
+        ("pcphd02_downsampled", 8),
+        ("pcphd03_downsampled", 4),
+        ("co2_density_slow_v2_downsampled", 6e13),
+        ("co2_density_slow_v3_downsampled", 7e13),
+    ):
+        assert got.x[10, cols[name]] == value
+        assert name not in got.filled
+    assert got.resolvers["pcphd02"].startswith("PCPHD02")
+    assert got.resolvers["pcphd03"].startswith("FS03 substitute")
+    assert not got.missing
+    np.testing.assert_array_equal(raw.x, 0)  # legacy rows remain unchanged
+    np.savez_compressed(
+        folder / "7.npz",
+        t_fs_ms=t,
+        t_int_ms=t,
+        filterscopes=np.stack([np.full(len(t), value) for value in (3, 4, 5)]),
+        interferometer=np.stack([np.full(len(t), value) for value in (1e18, 7e13)]),
+    )
+    bad = dsm.repair_detection_inputs(paths, raw)
+    assert "co2_v2" in bad.missing
+    assert "co2_density_slow_v2_downsampled" in bad.filled
+    assert bad.resolvers["co2_v2"] == "DENV2F rejected: failed digitiser"
+    assert bad.x[10, cols["co2_density_slow_v2_downsampled"]] == 0

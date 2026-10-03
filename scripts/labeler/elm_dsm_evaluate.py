@@ -193,7 +193,9 @@ def evaluate_set(
     out["risk_quantiles_scored_forecast_bins"] = dsm.risk_quantiles(
         np.concatenate(
             [
-                dscores.risk[s][dsm.row_index(bins_of[s], compare.FORECAST_LAG_ROWS), -1]
+                dscores.risk[s][
+                    dsm.row_index(bins_of[s], compare.FORECAST_LAG_ROWS), -1
+                ]
                 for s in sdef.shots
             ]
         )
@@ -270,7 +272,9 @@ def row_table(rows) -> dict:
             "outside_training_filter_usable_rows": int((r.usable & ~r.in_filter).sum()),
             "outside_training_filter_usable_row_share": float(
                 (r.usable & ~r.in_filter).sum() / r.usable.sum()
-            ) if r.usable.any() else None,
+            )
+            if r.usable.any()
+            else None,
             "missing_features": list(r.missing),
             "archive_features": "archive" in set(r.resolvers.values()),
             "resolvers": r.resolvers,
@@ -338,7 +342,9 @@ def annotate_prefetch_record():
         for name, res in subset["methods"].items():
             res["display_name"] = compare.DISPLAY_NAME.get(name, name)
     baseline = Paths.from_env().root / "round4/elm/dsm/prefetch_baseline"
-    old_rows = {int(s): dsm.load_rows(int(s), baseline / f"{s}.npz") for s in old["rows"]}
+    old_rows = {
+        int(s): dsm.load_rows(int(s), baseline / f"{s}.npz") for s in old["rows"]
+    }
     if all(r is not None for r in old_rows.values()):
         with np.load(baseline / "published_risk.npz") as z:
             old_risk = {int(k[1:]): z[k] for k in z.files}
@@ -350,8 +356,13 @@ def annotate_prefetch_record():
 def verify_rescore(previous: dict, current: dict) -> dict:
     """Confirm all scientific results survive reload of the fitted score artifacts."""
     keys = (
-        "own_target", "published_thresholds", "detector_config", "detectors",
-        "rows", "row_diagnostics", "sets",
+        "own_target",
+        "published_thresholds",
+        "detector_config",
+        "detectors",
+        "rows",
+        "row_diagnostics",
+        "sets",
     )
     checks = {}
     for key in keys:
@@ -408,8 +419,11 @@ def refresh_own_target(paths: Paths, out_dir: Path) -> int:
         ),
     }
     files = [
-        result_path, trained_path, out_dir / "prefetch_evaluation.json",
-        out_dir / "reproducibility.json", work / "fits.json",
+        result_path,
+        trained_path,
+        out_dir / "prefetch_evaluation.json",
+        out_dir / "reproducibility.json",
+        work / "fits.json",
     ]
     for path in files:
         if path.exists():
@@ -421,9 +435,15 @@ def refresh_own_target(paths: Paths, out_dir: Path) -> int:
             "path": str(path.with_name(path.stem + "_before_phase_fix.json")),
             "sha256": sha256_of(path.with_name(path.stem + "_before_phase_fix.json")),
         }
-        for path in files if path.exists()
+        for path in files
+        if path.exists()
     }
-    for path in (result_path, trained_path, out_dir / "prefetch_evaluation.json", work / "fits.json"):
+    for path in (
+        result_path,
+        trained_path,
+        out_dir / "prefetch_evaluation.json",
+        work / "fits.json",
+    ):
         if not path.exists():
             continue
         record = json.loads(path.read_text())
@@ -454,7 +474,15 @@ def refresh_own_target(paths: Paths, out_dir: Path) -> int:
     (out_dir / "own_target_correction.json").write_text(
         json.dumps({"correction": correction, "own_target": own}, indent=1)
     )
-    print(json.dumps({"split_counts": own["split_physical_shot_counts"], "reviewed_overlap": own["reviewed_shot_ids_in_published_split"], "cohort_overlap": own["cohort_physical_shot_overlap"]}))
+    print(
+        json.dumps(
+            {
+                "split_counts": own["split_physical_shot_counts"],
+                "reviewed_overlap": own["reviewed_shot_ids_in_published_split"],
+                "cohort_overlap": own["cohort_physical_shot_overlap"],
+            }
+        )
+    )
     return 0
 
 
@@ -540,16 +568,33 @@ def main(argv=None) -> int:
         cfg = dsm.FitConfig(epochs=args.epochs, device=args.device)
         pub_thr, pub_records = published_thresholds(rows, risk, data, oof)
         previous = json.loads(fits_json.read_text()) if fits_json.exists() else {}
-        historical_sources = dsm.historical_detector_sources(previous.get("detectors", {}))
+        historical_sources = dsm.historical_detector_sources(
+            previous.get("detectors", {})
+        )
         historical = (
-            compare.DsmScores.load(work, rows, variants=tuple(historical_sources.values()))
-            if historical_sources else None
+            compare.DsmScores.load(
+                work, rows, variants=tuple(historical_sources.values())
+            )
+            if historical_sources
+            else None
         )
         for path in (fits_json, args.out_dir / "evaluation.json"):
             archive = path.with_name(path.stem + "_exposed.json")
             if path.exists() and not archive.exists() and historical_sources:
                 archive.write_bytes(path.read_bytes())
         raw_rows = load_rows(paths, shots, work / "raw_rows", None)
+        # Only the source-isolated detector receives the repaired diagnostics.
+        # Survival and historical fits retain their original input audits/scores.
+        raw_rows = {
+            s: dsm.repair_detection_inputs(paths, r) for s, r in raw_rows.items()
+        }
+        repaired_cache = work / "repaired_raw_rows"
+        repaired_cache.mkdir(parents=True, exist_ok=True)
+        for s, r in raw_rows.items():
+            dsm.save_rows(r, repaired_cache / f"{s}.npz")
+        before_inputs = args.out_dir / "evaluation_before_input_repair.json"
+        if (args.out_dir / "evaluation.json").exists() and not before_inputs.exists():
+            before_inputs.write_bytes((args.out_dir / "evaluation.json").read_bytes())
         trained = fit_detectors(
             raw_rows, data, oof, cfg, work, lambda m: print(m, flush=True)
         )
@@ -571,6 +616,23 @@ def main(argv=None) -> int:
             "own_target": own,
             "published_thresholds": pub_records,
             "detector_config": cfg.__dict__,
+            "detection_input_repair": {
+                "scope": "isolated detector only; survival and historical scores unchanged",
+                "input_columns": dsm.N_COLUMNS,
+                "photodiodes": "PCPHD02/03 preferred; FS02/03 50 ms means are "
+                "explicit substitutes only when a photodiode record is unavailable",
+                "co2_v2_v3": "DENV2F/3F native-ordinate 50 ms means; the same "
+                "fixed failed-digitiser screen as elm-ours rejects median magnitude "
+                ">1e16 and fills that column at the fold mean. Live metadata says V; "
+                "physical conversion unresolved, no rescaling",
+                "co2_r0_v1": "original slow CO2 when available, else fold mean",
+                "raw_row_store": str(repaired_cache),
+                "rows": row_table(raw_rows),
+                "normalization": "optimizer-training shots only, independently per fold",
+                "initialization": "independent seeded random weights, unchanged recipe",
+                "prior_record": str(before_inputs),
+                "unit_audit": str(args.out_dir / "detection_input_audit.json"),
+            },
             "detectors": {
                 name: {
                     "folds": records,
@@ -650,6 +712,7 @@ def main(argv=None) -> int:
         "own_target": own,
         "published_thresholds": fits["published_thresholds"],
         "detector_config": fits["detector_config"],
+        "detection_input_repair": fits.get("detection_input_repair"),
         "detectors": fits["detectors"],
         "rows": row_table(rows),
         "row_diagnostics": dsm.row_diagnostics(rows, dscores.risk),
@@ -662,6 +725,30 @@ def main(argv=None) -> int:
         )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))
+    before_path = args.out_dir / "evaluation_before_input_repair.json"
+    if before_path.exists() and fits.get("detection_input_repair"):
+        before = json.loads(before_path.read_text())
+        comparison = {
+            "git": git_sha(full=True),
+            "script_sha256": sha256_of(__file__),
+            "before_record": str(before_path),
+            "after_record": str(args.out_dir / "evaluation.json"),
+            "before_inputs": "no D-alpha; slow CO2 missing on 75/119 shots",
+            "after_inputs": fits["detection_input_repair"],
+            "recipe_changed": False,
+            "sets": {
+                name: {
+                    "before": before["sets"][name]["methods"][NAME["detect"]],
+                    "after": subset["methods"][NAME["detect"]],
+                    "before_bins": before["sets"][name]["bins"],
+                    "after_bins": subset["bins"],
+                }
+                for name, subset in record["sets"].items()
+            },
+        }
+        (args.out_dir / "detection_input_comparison.json").write_text(
+            json.dumps(comparison, indent=1)
+        )
     trained_record = args.out_dir / "evaluation_trained.json"
     if not args.rescore:
         trained_record.write_text(json.dumps(record, indent=1))
@@ -669,7 +756,9 @@ def main(argv=None) -> int:
         repeated = verify_rescore(json.loads(trained_record.read_text()), record)
         repeated["fit_record"] = str(trained_record)
         repeated["rescore_record"] = str(args.out_dir / "evaluation.json")
-        (args.out_dir / "reproducibility.json").write_text(json.dumps(repeated, indent=1))
+        (args.out_dir / "reproducibility.json").write_text(
+            json.dumps(repeated, indent=1)
+        )
         if not repeated["exact_results_reproduced"]:
             raise RuntimeError("DSM rescore differs from the no-rescore evaluation")
     for k, v in own["horizons"].items():

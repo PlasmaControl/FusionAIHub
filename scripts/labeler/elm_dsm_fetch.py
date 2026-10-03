@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 from multiprocessing import Pool
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 
@@ -81,7 +80,7 @@ def fetch_one(task):
 
 
 def fetch_native_photodiodes(paths, out, pace):
-    """Paced native-input feasibility fetch; stop every request on any auth error."""
+    """Fetch PCPHD02/03 for every review shot, stopping on any auth error."""
     from labeler.events.verify import fdp_signal
 
     source = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/dalpha_wpqh.pkl")
@@ -93,18 +92,11 @@ def fetch_native_photodiodes(paths, out, pace):
         raise ValueError("cohort test shots may not be fetched for native evaluation")
     target = paths.root / "round4/elm/dsm/native_photodiodes"
     target.mkdir(parents=True, exist_ok=True)
-    groups = (
-        "ip",
-        "mag_pcb_coil",
-        "gas",
-        "p_inj",
-        "t_inj",
-        "ech",
-        "ece_slow",
-        "co2_density_slow",
-        "bes_slow",
-    )
     record = {
+        "git": git_sha(full=True),
+        "script_sha256": sha256_of(__file__),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "scope": "PCPHD02/03 on all 119 reviewed shots, regardless of H5 coverage",
         "rows": [],
         "pace_seconds": pace,
         "workers": 1,
@@ -112,18 +104,17 @@ def fetch_native_photodiodes(paths, out, pace):
         "store": str(target),
     }
     for shot in sorted(map(int, review.shot.unique())):
-        path = Path("/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files") / f"{shot}_slow.h5"
-        if not path.exists():
-            continue
-        with h5py.File(path) as h:
-            complete = all(
-                g in h and np.prod(h[g]["block0_values"].shape) > 1 for g in groups
-            )
-        if not complete:
-            continue
         for name in ("pcphd02", "pcphd03"):
             value = existing.get(str(shot), {}).get(name, {})
             if np.asarray(value.get("data", [])).size > 2:
+                record["rows"].append(
+                    {
+                        "shot": shot,
+                        "column": name,
+                        "source": "existing upstream photodiode pickle",
+                        "samples": int(np.asarray(value["data"]).size),
+                    }
+                )
                 continue
             cache = target / f"{shot}_{name}.npz"
             row = {"shot": shot, "column": name, "path": str(cache)}
