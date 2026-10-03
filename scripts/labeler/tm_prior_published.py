@@ -99,6 +99,13 @@ def write(name: str, record: dict) -> Path:
     return path
 
 
+def dsm_training_shots() -> frozenset[int]:
+    """The shots the published DSM was trained on (its listed `training_shots.txt`)."""
+    from labeler.models import registry
+
+    return registry.load_adapter(DSM).training_shots
+
+
 def si_bins(slug, column, shift, shots, cohort, by_shot, table):
     """`(score, y, valid, used, missing)` per shot on the 10 ms bins of its window."""
     windows = cohort.set_index("shot")[["window_start_ms", "window_end_ms"]]
@@ -158,6 +165,19 @@ def run_tokamak_si(args) -> None:
             )
             for label, thr in (("published", threshold), ("dev_tuned", tuned))
         }
+        # the DSM's training shots are listed; scored apart, the rest are held out
+        trained = dsm_training_shots() if slug == DSM else frozenset()
+        outside = [s for s in used if s not in trained]
+        held_out = (
+            {
+                label: scoring.evaluate(
+                    outside, y, valid, score, thr, n=args.bootstrap, seed=0
+                )
+                for label, thr in (("published", threshold), ("dev_tuned", tuned))
+            }
+            if trained
+            else None
+        )
         write(
             f"tm_prior_published_{name}_tokamak-si_{args.split}",
             {
@@ -183,6 +203,8 @@ def run_tokamak_si(args) -> None:
                 "shots_without_inputs": missing,
                 "metrics": res["published"],
                 "metrics_dev_tuned": res["dev_tuned"],
+                "shots_in_training": [s for s in used if s in trained],
+                "metrics_outside_training": held_out,
             },
         )
         print(
