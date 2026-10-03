@@ -5,10 +5,10 @@ The model is Deep Survival Machines (auton-survival, LogNormal, three components
 rows of the `wpqh_elm_hiro` project: 60 non-BES columns on a 25 ms grid, risk of an
 ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
 
-* **Own target** (`legacy_own_target`): the published model scored on its own split's
+* **Own target** (`legacy_own_target`): the limited-input refit on its own split's
   test rows, the time to the next ELM, AUROC at each horizon with 95 % shot-bootstrap
   intervals over the split's own shots.
-* **As published on the reviewed bins**: the model served from the corpus as
+* **Survival refit on the reviewed bins**: the model served from the corpus as
   `labeler.models.d3d_elm_time_to_event_dsm` serves it (`shot_rows`), its 50 ms risk at
   a bin's start read as the bin's score: "will an ELM start in the next 50 ms",
   asked before the bin begins.
@@ -23,16 +23,17 @@ ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
 `[t - 50, t)` mean), so the row at a bin's end summarises the bin and the row at its
 start the bin before it.
 
-**What the corpus cannot serve.** `ip` and `bt` are served for 15 of the 119 reviewed
-shots (the archive holds features for 36, not always these two), the four CO2 columns
-are absent on 75, and the two photodiodes (`pcphd02/03`) have no corpus source at all.
-A column the corpus cannot serve is filled at its training mean, exactly 0 after
-normalisation, as the adapter does; `shot_rows` reports which per shot (the counts are
-in `outputs/labeler/elm/dsm/evaluation.json`, `rows`).
+This is **DSM refit, limited inputs (60 of the original 124)**, not the original
+124-input checkpoint. Missing `ip` and `bt` can be fetched into the isolated round-four
+store by `elm_dsm_fetch.py`; no corpus or production feature file is changed. Remaining
+missing columns, including the two photodiodes (`pcphd02/03`) on every shot, are filled
+at the training mean. Inputs outside the refit's row filter are clipped rather than
+dropped; the evaluation records missingness, filter failures and the risk scale.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pickle
 from dataclasses import dataclass
@@ -44,9 +45,10 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from ..config import Paths
+from ..config import Paths, sha256_of
 from ..features import namespace as ns
 from ..features import resolve_archive, resolve_corpus
+from ..features.store import FeatureArray
 from ..models import elm_inputs
 from ..models.d3d_elm_time_to_event_dsm import spec
 from ..models.runners import dsm_pickle
@@ -57,6 +59,8 @@ SPLIT_PKL = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10
 HORIZONS_MS = spec.HORIZONS_MS
 T_OFFSET_MS = spec.T_OFFSET_MS
 N_COLUMNS = len(spec.COLUMNS)
+DISPLAY_NAME = "DSM refit, limited inputs (60 of the original 124)"
+ROWS_SCHEMA = 2
 ROW_T_MS = ns.GRID_S * 1000.0
 WINDOW_MS = methods.WINDOW_MS
 
@@ -94,7 +98,7 @@ def hist_auroc(pos: np.ndarray, neg: np.ndarray) -> float:
 
 
 def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_PKL):
-    """The published model on its split's test rows: AUROC per horizon, with intervals.
+    """The limited-input refit on its own test rows: AUROC per horizon, with intervals.
 
     Rows are upstream's 1 ms rows. A case at horizon `h` is a row whose next ELM is
     within `h` ms, a control one whose next ELM is later than `h`; a row censored
@@ -112,6 +116,7 @@ def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_P
     surv = dsm_pickle.survival(graph, x, [h + T_OFFSET_MS for h in HORIZONS_MS])
     n_shots = int(np.unique(shot).size)
     out: dict = {
+        "display_name": DISPLAY_NAME,
         "split": str(split_pkl),
         "rows": len(t),
         "shots": n_shots,
@@ -170,11 +175,123 @@ class Rows:
     missing: tuple[str, ...]  # canonical features nothing served
     resolvers: dict[str, str]
     filled: tuple[str, ...]  # model columns held at the training mean
+    source_signature: str = ""  # source files, normalisation and serving schema
 
 
-def shot_features(paths: Paths, shot: int):
+def fetched_features_dir(paths: Paths) -> Path:
+    """The isolated Ip/Bt fetch store; never the production feature store."""
+    return paths.root / "round4" / "elm" / "dsm" / "fetched_features"
+
+
+def fetched_features(paths: Paths, shot: int) -> dict[str, FeatureArray]:
+    path = fetched_features_dir(paths) / f"{shot}.npz"
+    if not path.exists():
+        return {}
+    arrays = {}
+    with np.load(path, allow_pickle=False) as z:
+        for name in ("ip", "bt"):
+            if f"{name}_x" in z.files and f"{name}_y" in z.files:
+                arrays[name] = FeatureArray(
+                    x=z[f"{name}_x"],
+                    y=z[f"{name}_y"],
+                    attrs={
+                        **json.loads(str(z[f"{name}_attrs"])),
+                        # Keep the fdp sampling convention in InputSpec.build.
+                        "resolver": "fdp",
+                        "fetch_cache": str(path),
+                    },
+                )
+    return arrays
+
+
+def source_signature(paths: Paths, shot: int, norm: dict) -> str:
+    """Cache key that changes when Ip/Bt is fetched, inputs change, or norms change.
+
+    Large read-only source files use metadata; the small fetched feature file uses a
+    content hash. The schema version invalidates the old cache without deleting it.
+    """
+    files = [paths.corpus_file(shot), *resolve_archive.ARCHIVE_FILES]
+    records = []
+    for path in files:
+        st = path.stat() if path.exists() else None
+        records.append((str(path), None if st is None else (st.st_size, st.st_mtime_ns)))
+    fetched = fetched_features_dir(paths) / f"{shot}.npz"
+    key = {
+        "schema": ROWS_SCHEMA,
+        "shot": shot,
+        "files": records,
+        "fetch_sha256": sha256_of(fetched) if fetched.exists() else None,
+        "norm": norm,
+    }
+    return hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()
+
+
+def rows_digest(rows: Rows) -> str:
+    """Content identity of the rows used by a fit, independent of cache timestamps."""
+    h = hashlib.sha256()
+    for arr in (rows.x, rows.usable, rows.in_filter):
+        h.update(np.ascontiguousarray(arr).tobytes())
+    h.update(json.dumps([rows.missing, rows.filled, rows.resolvers]).encode())
+    return h.hexdigest()
+
+
+def risk_quantiles(risk: np.ndarray) -> dict:
+    """Risk scale in the selected rows/bins, including finite-value counts."""
+    v = np.asarray(risk).ravel()
+    finite = v[np.isfinite(v)]
+    quantiles = (0.0, 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99, 1.0)
+    return {
+        "n": int(v.size),
+        "nonfinite": int(v.size - finite.size),
+        "quantiles": {
+            f"{q:g}": float(a)
+            for q, a in zip(
+                quantiles,
+                np.quantile(finite, quantiles) if finite.size else [float("nan")] * 9,
+                strict=True,
+            )
+        },
+    }
+
+
+def row_diagnostics(rows: dict[int, Rows], risk: dict[int, np.ndarray]) -> dict:
+    """Missingness and serving-filter failures, with an explicit usable-row base."""
+    usable = sum(int(r.usable.sum()) for r in rows.values())
+    outside = sum(int((r.usable & ~r.in_filter).sum()) for r in rows.values())
+    names = sorted({n for r in rows.values() for n in r.missing})
+    return {
+        "display_name": DISPLAY_NAME,
+        "input_columns": N_COLUMNS,
+        "original_input_columns": 124,
+        "usable_rows": usable,
+        "outside_training_filter_usable_rows": outside,
+        "outside_training_filter_usable_row_share": outside / usable
+        if usable
+        else float("nan"),
+        "training_filter": (
+            "all measured non-photodiode columns |z| <= 10 and measured CO2 in "
+            "[0, 1e15]; filter failures retained, normalized inputs clipped to [-10, 10]"
+        ),
+        "missing_features": {
+            n: {
+                "n_shots": sum(n in r.missing for r in rows.values()),
+                "shots": sorted(s for s, r in rows.items() if n in r.missing),
+            }
+            for n in names
+        },
+        "always_mean_filled_columns": list(spec.ALWAYS_MEAN_FILLED),
+        "risk_quantiles_usable_rows": {
+            f"h{int(h)}ms": risk_quantiles(
+                np.concatenate([risk[s][r.usable, j] for s, r in rows.items()])
+            )
+            for j, h in enumerate(HORIZONS_MS)
+        },
+    }
+
+
+def shot_features(paths: Paths, shot: int, names=None):
     """The canonical features the model reads, from the archive then the corpus."""
-    names = spec.INPUT_SPEC.canonical_names
+    names = spec.INPUT_SPEC.canonical_names if names is None else names
     arrays: dict = {}
     for source in ("archive", "corpus"):
         want = [n for n in names if source in ns.by_name(n).sources and n not in arrays]
@@ -185,6 +302,9 @@ def shot_features(paths: Paths, shot: int):
         else:
             got, _ = resolve_corpus.resolve(shot, want, corpus=paths.corpus)
         arrays.update(got)
+    for name, arr in fetched_features(paths, shot).items():
+        if name in names:
+            arrays.setdefault(name, arr)
     return arrays
 
 
@@ -223,6 +343,7 @@ def shot_rows(paths: Paths, shot: int, norm: dict) -> Rows:
         tuple(built.missing),
         dict(built.resolvers),
         tuple(filled),
+        source_signature(paths, shot, norm),
     )
 
 
@@ -235,15 +356,19 @@ def save_rows(rows: Rows, path: Path) -> None:
         missing=np.array(rows.missing, dtype=str),
         filled=np.array(rows.filled, dtype=str),
         resolvers=json.dumps(rows.resolvers),
+        source_signature=rows.source_signature,
     )
 
 
-def load_rows(shot: int, path: Path) -> Rows | None:
-    """A cached `Rows`, or None when the file is absent or predates `resolvers`."""
+def load_rows(shot: int, path: Path, signature: str | None = None) -> Rows | None:
+    """Cached rows, or None when absent, old, or built from different sources."""
     if not Path(path).exists():
         return None
     with np.load(path) as z:
         if "resolvers" not in z.files:
+            return None
+        saved = str(z["source_signature"]) if "source_signature" in z.files else ""
+        if signature is not None and saved != signature:
             return None
         return Rows(
             shot,
@@ -253,13 +378,14 @@ def load_rows(shot: int, path: Path) -> Rows | None:
             tuple(str(v) for v in z["missing"]),
             json.loads(str(z["resolvers"])),
             tuple(str(v) for v in z["filled"]),
+            saved,
         )
 
 
 def cached_rows(paths: Paths, shot: int, norm: dict, cache_dir: Path) -> Rows:
     """The shot's `Rows`, read from `cache_dir` or built from the corpus and saved."""
     path = Path(cache_dir) / f"{shot}.npz"
-    rows = load_rows(shot, path)
+    rows = load_rows(shot, path, source_signature(paths, shot, norm))
     if rows is None:
         rows = shot_rows(paths, shot, norm)
         Path(cache_dir).mkdir(parents=True, exist_ok=True)
@@ -334,7 +460,7 @@ class Detector(nn.Module):
         return self.head(h).squeeze(-1)
 
     def load_published(self, graph: dsm_pickle.DsmGraph) -> None:
-        """Start from the published embedding weights."""
+        """Start from the limited-input refit's embedding weights."""
         w = torch.as_tensor(graph.embedding[0], dtype=torch.float32)
         with torch.no_grad():
             self.embedding.weight.copy_(w)

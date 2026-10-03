@@ -2,15 +2,16 @@
 
 `data/events/edge_localized_mode/review/labels.csv` holds, per shot, spans in
 ms of the shot's clock in four states: absent (0), present (1), uncertain (2)
-and not observable (3). A present span is one ELM (`iscrowd` 0, a few tens of
-ms wide) or a crowd (`iscrowd` 1), an ELMing period whose ELMs are not
-separated. `kind` names the five cases: `absent`, `individual`, `crowd`,
+and not observable (3). A present span is non-crowd (`iscrowd` 0) or a
+crowd (`iscrowd` 1), an ELMing period whose ELMs are not separated. Non-crowd
+spans are not verified single ELMs; some last hundreds of milliseconds.
+`kind` names the five cases: `absent`, `non_crowd`, `crowd`,
 `uncertain`, `not_observable`.
 
 **Dense targets** (`dense`): one value per 1 ms cell of the input grid,
 1 inside a present span, 0 inside an absent one and `IGNORE` (-1) elsewhere
 (uncertain, not observable, outside every span). A second array holds the ELM
-onsets, the start of each *individual* span as a Gaussian of width
+onsets, the start of each non-crowd span as a Gaussian of width
 `ONSET_SIGMA_MS`; it is 0 inside absent spans, ignored inside crowds (their
 onsets are not marked, so a crowd's ELMs are unlabelled, not absent) and in
 uncertain or unlabelled time.
@@ -19,7 +20,7 @@ uncertain or unlabelled time.
 `scripts/labeler/elmo_benchmark.bin_table`, so the ELM-O and `elm_clock` rows of
 the benchmark and every new row sit on the same bins. A bin is the 50 ms cell
 `[50k, 50k + 50)` of the shot's clock; it is scored when it lies wholly inside
-one absent, individual or crowd span of at least half the analysed time, and
+one absent, non-crowd or crowd span of at least half the analysed time, and
 wholly inside analysed time. Its truth is 1 in a present span, 0 in an absent
 one.
 """
@@ -39,8 +40,8 @@ from . import inputs
 BIN_MS = 50.0
 IGNORE = -1
 ONSET_SIGMA_MS = 2.0
-KINDS = ("absent", "individual", "crowd", "uncertain", "not_observable")
-SCORED_KINDS = ("absent", "individual", "crowd")
+KINDS = ("absent", "non_crowd", "crowd", "uncertain", "not_observable")
+SCORED_KINDS = ("absent", "non_crowd", "crowd")
 #: `review/labels.csv` in the repository (the owner's labels, 119 shots).
 REVIEW_CSV = Path("data/events/edge_localized_mode/review/labels.csv")
 
@@ -59,10 +60,44 @@ def review_table(path: str | Path) -> pd.DataFrame:
             table.category == 1,
             table.category == 2,
         ],
-        ["absent", "crowd", "individual", "uncertain"],
+        ["absent", "crowd", "non_crowd", "uncertain"],
         default="not_observable",
     )
     return table.sort_values(["shot", "t_start"]).reset_index(drop=True)
+
+
+def span_length_summary(table: pd.DataFrame) -> dict:
+    """Duration distribution of non-crowd present spans, without event inference."""
+    spans = table[table.kind == "non_crowd"].copy()
+    length = (spans.t_end - spans.t_start).to_numpy(float)
+    possible = np.maximum(
+        np.floor(spans.t_end.to_numpy(float) / BIN_MS)
+        - np.ceil(spans.t_start.to_numpy(float) / BIN_MS),
+        0,
+    ).astype(int)
+    quantiles = np.quantile(length, [0, 0.25, 0.5, 0.75, 0.9, 1])
+    return {
+        "definition": "category 1, iscrowd 0: non-crowd present spans",
+        "spans": len(spans),
+        "length_ms": dict(
+            zip(("min", "p25", "median", "p75", "p90", "max"), quantiles.tolist())
+        ),
+        "longer_than_100ms": int((length > 100).sum()),
+        "longer_than_200ms": int((length > 200).sum()),
+        "possible_bins": int(possible.sum()),
+        "possible_bins_from_longer_than_100ms": int(possible[length > 100].sum()),
+        "spans_with_possible_bins": int((possible > 0).sum()),
+        "per_span": [
+            {
+                "shot": int(r.shot),
+                "start_ms": float(r.t_start),
+                "end_ms": float(r.t_end),
+                "length_ms": float(r.t_end - r.t_start),
+                "possible_bins": int(n),
+            }
+            for r, n in zip(spans.itertuples(), possible, strict=True)
+        ],
+    }
 
 
 @dataclass(frozen=True)
@@ -70,7 +105,7 @@ class Dense:
     """One shot's targets on the 1 ms grid starting at `inputs.GRID0_MS`."""
 
     state: np.ndarray  # int8 (n_ms,): 1 present, 0 absent, IGNORE
-    onset: np.ndarray  # float32 (n_ms,): Gaussian at individual starts, in [0, 1]
+    onset: np.ndarray  # float32 (n_ms,): Gaussian at non-crowd starts, in [0, 1]
     onset_mask: np.ndarray  # bool (n_ms,): where the onset target is defined
     window: tuple[float, float]  # first start, last end of the shot's spans (ms)
 
@@ -91,14 +126,14 @@ def dense(spans: pd.DataFrame, n_ms: int) -> Dense:
         if r.kind == "absent":
             state[a:b] = 0
             onset_mask[a:b] = True
-        elif r.kind in ("individual", "crowd"):
+        elif r.kind in ("non_crowd", "crowd"):
             state[a:b] = 1
-            onset_mask[a:b] = r.kind == "individual"
+            onset_mask[a:b] = r.kind == "non_crowd"
             crowd[a:b] = r.kind == "crowd"
-    # the onset of an individual ELM: a Gaussian at the span's start, defined
+    # the onset of an non-crowd span: a Gaussian at the span's start, defined
     # over the span and the ONSET_SIGMA_MS tails beside it
     for r in spans.itertuples():
-        if r.kind != "individual":
+        if r.kind != "non_crowd":
             continue
         lo = max(0, int(np.floor(r.t_start - g0 - 5 * ONSET_SIGMA_MS)))
         hi = min(n_ms, int(np.ceil(r.t_start - g0 + 5 * ONSET_SIGMA_MS)))
@@ -120,7 +155,7 @@ class Bins:
 
     t0: np.ndarray  # float (m,) left edge, ms
     truth: np.ndarray  # int8 (m,) 1 present, 0 absent
-    kind: np.ndarray  # object (m,) absent / individual / crowd
+    kind: np.ndarray  # object (m,) absent / non-crowd / crowd
     span: np.ndarray  # int (m,) index of the span in the shot's table rows
 
 

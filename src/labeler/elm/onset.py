@@ -1,17 +1,17 @@
-"""Individual-ELM onsets from the onset head: peaks, and their match to the review.
+"""Non-crowd-span onsets from the onset head: peaks, and their match to the review.
 
 The onset head's trace is a probability per 1 ms of the shot's clock that an
-individual ELM starts there (the target is a Gaussian of `labels.ONSET_SIGMA_MS`
-at each reviewed individual span's start). A detected onset is a local maximum of
+non-crowd span starts there (the target is a Gaussian of `labels.ONSET_SIGMA_MS`
+at each reviewed non-crowd span's start). A detected onset is a local maximum of
 the trace above a threshold, at least `MIN_SEP_MS` from a higher one. The match to
 the review follows the reviewed onsets only where they are defined
-(`labels.Dense.onset_mask`: absent and individual spans, not crowds, whose ELMs are
+(`labels.Dense.onset_mask`: absent and non-crowd spans, not crowds, whose ELMs are
 unmarked):
 
-* a reviewed onset (the start of an individual span) is found when a detected one
+* a reviewed onset (the start of an non-crowd span) is found when a detected one
   lies within `tol` ms of it, each detected onset used once;
 * a detected onset is false when it is not matched and lies where onsets are
-  defined, so in an absent span or in an individual span away from its start.
+  defined, so in an absent span or in an non-crowd span away from its start.
 
 Detections in crowds, uncertain or unlabelled time are neither counted nor
 penalised.

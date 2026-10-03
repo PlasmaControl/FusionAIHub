@@ -187,7 +187,7 @@ def test_table_truth_onset_truth_and_retruth():
     bins = _bins(
         [0.0, 50.0, 100.0, 150.0, 300.0],
         [0, 0, 1, 1, 0],
-        ["absent", "absent", "individual", "crowd", "absent"],
+        ["absent", "absent", "non_crowd", "crowd", "absent"],
     )
     got = swap.table_truth(table, 1, bins)
     assert got.tolist() == [0, 0, 1, 0, -1]  # the bin at 300 ms is not covered
@@ -211,7 +211,7 @@ def test_table_truth_onset_truth_and_retruth():
 def test_agreement_counts_missed_and_false_bins():
     review = np.array([1, 1, 1, 0, 0, 0], dtype=np.int8)
     kind = np.array(
-        ["crowd", "crowd", "individual", "absent", "absent", "absent"], object
+        ["crowd", "crowd", "non_crowd", "absent", "absent", "absent"], object
     )
     legacy = np.array([1, 0, 0, 1, 0, -1], dtype=np.int8)
     c = swap.agreement_counts(review, kind, legacy)
@@ -220,7 +220,7 @@ def test_agreement_counts_missed_and_false_bins():
         names["tp"] == 1 and names["fn"] == 2 and names["fp"] == 1 and names["tn"] == 1
     )
     assert names["crowd_bins"] == 2 and names["crowd_legacy_present"] == 1
-    assert names["individual_bins"] == 1 and names["individual_legacy_present"] == 0
+    assert names["non_crowd_bins"] == 1 and names["non_crowd_legacy_present"] == 0
     summary = swap.agreement_summary(np.stack([c, c]), score.draws(2, 50))
     assert summary["M"] == 4 and summary["P"] == 2 and summary["bins"] == 10
     assert summary["point"]["recall"] == pytest.approx(1 / 3)

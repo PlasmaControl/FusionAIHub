@@ -11,9 +11,9 @@ model that never saw it. Nothing here reads a cohort test shot; `check_no_test`
 refuses one.
 
 **Targets and loss.** Per 1 ms, ELMy time (present spans, crowds included) against
-absent time, uncertain and unlabelled time ignored; and the onset of an
-individual ELM as a Gaussian, defined only where onsets are labelled (absent spans
-and individual spans, not crowds). Masked binary cross-entropy on both heads,
+absent time, uncertain and unlabelled time ignored; and the start of a
+non-crowd present span as a Gaussian, defined only in absent and non-crowd
+present spans. Masked binary cross-entropy on both heads,
 the onset head's positives weighted `ONSET_POS_WEIGHT`, its loss `ONSET_LOSS_WEIGHT`.
 
 **Sampling and augmentation.** Random crops of `CROP_MS` of random training
@@ -41,7 +41,7 @@ import torch
 from torch.nn import functional as F
 
 from ..config import Paths, git_sha
-from . import inputs, labels, net, onset, prepare, score
+from . import inputs, labels, net, onset, prepare, provenance, score
 
 FOLDS = 5
 INNER_VAL = 14
@@ -118,7 +118,7 @@ def deal_folds(data: dict[int, ShotData], k: int = FOLDS, seed: int = SEED):
     strata: dict[tuple[bool, bool], list[int]] = {}
     for shot, d in data.items():
         kinds = set(d.spans.kind)
-        strata.setdefault(("crowd" in kinds, "individual" in kinds), []).append(shot)
+        strata.setdefault(("crowd" in kinds, "non_crowd" in kinds), []).append(shot)
     folds: list[list[int]] = [[] for _ in range(k)]
     turn = 0
     for key in sorted(strata):
@@ -237,12 +237,12 @@ def predict(model: net.ElmUNet, x: np.ndarray, device) -> np.ndarray:
 
 
 def onset_threshold(model, data, shots, device, tol: float = 5.0):
-    """The onset-trace threshold maximising pooled onset F1 on `shots`, and that F1."""
+    """Threshold maximising agreement with non-crowd span starts on `shots`."""
     traces, truths, defined = [], [], []
     for s in shots:
         d = data[s]
         traces.append(predict(model, d.x, device)[1])
-        ind = d.spans[d.spans.kind == "individual"]
+        ind = d.spans[d.spans.kind == "non_crowd"]
         truths.append(ind.t_start.to_numpy(float))
         defined.append(d.dense.onset_mask)
     return onset.best_threshold(traces, truths, defined, inputs.GRID0_MS, tol)
@@ -341,9 +341,19 @@ def run(args: argparse.Namespace) -> int:
         "folds": folds,
         "shots": len(data),
         "parameters": net.n_parameters(net.ElmUNet(dropout=cfg.dropout)),
+        "inner_val": args.inner_val,
         "fold_records": [],
+        "provenance": {
+            "mode": "training_time",
+            "observed_at": provenance.observed_at(),
+            "code": provenance.code_record(),
+            "data": provenance.data_record(paths, sorted(data)),
+        },
     }
+    record = provenance.continue_record(out, record)
     only = set(args.only) if args.only else None
+    if only is not None and not only <= set(range(args.folds)):
+        raise ValueError("--only contains a fold outside --folds")
     for k, test in enumerate(folds):
         if only is not None and k not in only:
             continue
@@ -376,13 +386,14 @@ def run(args: argparse.Namespace) -> int:
             "history": history,
         }
         (fold_dir / "fold.json").write_text(json.dumps(info, indent=1))
-        record["fold_records"].append(
+        provenance.add_fold(
+            record,
             {
                 k2: info[k2]
                 for k2 in ("fold", "test", "threshold", "onset_threshold", "best")
-            }
+            } | {"artifacts": provenance.fold_artifacts(out, k, test)},
         )
-    (out / "run.json").write_text(json.dumps(record, indent=1))
+        (out / "run.json").write_text(json.dumps(record, indent=1))
     return 0
 
 

@@ -9,7 +9,7 @@ reviewed shot is predicted by the model of the fold it sat in, trained on other
 shots, with the decision threshold (and the onset threshold) chosen on that fold's
 inner-validation shots. No cohort test shot is read.
 
-**Bins.** The benchmark's own: 50 ms bins wholly inside one absent, individual or
+**Bins.** The benchmark's own: 50 ms bins wholly inside one absent, non-crowd or
 crowd span and inside analysed time (`labeler.elm.labels.scored_bins`, the rule of
 `scripts/labeler/elmo_benchmark.bin_table`). Two sets:
 
@@ -24,11 +24,11 @@ crowd span and inside analysed time (`labeler.elm.labels.scored_bins`, the rule 
 `elm-ours` bin is called present when its mean event probability reaches the fold's
 threshold; ELM-O and the clock call a bin when a detected span touches it), AUROC and
 AUPRC of the continuous score (ELM-O's from its threshold sweep). Per kind: the
-share of crowd bins called, and the share of individual (single-ELM) spans a method
+share of crowd bins called, and the share of non-crowd present spans a method
 touches (for `elm-ours` the stretches where the same 50 ms mean reaches the same
 threshold are its detected spans), plus the share of absent spans it touches. The
 onset trace is scored separately: a detected onset (a peak of the onset head, the
-start of a detected span for ELM-O and the clock) matches a reviewed individual-ELM
+start of a detected span for ELM-O; genuine point-picker peaks for the clock) matches a reviewed non-crowd span
 start within a tolerance. 95 % intervals are percentile intervals over 1000 shot
 resamples, the same resamples for every method on a set, so differences are paired.
 """
@@ -37,18 +37,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import elmo_benchmark as elmo
-
 from labeler.config import Paths, git_sha
-from labeler.elm import compare, inputs, methods, onset, score, train
+from labeler.elm import compare, inputs, labels, methods, onset, score, swap, train
+from labeler.elm.clock_onsets import load_clock_onsets
 
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "elm" / "ours"
@@ -56,21 +53,24 @@ PUBLISHED_ELMO = {"tp": 2322, "fp": 443, "fn": 428, "tn": 3650}
 NAMES = compare.NAME
 
 
-def sweep_areas_boot(counts: np.ndarray, boot: np.ndarray):
-    """ELM-O's AUROC/AUPRC (and the same per resample) from its threshold sweep."""
-    strict = counts[:, ::-1]
-    point = elmo.sweep_areas(strict.sum(axis=0))
-    reps = np.array([elmo.sweep_areas(strict[d].sum(axis=0)) for d in boot])
-    return point, reps
-
-
 def evaluate_set(
-    name, shots, data, bins_of, cover_of, oof, elmo_spans, clock_spans, boot
+    name,
+    shots,
+    data,
+    bins_of,
+    cover_of,
+    oof,
+    elmo_spans,
+    clock_spans,
+    boot,
+    elmo_sweep=None,
+    clock_points=None,
 ) -> dict:
     parts: dict[str, list[score.ShotScore]] = {"ours": [], "clock": []}
     if elmo_spans is not None:
         parts["elmo"] = []
-    onsets: dict[str, dict[float, list]] = {m: {5.0: [], 10.0: []} for m in parts}
+    onset_methods = [m for m in parts if m != "clock" or clock_points is not None]
+    onsets = {m: {5.0: [], 10.0: []} for m in onset_methods}
     for shot in shots:
         d, bins, cover = data[shot], bins_of[shot], cover_of[shot]
         cov0, cov1 = cover.t_start_ms.to_numpy(float), cover.t_end_ms.to_numpy(float)
@@ -85,11 +85,17 @@ def evaluate_set(
             "ours": onset.peaks(oof.trace(shot)[1], oof.onset_threshold[shot])
             + inputs.GRID0_MS
             + 0.5,
-            "clock": c.t_start_ms.to_numpy(float),
         }
+        if clock_points is not None:
+            found["clock"] = clock_points[shot]
         if elmo_spans is not None:
             e = elmo_spans.get(shot, methods.span_frame([], []))
-            parts["elmo"].append(methods.span_part(d.spans, shot, bins, cover, e))
+            part = methods.span_part(d.spans, shot, bins, cover, e)
+            if elmo_sweep is not None:
+                part.score = swap.sweep_bin_scores(
+                    elmo_sweep[elmo_sweep.shot == shot], bins
+                )
+            parts["elmo"].append(part)
             found["elmo"] = e.t_start_ms.to_numpy(float)
         for m, f in found.items():
             for tol in onsets[m]:
@@ -105,38 +111,37 @@ def evaluate_set(
     }
     named = {NAMES[m]: plist for m, plist in parts.items()}
     out.update(methods.summarise_methods(named, boot, NAMES["ours"]))
-    paired = out["paired"]
     if elmo_spans is not None:
         counts = out["methods"][NAMES["elmo"]]["counts"]
         out["elmo_counts_match_published"] = all(
             counts[k] == v for k, v in PUBLISHED_ELMO.items()
         )
-        # ELM-O makes hard calls; its AUROC and AUPRC come from its eta threshold sweep
-        sweep = pd.read_csv(Path(elmo.DEFAULT_WORK) / "review_sweep.csv.gz")
-        cover_all = pd.concat(
-            [cover_of[s].assign(shot=s) for s in shots], ignore_index=True
-        )
-        table = pd.concat([data[s].spans for s in shots], ignore_index=True)
-        sweep_counts = elmo.sweep_counts(sweep, table, cover_all, list(shots))
-        (a, p), reps = sweep_areas_boot(sweep_counts, boot)
         elmo_res = out["methods"][NAMES["elmo"]]
-        elmo_res["point"]["auroc"], elmo_res["point"]["auprc"] = a, p
-        elmo_res["ci95"]["auroc"] = score._ci(reps[:, 0])
-        elmo_res["ci95"]["auprc"] = score._ci(reps[:, 1])
-        elmo_res["score_source"] = "eta threshold sweep (elmo_benchmark.sweep_counts)"
-        ours_reps = np.array([methods.areas(parts["ours"], d) for d in boot])
-        for i, metric in enumerate(("auroc", "auprc")):
-            ours_point = out["methods"][NAMES["ours"]]["point"][metric]
-            paired[f"{NAMES['ours']} - {NAMES['elmo']}: {metric}"] = {
-                "value": float(ours_point - elmo_res["point"][metric]),
-                "ci95": score._ci(ours_reps[:, i] - reps[:, i]),
-            }
+        elmo_res["score_source"] = "largest eta whose saved detections touch the bin"
     out["onset"] = {
         NAMES[m]: {
             f"tol_{int(tol)}ms": methods.onset_summary(np.array(rows), boot)
             for tol, rows in by_tol.items()
         }
         for m, by_tol in onsets.items()
+    }
+    starts = contributing = non_crowd_bins = 0
+    for shot in shots:
+        spans = data[shot].spans
+        bins = bins_of[shot]
+        rows = spans[spans.kind == "non_crowd"]
+        non_crowd_bins += int((bins.kind == "non_crowd").sum())
+        for r in rows.itertuples():
+            starts += int(
+                ((r.t_start >= bins.t0) & (r.t_start < bins.t0 + labels.BIN_MS)).any()
+            )
+            contributing += int(
+                ((bins.t0 >= r.t_start) & (bins.t0 + labels.BIN_MS <= r.t_end)).any()
+            )
+    out["non_crowd_bin_audit"] = {
+        "scored_bins": non_crowd_bins,
+        "spans_with_scored_bins": contributing,
+        "span_starts_inside_scored_bins": starts,
     }
     return out
 
@@ -156,6 +161,12 @@ def main(argv: list[str] | None = None) -> int:
 
     sets = compare.load_sets(paths, data)
     elmo_spans, clock_spans = compare.load_detected(paths)
+    elmo_sweep = compare.load_elmo_sweep(paths)
+    clock_points, clock_meta = load_clock_onsets(paths, shots_all, clock_spans)
+    if clock_meta["unavailable"]:
+        raise RuntimeError(
+            "Cannot compare clock onsets: " + str(clock_meta["unavailable"])
+        )
     bes, full = sets["bes73"], sets["all119"]
 
     record = {
@@ -173,6 +184,12 @@ def main(argv: list[str] | None = None) -> int:
             r["fold"]: r["onset_threshold"] for r in oof.record["fold_records"]
         },
         "config": oof.record["config"],
+        "label_audit": labels.span_length_summary(
+            pd.concat([data[s].spans for s in shots_all], ignore_index=True)
+        ),
+        "onset_reference_note": "Reviewed non-crowd span starts, not independently "
+        "verified per-ELM onset times; crowds have no non-crowd onset labels.",
+        "clock_onset_source": clock_meta,
         "sets": {},
     }
     boot_bes = score.draws(len(bes.shots))
@@ -186,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         elmo_spans,
         clock_spans,
         boot_bes,
+        elmo_sweep=elmo_sweep,
+        clock_points=clock_points,
     )
     boot_all = score.draws(len(full.shots))
     record["sets"]["all119"] = evaluate_set(
@@ -198,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         None,
         clock_spans,
         boot_all,
+        clock_points=clock_points,
     )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))

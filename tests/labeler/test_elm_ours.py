@@ -74,7 +74,7 @@ def test_review_table_kinds(tmp_path):
     t = labels.review_table(path)
     assert t.kind.tolist() == [
         "absent",
-        "individual",
+        "non_crowd",
         "crowd",
         "uncertain",
         "not_observable",
@@ -89,7 +89,7 @@ def test_dense_targets_ignore_uncertain_and_mask_onsets_in_crowds():
     spans = _table(
         [
             (0.0, 100.0, "absent"),
-            (100.0, 110.0, "individual"),
+            (100.0, 110.0, "non_crowd"),
             (110.0, 200.0, "uncertain"),
             (200.0, 300.0, "crowd"),
         ]
@@ -111,7 +111,7 @@ def test_scored_bins_follow_the_elmo_rule():
     spans = _table(
         [
             (0.0, 120.0, "absent"),
-            (120.0, 130.0, "individual"),  # too short for a whole bin
+            (120.0, 130.0, "non_crowd"),  # too short for a whole bin
             (130.0, 400.0, "crowd"),
             (400.0, 600.0, "uncertain"),
             (600.0, 800.0, "absent"),  # under half analysed
@@ -251,7 +251,7 @@ def _shot(shot, kinds):
 
 def test_folds_partition_shots_and_balance_kinds():
     data = {
-        s: _shot(s, ["absent", "crowd"] if s % 3 else ["absent", "individual"])
+        s: _shot(s, ["absent", "crowd"] if s % 3 else ["absent", "non_crowd"])
         for s in range(30)
     }
     folds = train.deal_folds(data, 5, seed=1)
@@ -300,7 +300,7 @@ def test_span_counts_follow_the_benchmark_rule():
     review = _review(
         [
             (0.0, 100.0, "absent"),
-            (100.0, 130.0, "individual"),
+            (100.0, 130.0, "non_crowd"),
             (130.0, 400.0, "crowd"),
             (400.0, 500.0, "absent"),  # nothing analysed here
         ]
@@ -309,14 +309,14 @@ def test_span_counts_follow_the_benchmark_rule():
     spans = methods.span_frame([20.0, 110.0], [30.0, 120.0])
     got = methods.span_counts(spans, cover, review)
     assert got == {
-        "individual_spans": 1,
-        "individual_span_hit": 1,
+        "non_crowd_spans": 1,
+        "non_crowd_span_hit": 1,
         "absent_spans": 1,
         "absent_span_alarm": 1,
         "crowd_spans": 1,
     }
     none = methods.span_counts(methods.span_frame([], []), cover, review)
-    assert none["individual_span_hit"] == 0 and none["absent_span_alarm"] == 0
+    assert none["non_crowd_span_hit"] == 0 and none["absent_span_alarm"] == 0
 
 
 def test_row_part_reads_the_row_that_summarises_the_bin():

@@ -7,10 +7,10 @@ The model is the labeler's refit of the lab's ELM time-to-event Deep Survival Ma
 (`labeler.models.d3d_elm_time_to_event_dsm`, columns without BES). Three readings,
 described in `labeler.elm.dsm`:
 
-1. **Own target** (`own_target`): the published model on the test rows of its own
+1. **Own target** (`own_target`): the limited-input refit on its own test rows,
    split, AUROC at 5, 10, 20 and 50 ms of "an ELM within `h` ms" with 95 % shot
    intervals; the point values are checked against the training record's.
-2. **elm-dsm, as published**: its 50 ms risk at the row before a bin, read as the bin's
+2. **DSM refit, limited inputs (60 of the original 124)**: its 50 ms risk before a bin,
    score ("an ELM starts in the next 50 ms"). The model is not retrained; the hard call
    uses the threshold that maximises F1 on the fold's inner-validation shots (the same
    shots `elm-ours` used), applied to the fold's held-out shots.
@@ -18,7 +18,7 @@ described in `labeler.elm.dsm`:
    with one logit head, trained on the reviewed spans to say whether the 50 ms ending
    at a row is present, on the same shot-grouped folds and inner-validation shots as
    `elm-ours`, a threshold per fold from its inner-validation shots. A variant starts
-   from the published embedding (`elm-dsm-detect-init`).
+   from the limited-input refit's embedding (`elm-dsm-detect-init`).
 
 All are compared with `elm-ours`, ELM-O (where it runs) and the ELM clock on common
 bins (`labeler.elm.compare`); no cohort test shot is read. The fitted scores are saved
@@ -28,6 +28,7 @@ under `$LABELER_ROOT/round4/elm/dsm/` so the reference-swap script reuses them.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -36,7 +37,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from labeler.config import Paths, git_sha
+from labeler.config import Paths, git_sha, sha256_of
 from labeler.elm import compare, dsm, methods, score, train
 from labeler.models.d3d_elm_time_to_event_dsm import spec
 from labeler.models.runners import dsm_pickle
@@ -98,6 +99,11 @@ def fit_detectors(rows, data, oof, graph, cfg, log):
                     "val_f1": best["val_f1"],
                     "train_shots": len(info["train"]),
                     "inner_val_shots": len(info["inner_val"]),
+                    "train_shot_ids": info["train"],
+                    "inner_val_shot_ids": info["inner_val"],
+                    "test_shot_ids": info["test"],
+                    "seed": fold_cfg.seed,
+                    "history": history,
                 }
             )
             log(f"{NAME[key]} fold {k}: {records[-1]}")
@@ -106,7 +112,7 @@ def fit_detectors(rows, data, oof, graph, cfg, log):
 
 
 def published_thresholds(rows, risk, data, oof):
-    """Per shot: the fold's F1-maximising threshold of the published 50 ms risk on the
+    """Per shot: the fold's F1-maximising threshold of the refit's 50 ms risk on the
     fold's inner-validation bins (the forecast row of each bin), and fold records."""
     thr, records = {}, []
     for k in range(len(oof.record["folds"])):
@@ -122,13 +128,25 @@ def published_thresholds(rows, risk, data, oof):
         t, f1 = score.best_threshold(np.concatenate(truth), np.concatenate(sc))
         for s in info["test"]:
             thr[s] = float(t)
-        records.append({"fold": k, "threshold": float(t), "val_f1": float(f1)})
+        records.append(
+            {
+                "fold": k,
+                "display_name": dsm.DISPLAY_NAME,
+                "threshold": float(t),
+                "val_f1": float(f1),
+                "inner_val_shots": info["inner_val"],
+                "test_shots": info["test"],
+                "val_risk_quantiles": dsm.risk_quantiles(np.concatenate(sc)),
+            }
+        )
     return thr, records
 
 
-def evaluate_set(sdef, data, oof, dscores, elmo_spans, clock_spans, boot) -> dict:
+def evaluate_set(
+    sdef, data, oof, dscores, elmo_spans, clock_spans, boot, elmo_sweep=None
+) -> dict:
     parts, bins_of = compare.common_parts(
-        sdef, data, oof, dscores, elmo_spans, clock_spans
+        sdef, data, oof, dscores, elmo_spans, clock_spans, elmo_sweep
     )
     n_before = sum(len(sdef.bins[s].t0) for s in sdef.shots)
     n_after = sum(len(b.t0) for b in bins_of.values())
@@ -140,7 +158,19 @@ def evaluate_set(sdef, data, oof, dscores, elmo_spans, clock_spans, boot) -> dic
         "bins_before_restriction": n_before,
     }
     out.update(methods.summarise_methods(parts, boot, NAME["ours"]))
-    # the published model's other horizons, read the same way (continuous score only)
+    for name, row in out["methods"].items():
+        row["display_name"] = compare.DISPLAY_NAME.get(name, name)
+        if row["point"].get("recall", 0) >= 0.99:
+            row["f1_degenerate_high_recall"] = True
+    out["risk_quantiles_scored_forecast_bins"] = dsm.risk_quantiles(
+        np.concatenate(
+            [
+                dscores.risk[s][dsm.row_index(bins_of[s], compare.FORECAST_LAG_ROWS), -1]
+                for s in sdef.shots
+            ]
+        )
+    )
+    # The refit's other survival horizons (continuous score only).
     horizons = {}
     for j, h in enumerate(dsm.HORIZONS_MS):
         alt = []
@@ -162,16 +192,16 @@ def evaluate_set(sdef, data, oof, dscores, elmo_spans, clock_spans, boot) -> dic
     out["published_horizons"] = horizons
     out["by_co2_served"] = by_co2(sdef, parts, dscores)
     if sdef.has_elmo:
-        out["note_elmo"] = (
-            "elm-elmo's AUROC/AUPRC (threshold sweep) are not restricted to these "
-            "bins; its hard-call metrics are"
+        out["elmo_score_source"] = (
+            "maximum hit-eta threshold of an overlapping swept detection on each "
+            "common bin; hard calls retain the paper setting"
         )
     return out
 
 
 def by_co2(sdef, parts, dscores) -> dict:
     """The DSM methods and `elm-ours` on the shots whose CO2 density was served and on
-    those where it was not (mean-filled), the model's most informative missing input."""
+    those where it was not (mean-filled)."""
     served = [
         i
         for i, s in enumerate(sdef.shots)
@@ -189,7 +219,11 @@ def by_co2(sdef, parts, dscores) -> dict:
         for name in (NAME["ours"], NAME["dsm"], NAME["detect"]):
             sub = [parts[name][i] for i in idx]
             res = score.summarise(sub, boot)
-            out[tag][name] = {"point": res["point"], "ci95": res["ci95"]}
+            out[tag][name] = {
+                "display_name": compare.DISPLAY_NAME[name],
+                "point": res["point"],
+                "ci95": res["ci95"],
+            }
     return out
 
 
@@ -199,11 +233,104 @@ def row_table(rows) -> dict:
         out[str(s)] = {
             "usable_rows": int(r.usable.sum()),
             "in_filter_rows": int((r.usable & r.in_filter).sum()),
+            "outside_training_filter_usable_rows": int((r.usable & ~r.in_filter).sum()),
+            "outside_training_filter_usable_row_share": float(
+                (r.usable & ~r.in_filter).sum() / r.usable.sum()
+            ) if r.usable.any() else None,
             "missing_features": list(r.missing),
             "archive_features": "archive" in set(r.resolvers.values()),
+            "resolvers": r.resolvers,
             "mean_filled_columns": len(r.filled),
+            "mean_filled_column_names": list(r.filled),
+            "rows_sha256": dsm.rows_digest(r),
+            "source_signature": r.source_signature,
         }
     return out
+
+
+def provenance(paths, work, oof, rows):
+    files = {
+        "script": Path(__file__),
+        "dsm_library": REPO / "src/labeler/elm/dsm.py",
+        "compare_library": REPO / "src/labeler/elm/compare.py",
+        "review_labels": paths.label_tables / "edge_localized_mode/review/labels.csv",
+        "cohort": paths.catalog / "cohort.csv",
+        "refit_checkpoint": paths.models / dsm.SLUG / spec.ARTIFACTS[0],
+        "normalization": paths.models / dsm.SLUG / spec.ARTIFACTS[1],
+        "fold_run": oof.dir / "run.json",
+    }
+    for k in range(len(oof.record["folds"])):
+        files[f"fold{k}"] = oof.dir / f"fold{k}/fold.json"
+    return {
+        "producing_git": git_sha(full=True),
+        "files": {
+            name: {"path": str(path), "sha256": sha256_of(path)}
+            for name, path in files.items()
+        },
+        "rows_sha256": {str(s): dsm.rows_digest(r) for s, r in rows.items()},
+        "score_files": {
+            name: {"path": str(work / name), "sha256": sha256_of(work / name)}
+            for name in (
+                "published_risk.npz",
+                "scores_elm-dsm-detect.npz",
+                "scores_elm-dsm-detect-init.npz",
+                "thresholds.json",
+            )
+        },
+    }
+
+
+def annotate_prefetch_record():
+    """Accurately label the retained pre-fetch result; leave all metrics unchanged."""
+    path = OUT / "prefetch_evaluation.json"
+    if not path.exists():
+        return
+    old = json.loads(path.read_text())
+    if "row_diagnostics" in old:
+        return
+    old["display_name"] = dsm.DISPLAY_NAME
+    old["method_display_names"] = compare.DISPLAY_NAME
+    old["record_note"] = (
+        "Archived pre-Ip/Bt-fetch limited-input refit evaluation; original metric "
+        "values retained. Historical individual-kind metrics mean non-crowd spans."
+    )
+    old["own_target"]["display_name"] = dsm.DISPLAY_NAME
+    for subset in old["sets"].values():
+        for name, res in subset["methods"].items():
+            res["display_name"] = compare.DISPLAY_NAME.get(name, name)
+    baseline = Paths.from_env().root / "round4/elm/dsm/prefetch_baseline"
+    old_rows = {int(s): dsm.load_rows(int(s), baseline / f"{s}.npz") for s in old["rows"]}
+    if all(r is not None for r in old_rows.values()):
+        with np.load(baseline / "published_risk.npz") as z:
+            old_risk = {int(k[1:]): z[k] for k in z.files}
+        old["row_diagnostics"] = dsm.row_diagnostics(old_rows, old_risk)
+    old["archived_score_store"] = str(baseline)
+    path.write_text(json.dumps(old, indent=1))
+
+
+def verify_rescore(previous: dict, current: dict) -> dict:
+    """Confirm all scientific results survive reload of the fitted score artifacts."""
+    keys = (
+        "own_target", "published_thresholds", "detector_config", "detectors",
+        "rows", "row_diagnostics", "sets",
+    )
+    checks = {}
+    for key in keys:
+        old = json.dumps(previous[key], sort_keys=True)
+        new = json.dumps(current[key], sort_keys=True)
+        checks[key] = {
+            "identical": old == new,
+            "fit_result_sha256": hashlib.sha256(old.encode()).hexdigest(),
+            "rescore_result_sha256": hashlib.sha256(new.encode()).hexdigest(),
+        }
+    return {
+        "display_name": dsm.DISPLAY_NAME,
+        "fit_producing_git": previous["git"],
+        "rescore_git": current["git"],
+        "fit_used_rescore_flag": previous["rescored_from_saved_scores"],
+        "exact_results_reproduced": all(c["identical"] for c in checks.values()),
+        "checks": checks,
+    }
 
 
 def main(argv=None) -> int:
@@ -217,6 +344,7 @@ def main(argv=None) -> int:
         help="score the saved fits (`round4/elm/dsm/`) again without training",
     )
     args = ap.parse_args(argv)
+    annotate_prefetch_record()
     paths = Paths.from_env()
     work = paths.root / "round4" / "elm" / "dsm"
     torch.set_num_threads(4)
@@ -234,7 +362,7 @@ def main(argv=None) -> int:
         fits = json.loads(fits_json.read_text())
         dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
     else:
-        print("own-target scoring of the published model", flush=True)
+        print("own-target scoring of " + dsm.DISPLAY_NAME, flush=True)
         own = own_target(paths)
         overlap = {
             k: sorted(set(shots) & set(v)) for k, v in own["split_shots"].items()
@@ -253,7 +381,12 @@ def main(argv=None) -> int:
             dscores.scores[name] = scores
             dscores.threshold[name] = thr
         dscores.save(work)
+        # Evaluate the same serialized arrays as --rescore, including risk precision.
+        dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
         fits = {
+            "display_name": dsm.DISPLAY_NAME,
+            "method_display_names": compare.DISPLAY_NAME,
+            "provenance": provenance(paths, work, oof, rows),
             "own_target": own,
             "published_thresholds": pub_records,
             "detector_config": cfg.__dict__,
@@ -267,27 +400,51 @@ def main(argv=None) -> int:
 
     sets = compare.load_sets(paths, data)
     elmo_spans, clock_spans = compare.load_detected(paths)
+    elmo_sweep = compare.load_elmo_sweep(paths)
     record = {
-        "git": git_sha(),
+        "git": git_sha(full=True),
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "run": args.run,
         "reference": "expert-reviewed spans (review/labels.csv)",
         "cohort_test_shots_used": 0,
         "rescored_from_saved_scores": bool(args.rescore),
+        "display_name": dsm.DISPLAY_NAME,
+        "method_display_names": compare.DISPLAY_NAME,
+        "provenance": fits.get("provenance"),
+        "prefetch_evaluation": str(OUT / "prefetch_evaluation.json"),
+        "model_context": {
+            "original_input_columns": 124,
+            "refit_input_columns": dsm.N_COLUMNS,
+            "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
+            "legacy_training_source": "Hiro ELM survival/onset labels on its original split",
+            "serving_changes": "25 ms rows, mean-filled missing inputs, |z| clipped at 10",
+            "scope": "limited-input refit; no original 124-input checkpoint evaluated",
+        },
         "own_target": own,
         "published_thresholds": fits["published_thresholds"],
         "detector_config": fits["detector_config"],
         "detectors": fits["detectors"],
         "rows": row_table(rows),
+        "row_diagnostics": dsm.row_diagnostics(rows, dscores.risk),
         "sets": {},
     }
     for name, sdef in sets.items():
         boot = score.draws(len(sdef.shots))
         record["sets"][name] = evaluate_set(
-            sdef, data, oof, dscores, elmo_spans, clock_spans, boot
+            sdef, data, oof, dscores, elmo_spans, clock_spans, boot, elmo_sweep
         )
     args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "evaluation.json").write_text(json.dumps(record, indent=1))
+    trained_record = args.out_dir / "evaluation_trained.json"
+    if not args.rescore:
+        trained_record.write_text(json.dumps(record, indent=1))
+    elif trained_record.exists():
+        repeated = verify_rescore(json.loads(trained_record.read_text()), record)
+        repeated["fit_record"] = str(trained_record)
+        repeated["rescore_record"] = str(args.out_dir / "evaluation.json")
+        (args.out_dir / "reproducibility.json").write_text(json.dumps(repeated, indent=1))
+        if not repeated["exact_results_reproduced"]:
+            raise RuntimeError("DSM rescore differs from the no-rescore evaluation")
     for k, v in own["horizons"].items():
         print("own target", k, round(v["auroc"], 4), v["auroc_ci95"])
     for name, s in record["sets"].items():

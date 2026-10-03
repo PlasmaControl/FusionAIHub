@@ -28,7 +28,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import Paths
-from . import dsm, inputs, labels, methods, prepare, score
+from . import dsm, inputs, labels, methods, prepare, score, swap
 from .train import ShotData
 
 ELMO_DIR = Path("benchmarks/elm/elmo")
@@ -45,9 +45,17 @@ NAME = {
     "elmo": "elm-elmo",
     "clock": "elm-clock",
 }
+DISPLAY_NAME = {
+    NAME["ours"]: "elm-ours",
+    NAME["dsm"]: dsm.DISPLAY_NAME,
+    NAME["detect"]: dsm.DISPLAY_NAME + ", detection objective",
+    NAME["init"]: dsm.DISPLAY_NAME + ", detection objective, refit initialization",
+    NAME["elmo"]: "ELM-O",
+    NAME["clock"]: "ELM clock",
+}
 
 
-#: the two detection retrains of the DSM (from scratch; from the published embedding)
+#: the two detection retrains of the DSM (from scratch; from the refit embedding)
 VARIANTS = (NAME["detect"], NAME["init"])
 
 
@@ -127,7 +135,7 @@ def load_detected(paths: Paths):
 
 @dataclass
 class DsmScores:
-    """`elm-dsm` on the reviewed shots: rows, the published risk, detector scores."""
+    """Limited-input DSM refit: rows, survival risk, detection-objective scores."""
 
     rows: dict[int, dsm.Rows]
     risk: dict[int, np.ndarray]  # (240, 4): published risk at 5, 10, 20, 50 ms
@@ -153,9 +161,32 @@ class DsmScores:
                 }
             )
         )
+        (directory / "row_cache_manifest.json").write_text(
+            json.dumps(
+                {
+                    "display_names": DISPLAY_NAME,
+                    "rows_sha256": {
+                        str(s): dsm.rows_digest(r)
+                        for s, r in self.rows.items()
+                        if r is not None
+                    },
+                },
+                indent=1,
+            )
+        )
 
     @classmethod
     def load(cls, directory: Path, rows: dict[int, dsm.Rows], variants=()):
+        manifest = directory / "row_cache_manifest.json"
+        actual = {str(s): dsm.rows_digest(r) for s, r in rows.items() if r is not None}
+        saved = (
+            json.loads(manifest.read_text())["rows_sha256"] if manifest.exists() else {}
+        )
+        if actual != saved:
+            raise ValueError(
+                "DSM saved scores were fitted with different or unrecorded rows; "
+                "rerun elm_dsm_evaluate.py without --rescore"
+            )
         with np.load(directory / "published_risk.npz") as z:
             risk = {int(k[1:]): z[k] for k in z.files}
         scores = {}
@@ -227,6 +258,7 @@ def common_parts(
     dscores: DsmScores,
     elmo_spans: dict,
     clock_spans: dict,
+    elmo_sweep: pd.DataFrame | None = None,
 ):
     """`(parts by method name, bins by shot)` over the set's shots, common bins."""
     parts: dict[str, list[score.ShotScore]] = {}
@@ -242,7 +274,16 @@ def common_parts(
             elmo_spans if sdef.has_elmo else None,
             clock_spans,
         )
+        if sdef.has_elmo and elmo_sweep is not None:
+            one[NAME["elmo"]].score = swap.sweep_bin_scores(
+                elmo_sweep[elmo_sweep.shot == shot], bins
+            )
         for name, part in one.items():
             parts.setdefault(name, []).append(part)
         bins_of[shot] = bins
     return parts, bins_of
+
+
+def load_elmo_sweep(paths: Paths) -> pd.DataFrame:
+    """Saved nested eta detections, for identical-bin rank metrics."""
+    return pd.read_csv(paths.root / ELMO_DIR / "review_sweep.csv.gz")

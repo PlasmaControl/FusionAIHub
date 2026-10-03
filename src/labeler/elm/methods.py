@@ -58,7 +58,7 @@ def span_counts(
 
     `spans` (columns `t_start_ms`, `t_end_ms`) are the method's detected spans, sorted
     and not overlapping; `shot_spans` the shot's review rows. A labelled span with less
-    than half its length analysed (`cover`) is skipped; an individual or absent span
+    than half its length analysed (`cover`) is skipped; an non-crowd or absent span
     counts as hit when any detected span touches it.
     """
     starts = spans.t_start_ms.to_numpy(float)
@@ -89,8 +89,8 @@ def span_counts(
         elif row.kind == "crowd":
             out["crowd_spans"] += 1
         else:
-            out["individual_spans"] += 1
-            out["individual_span_hit"] += int(hit)
+            out["non_crowd_spans"] += 1
+            out["non_crowd_span_hit"] += int(hit)
     return out
 
 
@@ -102,9 +102,9 @@ def inside(x_ms, cov0, cov1) -> np.ndarray:
 
 
 def onset_counts(found_ms, shot_spans, onset_mask, n_ms, cov0, cov1, tol):
-    """`(tp, fp, fn)` of detected onsets against the shot's reviewed individual starts,
+    """`(tp, fp, fn)` of detected onsets against the shot's reviewed non-crowd starts,
     counted inside analysed time only."""
-    ind = shot_spans[shot_spans.kind == "individual"].t_start.to_numpy(float)
+    ind = shot_spans[shot_spans.kind == "non_crowd"].t_start.to_numpy(float)
     truth = ind[inside(ind, cov0, cov1)]
     found = np.asarray(found_ms, dtype=float)
     found = found[inside(found, cov0, cov1)]
@@ -256,7 +256,7 @@ PAIRED_METRICS = (
     "recall",
     "false_alarm_bin_rate",
     "crowd_bin_recall",
-    "individual_span_recall",
+    "non_crowd_span_touch_recall",
     "absent_span_alarm_rate",
 )
 
@@ -270,8 +270,32 @@ def summarise_methods(
     difference of AUROC or AUPRC is given where both methods have a continuous score.
     """
     out: dict = {"methods": {}, "paired": {}}
+    from .compare import DISPLAY_NAME
+
     for name, plist in parts.items():
         out["methods"][name] = score.summarise(plist, boot)
+        out["methods"][name]["display_name"] = DISPLAY_NAME.get(name, name)
+        out["methods"][name]["degenerate_f1"] = bool(
+            out["methods"][name]["point"]["recall"] >= 0.99
+        )
+    rule_parts = []
+    for p in parts[reference]:
+        spans = dict(p.spans)
+        spans["non_crowd_span_hit"] = spans.get("non_crowd_spans", 0)
+        spans["absent_span_alarm"] = spans.get("absent_spans", 0)
+        rule_parts.append(
+            score.ShotScore(
+                p.shot,
+                p.truth,
+                p.kind,
+                np.ones(len(p.truth), bool),
+                np.zeros(len(p.truth)),
+                spans,
+            )
+        )
+    out["methods"]["always present"] = score.summarise(rule_parts, boot)
+    out["methods"]["always present"]["display_name"] = "Always-present rule"
+    out["methods"]["always present"]["degenerate_f1"] = True
     ref = parts[reference]
     for name, plist in parts.items():
         if name == reference:

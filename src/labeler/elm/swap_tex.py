@@ -18,9 +18,19 @@ from . import compare
 NAME = compare.NAME
 ROWS = (
     (NAME["ours"], "elm-ours"),
-    (NAME["elmo"], "elm-elmo"),
-    (NAME["dsm"], "elm-dsm (as published)"),
-    (NAME["detect"], "elm-dsm (detection)"),
+    (NAME["elmo"], "ELM-O"),
+    (
+        NAME["dsm"],
+        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124)}",
+    ),
+    (
+        NAME["detect"],
+        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124), detection}",
+    ),
+    (
+        NAME["init"],
+        r"\shortstack[l]{DSM refit, limited inputs\\(60 of the original 124), detection init}",
+    ),
     (NAME["clock"], "elm-clock"),
 )
 ALWAYS = "always present"
@@ -38,6 +48,8 @@ def cell(point: float, ci, digits=3, ci_digits=2) -> str:
 def metric_cell(res: dict, metric: str) -> str:
     if metric not in res["point"]:
         return "--"
+    if metric == "f1" and res["point"].get("recall", 0) >= 0.99:
+        return r"\textit{degenerate}"
     return cell(res["point"][metric], res.get("ci95", {}).get(metric))
 
 
@@ -84,10 +96,7 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
 
 def prf(res: dict) -> str:
     p = res["point"]
-    return (
-        f"{p['precision']:.3f} & {p['recall']:.3f} & "
-        f"{cell(p['f1'], res.get('ci95', {}).get('f1'), 3, 3)}"
-    )
+    return f"{p['precision']:.3f} & {p['recall']:.3f} & {metric_cell(res, 'f1')}"
 
 
 def full_table(res: dict, record: dict, source: str) -> str:
@@ -152,18 +161,25 @@ def write(
     out_dir.mkdir(parents=True, exist_ok=True)
     labels = ("dense labels", "legacy onset table")
     for tag, name in (
-        ("overlap", "table_elm_benchmark.tex"),
-        ("overlap_bes", "table_elm_benchmark_bes.tex"),
+        ("overlap", "table_elm_swap_all.tex"),
+        ("overlap_bes", "table_elm_swap_bes.tex"),
     ):
         res = record["swap"].get(tag)
         if not res or "finding_1" not in res:
             continue
+        caption = swap_caption(res)
         (out_dir / name).write_text(
-            benchmark_table(res, "reviewed", "legacy", labels, record, source)
+            wrap_table(
+                benchmark_table(res, "reviewed", "legacy", labels, record, source),
+                caption,
+                f"tab:elm-swap-{tag}",
+            )
         )
         if tag == "overlap":
             (out_dir / "table_elm_swap_full.tex").write_text(
-                full_table(res, record, source)
+                wrap_table(
+                    full_table(res, record, source), caption, "tab:elm-swap-full"
+                )
             )
     for tag, res in record["proxy"].items():
         text = benchmark_table(
@@ -174,4 +190,76 @@ def write(
             record,
             source,
         )
-        (out_dir / f"table_elm_proxy_{tag}.tex").write_text(text)
+        caption = (
+            f"Detector-derived proxy comparison: {res['shots']} shots, "
+            f"{res['reviewed']['bins']} identical 50 ms interior bins with DSM rows. "
+            "The producer is excluded; the proxy is not an independent reference. "
+            + interval_caption()
+        )
+        (out_dir / f"table_elm_proxy_{tag}.tex").write_text(
+            wrap_table(text, caption, f"tab:elm-proxy-{tag}")
+        )
+    panels = []
+    descriptions = []
+    for tag in ("overlap", "overlap_bes"):
+        res = record["swap"][tag]
+        panels.append(
+            benchmark_table(res, "reviewed", "legacy", labels, record, source)
+        )
+        descriptions.append(
+            f"{'All overlap' if tag == 'overlap' else 'BES subset'}: "
+            f"{res['n_shots']} shots/{res['reviewed']['bins']} bins"
+        )
+    audit = record["interval_audit"]
+    full = audit["known_review_majority"]
+    uncertain = audit["excluded_review_states"]["uncertain"]
+    caption = (
+        "ELM reference swap, " + "; ".join(descriptions) + ". "
+        "Identical predictions and thresholds under reviewed interval occupancy "
+        "and legacy onset-bin presence; bins lie wholly inside one known review "
+        "span and analysed time with DSM rows. This restriction deviates from "
+        "the AE audit. All-covered majority audit: "
+        f"{audit['legacy_covered_bins']} bins, {full['bins']} known-review bins, "
+        f"$|M|={full['M']}$/, $|P|={full['P']}$/; "
+        f"{uncertain['bins']} review-uncertain bins "
+        f"({uncertain['legacy_present_bins']} legacy-positive), reported separately. "
+        "M/P measure occupancy/onset-bin disagreement, not verified omitted ELMs. "
+        + interval_caption()
+    ).replace("$/", "$")
+    (out_dir / "table_elm_swap.tex").write_text(
+        wrap_table("\n\\medskip\n".join(panels), caption, "tab:elm-swap")
+    )
+
+
+def interval_caption() -> str:
+    return (
+        "Brackets are 95\\% percentile intervals from 1,000 shot-bootstrap "
+        "resamples, shared across methods and references. ELM-O AUROC uses the "
+        "saved nested eta sweep on these exact bins; the clock has hard calls only. "
+        "DSM refit, limited inputs (60 of the original 124), was trained on "
+        "Hiro's legacy onset source; detection variants use reviewed spans. "
+        "F1 is marked degenerate when recall $\\geq0.99$."
+    )
+
+
+def swap_caption(res: dict) -> str:
+    return (
+        f"ELM reference swap: {res['n_shots']} shots/{res['reviewed']['bins']} "
+        "identical 50 ms bins wholly inside known review spans and analysed time, "
+        "with DSM rows. Reviewed interval occupancy differs from legacy onset-bin "
+        "presence; this restriction deviates from the AE all-frame audit. "
+        + interval_caption()
+    )
+
+
+def wrap_table(body: str, caption: str, label: str) -> str:
+    return (
+        "\\begin{table*}[t]\n\\centering\n\\small\n"
+        + body
+        + "\\caption{"
+        + caption
+        + "}\n\\label{"
+        + label
+        + "}\n"
+        + "\\end{table*}\n"
+    )

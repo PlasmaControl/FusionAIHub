@@ -12,14 +12,14 @@ labelled windows.
 
 **2. Conversion.** Hiro's table is converted to the scored bins as described in
 `labeler.elm.swap`; the bins are those of `elm_dsm_evaluate.py` (50 ms bins wholly
-inside one reviewed absent, individual or crowd span, in analysed time, with the DSM's
+inside one reviewed absent, non-crowd or crowd span, in analysed time, with the DSM's
 rows), so every method sits on the same bins under both references.
 
 **3. Finding 1.** What the legacy table misses: `|M|` (review-present bins it marks
 absent), `|P|` (legacy-present bins the review marks absent), and its recall and
 precision against the review.
 
-**4. Finding 2.** `elm-ours`, `elm-dsm` (as published and as a detector), `elm-elmo`
+**4. Finding 2.** `elm-ours`, `elm-dsm` (DSM refit, limited inputs (60 of the original 124) and as a detector), `elm-elmo`
 and `elm-clock` against both references: AUROC and F1 with 95 % shot-bootstrap
 intervals, the order each reference gives, and whether the order changes. The legacy
 table covers few reviewed shots, so every interval is wide; the JSON says so with the
@@ -36,6 +36,7 @@ reference reorders methods when the shots are many; they are not legacy annotati
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,6 +54,131 @@ NAME = compare.NAME
 ALWAYS = "always present"
 ORACLE = "expert dense labels"
 LEGACY = "legacy table"
+
+
+def interval_coverage_audit(table, data, shots) -> dict:
+    """AE-style all-covered-bin audit, explicitly partitioning unknown review time."""
+    rows, per_shot, excluded = [], {}, []
+    total_bins = total_positive = 0
+    for shot in shots:
+        spans = data[shot].spans
+        bins, legacy, status = swap.coverage_bins(table, shot, spans)
+        known = bins.truth >= 0
+        c = swap.agreement_counts(bins.truth[known], bins.kind[known], legacy[known])
+        rows.append(c)
+        unknown = [
+            {
+                "shot": int(shot),
+                "t_start_ms": float(t),
+                "t_end_ms": float(t + labels.BIN_MS),
+                "review_status": str(st),
+                "legacy_present": bool(lp),
+            }
+            for t, st, lp in zip(bins.t0[~known], status[~known], legacy[~known])
+        ]
+        excluded.extend(unknown)
+        positive = table[(table.shot == shot) & (table.category == 1)]
+        per_shot[str(shot)] = {
+            "review_window_ms": [float(spans.t_start.min()), float(spans.t_end.max())],
+            "legacy_covered_bins": len(bins.t0),
+            "legacy_present_bins": int(legacy.sum()),
+            "counts": dict(zip(swap.AGREEMENT_NAMES, map(int, c), strict=True)),
+            "excluded_review_bins": unknown,
+            "review_spans": spans[["t_start", "t_end", "kind"]].to_dict("records"),
+            "legacy_positive_extent_ms": [
+                float(positive.t_start.min()),
+                float(positive.t_end.max()),
+            ],
+        }
+        total_bins += len(bins.t0)
+        total_positive += int(legacy.sum())
+    by_status = {}
+    for state in ("uncertain", "not_observable", "mixed_or_unlabelled"):
+        selected = [r for r in excluded if r["review_status"] == state]
+        by_status[state] = {
+            "bins": len(selected),
+            "legacy_present_bins": sum(r["legacy_present"] for r in selected),
+            "bin_list": selected,
+        }
+    return {
+        "definition": "All legacy-covered 50 ms bins intersecting the review "
+        "window; >=25 ms majority rule, no DSM/diagnostic restriction. M/P compare "
+        "onset-bin presence with reviewed interval occupancy, not physical ELM omissions.",
+        "n_shots": len(shots),
+        "shots": shots,
+        "legacy_covered_bins": total_bins,
+        "legacy_present_bins": total_positive,
+        "known_review_majority": swap.agreement_summary(
+            np.stack(rows), score.draws(len(shots))
+        ),
+        "excluded_review_states": by_status,
+        "per_shot": per_shot,
+    }
+
+
+def onset_agreement_audit(paths, table, data, shots) -> dict:
+    """Original positive onset samples, separately compared to span starts."""
+    from labeler.events.source_formatters import read_elm
+
+    raw = paths.label_tables / "edge_localized_mode" / "raw"
+    files = [raw / f"elm_labels_dict{s}.pkl" for s in ("", "_wpqh")]
+    onsets = {s: t[y == 1] for s, t, y in read_elm(*files) if s in set(shots)}
+    per_shot = {}
+    for s in shots:
+        bins, legacy, _ = swap.coverage_bins(table, s, data[s].spans)
+        per_shot[str(s)] = {
+            "onset_bins_match_legacy": bool(
+                np.array_equal(swap.onset_truth(onsets[s], bins), legacy)
+            ),
+            "legacy_onsets_in_review_window_ms": onsets[s][
+                (onsets[s] >= data[s].spans.t_start.min())
+                & (onsets[s] < data[s].spans.t_end.max())
+            ].tolist(),
+            "by_tolerance": {
+                f"tol_{k}ms": swap.start_agreement(data[s].spans, onsets[s], k)
+                for k in (5, 10, 50)
+            },
+        }
+    summary = {}
+    boot = score.draws(len(shots))
+    for k in (5, 10, 50):
+        key = f"tol_{k}ms"
+        summary[key] = {}
+        for kind in ("non_crowd", "crowd"):
+            counts = np.array(
+                [
+                    [
+                        per_shot[str(s)]["by_tolerance"][key][kind][col]
+                        for col in ("matched", "spans")
+                    ]
+                    for s in shots
+                ]
+            )
+            hit, n = counts.sum(axis=0)
+            drawn = counts[boot].sum(axis=1)
+            share = np.divide(
+                drawn[:, 0],
+                drawn[:, 1],
+                out=np.full(len(boot), np.nan),
+                where=drawn[:, 1] > 0,
+            )
+            summary[key][kind] = {
+                "matched": int(hit),
+                "spans": int(n),
+                "share": float(hit / n) if n else float("nan"),
+                "ci95": score._ci(share),
+            }
+    return {
+        "definition": "Legacy onset within inclusive +/-k ms of each reviewed "
+        "present span start. Proximity per annotation, not one-to-one ELM recall; "
+        "crowd starts are not its non-crowd ELMs. Review starts are not "
+        "independently verified millisecond onset truth.",
+        "source_files": {
+            str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in files
+        },
+        "summary": summary,
+        "per_shot": per_shot,
+    }
 
 
 def overlap_report(paths, reviewed, table, ground_truth, smith) -> dict:
@@ -114,6 +240,8 @@ def score_reference(parts, truths, boot, skip=()) -> dict:
             res["point"]["auroc"] = 0.5
             res["ci95"].pop("auroc", None)
         out["methods"][name] = res
+        res["display_name"] = compare.DISPLAY_NAME.get(name, name)
+        res["degenerate_f1"] = bool(res["point"]["recall"] >= 0.99)
     out["bins"] = int(sum(len(p.truth) for p in kept[ALWAYS]))
     out["prevalence"] = float(np.concatenate([p.truth for p in kept[ALWAYS]]).mean())
     out["ranking"] = swap.rankings(
@@ -178,6 +306,16 @@ def compare_references(a: dict, b: dict) -> dict:
         "order_changes": changes,
         "order_flips": flips(a, b),
         "paired_differences": moves,
+        "auroc_changes": {
+            name: {
+                "review": va["point"]["auroc"],
+                "legacy": b["methods"][name]["point"]["auroc"],
+                "legacy_minus_review": b["methods"][name]["point"]["auroc"]
+                - va["point"]["auroc"],
+            }
+            for name, va in a["methods"].items()
+            if name != ALWAYS and "auroc" in va["point"]
+        },
     }
 
 
@@ -236,6 +374,7 @@ def main(argv=None) -> int:
     dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
     sets = compare.load_sets(paths, data)
     elmo_spans, clock_spans = compare.load_detected(paths)
+    elmo_sweep = compare.load_elmo_sweep(paths)
 
     table = swap.legacy_table(paths.label_tables / swap.LEGACY_TABLE)
     gt = pd.read_csv(GROUND_TRUTH)
@@ -246,7 +385,7 @@ def main(argv=None) -> int:
     shots_over = over["legacy_table"]["overlap_shots"]
     print("overlap:", json.dumps({k: v for k, v in over.items()}, default=str)[:600])
     reviewed_present = {
-        int(s): int((data[s].spans.kind.isin(["individual", "crowd"])).sum())
+        int(s): int((data[s].spans.kind.isin(["non_crowd", "crowd"])).sum())
         for s in over["shot_level_ground_truth"]["overlap_shots"]
     }
     over["shot_level_ground_truth"]["reviewed_present_spans"] = reviewed_present
@@ -258,6 +397,15 @@ def main(argv=None) -> int:
         "cohort_test_shots_used": 0,
         "overlap": over,
         "conversion": swap.__doc__,
+        "legacy_trained_method": {
+            "id": NAME["dsm"],
+            "display_name": compare.DISPLAY_NAME[NAME["dsm"]],
+            "training_label_source": "Hiro's onsets via elm_survival_labels.pkl "
+            "and the wpqh_elm_hiro survival-row split; same source as legacy onset table",
+            "ae_analogue": "legacy-trained RCN/LSTM",
+        },
+        "interval_audit": interval_coverage_audit(table, data, shots_over),
+        "onset_agreement": onset_agreement_audit(paths, table, data, shots_over),
         "swap": {},
         "proxy": {},
     }
@@ -276,14 +424,17 @@ def main(argv=None) -> int:
             record["swap"][tag] = {"shots": [], "note": "no shot"}
             continue
         parts, bins_of = compare.common_parts(
-            sdef, data, oof, dscores, elmo_spans, clock_spans
+            sdef, data, oof, dscores, elmo_spans, clock_spans, elmo_sweep
         )
         boot = score.draws(len(sel))
         legacy = {s: swap.table_truth(table, s, bins_of[s]) for s in sel}
-        review = {s: bins_of[s].truth.astype(np.int8) for s in sel}
+        review = {s: np.where(legacy[s] >= 0, bins_of[s].truth, -1) for s in sel}
         res = {
             "shots": [int(s) for s in sel],
             "n_shots": len(sel),
+            "restriction_deviation": "Ranking uses bins wholly inside one known "
+            "review span and analysed time, with DSM forecast/detection rows; "
+            "unlike the AE all-frame audit. Full majority counts are interval_audit.",
             "reviewed": score_reference(parts, review, boot),
             "legacy": score_reference(parts, legacy, boot),
         }
@@ -299,7 +450,7 @@ def main(argv=None) -> int:
         ("elmo_onsets", "bes73", sets["bes73"], elmo_spans, NAME["elmo"], "onsets"),
     ):
         parts, bins_of = compare.common_parts(
-            base, data, oof, dscores, elmo_spans, clock_spans
+            base, data, oof, dscores, elmo_spans, clock_spans, elmo_sweep
         )
         boot = score.draws(len(base.shots))
         proxy = {}

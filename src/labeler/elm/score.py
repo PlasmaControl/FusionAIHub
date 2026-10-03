@@ -9,7 +9,7 @@ ELM clock's in `outputs/labeler/elm/elmo/evaluation.json`:
 * precision, recall and F1 of the calls over the pooled bins;
 * `false_alarm_bin_rate`, the share of absent bins called present;
 * `crowd_bin_recall`, the share of bins inside crowd spans called present;
-* `individual_span_recall`, the share of individual (single-ELM) spans the method
+* `non_crowd_span_touch_recall`, the share of non-crowd present spans the method
   touches anywhere (the ELM-O rule: a detected span overlapping the labelled one);
 * `absent_span_alarm_rate`, the share of absent spans it touches;
 * AUROC and AUPRC of the continuous score over the pooled bins (ties averaged;
@@ -30,8 +30,8 @@ import numpy as np
 REPLICATES = 1000
 SEED = 20261003
 SPAN_KEYS = (
-    "individual_spans",
-    "individual_span_hit",
+    "non_crowd_spans",
+    "non_crowd_span_hit",
     "absent_spans",
     "absent_span_alarm",
     "crowd_spans",
@@ -147,8 +147,8 @@ def rates(total: np.ndarray) -> dict[str, float]:
         "f1": _ratio(2 * c["tp"], 2 * c["tp"] + c["fp"] + c["fn"]),
         "false_alarm_bin_rate": _ratio(c["fp"], c["fp"] + c["tn"]),
         "crowd_bin_recall": _ratio(c["crowd_hit"], c["crowd_bins"]),
-        "individual_span_recall": _ratio(
-            c["individual_span_hit"], c["individual_spans"]
+        "non_crowd_span_touch_recall": _ratio(
+            c["non_crowd_span_hit"], c["non_crowd_spans"]
         ),
         "absent_span_alarm_rate": _ratio(c["absent_span_alarm"], c["absent_spans"]),
     }

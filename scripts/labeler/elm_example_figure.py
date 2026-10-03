@@ -6,7 +6,8 @@
 Two shots of the 73 with BES are shown, picked by a rule, not by eye: of the shots
 whose scored bins are 10 to 90 % present, the ones at the 75th and the 25th percentile
 of the per-shot F1 of `elm-ours` (a typical and a weaker shot). Each panel shows the
-filterscope D-alpha (FS02, log level), the reviewed spans (crowd, single ELM, absent),
+filterscope D-alpha (FS02, log10 a.u.), the reviewed spans (crowd, non-crowd
+present, absent),
 the out-of-fold event probability of `elm-ours` with its fold's threshold, and the
 spans ELM-O and the ELM clock detect, over a window of up to 1.5 s from 100 ms before
 the first present span. Writes `fig_elm_examples.pdf`, `.png` (150 dpi) and
@@ -31,8 +32,8 @@ from labeler.elm import compare, inputs, methods, train
 
 WINDOW_MS = 1500.0
 LEAD_MS = 100.0
-#: Okabe-Ito colours: crowd, single ELM, absent, event probability, ELM-O, clock.
-CROWD, SINGLE, ABSENT = "#E69F00", "#0072B2", "#999999"
+#: Okabe-Ito colours: crowd, non-crowd, absent, probability, ELM-O, clock.
+CROWD, NON_CROWD, ABSENT = "#E69F00", "#0072B2", "#999999"
 PROB, ELMO, CLOCK = "#009E73", "#CC79A7", "#56B4E9"
 
 
@@ -71,7 +72,7 @@ def pick_shots(data, sets, oof) -> tuple[list[int], dict]:
 
 
 def window_of(spans, cov0, cov1) -> tuple[float, float]:
-    present = spans[spans.kind.isin(["individual", "crowd"])]
+    present = spans[spans.kind.isin(["non_crowd", "crowd"])]
     t0 = float(present.t_start.min()) - LEAD_MS if len(present) else float(cov0.min())
     t0 = max(t0, float(cov0.min()))
     return t0, min(t0 + WINDOW_MS, float(cov1.max()))
@@ -81,23 +82,26 @@ def shade(ax, spans, t0, t1) -> None:
     for r in spans.itertuples():
         if r.t_end < t0 or r.t_start > t1:
             continue
-        colour = {"crowd": CROWD, "individual": SINGLE, "absent": ABSENT}.get(r.kind)
+        colour = {"crowd": CROWD, "non_crowd": NON_CROWD, "absent": ABSENT}.get(
+            r.kind
+        )
         if colour is None:
             continue
         ax.axvspan(
             max(r.t_start, t0),
             min(r.t_end, t1),
             color=colour,
-            alpha=0.5 if r.kind == "individual" else 0.25,
+            alpha=0.5 if r.kind == "non_crowd" else 0.25,
             lw=0,
         )
 
 
-def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> None:
+def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> dict:
     d = data[shot]
     t0, t1 = window_of(d.spans, d.cov0, d.cov1)
-    x = d.x[inputs.CHANNELS.index("fs02")]
-    t = inputs.GRID0_MS + 0.1 * (np.arange(len(x)) + 0.5)
+    x = d.x[inputs.CHANNELS.index("fs02")] * inputs.FS_SCALE + inputs.FS_CENTRE
+    x = np.where(d.x[inputs.VALID] > 0, x, np.nan)
+    t = inputs.GRID0_MS + inputs.DT_MS * (np.arange(len(x)) + 0.5)
     sel = (t >= t0) & (t <= t1)
     event = oof.trace(shot)[0]
     tt = inputs.GRID0_MS + np.arange(len(event)) + 0.5
@@ -106,7 +110,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> None:
     for a in axes:
         shade(a, d.spans, t0, t1)
     ax.plot(t[sel], x[sel], color="#222222", lw=0.6)
-    ax.set_ylabel("D-alpha FS02\n(log level)", fontsize=8)
+    ax.set_ylabel("D-alpha FS02\n(log10 a.u.)", fontsize=8)
     ax.set_title(f"({panel}) shot {shot}", fontsize=9, loc="left")
     bx.plot(tt[sl], event[sl], color=PROB, lw=1.0, label="elm-ours")
     bx.axhline(oof.threshold[shot], color=PROB, lw=0.8, ls="--")
@@ -121,7 +125,7 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> None:
         for r in spans.itertuples():
             if r.t_end_ms < t0 or r.t_start_ms > t1:
                 continue
-            if r.t_end_ms - r.t_start_ms < 4.0:  # a single ELM: draw a tick
+            if r.t_end_ms - r.t_start_ms < 4.0:  # short detection: draw a tick
                 mid = 0.5 * (r.t_start_ms + r.t_end_ms)
                 bx.plot([mid, mid], [y - 0.035, y + 0.035], color=colour, lw=1.2)
             else:
@@ -136,6 +140,32 @@ def draw_shot(axes, shot, data, sets, oof, elmo, clock, panel) -> None:
     bx.set_xlabel("time in shot (ms)", fontsize=8)
     for a in axes:
         a.tick_params(labelsize=8)
+    info = {
+        "panel": panel,
+        "shot": int(shot),
+        "window_ms": [t0, t1],
+        "dalpha_limits_log10_au": list(ax.get_ylim()),
+        "probability_limits": list(bx.get_ylim()),
+    }
+    if shot == 200427 and t0 <= 2690.0 and t1 >= 2760.0:
+        text = "Reviewed non-crowd present span\n2690–2760 ms; D-alpha drop"
+        ax.annotate(
+            text,
+            xy=(2760.0, float(np.interp(2760.0, t, x))),
+            xytext=(0.24, 0.08),
+            textcoords="axes fraction",
+            fontsize=7,
+            va="bottom",
+            bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.9},
+            arrowprops={"arrowstyle": "->", "color": NON_CROWD, "lw": 0.7},
+        )
+        info["annotation"] = {
+            "span_ms": [2690.0, 2760.0],
+            "text": text.replace("\n", "; "),
+            "interpretation": "Reviewed present span at a D-alpha drop; neither "
+            "an independently verified isolated ELM nor a verified transition.",
+        }
+    return info
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -153,13 +183,16 @@ def main(argv: list[str] | None = None) -> int:
     shots, info = pick_shots(data, sets, oof)
 
     fig, axes = plt.subplots(
-        2, 2, figsize=(7.0, 4.0), sharex="col", gridspec_kw={"height_ratios": [1, 1]}
+        2, 2, figsize=(7.0, 4.6), sharex="col", gridspec_kw={"height_ratios": [1, 1]}
     )
+    panels = []
     for i, shot in enumerate(shots):
-        draw_shot(axes[:, i], shot, data, sets, oof, elmo, clock, "ab"[i])
+        panels.append(
+            draw_shot(axes[:, i], shot, data, sets, oof, elmo, clock, "ab"[i])
+        )
     handles = [
         plt.Rectangle((0, 0), 1, 1, color=CROWD, alpha=0.25, lw=0),
-        plt.Rectangle((0, 0), 1, 1, color=SINGLE, alpha=0.5, lw=0),
+        plt.Rectangle((0, 0), 1, 1, color=NON_CROWD, alpha=0.5, lw=0),
         plt.Rectangle((0, 0), 1, 1, color=ABSENT, alpha=0.25, lw=0),
         plt.Line2D([0], [0], color=PROB, lw=1.0),
         plt.Line2D([0], [0], color=PROB, lw=0.8, ls="--"),
@@ -168,24 +201,36 @@ def main(argv: list[str] | None = None) -> int:
     ]
     names = [
         "reviewed: crowd",
-        "reviewed: single ELM",
+        "reviewed: non-crowd present spans",
         "reviewed: absent",
-        "elm-ours",
-        "its threshold",
-        "elm-elmo ELMs (ticks)",
-        "elm-clock spans",
+        "elm-ours probability",
+        "CV threshold",
+        "ELM-O detections (ticks)",
+        "ELM clock present spans",
     ]
     fig.legend(
-        handles,
-        names,
+        handles[:3],
+        names[:3],
         loc="lower center",
+        bbox_to_anchor=(0.5, 0.07),
+        ncol=3,
+        fontsize=7.5,
+        frameon=False,
+        columnspacing=1.5,
+        handlelength=1.4,
+    )
+    fig.legend(
+        handles[3:],
+        names[3:],
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.01),
         ncol=4,
-        fontsize=7,
+        fontsize=7.5,
         frameon=False,
         columnspacing=1.0,
         handlelength=1.4,
     )
-    fig.tight_layout(rect=(0, 0.12, 1, 1))
+    fig.tight_layout(rect=(0, 0.16, 1, 1))
     for ext in ("pdf", "png"):
         fig.savefig(out_dir / f"fig_elm_examples.{ext}", dpi=150)
     info.update(
@@ -194,6 +239,43 @@ def main(argv: list[str] | None = None) -> int:
             "run": args.run,
             "shots": [int(s) for s in shots],
             "figure": str(out_dir / "fig_elm_examples.pdf"),
+            "png": str(out_dir / "fig_elm_examples.png"),
+            "placement": "two-column, 7-inch width; do not shrink to one column",
+            "size_inches": [7.0, 4.6],
+            "minimum_font_pt_at_placement": 7.0,
+            "png_dpi": 150,
+            "panels": panels,
+            "axes": {
+                "x": "time in shot (ms)",
+                "dalpha": "FS02 log10 a.u.; source physical units unconfirmed",
+                "inverse_input_transform": "fs02 * FS_SCALE + FS_CENTRE",
+                "FS_SCALE": inputs.FS_SCALE,
+                "FS_CENTRE": inputs.FS_CENTRE,
+                "floor_au": inputs.FS_FLOOR,
+                "reduction": "maximum per 0.1 ms cell; missing cells omitted",
+                "probability": "out-of-fold elm-ours event probability per 1 ms",
+            },
+            "window_rule": {"duration_ms": WINDOW_MS, "lead_ms": LEAD_MS},
+            "caption": (
+                f"Reviewed spans and detector outputs on shots {shots[0]} and "
+                f"{shots[1]}, selected by a fixed rule from shots with BES. "
+                "Among shots with 10–90% present 50 ms bins, panels "
+                "(a) and (b) show the 75th and 25th percentile ranks of per-shot "
+                "out-of-fold elm-ours F1. Top: FS02 D-alpha on a log10 a.u. axis, "
+                "with the model-input normalization reversed; source physical "
+                "units are unconfirmed. Shading marks reviewed crowd, non-crowd "
+                "present and absent spans. Non-crowd spans are not verified "
+                "isolated ELMs. Bottom: out-of-fold elm-ours event probability "
+                "and the threshold selected on inner-validation shots, ELM-O "
+                "detections (short detections drawn as ticks), and the original "
+                "ELM clock present spans. The review began from that clock and "
+                "is not independent of it. Each window begins 100 ms before the "
+                "first reviewed present span, clipped to input coverage, and "
+                "lasts up to 1500 ms. The annotated 2690–2760 ms span on shot "
+                "200427 coincides with a D-alpha drop; no ELM or confinement "
+                "transition is independently established. Place at 7-inch "
+                "two-column width to preserve text of at least 7 pt."
+            ),
         }
     )
     (out_dir / "fig_elm_examples.json").write_text(json.dumps(info, indent=1))

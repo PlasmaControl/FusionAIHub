@@ -4,17 +4,18 @@ The review's dense ELM spans are the reference this package scores against. The 
 older ELM annotation is Hiro's table of 50 ms bins (`edge_localized_mode/format`, one
 row per run of bins, `category` 1 where at least one ELM *onset* falls in the bin and 0
 where none does). It marks onsets, not ELMy time, and covers 8 of the 119 reviewed
-shots. This module converts it to the scored bins, in the manner of the AE audit, and
-measures the two references against each other.
+shots. The coverage audit uses per-bin majority occupancy over all legacy-covered
+bins in the review window. Detector comparisons use the stricter benchmark bins;
+that restriction is a deviation from the AE audit.
 
 **Conversion.** A scored bin is the cell `[50k, 50k + 50)` of the shot's clock; the
 table's bins are the same cells, so a bin takes the category of the table row that
 contains its midpoint. A bin the table does not cover has no legacy value and is
 dropped from the comparison. The legacy reference marks a bin present exactly when an
-onset falls in it; the review marks it present when it lies wholly inside an
-individual-ELM span or a crowd (an ELMing period). The two agree on a bin holding one
-isolated ELM's onset and disagree on the rest of a crowd or an ELM longer than one bin
-(`onset_truth` converts any list of onsets the same way).
+onset falls in it; the review marks interval occupancy. Interior-bin scoring
+usually excludes span starts, so agreement does not measure missed physical ELMs.
+`start_agreement` separately asks whether a legacy onset is near each span start;
+these starts are not independently verified millisecond ELM onset labels.
 
 **Finding 1** (`agreement_counts`): the legacy reference read as a detector of the
 review's present bins; `|M|` is the number of review-present bins it marks absent,
@@ -62,6 +63,103 @@ def table_alignment(table: pd.DataFrame, shots) -> dict:
     return {"rows": len(t), "off_grid_edges": int(off.sum())}
 
 
+def _occupancy(t0, spans) -> np.ndarray:
+    """Milliseconds of interval union in each bin (adjacent rows may share it)."""
+    a, b = labels.merge_intervals(spans.t_start, spans.t_end, tol=0)
+    return np.clip(
+        np.minimum(t0[:, None] + BIN_MS, b) - np.maximum(t0[:, None], a),
+        0,
+        None,
+    ).sum(axis=1)
+
+
+def coverage_bins(
+    table, shot: int, spans
+) -> tuple[labels.Bins, np.ndarray, np.ndarray]:
+    """All legacy-covered grid cells intersecting the review window.
+
+    At least half a bin must be legacy-covered. Legacy presence and each review
+    state require >=25 ms occupancy, like the AE audit's >=0.5 rule. Ties prefer
+    present then absent; uncertain, not observable and mixed/unlabelled cells
+    stay outside M/P, rather than becoming review-absent. No diagnostic/DSM or
+    wholly-inside-one-span restriction is imposed here.
+    """
+    first = int(np.floor(spans.t_start.min() / BIN_MS))
+    last = int(np.ceil(spans.t_end.max() / BIN_MS))
+    t0 = np.arange(first, last, dtype=float) * BIN_MS
+    legacy_spans = table[table.shot == shot]
+    keep = _occupancy(t0, legacy_spans) >= BIN_MS / 2
+    t0 = t0[keep]
+    legacy = _occupancy(t0, legacy_spans[legacy_spans.category == 1]) >= BIN_MS / 2
+    status = np.full(len(t0), "mixed_or_unlabelled", dtype=object)
+    truth = np.full(len(t0), -1, dtype=np.int8)
+    kind = np.full(len(t0), "unknown", dtype=object)
+    for state, kinds, value in (
+        ("not_observable", ["not_observable"], -1),
+        ("uncertain", ["uncertain"], -1),
+        ("absent", ["absent"], 0),
+        ("present", ["non_crowd", "crowd"], 1),
+    ):
+        hit = _occupancy(t0, spans[spans.kind.isin(kinds)]) >= BIN_MS / 2
+        status[hit], truth[hit] = state, value
+        kind[hit] = kinds[0] if state != "present" else "present"
+    # Kind counts describe occupancy only; publication uses event-start agreement.
+    for name in ("non_crowd", "crowd"):
+        hit = (truth == 1) & (_occupancy(t0, spans[spans.kind == name]) >= BIN_MS / 2)
+        kind[hit] = name
+    return (
+        labels.Bins(t0, truth, kind, np.full(len(t0), -1)),
+        legacy.astype(np.int8),
+        status,
+    )
+
+
+def start_agreement(spans, onsets_ms, tolerance_ms: float) -> dict:
+    """Per-span-start agreement, allowing a legacy onset within inclusive +/-k ms.
+
+    This is a proximity query, not one-to-one ELM counting; a long non-crowd span
+    is one review annotation, and a crowd start is not every ELM in that crowd.
+    """
+    onsets = np.sort(np.asarray(onsets_ms, dtype=float))
+    out = {}
+    for kind in ("non_crowd", "crowd"):
+        starts = spans[spans.kind == kind].t_start.to_numpy(float)
+        distances = (
+            np.min(np.abs(starts[:, None] - onsets), axis=1)
+            if len(onsets)
+            else np.full(len(starts), np.inf)
+        )
+        hit = distances <= tolerance_ms
+        out[kind] = {
+            "spans": len(starts),
+            "matched": int(hit.sum()),
+            "share": float(hit.mean()) if len(hit) else float("nan"),
+            "starts_ms": starts.tolist(),
+            "matched_starts_ms": starts[hit].tolist(),
+            "nearest_onset_distance_ms": [
+                float(d) if np.isfinite(d) else None for d in distances
+            ],
+        }
+    return out
+
+
+def sweep_bin_scores(sweep: pd.DataFrame, bins: labels.Bins) -> np.ndarray:
+    """Largest eta whose ELM-O detections touch a bin; unhit bins tie at -1.
+
+    Ranking these scores exactly reproduces the finite nested eta sweep with
+    the closing all-positive point. It can be restricted to any identical bin
+    set and evaluated under either reference without changing detections.
+    """
+    out = np.full(len(bins.t0), -1.0)
+    for eta, spans in sweep.groupby("eta"):
+        spans = spans.sort_values("t_start_ms")
+        hit = labels.hard_hits(
+            spans.t_start_ms.to_numpy(float), spans.t_end_ms.to_numpy(float), bins
+        )
+        out[hit] = np.maximum(out[hit], float(eta))
+    return out
+
+
 def onset_truth(onsets_ms, bins: labels.Bins) -> np.ndarray:
     """1 for a bin holding at least one onset, else 0 (the legacy convention)."""
     on = np.sort(np.asarray(onsets_ms, dtype=float))
@@ -94,12 +192,12 @@ def as_method(
 def agreement_counts(
     review_truth: np.ndarray, kind: np.ndarray, legacy: np.ndarray
 ) -> np.ndarray:
-    """`[tp, fp, fn, tn, crowd_bins, crowd_legacy, individual_bins, individual_legacy]`
+    """`[tp, fp, fn, tn, crowd_bins, crowd_legacy, non_crowd_bins, non_crowd_legacy]`
     of the legacy marks against the review, over the bins the legacy covers."""
     keep = legacy >= 0
     t, c = review_truth[keep].astype(bool), legacy[keep].astype(bool)
     k = kind[keep]
-    crowd, ind = k == "crowd", k == "individual"
+    crowd, ind = k == "crowd", k == "non_crowd"
     return np.array(
         [
             (t & c).sum(),
@@ -122,8 +220,8 @@ AGREEMENT_NAMES = (
     "tn",
     "crowd_bins",
     "crowd_legacy_present",
-    "individual_bins",
-    "individual_legacy_present",
+    "non_crowd_bins",
+    "non_crowd_legacy_present",
 )
 
 
@@ -139,8 +237,8 @@ def agreement_rates(total: np.ndarray) -> dict[str, float]:
         "f1": ratio(2 * c["tp"], 2 * c["tp"] + c["fp"] + c["fn"]),
         "missed_share_of_present": ratio(c["fn"], c["tp"] + c["fn"]),
         "crowd_bin_recall": ratio(c["crowd_legacy_present"], c["crowd_bins"]),
-        "individual_bin_recall": ratio(
-            c["individual_legacy_present"], c["individual_bins"]
+        "non_crowd_bin_recall": ratio(
+            c["non_crowd_legacy_present"], c["non_crowd_bins"]
         ),
         "review_prevalence": ratio(
             c["tp"] + c["fn"], c["tp"] + c["fn"] + c["fp"] + c["tn"]
