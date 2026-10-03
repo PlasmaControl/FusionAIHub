@@ -7,7 +7,8 @@ The model is the labeler's refit of the lab's ELM time-to-event Deep Survival Ma
 (`labeler.models.d3d_elm_time_to_event_dsm`, columns without BES). Three readings,
 described in `labeler.elm.dsm`:
 
-1. **Own target** (`own_target`): the limited-input refit on its own test rows,
+1. **Own target** (`own_target`): the limited-input refit on its original early-stopping
+   validation rows (upstream calls them test),
    split, AUROC at 5, 10, 20 and 50 ms of "an ELM within `h` ms" with 95 % shot
    intervals; the point values are checked against the training record's.
 2. **DSM refit, limited inputs (60 of the original 124)**: its 50 ms risk before a bin,
@@ -21,7 +22,9 @@ described in `labeler.elm.dsm`:
    from the limited-input refit's embedding (`elm-dsm-detect-init`).
 
 All are compared with `elm-ours`, ELM-O (where it runs) and the ELM clock on common
-bins (`labeler.elm.compare`); no cohort test shot is read. The fitted scores are saved
+bins (`labeler.elm.compare`); reviewed-label detector CV excludes cohort test shots.
+Original-refit phase IDs are decoded separately for its pretraining overlap audit.
+The fitted scores are saved
 under `$LABELER_ROOT/round4/elm/dsm/` so the reference-swap script reuses them.
 """
 
@@ -35,6 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import torch
 
 from labeler.config import Paths, git_sha, sha256_of
@@ -333,6 +337,92 @@ def verify_rescore(previous: dict, current: dict) -> dict:
     }
 
 
+def refresh_own_target(paths: Paths, out_dir: Path) -> int:
+    """Correct phase IDs/own-target intervals without fitting reviewed-label models.
+
+    Preserve the original no-rescore and exact-rescore proof as separate snapshots.
+    Correct both result records identically, retain their original producing git, and
+    record the later correction revision. All reviewed-bin metrics remain unchanged.
+    """
+    work = paths.root / "round4/elm/dsm"
+    result_path = out_dir / "evaluation.json"
+    trained_path = out_dir / "evaluation_trained.json"
+    result = json.loads(result_path.read_text())
+    trained = json.loads(trained_path.read_text())
+    cohort = pd.read_csv(paths.catalog / "cohort.csv")
+    own = own_target(paths)
+    reviewed = sorted(int(s) for s in trained["rows"])
+    own.update(dsm.split_overlap(own, reviewed, cohort))
+    correction = {
+        "git": git_sha(full=True),
+        "script_sha256": sha256_of(__file__),
+        "dsm_sha256": sha256_of(REPO / "src/labeler/elm/dsm.py"),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "scope": (
+            "phase-ID decoding, original-refit overlap, physical-shot own-target "
+            "bootstrap and early-stopping selection interpretation; no new model fit"
+        ),
+        "original_no_rescore_producing_git": trained["git"],
+        "reviewed_bin_results_unchanged": result["sets"] == trained["sets"],
+        "upstream_identifier_source": (
+            "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:"
+            "4321-4326 (<shot>_<phase> strings), and the original split pickle"
+        ),
+        "early_stopping_source": (
+            str(paths.models / dsm.SLUG / "training_no_bes.json") + ":split_note"
+        ),
+    }
+    files = [
+        result_path, trained_path, out_dir / "prefetch_evaluation.json",
+        out_dir / "reproducibility.json", work / "fits.json",
+    ]
+    for path in files:
+        if path.exists():
+            snapshot = path.with_name(path.stem + "_before_phase_fix.json")
+            if not snapshot.exists():
+                snapshot.write_bytes(path.read_bytes())
+    correction["original_snapshots"] = {
+        str(path): {
+            "path": str(path.with_name(path.stem + "_before_phase_fix.json")),
+            "sha256": sha256_of(path.with_name(path.stem + "_before_phase_fix.json")),
+        }
+        for path in files if path.exists()
+    }
+    for path in (result_path, trained_path, out_dir / "prefetch_evaluation.json", work / "fits.json"):
+        if not path.exists():
+            continue
+        record = json.loads(path.read_text())
+        record["own_target"] = own
+        record["own_target_correction"] = correction
+        if "cohort_test_shots_used" in record:
+            record["cohort_test_shots_used_scope"] = (
+                "reviewed-label detector CV only; prior-refit original split overlap "
+                "is reported in own_target.cohort_physical_shot_overlap"
+            )
+        path.write_text(json.dumps(record, indent=1))
+    proof = verify_rescore(
+        json.loads(trained_path.read_text()), json.loads(result_path.read_text())
+    )
+    proof.update(
+        {
+            "fit_record": str(trained_path),
+            "rescore_record": str(result_path),
+            "original_proof": str(out_dir / "reproducibility_before_phase_fix.json"),
+            "correction": correction,
+            "verification_scope": (
+                "original fit/rescore reviewed-bin results retained; identical own-target "
+                "correction applied to both records; not a new fit or full rescore"
+            ),
+        }
+    )
+    (out_dir / "reproducibility.json").write_text(json.dumps(proof, indent=1))
+    (out_dir / "own_target_correction.json").write_text(
+        json.dumps({"correction": correction, "own_target": own}, indent=1)
+    )
+    print(json.dumps({"split_counts": own["split_physical_shot_counts"], "reviewed_overlap": own["reviewed_shot_ids_in_published_split"], "cohort_overlap": own["cohort_physical_shot_overlap"]}))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--run", required=True, help="the `labeler.elm.train` run (folds)")
@@ -343,9 +433,16 @@ def main(argv=None) -> int:
         action="store_true",
         help="score the saved fits (`round4/elm/dsm/`) again without training",
     )
+    ap.add_argument(
+        "--refresh-own-target",
+        action="store_true",
+        help="correct original-refit phase IDs and own-target intervals without fitting",
+    )
     args = ap.parse_args(argv)
-    annotate_prefetch_record()
     paths = Paths.from_env()
+    if args.refresh_own_target:
+        return refresh_own_target(paths, args.out_dir)
+    annotate_prefetch_record()
     work = paths.root / "round4" / "elm" / "dsm"
     torch.set_num_threads(4)
     data = train.load(paths)
@@ -364,12 +461,9 @@ def main(argv=None) -> int:
     else:
         print("own-target scoring of " + dsm.DISPLAY_NAME, flush=True)
         own = own_target(paths)
-        overlap = {
-            k: sorted(set(shots) & set(v)) for k, v in own["split_shots"].items()
-        }
-        own["reviewed_shots_in_published_split"] = {
-            k: len(v) for k, v in overlap.items()
-        }
+        own.update(
+            dsm.split_overlap(own, shots, pd.read_csv(paths.catalog / "cohort.csv"))
+        )
         cfg = dsm.FitConfig(epochs=args.epochs)
         pub_thr, pub_records = published_thresholds(rows, risk, data, oof)
         trained = fit_detectors(
@@ -407,10 +501,14 @@ def main(argv=None) -> int:
         "run": args.run,
         "reference": "expert-reviewed spans (review/labels.csv)",
         "cohort_test_shots_used": 0,
+        "cohort_test_shots_used_scope": (
+            "reviewed-label detector CV only; original-refit overlap is reported separately"
+        ),
         "rescored_from_saved_scores": bool(args.rescore),
         "display_name": dsm.DISPLAY_NAME,
         "method_display_names": compare.DISPLAY_NAME,
         "provenance": fits.get("provenance"),
+        "own_target_correction": fits.get("own_target_correction"),
         "prefetch_evaluation": str(OUT / "prefetch_evaluation.json"),
         "model_context": {
             "original_input_columns": 124,

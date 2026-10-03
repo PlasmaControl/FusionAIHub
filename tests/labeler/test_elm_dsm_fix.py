@@ -4,6 +4,7 @@ import json
 from dataclasses import replace
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from labeler.config import Paths
@@ -118,3 +119,44 @@ def test_risk_quantiles_record_nonfinite_values():
     out = dsm.risk_quantiles(np.array([np.nan, 0.1, 0.3, np.inf]))
     assert out["n"] == 4 and out["nonfinite"] == 2
     assert out["quantiles"]["0.5"] == 0.2
+
+
+def test_phase_ids_decode_before_review_and_blind_cohort_overlap():
+    raw = ["190643_0", "190643_1", "192721_0"]
+    np.testing.assert_array_equal(dsm.physical_shot_ids(raw), [190643, 190643, 192721])
+    np.testing.assert_array_equal(
+        dsm.physical_shot_ids([1906430, 1906431, 1927210]), [190643, 190643, 192721]
+    )
+    assert dsm.physical_shot_ids([190643]).tolist() == [190643]
+    identity = dsm.split_identity(["190643_1", "192721_0"], ["190643_0", "196541_0"])
+    assert identity["split_shots"] == {
+        "train": [190643, 192721],
+        "test": [190643, 196541],
+    }
+    assert identity["physical_shots_in_both_split_sides"] == [190643]
+    assert identity["selection_role"].startswith("early-stopping validation")
+    cohort = pd.DataFrame(
+        {"shot": [190643, 192721, 196541], "split": ["val", "train", "test"]}
+    )
+    overlap = dsm.split_overlap(identity, [190643, 192721], cohort)
+    assert overlap["reviewed_shot_ids_in_published_split"] == {
+        "train": [190643, 192721],
+        "test": [190643],
+    }
+    assert overlap["cohort_physical_shot_overlap"]["test"]["test"] == [196541]
+    json.dumps(overlap)  # integers remain JSON-safe after pandas set intersection
+
+
+def test_physical_shot_bootstrap_groups_multiple_phases():
+    phase = np.array(["190643_0", "190643_1", "192721_0", "192721_0"])
+    physical = dsm.physical_shot_ids(phase)
+    shots, pos, neg = dsm.auroc_by_shot(
+        np.array([0.9, 0.1, 0.8, 0.2]),
+        np.array([True, False, True, False]),
+        np.ones(4, bool),
+        physical,
+        n_bins=8,
+    )
+    assert shots.tolist() == [190643, 192721]
+    assert pos.sum(axis=1).tolist() == [1, 1]
+    assert neg.sum(axis=1).tolist() == [1, 1]

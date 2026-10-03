@@ -5,9 +5,10 @@ The model is Deep Survival Machines (auton-survival, LogNormal, three components
 rows of the `wpqh_elm_hiro` project: 60 non-BES columns on a 25 ms grid, risk of an
 ELM within 5, 10, 20 and 50 ms. Three things are done with it here.
 
-* **Own target** (`legacy_own_target`): the limited-input refit on its own split's
-  test rows, the time to the next ELM, AUROC at each horizon with 95 % shot-bootstrap
-  intervals over the split's own shots.
+* **Own target** (`legacy_own_target`): the limited-input refit on its original
+  early-stopping validation rows (upstream calls them test), the time to the next ELM,
+  AUROC at each horizon with 95 % physical-shot-bootstrap intervals. Upstream split
+  identifiers name phases, and phases of one physical shot can occur on both sides.
 * **Survival refit on the reviewed bins**: the model served from the corpus as
   `labeler.models.d3d_elm_time_to_event_dsm` serves it (`shot_rows`), its 50 ms risk at
   a bin's start read as the bin's score: "will an ELM start in the next 50 ms",
@@ -68,6 +69,87 @@ WINDOW_MS = methods.WINDOW_MS
 # ------------------------------------------------------------ own target
 
 
+def physical_shot_ids(phase_ids) -> np.ndarray:
+    """Decode upstream ``<shot>_<phase>`` IDs and their old numeric rendering.
+
+    The upstream data-processing notebook stores strings such as ``190643_0``.
+    Python's ``int`` accepts underscores and renders that string as ``1906430``;
+    this older evaluation representation must therefore be divided by ten. Already
+    physical six-digit IDs are retained. Do not treat phases as independent shots.
+    """
+    out = []
+    for value in np.asarray(phase_ids).ravel():
+        text = str(value)
+        if "_" in text:
+            shot, phase = text.rsplit("_", 1)
+            if not shot.isdigit() or not phase.isdigit():
+                raise ValueError(f"invalid upstream phase identifier: {value!r}")
+            number = int(shot)
+        else:
+            number = int(value)
+            if 1_000_000 <= number < 10_000_000:
+                number //= 10
+        if not 100_000 <= number < 1_000_000:
+            raise ValueError(f"invalid physical shot identifier: {value!r}")
+        out.append(number)
+    return np.asarray(out, dtype=np.int64)
+
+
+def split_identity(train_phase_ids, test_phase_ids) -> dict:
+    """Preserve phase IDs while exposing physical membership and phase split leakage."""
+    phases = {
+        "train": np.unique(train_phase_ids),
+        "test": np.unique(test_phase_ids),
+    }
+    shots = {
+        k: sorted(int(s) for s in np.unique(physical_shot_ids(v)))
+        for k, v in phases.items()
+    }
+    return {
+        "phase_id_encoding": (
+            "upstream <physical shot>_<phase>; old int(string) rendering is "
+            "physical shot * 10 + phase for single-digit phases"
+        ),
+        "split_phase_ids": {k: [str(v) for v in ids] for k, ids in phases.items()},
+        "split_phase_records": {k: len(v) for k, v in phases.items()},
+        "split_shots": shots,
+        "split_physical_shot_counts": {k: len(v) for k, v in shots.items()},
+        "physical_shots_in_both_split_sides": sorted(
+            set(shots["train"]) & set(shots["test"])
+        ),
+        "selection_role": "early-stopping validation (upstream key: test)",
+        "selection_note": (
+            "The original test rows were passed as val_data for early stopping; "
+            "own-target metrics are validation evidence, not untouched held-out evidence."
+        ),
+    }
+
+
+def split_overlap(identity: dict, reviewed_shots, cohort: pd.DataFrame) -> dict:
+    """Review and fixed-cohort membership of the original refit's physical shots."""
+    split_shots = identity["split_shots"]
+    review = {
+        k: sorted(set(reviewed_shots) & set(v)) for k, v in split_shots.items()
+    }
+    return {
+        "reviewed_shots_in_published_split": {k: len(v) for k, v in review.items()},
+        "reviewed_shot_ids_in_published_split": review,
+        "cohort_physical_shot_overlap": {
+            k: {
+                split: sorted(
+                    set(v) & set(map(int, cohort.loc[cohort.split == split, "shot"]))
+                )
+                for split in ("train", "val", "test")
+            }
+            for k, v in split_shots.items()
+        },
+        "overlap_scope": (
+            "original refit training and early-stopping validation, separately from "
+            "reviewed-label detector CV, which excludes cohort test shots"
+        ),
+    }
+
+
 def auroc_by_shot(
     risk: np.ndarray, case: np.ndarray, keep: np.ndarray, shot: np.ndarray, n_bins=2000
 ):
@@ -98,12 +180,12 @@ def hist_auroc(pos: np.ndarray, neg: np.ndarray) -> float:
 
 
 def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_PKL):
-    """The limited-input refit on its own test rows: AUROC per horizon, with intervals.
+    """Refit on its early-stopping validation rows, with physical-shot intervals.
 
     Rows are upstream's 1 ms rows. A case at horizon `h` is a row whose next ELM is
     within `h` ms, a control one whose next ELM is later than `h`; a row censored
     inside `h` is neither (it is unknown whether an ELM came). The shots are the
-    split's own shot ids; intervals are percentile intervals over shot draws.
+    split's own phase ids; intervals group all phases of each physical shot together.
     """
     with open(split_pkl, "rb") as fh:
         d = pickle.load(fh)
@@ -111,7 +193,8 @@ def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_P
     x = np.asarray(d["test_final_x_normalized"], dtype=np.float64)[:, cols]
     e = np.asarray(d["test_final_e"], dtype=float).ravel() == 1.0
     t = np.asarray(d["test_final_t"], dtype=float).ravel()
-    shot = np.asarray(d["test_final_shots_list"]).ravel()
+    phase = np.asarray(d["test_final_shots_list"]).ravel()
+    shot = physical_shot_ids(phase)
     graph = dsm_pickle.load_dsm(model_dir / spec.ARTIFACTS[0])
     surv = dsm_pickle.survival(graph, x, [h + T_OFFSET_MS for h in HORIZONS_MS])
     n_shots = int(np.unique(shot).size)
@@ -120,10 +203,9 @@ def legacy_own_target(model_dir: Path, boot_draws: np.ndarray, split_pkl=SPLIT_P
         "split": str(split_pkl),
         "rows": len(t),
         "shots": n_shots,
-        "split_shots": {
-            "train": sorted(int(v) for v in np.unique(d["train_final_shots_list"])),
-            "test": sorted(int(v) for v in np.unique(shot)),
-        },
+        "phase_records": len(np.unique(phase)),
+        "bootstrap_unit": "physical shot (all phase records grouped)",
+        **split_identity(d["train_final_shots_list"], phase),
         "event_rate": float(e.mean()),
         "horizons": {},
     }
