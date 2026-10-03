@@ -1,0 +1,487 @@
+{
+  "made_by": "scripts/labeler/tm_audit_rule.py",
+  "policy": "Audit current nonblind TM labels, coherent criterion rates and screening coverage.\n\nNo historical label or blind signal artifacts are opened. Sample rates use the\nuniform RMS grid and its median time step; interval durations use unioned spans.\nUncertainty takes priority over presence; missing acquisition is unobservable.\nFrequency and Mirnov criterion rates condition on measured respective inputs;\ncombined span/seed support rates condition on all valid RMS samples.\n",
+  "source_sha256": {
+    "scripts/labeler/tm_audit_rule.py": "4ae27072b04f2de6163df8812561a1b62d561cedce17ce8124d4c016eec01b2b",
+    "src/labeler/tearing/rule.py": "d3c49b142c41499294c2195faca4020abe49cd68d8b391bb42c391b7a39e9e50",
+    "scripts/labeler/tm_label.py": "741c73d1cd5510b93257b3ff2a4ea9dbe05de1bf031ea65cfc28acd56711313d"
+  },
+  "cohort": {
+    "1": {
+      "absent": {
+        "rms_above_seed": {
+          "total_ms": 1282132.0,
+          "pass_ms": 134.0,
+          "pass_rate": 0.00010451341983508718
+        },
+        "median5ms_above_seed": {
+          "total_ms": 1282132.0,
+          "pass_ms": 6.0,
+          "pass_rate": 4.679705365750172e-06
+        },
+        "rms_above_weak": {
+          "total_ms": 1282132.0,
+          "pass_ms": 14897.0,
+          "pass_rate": 0.011618928472263387
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 400543.0,
+          "pass_ms": 315109.0,
+          "pass_rate": 0.786704548575309
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 400543.0,
+          "pass_ms": 2318.0,
+          "pass_rate": 0.005787143952085044
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 1279066.0,
+          "pass_ms": 164610.0,
+          "pass_rate": 0.12869546997574793
+        },
+        "mirnov_prominence": {
+          "total_ms": 1279066.0,
+          "pass_ms": 919156.0,
+          "pass_rate": 0.7186149893750596
+        },
+        "span_coherent_support": {
+          "total_ms": 1282132.0,
+          "pass_ms": 60863.0,
+          "pass_rate": 0.04747015127927546
+        },
+        "seed_coherent_support": {
+          "total_ms": 1282132.0,
+          "pass_ms": 15283.0,
+          "pass_rate": 0.01191998951745998
+        },
+        "weak_mirnov_support": {
+          "total_ms": 1279066.0,
+          "pass_ms": 75177.0,
+          "pass_rate": 0.05877491857339653
+        },
+        "screening_available": {
+          "total_ms": 1282132.0,
+          "pass_ms": 1280454.0,
+          "pass_rate": 0.9986912423993786
+        }
+      },
+      "present": {
+        "rms_above_seed": {
+          "total_ms": 142286.0,
+          "pass_ms": 46687.0,
+          "pass_rate": 0.32812082706661233
+        },
+        "median5ms_above_seed": {
+          "total_ms": 142286.0,
+          "pass_ms": 46953.0,
+          "pass_rate": 0.32999030122429474
+        },
+        "rms_above_weak": {
+          "total_ms": 142286.0,
+          "pass_ms": 104289.0,
+          "pass_rate": 0.732953347483238
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 142286.0,
+          "pass_ms": 139953.0,
+          "pass_rate": 0.9836034465794246
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 142286.0,
+          "pass_ms": 85848.0,
+          "pass_rate": 0.6033481860478191
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 142286.0,
+          "pass_ms": 97240.0,
+          "pass_rate": 0.683412282304654
+        },
+        "mirnov_prominence": {
+          "total_ms": 142286.0,
+          "pass_ms": 141583.0,
+          "pass_rate": 0.9950592468689822
+        },
+        "span_coherent_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 99891.0,
+          "pass_rate": 0.7020437709964438
+        },
+        "seed_coherent_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 85848.0,
+          "pass_rate": 0.6033481860478191
+        },
+        "weak_mirnov_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 121078.0,
+          "pass_rate": 0.8509480904656818
+        },
+        "screening_available": {
+          "total_ms": 142286.0,
+          "pass_ms": 142286.0,
+          "pass_rate": 1.0
+        }
+      }
+    },
+    "2": {
+      "absent": {
+        "rms_above_seed": {
+          "total_ms": 1282132.0,
+          "pass_ms": 72.0,
+          "pass_rate": 5.615646438900207e-05
+        },
+        "median5ms_above_seed": {
+          "total_ms": 1282132.0,
+          "pass_ms": 0.0,
+          "pass_rate": 0.0
+        },
+        "rms_above_weak": {
+          "total_ms": 1282132.0,
+          "pass_ms": 2350.0,
+          "pass_rate": 0.0018328846015854842
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 400543.0,
+          "pass_ms": 62115.0,
+          "pass_rate": 0.1550769829955835
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 400543.0,
+          "pass_ms": 2946.0,
+          "pass_rate": 0.007355015566368655
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 1279066.0,
+          "pass_ms": 15079.0,
+          "pass_rate": 0.011789071087809386
+        },
+        "mirnov_prominence": {
+          "total_ms": 1279066.0,
+          "pass_ms": 919156.0,
+          "pass_rate": 0.7186149893750596
+        },
+        "span_coherent_support": {
+          "total_ms": 1282132.0,
+          "pass_ms": 8672.0,
+          "pass_rate": 0.0067637341552975825
+        },
+        "seed_coherent_support": {
+          "total_ms": 1282132.0,
+          "pass_ms": 4012.0,
+          "pass_rate": 0.003129162987898282
+        },
+        "weak_mirnov_support": {
+          "total_ms": 1279066.0,
+          "pass_ms": 30438.0,
+          "pass_rate": 0.02379705191131654
+        },
+        "screening_available": {
+          "total_ms": 1282132.0,
+          "pass_ms": 1280454.0,
+          "pass_rate": 0.9986912423993786
+        }
+      },
+      "present": {
+        "rms_above_seed": {
+          "total_ms": 142286.0,
+          "pass_ms": 17433.0,
+          "pass_rate": 0.12252083831156965
+        },
+        "median5ms_above_seed": {
+          "total_ms": 142286.0,
+          "pass_ms": 17245.0,
+          "pass_rate": 0.1211995558241851
+        },
+        "rms_above_weak": {
+          "total_ms": 142286.0,
+          "pass_ms": 77092.0,
+          "pass_rate": 0.5418101570077168
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 142286.0,
+          "pass_ms": 131682.0,
+          "pass_rate": 0.9254740452328409
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 142286.0,
+          "pass_ms": 66390.0,
+          "pass_rate": 0.46659544860351687
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 142286.0,
+          "pass_ms": 39747.0,
+          "pass_rate": 0.27934582460677787
+        },
+        "mirnov_prominence": {
+          "total_ms": 142286.0,
+          "pass_ms": 141583.0,
+          "pass_rate": 0.9950592468689822
+        },
+        "span_coherent_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 69843.0,
+          "pass_rate": 0.4908634721617025
+        },
+        "seed_coherent_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 66390.0,
+          "pass_rate": 0.46659544860351687
+        },
+        "weak_mirnov_support": {
+          "total_ms": 142286.0,
+          "pass_ms": 136490.0,
+          "pass_rate": 0.9592651420378674
+        },
+        "screening_available": {
+          "total_ms": 142286.0,
+          "pass_ms": 142286.0,
+          "pass_rate": 1.0
+        }
+      }
+    }
+  },
+  "population": {
+    "1": {
+      "absent": {
+        "rms_above_seed": {
+          "total_ms": 14172084.0,
+          "pass_ms": 1288.0,
+          "pass_rate": 9.088289344037193e-05
+        },
+        "median5ms_above_seed": {
+          "total_ms": 14172084.0,
+          "pass_ms": 219.0,
+          "pass_rate": 1.5452914334970073e-05
+        },
+        "rms_above_weak": {
+          "total_ms": 14172084.0,
+          "pass_ms": 146135.0,
+          "pass_rate": 0.010311468659090646
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 3015592.0,
+          "pass_ms": 2337530.0,
+          "pass_rate": 0.7751479643134748
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 3015592.0,
+          "pass_ms": 14931.0,
+          "pass_rate": 0.0049512666169694046
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 14129383.0,
+          "pass_ms": 1667357.0,
+          "pass_rate": 0.1180063559746381
+        },
+        "mirnov_prominence": {
+          "total_ms": 14129383.0,
+          "pass_ms": 10212136.0,
+          "pass_rate": 0.7227588069486119
+        },
+        "span_coherent_support": {
+          "total_ms": 14172084.0,
+          "pass_ms": 652712.0,
+          "pass_rate": 0.04605617635345655
+        },
+        "seed_coherent_support": {
+          "total_ms": 14172084.0,
+          "pass_ms": 176791.0,
+          "pass_rate": 0.012474594420975772
+        },
+        "weak_mirnov_support": {
+          "total_ms": 14129383.0,
+          "pass_ms": 756776.0,
+          "pass_rate": 0.05356044209432217
+        },
+        "screening_available": {
+          "total_ms": 14172084.0,
+          "pass_ms": 14144141.0,
+          "pass_rate": 0.9980283069166116
+        }
+      },
+      "present": {
+        "rms_above_seed": {
+          "total_ms": 1346405.0,
+          "pass_ms": 474782.0,
+          "pass_rate": 0.35262940942732685
+        },
+        "median5ms_above_seed": {
+          "total_ms": 1346405.0,
+          "pass_ms": 475986.0,
+          "pass_rate": 0.3535236425889684
+        },
+        "rms_above_weak": {
+          "total_ms": 1346405.0,
+          "pass_ms": 1009692.0,
+          "pass_rate": 0.7499170011994905
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 1346405.0,
+          "pass_ms": 1323038.0,
+          "pass_rate": 0.9826448951095695
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 1346405.0,
+          "pass_ms": 815475.0,
+          "pass_rate": 0.6056684281475485
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 1345555.0,
+          "pass_ms": 918548.0,
+          "pass_rate": 0.6826536261988547
+        },
+        "mirnov_prominence": {
+          "total_ms": 1345555.0,
+          "pass_ms": 1335322.0,
+          "pass_rate": 0.992394959700644
+        },
+        "span_coherent_support": {
+          "total_ms": 1346405.0,
+          "pass_ms": 959208.0,
+          "pass_rate": 0.7124215967706596
+        },
+        "seed_coherent_support": {
+          "total_ms": 1346405.0,
+          "pass_ms": 815475.0,
+          "pass_rate": 0.6056684281475485
+        },
+        "weak_mirnov_support": {
+          "total_ms": 1345555.0,
+          "pass_ms": 1171479.0,
+          "pass_rate": 0.8706288483190951
+        },
+        "screening_available": {
+          "total_ms": 1346405.0,
+          "pass_ms": 1346405.0,
+          "pass_rate": 1.0
+        }
+      }
+    },
+    "2": {
+      "absent": {
+        "rms_above_seed": {
+          "total_ms": 14172084.0,
+          "pass_ms": 764.0,
+          "pass_rate": 5.390879704071751e-05
+        },
+        "median5ms_above_seed": {
+          "total_ms": 14172084.0,
+          "pass_ms": 104.0,
+          "pass_rate": 7.3383702777940065e-06
+        },
+        "rms_above_weak": {
+          "total_ms": 14172084.0,
+          "pass_ms": 25256.0,
+          "pass_rate": 0.0017820949974612062
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 3015592.0,
+          "pass_ms": 491710.0,
+          "pass_rate": 0.16305587758556198
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 3015592.0,
+          "pass_ms": 20952.0,
+          "pass_rate": 0.006947889502293414
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 14129383.0,
+          "pass_ms": 127374.0,
+          "pass_rate": 0.009014831008544394
+        },
+        "mirnov_prominence": {
+          "total_ms": 14129383.0,
+          "pass_ms": 10212136.0,
+          "pass_rate": 0.7227588069486119
+        },
+        "span_coherent_support": {
+          "total_ms": 14172084.0,
+          "pass_ms": 78680.0,
+          "pass_rate": 0.005551759360161851
+        },
+        "seed_coherent_support": {
+          "total_ms": 14172084.0,
+          "pass_ms": 43662.0,
+          "pass_rate": 0.0030808454141254033
+        },
+        "weak_mirnov_support": {
+          "total_ms": 14129383.0,
+          "pass_ms": 277672.0,
+          "pass_rate": 0.019652096627290803
+        },
+        "screening_available": {
+          "total_ms": 14172084.0,
+          "pass_ms": 14144141.0,
+          "pass_rate": 0.9980283069166116
+        }
+      },
+      "present": {
+        "rms_above_seed": {
+          "total_ms": 1346405.0,
+          "pass_ms": 177035.0,
+          "pass_rate": 0.13148718253423003
+        },
+        "median5ms_above_seed": {
+          "total_ms": 1346405.0,
+          "pass_ms": 173718.0,
+          "pass_rate": 0.12902358502827901
+        },
+        "rms_above_weak": {
+          "total_ms": 1346405.0,
+          "pass_ms": 754489.0,
+          "pass_rate": 0.5603729932672561
+        },
+        "frequency_in_range_legacy": {
+          "total_ms": 1346405.0,
+          "pass_ms": 1259874.0,
+          "pass_rate": 0.9357318191777363
+        },
+        "frequency_coherent50ms": {
+          "total_ms": 1346405.0,
+          "pass_ms": 648916.0,
+          "pass_rate": 0.48196196538188735
+        },
+        "mirnov_phase_fit": {
+          "total_ms": 1345555.0,
+          "pass_ms": 379364.0,
+          "pass_rate": 0.28193867957831525
+        },
+        "mirnov_prominence": {
+          "total_ms": 1345555.0,
+          "pass_ms": 1335322.0,
+          "pass_rate": 0.992394959700644
+        },
+        "span_coherent_support": {
+          "total_ms": 1346405.0,
+          "pass_ms": 678918.0,
+          "pass_rate": 0.5042450080027926
+        },
+        "seed_coherent_support": {
+          "total_ms": 1346405.0,
+          "pass_ms": 648916.0,
+          "pass_rate": 0.48196196538188735
+        },
+        "weak_mirnov_support": {
+          "total_ms": 1345555.0,
+          "pass_ms": 1299010.0,
+          "pass_rate": 0.965408325932422
+        },
+        "screening_available": {
+          "total_ms": 1346405.0,
+          "pass_ms": 1346405.0,
+          "pass_rate": 1.0
+        }
+      }
+    }
+  },
+  "label_sha256": {
+    "cohort": {
+      "intervals": "c3fda4a66f09797ebb342fe47fbc9a342a1935af182891f97db14e60e8d3ccb7",
+      "table": "0a67a96a75b0155d37206874af673a96e8aada215a1fb2522790a42432b68bc5"
+    },
+    "population": {
+      "intervals": "436bd751b52fc397397d1362380b34de7bedbda9868c06823e880fd4d1f765f1",
+      "table": "5a4b70b6ecf2c88a7b850ea4afafe6b8606c20080c5d915808c333375954d45d"
+    }
+  }
+}

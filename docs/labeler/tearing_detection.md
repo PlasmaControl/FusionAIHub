@@ -1,375 +1,158 @@
-# Whole-interval tearing-mode detection
+# Whole-interval tearing-mode labels and magnetic-rule recovery
 
-The label is **a strong rotating n=1/n=2 mode (tearing-mode proxy)**. It describes
-a magnetic signature, without independently identifying a tearing island or
-separating classical from neoclassical modes. An observed onset is a point
-(`iscrowd: 0`), and the whole rotating interval is a span (`iscrowd: 1`).
-`tm-ours` reads the same Mirnov array as the label's N1RMS. This task measures
-recovery of an RMS-based rule; the coherent-line requirement also uses magnetic
-information shared with the detector. Removing the explicit RMS input does not
-make this an independent physics validation.
+The target is a **strong rotating n=1/n=2 magnetic mode**, a tearing-mode proxy without independent island identification. `tm-ours` measures recovery of this magnetic rule; these results do not establish a better TM detector. AUROC and AUPRC are the primary comparisons; F1 depends on calibration.
 
-The machine-readable result is
-[`tm_benchmark.json`](../../data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json),
-with the individual records in `benchmark/sources/`. Signals, features,
-checkpoints, predictions, galleries and logs are external, under
-`$LABELER_ROOT/round4/tm/`, with
-`LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker`.
+All new labeling, feature screening, fetching, agreement, fitting, scoring, coverage and galleries exclude the 50 cohort blind shots before opening their signals. The current cohort table contains the 450 development shots. Population results also exclude those IDs. Previous blind result JSONs were moved without inspection into `results/quarantine_blind_test/`.
 
-## Frozen rule and calibration
+## Rule and uncertainty
 
-`labeler.tearing.rule` uses `\\MHD::N1RMS` and `N2RMS` in gauss on their
-approximately 1 kHz grid, after the Ip-derived plasma start within each catalog
-window. Its strong-mode requirements are:
+Both raw RMS and its 5 ms median must exceed 12 G (n1) or 6 G (n2) continuously for 50 ms, before joining runs. The n1 convention follows Farre-Kaga; n2 is a local extension. Each qualified seed extends to max(1 G, 10% of its peak). Available release gaps up to 50 ms may join; acquisition gaps cannot. The frozen development harmonic veto is n2/n1 ≤0.57. EFIT rational surfaces alone do not determine m; no ECE island radius has been resolved, and m remains unassigned.
 
-| Choice | Value | Source or status |
-|---|---|---|
-| n1 seed | raw and 5 ms median RMS >12 G continuously for ≥50 ms | Farre-Kaga duration/threshold; median confirmation is local |
-| n2 seed | raw and median RMS >6 G continuously for ≥50 ms | local n2 extension |
-| Rotating seed | n-resolved line 1.5–30 kHz, continuously supporting ≥50 ms of the seed | N1FREQ/N2FREQ, or Mirnov fallback |
-| Frequency stability | 50 ms p90−p10 width ≤max(2 kHz, 25% of the median) | local rejection of rapid sweeps |
-| Span support | ≥80% has an n-resolved 1–30 kHz line | local coherence requirement |
-| Mirnov fallback | phase fit ≥0.9, prominence ≥10 dB, amplitude above development quiet p95 | local thresholds, frozen before final learning |
-| Release | max(1 G, 10% of that continuous seed's peak) | local interval extension of peak-relative onset |
-| Join release dips | ≤50 ms, only across available acquisition | local interval convention |
-| Harmonic rejection | n2 RMS >0.57×n1 RMS | development-only calibration |
-| Unobserved onset | start within 20 ms of the plasma/window opening | censoring convention |
+Seed and span frequency evidence now uses `coherent_frequency`, not simply N1FREQ/N2FREQ lying in 1–30 kHz. It tests a local 50 ms percentile-stable frequency window with p90−p10 width ≤max(2 kHz, 25% of its median), and ≥80% actual coherent support over a span. Mirnov fallback requires n-resolved fit ≥0.9, prominence ≥10 dB, 1–30 kHz, and coherent amplitude above the frozen development quiet p95. Available >30 kHz records veto that mode's fallback. These criteria are magnetic proxies, not proof of an island.
 
-[Farre-Kaga et al., *Interpreting AI for Fusion*](https://arxiv.org/abs/2502.20294)
-requires n1 RMS above 12 G continuously for 50 ms, with onset at 10% of the
-peak, H-mode constraints and flat-top selection. This implementation enforces
-the continuous seed **before joining runs**: time in sub-seed or sub-release
-gaps never supplies the hold. It still omits the H-mode restriction, adds n2,
-and uses local line-stability and interval-boundary conventions. The
-peak-relative boundary uses future samples and is an offline annotation.
-Fu et al., *Physics of Plasmas* 27, 022501 (2020),
-[doi:10.1063/1.5125581](https://doi.org/10.1063/1.5125581), used 10 G and 50 ms
-and quiet negatives below 5 G. These sources do not independently validate the
-local n2 seed or identify an island.
+Weak tracks require a 100 ms coherent core and are uncertain, extended at the weak-line release floor across ≤50 ms evidence gaps. Population shots run the same Mirnov weak screening wherever existing raw inputs allow. Unscreened time above the frozen weak RMS thresholds (n1 2.0282 G, n2 1.8280 G) is uncertain rather than absent. Missing inputs are disclosed in metadata. Quiet time can be absent even without a weak-line screen. Weak modes that fail the screen still remain cohort **absent**: the weak 7 kHz n=2 line on 189879 is uncertain until 3.9 s; its fading continuation, below the fit/prominence screen, is absent. A review of the earlier labels saw the line to about 4.5 s. This is a strong-mode label, not exhaustive TM truth.
 
-Each continuous seed expands backwards and forwards at its own release level.
-Qualified components separated by short release dips can merge, retaining
-`release_components` with their individual boundaries and thresholds. The
-summary `release_g` is their minimum; `peak_g` is the largest qualified seed
-peak. It is not a re-expansion of the complete merged span at 10% of its largest
-peak. Acquisition gaps are preserved as NaN in resampling and smoothing and
-cannot be joined. Every missing RMS stretch is category 3 (not observable).
+### Criterion pass rates
 
-Short seeds, broadband or unsupported bursts, and lines above 30 kHz become
-category 2 (uncertain). Sustained coherent sub-seed RMS above the absent-time
-p95 also becomes uncertain. A weak n-resolved Mirnov line can establish
-uncertainty with a continuous ≥100 ms core above the development quiet-amplitude
-p95, then extend along that line at 10% of the amplitude floor. Its available
-interruptions ≤50 ms can join after the core is established. This uncertainty
-hysteresis covers weak tracks such as 196494 and 187072 without declaring them
-strong modes. Remaining measured catalog-window time is absent, including quiet
-ramp-up; coverage tables separately clip to observable plasma. Rule firings in the
-excluded ramp-up are uncertain. Categories 2 and 3 are excluded from training
-and scoring.
+The source records below report the old in-range test, true coherent frequency and Mirnov fit/prominence criteria separately on absent and present samples, on the catalog-window RMS grid. Missing criterion inputs do not count as failures: the source gives their support denominators. These are diagnostic associations with the magnetic rule, not independent validation.
 
-`tm_calibrate_rule.py` derives the harmonic cutoff from strong n1-only modes on
-**development shots only**: the p99 of n2/n1 is rounded upwards to 0.57. It also
-records the absent-time RMS and coherent-amplitude distributions. The previous
-0.4 cutoff cited blind test shot 187043. That reference was a test exposure and
-has been removed; the replacement calibration does not open that shot's
-signals. The calibration's reference shot lists and signal-inventory scope are
-frozen in `calibration_dev_fix1.json`, and can be replayed after additional
-population frequency fetching. Historical blind-test model output files also
-exist from the earlier implementation; they are excluded from this benchmark.
-No new blind-test training, threshold tuning or model scoring was performed.
+| Set / n | Criterion | Absent pass % (input s) | Present pass % (input s) |
+|---|---|---:|---:|
+| cohort / 1 | rms_above_seed | 0.01 (1282.13) | 32.81 (142.29) |
+| cohort / 1 | median5ms_above_seed | 0.00 (1282.13) | 33.00 (142.29) |
+| cohort / 1 | rms_above_weak | 1.16 (1282.13) | 73.30 (142.29) |
+| cohort / 1 | frequency_in_range_legacy | 78.67 (400.54) | 98.36 (142.29) |
+| cohort / 1 | frequency_coherent50ms | 0.58 (400.54) | 60.33 (142.29) |
+| cohort / 1 | mirnov_phase_fit | 12.87 (1279.07) | 68.34 (142.29) |
+| cohort / 1 | mirnov_prominence | 71.86 (1279.07) | 99.51 (142.29) |
+| cohort / 1 | span_coherent_support | 4.75 (1282.13) | 70.20 (142.29) |
+| cohort / 1 | seed_coherent_support | 1.19 (1282.13) | 60.33 (142.29) |
+| cohort / 1 | weak_mirnov_support | 5.88 (1279.07) | 85.09 (142.29) |
+| cohort / 1 | screening_available | 99.87 (1282.13) | 100.00 (142.29) |
+| cohort / 2 | rms_above_seed | 0.01 (1282.13) | 12.25 (142.29) |
+| cohort / 2 | median5ms_above_seed | 0.00 (1282.13) | 12.12 (142.29) |
+| cohort / 2 | rms_above_weak | 0.18 (1282.13) | 54.18 (142.29) |
+| cohort / 2 | frequency_in_range_legacy | 15.51 (400.54) | 92.55 (142.29) |
+| cohort / 2 | frequency_coherent50ms | 0.74 (400.54) | 46.66 (142.29) |
+| cohort / 2 | mirnov_phase_fit | 1.18 (1279.07) | 27.93 (142.29) |
+| cohort / 2 | mirnov_prominence | 71.86 (1279.07) | 99.51 (142.29) |
+| cohort / 2 | span_coherent_support | 0.68 (1282.13) | 49.09 (142.29) |
+| cohort / 2 | seed_coherent_support | 0.31 (1282.13) | 46.66 (142.29) |
+| cohort / 2 | weak_mirnov_support | 2.38 (1279.07) | 95.93 (142.29) |
+| cohort / 2 | screening_available | 99.87 (1282.13) | 100.00 (142.29) |
+| population / 1 | rms_above_seed | 0.01 (14172.08) | 35.26 (1346.40) |
+| population / 1 | median5ms_above_seed | 0.00 (14172.08) | 35.35 (1346.40) |
+| population / 1 | rms_above_weak | 1.03 (14172.08) | 74.99 (1346.40) |
+| population / 1 | frequency_in_range_legacy | 77.51 (3015.59) | 98.26 (1346.40) |
+| population / 1 | frequency_coherent50ms | 0.50 (3015.59) | 60.57 (1346.40) |
+| population / 1 | mirnov_phase_fit | 11.80 (14129.38) | 68.27 (1345.56) |
+| population / 1 | mirnov_prominence | 72.28 (14129.38) | 99.24 (1345.56) |
+| population / 1 | span_coherent_support | 4.61 (14172.08) | 71.24 (1346.40) |
+| population / 1 | seed_coherent_support | 1.25 (14172.08) | 60.57 (1346.40) |
+| population / 1 | weak_mirnov_support | 5.36 (14129.38) | 87.06 (1345.56) |
+| population / 1 | screening_available | 99.80 (14172.08) | 100.00 (1346.40) |
+| population / 2 | rms_above_seed | 0.01 (14172.08) | 13.15 (1346.40) |
+| population / 2 | median5ms_above_seed | 0.00 (14172.08) | 12.90 (1346.40) |
+| population / 2 | rms_above_weak | 0.18 (14172.08) | 56.04 (1346.40) |
+| population / 2 | frequency_in_range_legacy | 16.31 (3015.59) | 93.57 (1346.40) |
+| population / 2 | frequency_coherent50ms | 0.69 (3015.59) | 48.20 (1346.40) |
+| population / 2 | mirnov_phase_fit | 0.90 (14129.38) | 28.19 (1345.56) |
+| population / 2 | mirnov_prominence | 72.28 (14129.38) | 99.24 (1345.56) |
+| population / 2 | span_coherent_support | 0.56 (14172.08) | 50.42 (1346.40) |
+| population / 2 | seed_coherent_support | 0.31 (14172.08) | 48.20 (1346.40) |
+| population / 2 | weak_mirnov_support | 1.97 (14129.38) | 96.54 (1345.56) |
+| population / 2 | screening_available | 99.80 (14172.08) | 100.00 (1346.40) |
 
-## Locking and poloidal number
+Source: [criterion_support_fix2.json](../../data/events/neoclassical_tearing_mode/benchmark/sources/criterion_support_fix2.json).
 
-`N1FREQ`/`N2FREQ` dropping to ≤1 kHz for 20 ms after ≥1.5 kHz is a
-`locked_candidate`. Every in-span drop, and drops within 100 ms after the RMS
-end, is retained in `lock_candidates_ms`; `lock_time_ms` stores the earliest
-candidate. A drop alone does not truncate the interval or set `locked=true`.
-Only a matching independently confirmed locked-mode time truncates the rotating
-span at that time. Regression tests exercise that confirmed branch. No dedicated
-locked-mode diagnostic is resolved in the present data, so all reported locking
-states are unknown (`locked_known=false`). For an interval without a usable
-frequency record, `ended=unknown` is explicit. Complete unknown-shot lists are
-in each label table's metadata, rather than a truncated example list.
+## Abrupt collapse and locking
 
-Poloidal number requires `m=nq` at an independently observed island radius.
-`labeler.tearing.surface.supported_m` can use EFIT q and such a radius, but this
-pipeline resolves no ECE island radius. **m is not assigned**; a unique rational
-surface in EFIT is insufficient radial evidence. Omnimode m is not used.
+An amplitude fall from above seed to below release within ≤5 ms is never `ended=decay`. It is `ended=locked` only when independently confirmed, otherwise `ended=unknown`. The post-collapse phase is uncertain until the lock signal falls or the discharge ends; without confirmation/release evidence it remains uncertain to the catalog discharge end. The fetched n1 `DUSBRADIAL` PTDATA radial-field detector is in **volts**, not gauss. Confirmation requires ≥5 V continuously for 20 ms within 100 ms of the collapse or eligible frequency drop; release requires the field to stay below 5 V for 200 ms, so shorter dips are bridged. This is a conservative local voltage convention, not a calibrated island-field measurement. `N1FREQ`/`N2FREQ` dropping to ≤1 kHz for 20 ms after rotation alone creates only a candidate. n2 has no independent radial confirmation.
 
-## Labels and visual audit
+| Set | Labeled shots | Intervals | Mode shots | Ends | Confirmed locks |
+|---|---:|---:|---:|---|---:|
+| cohort | 450 | 78 | 73 | {'decay': 48, 'locked': 18, 'plasma_end': 1, 'unknown': 11} | 18 |
+| population | 4798 | 821 | 708 | {'decay': 448, 'locked': 226, 'plasma_end': 17, 'unknown': 130} | 226 |
 
-The cohort table is
-[`extend_tm_interval/tm_interval.csv`](../../data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv)
-with adjacent metadata. Population labels and detailed interval tables are
-external: `labels/tm_interval_population.csv`, its metadata,
-`labels/tm_intervals_full_{cohort,population}.csv`, and
-`labels/plasma_start_{cohort,population}.json`. Counts, original-to-final
-changes, and an independent raw/median continuous-seed audit are bundled in
-`label_counts` and `rule_audit`.
+Source: benchmark `label_counts`, `locking_coverage`, and the adjacent label metadata. Unknown status is not evidence that no lock occurred. Fetching runs only on the login node through `fdp run` and stops on the first auth error.
 
-| Set | Requested / labeled | Mode shots | Intervals n1 / n2 | Onset points | Confirmed locks* | Candidates | Missing RMS |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Cohort | 500 / 500 | 85 | 75 / 19 | 94 | 0 | 37 | 0 |
-| Population | 4,872 / 4,848 | 750 | 677 / 203 | 873 | 0 | 290 | 24 |
+The `extend_tm_interval` table requires conversion before promotion to `review/`: TM catalog state 3 is forbidden, n-specific present/uncertain rows overlap, onset rows have zero length, and fractional-ms boundaries must become whole milliseconds. `test_shot_table_validates_extension_intervals_with_onset_points_and_spans` tests geometry, not catalog validity.
 
-*Lock confirmation is unknown for every interval, including every population
-interval. Zero confirmed locks is not a measured absence of locking. The final
-strong intervals all have usable frequency records after the permitted fetches;
-the dedicated confirmation diagnostic remains unavailable. Cohort and population
-overlap and must not be added. Seven population intervals have censored onsets.
-Sources: label metadata and
-[`audit_fix1_current.json`](../../data/events/neoclassical_tearing_mode/benchmark/sources/audit_fix1_current.json).
+## Historical-onset agreement and limitations
 
-Compared with the pre-fix tables, **228 of 273 cohort geometries changed**
-(179 removed, 49 modified), and **1,900 of 2,323 population geometries changed**
-(1,442 removed, 458 modified). Exact geometries retained are 45 and 423;
-25 and 101 of those also changed old-field attributes. No new nonoverlapping
-span was added. Counts refer to original spans, allowing a merged final span
-to overlap more than one original span.
+Recall of the lab's archived onsets within 100 ms is **Seo 12/26** and **survival 16/67** on the development shots (13/26 and 18/67 on the earlier 500-shot labels). The strong 50 ms seed rule omits short and fast-locking modes: of the missed onsets, 9/14 (Seo) and 30/51 (survival) are short bursts, 4 and 16 lack a supported coherent line. Strict containment and miss reasons are in the linked JSONs. Survival agreement is near-circular because it shares RMS, 12 G, 50 ms and release conventions. The rule was not selected to maximize archive agreement.
 
-The independent audit finds **0/94 cohort and 0/880 population intervals**
-without a continuous 50 ms raw or median seed crossing (0% in each set).
-For n1 specifically, the Farre-Kaga duration deviation is 0/75 and 0/677;
-the local n2 extension is 0/19 and 0/203. Previously the pooled raw failures were
-129/273 (47.3%) and 1,057/2,323 (45.5%); median failures were 119/273 (43.6%)
-and 943/2,323 (40.6%). The audit includes the final sample width in each hold
-and never crosses an acquisition gap; its exact method and original snapshots
-are identified in the same source record.
+| Reference | Covered shots | Onsets | Matched | Strict contained |
+|---|---:|---:|---:|---:|
+| seo | 80 | 26 | 12 | 9 |
+| survival | 175 | 67 | 16 | 8 |
+Sources: benchmark `agreement`, [agreement_seo_cohort_dev.json](../../data/events/neoclassical_tearing_mode/benchmark/sources/agreement_seo_cohort_dev.json), [agreement_survival_cohort_dev.json](../../data/events/neoclassical_tearing_mode/benchmark/sources/agreement_survival_cohort_dev.json). The frozen-rule sensitivity is generated by `tm_sensitivity.py` and bundled as `sensitivity_survival_dev.json`; it does not tune the rule.
 
-`tm_gallery.py --n 12 --seed 0` samples development shots, excluding blind test
-shots. The MHR gallery uses live row 2 (rows 0, 1 and 7 are dead). MHR and Mirnov
-panels show the 0–50 kHz spectrum, colored n1/n2 RMS, readable 6/12 G ticks,
-matching legends, and gray uncertainty. Candidate hatch edges contrast with the
-background; confirmed-lock hatching is distinct and would appear only for a
-confirmed event. There are no confirmed locks in these galleries. Both random
-and seven-shot physics PNGs were opened after the final rule freeze. Their
-paths and source hashes are recorded in `gallery_review` and the rule audit.
+## Development detection benchmark
 
-| Reviewed shot | Final adjudication |
-|---|---|
-| 185953 | Former 3345–3679 ms span is uncertain: short seed; no present interval. |
-| 194410 | Former 1126–1378 and 1930–2222 ms spans are uncertain; no present interval. |
-| 186561 | Former n2 4011–4062 ms pulse is uncertain; no strong interval remains. |
-| 190790 | Early rapid-sweep or quasistationary spans are uncertain; coherent n1 3163–5764 ms remains present, with unconfirmed locking candidates at 3163/5727 ms. |
-| 195040 | Former n2 4213–5116 ms span at about 40 kHz is uncertain; no present interval. |
-| 196494 | Weak n1 line is uncertain over 1270–5529 ms, including the visible 2–5 s track. |
-| 187072 | Weak n2 line is uncertain over 1810–5180 ms. |
+The original seed-0 outer held-shot assignment is unchanged. Before any fit, `tm_cv_plan.py` freezes inner shot roles in `inner_splits_fix2.json`, using 10% per shot-has-an-interval stratum within each outer-training pool. Within-stratum swaps enforce observable positive support for every model and legacy target. No predicted score or held-fold performance chooses roles. Model availability is applied only after this shared plan. Each fit asserts positive-bearing early-stopping validation; threshold selection raises on zero positives and asserts no 0.999 fallback. Published CNN also appears at its own 0.5 threshold beside the retrained row. DSM's published survival threshold 0.7 corresponds to risk 0.3.
 
-Source: the audit's `reviewed_shots` and
-[`weak_diagnostics_fix1.json`](../../data/events/neoclassical_tearing_mode/benchmark/sources/weak_diagnostics_fix1.json).
+All learned models are refitted with three seeds. Prior hyperparameters remain fixed from earlier development work, so this is not fully nested hyperparameter selection. The scalar CNN has t+25 ms input lookahead and is an offline detector. DSM is a detection head on its original embedding; published DSM rows remain horizon forecasts, with known original training shots excluded from their reported held-out scores. Published CNN original training overlap is unknown (dagger), so those scores are descriptive.
 
-## Agreement with historical onsets
+Targets use absolute 10 ms bins. Legacy rows use their 25 ms native bins. Every row has its own input/reference-dependent shot set, given explicitly in its source JSON. Categories 2/3 and unavailable inputs/scores are excluded in primary rows. AUROC/AP use 1,024 score quantiles; all intervals use 1,000 whole-shot bootstrap draws (seed 0). Segmental F1 uses IoU 0.5, 50 ms minimum segments and ≤50 ms negative-gap closing; unavailable bins remain hard barriers and do not enter intersection or union.
 
-`tm_agreement.py` reads survival onsets from `raw/tm_labels.h5`; Seo's 25 ms
-growth-phase labels are aligned to physical time using `validate.archived_truth`.
-They are not historical full present spans. Primary agreement requires a
-same-n1 interval containing the onset or having an edge within 100 ms. Exact
-zero-tolerance containment is reported separately. Error is reference onset
-minus interval start, conditional on a match. Positive errors mean the interval
-begins earlier. All-cohort comparisons audit labels; model selection and scoring
-use only the 450 development shots.
-
-**Survival agreement is near-circular**: the reference shares N1RMS, 12 G,
-50 ms and a 10%-of-peak onset convention with this rule. It does not independently
-validate tearing islands. The frozen-rule sensitivity was rerun using the actual
-line masks, plasma starts and acquisition-gap policy; its variants characterize
-sensitivity and did not choose the final rule.
-
-| Reference / set | Covered shots | Onsets | Match / miss (100 ms) | Strict containment | Median error [Q25,Q75] ms | Mean absolute error ms | Comparable intervals without onset |
-|---|---:|---:|---:|---:|---|---:|---:|
-| Seo / development | 80 | 26 | 13 / 13 | 10 / 26 | 116 [73,221] | 203.3 | 3 / 15 |
-| Seo / all cohort | 92 | 29 | 14 / 15 | 11 / 29 | 115.5 [77.25,216.25] | 195.2 | 3 / 16 |
-| Survival / development | 175 | 67 | 18 / 49 | 10 / 67 | 2 [-10.25,136.25] | 202.0 | 5 / 23 |
-| Survival / all cohort | 200 | 72 | 20 / 52 | 11 / 72 | 2 [-11.25,108.75] | 182.6 | 9 / 29 |
-
-Sources: bundled `agreement_{seo,survival}_cohort_{dev,all}.json`, generated by
-`tm_agreement.py`. Per-onset decisions are in the corresponding external CSVs.
-Seo's 13 development misses are nine short seeds, three unsupported coherent
-lines and one interval starting later. Survival's 49 misses are 30 short seeds,
-14 unsupported lines, three below-seed events and two later intervals. Only
-10 survival onsets lie literally inside a strong n1 span; eight more are admitted
-by the 100 ms edge tolerance. The stricter seed/line requirements explain much
-of the departure from the shared RMS reference. These mismatches were retained,
-not shifted into agreement.
-
-For development Seo, the three comparable intervals without an onset split into
-one on a reference-mode shot and two on reference-quiet shots; 52 of all 67 n1
-intervals fall outside usable reference coverage or have no reference. For
-survival the corresponding five split into three and two, with 44 intervals
-outside coverage. All-cohort splits are Seo one/two (59 outside) and survival
-three/six (46 outside). Archives can supply one onset for a shot while the new
-rule supplies multiple spans; lack of an onset also reflects this mismatch.
-Reference-quiet spans are disagreements, not independent evidence of false
-island detections.
-
-| Frozen-rule survival sensitivity (development n1) | Intervals | Onset match fraction | Comparable intervals without onset |
-|---|---:|---:|---:|
-| Frozen: 12 G, 50 ms, 10% release | 67 | .269 | .217 |
-| Seed 8 / 10 / 15 G | 99 / 86 / 49 | .478 / .403 / .149 | .220 / .206 / .286 |
-| Hold 20 / 30 / 100 ms | 99 / 90 / 44 | .493 / .433 / .209 | .233 / .237 / .176 |
-| Join gap 20 / 100 ms | 68 / 66 | .254 / .269 | .292 / .217 |
-| Release 5% / 20% | 66 / 67 | .284 / .224 | .174 / .348 |
-
-Source:
-[`sensitivity_survival_dev.json`](../../data/events/neoclassical_tearing_mode/benchmark/sources/sensitivity_survival_dev.json),
-rerun against the final label SHA and rule SHA. These are near-circular
-sensitivity checks and are not competing selected label definitions.
-
-## Detection evaluation
-
-Targets are presence at centres of absolute 10 ms bins. Categories 2/3,
-nonfinite inputs and nonfinite scores are unavailable. Ranking metrics use
-pooled histograms at 1,024 score quantiles and approximate exact AUROC/AP.
-Confidence intervals resample whole shots 1,000 times with seed 0; valid
-bootstrap counts are in each source record.
-
-Segmental F1 closes available negative gaps ≤50 ms and drops positive runs
-shorter than 50 ms. **Unavailable bins are hard barriers**, and contribute
-neither intersection nor union to temporal IoU. Greedy one-to-one matching uses
-IoU 0.5 for the main table; 0.3/0.7 results are also saved. Legacy onset/growth
-and horizon targets have no segmental F1.
-
-All main rows, including the RMS baseline and unchanged published weights,
-choose their thresholds inside the **same shot CV folds**. The full development
-cohort is assigned five outer groups before filtering for each model's inputs;
-seeded 10% inner validation shot lists are also shared. Each row selects its
-own F1 threshold on its available inner-validation bins, then scores the held
-outer shots. The source records list train/validation/held IDs, thresholds,
-class counts and saved validation predictions. Fixed published thresholds occur
-only in explicitly labelled extra rows. For DSM, upstream survival probability
-0.7 means **risk 0.3**, because risk is one minus survival; the previous risk-0.7
-provenance was incorrect. The main published DSM row uses the representative
-500 ms horizon. Other horizons and fixed-threshold rows are in the appendix
-export; they are forecasts compared to presence, not horizon-zero detectors.
-
-Some shared inner validation subsets have no positive bins after the stricter
-rule. In those folds an F1 optimum is unestimable, and the unchanged deterministic
-highest-candidate fallback is flagged in the source records. Resulting threshold
-F1 can be unstable; the independent threshold replay and paired ranking help
-assess this limitation. The fold assignment was not changed to improve these
-results.
-
-`tm-onsetcnn` retrains the published scalar/profile CNN with a detection loss at t,
-using three seeds. Its pinned scalar preprocessing reads some t+25 ms values,
-so it remains an offline detector with that input lookahead. `tm-dsm` retrains
-the published 38-feature embedding with a detection logit in place of the
-survival mixture. Prior learning rates were selected on an earlier fold-0 inner
-validation loss; they are fixed for this correction, so this is development CV,
-without fully nested hyperparameter selection. Published DSM evaluations exclude
-known original training shots. The CNN original training list is unavailable;
-published CNN rows have unknown overlap and are descriptive.
-
-`tm-ours` uses six Mirnov probes' spectral band-power and toroidal coherence
-features, three dilated temporal convolutions and a three-seed ensemble. Its
-main variant omits explicit RMS; the RMS-input variant is a circular ablation.
-Feature normalization uses training shots only. In the corrected implementation,
-inputs are zeroed only for nonfinite feature rows: the target-validity mask
-controls loss/scoring, and no longer zeroes finite uncertain inputs. This removes
-a target-derived dependency in the earlier model context. All learned variants
-were retrained against the final frozen label table after this correction.
-Saved fold ensembles, normalization and thresholds are in
-`checkpoints/tm_ours_magnetics/` and `checkpoints/tm_ours_magnetics_rms/`.
-The README calls them experimental CV checkpoints and does not designate
-`tm-ours` as a deployed latest model.
-
-| Model | Setting | Scored shots / bins | AUROC [95% CI] | AUPRC [95% CI] | F1 [95% CI] | Segmental F1 [95% CI] |
+| Model | Setting | Shots / bins | AUROC [95% CI] | AUPRC [95% CI] | F1 [95% CI] | Segmental F1 [95% CI] |
 |---|---|---:|---|---|---|---|
-| Published CNN | Legacy, overlap unknown | 79 / 5,580 | .897 [.832,.952] | .601 [.385,.799] | .567 [.372,.719] | — |
-| Published DSM (500 ms) | Legacy, outside training | 80 / 8,362 | .721 [.614,.828] | .294 [.179,.442] | .157 [.089,.250] | — |
-| Published CNN | Interval, overlap unknown | 262 / 25,527 | .982 [.969,.993] | .951 [.911,.978] | .539 [.375,.688] | .497 [.322,.667] |
-| Published DSM (500 ms) | Interval, outside training | 235 / 35,426 | .796 [.711,.864] | .521 [.391,.657] | .454 [.345,.549] | .257 [.132,.413] |
-| tm-onsetcnn | Tokamak-SI, retrained | 263 / 25,853 | .971 [.952,.986] | .925 [.859,.964] | .760 [.641,.854] | .718 [.570,.836] |
-| tm-dsm | Tokamak-SI, retrained | 319 / 47,449 | .964 [.935,.986] | .906 [.842,.953] | .669 [.564,.753] | .540 [.420,.650] |
-| tm-ours | Tokamak-SI, Mirnov | 450 / 141,884 | .998 [.996,.999] | .988 [.973,.996] | .872 [.815,.920] | .714 [.628,.800] |
-| n1 RMS | Tokamak-SI, fold-tuned | 450 / 141,884 | .988 [.982,.994] | .928 [.882,.960] | .775 [.701,.833] | .370 [.291,.467] |
-| tm-ours + RMS | Tokamak-SI, circular ablation | 450 / 141,884 | .998 [.997,1.000] | .987 [.972,.996] | .825 [.745,.892] | .708 [.615,.798] |
+ | tm-onsetcnn-published† | Legacy | 79 / 5580 | 0.897 [0.832,0.952] | 0.601 [0.385,0.799] | 0.462 [0.286,0.615] | — |
+ | tm-dsm-500ms-published | Legacy | 80 / 8362 | 0.721 [0.614,0.828] | 0.294 [0.179,0.442] | 0.275 [0.167,0.364] | — |
+ | tm-onsetcnn-published† | Interval | 265 / 25683 | 0.979 [0.963,0.991] | 0.938 [0.885,0.970] | 0.824 [0.727,0.888] | 0.672 [0.549,0.766] |
+ | tm-dsm-500ms-published | Interval | 236 / 35868 | 0.776 [0.683,0.848] | 0.434 [0.298,0.572] | 0.452 [0.328,0.555] | 0.255 [0.130,0.381] |
+ | tm-onsetcnn-retrained | Interval | 266 / 26005 | 0.957 [0.929,0.979] | 0.878 [0.762,0.950] | 0.796 [0.684,0.881] | 0.716 [0.568,0.820] |
+ | tm-onsetcnn-published† | Interval, published thr. 0.5 | 265 / 25683 | 0.979 [0.963,0.991] | 0.938 [0.885,0.970] | 0.715 [0.594,0.813] | 0.604 [0.420,0.760] |
+ | tm-dsm-retrained | Interval | 322 / 47875 | 0.946 [0.910,0.975] | 0.834 [0.726,0.912] | 0.673 [0.575,0.760] | 0.640 [0.512,0.729] |
+ | tm-ours | Interval | 450 / 142103 | 0.999 [0.997,1.000] | 0.989 [0.976,0.997] | 0.952 [0.916,0.978] | 0.857 [0.775,0.928] |
+ | tm-rms | Interval | 450 / 142103 | 0.987 [0.980,0.993] | 0.918 [0.868,0.955] | 0.763 [0.681,0.830] | 0.347 [0.273,0.439] |
+ | tm-ours-rms | Interval | 450 / 142103 | 0.999 [0.997,1.000] | 0.986 [0.967,0.997] | 0.939 [0.900,0.968] | 0.843 [0.764,0.918] |
+ | tm-ours | Uncertain = negative | 450 / 246801 | 0.963 [0.954,0.971] | 0.584 [0.471,0.685] | 0.425 [0.348,0.494] | 0.269 [0.215,0.321] |
 
-Source: benchmark `rows`, each linking its complete source JSON and exact
-shot/bin/threshold definitions. The saved out-of-fold probabilities reproduce
-all reported F1 and segmental F1 point values exactly. Histogram-ranking replay
-differences from float32 serialization are below 1e-4. All saved learned
-validation thresholds were independently replayed from their actual validation
-probabilities. The published CNN can have better ranking and lower CV-threshold
-F1 because its threshold calibration is weak in folds with no positives.
-Input coverage differs across these rows; use the paired table for the direct
-comparison of the learned detectors.
+The Mirnov-derived mask excludes about **42% of development catalog-window time**, equivalent to **49.6%** of current observable development plasma. It shares `tm-ours` inputs, so the task emphasizes strong modes versus quiet magnetic time and can favor the magnetic detector. The uncertain-as-negative sensitivity row uses identical fits and validation thresholds, scores category 2 as negative, and still excludes category 3. Finite uncertain features remain in temporal input context; the target mask controls loss/scoring only. The +RMS row adds circular label inputs.
 
-Both learned detectors are compared on **263 common shots / 25,853 identical
-10 ms bins (258.53 s)**, preserving their original fold thresholds. Paired
-bootstrap draws use the same sampled shots for both models.
+### Paired comparison
 
-| Model on common bins | AUROC [95% CI] | AUPRC [95% CI] | F1 [95% CI] | Segmental F1 [95% CI] |
+Same 266 development shots / 26005 identical available 10 ms bins; each model retains its positive-bearing validation thresholds. Paired bootstrap draws resample the same shots. Ranking, not a threshold-specific F1 gain, is the primary comparison.
+
+| Model | AUROC | AUPRC | F1 | Segmental F1 |
 |---|---|---|---|---|
-| tm-ours | .996 [.988,1.000] | .985 [.959,.999] | .872 [.781,.949] | .873 [.782,.956] |
-| tm-onsetcnn | .971 [.952,.986] | .925 [.858,.963] | .760 [.641,.854] | .718 [.570,.836] |
-| Difference, ours−CNN | .024 [.012,.040] | .061 [.029,.115] | .112 [.015,.223] | .155 [.021,.304] |
+ | tm-ours | 0.998 [0.993,1.000] | 0.992 [0.974,1.000] | 0.950 [0.875,0.990] | 0.914 [0.840,0.970] |
+ | tm-onsetcnn-retrained | 0.957 [0.929,0.979] | 0.878 [0.762,0.950] | 0.796 [0.684,0.881] | 0.716 [0.568,0.820] |
+ | Difference, tm-ours−CNN | 0.041 [0.021,0.066] | 0.114 [0.049,0.213] | 0.154 [0.088,0.247] | 0.198 [0.080,0.344] |
 
-Source: benchmark `paired_common_shots` and
-[`table_tm_paired.tex`](table_tm_paired.tex). Its subset changes segment
-availability, explaining why the magnetic detector's paired segmental F1 is
-higher than its all-development segmental F1.
+Published/retrained CNN ranking on exactly 256 common shots and 22844 common 10 ms bins:
 
-The historical pre-correction CNN retraining did **not** beat the published
-weights on AUROC (.926 versus .930); it tied rounded AP (.778). Those historical
-numbers used the old labels and belong only to the explicitly archived ranking
-comparison. They are not the corrected rule's results. The final common-bin
-published-versus-retrained comparison below states the current ranking.
+| Model | AUROC [95% CI] | AUPRC [95% CI] |
+|---|---:|---:|
+| tm-onsetcnn-published | 0.979 [0.964,0.990] | 0.941 [0.892,0.971] |
+| tm-onsetcnn-retrained | 0.954 [0.926,0.977] | 0.880 [0.760,0.953] |
 
-**The retrained CNN does not beat the published weights on ranking.** On
-253 common shots / 22,705 identical bins, published AUROC/AP are .982/.954;
-retrained AUROC/AP are .970/.926. Retrained fold-threshold F1 is higher
-(.758 versus .537), but that does not establish better ranking or generalization.
-The published model's original training overlap is still unknown. Source:
-benchmark `cnn_ranking_common_bins`.
+Source: benchmark `paired_common_shots` and `cnn_ranking_common_bins`. No retraining-generalization claim follows from published-CNN comparisons while original training overlap is unknown.
 
-## Paper exports and reproduction
+## Coverage and publication artifacts
 
-[`table_tm_benchmark.tex`](table_tm_benchmark.tex) contains the main rows, with
-a 78-word caption. The common-shot comparison is in
-[`table_tm_paired.tex`](table_tm_paired.tex), and extra horizons/fixed-threshold
-rows are in [`table_tm_benchmark_appendix.tex`](table_tm_benchmark_appendix.tex).
-[`figure2_tm.json`](figure2_tm.json) supplies F1 **at fold-tuned thresholds** and
-AUPRC with confidence bounds for legacy versus Tokamak-SI, plus like-for-like
-coverage in observable plasma seconds. The matched-target/input comparisons
-remain distinct from total label coverage; changing the label target is not a
-paired performance improvement.
+**No TM coverage gain is claimed.** The preceding survival-matched like-for-like coverage was 435.7 s interval versus 909.9 s legacy; new conservative uncertainty further changes support. Current coverage uses the same measured plasma-start/catalog-end domain and 10 ms grid on each matched shot set. Observable time includes uncertainty; labeled time excludes it. Scoring can include quiet ramp-up, so scoring bins and observable-plasma coverage have different denominators.
 
-| Coverage on the same observable-plasma grid | Shots | Observable plasma s | Legacy labeled s | Interval labeled s on those shots | Common labeled s |
-|---|---:|---:|---:|---:|---:|
-| Seo-matched cohort | 92 | 451.03 | 147.19 | 199.01 | 52.93 |
-| Survival-matched cohort | 200 | 984.76 | 909.91 | 435.68 | 383.83 |
-| Whole cohort | 500 | 2,346.94 | — | 1,178.59 | — |
-| Population supplement | 4,848 | 22,858.82 | — | 19,967.73 | — |
+| Set | Shots | Observable plasma s | Labeled s | Uncertain s |
+|---|---:|---:|---:|---:|
+| ours | 450 | 2109.09 | 1062.11 | 1046.98 |
+| ours_population | 4798 | 22620.97 | 11748.25 | 10872.72 |
 
-Source: benchmark `coverage` and Figure 2's `like_for_like_coverage`. Each
-comparison uses the same physical 10 ms grid and plasma-start/window boundaries.
-Observable seconds include uncertainty; labeled seconds exclude categories 2/3
-and archive temporal holes. The old survival 1,200 s was the native fixed grid,
-not observable plasma. Scoring-bin coverage in the results table can include
-quiet catalog-window ramp-up; the plasma coverage table explicitly excludes it.
-Much of the cohort now has uncertainty, and the population lacks Mirnov weak-line
-features outside the cohort. Thus the population/cohort label coverage and weak
-uncertainty coverage are different, rather than like-for-like performance cohorts.
+| Matched reference | Shots | Legacy labeled s | Interval labeled s | Common labeled s |
+|---|---:|---:|---:|---:|
+| legacy_seo | 80 | 129.98 | 171.50 | 47.09 |
+| legacy_survival | 175 | 799.29 | 375.93 | 331.97 |
 
-Use the prescribed environment and temporary directory, `LABELER_NO_FETCH=1`
-and CPU thread limits ≤8. Each long job uses `timeout 1800`, a log, and the
-scratch `tmpsweep.sh` afterwards. `tm_label.py` regenerates cohort/population
-labels; `tm_agreement.py` and `tm_sensitivity.py` regenerate onset checks;
-`tm_prior_published.py`, `tm_prior_retrain.py`, and `tm_ours.py` regenerate CV
-scores. The CUDA venv and GPU 1 were used for training within the 10 GB bound.
-Never supply `--final`: that would score the blind split.
+Sources: benchmark `coverage`, adjacent label metadata, and [figure2_tm.json](figure2_tm.json), which includes ranking/F1 intervals and exact like-for-like coverage. Cohort/population overlap and must not be added.
 
-```bash
-export TMPDIR=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/tm
-export LABELER_ROOT=/scratch/gpfs/EKOLEMEN/nc1514/labelmaker
-export LABELER_LABEL_TABLES=/scratch/gpfs/nc1514/FusionAIHub/data/events
-export LABELER_NO_FETCH=1 PYTHONPATH=$PWD/src
-export OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4
- timeout 1800 pixi run --frozen --no-install --manifest-path /scratch/gpfs/nc1514/FusionAIHub/pyproject.toml -e labelmaker python scripts/labeler/tm_benchmark.py --rescore --gallery-reviewed > "$LABELER_ROOT/round4/tm/logs/benchmark_reproduce.log" 2>&1
-bash /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/bin/tmpsweep.sh
-```
+`tm_gallery.py --width 3.25 --columns 1` provides column-sized example panels with 7.5 pt text at final width. The 7.3-inch complete MHR/Mirnov galleries remain supplementary audit material and must not be shrunk into a paper column. Their JSON sidecars record shots, width, font, diagnostic, label/source hashes and image hashes. All changed PNGs are visually inspected. `tm_render_tables.py` renders the exact final TeX at 6.75-inch text width, rejects overfull horizontal boxes and writes PDF/150-dpi PNG previews with provenance. The appendix explains the dagger.
 
-`--gallery-reviewed` records an inspection already performed; open every PNG
-before supplying it. Published CNN legacy/interval results have unknown training
-overlap; historical test exposure, magnetic target/input sharing, locking
-uncertainty and sparse positive validation folds remain limitations.
+## Reproduction
+
+Use the prescribed frozen/no-install pixi labelmaker environment, worktree PYTHONPATH, scratch TMPDIR and LABELER_NO_FETCH=1. Only the authorized DUSBRADIAL fetch unsets LABELER_NO_FETCH and runs through `fdp run` on the login node. Train on CUDA_VISIBLE_DEVICES=1 with the prescribed phase3 CUDA venv; never use `--final`.
+
+Sequence: `tm_magfeatures.py`, `tm_label.py` (development and nonblind population), `tm_audit_rule.py`, `tm_cv_plan.py`, `tm_prior_retrain.py --model cnn/dsm`, `tm_ours.py --features magnetics/magnetics+rms` and `--baseline`, `tm_prior_published.py` (legacy and interval), `tm_agreement.py --exclude-test --tag _dev`, `tm_sensitivity.py`, `tm_gallery.py`, `tm_benchmark.py --rescore --gallery-reviewed`, `tm_write_doc.py`, `tm_render_tables.py`. Source JSONs and exact shot lists are committed under the benchmark's `sources/`; large predictions, weights, signals and figures stay under `$LABELER_ROOT/round4/tm/`.
+
+Remaining research limitations: magnetic target/input sharing, local n2 and voltage conventions, omissions of weak/fast-locking modes, unknown published CNN overlap, incomplete weak-screen inputs, and no independent ECE island radius or fully nested hyperparameter selection.

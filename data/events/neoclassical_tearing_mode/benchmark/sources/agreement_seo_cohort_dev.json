@@ -4,14 +4,14 @@
   "exclude_test": true,
   "tolerance_ms": 100.0,
   "n_shots_considered": 450,
-  "git_sha": "f3edb014",
+  "git_sha": "e162d57f",
   "intervals_table": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/labels/tm_intervals_full_cohort.csv",
-  "intervals_sha256": "b49cfc26d8eb42132933ad8d9aeda5f3f277cc5d2f21c7eb89404d8e96cced81",
+  "intervals_sha256": "c3fda4a66f09797ebb342fe47fbc9a342a1935af182891f97db14e60e8d3ccb7",
   "caveat": "Seo labels are growth-phase labels with limited temporal coverage.",
   "unmatched_interval_breakdown": {
     "definition": "n1 intervals on selected shots: compare only starts inside available archive coverage; other spans are not comparable",
-    "all_n1_intervals": 67,
-    "outside_reference_coverage_or_no_reference": 52,
+    "all_n1_intervals": 61,
+    "outside_reference_coverage_or_no_reference": 47,
     "reference_mode_shots": 1,
     "reference_quiet_shots": 2
   },
@@ -32,33 +32,33 @@
     "n1": {
       "n_shots_covered": 80,
       "reference_onsets": 26,
-      "matched": 13,
-      "missed": 13,
-      "matched_fraction": 0.5,
+      "matched": 12,
+      "missed": 14,
+      "matched_fraction": 0.46153846153846156,
       "error_ms": {
-        "median": 116.0,
-        "q25": 73.0,
-        "q75": 220.99999999999977,
+        "median": 129.99999999999977,
+        "q25": 49.249999999999886,
+        "q75": 262.4999999999997,
         "min": -66.00000000000091,
         "max": 632.9999999999995,
-        "mean_abs": 203.30769230769218,
+        "mean_abs": 210.6666666666666,
         "within_ms": {
-          "25": 0.07692307692307693,
-          "50": 0.15384615384615385,
-          "100": 0.3076923076923077,
-          "250": 0.7692307692307693
+          "25": 0.08333333333333333,
+          "50": 0.16666666666666666,
+          "100": 0.3333333333333333,
+          "250": 0.75
         },
-        "reference_after_interval_start_fraction": 0.7692307692307693
+        "reference_after_interval_start_fraction": 0.75
       },
-      "compared_intervals": 15,
-      "intervals_with_an_onset": 12,
+      "compared_intervals": 14,
+      "intervals_with_an_onset": 11,
       "intervals_without_an_onset": 3,
-      "intervals_without_an_onset_fraction": 0.2,
+      "intervals_without_an_onset_fraction": 0.21428571428571427,
       "intervals_without_an_onset_on_reference_mode_shots": 1,
       "intervals_without_an_onset_on_reference_quiet_shots": 2,
       "shots": {
-        "reference_mode_and_ours": 13,
-        "reference_mode_not_ours": 13,
+        "reference_mode_and_ours": 12,
+        "reference_mode_not_ours": 14,
         "ours_not_reference": 2,
         "neither": 52
       },
@@ -69,7 +69,7 @@
         "below_onset_level": 0,
         "no_record": 0,
         "excluded_ramp_up": 0,
-        "coherent_line_not_supported": 3
+        "coherent_line_not_supported": 4
       }
     },
     "any_n": {
@@ -79,24 +79,24 @@
       "missed": 13,
       "matched_fraction": 0.5,
       "error_ms": {
-        "median": 116.0,
+        "median": 143.99999999999955,
         "q25": 73.0,
-        "q75": 220.99999999999977,
+        "q75": 386.99999999999955,
         "min": -66.00000000000091,
-        "max": 632.9999999999995,
-        "mean_abs": 203.30769230769218,
+        "max": 1754.999999999999,
+        "mean_abs": 329.46153846153834,
         "within_ms": {
           "25": 0.07692307692307693,
           "50": 0.15384615384615385,
           "100": 0.3076923076923077,
-          "250": 0.7692307692307693
+          "250": 0.6923076923076923
         },
         "reference_after_interval_start_fraction": 0.7692307692307693
       },
-      "compared_intervals": 20,
-      "intervals_with_an_onset": 13,
+      "compared_intervals": 19,
+      "intervals_with_an_onset": 12,
       "intervals_without_an_onset": 7,
-      "intervals_without_an_onset_fraction": 0.35,
+      "intervals_without_an_onset_fraction": 0.3684210526315789,
       "intervals_without_an_onset_on_reference_mode_shots": 1,
       "intervals_without_an_onset_on_reference_quiet_shots": 6,
       "shots": {
@@ -111,33 +111,33 @@
     "n1": {
       "n_shots_covered": 80,
       "reference_onsets": 26,
-      "matched": 10,
-      "missed": 16,
-      "matched_fraction": 0.38461538461538464,
+      "matched": 9,
+      "missed": 17,
+      "matched_fraction": 0.34615384615384615,
       "error_ms": {
-        "median": 172.99999999999977,
-        "q25": 115.24999999999932,
-        "q75": 345.4999999999996,
+        "median": 202.0,
+        "q25": 116.0,
+        "q75": 386.99999999999955,
         "min": 73.0,
         "max": 632.9999999999995,
-        "mean_abs": 251.39999999999964,
+        "mean_abs": 266.55555555555526,
         "within_ms": {
           "25": 0.0,
           "50": 0.0,
-          "100": 0.1,
-          "250": 0.7
+          "100": 0.1111111111111111,
+          "250": 0.6666666666666666
         },
         "reference_after_interval_start_fraction": 1.0
       },
-      "compared_intervals": 15,
-      "intervals_with_an_onset": 9,
+      "compared_intervals": 14,
+      "intervals_with_an_onset": 8,
       "intervals_without_an_onset": 6,
-      "intervals_without_an_onset_fraction": 0.4,
+      "intervals_without_an_onset_fraction": 0.42857142857142855,
       "intervals_without_an_onset_on_reference_mode_shots": 4,
       "intervals_without_an_onset_on_reference_quiet_shots": 2,
       "shots": {
-        "reference_mode_and_ours": 13,
-        "reference_mode_not_ours": 13,
+        "reference_mode_and_ours": 12,
+        "reference_mode_not_ours": 14,
         "ours_not_reference": 2,
         "neither": 52
       }
@@ -149,24 +149,24 @@
       "missed": 16,
       "matched_fraction": 0.38461538461538464,
       "error_ms": {
-        "median": 172.99999999999977,
-        "q25": 115.24999999999932,
-        "q75": 345.4999999999996,
+        "median": 211.4999999999999,
+        "q25": 122.99999999999989,
+        "q75": 482.9999999999992,
         "min": 73.0,
-        "max": 632.9999999999995,
-        "mean_abs": 251.39999999999964,
+        "max": 1754.999999999999,
+        "mean_abs": 415.39999999999964,
         "within_ms": {
           "25": 0.0,
           "50": 0.0,
           "100": 0.1,
-          "250": 0.7
+          "250": 0.6
         },
         "reference_after_interval_start_fraction": 1.0
       },
-      "compared_intervals": 20,
-      "intervals_with_an_onset": 10,
+      "compared_intervals": 19,
+      "intervals_with_an_onset": 9,
       "intervals_without_an_onset": 10,
-      "intervals_without_an_onset_fraction": 0.5,
+      "intervals_without_an_onset_fraction": 0.5263157894736842,
       "intervals_without_an_onset_on_reference_mode_shots": 4,
       "intervals_without_an_onset_on_reference_quiet_shots": 6,
       "shots": {

@@ -1,0 +1,7 @@
+{
+  "made_by": "scripts/labeler/tm_write_doc.py",
+  "source_sha256": "44a100788d6162a4ca4ce4efb2fc35aedf2331565d2de9b5457d062dcabe11ae",
+  "benchmark_sha256": "5beb878b3dd4824309d8146b2cc0daaa8674c96702bcbf16cfdfec5d1502b0a3",
+  "document_sha256": "94c93a3fefe51f57f5cd8ff96316ebc0a6493858e350be7050ed3317c0d20160",
+  "document": "docs/labeler/tearing_detection.md"
+}

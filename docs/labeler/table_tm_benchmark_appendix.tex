@@ -2,25 +2,24 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{llrllll}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}>{\raggedright\arraybackslash}p{0.75in}rllll}
 \toprule
 Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-Survival MLP (250 ms) & Legacy & 80 & .743 [.643,.844] & .185 [.106,.322] & .081 [.042,.140] & -- \\
-Survival MLP (1 s) & Legacy & 80 & .722 [.612,.833] & .405 [.263,.551] & .243 [.144,.348] & -- \\
-Survival MLP (250 ms) & Interval, published & 235 & .798 [.712,.866] & .525 [.395,.659] & .470 [.346,.572] & .301 [.151,.472] \\
-Survival MLP (1 s) & Interval, published & 235 & .794 [.709,.862] & .513 [.383,.649] & .455 [.350,.548] & .266 [.138,.419] \\
-RMS threshold (12 G) & Fixed threshold extra & 450 & .988 [.982,.994] & .928 [.882,.960] & .522 [.429,.615] & .427 [.317,.543] \\
-Onset CNN, legacy$\dagger$ & Fixed published threshold extra & 79 & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
-Onset CNN, interval$\dagger$ & Fixed published threshold extra & 262 & .982 [.969,.993] & .951 [.911,.978] & .709 [.593,.810] & .585 [.419,.758] \\
-Survival MLP (250 ms), legacy & Fixed published threshold extra & 80 & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
-Survival MLP (250 ms), interval & Fixed published threshold extra & 235 & .798 [.712,.866] & .525 [.395,.659] & .000 [.000,.000] & .000 [.000,.000] \\
-Survival MLP (500 ms), legacy & Fixed published threshold extra & 80 & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
-Survival MLP (500 ms), interval & Fixed published threshold extra & 235 & .796 [.711,.864] & .521 [.391,.657] & .000 [.000,.000] & .000 [.000,.000] \\
-Survival MLP (1 s), legacy & Fixed published threshold extra & 80 & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
-Survival MLP (1 s), interval & Fixed published threshold extra & 235 & .794 [.709,.862] & .513 [.383,.649] & .008 [.000,.022] & .000 [.000,.000] \\
+tm-dsm-250ms-published & Legacy & 80 & .743 [.643,.844] & .185 [.106,.322] & .217 [.137,.298] & -- \\
+tm-dsm-1s-published & Legacy & 80 & .722 [.612,.833] & .405 [.263,.551] & .411 [.284,.508] & -- \\
+tm-dsm-250ms-published & Interval & 236 & .777 [.683,.852] & .438 [.302,.575] & .473 [.347,.574] & .297 [.164,.428] \\
+tm-dsm-1s-published & Interval & 236 & .773 [.681,.850] & .428 [.292,.565] & .446 [.325,.550] & .233 [.119,.361] \\
+tm-rms-12g & Fixed threshold extra & 450 & .987 [.980,.993] & .918 [.868,.955] & .527 [.426,.620] & .434 [.315,.559] \\
+tm-onsetcnn-published$\dagger$ & Legacy, fixed & 79 & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
+tm-dsm-250ms-published & Legacy, fixed & 80 & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
+tm-dsm-250ms-published & Interval, fixed & 236 & .777 [.683,.852] & .438 [.302,.575] & .000 [.000,.000] & .000 [.000,.000] \\
+tm-dsm-500ms-published & Legacy, fixed & 80 & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
+tm-dsm-500ms-published & Interval, fixed & 236 & .776 [.683,.848] & .434 [.298,.572] & .000 [.000,.000] & .000 [.000,.000] \\
+tm-dsm-1s-published & Legacy, fixed & 80 & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
+tm-dsm-1s-published & Interval, fixed & 236 & .773 [.681,.850] & .428 [.292,.565] & .008 [.000,.023] & .000 [.000,.000] \\
 \bottomrule
 \end{tabular}
-\caption{Additional DSM horizons and explicitly fixed-threshold results. Fixed DSM alarms use risk 0.3, equivalent to upstream survival probability 0.7. Other rows use shared-fold validation thresholds. Brackets give 95\% shot-bootstrap intervals; blind cohort tests are excluded.}
+\caption{Additional DSM horizons and explicitly fixed-threshold results. Fixed DSM alarms use risk 0.3, equivalent to upstream survival probability 0.7. Other rows use shared-fold validation thresholds. Brackets give 95\% shot-bootstrap intervals; blind shots are excluded. $\dagger$: the published CNN training-shot list is unavailable, so its original training overlap is unknown and scores are descriptive. Legacy uses 25 ms bins; interval rows use 10 ms. Each row has its own input/reference-dependent shot set recorded in the source JSON.}
 \label{tab:tm-benchmark-appendix}
 \end{table*}

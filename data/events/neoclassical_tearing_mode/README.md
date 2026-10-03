@@ -46,14 +46,14 @@ signature, and on the radial saddle loops once locked.
 ## Models
 **stable**: d3d_tearing_onset_cnn1d | 2022_12_01
 
-**experimental detector**: tm-ours | 2026_10_03 (development CV; saved fold weights)
+**latest**: tm-ours | 2026_10_03 (experimental magnetic-rule detector; development CV)
 
 **all**:
 - d3d_tearing_onset_cnn1d | 2022_12_01 (upstream training date; presence at t+25 ms)
 - d3d_tearing_time_to_event_dsm | 2026_09_05 (survival forecast; 250 ms / 500 ms / 1 s)
 - d3d_tearing_time_to_event_dsm_continued | 2026_09_05 (continued-training variant)
-- tm-onsetcnn | 2026_10_03 (prior CNN architecture retrained for detection at t)
-- tm-dsm | 2026_10_03 (prior survival embedding with a detection head at t)
+- tm-onsetcnn-retrained | 2026_10_03 (prior CNN architecture retrained for detection at t)
+- tm-dsm-retrained | 2026_10_03 (prior survival embedding with a detection head at t)
 - tm-ours | 2026_10_03 (Mirnov spectrogram detector, 10 ms bins; saved CV ensembles)
 
 The three short names identify benchmark training scripts and saved
@@ -95,7 +95,7 @@ Three claims:
 `validate.alarm_quality` scores the published labels against archived onsets
 (`tm_label` on the 1,503 shots shared with the tearing archive).
 
-**Whole-interval labels** (`extend_tm_interval/tm_interval.csv`, the 500-shot cohort;
+**Whole-interval labels** (`extend_tm_interval/tm_interval.csv`, 450 development shots;
 the lab's earlier labels are onsets or forecasts, these say when a mode is present):
 a rule on the n = 1 and n = 2 magnetic RMS (`\MHD::N1RMS`, `N2RMS`, gauss, 1 kHz; the
 processed magnetic traces), `labeler.tearing.rule`. The label is **a strong rotating
@@ -114,9 +114,13 @@ development quiet-amplitude p95, then follow that line at 10% of this amplitude
 floor. Brief evidence interruptions up to 50 ms can join; acquisition gaps cannot.
 Frequency drops alone are `locked_candidate`, with all candidate times retained;
 only independent locked-mode confirmation sets `locked=true` and truncates the
-rotating span at the confirmed time. No such diagnostic is resolved in these
-labels. Missing frequency gives `ended=unknown`, `locked_known=false`; all unknown
-shots are listed in metadata. Other spans end at RMS decay or the plasma window.
+rotating span at the confirmed time. An abrupt fall from above the seed to below
+release within 5 ms is never
+`decay`: it ends `locked` when radial-field evidence confirms, otherwise `unknown`.
+The subsequent phase is uncertain until the lock signal stays below 5 V for 200 ms or
+the discharge ends; without that signal it stays uncertain to the discharge end. Lock confirmation uses
+the independently fetched n=1 `DUSBRADIAL` radial-field amplitude (volts), with its
+threshold and coverage recorded in the label metadata. Unknown cases remain explicit.
 The onset is a point event
 (`iscrowd` 0, at the interval's start), the interval a span (`iscrowd` 1); both carry
 `n`. `m` requires EFIT q at an independently observed island radius, such as an ECE
@@ -129,8 +133,33 @@ Counts, thresholds, the agreement with Seo's and the survival onsets and
 the detector benchmark are in
 [tearing_detection.md](../../../docs/labeler/tearing_detection.md). The detectors
 trained on these labels are `tm-ours` (Mirnov-array spectrogram features, per 10 ms
-bin) and the two prior architectures retrained for detection, `tm-onsetcnn` and
-`tm-dsm`. Their targets are mode presence at t, with horizon zero.
+bin) and the two prior architectures retrained for detection, `tm-onsetcnn-retrained` and
+`tm-dsm-retrained`. Their targets are mode presence at t, with horizon zero.
+
+These labels omit fast-locking and brief modes, and weak modes. Recall of the lab's
+archived onsets within 100 ms on the development shots is Seo **12/26** and survival
+**16/67** (the earlier 500-shot labels matched Seo 13/26 and survival 18/67). Cohort
+"absent" can still contain weak modes: on 189879 the weak 7 kHz n=2 line is uncertain
+to 3.9 s and absent after, although a review saw it to about 4.5 s. The uncertainty
+mask is partly Mirnov-derived and shares `tm-ours` inputs; it excludes 42% of
+development catalog-window time (49.6% of observable plasma), and a sensitivity row
+scores it as negative. The benchmark tests recovery of a magnetic rule, not
+superiority as a TM detector. No TM coverage gain is claimed: on the survival-matched
+shots the interval labels cover 375.9 s against 799.3 s for the legacy labels
+(the earlier labels: 435.7 s against 909.9 s). Population weak screening uses the
+same criteria where inputs exist; unscreened time above the weak RMS thresholds is
+uncertain rather than absent.
+
+The `extend_` table must be converted before promotion to `review/`: state 3 is
+outside the TM catalog schema, n-specific rows overlap, onset points have zero
+length, and boundaries need whole-millisecond conversion. The focused table test
+checks interval geometry only, not full catalog validity.
+Historical `results/*_test.json` files were moved without inspection to
+`$LABELER_ROOT/round4/tm/results/quarantine_blind_test/`; they are excluded from all
+current processing. Superseded all-cohort audit/agreement source snapshots are
+quarantined there as well, without inspection, and are removed from the active
+benchmark sources. These historical records must not be used for model selection
+or evaluation. Blind shots are never opened for labeling, galleries or scores.
 
 ## Alias
 tearing mode, tearing, tm, ntm, neoclassical tearing mode, 2/1, 3/2, locked mode, magnetic island

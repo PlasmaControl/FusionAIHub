@@ -2,12 +2,12 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{llrllll}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}>{\raggedright\arraybackslash}p{0.75in}rllll}
 \toprule
 Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-tm-ours & Common shots and bins & 263 & .996 [.988,1.000] & .985 [.959,.999] & .872 [.781,.949] & .873 [.782,.956] \\
-tm-onsetcnn-retrained & Common shots and bins & 263 & .971 [.952,.986] & .925 [.858,.963] & .760 [.641,.854] & .718 [.570,.836] \\
+tm-ours & Common shots and bins & 266 & .998 [.993,1.000] & .992 [.974,1.000] & .950 [.875,.990] & .914 [.840,.970] \\
+tm-onsetcnn-retrained & Common shots and bins & 266 & .957 [.929,.979] & .878 [.762,.950] & .796 [.684,.881] & .716 [.568,.820] \\
 \bottomrule
 \end{tabular}
 \caption{Paired comparison on identical development shots and available 10 ms bins. Thresholds retain their shared-fold validation values. Unavailable bins are hard boundaries for segmental IoU 0.5; brackets give 95\% shot-bootstrap intervals (1,000 draws).}

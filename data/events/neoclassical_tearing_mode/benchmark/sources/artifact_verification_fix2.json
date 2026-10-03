@@ -1,0 +1,116 @@
+{
+  "made_by": "scripts/labeler/tm_verify_artifacts.py",
+  "labels_sha256": "0a67a96a75b0155d37206874af673a96e8aada215a1fb2522790a42432b68bc5",
+  "benchmark_sha256": "5beb878b3dd4824309d8146b2cc0daaa8674c96702bcbf16cfdfec5d1502b0a3",
+  "development_shots": 450,
+  "benchmark_rows_checked": [
+    [
+      "tm-onsetcnn-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Legacy"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Interval"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Interval"
+    ],
+    [
+      "tm-onsetcnn-retrained",
+      "Interval"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Interval, published thr. 0.5"
+    ],
+    [
+      "tm-dsm-retrained",
+      "Interval"
+    ],
+    [
+      "tm-ours",
+      "Interval"
+    ],
+    [
+      "tm-rms",
+      "Interval"
+    ],
+    [
+      "tm-ours-rms",
+      "Interval"
+    ],
+    [
+      "tm-ours",
+      "Uncertain = negative"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Legacy"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Interval"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Interval"
+    ],
+    [
+      "tm-rms-12g",
+      "Fixed threshold extra"
+    ],
+    [
+      "tm-onsetcnn-published",
+      "Legacy, fixed"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Legacy, fixed"
+    ],
+    [
+      "tm-dsm-250ms-published",
+      "Interval, fixed"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Legacy, fixed"
+    ],
+    [
+      "tm-dsm-500ms-published",
+      "Interval, fixed"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Legacy, fixed"
+    ],
+    [
+      "tm-dsm-1s-published",
+      "Interval, fixed"
+    ]
+  ],
+  "figures_verified": [
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_gallery_mhr",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_gallery_mirnov",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_examples_column_mhr",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/tm_examples_column_mirnov",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_benchmark_preview",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_benchmark_appendix_preview",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/tm/figures/table_tm_paired_preview"
+  ],
+  "no_zero_positive_folds": true,
+  "outer_assignments_unchanged": true,
+  "no_abrupt_decay": true,
+  "no_seed_audit_failures": true,
+  "blind_excluded": true,
+  "file_sizes_below_2mb": true,
+  "status": "passed"
+}

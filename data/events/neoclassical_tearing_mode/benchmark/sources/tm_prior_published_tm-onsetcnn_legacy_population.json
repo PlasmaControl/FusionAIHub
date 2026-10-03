@@ -3,15 +3,17 @@
   "slug": "d3d_tearing_onset_cnn1d",
   "setting": "legacy, published outputs against Seo's archived tm_label",
   "shot_set": "population",
-  "git_sha": "f3edb014",
+  "git_sha": "e162d57f",
   "score": "tm_prob at the archive's rows (the label's own time grid, 25 ms)",
-  "threshold": 0.843,
+  "threshold": 0.096,
   "threshold_is": "F1-maximising on available shared-cohort development inner validation shots (seed 999), then fixed for population supplement",
   "population_threshold_validation_shots": [
-    189085,
-    186636,
-    189272,
-    189578
+    186532,
+    189580,
+    189741,
+    190271,
+    190300,
+    190799
   ],
   "fold_info": [],
   "folds": {
@@ -1932,21 +1934,21 @@
       "valid_replicates": 1000
     },
     "f1": {
-      "value": 0.4740307242136064,
-      "lo": 0.2872267729035234,
-      "hi": 0.6434821293351506,
+      "value": 0.5094217024041585,
+      "lo": 0.33440679806867624,
+      "hi": 0.6385586825777022,
       "valid_replicates": 1000
     },
     "precision": {
-      "value": 0.6090225563909775,
-      "lo": 0.3372896879240163,
-      "hi": 0.8642821185741038,
+      "value": 0.3495318769505127,
+      "lo": 0.20381728707272298,
+      "hi": 0.4803694130066911,
       "valid_replicates": 1000
     },
     "recall": {
-      "value": 0.38802395209580837,
-      "lo": 0.22917938983702443,
-      "hi": 0.5717200357877593,
+      "value": 0.9389221556886228,
+      "lo": 0.8797244399658941,
+      "hi": 0.9825473575676194,
       "valid_replicates": 1000
     },
     "prevalence": {

@@ -2,21 +2,23 @@
 \centering
 \scriptsize
 \setlength{\tabcolsep}{3pt}
-\begin{tabular}{llrllll}
+\begin{tabular}{>{\raggedright\arraybackslash}p{1.2in}>{\raggedright\arraybackslash}p{0.75in}rllll}
 \toprule
 Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-Onset CNN$\dagger$ & Legacy & 79 & .897 [.832,.952] & .601 [.385,.799] & .567 [.372,.719] & -- \\
-Survival MLP (500 ms) & Legacy & 80 & .721 [.614,.828] & .294 [.179,.442] & .157 [.089,.250] & -- \\
-Onset CNN$\dagger$ & Interval, published & 262 & .982 [.969,.993] & .951 [.911,.978] & .539 [.375,.688] & .497 [.322,.667] \\
-Survival MLP (500 ms) & Interval, published & 235 & .796 [.711,.864] & .521 [.391,.657] & .454 [.345,.549] & .257 [.132,.413] \\
-Onset CNN & Tokamak-SI & 263 & .971 [.952,.986] & .925 [.859,.964] & .760 [.641,.854] & .718 [.570,.836] \\
-Survival MLP & Tokamak-SI & 319 & .964 [.935,.986] & .906 [.842,.953] & .669 [.564,.753] & .540 [.420,.650] \\
-Magnetic detector & Tokamak-SI & 450 & .998 [.996,.999] & .988 [.973,.996] & .872 [.815,.920] & .714 [.628,.800] \\
-RMS threshold & Tokamak-SI & 450 & .988 [.982,.994] & .928 [.882,.960] & .775 [.701,.833] & .370 [.291,.467] \\
-Magnetic detector + RMS & Tokamak-SI & 450 & .998 [.997,1.000] & .987 [.972,.996] & .825 [.745,.892] & .708 [.615,.798] \\
+tm-onsetcnn-published$\dagger$ & Legacy & 79 & .897 [.832,.952] & .601 [.385,.799] & .462 [.286,.615] & -- \\
+tm-dsm-500ms-published & Legacy & 80 & .721 [.614,.828] & .294 [.179,.442] & .275 [.167,.364] & -- \\
+tm-onsetcnn-published$\dagger$ & Interval & 265 & .979 [.963,.991] & .938 [.885,.970] & .824 [.727,.888] & .672 [.549,.766] \\
+tm-dsm-500ms-published & Interval & 236 & .776 [.683,.848] & .434 [.298,.572] & .452 [.328,.555] & .255 [.130,.381] \\
+tm-onsetcnn-retrained & Interval & 266 & .957 [.929,.979] & .878 [.762,.950] & .796 [.684,.881] & .716 [.568,.820] \\
+tm-onsetcnn-published$\dagger$ & Interval, published thr. 0.5 & 265 & .979 [.963,.991] & .938 [.885,.970] & .715 [.594,.813] & .604 [.420,.760] \\
+tm-dsm-retrained & Interval & 322 & .946 [.910,.975] & .834 [.726,.912] & .673 [.575,.760] & .640 [.512,.729] \\
+tm-ours & Interval & 450 & .999 [.997,1.000] & .989 [.976,.997] & .952 [.916,.978] & .857 [.775,.928] \\
+tm-rms & Interval & 450 & .987 [.980,.993] & .918 [.868,.955] & .763 [.681,.830] & .347 [.273,.439] \\
+tm-ours-rms & Interval & 450 & .999 [.997,1.000] & .986 [.967,.997] & .939 [.900,.968] & .843 [.764,.918] \\
+tm-ours & Uncertain = negative & 450 & .963 [.954,.971] & .584 [.471,.685] & .425 [.348,.494] & .269 [.215,.321] \\
 \bottomrule
 \end{tabular}
-\caption{Strong rotating n=1/n=2 mode (tearing-mode proxy) benchmarks. F1 thresholds follow shared development CV inner-validation splits. Zero-positive validation folds use a deterministic highest-edge fallback, making F1 sensitive to calibration coverage. Brackets give 95\% shot-bootstrap intervals (1,000 draws). Segmental F1 uses IoU 0.5 and hard barriers at unavailable bins. Legacy targets differ; a dagger marks unknown training overlap. RMS inputs define the label. DSM uses 500 ms; other horizons and fixed-threshold extras are in the appendix. Blind tests are excluded.}
+\caption{Recovery of a strong rotating n=1/n=2 magnetic rule, not independent TM identification. AUROC/AUPRC are primary. F1 uses positive-bearing stratified inner validation; outer held-shot folds are unchanged. The published CNN is also shown at its own published threshold, 0.5. Mirnov-derived uncertainty shares tm-ours inputs and excludes 42\% of development catalog-window time (49.6\% of observable plasma); the sensitivity row scores uncertainty as negative. Legacy bins are 25 ms, interval bins 10 ms. Rows use available development shots; published DSM excludes original training shots. Each input/reference-dependent shot set is listed in the source JSON. Brackets: 95\% shot-bootstrap intervals (1,000 draws); segmental IoU 0.5. $\dagger$: published CNN training overlap unknown. Recall of the lab's archived onsets within 100 ms: Seo 12/26, survival 16/67 (development shots with archive coverage); fast-locking and brief modes are omitted, and weak modes below the weak-line screen stay absent (the 7 kHz line of shot 189879 is uncertain to 3.9 s and absent after). No TM coverage gain is claimed. RMS-input ablation is circular; DSM horizon is 500 ms. Blind shots are excluded throughout.}
 \label{tab:tm-benchmark}
 \end{table*}

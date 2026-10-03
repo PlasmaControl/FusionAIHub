@@ -2,12 +2,18 @@
   "made_by": "scripts/labeler/tm_benchmark.py",
   "models": [
     {
-      "model": "Onset CNN",
+      "model": "tm-onsetcnn-retrained",
       "legacy": {
         "f1": {
-          "value": 0.5670407560543415,
-          "lo": 0.37229461898791083,
-          "hi": 0.7186618709068995,
+          "value": 0.46227775108121094,
+          "lo": 0.2856755206388129,
+          "hi": 0.6146195840108301,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.8968035688370362,
+          "lo": 0.8315918896655798,
+          "hi": 0.9524893291585245,
           "valid_replicates": 1000
         },
         "auprc": {
@@ -22,28 +28,40 @@
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.7597328244274809,
-          "lo": 0.6407669978162102,
-          "hi": 0.8538561146038172,
+          "value": 0.795837059923571,
+          "lo": 0.6841513276087817,
+          "hi": 0.8813859169843208,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9565287993937095,
+          "lo": 0.9294417906531691,
+          "hi": 0.97856165085135,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9246473699185916,
-          "lo": 0.8585712822263264,
-          "hi": 0.9635454712522422,
+          "value": 0.8780983709613714,
+          "lo": 0.7624595715426331,
+          "hi": 0.9499571407800363,
           "valid_replicates": 1000
         },
-        "shots": 263,
+        "shots": 266,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-onsetcnn_cv.json"
       }
     },
     {
-      "model": "Survival MLP",
+      "model": "tm-dsm-retrained",
       "legacy": {
         "f1": {
-          "value": 0.15696784073506892,
-          "lo": 0.08932490332064788,
-          "hi": 0.25042875508608237,
+          "value": 0.27518104015799866,
+          "lo": 0.1672023546841508,
+          "hi": 0.3644891934015228,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.7210915415580395,
+          "lo": 0.6144684942301608,
+          "hi": 0.8275377751158706,
           "valid_replicates": 1000
         },
         "auprc": {
@@ -58,35 +76,47 @@
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.6685248947914959,
-          "lo": 0.5639769072445228,
-          "hi": 0.7527743604305032,
+          "value": 0.6726709554443651,
+          "lo": 0.575222357883845,
+          "hi": 0.7603942039618236,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9455347023726766,
+          "lo": 0.9097342840945696,
+          "hi": 0.974706736334196,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9059859037909461,
-          "lo": 0.8422990762586019,
-          "hi": 0.9525429669237541,
+          "value": 0.8344799263583618,
+          "lo": 0.7259580056406585,
+          "hi": 0.9117980172786427,
           "valid_replicates": 1000
         },
-        "shots": 319,
+        "shots": 322,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-dsm_cv.json"
       }
     },
     {
-      "model": "Magnetic detector",
+      "model": "tm-ours",
       "legacy": null,
       "tokamak_si": {
         "f1": {
-          "value": 0.8721622369878184,
-          "lo": 0.8150816853749174,
-          "hi": 0.9195941770400928,
+          "value": 0.9522519706913914,
+          "lo": 0.9157527961280729,
+          "hi": 0.9783488167506075,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.9987358628917263,
+          "lo": 0.9974132841292075,
+          "hi": 0.9996715100515423,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9875485593116948,
-          "lo": 0.9726659762561887,
-          "hi": 0.9962328644379701,
+          "value": 0.9890359390764566,
+          "lo": 0.9760937411344179,
+          "hi": 0.9974420954291177,
           "valid_replicates": 1000
         },
         "shots": 450,
@@ -94,19 +124,25 @@
       }
     },
     {
-      "model": "RMS threshold",
+      "model": "tm-rms",
       "legacy": null,
       "tokamak_si": {
         "f1": {
-          "value": 0.7749044143204727,
-          "lo": 0.7007280269836187,
-          "hi": 0.8329403096429077,
+          "value": 0.7631916714204221,
+          "lo": 0.68073654577236,
+          "hi": 0.8300688088771276,
+          "valid_replicates": 1000
+        },
+        "auroc": {
+          "value": 0.987147924189936,
+          "lo": 0.9796547159384272,
+          "hi": 0.9931331434827816,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9276431573241276,
-          "lo": 0.8815968656232933,
-          "hi": 0.9595909697289907,
+          "value": 0.918484759517926,
+          "lo": 0.8683635067620853,
+          "hi": 0.9547497323970607,
           "valid_replicates": 1000
         },
         "shots": 450,
@@ -116,54 +152,55 @@
   ],
   "coverage": {
     "ours": {
-      "labelled_shots": 500,
-      "classifiable_shots": 482,
-      "observable_shots": 500,
-      "labelled_seconds": 1178.59,
-      "observable_plasma_seconds": 2346.94,
+      "labelled_shots": 450,
+      "classifiable_shots": 436,
+      "observable_shots": 450,
+      "labelled_seconds": 1062.1100000000001,
+      "observable_plasma_seconds": 2109.09,
       "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
       "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
     },
     "ours_population": {
-      "labelled_shots": 4848,
-      "classifiable_shots": 4829,
-      "observable_shots": 4847,
-      "labelled_seconds": 19967.73,
-      "observable_plasma_seconds": 22858.82,
+      "labelled_shots": 4798,
+      "classifiable_shots": 4677,
+      "observable_shots": 4797,
+      "labelled_seconds": 11748.25,
+      "observable_plasma_seconds": 22620.97,
       "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
       "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
     },
     "legacy_seo": {
-      "labelled_shots": 92,
-      "labelled_seconds": 147.19,
-      "observable_plasma_seconds": 451.03000000000003,
+      "labelled_shots": 80,
+      "labelled_seconds": 129.98,
+      "observable_plasma_seconds": 391.09000000000003,
       "definition": "matched growth-phase label support on observable catalog-window 10 ms bins; temporal holes excluded"
     },
     "legacy_survival": {
-      "labelled_shots": 200,
-      "labelled_seconds": 909.91,
-      "observable_plasma_seconds": 984.76,
+      "labelled_shots": 175,
+      "labelled_seconds": 799.29,
+      "observable_plasma_seconds": 863.6800000000001,
       "definition": "survival-label support on observable catalog-window 10 ms bins; fixed-grid time outside observable plasma excluded"
     }
   },
-  "scope": "fixed cohort, all splits for coverage only; common 10 ms catalog-window grid and observable plasma domain for both legacy and interval labels",
+  "scope": "development cohort and population excluding blind; common 10 ms catalog-window grid and observable plasma domain for both legacy and interval labels",
   "like_for_like_coverage": {
     "legacy_seo": {
-      "labelled_shots": 92,
-      "labelled_seconds": 147.19,
-      "observable_plasma_seconds": 451.03000000000003,
-      "interval_seconds_on_same_shots": 199.01,
-      "common_labelled_seconds": 52.93
+      "labelled_shots": 80,
+      "labelled_seconds": 129.98,
+      "observable_plasma_seconds": 391.09000000000003,
+      "interval_seconds_on_same_shots": 171.5,
+      "common_labelled_seconds": 47.09
     },
     "legacy_survival": {
-      "labelled_shots": 200,
-      "labelled_seconds": 909.91,
-      "observable_plasma_seconds": 984.76,
-      "interval_seconds_on_same_shots": 435.68,
-      "common_labelled_seconds": 383.83
+      "labelled_shots": 175,
+      "labelled_seconds": 799.29,
+      "observable_plasma_seconds": 863.6800000000001,
+      "interval_seconds_on_same_shots": 375.93,
+      "common_labelled_seconds": 331.97
     }
   },
-  "threshold_policy": "F1 at shared-fold inner-validation-tuned thresholds for every row",
+  "threshold_policy": "F1 at positive-bearing presence-stratified inner-validation thresholds; published CNN also scored at its published 0.5 threshold",
+  "primary_comparison": "AUROC and AUPRC",
   "paired_common_shots": {
     "shots": [
       185805,
@@ -228,6 +265,8 @@
       189580,
       189684,
       189688,
+      189732,
+      189741,
       189872,
       189873,
       189885,
@@ -310,6 +349,7 @@
       192766,
       192914,
       193008,
+      193024,
       193075,
       193108,
       193148,
@@ -430,158 +470,158 @@
       204840,
       204937
     ],
-    "bins_scored": 25853,
-    "scored_seconds": 258.53,
+    "bins_scored": 26005,
+    "scored_seconds": 260.05,
     "metrics": {
       "tm-ours": {
-        "n_shots": 263,
+        "n_shots": 266,
         "replicates": 1000,
         "auroc": {
-          "value": 0.9956207815288711,
-          "lo": 0.987713979054056,
-          "hi": 0.9996511609840625,
+          "value": 0.9976432044687433,
+          "lo": 0.9929386158983312,
+          "hi": 0.999949605049316,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9854721716710033,
-          "lo": 0.9590692292069389,
-          "hi": 0.9991486508093823,
+          "value": 0.9915005884532524,
+          "lo": 0.9740027368850857,
+          "hi": 0.9998233434064558,
           "valid_replicates": 1000
         },
         "f1": {
-          "value": 0.8718769449631013,
-          "lo": 0.781498380116895,
-          "hi": 0.9490724026285653,
+          "value": 0.949628982976866,
+          "lo": 0.8748868781735634,
+          "hi": 0.9902975383330626,
           "valid_replicates": 1000
         },
         "precision": {
-          "value": 0.904112115065462,
-          "lo": 0.7560478430891573,
-          "hi": 0.9977193882604835,
+          "value": 0.9246854811288677,
+          "lo": 0.7991481445621107,
+          "hi": 0.9992308135072909,
           "valid_replicates": 1000
         },
         "recall": {
-          "value": 0.8418612637362637,
-          "lo": 0.7238533345681654,
-          "hi": 0.9419446346757645,
+          "value": 0.9759554997308452,
+          "lo": 0.9507412817162165,
+          "hi": 0.9954398189176416,
           "valid_replicates": 1000
         },
         "prevalence": {
-          "value": 0.22527366263102927,
-          "lo": 0.15620871600983213,
-          "hi": 0.2933967906196051,
+          "value": 0.21430494135743125,
+          "lo": 0.14997098256437996,
+          "hi": 0.28339761613152875,
           "valid_replicates": 1000
         },
         "segf1_0.3": {
-          "value": 0.8826291079812206,
-          "lo": 0.7999346405228759,
-          "hi": 0.9560439560439561,
+          "value": 0.9333333333333333,
+          "lo": 0.8761792054099746,
+          "hi": 0.9780395136778115,
           "valid_replicates": 1000
         },
         "segf1_0.5": {
-          "value": 0.8732394366197183,
-          "lo": 0.7815604909409702,
-          "hi": 0.9558260159281192,
+          "value": 0.9142857142857143,
+          "lo": 0.8401458241272647,
+          "hi": 0.9704799882929684,
           "valid_replicates": 1000
         },
         "segf1_0.7": {
-          "value": 0.8544600938967136,
-          "lo": 0.7534481552719007,
-          "hi": 0.9402508542903485,
+          "value": 0.9142857142857143,
+          "lo": 0.8401458241272647,
+          "hi": 0.9704799882929684,
           "valid_replicates": 1000
         },
         "shots_without_a_scored_bin": [],
-        "bins_scored": 25853,
-        "bins_positive": 5824,
+        "bins_scored": 26005,
+        "bins_positive": 5573,
         "bin_ms": 10.0,
-        "scored_seconds": 258.53,
+        "scored_seconds": 260.05,
         "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
       },
       "tm-onsetcnn-retrained": {
-        "n_shots": 263,
+        "n_shots": 266,
         "replicates": 1000,
         "auroc": {
-          "value": 0.9712675163252296,
-          "lo": 0.9518494892454451,
-          "hi": 0.9857446729152813,
+          "value": 0.9565312583913292,
+          "lo": 0.9294377973943546,
+          "hi": 0.9785634786967987,
           "valid_replicates": 1000
         },
         "auprc": {
-          "value": 0.9245453638533726,
-          "lo": 0.8583783283338782,
-          "hi": 0.9634552443361695,
+          "value": 0.8779830797986131,
+          "lo": 0.7622857352715948,
+          "hi": 0.9498917644735128,
           "valid_replicates": 1000
         },
         "f1": {
-          "value": 0.7597328244274809,
-          "lo": 0.6407669978162102,
-          "hi": 0.8538561146038172,
+          "value": 0.795837059923571,
+          "lo": 0.6841513276087817,
+          "hi": 0.8813859169843208,
           "valid_replicates": 1000
         },
         "precision": {
-          "value": 0.8550257731958762,
-          "lo": 0.6979944474356413,
-          "hi": 0.9646559541584909,
+          "value": 0.727624145108534,
+          "lo": 0.5617347720250261,
+          "hi": 0.876202299673935,
           "valid_replicates": 1000
         },
         "recall": {
-          "value": 0.6835508241758241,
-          "lo": 0.5450193193534117,
-          "hi": 0.8151113884415622,
+          "value": 0.8781625695316706,
+          "lo": 0.811182449841254,
+          "hi": 0.9324498971199842,
           "valid_replicates": 1000
         },
         "prevalence": {
-          "value": 0.22527366263102927,
-          "lo": 0.15620871600983213,
-          "hi": 0.2933967906196051,
+          "value": 0.21430494135743125,
+          "lo": 0.14997098256437996,
+          "hi": 0.28339761613152875,
           "valid_replicates": 1000
         },
         "segf1_0.3": {
-          "value": 0.7378640776699029,
-          "lo": 0.5935352588147037,
-          "hi": 0.8475874676824697,
+          "value": 0.7248908296943232,
+          "lo": 0.5728113849473072,
+          "hi": 0.8287088682307806,
           "valid_replicates": 1000
         },
         "segf1_0.5": {
-          "value": 0.7184466019417476,
-          "lo": 0.5695364238410596,
-          "hi": 0.8357516611295681,
+          "value": 0.7161572052401747,
+          "lo": 0.5680436847103514,
+          "hi": 0.8201349496419534,
           "valid_replicates": 1000
         },
         "segf1_0.7": {
-          "value": 0.6699029126213593,
-          "lo": 0.5276316103048071,
-          "hi": 0.7878787878787878,
+          "value": 0.6986899563318777,
+          "lo": 0.5404885654885656,
+          "hi": 0.8118194285391129,
           "valid_replicates": 1000
         },
         "shots_without_a_scored_bin": [],
-        "bins_scored": 25853,
-        "bins_positive": 5824,
+        "bins_scored": 26005,
+        "bins_positive": 5573,
         "bin_ms": 10.0,
-        "scored_seconds": 258.53,
+        "scored_seconds": 260.05,
         "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
       }
     },
     "difference_ours_minus_cnn": {
       "auroc": {
-        "value": 0.02435326520364156,
-        "lo": 0.011891247273811833,
-        "hi": 0.03989371957477404
+        "value": 0.041111946077414085,
+        "lo": 0.02092481747660071,
+        "hi": 0.0663130100484696
       },
       "auprc": {
-        "value": 0.06092680781763071,
-        "lo": 0.02866086829208472,
-        "hi": 0.11469508145408241
+        "value": 0.11351750865463928,
+        "lo": 0.049498202286645816,
+        "hi": 0.2131297394597507
       },
       "f1": {
-        "value": 0.1121441205356204,
-        "lo": 0.014612604007253819,
-        "hi": 0.22299644856592798
+        "value": 0.15379192305329503,
+        "lo": 0.08805624283961348,
+        "hi": 0.2471509826400217
       },
       "segf1_0.5": {
-        "value": 0.15479283467797067,
-        "lo": 0.021113753841988128,
-        "hi": 0.303844206355142
+        "value": 0.19812850904553958,
+        "lo": 0.08037280649417296,
+        "hi": 0.3437813942980571
       }
     },
     "policy": "same shots, same observable label and score bins; original fold thresholds; paired 1000-draw shot bootstrap"
