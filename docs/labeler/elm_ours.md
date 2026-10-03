@@ -133,6 +133,14 @@ onset is background. A better onset detector needs per-ELM labels the review doe
 hold (the ELM-O benchmark's labelled windows by David Smith have them but are BES-based and
 sit on 211 other shots).
 
+**Example figure.** `scripts/labeler/elm_example_figure.py --run cv2` draws two of the 73
+shots with BES, picked by a rule (of the 38 shots whose bins are 10 to 90 % present, the
+ones at the 75th and 25th percentile of per-shot F1: 195111 at 0.97 and 200427 at 0.74):
+D-alpha FS02, the reviewed spans, the out-of-fold event probability with its fold's
+threshold, and the ELM-O and clock detections. In 195111 the probability rises 300 ms after
+the reviewed crowd begins; in 200427 ELM-O marks ELMs in an absent span that `elm-ours`
+leaves quiet. Files: `$LABELER_ROOT/round4/elm/figures/fig_elm_examples.{pdf,png,json}`.
+
 ## `elm-dsm`: the lab's ELM survival model
 
 The model is the lab's Deep Survival Machine for the time to the next ELM (auton-survival,
