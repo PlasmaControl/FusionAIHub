@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "1a726d4de3539219a6e57a5b4738d5ca326f22d9ae4b154cca1a2ea1cdd829b6",
+  "source_sha256": "02070457d4048458311e6b0576cd6b490d286817f41f4afe65e9ab108968edac",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -201,59 +201,10 @@
           "low": 0.4939690191534765,
           "high": 0.6956327521842156
         }
-      },
-      "rwm-rule-rwm-candidates": {
-        "slice_auroc": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_auroc",
-          "estimate": 0.5,
-          "low": 0.5,
-          "high": 0.5
-        },
-        "broad_auroc": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.broad_auroc",
-          "estimate": 0.49776140958983245,
-          "low": 0.49538329515220875,
-          "high": 0.49951558676875607
-        },
-        "slice_auprc": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_auprc",
-          "estimate": 0.08369659982563209,
-          "low": 0.0703560487145368,
-          "high": 0.10202112345716674
-        },
-        "slice_f1": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_f1",
-          "estimate": 0.0,
-          "low": 0.0,
-          "high": 0.0
-        },
-        "slice_tpr": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_tpr",
-          "estimate": 0.0,
-          "low": 0.0,
-          "high": 0.0
-        },
-        "slice_fpr": {
-          "json_path": "configs.rwm-rule-rwm-candidates.metrics.slice_fpr",
-          "estimate": 0.0,
-          "low": 0.0,
-          "high": 0.0
-        },
-        "within_shot_primary_mean": {
-          "json_path": "configs.rwm-rule-rwm-candidates.within_shot_auroc.primary.mean",
-          "estimate": 0.5,
-          "n_shots": 30
-        },
-        "phase_controlled_auroc": {
-          "json_path": "configs.rwm-rule-rwm-candidates.phase_controlled_auroc",
-          "estimate": 0.5,
-          "low": 0.5,
-          "high": 0.5
-        }
       }
     },
-    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: exploratory 95\\% shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Within-shot means weight two-class shots equally; elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Within shot, the forest is 0.02--0.07 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (one of four unadjusted intervals excludes zero). Phase-controlled AUROC compares pairs within campaign and 200 ms elapsed-time bins; all paired forest-minus-scalar intervals include zero (Supplement). Legacy uses different inputs and validation.",
-    "caption_words": 100,
+    "caption": "Within-RWM-shot timing: \\texttt{rwm-brf} trains only on Hanson RWM shots, so no stable discharge supplies negatives; it forecasts when an RWM comes in a shot that has one, unlike Piccione's 90 stable shots among 134, likely explaining the forest's phase ranking. No skill beyond phase is established by phase-controlled AUROC. Reference split (seed 0): 33 shots, 30 target shots, 48 $n=1$ onsets, 480 positive versus 5,255 assumed-negative 10 ms slices; $5\\times3$ nested shot-grouped CV. Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. F1/TPR/FPR use the fold's ROC cutoff nearest (0 FPR, 1 TPR), chosen on inner-OOF primary Hanson slices. Brackets: exploratory 95\\% shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Within-shot means weight two-class shots equally; elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase-controlled AUROC compares pairs within campaign and 200 ms elapsed-time bins; all paired forest-minus-scalar intervals include zero (repository supplement). The omitted RWM screen is constant zero on primary slices (AUROC 0.500). Legacy uses different inputs and validation.",
+    "caption_words": 183,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -293,7 +244,7 @@
     "split_summary": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
-      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only.",
+      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
       "source": {
         "split_sensitivity.auroc_ranges": {
           "pooled": {
@@ -4977,6 +4928,7 @@
   },
   "markdown": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/tables.md",
   "sections": [
+    "Label-noisy comparison-negative sensitivity \u2014 one reference-split CV",
     "Five-split AUROC ranges \u2014 rwm-brf (seeds 0\u20134)",
     "Five-split paired AUROC \u2014 forest minus elapsed time",
     "Campaign paired AUROC \u2014 five splits and run-record holdout",
@@ -5023,31 +4975,52 @@
     "path": "outputs/labeler/rwm/rotation_ablation.json",
     "sha256": "b5b839fd2101f49483efb6269046e9a20c90c141b7c88455f78b16381007aeb3"
   },
+  "comparison_sensitivity_source": {
+    "path": "outputs/labeler/rwm/comparison_sensitivity.json",
+    "sha256": "d4b2dce03d1e57a4215a1a95814712c4d6917938f807bca40a5f6f08d9caf54f"
+  },
+  "external_evaluation_details": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
+    "sha256": "1a726d4de3539219a6e57a5b4738d5ca326f22d9ae4b154cca1a2ea1cdd829b6",
+    "bytes": 1857510,
+    "omitted_keys": [
+      "per_shot",
+      "shots",
+      "alarm_shots"
+    ],
+    "contents": "complete evaluation, including nested per-shot records",
+    "reader": "labeler.rwm.records.load_evaluation(path, details=True)"
+  },
+  "paper_tables": [
+    "table_rwm.tex",
+    "table_rwm_alarms.tex"
+  ],
+  "other_tables_scope": "repository-only supplements",
   "rendered_latex": {
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "34f22ac248febdf6c1145d7533c0acee3569f7894b01a2b0d6dbeba09746767f"
+        "sha256": "dafbbd89051110dd7e0e3c6fb7af808904d36c94895ed6758a1f9217a8714e4f"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "9a3ee84f31648f11f901864124ba753c797bec4b3dd2cf888c1daff3eb9c7bbd"
+        "sha256": "a448f868531891a3e8972e176177b2f52eb2a850c05e62c7835522c9f833e304"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "6dc437a2103eb7acdacdaa0d167faf1beac69cf64908bf30102eb2ba542c113f"
+        "sha256": "d93db973cf04914403a825faf24279fed2c041498141265d03f4734dc8ebbb40"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
-        "sha256": "5d739e5e7842b0b8cfab2d621c790dec265ea7e642c74fd5a3837995bc2bd920"
+        "sha256": "5fa82a7bbc9d9f239e22151f2d3176c5799832a59eb3ce4a8abe71d71eac49ae"
       }
     ],
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "093a992cfd85b9b4c3ebf01d36849ab1d24edef5a8a0a1fa32a313df177b9dc2"
+        "sha256": "48565617e265321b9f822bb257ec6b4d27d37f8b783296abe81e19b1af2590d6"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
@@ -5057,7 +5030,7 @@
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "09da706d0715c1b46b41dac6feef25df34699cbb4b244cf8266c354c168bdf9b"
+        "sha256": "02527e6c209d2ee72fd973239b4bb84eb3dad78d1beff69402d5027f47c49e6d"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
@@ -5067,7 +5040,7 @@
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "3f9510fabcb9682f9ea1d0a30c7db769e4f721df283c488e494d42674a68805e"
+        "sha256": "7538371be65016d9b2fcf3ae0c9c296a05ee3b6250c5cb39c5cf038c37a68028"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
@@ -5077,7 +5050,7 @@
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "aa43f232a55afbc5c541071f3c43b93bbcc6c04a53ffd7725557842ed11af2d7"
+        "sha256": "84d9e19d06b55224285768f09f3377098615af594dfd7439717c14142ecbedf2"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -5087,7 +5060,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "736116c8bb15419a379eeb1ef3b64990a6a12c821ec1bf95d5cc018c62fe20fe"
+        "sha256": "548b6e922506fd5d56698419fd8d60409c6e7e044f4d9b43e59f8d7d8f72877a"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -5096,57 +5069,49 @@
     ]
   },
   "supplied_check_logs": {
-    "covering_tests": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": "......................................                                   [100%]\n38 passed in 5.16s"
+    "covering_reader_tests": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-reader-tests.log",
+      "output": "......................................................................   [100%]\n70 passed in 3.53s"
     },
     "ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-ruff.log",
       "output": "All checks passed!"
     },
-    "ruff_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "8 files already formatted"
+    "new_python_format": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-format.log",
+      "output": "4 files already formatted"
     },
-    "table_ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-ruff.log",
-      "output": "All checks passed!"
-    },
-    "table_ruff_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-format.log",
-      "output": "8 files already formatted"
-    },
-    "table_validation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-validation.log",
-      "output": "PASS: all 34370 pre-existing noncategory result leaves unchanged\nPASS: any-alarm sensitivity preserves every original category\nPASS: all five first-alarm D/E/M counts match reviewer replay\nrwm-brf phase AUROC 0.544125 cells 24 pairs 71739\nrwm-rule-elapsed-time phase AUROC 0.581601 cells 24 pairs 71739\nrwm-rule-betan phase AUROC 0.540578 cells 24 pairs 71739\nrwm-rule-betan-over-li phase AUROC 0.594663 cells 24 pairs 71739\nrwm-rule-rwm-candidates phase AUROC 0.5 cells 24 pairs 71739\nPASS: comparison title counts total 132, alarms total 19; same_day 17 8\nPASS: no-rotation rows, outer folds and masks exactly match reference; no rotation predictors\nPASS: figure caption 73 words, no process wording\nPASS: paper tables use plain rule names; split holdout cells are one line\nPASS: docs multiplicity qualifier and no round history/process language\nPASS: saved replay and single reference ablation verification complete"
+    "table_and_record_validation": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-validation.log",
+      "output": "evaluation: 451703 bytes; complete external record exactly matches pre-round evaluation\nAll retained metrics, counts, folds and protocols are unchanged; no nested per-shot arrays in summary\nbaseline: primary AUROC 0.760202188; phase-controlled AUROC 0.544125232; 33/30 shots, 48 onsets, 480/5255 slices\ncomparison sensitivity: primary AUROC 0.768547415; phase-controlled AUROC 0.596453812; 33/30 shots, 48 onsets, 480/5255 slices\nSensitivity uses exactly the reference held-out shots, folds and scoring masks\nSensitivity factory enables comparison-negative training; default baseline still excludes comparisons\nCache audit: 79 zero-DUSBRADIAL shots (15 Hanson), 0 ONSBRADIAL traces, 0 network calls\nMain table: phase first; caption includes task, sizes, CV and cutoff; Legacy blanks/screen row removed\nSplit table: every bracket has 3 decimal places\nOriginal fitted prediction hashes checked against pre-fix8 archive where available\nPASS\nFollow-up: both evaluation digests verified after saved sensitivity replay; cutoff/alarm protocol scopes corrected; canonical archive preserved and custom paths isolated by resolved-path hash."
     },
     "latex_compile": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-latex.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-latex.log",
       "output": "table_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-visual.log",
-      "output": "Viewed all eight final PNGs via view_image: rwm_onset_scores.png and table_rwm,\ntable_rwm_split_summary, table_rwm_within_shot, table_rwm_campaign_pairs,\ntable_rwm_alarms, table_rwm_onset_actual, table_rwm_onset_window (each -1.png).\nMain-table initial clipping and split-summary overfull box fixed with shorter\nheader and column spacing, without reducing font size. Viewed revised main,\nsplit, within-shot and campaign PNGs; revised remaining three PNGs also viewed.\nFinal compilation: seven one-page PDFs, no layout warnings. Cells/intervals,\nfirst/any D/E/M sensitivity, plain rule names, phase column, captions and axes\nare legible; no overlap or clipping. Figure caption 73 words, no process wording."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-visual.log",
+      "output": "Viewed all eight regenerated PNGs with view_image: table_rwm-1.png, table_rwm_alarms-1.png, table_rwm_campaign_pairs-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png, table_rwm_split_summary-1.png, table_rwm_within_shot-1.png, rwm_onset_scores.png. Main table leads with phase-controlled AUROC; rows, bracket precision, captions and Legacy block are legible. All table boundaries, figure axes and source rows are visible; no clipped or overlapping text. No LaTeX layout warnings remain."
     },
-    "saved_rescore": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-rescore.log",
-      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json\nPASS: no fit or tuning call during saved rescoring"
+    "comparison_negative_fit": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-comparison.log",
+      "output": "single comparison-negative CV: 58.1 s\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
     },
-    "no_rotation_fit": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-no-rotation.log",
-      "output": "completed the single no-rotation CV refit\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json"
+    "comparison_saved_replay": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-comparison-replay.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
     },
-    "saved_ablation_rescore": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-ablation-rescore.log",
-      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json\nPASS: no fit or tuning call during saved rescoring"
+    "final_code_review": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-review.log",
+      "output": "Read-only final reviewer found two issues: custom --out archive basename collision and a concentration citation to pruned shot mapping. Fixed by hashing full resolved custom output paths (new reader regression) and pointing the citation to the complete external record. Follow-up: No remaining actionable findings. Both reported issues are addressed, and the tuning descriptions now distinguish slice cutoffs from alarm tuning."
     },
-    "prediction_hashes": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-hashes.log",
-      "output": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/slices.parquet: OK"
+    "summary_migration": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-migration.log",
+      "output": "rwm_evaluate.py --compact-saved: preserved complete pre-round record at $LABELER_ROOT/round4/rwm/evaluation_details.json; summary 451703 bytes. Equality to pre-round JSON and pointer SHA-256 verified in fix9-validation.log; no refit or rescore."
     },
-    "independent_review": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix8-independent-review.log",
-      "output": "Read-only independent review by /root/fix8_review (gpt-6-astra):\nCritical: none. Important: none. Minor: none warranting a change.\nVerified first-alarm counts including n=2 explanation; original results invariant;\nphase pair weighting/ties/bootstrap shot duplicates and exact intervals; all no-\nrotation input rows/folds/masks aligned, only two rotation predictors excluded;\nexisting-result refit guard and saved replay; 73-word figure caption.\nDid not inspect PNG appearance (parent inspected), repeat fitting/full tests or\nperform external diagnostic-timing validation. No files changed by reviewer."
+    "artifact_hashes": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix9-artifact-hashes.log",
+      "output": "f852ff92a86445c46357e36c46d75c86db5722ffa282e4eefbc9e2b7e6cfdeaa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-comparison-negative_seed0.parquet\na8df94f3eb817d6c4ef2924cedb1866e30237d03d1e61b1cc70ebb2be713c3aa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-no-rotation_seed0.parquet\n3c76cd6bc507042de59d8456aa5959cd19d334f4170cc36587fde2a91e0cca4a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet\ne8aa23dffd6f2f2259c19edff818ec7514f71727ccacef6ac98e80e07f9096c4  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet\n3c76cd6bc507042de59d8456aa5959cd19d334f4170cc36587fde2a91e0cca4a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet\n9616b289e6f9ef1de4e1dfcd56bcbd7c6b100598bd311b86310d464871965cb2  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet\n4fa67e5b0e99eec3d84b69be2122711be22bd036536e5c6fa227fb04c82837b6  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet\n3b753323b5cfc6c82d75d58aa77e4899c226765c7e5ce3239717373ba302eaaa  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet\n2f9a1f6918ba0f649410886006ec8ffc18030e6af38324d96fdf9384b6ce0cbf  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet\nb17e5419c6f0a65f93833dcb0f7d4da469020d7a5d5088ac2cd1a84fbad8f52a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet\nb17e5419c6f0a65f93833dcb0f7d4da469020d7a5d5088ac2cd1a84fbad8f52a  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet\n32cb0596b2c012afcfed41c04d88743d471c365bc938b6369ea278b2e2273330  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet\n32cb0596b2c012afcfed41c04d88743d471c365bc938b6369ea278b2e2273330  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet\nf9e8215666e081016db0d44c24299a1121511eaca58b2cb0d326f29b1eb1aaa9  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet\nf9e8215666e081016db0d44c24299a1121511eaca58b2cb0d326f29b1eb1aaa9  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet\nd01a0a212ddd812c6a73f6eba49c7ba16f05f68d5d82aeef2430389de38c5e52  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet\nd01a0a212ddd812c6a73f6eba49c7ba16f05f68d5d82aeef2430389de38c5e52  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet\na448f868531891a3e8972e176177b2f52eb2a850c05e62c7835522c9f833e304  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png\ne51eaaabd3dfdb7910078c4d4d8aa3f2dd32d8cebca8dd781949fa462cd6579c  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png\n1e0a10acca3193f27239b07abc563fd4471051400f655b20d28c558af1ba5d6e  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png\nad6addd847791d7edea4dc963a895835e05f63b491655dad75b1147043cf3926  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png\n644b25d2a60f185970de51e2a56d52dd7bc14ea7aaf1614503088bcadcaec1cb  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png\n5fa82a7bbc9d9f239e22151f2d3176c5799832a59eb3ce4a8abe71d71eac49ae  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png\n93ee5e04608e9f7072dafe7c9cc3a04efca4ec9b5b1a10a71147f5574680e9ee  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png\n3f3d2d9c8e1fa6077a9df023d1db570a71e724e0f3ef7835bcd7a047e0fc0b2b  /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png"
     }
   }
 }

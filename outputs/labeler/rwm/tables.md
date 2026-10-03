@@ -1,5 +1,14 @@
 Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions; exploratory, unadjusted for multiple comparisons. Individual metrics and detection-minus-reference use percentile intervals; between-model differences use basic paired intervals. Within-shot means/medians weight each two-class Hanson shot equally; one-class shots are omitted from those summaries, with counts in JSON. Phase-controlled AUROC compares only positive-negative pairs within campaign x 200 ms elapsed-time bin, weighted by pair count; phase shot resampling is stratified by campaign. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
 
+### Label-noisy comparison-negative sensitivity — one reference-split CV
+
+| Hanson primary score | baseline | sensitivity | paired change |
+|---|---|---|---|
+| Phase-controlled AUROC | 0.544 [0.453, 0.629] | 0.596 [0.522, 0.668] | 0.052 [-0.026, 0.122] |
+| Pooled AUROC (phase-confounded) | 0.760 [0.706, 0.809] | 0.769 [0.729, 0.811] | 0.008 [-0.025, 0.040] |
+
+Source: outputs/labeler/rwm/comparison_sensitivity.json. Comparisons enter training as label-noisy negatives. Headline scoring and cutoff tuning use primary Hanson slices; alarm tuning keeps the original Hanson trace scope. Identical outer shots, inner splits and seeds; 5×3 nested shot-grouped CV. Paired change is sensitivity minus baseline, with 95% basic shot intervals. The phase-controlled interval excludes chance on this split, but the paired change includes zero. Comparisons are not verified stable shots; this sensitivity does not replace the baseline.
+
 ### Five-split AUROC ranges — rwm-brf (seeds 0–4)
 
 | campaign / scope | primary AUROC range | high-beta conditional AUROC range | above-proxy conditional AUROC range |

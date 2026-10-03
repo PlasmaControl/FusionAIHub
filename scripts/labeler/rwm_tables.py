@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 
+from labeler.rwm.records import load_evaluation
+
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 NAMES = (
@@ -679,17 +681,17 @@ def write_latex(record, out_dir):
         r"\multicolumn{9}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
         r"\midrule",
         (
-            r"Model / rule & \shortstack{Primary\\AUROC} & "
+            r"Model / rule & \shortstack{Phase-controlled\\AUROC} & "
+            r"\shortstack{Primary AUROC\\phase-confounded} & "
             r"\shortstack{Broad\\AUROC} & "
             r"\shortstack{Within-shot\\mean AUROC\\(primary point)} & "
-            r"\shortstack{Phase-controlled\\AUROC} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
             r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\"
         ),
         r"\midrule",
     ]
     provenance = {}
-    for name in NAMES:
+    for name in NAMES[:-1]:
         config = configs[name]
         cells = [
             latex_cell(config["metrics"][k], stacked=True, bound_digits=3) for k in keys
@@ -697,7 +699,7 @@ def write_latex(record, out_dir):
         within = config["within_shot_auroc"]["primary"]
         cells.insert(2, f"${within['mean']:.3f}$")
         phase = config["phase_controlled_auroc"]
-        cells.insert(3, latex_cell(phase, stacked=True, bound_digits=3))
+        cells.insert(0, latex_cell(phase, stacked=True, bound_digits=3))
         lines.append(labels[name] + " & " + " & ".join(cells) + r" \\")
         lines.append(r"\addlinespace[1.5pt]")
         provenance[name] = {
@@ -720,11 +722,10 @@ def write_latex(record, out_dir):
         r"\midrule",
         r"\multicolumn{9}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\",
         r"\midrule",
-        r"Model & AUROC & -- & -- & -- & AUPRC & F1 & TPR & FPR \\",
-        r"\midrule",
-        "NSTX RUS forest & "
-        f"${legacy['slice_auroc']:.3f}$ & -- & -- & -- & -- & -- & "
-        f"${legacy['slice_tpr']:.3f}$ & ${legacy['slice_fpr']:.3f}$" + r" \\",
+        r"\multicolumn{9}{@{}l}{NSTX RUS forest: "
+        f"AUROC ${legacy['slice_auroc']:.3f}$; "
+        f"TPR ${legacy['slice_tpr']:.3f}$; FPR ${legacy['slice_fpr']:.3f}$"
+        + r"} \\",
         r"\multicolumn{9}{@{}l}{Detected unstable shots: "
         f"{legacy['onsets_warned']}/{legacy['target_onsets']}; "
         "stable shots with false alarms: "
@@ -734,17 +735,26 @@ def write_latex(record, out_dir):
         r"\end{tabular}",
     ]
     caption = (
-        r"Positives: 100 ms before listed onsets. Primary assumed negatives "
-        r"end at the last $n=1$ "
+        r"Within-RWM-shot timing: \texttt{rwm-brf} trains only on Hanson RWM "
+        r"shots, so no stable discharge supplies negatives; it forecasts when "
+        r"an RWM comes in a shot that has one, unlike Piccione's 90 stable "
+        r"shots among 134, likely explaining the forest's phase ranking. "
+        r"No skill beyond phase is established by phase-controlled AUROC. "
+        r"Reference split (seed 0): 33 shots, 30 target shots, 48 $n=1$ onsets, "
+        r"480 positive versus 5,255 assumed-negative 10 ms slices; "
+        r"$5\times3$ nested shot-grouped CV. Positives: 100 ms before listed "
+        r"onsets. Primary assumed negatives end at the last $n=1$ "
         r"onset; broad adds post-onset and $n=2$-only time, with unchanged "
-        r"exclusions. Brackets: exploratory 95\% shot-bootstrap intervals at fixed "
+        r"exclusions. F1/TPR/FPR use the fold's ROC cutoff nearest "
+        r"(0 FPR, 1 TPR), chosen on inner-OOF primary Hanson slices. "
+        r"Brackets: exploratory 95\% shot-bootstrap intervals at fixed "
         r"predictions, unadjusted for multiplicity. Within-shot means weight "
         r"two-class shots equally; elapsed time's 0.931 is an artefact of the "
-        r"primary mask's cutoff at the last onset. Within shot, the forest is "
-        r"0.02--0.07 below $\beta_N$ and $\beta_N/l_i$ on both masks (one of four "
-        r"unadjusted intervals excludes zero). Phase-controlled AUROC compares "
+        r"primary mask's cutoff at the last onset. Phase-controlled AUROC compares "
         r"pairs within campaign and 200 ms elapsed-time bins; all paired "
-        r"forest-minus-scalar intervals include zero (Supplement). Legacy uses "
+        r"forest-minus-scalar intervals include zero (repository supplement). "
+        r"The omitted RWM screen is constant zero on primary slices (AUROC 0.500). "
+        r"Legacy uses "
         r"different inputs and validation."
     )
     lines += [
@@ -863,7 +873,7 @@ def write_supplemental_latex(record, out_dir):
                 campaign.capitalize(),
                 "Forest holdout",
                 *(
-                    latex_cell(scores["metrics"][k])
+                    latex_cell(scores["metrics"][k], bound_digits=3)
                     for k in (keys[0], "broad_auroc", *keys[1:])
                 ),
             ]
@@ -875,7 +885,7 @@ def write_supplemental_latex(record, out_dir):
                 f"Seed {seed}",
                 latex_cell(
                     metrics[keys[0]],
-                    bound_digits=4 if seed == "3" else 3,
+                    bound_digits=3,
                 ),
                 (
                     latex_cell(
@@ -904,7 +914,7 @@ def write_supplemental_latex(record, out_dir):
             "Pooled difference",
             "Run-record holdout",
             *(
-                latex_cell(holdout["paired_time"][k])
+                latex_cell(holdout["paired_time"][k], bound_digits=3)
                 for k in (keys[0], "broad_auroc", *keys[1:])
             ),
         ]
@@ -928,7 +938,8 @@ def write_supplemental_latex(record, out_dir):
         r"use percentile intervals, paired differences use basic intervals. "
         r"High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. "
         r"Holdout retains four records across three dates; broad paired "
-        r"intervals are available for seed 0 and holdout only.",
+        r"intervals are available for seed 0 and holdout only. The primary "
+        r"seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
         {
             "split_sensitivity.auroc_ranges": summary["auroc_ranges"],
             "broad_ranges": broad_ranges,
@@ -1214,12 +1225,41 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=OUT / "tables.md")
     args = parser.parse_args()
-    record = json.loads((OUT / "evaluation.json").read_text())
+    record = load_evaluation(OUT / "evaluation.json")
     configs = record["configs"]
     c = configs["rwm-brf"]
     run_out = record["leave_one_run_record_out"]
     rotation = json.loads((OUT / "rotation_ablation.json").read_text())
+    comparison = load_evaluation(OUT / "comparison_sensitivity.json")
     sections = {
+        "Label-noisy comparison-negative sensitivity — one reference-split CV": table(
+            ["Hanson primary score", "baseline", "sensitivity", "paired change"],
+            [
+                [
+                    "Phase-controlled AUROC",
+                    interval(c["phase_controlled_auroc"]),
+                    interval(comparison["phase_controlled_auroc"]),
+                    interval(comparison["paired_change"]["phase_controlled_auroc"]),
+                ],
+                [
+                    "Pooled AUROC (phase-confounded)",
+                    interval(c["metrics"]["slice_auroc"]),
+                    interval(comparison["metrics"]["slice_auroc"]),
+                    interval(comparison["paired_change"]["slice_auroc"]),
+                ],
+            ],
+        )
+        + (
+            "\n\nSource: outputs/labeler/rwm/comparison_sensitivity.json. "
+            "Comparisons enter training as label-noisy negatives. Headline "
+            "scoring and cutoff tuning use primary Hanson slices; alarm tuning "
+            "keeps the original Hanson trace scope. Identical outer "
+            "shots, inner splits and seeds; 5×3 nested shot-grouped CV. Paired "
+            "change is sensitivity minus baseline, with 95% basic shot intervals. "
+            "The phase-controlled interval excludes chance on this split, but "
+            "the paired change includes zero. Comparisons are not verified "
+            "stable shots; this sensitivity does not replace the baseline."
+        ),
         "Five-split AUROC ranges — rwm-brf (seeds 0–4)": split_scores(record),
         "Five-split paired AUROC — forest minus elapsed time": split_pairs(record),
         "Campaign paired AUROC — five splits and run-record holdout": campaign_pairs(
@@ -1454,6 +1494,15 @@ def main():
                 (OUT / "rotation_ablation.json").read_bytes()
             ).hexdigest(),
         },
+        "comparison_sensitivity_source": {
+            "path": "outputs/labeler/rwm/comparison_sensitivity.json",
+            "sha256": hashlib.sha256(
+                (OUT / "comparison_sensitivity.json").read_bytes()
+            ).hexdigest(),
+        },
+        "external_evaluation_details": record["external_details"],
+        "paper_tables": ["table_rwm.tex", "table_rwm_alarms.tex"],
+        "other_tables_scope": "repository-only supplements",
     }
     provenance["rendered_latex"] = {}
     for name, artifact in {
@@ -1480,19 +1529,17 @@ def main():
             "output": (tmp_dir / filename).read_text().strip(),
         }
         for name, filename in (
-            ("covering_tests", "tests.log"),
-            ("ruff_check", "ruff.log"),
-            ("ruff_format", "format.log"),
-            ("table_ruff_check", "tables-ruff.log"),
-            ("table_ruff_format", "tables-format.log"),
-            ("table_validation", "tables-validation.log"),
-            ("latex_compile", "tables-latex.log"),
-            ("visual_inspection", "tables-visual.log"),
-            ("saved_rescore", "fix8-rescore.log"),
-            ("no_rotation_fit", "fix8-no-rotation.log"),
-            ("saved_ablation_rescore", "fix8-ablation-rescore.log"),
-            ("prediction_hashes", "fix8-hashes.log"),
-            ("independent_review", "fix8-independent-review.log"),
+            ("covering_reader_tests", "fix9-reader-tests.log"),
+            ("ruff_check", "fix9-ruff.log"),
+            ("new_python_format", "fix9-format.log"),
+            ("table_and_record_validation", "fix9-validation.log"),
+            ("latex_compile", "fix9-latex.log"),
+            ("visual_inspection", "fix9-visual.log"),
+            ("comparison_negative_fit", "fix9-comparison.log"),
+            ("comparison_saved_replay", "fix9-comparison-replay.log"),
+            ("final_code_review", "fix9-review.log"),
+            ("summary_migration", "fix9-migration.log"),
+            ("artifact_hashes", "fix9-artifact-hashes.log"),
         )
         if (tmp_dir / filename).is_file()
     }

@@ -17,9 +17,10 @@ often ends a high-beta_N discharge in a disruption; error-field amplification
 First identified in the mid 1990s in DIII-D wall-stabilised high-beta experiments
 and on the HBT-EP and PBX-M devices.
 
-RWMs are locked or slowly rotating (≪ 100 Hz), detected with low-frequency n = 1
-magnetics such as saddle loops and poloidal probe arrays near the no-wall limit.
-The 0–10 kHz band describes tearing modes, rather than RWM rotation.
+RWMs are locked or slowly rotating, of order 1/tau_w (tens of Hz), detected
+with low-frequency n = 1 magnetics such as saddle loops and poloidal probe arrays
+near the no-wall limit. Rotating tearing modes on DIII-D typically sit at kHz to
+tens of kHz.
 
 ## Data Provenance
 ### Dataset 1
@@ -40,6 +41,11 @@ The 0–10 kHz band describes tearing modes, rather than RWM rotation.
 
 **Description**: One minimal category-1 present slice [o, o+10 ms) per onset records presence without measuring duration; category-2 pre-onset windows remain uncertain (ONSET_TIME detection meaning unconfirmed). The export also contains assumed-absent spans before the first Hanson precursor, explicit category 4 unassessed precursor/post-onset time, and unlabelled screen spans on matched comparison shots. The review reader preserves the interval CSV's JSON `attrs.evidence_tier`; only Dataset 1's onset points are verified evidence. No post-onset physical absence is inferred without termination evidence. Counts, matching, frozen-cohort checks and input audit: `outputs/labeler/rwm/shots.json`.
 
+**Category-2 reader warning:** category 2 covers both Hanson pre-onset windows
+and comparison screen spans. Distinguish them only through `attrs.evidence_tier`:
+`onset_window_uncertain` versus `unlabelled_screen`; category alone mixes the two.
+Neither tier supplies verified negatives. Category codes are unchanged.
+
 **Publications**:
 
 ## Models
@@ -49,7 +55,7 @@ The 0–10 kHz band describes tearing modes, rather than RWM rotation.
 
 **all** (reference split (seed 0); Hanson primary 100 ms forecasts on 10 ms slices; assumed negatives):
 
-- rwm-brf | 2026_10_03 | Primary AUROC: 0.760 [0.706, 0.809] (ties elapsed time) | Broad AUROC: 0.740 [0.668, 0.799] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
+- rwm-brf | 2026_10_03 | Phase-controlled AUROC: 0.544 [0.453, 0.629] (no skill beyond phase) | Primary AUROC: 0.760 [0.706, 0.809] (phase-confounded; no established difference from elapsed time) | Broad AUROC: 0.740 [0.668, 0.799] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
 - rwm-rule-elapsed-time | 2026_10_03 | Primary AUROC: 0.759 [0.712, 0.815] | Broad AUROC: 0.390 [0.333, 0.440] | AUPRC: 0.228 [0.212, 0.307] | F1: 0.267 [0.217, 0.331]
 - rwm-rule-betan | 2026_10_03 | Primary AUROC: 0.707 [0.639, 0.772] | Broad AUROC: 0.715 [0.641, 0.776] | AUPRC: 0.166 [0.128, 0.246] | F1: 0.246 [0.194, 0.312]
 - rwm-rule-betan-over-li | 2026_10_03 | Primary AUROC: 0.723 [0.664, 0.784] | Broad AUROC: 0.752 [0.688, 0.815] | AUPRC: 0.159 [0.127, 0.232] | F1: 0.261 [0.212, 0.328]
@@ -81,20 +87,46 @@ rule alarms were not replayed over seeds 1–4. Sources:
 [the current protocol](../../../docs/labeler/rwm_baseline.md) and
 [evaluation.json](../../../outputs/labeler/rwm/evaluation.json).
 
-`nnpu.py`, `evaluate.Nnpu`, and `Brf(use_comparison=True)` are excluded
-development code and contribute to none of these results.
+`nnpu.py` and `evaluate.Nnpu` remain excluded development code. Comparison-as-negative
+training is reported separately as a label-noisy sensitivity below.
+
+**Label-noisy comparison-negative sensitivity:** one reference-split 5×3 nested
+shot-grouped CV with `Brf(use_comparison=True)` treats all 132 comparisons as
+assumed training negatives. It uses identical held-out shots and scores the
+unchanged primary Hanson mask: phase-controlled AUROC **0.596 [0.522, 0.668]**, pooled
+AUROC **0.769 [0.729, 0.811]** (phase-confounded). Paired phase-controlled change is
+**0.052 [-0.026, 0.122]**, so improvement over the baseline is not established;
+comparisons are not verified stable controls. Source:
+`outputs/labeler/rwm/comparison_sensitivity.json`.
 
 ## Inputs
 **rwm-brf** (stored scalars and profiles; trailing/held features on a 10 ms grid):
 
 - `betan`, `li`, `q95`, `qmin`, `wmhd`, `ip`, with beta_N/l_i and beta_N-4l_i derived.
 - `n1rms`, `n2rms`: postprocessed magnetic RMS, trailing mean, peak and log-slope calculations; upstream timing is uncertain. N1RMS is not a direct RWM sensor.
-- ZIPFIT toroidal rotation at fixed rho=0.25 (core) and rho=0.625 (mid-radius, not an identified q=2 surface); its upstream time smoothing is acausal, with timing bias unbounded here. The inherited `rot_*_khz` columns retain recorded `units_from_source=kHz`; krad/s is an unresolved physical-unit hypothesis, and no conversion is applied. A reference-split CV without rotation yields primary AUROC 0.752, change −0.008 [−0.021, +0.005], and broad AUROC 0.754, change +0.014 [−0.001, +0.028] (no rotation minus original forest; `outputs/labeler/rwm/rotation_ablation.json/{metrics,paired_change}`). This sensitivity measures input dependence, not upstream timing bias.
+- ZIPFIT toroidal rotation at fixed rho=0.25 (core) and rho=0.625 (mid-radius, not an identified q=2 surface); its upstream time smoothing is acausal, with timing bias unbounded here. The `TROTFIT` node reports kHz, as measured from its units field in `src/labeler/features/namespace.py:331-339`; `rot_*_khz` columns retain those units without conversion. A reference-split CV without rotation yields primary AUROC 0.752, change −0.008 [−0.021, +0.005], and broad AUROC 0.754, change +0.014 [−0.001, +0.028] (no rotation minus original forest; `outputs/labeler/rwm/rotation_ablation.json/{metrics,paired_change}`). This sensitivity measures input dependence, not upstream timing bias.
 - `dusbradial` is excluded: it is zero on most 2014 traces and flagged corrupted for 176030-176912, including all 2018 Hanson shots. The exact zero/nonzero audit is in `shots.json/input_audit`. The isolated OPERATIONS CN1BAMP/ILN1BAMP/IUN1BAMP probe succeeded on three Hanson shots, but corrected RWM-sensor semantics remain unverified; no candidate was added to model inputs (see `outputs/labeler/rwm/sensor_probe.json`).
+
+PTDATA `ONSBRADIAL`, disruption-py's reported fallback for unavailable `DUSBRADIAL`,
+is the most promising next input; none is cached on the 79 zero-DUSBRADIAL 2014
+shots checked, so no probe or fetch was made (`cached_sensor_audit.json`,
+`LABELER_NO_FETCH=1`; fallback behavior is not independently verified here).
 
 **rules**: beta_N, beta_N/l_i, elapsed time since the first |Ip| ≥0.5 MA sample, and the existing `rwm_candidates` call. The analysis span and the candidate screen's whole-flat-top median/MAD threshold are retrospective; the screen is not a causal alarm comparator.
 
 ## Method
+Dataset 1 loads as point events, preserving `NTOR` and `MODE_TYPE` in `attrs`
+with unknown confidence and coverage; an unlisted shot is not a negative.
+The `extend_rwm/recommender_v1.csv` scan of the fixed 500 project shots is
+header-only because none contains a listed Hanson onset, a completed zero rather
+than an absence claim (see `src/labeler/events/rwm.py`).
+
+The primary `rwm-brf` trains only on Hanson RWM shots: no stable discharge supplies
+negatives, so it learns **when an RWM comes in a shot that has one**.
+Unlike Piccione's 90 stable shots among 134, this timing-only roster likely explains
+why the forest reduces to a phase ranker; the 132 comparisons enter only the
+separately labelled sensitivity.
+
 Hanson onset points support one minimal present slice **[o, o+10 ms)**
 (category 1, `onset_point_minimal`); this does not measure mode duration.
 **[o−20 ms, o)** remains uncertain (category 2). Time before the first
@@ -106,6 +138,10 @@ folds keep tuning inside training shots; five split seeds and four run-record
 holdouts assess sensitivity. Offline magnetic timing and acausal ZIPFIT limit
 online interpretation. Per-shot Detected/Early/Missed uses the first considered
 alarm; any-alarm precedence is a labelled sensitivity.
+The repository evaluation is a summary below 0.5 MB. Its `external_details`
+pointer names the complete record under `$LABELER_ROOT/round4/rwm/`, including
+per-shot outcomes and within-shot details; read it with
+`labeler.rwm.records.load_evaluation(path, details=True)` to verify the SHA-256.
 See [protocol and reproduction](../../../docs/labeler/rwm_baseline.md) and
 [evaluation.json](../../../outputs/labeler/rwm/evaluation.json) for scores and intervals.
 

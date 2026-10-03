@@ -1,0 +1,488 @@
+{
+  "script": "scripts/labeler/rwm_cached_onsbradial.py",
+  "source": "outputs/labeler/rwm/shots.json#/input_audit/dusbradial_zero_2014_shots",
+  "slices": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/slices.parquet",
+  "LABELER_NO_FETCH": "1",
+  "network_calls": 0,
+  "shots_checked": 79,
+  "hanson_shots_checked": 15,
+  "shots_with_cached_onsbradial": 0,
+  "rows": [
+    {
+      "shot": 156785,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156785_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156786,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156786_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156787,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156787_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156788,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156788_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156789,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156789_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156790,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156790_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156791,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156791_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156792,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156792_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156793,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156793_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156794,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156794_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156795,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156795_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156796,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156796_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 156797,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/156797_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157968,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157968_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157969,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157969_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157970,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157970_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157971,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157971_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157972,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157972_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157973,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157973_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157974,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157974_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157975,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157975_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157976,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157976_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157977,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157977_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157978,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157978_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157979,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157979_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157980,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157980_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157981,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157981_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157982,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157982_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157994,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157994_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157995,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157995_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157996,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157996_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157997,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157997_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 157999,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/157999_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158000,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158000_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158001,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158001_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158002,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158002_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158003,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158003_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158004,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158004_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158005,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158005_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158006,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158006_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158007,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158007_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158008,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158008_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158009,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158009_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158010,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158010_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158011,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158011_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158012,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158012_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158013,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158013_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158014,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158014_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158015,
+      "role": "hanson",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158015_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158016,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158016_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158017,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158017_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158968,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158968_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158970,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158970_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158971,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158971_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158972,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158972_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158974,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158974_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158977,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158977_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158981,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158981_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158987,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158987_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158989,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158989_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158990,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158990_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158991,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158991_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158992,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158992_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158993,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158993_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158994,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158994_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158995,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158995_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158996,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158996_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158998,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158998_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 158999,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/158999_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159000,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159000_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159003,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159003_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159004,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159004_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159262,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159262_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159266,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159266_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159269,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159269_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159270,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159270_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159273,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159273_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159276,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159276_processed.h5",
+      "cached_onsbradial": []
+    },
+    {
+      "shot": 159277,
+      "role": "comparison",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/159277_processed.h5",
+      "cached_onsbradial": []
+    }
+  ],
+  "next_input": "PTDATA ONSBRADIAL, reported disruption-py fallback for DUSBRADIAL",
+  "fallback_verified_here": false
+}

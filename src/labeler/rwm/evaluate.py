@@ -93,8 +93,8 @@ class Imputer:
 class Brf:
     """Piccione et al.'s balanced random forest on the slice features.
 
-    `use_comparison=True` is excluded development code, unused in every reported
-    result; it adds unlabelled comparison slices as assumed negatives.
+    `use_comparison=True` adds unlabelled comparison slices as label-noisy
+    assumed negatives, for a separately labelled sensitivity only.
     """
 
     def __init__(self, columns, use_comparison=False, seed=0, **forest):

@@ -402,6 +402,12 @@ def main() -> None:
             "4": "unassessed",
         },
         "category": "resistive_wall_mode",
+        "category_2_reader_warning": (
+            "Category 2 covers BOTH Hanson pre-onset windows and comparison "
+            "screen spans. Category alone cannot distinguish them: inspect "
+            "attrs.evidence_tier (onset_window_uncertain versus unlabelled_screen). "
+            "Neither tier is a verified negative; do not pool them by category."
+        ),
         "columns": [
             "shot",
             "category",
