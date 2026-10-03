@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\multicolumn{5}{@{}l}{RWM, DIII-D (assumed negatives)} \\
+\midrule
+Model / rule & \shortstack{Phase-\\controlled\\AUROC} & \shortstack{Pooled\\AUROC} & \shortstack{Pooled\\AUPRC} & \shortstack{Pooled\\F1} \\
+\midrule
+Forest & \shortstack{$0.534$\\{\scriptsize $[0.44, 0.62]$}} & \shortstack{$0.760$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.163$\\{\scriptsize $[0.12, 0.22]$}} & \shortstack{$0.275$\\{\scriptsize $[0.23, 0.34]$}} \\
+\addlinespace[2pt]
+Elapsed time & \shortstack{$0.522$\\{\scriptsize $[0.51, 0.54]$}} & \shortstack{$0.759$\\{\scriptsize $[0.71, 0.81]$}} & \shortstack{$0.228$\\{\scriptsize $[0.21, 0.31]$}} & \shortstack{$0.267$\\{\scriptsize $[0.22, 0.33]$}} \\
+\addlinespace[2pt]
+$\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.47, 0.69]$}} & \shortstack{$0.723$\\{\scriptsize $[0.66, 0.78]$}} & \shortstack{$0.159$\\{\scriptsize $[0.13, 0.23]$}} & \shortstack{$0.261$\\{\scriptsize $[0.21, 0.33]$}} \\
+\addlinespace[2pt]
+\bottomrule
+\end{tabular}
+\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; below $\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). The forest uses equilibrium scalars only (no input senses the RWM). Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor, and the forest's margin over it excludes zero on 1 of 5 splits. Reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\% shot-bootstrap intervals.}
+\label{tab:rwm-compact}
+\end{table}

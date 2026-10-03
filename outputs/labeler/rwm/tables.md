@@ -49,7 +49,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals 
 | 2018 | seed 4 | -0.012 [-0.041, 0.045] | -0.005 [-0.052, 0.080] | -0.014 [-0.084, 0.101] |
 | 2018 | run-record holdout | -0.049 [-0.073, -0.013] | -0.070 [-0.117, -0.010] | -0.057 [-0.109, 0.011] |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 forest is below chance on the reference split (0.311 [0.22, 0.41]); the scalar rules are near chance. Forest five-split range: 0.311–0.527; below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 forest high-beta AUROC is below chance on the reference split (0.311 [0.22, 0.41]); the scalar rules are near chance. Forest five-split high-beta range: 0.311–0.527; below elapsed time on every split in the conditional strata (point estimates; CI excludes zero on 2 of 5 seeds), while the primary differences in the first column are mixed in sign. Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
 
 ### Piccione-style primary scores — all models (reference split, seed 0)
 
@@ -402,14 +402,6 @@ Detected, Early and Missed are mutually exclusive on Hanson shots with an n=1 ta
 | full-trace sensitivity | 1/48 | 0.021 [0.000, 0.064] | 0/30 | 4/33 | 0.121 [0.030, 0.242] | 1/132 | 0.008 [0.000, 0.023] |
 
 The primary alarm window ends 100 ms after the last n=1 or n=2 explanation onset on Hanson shots; comparison traces retain their full span. This tolerance extends beyond the primary slice mask, which ends at the last n=1 target onset. Both alarm definitions are tuned within the inner folds; unlabelled comparisons never tune alarms.
-
-### Legacy NSTX — separately sourced published reference
-
-| published model | slice AUROC | slice TPR | slice FPR | detected unstable shots | false-positive stable shots |
-|---|---|---|---|---|---|
-| NSTX RUS forest | 0.918 | 92.4% | 21.4% | 10/11 | 2/17 |
-
-Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), expert-reviewed stable shots, different inputs and validation; these published test results are not comparable to the DIII-D benchmark. F1 and confidence intervals are not available in the source digest. Source in evaluation.json: legacy.source = /scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md.
 
 ### Paired differences — rwm-brf versus rules, primary
 

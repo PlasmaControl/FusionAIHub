@@ -117,6 +117,25 @@
     "efit_missing": false,
     "below_proxy": true
   },
-  "caption": "Held-out forest scores (blue) and \u03b2N/li (orange) on shots selected by number. Vertical lines mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels are unlabelled comparisons centred on matched Hanson onsets. The dotted \u03b2N/li=4 proxy uses the right axis, aligning with score 0.5. 156785's onset is below this proxy; unexplained collapses on 156796 and 158022 precede listed onsets by about 400 ms. Neither physical duration nor warning skill is established.",
-  "caption_words": 73
+  "collapse_check": {
+    "definition": "n=1 onsets whose first cached slice in [o-20 ms, o) has beta_N/l_i below 0.75 of the largest finite beta_N/l_i of that shot's cached slices before it",
+    "fraction": 0.75,
+    "by_campaign": {
+      "2014": {
+        "eligible": 25,
+        "below": 1,
+        "below_shots": [
+          156796
+        ]
+      },
+      "2018": {
+        "eligible": 20,
+        "below": 0,
+        "below_shots": []
+      }
+    },
+    "source": "outputs/labeler/rwm/evaluation.json#/onset_physics/rows"
+  },
+  "caption": "Held-out scores of the equilibrium-scalar timing baseline rwm-brf (blue) and \u03b2N/li (orange) on shots chosen by number, not by score. Vertical lines mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels are unlabelled comparisons centred on matched Hanson onsets. The dotted \u03b2N/li=4 proxy uses the right axis, aligning with score 0.5. Panels 156796 and 158022 show \u03b2N/li collapses well before the onset, which is atypical: in the window just before the onset only 1 of 25 eligible 2014 onsets (156796) and 0 of 20 in 2018 have \u03b2N/li below 0.75 of its earlier maximum. The score is not a precursor indicator: on 156785 it rises after the onset and on 176077 it spikes at the onset. Neither physical duration nor warning skill is established.",
+  "caption_words": 127
 }

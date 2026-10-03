@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "945d26751726372328a8992a72222ecb352e041360e834ce7ad4ac700d721370",
+  "source_sha256": "0b695332fd06987e03ca95457979229c9ca2d79035b9e0188a6a187f1f2a2cbe",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -11,43 +11,50 @@
           "json_path": "configs.rwm-brf.metrics.slice_auroc",
           "estimate": 0.7602021883920076,
           "low": 0.7058712054691425,
-          "high": 0.809161269108473
+          "high": 0.809161269108473,
+          "n_finite": 1000
         },
         "broad_auroc": {
           "json_path": "configs.rwm-brf.metrics.broad_auroc",
           "estimate": 0.7395949926583862,
           "low": 0.6684464461630325,
-          "high": 0.7990014888281666
+          "high": 0.7990014888281666,
+          "n_finite": 1000
         },
         "slice_auprc": {
           "json_path": "configs.rwm-brf.metrics.slice_auprc",
           "estimate": 0.16304825671489243,
           "low": 0.12255501411878099,
-          "high": 0.21989172028956308
+          "high": 0.21989172028956308,
+          "n_finite": 1000
         },
         "slice_f1": {
           "json_path": "configs.rwm-brf.metrics.slice_f1",
           "estimate": 0.27489587277546385,
           "low": 0.22652481957565895,
-          "high": 0.3366447880743131
+          "high": 0.3366447880743131,
+          "n_finite": 1000
         },
         "slice_tpr": {
           "json_path": "configs.rwm-brf.metrics.slice_tpr",
           "estimate": 0.75625,
           "low": 0.6456429450369155,
-          "high": 0.86875
+          "high": 0.86875,
+          "n_finite": 1000
         },
         "slice_fpr": {
           "json_path": "configs.rwm-brf.metrics.slice_fpr",
           "estimate": 0.3421503330161751,
           "low": 0.2614966232303802,
-          "high": 0.42092874813984527
+          "high": 0.42092874813984527,
+          "n_finite": 1000
         },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-brf.phase_controlled_auroc",
           "estimate": 0.5337573804158704,
           "low": 0.4359065321793412,
-          "high": 0.6248589220201699
+          "high": 0.6248589220201699,
+          "n_finite": 1000
         }
       },
       "rwm-rule-elapsed-time": {
@@ -55,43 +62,50 @@
           "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_auroc",
           "estimate": 0.7587335474151602,
           "low": 0.7118506687957216,
-          "high": 0.8148521262935791
+          "high": 0.8148521262935791,
+          "n_finite": 1000
         },
         "broad_auroc": {
           "json_path": "configs.rwm-rule-elapsed-time.metrics.broad_auroc",
           "estimate": 0.390047299248989,
           "low": 0.33291810827721663,
-          "high": 0.4398378255138416
+          "high": 0.4398378255138416,
+          "n_finite": 1000
         },
         "slice_auprc": {
           "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_auprc",
           "estimate": 0.22785363859801916,
           "low": 0.21216351902873304,
-          "high": 0.30695559234855635
+          "high": 0.30695559234855635,
+          "n_finite": 1000
         },
         "slice_f1": {
           "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_f1",
           "estimate": 0.26720321931589536,
           "low": 0.21690540005005843,
-          "high": 0.33135096496997535
+          "high": 0.33135096496997535,
+          "n_finite": 1000
         },
         "slice_tpr": {
           "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_tpr",
           "estimate": 0.6916666666666667,
           "low": 0.5245262054507337,
-          "high": 0.829643605870021
+          "high": 0.829643605870021,
+          "n_finite": 1000
         },
         "slice_fpr": {
           "json_path": "configs.rwm-rule-elapsed-time.metrics.slice_fpr",
           "estimate": 0.31836346336822074,
           "low": 0.24437115374446478,
-          "high": 0.3681517415831221
+          "high": 0.3681517415831221,
+          "n_finite": 1000
         },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
           "estimate": 0.521991500042785,
           "low": 0.5106637385486236,
-          "high": 0.5363999718687644
+          "high": 0.5363999718687644,
+          "n_finite": 1000
         }
       },
       "rwm-rule-betan": {
@@ -99,43 +113,50 @@
           "json_path": "configs.rwm-rule-betan.metrics.slice_auroc",
           "estimate": 0.7070276324135744,
           "low": 0.6389341617487666,
-          "high": 0.7717948860197866
+          "high": 0.7717948860197866,
+          "n_finite": 1000
         },
         "broad_auroc": {
           "json_path": "configs.rwm-rule-betan.metrics.broad_auroc",
           "estimate": 0.7150719718852301,
           "low": 0.6407577550974536,
-          "high": 0.7759842125820196
+          "high": 0.7759842125820196,
+          "n_finite": 1000
         },
         "slice_auprc": {
           "json_path": "configs.rwm-rule-betan.metrics.slice_auprc",
           "estimate": 0.1656533156078931,
           "low": 0.1281706498450382,
-          "high": 0.24642607838773417
+          "high": 0.24642607838773417,
+          "n_finite": 1000
         },
         "slice_f1": {
           "json_path": "configs.rwm-rule-betan.metrics.slice_f1",
           "estimate": 0.24615384615384617,
           "low": 0.19392559186526598,
-          "high": 0.3118434633873013
+          "high": 0.3118434633873013,
+          "n_finite": 1000
         },
         "slice_tpr": {
           "json_path": "configs.rwm-rule-betan.metrics.slice_tpr",
           "estimate": 0.75,
           "low": 0.6187357954545455,
-          "high": 0.8652696488294314
+          "high": 0.8652696488294314,
+          "n_finite": 1000
         },
         "slice_fpr": {
           "json_path": "configs.rwm-rule-betan.metrics.slice_fpr",
           "estimate": 0.3967649857278782,
           "low": 0.32276111912678007,
-          "high": 0.45378258832394364
+          "high": 0.45378258832394364,
+          "n_finite": 1000
         },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan.phase_controlled_auroc",
           "estimate": 0.5287515331298668,
           "low": 0.40953604152001644,
-          "high": 0.6375200323867469
+          "high": 0.6375200323867469,
+          "n_finite": 1000
         }
       },
       "rwm-rule-betan-over-li": {
@@ -143,115 +164,121 @@
           "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_auroc",
           "estimate": 0.7234524659054868,
           "low": 0.6636812093487351,
-          "high": 0.7840685911293114
+          "high": 0.7840685911293114,
+          "n_finite": 1000
         },
         "broad_auroc": {
           "json_path": "configs.rwm-rule-betan-over-li.metrics.broad_auroc",
           "estimate": 0.7522622099460813,
           "low": 0.6875420800226769,
-          "high": 0.8153225046626771
+          "high": 0.8153225046626771,
+          "n_finite": 1000
         },
         "slice_auprc": {
           "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_auprc",
           "estimate": 0.15880887831181684,
           "low": 0.12736523472238975,
-          "high": 0.2318260607893155
+          "high": 0.2318260607893155,
+          "n_finite": 1000
         },
         "slice_f1": {
           "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_f1",
           "estimate": 0.26119126896041434,
           "low": 0.21167225886867003,
-          "high": 0.32761739346218915
+          "high": 0.32761739346218915,
+          "n_finite": 1000
         },
         "slice_tpr": {
           "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_tpr",
           "estimate": 0.7354166666666667,
           "low": 0.601875,
-          "high": 0.8470728291316526
+          "high": 0.8470728291316526,
+          "n_finite": 1000
         },
         "slice_fpr": {
           "json_path": "configs.rwm-rule-betan-over-li.metrics.slice_fpr",
           "estimate": 0.3558515699333968,
           "low": 0.26864187796097494,
-          "high": 0.4272105191201794
+          "high": 0.4272105191201794,
+          "n_finite": 1000
         },
         "phase_controlled_auroc": {
           "json_path": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
           "estimate": 0.5879089534784221,
           "low": 0.4713608649179918,
-          "high": 0.6895454861349805
+          "high": 0.6895454861349805,
+          "n_finite": 1000
         }
       }
     },
-    "caption": "Within-RWM-shot timing with assumed negatives. Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\\beta_N/l_i$ alone. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.",
-    "caption_words": 102,
-    "legacy": {
-      "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
-      "cells": {
-        "slice_auroc": {
-          "json_path": "legacy.slice_auroc",
-          "value": 0.918
-        },
-        "slice_tpr": {
-          "json_path": "legacy.slice_tpr",
-          "value": 0.924
-        },
-        "slice_fpr": {
-          "json_path": "legacy.slice_fpr",
-          "value": 0.214
-        },
-        "onsets_warned": {
-          "json_path": "legacy.onsets_warned",
-          "value": 10
-        },
-        "target_onsets": {
-          "json_path": "legacy.target_onsets",
-          "value": 11
-        },
-        "stable_shots_with_an_alarm": {
-          "json_path": "legacy.stable_shots_with_an_alarm",
-          "value": 2
-        },
-        "stable_shots": {
-          "json_path": "legacy.stable_shots",
-          "value": 17
-        }
+    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Equilibrium-scalar timing baseline on Hanson's onset list with assumed negatives; no input senses the RWM. Phase-controlled AUROC 0.53--0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-$\\beta_N/l_i$ interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-$\\beta$ and above-proxy) and ranges from $-0.047$ to $+0.025$ in primary AUROC; the 2018 run-record holdout gives $-0.049$ $[-0.073, -0.013]$ in primary AUROC. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Published NSTX results are a different machine and are not comparable.",
+    "caption_words": 191,
+    "scope": "appendix"
+  },
+  "compact_latex": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_compact.tex",
+    "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_compact.tex",
+    "cells": {
+      "rwm-brf": {
+        "phase_controlled_auroc": "configs.rwm-brf.phase_controlled_auroc",
+        "slice_auroc": "configs.rwm-brf.metrics.slice_auroc",
+        "slice_auprc": "configs.rwm-brf.metrics.slice_auprc",
+        "slice_f1": "configs.rwm-brf.metrics.slice_f1"
       },
-      "slice_f1": "not available in source digest"
-    }
+      "rwm-rule-elapsed-time": {
+        "phase_controlled_auroc": "configs.rwm-rule-elapsed-time.phase_controlled_auroc",
+        "slice_auroc": "configs.rwm-rule-elapsed-time.metrics.slice_auroc",
+        "slice_auprc": "configs.rwm-rule-elapsed-time.metrics.slice_auprc",
+        "slice_f1": "configs.rwm-rule-elapsed-time.metrics.slice_f1"
+      },
+      "rwm-rule-betan-over-li": {
+        "phase_controlled_auroc": "configs.rwm-rule-betan-over-li.phase_controlled_auroc",
+        "slice_auroc": "configs.rwm-rule-betan-over-li.metrics.slice_auroc",
+        "slice_auprc": "configs.rwm-rule-betan-over-li.metrics.slice_auprc",
+        "slice_f1": "configs.rwm-rule-betan-over-li.metrics.slice_f1"
+      }
+    },
+    "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). The forest uses equilibrium scalars only (no input senses the RWM). Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time is the residual-phase floor, and the forest's margin over it excludes zero on 1 of 5 splits. Reference split, 480 positive and 5,255 assumed-negative slices; pooled scores are phase-confounded. Brackets: exploratory 95\\% shot-bootstrap intervals.",
+    "caption_words": 79,
+    "scope": "paper (column width)"
   },
   "supplemental_latex": {
     "split_summary": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
-      "caption": "Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\\beta_N/l_i$ alone. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
+      "caption": "Phase-controlled scores and paired phase differences (top); pooled forest scores and forest-minus-elapsed-time differences (bottom). No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Phase-controlled AUROC 0.53--0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-$\\beta_N/l_i$ interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-$\\beta$ and above-proxy) and ranges from $-0.047$ to $+0.025$ in primary AUROC; the 2018 run-record holdout gives $-0.049$ $[-0.073, -0.013]$ in primary AUROC. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: exploratory 95\\% shot-bootstrap intervals, unadjusted for multiplicity, at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only. The primary seed-3 lower bound rounds to $-0.000$; its unrounded value is negative.",
       "source": {
         "split_sensitivity.phase_controlled_auroc": {
           "by_seed": {
             "0": {
               "estimate": 0.5337573804158704,
               "low": 0.4359065321793412,
-              "high": 0.6248589220201699
+              "high": 0.6248589220201699,
+              "n_finite": 1000
             },
             "1": {
               "estimate": 0.5922302404518098,
               "low": 0.509658562421827,
-              "high": 0.679910641220516
+              "high": 0.679910641220516,
+              "n_finite": 1000
             },
             "2": {
               "estimate": 0.5796371830343136,
               "low": 0.4967997484226588,
-              "high": 0.6661975203593852
+              "high": 0.6661975203593852,
+              "n_finite": 1000
             },
             "3": {
               "estimate": 0.6290538806012721,
               "low": 0.548928091412632,
-              "high": 0.7062312483648875
+              "high": 0.7062312483648875,
+              "n_finite": 1000
             },
             "4": {
               "estimate": 0.5977637696454549,
               "low": 0.5062144811209105,
-              "high": 0.6908722839157221
+              "high": 0.6908722839157221,
+              "n_finite": 1000
             }
           },
           "min": 0.5337573804158704,
@@ -260,7 +287,8 @@
           "holdout": {
             "estimate": 0.5927721840326307,
             "low": 0.5166916537679644,
-            "high": 0.6794383094006398
+            "high": 0.6794383094006398,
+            "n_finite": 1000
           }
         },
         "split_sensitivity.paired_phase": {
@@ -269,33 +297,39 @@
               "0": {
                 "estimate": 0.011765880373085347,
                 "low": -0.08107908276559098,
-                "high": 0.11288083028107676
+                "high": 0.11288083028107676,
+                "n_finite": 1000
               },
               "1": {
                 "estimate": 0.07023874040902478,
                 "low": -0.016505093124356884,
-                "high": 0.16026787489138047
+                "high": 0.16026787489138047,
+                "n_finite": 1000
               },
               "2": {
                 "estimate": 0.0576456829915285,
                 "low": -0.029348414675192808,
-                "high": 0.14336612284197117
+                "high": 0.14336612284197117,
+                "n_finite": 1000
               },
               "3": {
                 "estimate": 0.10706238055848705,
                 "low": 0.029912557957055025,
-                "high": 0.1888657925848116
+                "high": 0.1888657925848116,
+                "n_finite": 1000
               },
               "4": {
                 "estimate": 0.0757722696026698,
                 "low": -0.01667162249726395,
-                "high": 0.17089153480148112
+                "high": 0.17089153480148112,
+                "n_finite": 1000
               }
             },
             "holdout": {
               "estimate": 0.0707806839898456,
               "low": -0.013343274249616288,
-              "high": 0.14946262816063643
+              "high": 0.14946262816063643,
+              "n_finite": 1000
             },
             "min": 0.011765880373085347,
             "max": 0.10706238055848705,
@@ -307,33 +341,39 @@
               "0": {
                 "estimate": -0.054151573062551694,
                 "low": -0.17224543605318704,
-                "high": 0.06149765739374102
+                "high": 0.06149765739374102,
+                "n_finite": 1000
               },
               "1": {
                 "estimate": 0.004321286973387739,
                 "low": -0.10608092969371857,
-                "high": 0.1105116598776675
+                "high": 0.1105116598776675,
+                "n_finite": 1000
               },
               "2": {
                 "estimate": -0.00827177044410854,
                 "low": -0.13348020666184776,
-                "high": 0.10441551200932178
+                "high": 0.10441551200932178,
+                "n_finite": 1000
               },
               "3": {
                 "estimate": 0.041144927122850006,
                 "low": -0.0710116322478068,
-                "high": 0.1510002551593267
+                "high": 0.1510002551593267,
+                "n_finite": 1000
               },
               "4": {
                 "estimate": 0.009854816167032765,
                 "low": -0.1117527541409129,
-                "high": 0.12819959478087767
+                "high": 0.12819959478087767,
+                "n_finite": 1000
               }
             },
             "holdout": {
               "estimate": 0.004863230554208564,
               "low": -0.11939576220901602,
-              "high": 0.10201992223825054
+              "high": 0.10201992223825054,
+              "n_finite": 1000
             },
             "min": -0.054151573062551694,
             "max": 0.041144927122850006,
@@ -486,167 +526,198 @@
         "paired.rwm-brf - rwm-rule-elapsed-time.broad_auroc": {
           "estimate": 0.34954769340939723,
           "low": 0.28685367671869855,
-          "high": 0.4143236212777892
+          "high": 0.4143236212777892,
+          "n_finite": 1000
         },
         "split_sensitivity.paired_time_by_seed": {
           "0": {
             "slice_auroc": {
               "estimate": 0.0014686409768474018,
               "low": -0.049084839974529025,
-              "high": 0.05972509305794077
+              "high": 0.05972509305794077,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.06480538188312673,
               "low": -0.10021164501748131,
-              "high": 0.015555539879124808
+              "high": 0.015555539879124808,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": -0.039521509354806805,
               "low": -0.1199631899380054,
-              "high": 0.06077445562013814
+              "high": 0.06077445562013814,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.08729077986023787,
               "low": -0.12839923387701804,
-              "high": 0.010656243617585687
+              "high": 0.010656243617585687,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": -0.05109238161390339,
               "low": -0.15734869628352496,
-              "high": 0.09235153634775986
+              "high": 0.09235153634775986,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.09146666601538903,
               "low": -0.1378625793050931,
-              "high": 0.0023939945697040443
+              "high": 0.0023939945697040443,
+              "n_finite": 1000
             }
           },
           "1": {
             "slice_auroc": {
               "estimate": 0.028393791627021825,
               "low": -0.022536048535018338,
-              "high": 0.08435346902298146
+              "high": 0.08435346902298146,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.04576391845961683,
               "low": -0.08528451887619778,
-              "high": 0.034230594532919406
+              "high": 0.034230594532919406,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": 0.00977025223891903,
               "low": -0.06448693044014712,
-              "high": 0.10129262296196845
+              "high": 0.10129262296196845,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.06628205166195539,
               "low": -0.10916660567537967,
-              "high": 0.025600039818243464
+              "high": 0.025600039818243464,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": 0.006559302250642718,
               "low": -0.09133508297680513,
-              "high": 0.12930414673164597
+              "high": 0.12930414673164597,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.06991863378005198,
               "low": -0.11616468948066985,
-              "high": 0.021845944887203816
+              "high": 0.021845944887203816,
+              "n_finite": 1000
             }
           },
           "2": {
             "slice_auroc": {
               "estimate": 0.01396408182683151,
               "low": -0.0323639679213953,
-              "high": 0.06460318284959017
+              "high": 0.06460318284959017,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.05973795826486361,
               "low": -0.09316551819187018,
-              "high": 0.015329374455640976
+              "high": 0.015329374455640976,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": -0.01067922131649024,
               "low": -0.08678595973769834,
-              "high": 0.07229122053041923
+              "high": 0.07229122053041923,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.08190360435181901,
               "low": -0.12063901531088708,
-              "high": 0.006069491341844174
+              "high": 0.006069491341844174,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": -0.024448438585310317,
               "low": -0.11492591503662218,
-              "high": 0.08655249923635047
+              "high": 0.08655249923635047,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.08779644402969475,
               "low": -0.1290000685399352,
-              "high": -0.0013345351689595941
+              "high": -0.0013345351689595941,
+              "n_finite": 1000
             }
           },
           "3": {
             "slice_auroc": {
               "estimate": 0.047011179828734484,
               "low": -0.00010937891919560183,
-              "high": 0.0983804620316366
+              "high": 0.0983804620316366,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": 0.002262051736206583,
               "low": -0.04108813156354469,
-              "high": 0.08527352090872217
+              "high": 0.08527352090872217,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": 0.054044621058948916,
               "low": -0.012290956058285105,
-              "high": 0.12919177417629132
+              "high": 0.12919177417629132,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": 0.002386756219212749,
               "low": -0.03862268548924257,
-              "high": 0.09175742654381179
+              "high": 0.09175742654381179,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": 0.060514575829400896,
               "low": -0.02484609635792659,
-              "high": 0.16856908718402802
+              "high": 0.16856908718402802,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": 0.004739255824639299,
               "low": -0.03985622480290524,
-              "high": 0.10244018390029154
+              "high": 0.10244018390029154,
+              "n_finite": 1000
             }
           },
           "4": {
             "slice_auroc": {
               "estimate": 0.03423802727561054,
               "low": -0.017031488960241883,
-              "high": 0.08832743448153996
+              "high": 0.08832743448153996,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.044392578687392464,
               "low": -0.08492013588549747,
-              "high": 0.037086430364410866
+              "high": 0.037086430364410866,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": 0.022098436689721,
               "low": -0.05411983845927858,
-              "high": 0.10549846115699388
+              "high": 0.10549846115699388,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.06274002293256362,
               "low": -0.10093566949922901,
-              "high": 0.02560055851716561
+              "high": 0.02560055851716561,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": 0.01742511582610684,
               "low": -0.07581235552273595,
-              "high": 0.12810240911270415
+              "high": 0.12810240911270415,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.069446803558679,
               "low": -0.11617011856714826,
-              "high": 0.019758288053535883
+              "high": 0.019758288053535883,
+              "n_finite": 1000
             }
           }
         },
@@ -672,157 +743,188 @@
             "slice_auroc": {
               "estimate": 0.7789200761179829,
               "low": 0.7311668160793936,
-              "high": 0.8227504607236329
+              "high": 0.8227504607236329,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": 0.18076195471167156,
               "low": 0.14852647300685307,
-              "high": 0.24835572003550527
+              "high": 0.24835572003550527,
+              "n_finite": 1000
             },
             "broad_auroc": {
               "estimate": 0.7520973245233968,
               "low": 0.6900438666215677,
-              "high": 0.8050259074659749
+              "high": 0.8050259074659749,
+              "n_finite": 1000
             },
             "broad_auprc": {
               "estimate": 0.06605145342974401,
               "low": 0.046091235283349914,
-              "high": 0.10098807147303117
+              "high": 0.10098807147303117,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": 0.6209266823211341,
               "low": 0.5359219009637753,
-              "high": 0.7002918637249058
+              "high": 0.7002918637249058,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": 0.17602305258439405,
               "low": 0.1490877365885538,
-              "high": 0.23889467917829327
+              "high": 0.23889467917829327,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": 0.5794699568203138,
               "low": 0.47487570018579617,
-              "high": 0.6770970334398514
+              "high": 0.6770970334398514,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": 0.18558675045498801,
               "low": 0.15398957282638018,
-              "high": 0.2576373470228322
+              "high": 0.2576373470228322,
+              "n_finite": 1000
             },
             "slice_tpr": {
               "estimate": 0.6833333333333333,
               "low": 0.5539568181818183,
-              "high": 0.8115878378378378
+              "high": 0.8115878378378378,
+              "n_finite": 1000
             },
             "slice_fpr": {
               "estimate": 0.28353948620361563,
               "low": 0.21175914973491655,
-              "high": 0.36183356786354176
+              "high": 0.36183356786354176,
+              "n_finite": 1000
             },
             "slice_precision": {
               "estimate": 0.18041804180418042,
               "low": 0.14418161744313732,
-              "high": 0.23131618066163562
+              "high": 0.23131618066163562,
+              "n_finite": 1000
             },
             "slice_f1": {
               "estimate": 0.2854656222802437,
               "low": 0.23276695344129558,
-              "high": 0.3443386361602551
+              "high": 0.3443386361602551,
+              "n_finite": 1000
             },
             "onset_detection_rate": {
               "estimate": 0.16666666666666666,
               "low": 0.04875145180023232,
-              "high": 0.3091017316017316
+              "high": 0.3091017316017316,
+              "n_finite": 1000
             },
             "uniform_alarm_reference": {
               "estimate": 0.15235317713459673,
               "low": 0.05736234002683884,
-              "high": 0.2716242238009877
+              "high": 0.2716242238009877,
+              "n_finite": 1000
             },
             "detection_minus_uniform_reference": {
               "estimate": 0.014313489532069928,
               "low": -0.024752314192536207,
-              "high": 0.052776109779047196
+              "high": 0.052776109779047196,
+              "n_finite": 1000
             },
             "warning_ms_mean": {
               "estimate": 230.13124999999997,
               "low": 153.13812499999997,
-              "high": 288.75141666666656
+              "high": 288.75141666666656,
+              "n_finite": 1000
             },
             "warning_ms_median": {
               "estimate": 214.04999999999995,
               "low": 139.5,
-              "high": 343.0
+              "high": 343.0,
+              "n_finite": 1000
             },
             "hanson_shot_detection_rate": {
               "estimate": 0.1,
               "low": 0.0,
-              "high": 0.22580645161290322
+              "high": 0.22580645161290322,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_detection_rate": {
               "estimate": 0.2,
               "low": 0.06890804597701154,
-              "high": 0.35714285714285715
+              "high": 0.35714285714285715,
+              "n_finite": 1000
             },
             "hanson_shot_early_rate": {
               "estimate": 0.13333333333333333,
               "low": 0.03225806451612903,
-              "high": 0.27586206896551724
+              "high": 0.27586206896551724,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_early_rate": {
               "estimate": 0.03333333333333333,
               "low": 0.0,
-              "high": 0.1072420634920634
+              "high": 0.1072420634920634,
+              "n_finite": 1000
             },
             "hanson_shot_miss_rate": {
               "estimate": 0.7666666666666667,
               "low": 0.6071428571428571,
-              "high": 0.896551724137931
+              "high": 0.896551724137931,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_miss_rate": {
               "estimate": 0.7666666666666667,
               "low": 0.6071428571428571,
-              "high": 0.896551724137931
+              "high": 0.896551724137931,
+              "n_finite": 1000
             },
             "hanson_early_alarm_incidence": {
               "estimate": 0.15151515151515152,
               "low": 0.030303030303030304,
-              "high": 0.2727272727272727
+              "high": 0.2727272727272727,
+              "n_finite": 1000
             },
             "hanson_early_alarms_per_shot": {
               "estimate": 0.8787878787878788,
               "low": 0.09090909090909091,
-              "high": 2.000757575757575
+              "high": 2.000757575757575,
+              "n_finite": 1000
             },
             "hanson_ignored_alarm_incidence": {
               "estimate": 0.2727272727272727,
               "low": 0.12121212121212122,
-              "high": 0.42424242424242425
+              "high": 0.42424242424242425,
+              "n_finite": 1000
             },
             "hanson_ignored_alarms_per_shot": {
               "estimate": 1.5757575757575757,
               "low": 0.42424242424242425,
-              "high": 3.394696969696969
+              "high": 3.394696969696969,
+              "n_finite": 1000
             },
             "hanson_unexplained_alarm_incidence": {
               "estimate": 0.2727272727272727,
               "low": 0.15151515151515152,
-              "high": 0.42424242424242425
+              "high": 0.42424242424242425,
+              "n_finite": 1000
             },
             "hanson_unexplained_alarms_per_shot": {
               "estimate": 1.393939393939394,
               "low": 0.3939393939393939,
-              "high": 2.6666666666666665
+              "high": 2.6666666666666665,
+              "n_finite": 1000
             },
             "comparison_alarm_incidence": {
               "estimate": null,
               "low": null,
-              "high": null
+              "high": null,
+              "n_finite": 0
             },
             "comparison_alarms_per_shot": {
               "estimate": null,
               "low": null,
-              "high": null
+              "high": null,
+              "n_finite": 0
             }
           },
           "by_campaign": {
@@ -830,314 +932,376 @@
               "slice_auroc": {
                 "estimate": 0.7285349190283401,
                 "low": 0.672100615308563,
-                "high": 0.8141305377037342
+                "high": 0.8141305377037342,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.17308871394808648,
                 "low": 0.13909529421486092,
-                "high": 0.291602350561118
+                "high": 0.291602350561118,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7349940287512835,
                 "low": 0.6559703407280942,
-                "high": 0.8003847753484777
+                "high": 0.8003847753484777,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.06430067369934342,
                 "low": 0.04146422521069524,
-                "high": 0.10873854485800667
+                "high": 0.10873854485800667,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.4407288114184666,
                 "low": 0.3688679741972716,
-                "high": 0.5820776556488512
+                "high": 0.5820776556488512,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.16673020673721897,
                 "low": 0.1347987866200446,
-                "high": 0.2777466161038341
+                "high": 0.2777466161038341,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.4043359123146357,
                 "low": 0.32894560063179773,
-                "high": 0.5357499460411904
+                "high": 0.5357499460411904,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.17181377681751214,
                 "low": 0.14042071846610307,
-                "high": 0.3038387677094819
+                "high": 0.3038387677094819,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.8423076923076923,
                 "low": 0.7135839160839161,
-                "high": 0.9500431034482758
+                "high": 0.9500431034482758,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.40657894736842104,
                 "low": 0.3006033460228191,
-                "high": 0.4985706823509568
+                "high": 0.4985706823509568,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.19109947643979058,
                 "low": 0.1462163672808573,
-                "high": 0.265603867944905
+                "high": 0.265603867944905,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.31152204836415365,
                 "low": 0.24886125727720557,
-                "high": 0.4025066680973695
+                "high": 0.4025066680973695,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.15384615384615385,
                 "low": 0.0,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.1423307774532238,
                 "low": 0.0,
-                "high": 0.31366875768986124
+                "high": 0.31366875768986124,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.011515376392930043,
                 "low": 0.0,
-                "high": 0.02777675223167475
+                "high": 0.02777675223167475,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 233.63749999999993,
                 "low": 146.44999999999982,
-                "high": 305.54999999999995
+                "high": 305.54999999999995,
+                "n_finite": 956
               },
               "warning_ms_median": {
                 "estimate": 214.04999999999995,
                 "low": 146.44999999999982,
-                "high": 305.54999999999995
+                "high": 305.54999999999995,
+                "n_finite": 956
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.05555555555555555,
                 "low": 0.0,
-                "high": 0.16666666666666666
+                "high": 0.16666666666666666,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.0,
-                "high": 0.35
+                "high": 0.35,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.1111111111111111,
                 "low": 0.0,
-                "high": 0.2777777777777778
+                "high": 0.2777777777777778,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.0,
                 "low": 0.0,
-                "high": 0.0
+                "high": 0.0,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.8333333333333334,
                 "low": 0.65,
-                "high": 1.0
+                "high": 1.0,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.8333333333333334,
                 "low": 0.65,
-                "high": 1.0
+                "high": 1.0,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.15,
                 "low": 0.0,
-                "high": 0.3
+                "high": 0.3,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 1.3,
                 "low": 0.0,
-                "high": 2.8037499999999964
+                "high": 2.8037499999999964,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.25,
                 "low": 0.05,
-                "high": 0.45
+                "high": 0.45,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 1.15,
                 "low": 0.2,
-                "high": 2.45
+                "high": 2.45,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.25,
                 "low": 0.1,
-                "high": 0.45
+                "high": 0.45,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 2.0,
                 "low": 0.44875000000000115,
-                "high": 3.85
+                "high": 3.85,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": null,
                 "low": null,
-                "high": null
+                "high": null,
+                "n_finite": 0
               },
               "comparison_alarms_per_shot": {
                 "estimate": null,
                 "low": null,
-                "high": null
+                "high": null,
+                "n_finite": 0
               }
             },
             "2018": {
               "slice_auroc": {
                 "estimate": 0.7957860962566845,
                 "low": 0.7441452267061998,
-                "high": 0.8449014177907963
+                "high": 0.8449014177907963,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.20631084498845623,
                 "low": 0.14988003582543297,
-                "high": 0.30061983498754147
+                "high": 0.30061983498754147,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7624849704636939,
                 "low": 0.6760743808002525,
-                "high": 0.8425766835590268
+                "high": 0.8425766835590268,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.07489041432162394,
                 "low": 0.03879473078064664,
-                "high": 0.16148591227260817
+                "high": 0.16148591227260817,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.6609299161816731,
                 "low": 0.5761205732955881,
-                "high": 0.7456492372472342
+                "high": 0.7456492372472342,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.19813041424708983,
                 "low": 0.14587755526869253,
-                "high": 0.2954584358616152
+                "high": 0.2954584358616152,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.6334139248046533,
                 "low": 0.5445364325974164,
-                "high": 0.7292014387542826
+                "high": 0.7292014387542826,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.212503439887623,
                 "low": 0.1594565657892976,
-                "high": 0.3185236733846444
+                "high": 0.3185236733846444,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.4954545454545455,
                 "low": 0.3,
-                "high": 0.6772853535353535
+                "high": 0.6772853535353535,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.18924369747899158,
                 "low": 0.12672168055799954,
-                "high": 0.25944331649433106
+                "high": 0.25944331649433106,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.16220238095238096,
                 "low": 0.10654924998838991,
-                "high": 0.23673880548514978
+                "high": 0.23673880548514978,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.24439461883408073,
                 "low": 0.16423841059602648,
-                "high": 0.3298986427852407
+                "high": 0.3298986427852407,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.18181818181818182,
                 "low": 0.0,
-                "high": 0.4090909090909091
+                "high": 0.4090909090909091,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.164197831303492,
                 "low": 0.046773487788593845,
-                "high": 0.3334898928963567
+                "high": 0.3334898928963567,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.017620350514689825,
                 "low": -0.06153292048932355,
-                "high": 0.09155327934598735
+                "high": 0.09155327934598735,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 226.625,
                 "low": 139.5,
-                "high": 343.0
+                "high": 343.0,
+                "n_finite": 971
               },
               "warning_ms_median": {
                 "estimate": 241.25,
                 "low": 139.5,
-                "high": 343.0
+                "high": 343.0,
+                "n_finite": 971
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.0,
-                "high": 0.38461538461538464
+                "high": 0.38461538461538464,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.25,
                 "low": 0.0,
-                "high": 0.5
+                "high": 0.5,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.0,
-                "high": 0.4166666666666667
+                "high": 0.4166666666666667,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.08333333333333333,
                 "low": 0.0,
-                "high": 0.2505681818181813
+                "high": 0.2505681818181813,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.6666666666666666,
                 "low": 0.38461538461538464,
-                "high": 0.9166666666666666
+                "high": 0.9166666666666666,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.6666666666666666,
                 "low": 0.38461538461538464,
-                "high": 0.9166666666666666
+                "high": 0.9166666666666666,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.15384615384615385,
                 "low": 0.0,
-                "high": 0.38461538461538464
+                "high": 0.38461538461538464,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.23076923076923078,
                 "low": 0.0,
-                "high": 0.6153846153846154
+                "high": 0.6153846153846154,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.3076923076923077,
                 "low": 0.07692307692307693,
-                "high": 0.5384615384615384
+                "high": 0.5384615384615384,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 2.230769230769231,
                 "low": 0.07692307692307693,
-                "high": 5.923076923076923
+                "high": 5.923076923076923,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.3076923076923077,
                 "low": 0.07692307692307693,
-                "high": 0.5384615384615384
+                "high": 0.5384615384615384,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.46153846153846156,
                 "low": 0.1519230769230787,
-                "high": 0.9230769230769231
+                "high": 0.9230769230769231,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": null,
                 "low": null,
-                "high": null
+                "high": null,
+                "n_finite": 0
               },
               "comparison_alarms_per_shot": {
                 "estimate": null,
                 "low": null,
-                "high": null
+                "high": null,
+                "n_finite": 0
               }
             }
           },
@@ -1145,166 +1309,198 @@
             "slice_auroc": {
               "estimate": 0.02018652870282267,
               "low": -0.03257246149711114,
-              "high": 0.07979945793328441
+              "high": 0.07979945793328441,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.0470916838863476,
               "low": -0.09934370343218753,
-              "high": 0.02920171971149539
+              "high": 0.02920171971149539,
+              "n_finite": 1000
             },
             "broad_auroc": {
               "estimate": 0.3620500252744078,
               "low": 0.30433474588668763,
-              "high": 0.4277080079581293
+              "high": 0.4277080079581293,
+              "n_finite": 1000
             },
             "broad_auprc": {
               "estimate": 0.04095198318682471,
               "low": 0.008772262663385516,
-              "high": 0.05744558199294308
+              "high": 0.05744558199294308,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": -0.020772856784929794,
               "low": -0.09734822164445045,
-              "high": 0.06895109981469395
+              "high": 0.06895109981469395,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.07912656729155165,
               "low": -0.12080188928444827,
-              "high": 0.00860024373761853
+              "high": 0.00860024373761853,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": -0.01721029151658804,
               "low": -0.12250026354054298,
-              "high": 0.10530359213409132
+              "high": 0.10530359213409132,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.0819857171070762,
               "low": -0.1341057831476517,
-              "high": 0.006533921290879263
+              "high": 0.006533921290879263,
+              "n_finite": 1000
             },
             "slice_tpr": {
               "estimate": -0.008333333333333304,
               "low": -0.24557196969696954,
-              "high": 0.19846698113207556
+              "high": 0.19846698113207556,
+              "n_finite": 1000
             },
             "slice_fpr": {
               "estimate": -0.03482397716460511,
               "low": -0.12294649145760081,
-              "high": 0.03190587857345986
+              "high": 0.03190587857345986,
+              "n_finite": 1000
             },
             "slice_precision": {
               "estimate": 0.014832006891462218,
               "low": -0.024806666344176657,
-              "high": 0.052681141248798816
+              "high": 0.052681141248798816,
+              "n_finite": 1000
             },
             "slice_f1": {
               "estimate": 0.018262402964348334,
               "low": -0.04657758870338907,
-              "high": 0.0782020247383366
+              "high": 0.0782020247383366,
+              "n_finite": 1000
             },
             "onset_detection_rate": {
               "estimate": 0.10416666666666666,
               "low": -0.020873397435897445,
-              "high": 0.1891025641025641
+              "high": 0.1891025641025641,
+              "n_finite": 1000
             },
             "uniform_alarm_reference": {
               "estimate": 0.10589105085133865,
               "low": -0.010350563919889505,
-              "high": 0.1981915026219673
+              "high": 0.1981915026219673,
+              "n_finite": 1000
             },
             "detection_minus_uniform_reference": {
               "estimate": -0.0017243841846719954,
               "low": -0.043392996048880125,
-              "high": 0.0465542247789215
+              "high": 0.0465542247789215,
+              "n_finite": 1000
             },
             "warning_ms_mean": {
               "estimate": 91.31458333333336,
               "low": -38.46800595238099,
-              "high": 188.12916666666672
+              "high": 188.12916666666672,
+              "n_finite": 964
             },
             "warning_ms_median": {
               "estimate": 69.04999999999995,
               "low": -76.55000000000018,
-              "high": 196.0999999999999
+              "high": 196.0999999999999,
+              "n_finite": 964
             },
             "hanson_shot_detection_rate": {
               "estimate": 0.0,
               "low": -0.13333333333333333,
-              "high": 0.1334482758620689
+              "high": 0.1334482758620689,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_detection_rate": {
               "estimate": 0.1,
               "low": -0.02580645161290321,
-              "high": 0.2
+              "high": 0.2,
+              "n_finite": 1000
             },
             "hanson_shot_early_rate": {
               "estimate": 0.06666666666666667,
               "low": -0.06666666666666665,
-              "high": 0.1690806878306878
+              "high": 0.1690806878306878,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_early_rate": {
               "estimate": -0.03333333333333333,
               "low": -0.06666666666666667,
-              "high": 0.04047619047619047
+              "high": 0.04047619047619047,
+              "n_finite": 1000
             },
             "hanson_shot_miss_rate": {
               "estimate": -0.06666666666666665,
               "low": -0.16908068783068786,
-              "high": 0.06666666666666676
+              "high": 0.06666666666666676,
+              "n_finite": 1000
             },
             "hanson_any_alarm_shot_miss_rate": {
               "estimate": -0.06666666666666665,
               "low": -0.16908068783068786,
-              "high": 0.06666666666666676
+              "high": 0.06666666666666676,
+              "n_finite": 1000
             },
             "hanson_early_alarm_incidence": {
               "estimate": 0.09090909090909091,
               "low": -0.06060606060606058,
-              "high": 0.21212121212121213
+              "high": 0.21212121212121213,
+              "n_finite": 1000
             },
             "hanson_early_alarms_per_shot": {
               "estimate": 0.8181818181818181,
               "low": -0.3333333333333335,
-              "high": 1.606060606060606
+              "high": 1.606060606060606,
+              "n_finite": 1000
             },
             "hanson_ignored_alarm_incidence": {
               "estimate": -0.36363636363636365,
               "low": -0.5757575757575757,
-              "high": -0.1810606060606067
+              "high": -0.1810606060606067,
+              "n_finite": 1000
             },
             "hanson_ignored_alarms_per_shot": {
               "estimate": 0.9393939393939393,
               "low": -0.8492424242424239,
-              "high": 2.090909090909091
+              "high": 2.090909090909091,
+              "n_finite": 1000
             },
             "hanson_unexplained_alarm_incidence": {
               "estimate": 0.1515151515151515,
               "low": -5.551115123125783e-17,
-              "high": 0.2727272727272727
+              "high": 0.2727272727272727,
+              "n_finite": 1000
             },
             "hanson_unexplained_alarms_per_shot": {
               "estimate": 1.272727272727273,
               "low": 4.440892098500626e-16,
-              "high": 2.2727272727272734
+              "high": 2.2727272727272734,
+              "n_finite": 1000
             },
             "comparison_alarm_incidence": {
               "estimate": null,
               "low": null,
-              "high": null
+              "high": null,
+              "n_finite": 0
             },
             "comparison_alarms_per_shot": {
               "estimate": null,
               "low": null,
-              "high": null
+              "high": null,
+              "n_finite": 0
             }
           }
         }
-      }
+      },
+      "scope": "appendix"
     },
     "within_shot": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
-      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
+      "caption": "No demonstrated skill beyond elapsed time or $\\beta_N/l_i$ under phase control; below $\\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\\beta_N$ and $\\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.",
       "source": {
         "paired_within_shot_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
@@ -1312,13 +1508,15 @@
               "n_shots": 30,
               "estimate": -0.1473058164956158,
               "low": -0.19962373253232737,
-              "high": -0.08358075967412446
+              "high": -0.08358075967412446,
+              "n_finite": 1000
             },
             "broad": {
               "n_shots": 30,
               "estimate": 0.3021296242047748,
               "low": 0.216744813532865,
-              "high": 0.383832594519025
+              "high": 0.383832594519025,
+              "n_finite": 1000
             }
           },
           "rwm-brf - rwm-rule-betan": {
@@ -1326,13 +1524,15 @@
               "n_shots": 30,
               "estimate": -0.030804177543612088,
               "low": -0.10922506204012734,
-              "high": 0.04541901765035304
+              "high": 0.04541901765035304,
+              "n_finite": 1000
             },
             "broad": {
               "n_shots": 30,
               "estimate": -0.020451360444092015,
               "low": -0.09526686252158853,
-              "high": 0.058452577617381
+              "high": 0.058452577617381,
+              "n_finite": 1000
             }
           },
           "rwm-brf - rwm-rule-betan-over-li": {
@@ -1340,13 +1540,15 @@
               "n_shots": 30,
               "estimate": -0.07102316273973741,
               "low": -0.1325289050622218,
-              "high": -0.010139829509499432
+              "high": -0.010139829509499432,
+              "n_finite": 1000
             },
             "broad": {
               "n_shots": 30,
               "estimate": -0.06673886147153996,
               "low": -0.13702868990745856,
-              "high": 0.00219867902272064
+              "high": 0.00219867902272064,
+              "n_finite": 1000
             }
           }
         },
@@ -1354,44 +1556,52 @@
           "rwm-brf": {
             "estimate": 0.5337573804158704,
             "low": 0.4359065321793412,
-            "high": 0.6248589220201699
+            "high": 0.6248589220201699,
+            "n_finite": 1000
           },
           "rwm-rule-elapsed-time": {
             "estimate": 0.521991500042785,
             "low": 0.5106637385486236,
-            "high": 0.5363999718687644
+            "high": 0.5363999718687644,
+            "n_finite": 1000
           },
           "rwm-rule-betan": {
             "estimate": 0.5287515331298668,
             "low": 0.40953604152001644,
-            "high": 0.6375200323867469
+            "high": 0.6375200323867469,
+            "n_finite": 1000
           },
           "rwm-rule-betan-over-li": {
             "estimate": 0.5879089534784221,
             "low": 0.4713608649179918,
-            "high": 0.6895454861349805
+            "high": 0.6895454861349805,
+            "n_finite": 1000
           },
           "rwm-rule-rwm-candidates": {
             "estimate": 0.5,
             "low": 0.5,
-            "high": 0.5
+            "high": 0.5,
+            "n_finite": 1000
           }
         },
         "paired_phase_controlled_auroc": {
           "rwm-brf - rwm-rule-elapsed-time": {
             "estimate": 0.011765880373085347,
             "low": -0.08107908276559098,
-            "high": 0.11288083028107676
+            "high": 0.11288083028107676,
+            "n_finite": 1000
           },
           "rwm-brf - rwm-rule-betan": {
             "estimate": 0.005005847286003617,
             "low": -0.12298802684429339,
-            "high": 0.13305122541288827
+            "high": 0.13305122541288827,
+            "n_finite": 1000
           },
           "rwm-brf - rwm-rule-betan-over-li": {
             "estimate": -0.054151573062551694,
             "low": -0.17224543605318704,
-            "high": 0.06149765739374102
+            "high": 0.06149765739374102,
+            "n_finite": 1000
           }
         },
         "configs.rwm-brf.within_shot_auroc": {
@@ -1442,12 +1652,13 @@
             "n_shots": 30
           }
         }
-      }
+      },
+      "scope": "appendix"
     },
     "campaign_pairs": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_campaign_pairs.tex",
-      "caption": "Forest minus elapsed time by campaign. Brackets: exploratory 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
+      "caption": "Forest minus elapsed time by campaign. Brackets: exploratory 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions, unadjusted for multiplicity. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata, while the primary 2014 differences range from $-0.047$ to $+0.025$; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
       "source": {
         "split_sensitivity.paired_time_by_campaign": {
           "2014": {
@@ -1455,160 +1666,190 @@
               "slice_auroc": {
                 "estimate": -0.046863191632928514,
                 "low": -0.12623859131719972,
-                "high": 0.05018200150728522
+                "high": 0.05018200150728522,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.1318105599279223,
                 "low": -0.19271523030136978,
-                "high": -0.025471318414712396
+                "high": -0.025471318414712396,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.25530503978779845,
                 "low": -0.42157131818567434,
-                "high": -0.06723275818709745
+                "high": -0.06723275818709745,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.21101119117640305,
                 "low": -0.2822924715324051,
-                "high": -0.05071327575124879
+                "high": -0.05071327575124879,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.2617746615087041,
                 "low": -0.45106136667837476,
-                "high": -0.04521429595804366
+                "high": -0.04521429595804366,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.2074174985397181,
                 "low": -0.28550048691702956,
-                "high": -0.06595437231557699
+                "high": -0.06595437231557699,
+                "n_finite": 1000
               }
             },
             "1": {
               "slice_auroc": {
                 "estimate": 0.005689102564102599,
                 "low": -0.06570880883990247,
-                "high": 0.09057729293280006
+                "high": 0.09057729293280006,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.09731169035720755,
                 "low": -0.16646293063848433,
-                "high": 0.014123771624151765
+                "high": 0.014123771624151765,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.11274788429960847,
                 "low": -0.23069380143118265,
-                "high": 0.058629302391218
+                "high": 0.058629302391218,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.16348562436811764,
                 "low": -0.24369321639469668,
-                "high": 0.009194920050523914
+                "high": 0.009194920050523914,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.10454545454545455,
                 "low": -0.2456724636466755,
-                "high": 0.062123178378199195
+                "high": 0.062123178378199195,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.16048910107745656,
                 "low": -0.24712763507341076,
-                "high": -0.013613537817344867
+                "high": -0.013613537817344867,
+                "n_finite": 1000
               }
             },
             "2": {
               "slice_auroc": {
                 "estimate": -0.011219635627530367,
                 "low": -0.07805129794566236,
-                "high": 0.06778881217022215
+                "high": 0.06778881217022215,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.11497019368514141,
                 "low": -0.17098058441228636,
-                "high": -0.014525181853235258
+                "high": -0.014525181853235258,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.1476885183781736,
                 "low": -0.2472766909501727,
-                "high": -0.0021302277124777835
+                "high": -0.0021302277124777835,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.18754210869945864,
                 "low": -0.24804493638398395,
-                "high": -0.0401151432712229
+                "high": -0.0401151432712229,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.15490812379110253,
                 "low": -0.2667237414682019,
-                "high": -0.0041687796831305635
+                "high": -0.0041687796831305635,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.18485749866476936,
                 "low": -0.25051448100267704,
-                "high": -0.06076544145630036
+                "high": -0.06076544145630036,
+                "n_finite": 1000
               }
             },
             "3": {
               "slice_auroc": {
                 "estimate": 0.025361842105263155,
                 "low": -0.03926207902109913,
-                "high": 0.11060274291779537
+                "high": 0.11060274291779537,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.07165497251991604,
                 "low": -0.13200217115545407,
-                "high": 0.044922623079309526
+                "high": 0.044922623079309526,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.039172034861690075,
                 "low": -0.1483747024822462,
-                "high": 0.12506992692662464
+                "high": 0.12506992692662464,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.11676907475241063,
                 "low": -0.18188722449511183,
-                "high": 0.05434404549609151
+                "high": 0.05434404549609151,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.030722114764668018,
                 "low": -0.1691195411393679,
-                "high": 0.15865649231349466
+                "high": 0.15865649231349466,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.10877060432009364,
                 "low": -0.18826360391018546,
-                "high": 0.057876843194329064
+                "high": 0.057876843194329064,
+                "n_finite": 1000
               }
             },
             "4": {
               "slice_auroc": {
                 "estimate": 0.012333839406207803,
                 "low": -0.06092847956011142,
-                "high": 0.10994391465490971
+                "high": 0.10994391465490971,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.10055908798165855,
                 "low": -0.16349175317806738,
-                "high": 0.0033905494942897685
+                "high": 0.0033905494942897685,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.09684855374510548,
                 "low": -0.22271712660002696,
-                "high": 0.11067944850778005
+                "high": 0.11067944850778005,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.1687108084800885,
                 "low": -0.23143809494512166,
-                "high": -0.023622504339901873
+                "high": -0.023622504339901873,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.1058107672469375,
                 "low": -0.24492287754693967,
-                "high": 0.08939401745830994
+                "high": 0.08939401745830994,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.1699691918381881,
                 "low": -0.23892594249472965,
-                "high": -0.038851355513410346
+                "high": -0.038851355513410346,
+                "n_finite": 1000
               }
             }
           },
@@ -1617,160 +1858,190 @@
               "slice_auroc": {
                 "estimate": -0.025133689839572204,
                 "low": -0.05694555774042758,
-                "high": 0.03349582518480043
+                "high": 0.03349582518480043,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.03949151718457447,
                 "low": -0.08621760470902028,
-                "high": 0.11154189487314745
+                "high": 0.11154189487314745,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.03343515284050991,
                 "low": -0.07759982375469643,
-                "high": 0.04762002659125959
+                "high": 0.04762002659125959,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.05726229518182202,
                 "low": -0.11023193863501693,
-                "high": 0.09293774161911378
+                "high": 0.09293774161911378,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.04378219278881523,
                 "low": -0.10862466563414484,
-                "high": 0.06475749481208004
+                "high": 0.06475749481208004,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.061277742954946174,
                 "low": -0.1220818949379885,
-                "high": 0.09210844650958225
+                "high": 0.09210844650958225,
+                "n_finite": 1000
               }
             },
             "1": {
               "slice_auroc": {
                 "estimate": -0.012375859434683001,
                 "low": -0.03850699809593806,
-                "high": 0.03055369455016673
+                "high": 0.03055369455016673,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.05427271301860928,
                 "low": -0.12759764769855358,
-                "high": 0.07417275000474116
+                "high": 0.07417275000474116,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.008775972715338698,
                 "low": -0.04868215278905662,
-                "high": 0.05948985965222986
+                "high": 0.05948985965222986,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.06887879603262256,
                 "low": -0.14768284110830168,
-                "high": 0.06010106229321896
+                "high": 0.06010106229321896,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.023498545849539143,
                 "low": -0.08095479164869564,
-                "high": 0.06143949876082279
+                "high": 0.06143949876082279,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.07803389159971325,
                 "low": -0.1745299575713902,
-                "high": 0.050201112492146455
+                "high": 0.050201112492146455,
+                "n_finite": 1000
               }
             },
             "2": {
               "slice_auroc": {
                 "estimate": -0.02029488158899928,
                 "low": -0.04999434414193434,
-                "high": 0.03577032327965275
+                "high": 0.03577032327965275,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.06468832503847849,
                 "low": -0.12372382601081965,
-                "high": 0.06979603044664948
+                "high": 0.06979603044664948,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.024338146715446762,
                 "low": -0.06844574063823845,
-                "high": 0.06604774967011375
+                "high": 0.06604774967011375,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.08072674430818264,
                 "low": -0.14532251587459818,
-                "high": 0.05814852098862572
+                "high": 0.05814852098862572,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.041609727040190614,
                 "low": -0.10553746213717682,
-                "high": 0.07452162811752591
+                "high": 0.07452162811752591,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.08956587578401731,
                 "low": -0.16904014581770063,
-                "high": 0.045618869226470266
+                "high": 0.045618869226470266,
+                "n_finite": 1000
               }
             },
             "3": {
               "slice_auroc": {
                 "estimate": 0.003834224598930458,
                 "low": -0.020036262287688726,
-                "high": 0.04649689353699383
+                "high": 0.04649689353699383,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.03677967845516439,
                 "low": -0.02229079642381876,
-                "high": 0.17185492587188872
+                "high": 0.17185492587188872,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.01576719038552621,
                 "low": -0.015832886743283377,
-                "high": 0.08065848050617781
+                "high": 0.08065848050617781,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.031080797874360633,
                 "low": -0.02529568935189573,
-                "high": 0.17367922913016343
+                "high": 0.17367922913016343,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.015378079119801047,
                 "low": -0.03976321480476365,
-                "high": 0.10938976037307721
+                "high": 0.10938976037307721,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.029470940477135554,
                 "low": -0.032632122002668365,
-                "high": 0.1719959036898796
+                "high": 0.1719959036898796,
+                "n_finite": 1000
               }
             },
             "4": {
               "slice_auroc": {
                 "estimate": -0.012492742551566072,
                 "low": -0.04142574843284453,
-                "high": 0.04485863350494279
+                "high": 0.04485863350494279,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": -0.03568923397654822,
                 "low": -0.09322894951101876,
-                "high": 0.09428068421816074
+                "high": 0.09428068421816074,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": -0.004535788868087032,
                 "low": -0.05189744505128749,
-                "high": 0.08012300099240877
+                "high": 0.08012300099240877,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": -0.04550522692355377,
                 "low": -0.11096990312841798,
-                "high": 0.0877253714881871
+                "high": 0.0877253714881871,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": -0.014291846245488626,
                 "low": -0.08357643038507884,
-                "high": 0.1006705638239637
+                "high": 0.1006705638239637,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": -0.04831583063665573,
                 "low": -0.12357681189697707,
-                "high": 0.09237172329369406
+                "high": 0.09237172329369406,
+                "n_finite": 1000
               }
             }
           }
@@ -1780,68 +2051,81 @@
             "slice_auroc": {
               "estimate": 0.0189591767881242,
               "low": -0.0519950009850383,
-              "high": 0.09575879800081918
+              "high": 0.09575879800081918,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.0888441173278938,
               "low": -0.19014815204495789,
-              "high": 0.010220135671784897
+              "high": 0.010220135671784897,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": -0.12586838448907417,
               "low": -0.2451873629443679,
-              "high": 0.0054338752223763165
+              "high": 0.0054338752223763165,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.16951659990862125,
               "low": -0.24501353628413217,
-              "high": -0.03940108274447962
+              "high": -0.03940108274447962,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": -0.13421179883945844,
               "low": -0.29320273878994024,
-              "high": 0.01103194103735572
+              "high": 0.01103194103735572,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.16784010168231628,
               "low": -0.2596241690460148,
-              "high": -0.042355132526614936
+              "high": -0.042355132526614936,
+              "n_finite": 1000
             }
           },
           "2018": {
             "slice_auroc": {
               "estimate": -0.0488342245989305,
               "low": -0.07326809703940504,
-              "high": -0.012977049461394038
+              "high": -0.012977049461394038,
+              "n_finite": 1000
             },
             "slice_auprc": {
               "estimate": -0.06942900682863992,
               "low": -0.11586848921900363,
-              "high": 0.046136505363365776
+              "high": 0.046136505363365776,
+              "n_finite": 1000
             },
             "high_beta_auroc": {
               "estimate": -0.070463654885906,
               "low": -0.11719198871039727,
-              "high": -0.009942895302432586
+              "high": -0.009942895302432586,
+              "n_finite": 1000
             },
             "high_beta_auprc": {
               "estimate": -0.08831912168007827,
               "low": -0.13878012427162412,
-              "high": 0.033281474287603946
+              "high": 0.033281474287603946,
+              "n_finite": 1000
             },
             "above_proxy_auroc": {
               "estimate": -0.05738638354532388,
               "low": -0.10868866289452563,
-              "high": 0.01133835792184476
+              "high": 0.01133835792184476,
+              "n_finite": 1000
             },
             "above_proxy_auprc": {
               "estimate": -0.0927044895498072,
               "low": -0.1494037351677402,
-              "high": 0.028215882847894724
+              "high": 0.028215882847894724,
+              "n_finite": 1000
             }
           }
         }
-      }
+      },
+      "scope": "appendix"
     },
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
@@ -1854,157 +2138,188 @@
               "slice_auroc": {
                 "estimate": 0.7602021883920076,
                 "low": 0.7058712054691425,
-                "high": 0.809161269108473
+                "high": 0.809161269108473,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.16304825671489243,
                 "low": 0.12255501411878099,
-                "high": 0.21989172028956308
+                "high": 0.21989172028956308,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7395949926583862,
                 "low": 0.6684464461630325,
-                "high": 0.7990014888281666
+                "high": 0.7990014888281666,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.06507217205517342,
                 "low": 0.042721200834610715,
-                "high": 0.10329684532486956
+                "high": 0.10329684532486956,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.6021780297512571,
                 "low": 0.4910802032725228,
-                "high": 0.6881463994312261
+                "high": 0.6881463994312261,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.16785884001570783,
                 "low": 0.12267115467999315,
-                "high": 0.2279026522395914
+                "high": 0.2279026522395914,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.5455878667229984,
                 "low": 0.41598876744340335,
-                "high": 0.6421652382793495
+                "high": 0.6421652382793495,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.17610580154667518,
                 "low": 0.12954093193398886,
-                "high": 0.24013785290265766
+                "high": 0.24013785290265766,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.75625,
                 "low": 0.6456429450369155,
-                "high": 0.86875
+                "high": 0.86875,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.3421503330161751,
                 "low": 0.2614966232303802,
-                "high": 0.42092874813984527
+                "high": 0.42092874813984527,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.16797778806108282,
                 "low": 0.133228141878858,
-                "high": 0.21863721969635289
+                "high": 0.21863721969635289,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.27489587277546385,
                 "low": 0.22652481957565895,
-                "high": 0.3366447880743131
+                "high": 0.3366447880743131,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.1875,
                 "low": 0.04875145180023232,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.18965877180492585,
                 "low": 0.07954273659426815,
-                "high": 0.3024669369763545
+                "high": 0.3024669369763545,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": -0.002158771804925852,
                 "low": -0.05818040847971017,
-                "high": 0.052070112093482064
+                "high": 0.052070112093482064,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 308.09444444444443,
                 "low": 251.107,
-                "high": 362.55833333333334
+                "high": 362.55833333333334,
+                "n_finite": 998
               },
               "warning_ms_median": {
                 "estimate": 356.0,
                 "low": 286.0,
-                "high": 389.0
+                "high": 389.0,
+                "n_finite": 998
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.06666666666666667,
                 "low": 0.0,
-                "high": 0.1724137931034483
+                "high": 0.1724137931034483,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.2,
                 "low": 0.06666666666666667,
-                "high": 0.35489631336405525
+                "high": 0.35489631336405525,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.2,
                 "low": 0.06451612903225806,
-                "high": 0.3548387096774194
+                "high": 0.3548387096774194,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.06666666666666667,
                 "low": 0.0,
-                "high": 0.17865259740259734
+                "high": 0.17865259740259734,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.7333333333333333,
                 "low": 0.5666666666666667,
-                "high": 0.8928571428571429
+                "high": 0.8928571428571429,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.7333333333333333,
                 "low": 0.5666666666666667,
-                "high": 0.8928571428571429
+                "high": 0.8928571428571429,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.21212121212121213,
                 "low": 0.09090909090909091,
-                "high": 0.36363636363636365
+                "high": 0.36363636363636365,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.5454545454545454,
                 "low": 0.18181818181818182,
-                "high": 0.9704545454545448
+                "high": 0.9704545454545448,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.3333333333333333,
                 "low": 0.18181818181818182,
-                "high": 0.5151515151515151
+                "high": 0.5151515151515151,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 1.878787878787879,
                 "low": 0.6060606060606061,
-                "high": 3.5166666666666653
+                "high": 3.5166666666666653,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.24242424242424243,
                 "low": 0.09090909090909091,
-                "high": 0.3939393939393939
+                "high": 0.3939393939393939,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.8787878787878788,
                 "low": 0.24242424242424243,
-                "high": 1.696969696969697
+                "high": 1.696969696969697,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": 0.14393939393939395,
                 "low": 0.08333333333333333,
-                "high": 0.21212121212121213
+                "high": 0.21212121212121213,
+                "n_finite": 1000
               },
               "comparison_alarms_per_shot": {
                 "estimate": 0.6363636363636364,
                 "low": 0.30284090909090927,
-                "high": 1.0378787878787878
+                "high": 1.0378787878787878,
+                "n_finite": 1000
               }
             },
             "counts": {
@@ -2047,157 +2362,188 @@
               "slice_auroc": {
                 "estimate": 0.787127339042182,
                 "low": 0.737339691639711,
-                "high": 0.8317169058907558
+                "high": 0.8317169058907558,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.18208972013840233,
                 "low": 0.1452040697069264,
-                "high": 0.23576398832363993
+                "high": 0.23576398832363993,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7715524504140189,
                 "low": 0.7044017914427724,
-                "high": 0.8220113060786872
+                "high": 0.8220113060786872,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.0746940812761727,
                 "low": 0.049761493867521635,
-                "high": 0.1197806947355545
+                "high": 0.1197806947355545,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.651469791344983,
                 "low": 0.5572291965046964,
-                "high": 0.7308028602531655
+                "high": 0.7308028602531655,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.1888675682139903,
                 "low": 0.14854712785542273,
-                "high": 0.24805484185652746
+                "high": 0.24805484185652746,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.6032395505875445,
                 "low": 0.4948876904920942,
-                "high": 0.6991601586254963
+                "high": 0.6991601586254963,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.19765383378201223,
                 "low": 0.15515777918187887,
-                "high": 0.26176328412055744
+                "high": 0.26176328412055744,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.8104166666666667,
                 "low": 0.7,
-                "high": 0.9130961791831356
+                "high": 0.9130961791831356,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.3082778306374881,
                 "low": 0.23118487520420342,
-                "high": 0.38392559520826247
+                "high": 0.38392559520826247,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.19362867098058736,
                 "low": 0.15651171294817845,
-                "high": 0.24929432437886828
+                "high": 0.24929432437886828,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.31257533145841704,
                 "low": 0.26145777345733695,
-                "high": 0.38256826463489657
+                "high": 0.38256826463489657,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.046485200845665986,
-                "high": 0.302376137512639
+                "high": 0.302376137512639,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.13554028224631146,
                 "low": 0.05895974343394192,
-                "high": 0.22414945114901733
+                "high": 0.22414945114901733,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.031126384420355202,
                 "low": -0.04240892397503199,
-                "high": 0.11807471265783069
+                "high": 0.11807471265783069,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 194.24374999999998,
                 "low": 115.48333333333328,
-                "high": 254.5
+                "high": 254.5,
+                "n_finite": 997
               },
               "warning_ms_median": {
                 "estimate": 179.25,
                 "low": 75.0,
-                "high": 343.0
+                "high": 343.0,
+                "n_finite": 997
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.03842592592592596,
-                "high": 0.3125
+                "high": 0.3125,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.2,
                 "low": 0.0666129032258065,
-                "high": 0.34375
+                "high": 0.34375,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.03571428571428571,
-                "high": 0.30775862068965515
+                "high": 0.30775862068965515,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.13333333333333333,
                 "low": 0.03223286290322583,
-                "high": 0.27586206896551724
+                "high": 0.27586206896551724,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.6666666666666666,
                 "low": 0.5,
-                "high": 0.8275862068965517
+                "high": 0.8275862068965517,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.6666666666666666,
                 "low": 0.5,
-                "high": 0.8275862068965517
+                "high": 0.8275862068965517,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.18181818181818182,
                 "low": 0.06060606060606061,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.5757575757575758,
                 "low": 0.12121212121212122,
-                "high": 1.2121212121212122
+                "high": 1.2121212121212122,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.3333333333333333,
                 "low": 0.18181818181818182,
-                "high": 0.48484848484848486
+                "high": 0.48484848484848486,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 1.393939393939394,
                 "low": 0.42424242424242425,
-                "high": 2.9401515151515145
+                "high": 2.9401515151515145,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.21212121212121213,
                 "low": 0.09090909090909091,
-                "high": 0.36363636363636365
+                "high": 0.36363636363636365,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.9696969696969697,
                 "low": 0.18181818181818182,
-                "high": 2.0303030303030303
+                "high": 2.0303030303030303,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": 0.2803030303030303,
                 "low": 0.20454545454545456,
-                "high": 0.3560606060606061
+                "high": 0.3560606060606061,
+                "n_finite": 1000
               },
               "comparison_alarms_per_shot": {
                 "estimate": 1.7424242424242424,
                 "low": 1.0833333333333333,
-                "high": 2.4318181818181817
+                "high": 2.4318181818181817,
+                "n_finite": 1000
               }
             },
             "counts": {
@@ -2240,157 +2586,188 @@
               "slice_auroc": {
                 "estimate": 0.7726976292419917,
                 "low": 0.7226837032846792,
-                "high": 0.8182598679369001
+                "high": 0.8182598679369001,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.16811568033315555,
                 "low": 0.13750899370309574,
-                "high": 0.21890190786217206
+                "high": 0.21890190786217206,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7569735551463509,
                 "low": 0.6906883227866358,
-                "high": 0.809080922471949
+                "high": 0.809080922471949,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.06568301872063377,
                 "low": 0.04572895920451463,
-                "high": 0.09820389516070918
+                "high": 0.09820389516070918,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.6310203177895737,
                 "low": 0.5375690873782902,
-                "high": 0.708582113297978
+                "high": 0.708582113297978,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.1732460155241267,
                 "low": 0.13811276608780548,
-                "high": 0.23065301887882889
+                "high": 0.23065301887882889,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.5722318097515915,
                 "low": 0.4676392291814046,
-                "high": 0.6606874827463314
+                "high": 0.6606874827463314,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.17977602353236946,
                 "low": 0.14390492796884127,
-                "high": 0.24066064073768084
+                "high": 0.24066064073768084,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.8520833333333333,
                 "low": 0.7431737012987013,
-                "high": 0.9456275303643725
+                "high": 0.9456275303643725,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.38705994291151286,
                 "low": 0.3152611315969693,
-                "high": 0.44875224228845073
+                "high": 0.44875224228845073,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.16741711011051985,
                 "low": 0.13619795199367818,
-                "high": 0.21544042927075246
+                "high": 0.21544042927075246,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.27984946972288743,
                 "low": 0.233908696541248,
-                "high": 0.3433134090260985
+                "high": 0.3433134090260985,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.20833333333333334,
                 "low": 0.0850620567375887,
-                "high": 0.3396320754716981
+                "high": 0.3396320754716981,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.17004983659295378,
                 "low": 0.07903660281664737,
-                "high": 0.2622371238129709
+                "high": 0.2622371238129709,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.03828349674037956,
                 "low": -0.011749951009294025,
-                "high": 0.09430624911870472
+                "high": 0.09430624911870472,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 231.15499999999997,
                 "low": 153.78482142857138,
-                "high": 306.89401785714284
+                "high": 306.89401785714284,
+                "n_finite": 1000
               },
               "warning_ms_median": {
                 "estimate": 302.04999999999995,
                 "low": 56.44999999999982,
-                "high": 340.0
+                "high": 340.0,
+                "n_finite": 1000
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.13333333333333333,
                 "low": 0.03225806451612903,
-                "high": 0.27586206896551724
+                "high": 0.27586206896551724,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.23333333333333334,
                 "low": 0.09991935483870976,
-                "high": 0.4
+                "high": 0.4,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.03571428571428571,
-                "high": 0.3103448275862069
+                "high": 0.3103448275862069,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.06666666666666667,
                 "low": 0.0,
-                "high": 0.1724137931034483
+                "high": 0.1724137931034483,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.7,
                 "low": 0.5185185185185185,
-                "high": 0.8621839080459769
+                "high": 0.8621839080459769,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.7,
                 "low": 0.5185185185185185,
-                "high": 0.8621839080459769
+                "high": 0.8621839080459769,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.18181818181818182,
                 "low": 0.06060606060606061,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.42424242424242425,
                 "low": 0.12121212121212122,
-                "high": 0.8181818181818182
+                "high": 0.8181818181818182,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.36363636363636365,
                 "low": 0.21212121212121213,
-                "high": 0.5151515151515151
+                "high": 0.5151515151515151,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 2.1515151515151514,
                 "low": 1.121212121212121,
-                "high": 3.3636363636363638
+                "high": 3.3636363636363638,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.24242424242424243,
                 "low": 0.12121212121212122,
-                "high": 0.3939393939393939
+                "high": 0.3939393939393939,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.48484848484848486,
                 "low": 0.18181818181818182,
-                "high": 0.8787878787878788
+                "high": 0.8787878787878788,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": 0.17424242424242425,
                 "low": 0.10606060606060606,
-                "high": 0.24242424242424243
+                "high": 0.24242424242424243,
+                "n_finite": 1000
               },
               "comparison_alarms_per_shot": {
                 "estimate": 0.7424242424242424,
                 "low": 0.3558712121212123,
-                "high": 1.143939393939394
+                "high": 1.143939393939394,
+                "n_finite": 1000
               }
             },
             "counts": {
@@ -2433,157 +2810,188 @@
               "slice_auroc": {
                 "estimate": 0.8057447272438947,
                 "low": 0.7602458680510323,
-                "high": 0.8459850684497461
+                "high": 0.8459850684497461,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.23011569033422574,
                 "low": 0.180795076134187,
-                "high": 0.30326193672548574
+                "high": 0.30326193672548574,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7976802456431735,
                 "low": 0.7385049109910871,
-                "high": 0.8416888251734389
+                "high": 0.8416888251734389,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.09280211965359957,
                 "low": 0.06080376692670291,
-                "high": 0.14739867772825346
+                "high": 0.14739867772825346,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.6957441601650128,
                 "low": 0.6073629710534433,
-                "high": 0.7680804401601152
+                "high": 0.7680804401601152,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.25753637609515845,
                 "low": 0.2043436653561096,
-                "high": 0.32797018973700603
+                "high": 0.32797018973700603,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.6571948241663027,
                 "low": 0.5571503827853951,
-                "high": 0.743582703800713
+                "high": 0.743582703800713,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.2723117233867035,
                 "low": 0.21168584368863447,
-                "high": 0.34970137261124745
+                "high": 0.34970137261124745,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.81875,
                 "low": 0.7183248299319728,
-                "high": 0.9181864564007421
+                "high": 0.9181864564007421,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.35794481446241677,
                 "low": 0.28201805055660484,
-                "high": 0.4335024959484699
+                "high": 0.4335024959484699,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.17282321899736147,
                 "low": 0.13943556727009995,
-                "high": 0.22608847571589472
+                "high": 0.22608847571589472,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.28540305010893247,
                 "low": 0.23780276347247667,
-                "high": 0.35245622620435285
+                "high": 0.35245622620435285,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.2708333333333333,
                 "low": 0.15789473684210525,
-                "high": 0.39218900675024104
+                "high": 0.39218900675024104,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.221586685519821,
                 "low": 0.13282107110097685,
-                "high": 0.3099521487700705
+                "high": 0.3099521487700705,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.04924664781351232,
                 "low": -0.05442772050480813,
-                "high": 0.14249776381072116
+                "high": 0.14249776381072116,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 236.10769230769228,
                 "low": 167.31452083333332,
-                "high": 290.73541666666665
+                "high": 290.73541666666665,
+                "n_finite": 1000
               },
               "warning_ms_median": {
                 "estimate": 239.0,
                 "low": 113.5,
-                "high": 347.0
+                "high": 347.0,
+                "n_finite": 1000
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.26666666666666666,
                 "low": 0.12893145161290331,
-                "high": 0.41935483870967744
+                "high": 0.41935483870967744,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.36666666666666664,
                 "low": 0.21410098522167503,
-                "high": 0.5357142857142857
+                "high": 0.5357142857142857,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.03571428571428571,
-                "high": 0.3002586206896549
+                "high": 0.3002586206896549,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.06666666666666667,
                 "low": 0.0,
-                "high": 0.15625
+                "high": 0.15625,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.5666666666666667,
                 "low": 0.3793103448275862,
-                "high": 0.7272727272727273
+                "high": 0.7272727272727273,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.5666666666666667,
                 "low": 0.3793103448275862,
-                "high": 0.7272727272727273
+                "high": 0.7272727272727273,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.18181818181818182,
                 "low": 0.06060606060606061,
-                "high": 0.3037878787878781
+                "high": 0.3037878787878781,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.21212121212121213,
                 "low": 0.06060606060606061,
-                "high": 0.3939393939393939
+                "high": 0.3939393939393939,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.3939393939393939,
                 "low": 0.24242424242424243,
-                "high": 0.5757575757575758
+                "high": 0.5757575757575758,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 1.7878787878787878,
                 "low": 1.0,
-                "high": 2.788636363636363
+                "high": 2.788636363636363,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.21212121212121213,
                 "low": 0.09090909090909091,
-                "high": 0.36363636363636365
+                "high": 0.36363636363636365,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.2727272727272727,
                 "low": 0.09090909090909091,
-                "high": 0.48484848484848486
+                "high": 0.48484848484848486,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": 0.24242424242424243,
                 "low": 0.16666666666666666,
-                "high": 0.3181818181818182
+                "high": 0.3181818181818182,
+                "n_finite": 1000
               },
               "comparison_alarms_per_shot": {
                 "estimate": 0.8409090909090909,
                 "low": 0.553030303030303,
-                "high": 1.1666666666666667
+                "high": 1.1666666666666667,
+                "n_finite": 1000
               }
             },
             "counts": {
@@ -2626,157 +3034,188 @@
               "slice_auroc": {
                 "estimate": 0.7929715746907707,
                 "low": 0.746212181165139,
-                "high": 0.8353180173496263
+                "high": 0.8353180173496263,
+                "n_finite": 1000
               },
               "slice_auprc": {
                 "estimate": 0.1834610599106267,
                 "low": 0.14547109952373122,
-                "high": 0.24183584885724904
+                "high": 0.24183584885724904,
+                "n_finite": 1000
               },
               "broad_auroc": {
                 "estimate": 0.7708158067350279,
                 "low": 0.7071247518616819,
-                "high": 0.8221447996522305
+                "high": 0.8221447996522305,
+                "n_finite": 1000
               },
               "broad_auprc": {
                 "estimate": 0.06928567265668582,
                 "low": 0.04809945242764505,
-                "high": 0.10025055604663097
+                "high": 0.10025055604663097,
+                "n_finite": 1000
               },
               "high_beta_auroc": {
                 "estimate": 0.6637979757957849,
                 "low": 0.5669695963092155,
-                "high": 0.7445501350253432
+                "high": 0.7445501350253432,
+                "n_finite": 1000
               },
               "high_beta_auprc": {
                 "estimate": 0.19240959694338208,
                 "low": 0.14798497474668137,
-                "high": 0.25719671359059393
+                "high": 0.25719671359059393,
+                "n_finite": 1000
               },
               "above_proxy_auroc": {
                 "estimate": 0.6141053641630086,
                 "low": 0.5017070968650995,
-                "high": 0.7123190280344447
+                "high": 0.7123190280344447,
+                "n_finite": 1000
               },
               "above_proxy_auprc": {
                 "estimate": 0.19812566400338522,
                 "low": 0.15429914988002838,
-                "high": 0.2681586457046813
+                "high": 0.2681586457046813,
+                "n_finite": 1000
               },
               "slice_tpr": {
                 "estimate": 0.8604166666666667,
                 "low": 0.7476020408163265,
-                "high": 0.9543487795575897
+                "high": 0.9543487795575897,
+                "n_finite": 1000
               },
               "slice_fpr": {
                 "estimate": 0.36974310180780207,
                 "low": 0.28806559526432113,
-                "high": 0.45250245169345915
+                "high": 0.45250245169345915,
+                "n_finite": 1000
               },
               "slice_precision": {
                 "estimate": 0.17529711375212223,
                 "low": 0.13831374671408692,
-                "high": 0.23614654937018437
+                "high": 0.23614654937018437,
+                "n_finite": 1000
               },
               "slice_f1": {
                 "estimate": 0.2912552891396333,
                 "low": 0.2378344094421894,
-                "high": 0.3730791024194559
+                "high": 0.3730791024194559,
+                "n_finite": 1000
               },
               "onset_detection_rate": {
                 "estimate": 0.125,
                 "low": 0.02498475609756099,
-                "high": 0.2450255102040815
+                "high": 0.2450255102040815,
+                "n_finite": 1000
               },
               "uniform_alarm_reference": {
                 "estimate": 0.06826167685615678,
                 "low": 0.026418218874060186,
-                "high": 0.11460152009863228
+                "high": 0.11460152009863228,
+                "n_finite": 1000
               },
               "detection_minus_uniform_reference": {
                 "estimate": 0.05673832314384322,
                 "low": -0.021031613484542966,
-                "high": 0.1580933265082225
+                "high": 0.1580933265082225,
+                "n_finite": 1000
               },
               "warning_ms_mean": {
                 "estimate": 169.89999999999998,
                 "low": 47.249999999999886,
-                "high": 269.57482142857145
+                "high": 269.57482142857145,
+                "n_finite": 997
               },
               "warning_ms_median": {
                 "estimate": 135.20000000000005,
                 "low": 38.049999999999955,
-                "high": 341.0
+                "high": 341.0,
+                "n_finite": 997
               },
               "hanson_shot_detection_rate": {
                 "estimate": 0.13333333333333333,
                 "low": 0.03225806451612903,
-                "high": 0.25944444444444426
+                "high": 0.25944444444444426,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_detection_rate": {
                 "estimate": 0.16666666666666666,
                 "low": 0.03571428571428571,
-                "high": 0.3103987068965517
+                "high": 0.3103987068965517,
+                "n_finite": 1000
               },
               "hanson_shot_early_rate": {
                 "estimate": 0.03333333333333333,
                 "low": 0.0,
-                "high": 0.12140762463343091
+                "high": 0.12140762463343091,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_early_rate": {
                 "estimate": 0.03333333333333333,
                 "low": 0.0,
-                "high": 0.10354064039408858
+                "high": 0.10354064039408858,
+                "n_finite": 1000
               },
               "hanson_shot_miss_rate": {
                 "estimate": 0.8333333333333334,
                 "low": 0.6896012931034484,
-                "high": 0.9642857142857143
+                "high": 0.9642857142857143,
+                "n_finite": 1000
               },
               "hanson_any_alarm_shot_miss_rate": {
                 "estimate": 0.8,
                 "low": 0.6428571428571429,
-                "high": 0.9333333333333333
+                "high": 0.9333333333333333,
+                "n_finite": 1000
               },
               "hanson_early_alarm_incidence": {
                 "estimate": 0.06060606060606061,
                 "low": 0.0,
-                "high": 0.15151515151515152
+                "high": 0.15151515151515152,
+                "n_finite": 1000
               },
               "hanson_early_alarms_per_shot": {
                 "estimate": 0.09090909090909091,
                 "low": 0.0,
-                "high": 0.2431818181818175
+                "high": 0.2431818181818175,
+                "n_finite": 1000
               },
               "hanson_ignored_alarm_incidence": {
                 "estimate": 0.21212121212121213,
                 "low": 0.09090909090909091,
-                "high": 0.36363636363636365
+                "high": 0.36363636363636365,
+                "n_finite": 1000
               },
               "hanson_ignored_alarms_per_shot": {
                 "estimate": 0.7272727272727273,
                 "low": 0.18181818181818182,
-                "high": 1.5765151515151508
+                "high": 1.5765151515151508,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarm_incidence": {
                 "estimate": 0.09090909090909091,
                 "low": 0.0,
-                "high": 0.21212121212121213
+                "high": 0.21212121212121213,
+                "n_finite": 1000
               },
               "hanson_unexplained_alarms_per_shot": {
                 "estimate": 0.18181818181818182,
                 "low": 0.0,
-                "high": 0.4249999999999993
+                "high": 0.4249999999999993,
+                "n_finite": 1000
               },
               "comparison_alarm_incidence": {
                 "estimate": 0.09090909090909091,
                 "low": 0.045454545454545456,
-                "high": 0.14393939393939395
+                "high": 0.14393939393939395,
+                "n_finite": 1000
               },
               "comparison_alarms_per_shot": {
                 "estimate": 0.18181818181818182,
                 "low": 0.07575757575757576,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               }
             },
             "counts": {
@@ -2821,27 +3260,32 @@
               "0": {
                 "estimate": 0.1875,
                 "low": 0.04875145180023232,
-                "high": 0.3333333333333333
+                "high": 0.3333333333333333,
+                "n_finite": 1000
               },
               "1": {
                 "estimate": 0.16666666666666666,
                 "low": 0.046485200845665986,
-                "high": 0.302376137512639
+                "high": 0.302376137512639,
+                "n_finite": 1000
               },
               "2": {
                 "estimate": 0.20833333333333334,
                 "low": 0.0850620567375887,
-                "high": 0.3396320754716981
+                "high": 0.3396320754716981,
+                "n_finite": 1000
               },
               "3": {
                 "estimate": 0.2708333333333333,
                 "low": 0.15789473684210525,
-                "high": 0.39218900675024104
+                "high": 0.39218900675024104,
+                "n_finite": 1000
               },
               "4": {
                 "estimate": 0.125,
                 "low": 0.02498475609756099,
-                "high": 0.2450255102040815
+                "high": 0.2450255102040815,
+                "n_finite": 1000
               }
             },
             "min": 0.125,
@@ -2853,27 +3297,32 @@
               "0": {
                 "estimate": -0.002158771804925852,
                 "low": -0.05818040847971017,
-                "high": 0.052070112093482064
+                "high": 0.052070112093482064,
+                "n_finite": 1000
               },
               "1": {
                 "estimate": 0.031126384420355202,
                 "low": -0.04240892397503199,
-                "high": 0.11807471265783069
+                "high": 0.11807471265783069,
+                "n_finite": 1000
               },
               "2": {
                 "estimate": 0.03828349674037956,
                 "low": -0.011749951009294025,
-                "high": 0.09430624911870472
+                "high": 0.09430624911870472,
+                "n_finite": 1000
               },
               "3": {
                 "estimate": 0.04924664781351232,
                 "low": -0.05442772050480813,
-                "high": 0.14249776381072116
+                "high": 0.14249776381072116,
+                "n_finite": 1000
               },
               "4": {
                 "estimate": 0.05673832314384322,
                 "low": -0.021031613484542966,
-                "high": 0.1580933265082225
+                "high": 0.1580933265082225,
+                "n_finite": 1000
               }
             },
             "min": -0.002158771804925852,
@@ -2885,27 +3334,32 @@
               "0": {
                 "estimate": 356.0,
                 "low": 286.0,
-                "high": 389.0
+                "high": 389.0,
+                "n_finite": 998
               },
               "1": {
                 "estimate": 179.25,
                 "low": 75.0,
-                "high": 343.0
+                "high": 343.0,
+                "n_finite": 997
               },
               "2": {
                 "estimate": 302.04999999999995,
                 "low": 56.44999999999982,
-                "high": 340.0
+                "high": 340.0,
+                "n_finite": 1000
               },
               "3": {
                 "estimate": 239.0,
                 "low": 113.5,
-                "high": 347.0
+                "high": 347.0,
+                "n_finite": 1000
               },
               "4": {
                 "estimate": 135.20000000000005,
                 "low": 38.049999999999955,
-                "high": 341.0
+                "high": 341.0,
+                "n_finite": 997
               }
             },
             "min": 135.20000000000005,
@@ -2917,160 +3371,192 @@
           "slice_auroc": {
             "estimate": 0.7789200761179829,
             "low": 0.7311668160793936,
-            "high": 0.8227504607236329
+            "high": 0.8227504607236329,
+            "n_finite": 1000
           },
           "slice_auprc": {
             "estimate": 0.18076195471167156,
             "low": 0.14852647300685307,
-            "high": 0.24835572003550527
+            "high": 0.24835572003550527,
+            "n_finite": 1000
           },
           "broad_auroc": {
             "estimate": 0.7520973245233968,
             "low": 0.6900438666215677,
-            "high": 0.8050259074659749
+            "high": 0.8050259074659749,
+            "n_finite": 1000
           },
           "broad_auprc": {
             "estimate": 0.06605145342974401,
             "low": 0.046091235283349914,
-            "high": 0.10098807147303117
+            "high": 0.10098807147303117,
+            "n_finite": 1000
           },
           "high_beta_auroc": {
             "estimate": 0.6209266823211341,
             "low": 0.5359219009637753,
-            "high": 0.7002918637249058
+            "high": 0.7002918637249058,
+            "n_finite": 1000
           },
           "high_beta_auprc": {
             "estimate": 0.17602305258439405,
             "low": 0.1490877365885538,
-            "high": 0.23889467917829327
+            "high": 0.23889467917829327,
+            "n_finite": 1000
           },
           "above_proxy_auroc": {
             "estimate": 0.5794699568203138,
             "low": 0.47487570018579617,
-            "high": 0.6770970334398514
+            "high": 0.6770970334398514,
+            "n_finite": 1000
           },
           "above_proxy_auprc": {
             "estimate": 0.18558675045498801,
             "low": 0.15398957282638018,
-            "high": 0.2576373470228322
+            "high": 0.2576373470228322,
+            "n_finite": 1000
           },
           "slice_tpr": {
             "estimate": 0.6833333333333333,
             "low": 0.5539568181818183,
-            "high": 0.8115878378378378
+            "high": 0.8115878378378378,
+            "n_finite": 1000
           },
           "slice_fpr": {
             "estimate": 0.28353948620361563,
             "low": 0.21175914973491655,
-            "high": 0.36183356786354176
+            "high": 0.36183356786354176,
+            "n_finite": 1000
           },
           "slice_precision": {
             "estimate": 0.18041804180418042,
             "low": 0.14418161744313732,
-            "high": 0.23131618066163562
+            "high": 0.23131618066163562,
+            "n_finite": 1000
           },
           "slice_f1": {
             "estimate": 0.2854656222802437,
             "low": 0.23276695344129558,
-            "high": 0.3443386361602551
+            "high": 0.3443386361602551,
+            "n_finite": 1000
           },
           "onset_detection_rate": {
             "estimate": 0.16666666666666666,
             "low": 0.04875145180023232,
-            "high": 0.3091017316017316
+            "high": 0.3091017316017316,
+            "n_finite": 1000
           },
           "uniform_alarm_reference": {
             "estimate": 0.15235317713459673,
             "low": 0.05736234002683884,
-            "high": 0.2716242238009877
+            "high": 0.2716242238009877,
+            "n_finite": 1000
           },
           "detection_minus_uniform_reference": {
             "estimate": 0.014313489532069928,
             "low": -0.024752314192536207,
-            "high": 0.052776109779047196
+            "high": 0.052776109779047196,
+            "n_finite": 1000
           },
           "warning_ms_mean": {
             "estimate": 230.13124999999997,
             "low": 153.13812499999997,
-            "high": 288.75141666666656
+            "high": 288.75141666666656,
+            "n_finite": 1000
           },
           "warning_ms_median": {
             "estimate": 214.04999999999995,
             "low": 139.5,
-            "high": 343.0
+            "high": 343.0,
+            "n_finite": 1000
           },
           "hanson_shot_detection_rate": {
             "estimate": 0.1,
             "low": 0.0,
-            "high": 0.22580645161290322
+            "high": 0.22580645161290322,
+            "n_finite": 1000
           },
           "hanson_any_alarm_shot_detection_rate": {
             "estimate": 0.2,
             "low": 0.06890804597701154,
-            "high": 0.35714285714285715
+            "high": 0.35714285714285715,
+            "n_finite": 1000
           },
           "hanson_shot_early_rate": {
             "estimate": 0.13333333333333333,
             "low": 0.03225806451612903,
-            "high": 0.27586206896551724
+            "high": 0.27586206896551724,
+            "n_finite": 1000
           },
           "hanson_any_alarm_shot_early_rate": {
             "estimate": 0.03333333333333333,
             "low": 0.0,
-            "high": 0.1072420634920634
+            "high": 0.1072420634920634,
+            "n_finite": 1000
           },
           "hanson_shot_miss_rate": {
             "estimate": 0.7666666666666667,
             "low": 0.6071428571428571,
-            "high": 0.896551724137931
+            "high": 0.896551724137931,
+            "n_finite": 1000
           },
           "hanson_any_alarm_shot_miss_rate": {
             "estimate": 0.7666666666666667,
             "low": 0.6071428571428571,
-            "high": 0.896551724137931
+            "high": 0.896551724137931,
+            "n_finite": 1000
           },
           "hanson_early_alarm_incidence": {
             "estimate": 0.15151515151515152,
             "low": 0.030303030303030304,
-            "high": 0.2727272727272727
+            "high": 0.2727272727272727,
+            "n_finite": 1000
           },
           "hanson_early_alarms_per_shot": {
             "estimate": 0.8787878787878788,
             "low": 0.09090909090909091,
-            "high": 2.000757575757575
+            "high": 2.000757575757575,
+            "n_finite": 1000
           },
           "hanson_ignored_alarm_incidence": {
             "estimate": 0.2727272727272727,
             "low": 0.12121212121212122,
-            "high": 0.42424242424242425
+            "high": 0.42424242424242425,
+            "n_finite": 1000
           },
           "hanson_ignored_alarms_per_shot": {
             "estimate": 1.5757575757575757,
             "low": 0.42424242424242425,
-            "high": 3.394696969696969
+            "high": 3.394696969696969,
+            "n_finite": 1000
           },
           "hanson_unexplained_alarm_incidence": {
             "estimate": 0.2727272727272727,
             "low": 0.15151515151515152,
-            "high": 0.42424242424242425
+            "high": 0.42424242424242425,
+            "n_finite": 1000
           },
           "hanson_unexplained_alarms_per_shot": {
             "estimate": 1.393939393939394,
             "low": 0.3939393939393939,
-            "high": 2.6666666666666665
+            "high": 2.6666666666666665,
+            "n_finite": 1000
           },
           "comparison_alarm_incidence": {
             "estimate": null,
             "low": null,
-            "high": null
+            "high": null,
+            "n_finite": 0
           },
           "comparison_alarms_per_shot": {
             "estimate": null,
             "low": null,
-            "high": null
+            "high": null,
+            "n_finite": 0
           }
         }
-      }
+      },
+      "scope": "appendix"
     },
     "onset_actual": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.tex",
@@ -4038,7 +4524,8 @@
             }
           }
         }
-      }
+      },
+      "scope": "appendix"
     },
     "onset_window": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.tex",
@@ -5006,7 +5493,8 @@
             }
           }
         }
-      }
+      },
+      "scope": "appendix"
     }
   },
   "markdown": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/tables.md",
@@ -5042,7 +5530,6 @@
     "Piccione-style per-shot categories \u2014 primary alarm definition",
     "Any-alarm per-shot categories \u2014 labelled sensitivity",
     "Alarm definition sensitivity \u2014 rwm-brf",
-    "Legacy NSTX \u2014 separately sourced published reference",
     "Paired differences \u2014 rwm-brf versus rules, primary",
     "Paired differences \u2014 rwm-brf versus rules, broad",
     "Paired differences \u2014 rwm-brf versus rules, high-beta conditional",
@@ -5059,7 +5546,7 @@
   "documentation": {
     "doc": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/docs/labeler/rwm_baseline.md",
     "readme": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/data/events/resistive_wall_mode/README.md",
-    "words": 3019,
+    "words": 4330,
     "warning_distribution": {
       "n": 9,
       "min_ms": 32.0,
@@ -5067,7 +5554,8 @@
       "median": {
         "estimate": 356.0,
         "low": 286.0,
-        "high": 389.0
+        "high": 389.0,
+        "n_finite": 998
       },
       "matching_min_ms": 10.0,
       "matching_max_ms": 400.0,
@@ -5076,11 +5564,11 @@
   },
   "rotation_ablation_source": {
     "path": "outputs/labeler/rwm/rotation_ablation.json",
-    "sha256": "fc73cdb2ea1694a1f8951cc7235dd9030ebd658064757e75ba0e0f4c63749592"
+    "sha256": "e782c3770f53c9201c36590c21e5d5ed008df148db1567e5e6d489296d283645"
   },
   "comparison_sensitivity_source": {
     "path": "outputs/labeler/rwm/comparison_sensitivity.json",
-    "sha256": "0b1d01387ef626288ee7ace3be2fe5bb3f09ce4186b4ed7c52c7bf08d08859ac"
+    "sha256": "b3f326672ff528d53284bcb181a384434a1e39ff7771172643973dbb175fde75"
   },
   "growth_source": {
     "path": "outputs/labeler/rwm/growth.json",
@@ -5088,8 +5576,8 @@
   },
   "external_evaluation_details": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json",
-    "sha256": "5914f12f0767f5dc6de7d703fa0a4cc8795b1fd04d96bbf74e0a53bfe35bd236",
-    "bytes": 1867016,
+    "sha256": "4940776f8ce90cc0af74034af39cbf84019fd2b56f3efdf67c21dee3bff45203",
+    "bytes": 1921038,
     "omitted_keys": [
       "per_shot",
       "shots",
@@ -5099,55 +5587,74 @@
     "reader": "labeler.rwm.records.load_evaluation(path, details=True)"
   },
   "paper_tables": [
-    "table_rwm.tex",
-    "table_rwm_alarms.tex"
+    "table_rwm_compact.tex"
   ],
-  "other_tables_scope": "repository-only supplements",
+  "appendix_tables": [
+    "table_rwm.tex",
+    "table_rwm_alarms.tex",
+    "table_rwm_split_summary.tex",
+    "table_rwm_within_shot.tex",
+    "table_rwm_campaign_pairs.tex",
+    "table_rwm_onset_actual.tex",
+    "table_rwm_onset_window.tex"
+  ],
+  "other_tables_scope": "appendix or repository-only supplements",
+  "nstx_legacy": "text only (different machine, not comparable): E#/legacy",
   "rendered_latex": {
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "a765daaf8e66d5c9056ed0336c7cbd2dd01476d87d9faecb3f7b591fbd37be11"
+        "sha256": "4c78763a282395352e620a76fc069528bc67418b027ff30b5d2dfdabcb7897cf"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "e95c30e924f79d708578cec78d6b1791b9e769db1d7cdce052bd5802c9ccd3bd"
+        "sha256": "23dca040b0c4b5ef028e56ffaea0e5ea2b05ba254dd08d38856e6dbecb9ca8ba"
+      }
+    ],
+    "compact": [
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_compact.pdf",
+        "sha256": "eaf91f092ca76c1c8c70ded4bde737510d8f519b47ac478145dcfc104d0b92f0"
+      },
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_compact-1.png",
+        "sha256": "b32cf60c339ab535e5914eace1c146ada4e42a32bf925d86606d8359c56cd86c"
       }
     ],
     "split_summary": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
-        "sha256": "4484121fb265fb8d0d775a685b83116866490939435f1dec2212239c22911339"
+        "sha256": "23f9a39d8fef6186ba2f3044bf2a2860d25081ca31172e79e037983c1e0e2a30"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
-        "sha256": "7f06efdee971d6f633f52b0cd0e75ec988b35e2cc7853f7aaa8bae32bdaa1b40"
+        "sha256": "574099c25168693eefa55f41b6f2b30575dbcda45152a1f28dd3a64f1a8ae19f"
       }
     ],
     "within_shot": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
-        "sha256": "5ff220353ed358c6c867d718b5b8f29bfc730cc80e0db688e3772709e5270b76"
+        "sha256": "923d96e01b4e4f529e4469e7ed141e70c65fa331f6bfa0cbb0f68a663ffba4eb"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
-        "sha256": "305ef5a1ee068e346bcc18ae642064498e9872468022488b4d3d01ae3e841b0f"
+        "sha256": "d41d168bcd952631743aad87aaeafbb812c2a0a3f995ef315022f51c0eb48604"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "f9aa11bfdf5ad063e235f9028983c9542c09d0e6a17d0345128b90f9f23da03e"
+        "sha256": "eac1b8211be0c70d339e412fff9ea1fa9a124f093bd2e69e4716ee89a37ac45d"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
-        "sha256": "1e0a10acca3193f27239b07abc563fd4471051400f655b20d28c558af1ba5d6e"
+        "sha256": "454ddc001e6316e0c3b476d704a12fc64f99dd634c0ab97f6168f8693ea86285"
       }
     ],
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "78a80e51d36ea0de36457b9091ac557b3881b215bac5db8b61955a96b209a842"
+        "sha256": "e234ca34515d7ef2c46f169d171885c8738f78d886feb9f5a8032dea3e761538"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
@@ -5157,7 +5664,7 @@
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "5d8e062b2bb45c5e57fdbe0cf9977548f79a0924c4e4467fdd13d0466615fe8a"
+        "sha256": "41e7d632e3e9c065db8defa6c84df99bde8a999bacf483abd069e1d4ecb52e56"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -5167,7 +5674,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "c71dca7907d47d0bf88e7dade3414a895b86b3748a27092410545822701d6a23"
+        "sha256": "f24b1fccc045c7c339b8f911050266d570ccf61dfe7e9185ece54fd6ec3a9f24"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -5177,60 +5684,56 @@
   },
   "supplied_check_logs": {
     "covering_tests": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-covering-tests.log",
-      "output": ".......................................................................  [100%]\n71 passed in 5.15s"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-covering-tests.log",
+      "output": "........................................................................ [ 67%]\n...................................                                      [100%]\n107 passed in 11.66s"
     },
     "ruff_check": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-ruff.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-ruff.log",
       "output": "All checks passed!"
     },
     "python_format": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-format.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-format.log",
       "output": "7 files already formatted"
     },
     "table_and_record_validation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-validation.log",
-      "output": "evaluation nonphase metrics/counts/folds/rules preserved\ncomparison_sensitivity nonphase metrics/counts/folds/rules preserved\nrotation_ablation nonphase metrics/counts/folds/rules preserved\n6 forest phase points and both paired differences independently reproduced; 18 duplicate-shot draws agree with direct allowed-pair enumeration\nfirst-onset pooled scores reproduced: 300 positives / 4429 negatives\ngrowth/mask/split counts, table copies and external record hashes validated"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-validation.log",
+      "output": "evaluation every old key, point, interval bound, count and rule preserved (n_finite added)\ncomparison_sensitivity every old key, point, interval bound, count and rule preserved (n_finite added)\nrotation_ablation every old key, point, interval bound, count and rule preserved (n_finite added)\n6 forest phase points and both paired differences independently reproduced; 18 duplicate-shot draws agree with direct allowed-pair enumeration\nfirst-onset pooled scores reproduced: 300 positives / 4429 negatives\ngrowth/mask/split counts, table copies and external record hashes validated"
     },
     "latex_compile": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-latex.log",
-      "output": "table_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-latex.log",
+      "output": "table_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_compact: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-visual.log",
-      "output": "Viewed all eight regenerated 150-dpi PNGs with view_image at original resolution:\n- table_rwm-1.png: revised phase CIs, five-split headline and 480/5,255 denominator/1,349 n=2-only addition readable.\n- table_rwm_split_summary-1.png: separate phase panel for seeds 0\u20134 and holdout; forest-minus-time and forest-minus-beta intervals readable; pooled evidence retained below.\n- table_rwm_alarms-1.png: shortened caption, one conditional-warning-median point, no absent-row sentence; no clipping.\n- table_rwm_within_shot-1.png: regenerated phase and paired intervals readable.\n- table_rwm_campaign_pairs-1.png: readable, unchanged nonphase values.\n- table_rwm_onset_actual-1.png and table_rwm_onset_window-1.png: all 48 rows visible; actual/window distinction and missing-EFIT categories legible.\n- rwm_onset_scores.png: six Hanson/two comparison panels, distinct axes/legend and onset bands legible; no title/version labels or clipping.\nAll eight artifacts under /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/. Corresponding vector PDFs retained. LaTeX compile log reports seven single-page tables and no layout warnings."
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-visual.log",
+      "output": "visual inspection 2026-10-03: viewed rwm_onset_scores.png (caption counts and 'not a precursor indicator' match panels 156785 and 176077), table_rwm_compact-1.png (fits one column, headline caption), table_rwm-1.png, table_rwm_split_summary-1.png, table_rwm_within_shot-1.png, table_rwm_campaign_pairs-1.png, table_rwm_alarms-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png; no overflow, no legacy row, captions lead with the headline"
     },
     "baseline_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-rescore.log",
-      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=3\ncompleted rwm-brf seed=4\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-rescore.log",
+      "output": "completed rwm-rule-rwm-candidates seed=0\ncompleted rwm-rule-elapsed-time seed=0\ncompleted rwm-rule-betan-over-li seed=0\ncompleted rwm-rule-betan seed=0\ncompleted rwm-brf seed=0\ncompleted rwm-brf seed=1\ncompleted rwm-brf seed=2\ncompleted rwm-brf seed=4\ncompleted rwm-brf seed=3\ncompleted leave-one-run-record-out\nwrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/evaluation.json"
     },
     "comparison_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-comparison-replay.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-comparison-replay.log",
       "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/comparison_sensitivity.json"
     },
     "rotation_saved_replay": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-rotation-replay.log",
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-rotation-replay.log",
       "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/rotation_ablation.json"
     },
-    "growth_regeneration": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-growth.log",
-      "output": "{\n  \"script\": \"scripts/labeler/rwm_growth.py\",\n  \"onsets\": {\n    \"listed\": 56,\n    \"n1\": 48,\n    \"n2\": 6,\n    \"shots\": 33\n  },\n  \"onset_window_ms\": 20.0,\n  \"annotation_status\": \"20 ms tau_w convention; not a measured growth interval\",\n  \"search\": {\n    \"offsets_ms\": [\n      -150.0,\n      -148.0,\n      -146.0,\n      -144.0,\n      -142.0,\n      -140.0,\n      -138.0,\n      -136.0,\n      -134.0,\n      -132.0,\n      -130.0,\n      -128.0,\n      -126.0,\n      -124.0,\n      -122.0,\n      -120.0,\n      -118.0,\n      -116.0,\n      -114.0,\n      -112.0,\n      -110.0,\n      -108.0,\n      -106.0,\n      -104.0,\n      -102.0,\n      -100.0,\n      -98.0,\n      -96.0,\n      -94.0,\n      -92.0,\n      -90.0,\n      -88.0,\n      -86.0,\n      -84.0,\n      -82.0,\n      -80.0,\n      -78.0,\n      -76.0,\n      -74.0,\n      -72.0,\n      -70.0,\n      -68.0,\n      -66.0,\n      -64.0,\n      -62.0,\n      -60.0,\n      -58.0,\n      -56.0,\n      -54.0,\n      -52.0,\n      -50.0,\n      -48.0,\n      -46.0,\n      -44.0,\n      -42.0,\n      -40.0,\n      -38.0,\n      -36.0,\n      -34.0,\n      -32.0,\n      -30.0,\n      -28.0,\n      -26.0,\n      -24.0,\n      -22.0,\n      -20.0,\n      -18.0,\n      -16.0,\n      -14.0,\n      -12.0,\n      -10.0,\n      -8.0,\n      -6.0,\n      -4.0,\n      -2.0,\n      0.0,\n      2.0,\n      4.0,\n      6.0,\n      8.0,\n      10.0,\n      12.0,\n      14.0,\n      16.0,\n      18.0,\n      20.0,\n      22.0,\n      24.0,\n      26.0,\n      28.0\n    ],\n    \"same_search_at_controls\": true,\n    \"onsets_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_onsets.csv\",\n    \"controls_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/growth_controls.csv\"\n  },\n  \"trailing_window_ms\": 20.0,\n  \"controls\": {\n    \"per_shot\": 300,\n    \"exclusion_ms\": 170.0,\n    \"seed\": 0,\n    \"n\": 7704,\n    \"shots\": 30\n  },\n  \"max_growth_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": 90.72956220408226,\n    \"median\": 111.71038802003883,\n    \"q3\": 173.7079858243532\n  },\n  \"search_max_efold_ms_n1\": {\n    \"n\": 48,\n    \"q1\": 5.756811318850975,\n    \"median\": 8.951917726438296,\n    \"q3\": 11.023510304614344\n  },\n  \"max_growth_at_ms_n1\": {\n    \"n\": 48,\n    \"q1\": -103.5,\n    \"median\": -39.0,\n    \"q3\": 0.0\n  },\n  \"slope_at_onset_per_s_n1\": {\n    \"n\": 48,\n    \"q1\": -47.561383158780885,\n    \"median\": -1.7455352889133646,\n    \"q3\": 25.322174320293527\n  },\n  \"control_slope_per_s\": {\n    \"n\": 7704,\n    \"q1\": -19.504226936035312,\n    \"median\": 1.935240641607814e-08,\n    \"q3\": 21.611437207384434\n  },\n  \"control_max_growth_per_s_n1\": {\n    \"n\": 7704,\n    \"q1\": 66.15973340810169,\n    \"median\": 109.82952529635003,\n    \"q3\": 170.10962510580248\n  },\n  \"control_search_max_efold_ms\": {\n    \"n\": 7704,\n    \"q1\": 5.878562525332289,\n    \"median\": 9.105019777712114,\n    \"q3\": 15.114933940733557\n  },\n  \"log_ratio_n1\": {\n    \"10\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.3087392727308337,\n        \"median\": -0.004225189312686787,\n        \"q3\": 0.31195313303736044\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.2803509678238022,\n        \"median\": 0.0,\n        \"q3\": 0.29806341930163727\n      },\n      \"control_p90\": 0.8552014585846496,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"20\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.25132874607588807,\n        \"median\": 0.07877096418003995,\n        \"q3\": 0.6625697708436384\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.3250926369177873,\n        \"median\": 0.0,\n        \"q3\": 0.35139387201515015\n      },\n      \"control_p90\": 0.9426730429012918,\n      \"fraction_of_onsets_above_control_p90\": 0.14583333333333334\n    },\n    \"40\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5735470678921812,\n        \"median\": -0.0005846799216346829,\n        \"q3\": 0.5023268579922899\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.40786825175002034,\n        \"median\": 0.0,\n        \"q3\": 0.4210431935468536\n      },\n      \"control_p90\": 1.1800506177145307,\n      \"fraction_of_onsets_above_control_p90\": 0.125\n    },\n    \"80\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.5433754302480741,\n        \"median\": 0.23547043524787098,\n        \"q3\": 0.7125633728939589\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.47603009349655095,\n        \"median\": 0.0042862723603499416,\n        \"q3\": 0.5980877946900987\n      },\n      \"control_p90\": 1.391850488253651,\n      \"fraction_of_onsets_above_control_p90\": 0.1875\n    },\n    \"150\": {\n      \"onset\": {\n        \"n\": 48,\n        \"q1\": -0.750224840059082,\n        \"median\": 0.10410176700756255,\n        \"q3\": 0.6915066465501547\n      },\n      \"control\": {\n        \"n\": 7704,\n        \"q1\": -0.5481233227994615,\n        \"median\": 0.04988447447838988,\n        \"q3\": 0.757868358850843\n      },\n      \"control_p90\": 1.7708976799587124,\n      \"fraction_of_onsets_above_control_p90\": 0.08333333333333333\n    }\n  },\n  \"betan\": {\n    \"interpolation\": \"finite bracketing samples only; no extrapolation\",\n    \"max_bracket_gap_ms\": 50.0,\n    \"collapse_scope\": \"merged n=1 onsets with finite beta at o-100 and o+40 ms\",\n    \"eligible_onsets\": 43,\n    \"unknown_onsets\": 5,\n    \"dropping_onsets\": 26,\n    \"m100\": {\n      \"n\": 45,\n      \"q1\": 2.5836085081100464,\n      \"median\": 2.7750233787298204,\n      \"q3\": 3.009746414422989\n    },\n    \"at_onset\": {\n      \"n\": 44,\n      \"q1\": 2.5636970624327664,\n      \"median\": 2.716927877664568,\n      \"q3\": 2.9081169724464444\n    },\n    \"p40\": {\n      \"n\": 46,\n      \"q1\": 1.1269126644730594,\n      \"median\": 1.9339821206033245,\n      \"q3\": 2.3504022568464267\n    },\n    \"fraction_dropping_20pct_by_p40\": 0.6046511627906976\n  }\n}"
+    "data_audit": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-data-audit.log",
+      "output": "wrote /scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/data_audit.json"
     },
-    "empty_efit_generation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-green.log",
-      "output": "{\n  \"script\": \"scripts/labeler/rwm_growth.py\",\n  \"onsets\": {\n    \"listed\": 1,\n    \"n1\": 1,\n    \"n2\": 0,\n    \"shots\": 1\n  },\n  \"onset_window_ms\": 20.0,\n  \"annotation_status\": \"20 ms tau_w convention; not a measured growth interval\",\n  \"search\": {\n    \"offsets_ms\": [\n      -150.0,\n      -148.0,\n      -146.0,\n      -144.0,\n      -142.0,\n      -140.0,\n      -138.0,\n      -136.0,\n      -134.0,\n      -132.0,\n      -130.0,\n      -128.0,\n      -126.0,\n      -124.0,\n      -122.0,\n      -120.0,\n      -118.0,\n      -116.0,\n      -114.0,\n      -112.0,\n      -110.0,\n      -108.0,\n      -106.0,\n      -104.0,\n      -102.0,\n      -100.0,\n      -98.0,\n      -96.0,\n      -94.0,\n      -92.0,\n      -90.0,\n      -88.0,\n      -86.0,\n      -84.0,\n      -82.0,\n      -80.0,\n      -78.0,\n      -76.0,\n      -74.0,\n      -72.0,\n      -70.0,\n      -68.0,\n      -66.0,\n      -64.0,\n      -62.0,\n      -60.0,\n      -58.0,\n      -56.0,\n      -54.0,\n      -52.0,\n      -50.0,\n      -48.0,\n      -46.0,\n      -44.0,\n      -42.0,\n      -40.0,\n      -38.0,\n      -36.0,\n      -34.0,\n      -32.0,\n      -30.0,\n      -28.0,\n      -26.0,\n      -24.0,\n      -22.0,\n      -20.0,\n      -18.0,\n      -16.0,\n      -14.0,\n      -12.0,\n      -10.0,\n      -8.0,\n      -6.0,\n      -4.0,\n      -2.0,\n      0.0,\n      2.0,\n      4.0,\n      6.0,\n      8.0,\n      10.0,\n      12.0,\n      14.0,\n      16.0,\n      18.0,\n      20.0,\n      22.0,\n      24.0,\n      26.0,\n      28.0\n    ],\n    \"same_search_at_controls\": true,\n    \"onsets_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-fixture/round4/rwm/growth_onsets.csv\",\n    \"controls_csv\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-empty-efit-fixture/round4/rwm/growth_controls.csv\"\n  },\n  \"trailing_window_ms\": 20.0,\n  \"controls\": {\n    \"per_shot\": 300,\n    \"exclusion_ms\": 170.0,\n    \"seed\": 0,\n    \"n\": 273,\n    \"shots\": 1\n  },\n  \"max_growth_per_s_n1\": {\n    \"n\": 1,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"search_max_efold_ms_n1\": {\n    \"n\": 0\n  },\n  \"max_growth_at_ms_n1\": {\n    \"n\": 1,\n    \"q1\": -150.0,\n    \"median\": -150.0,\n    \"q3\": -150.0\n  },\n  \"slope_at_onset_per_s_n1\": {\n    \"n\": 1,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_slope_per_s\": {\n    \"n\": 273,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_max_growth_per_s_n1\": {\n    \"n\": 273,\n    \"q1\": 0.0,\n    \"median\": 0.0,\n    \"q3\": 0.0\n  },\n  \"control_search_max_efold_ms\": {\n    \"n\": 0\n  },\n  \"log_ratio_n1\": {\n    \"10\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"20\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"40\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"80\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    },\n    \"150\": {\n      \"onset\": {\n        \"n\": 1,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control\": {\n        \"n\": 273,\n        \"q1\": 0.0,\n        \"median\": 0.0,\n        \"q3\": 0.0\n      },\n      \"control_p90\": 0.0,\n      \"fraction_of_onsets_above_control_p90\": 0.0\n    }\n  },\n  \"betan\": {\n    \"interpolation\": \"finite bracketing samples only; no extrapolation\",\n    \"max_bracket_gap_ms\": 50.0,\n    \"collapse_scope\": \"merged n=1 onsets with finite beta at o-100 and o+40 ms\",\n    \"eligible_onsets\": 0,\n    \"unknown_onsets\": 1,\n    \"dropping_onsets\": 0,\n    \"m100\": {\n      \"n\": 0\n    },\n    \"at_onset\": {\n      \"n\": 0\n    },\n    \"p40\": {\n      \"n\": 0\n    },\n    \"fraction_dropping_20pct_by_p40\": null\n  }\n}\nPASS: zero eligible EFIT pairs serialize as unknown with null fraction"
-    },
-    "final_code_review": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-review.log",
-      "output": "RWM fix round 11 independent read-only review against HEAD 4333c56b\nReviewed both round-11 reviews, binding implementer rules, temporary plan, changed library/scorer/growth/table source, tests, JSON diffs, README/doc and LaTeX sources.\nCritical: none.\nImportant: none.\nMinor: scripts/labeler/rwm_growth.py:212-214 wraps the empty-eligible None branch in float(), raising TypeError when no onset has finite reference brackets. Move float inside the eligible branch; actual 43-eligible corpus results are unaffected. Reported to implementer for correction.\nEvidence: 100 randomized explicit positive-negative pair enumerations agree with revised phase AUROC with repeated copies, ties, multiple campaigns, exclusions and small/one-class cells. Additional independent checks passed exact first-onset boundary with otherwise class-eligible labels, repeat onsets, missing onset targets, wholly missing EFIT data, and finite bracket widths 50 versus 51 ms. Commands used prescribed pixi environment, no fetching and no bytecode writes.\nCoverage: all seeds 0-4 and run-record holdout phase scores and both paired differences are carried into split_sensitivity and rendered together; headline distinguishes split-dependent elapsed-time margin from inconclusive beta_N/li differences. First-onset counts (826 negatives, 180 positives removed; 300/4429 retained), missingness caveat, raw rotation ambiguity, 26/43 eligible collapse plus five unknown, main-table denominators/n=2 addition and trimmed alarm caption address the prior review findings. Saved replay code retains fit/write guards; prediction-preservation log records all 17 files OK.\nDeclined to judge: physical TROTFIT unit identity, actual mode identity/growth duration, online timing validity and true negative coverage remain unresolved scientific questions explicitly documented. No owner PDFs, network, full suite or refitting used. Root retains PNG inspection, full artifact validation and final test/lint execution; this review assessed table source organization, not rendered font sizing.\nAssessment: suitable to complete after correcting the one empty-eligible guard and completing root's artifact/visual validation. No blocker for the reported fixed-corpus results.\n\nRoot resolution: fixed the zero-eligible EFIT guard by moving float() inside the eligible branch. The isolated all-missing-EFIT fixture failed with TypeError before the patch (fix11-empty-efit-red.log), then passed and serialized 0 eligible / 1 unknown with a null collapse fraction (fix11-empty-efit-green.log). No deferred review findings."
+    "figure_regeneration": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-figure.log",
+      "output": "wrote /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.pdf and /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png"
     },
     "saved_prediction_preservation": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-predictions.log",
-      "output": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-comparison-negative_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf-no-rotation_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_leave_run_record_out.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed1.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed2.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed3.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-brf_seed4.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan-over-li_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-betan_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-elapsed-time_seed0.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\n/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/predictions_rwm-rule-rwm-candidates_seed0.parquet: OK"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-predictions.log",
+      "output": "predictions_rwm-brf-comparison-negative_seed0.parquet: OK\npredictions_rwm-brf_full_trace.parquet: OK\npredictions_rwm-brf_leave_run_record_out.parquet: OK\npredictions_rwm-brf-no-rotation_seed0.parquet: OK\npredictions_rwm-brf_seed0.parquet: OK\npredictions_rwm-brf_seed1.parquet: OK\npredictions_rwm-brf_seed2.parquet: OK\npredictions_rwm-brf_seed3.parquet: OK\npredictions_rwm-brf_seed4.parquet: OK\npredictions_rwm-rule-betan_full_trace.parquet: OK\npredictions_rwm-rule-betan-over-li_full_trace.parquet: OK\npredictions_rwm-rule-betan-over-li_seed0.parquet: OK\npredictions_rwm-rule-betan_seed0.parquet: OK\npredictions_rwm-rule-elapsed-time_full_trace.parquet: OK\npredictions_rwm-rule-elapsed-time_seed0.parquet: OK\npredictions_rwm-rule-rwm-candidates_full_trace.parquet: OK\npredictions_rwm-rule-rwm-candidates_seed0.parquet: OK\nslices.parquet: OK\nshots.csv: OK\ngrowth_onsets.csv: OK"
     },
     "artifact_hashes": {
-      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix11-artifact-hashes.log",
-      "output": "table_rwm.pdf SHA-256 OK\ntable_rwm-1.png SHA-256 OK\ntable_rwm_split_summary.pdf SHA-256 OK\ntable_rwm_split_summary-1.png SHA-256 OK\ntable_rwm_within_shot.pdf SHA-256 OK\ntable_rwm_within_shot-1.png SHA-256 OK\ntable_rwm_campaign_pairs.pdf SHA-256 OK\ntable_rwm_campaign_pairs-1.png SHA-256 OK\ntable_rwm_alarms.pdf SHA-256 OK\ntable_rwm_alarms-1.png SHA-256 OK\ntable_rwm_onset_actual.pdf SHA-256 OK\ntable_rwm_onset_actual-1.png SHA-256 OK\ntable_rwm_onset_window.pdf SHA-256 OK\ntable_rwm_onset_window-1.png SHA-256 OK\nE/C/A/G source hashes and 14 rendered table artifact hashes verified"
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/fix12-artifact-hashes.log",
+      "output": "table_rwm.pdf SHA-256 OK\ntable_rwm-1.png SHA-256 OK\ntable_rwm_compact.pdf SHA-256 OK\ntable_rwm_compact-1.png SHA-256 OK\ntable_rwm_split_summary.pdf SHA-256 OK\ntable_rwm_split_summary-1.png SHA-256 OK\ntable_rwm_within_shot.pdf SHA-256 OK\ntable_rwm_within_shot-1.png SHA-256 OK\ntable_rwm_campaign_pairs.pdf SHA-256 OK\ntable_rwm_campaign_pairs-1.png SHA-256 OK\ntable_rwm_alarms.pdf SHA-256 OK\ntable_rwm_alarms-1.png SHA-256 OK\ntable_rwm_onset_actual.pdf SHA-256 OK\ntable_rwm_onset_actual-1.png SHA-256 OK\ntable_rwm_onset_window.pdf SHA-256 OK\ntable_rwm_onset_window-1.png SHA-256 OK\nexternal details {\"path\": \"/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/evaluation_details.json\", \"sha256\": \"4940776f8ce90cc0af74034af39cbf84019fd2b56f3efdf67c21dee3bff45203\", \"bytes\": 1921038, \"omitted_keys\":"
     }
   }
 }

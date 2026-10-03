@@ -1,3 +1,4 @@
+% Appendix table: the paper's main-text row group is table_rwm_compact.tex.
 \begin{table*}[t]
 \centering
 \small
@@ -15,5 +16,5 @@ $\beta_N/l_i$ & $0.855$ & $0.786$ & $0.588$ {\scriptsize $[0.471, 0.690]$} \\
 \texttt{rwm-brf} - $\beta_N/l_i$ & $-0.071$ {\scriptsize $[-0.133, -0.010]$} & $-0.067$ {\scriptsize $[-0.137, 0.002]$} & $-0.054$ {\scriptsize $[-0.172, 0.061]$} \\
 \bottomrule
 \end{tabular}
-\caption{Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\beta_N$ and $\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.}
+\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; below $\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. Within-shot model means are point estimates; differences have 95\% basic paired shot-bootstrap intervals (1,000 replicates, seed 0), unadjusted for multiplicity. Within shot, the forest is 0.020--0.071 below $\beta_N$ and $\beta_N/l_i$ on both masks (1 of 4 unadjusted intervals exclude zero). Elapsed time's 0.931 is an artefact of the primary mask's cutoff at the last onset. Phase control uses primary positive-negative pairs within campaign and 100 ms elapsed-time bins, weighted by pair counts. Individual phase intervals are percentile; all three basic paired forest-minus-scalar phase intervals include zero. One-class cells are omitted; phase resampling is stratified by campaign.}
 \end{table*}

@@ -1,0 +1,177 @@
+{
+  "script": "scripts/labeler/rwm_data_audit.py",
+  "scope": "flat-top window = longest run with |Ip| >= 50% of the shot's peak (`features.flattop_window`); roster is the Hanson and selected comparison shots of `shots.csv`",
+  "operations_n1_probe": {
+    "scope": "saved OPERATIONS CN1BAMP/ILN1BAMP/IUN1BAMP traces of the three probe shots over each shot's flat-top; semantics unverified",
+    "traces": {
+      "156785_cn1bamp": {
+        "shot": 156785,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          443.99999999999994,
+          4997.0
+        ],
+        "median": 0.022619163617491722,
+        "p5": 0.005848988541401923,
+        "p95": 0.060710517875850134,
+        "std": 0.022403959902713,
+        "share_within_5_percent_of_median": 0.056214317083882304
+      },
+      "156785_iln1bamp": {
+        "shot": 156785,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          443.99999999999994,
+          4997.0
+        ],
+        "median": 11.914795875549316,
+        "p5": 0.38283312171697614,
+        "p95": 17.09736967086792,
+        "std": 4.359697467237299,
+        "share_within_5_percent_of_median": 0.16929499072356216
+      },
+      "156785_iun1bamp": {
+        "shot": 156785,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          443.99999999999994,
+          4997.0
+        ],
+        "median": 11.865246295928955,
+        "p5": 0.3667875275015831,
+        "p95": 17.073984241485594,
+        "std": 4.350164899531618,
+        "share_within_5_percent_of_median": 0.17068645640074212
+      },
+      "158021_cn1bamp": {
+        "shot": 158021,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          336.99999999999994,
+          5930.999999999999
+        ],
+        "median": 0.013757388107478619,
+        "p5": 0.0036445955047383904,
+        "p95": 0.02986720399931073,
+        "std": 0.008047576784761472,
+        "share_within_5_percent_of_median": 0.06882373972112978
+      },
+      "158021_iln1bamp": {
+        "shot": 158021,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          336.99999999999994,
+          5930.999999999999
+        ],
+        "median": 13.753947257995605,
+        "p5": 3.956809234619141,
+        "p95": 33.639951324462885,
+        "std": 9.65204333967065,
+        "share_within_5_percent_of_median": 0.05512554276005286
+      },
+      "158021_iun1bamp": {
+        "shot": 158021,
+        "campaign": 2014,
+        "units": "Gauss",
+        "flattop_ms": [
+          336.99999999999994,
+          5930.999999999999
+        ],
+        "median": 13.684562683105469,
+        "p5": 3.941407823562622,
+        "p95": 33.50539627075194,
+        "std": 9.575695179766022,
+        "share_within_5_percent_of_median": 0.05531432886539551
+      },
+      "176068_cn1bamp": {
+        "shot": 176068,
+        "campaign": 2018,
+        "units": "Gauss",
+        "flattop_ms": [
+          509.27614116668707,
+          6405.276141166687
+        ],
+        "median": 19.57456874847412,
+        "p5": 6.672070860862732,
+        "p95": 20.6600980758667,
+        "std": 4.147761182309983,
+        "share_within_5_percent_of_median": 0.6087177747625508
+      },
+      "176068_iln1bamp": {
+        "shot": 176068,
+        "campaign": 2018,
+        "units": "Gauss",
+        "flattop_ms": [
+          509.27614116668707,
+          6405.276141166687
+        ],
+        "median": 0.05484691075980663,
+        "p5": 0.04943543206900358,
+        "p95": 0.062070123851299286,
+        "std": 0.004089197270106651,
+        "share_within_5_percent_of_median": 0.4491180461329715
+      },
+      "176068_iun1bamp": {
+        "shot": 176068,
+        "campaign": 2018,
+        "units": "Gauss",
+        "flattop_ms": [
+          509.27614116668707,
+          6405.276141166687
+        ],
+        "median": 0.0349695198237896,
+        "p5": 0.022280216682702303,
+        "p95": 0.0515921525657177,
+        "std": 0.009074090942725118,
+        "share_within_5_percent_of_median": 0.13721166892808684
+      }
+    }
+  },
+  "roster": {
+    "shots": 165,
+    "by_role": {
+      "same_experiment": 115,
+      "hanson": 33,
+      "same_day": 17
+    },
+    "negative_flattop_start_shots": [
+      157975
+    ],
+    "smallest_nonnegative_start_ms": 84.27228355407712,
+    "median_start_ms": 189.00000000000009,
+    "largest_start_ms": 1358.0
+  },
+  "outliers": {
+    "157975": {
+      "role": "same_experiment",
+      "campaign": 2014,
+      "shot": 157975,
+      "peak_ip_ma": 0.80784675,
+      "half_peak_ip_ma": 0.403923375,
+      "first_time_ms": -1085.0,
+      "flattop_start_ms": -211.99999999999997,
+      "flattop_end_ms": 6011.0,
+      "first_ip_at_least_0p05_ma_ms": -264.9999999999999,
+      "first_ip_at_least_0p5_ma_ms": -188.99999999999994,
+      "ip_ma_at_ms": {
+        "-300": 0.0007729111328125,
+        "-250": 0.16540296875,
+        "-200": 0.45686775,
+        "-150": 0.59730575,
+        "-100": 0.6370333125,
+        "-50": 0.5377915625,
+        "0": 0.545829875,
+        "100": 0.644144125,
+        "200": 0.6946151875,
+        "350": 0.7600035
+      },
+      "reading": "the saved trace is a smooth rise from about zero current to half of its peak before t = 0; the negative start is the 50%-of-peak crossing of that rise on a low-peak shot, not a corrupted time base (interpretation of the numbers above; the discharge was not otherwise inspected)"
+    }
+  },
+  "consequence": "comparison shots enter the baseline only through alarm incidence and the interval export (and the comparison-negative sensitivity's training); a negative start only moves where that shot's unlabelled span begins"
+}

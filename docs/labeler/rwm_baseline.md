@@ -1,8 +1,29 @@
-# RWM baseline on DIII-D: current protocol
+# RWM labels and an equilibrium-scalar timing baseline on DIII-D
 
 <!-- rwm:lead:start -->
-This retrospective baseline has a small, split-dependent margin over elapsed time and no established skill beyond βN/li. Phase-controlled AUROC 0.53–0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from βN/li alone. Reference split (seed 0): `rwm-brf` **0.534 [0.436, 0.625]** in **100 ms bins**, with at least **5 eligible slices per bin**. Elapsed time's residual value **0.522 [0.511, 0.536]** is the phase floor. Pooled primary AUROC **0.760 [0.706, 0.809]** is phase-confounded. The task is when an RWM comes in a Hanson shot that has one; physical duration, negative coverage and online input timing remain unverified. Sources: `E#/split_sensitivity/{phase_controlled_auroc,paired_phase}`, `E#/configs/{rwm-brf,rwm-rule-elapsed-time}/phase_controlled_auroc` and `E#/configs/rwm-brf/metrics/slice_auroc`; E is defined below.
+**No demonstrated skill beyond elapsed time or βN/li under phase control; below βN/li within shot (−0.071 [−0.133, −0.010]).** The within-shot difference is on the primary mask; on the broad mask it is −0.067 [−0.137, 0.002]. `rwm-brf` is an equilibrium-scalar timing baseline on Hanson's onset list, not an RWM predictor: no input senses the RWM (see *What the inputs sense*). Phase-controlled AUROC 0.53–0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was −0.037. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-βN/li interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-β and above-proxy) and ranges from −0.047 to +0.025 in primary AUROC; the 2018 run-record holdout gives −0.049 [−0.073, −0.013] in primary AUROC. Reference split (seed 0): `rwm-brf` **0.534 [0.436, 0.625]**, elapsed time **0.522 [0.511, 0.536]** (the residual-phase floor), in **100 ms bins** with at least **5 slices per bin**; pooled primary AUROC **0.760 [0.706, 0.809]** is phase-confounded. Sources: `E#/split_sensitivity/{phase_controlled_auroc,paired_phase,paired_time_by_campaign}`, `E#/paired/*/within_shot_auroc`, `E#/configs/*/phase_bin_width_sensitivity`, `E#/leave_one_run_record_out/paired_time_by_campaign`; E is defined below.
 <!-- rwm:lead:end -->
+
+## Abstract
+
+<!-- rwm:abstract:start -->
+1. **Task.** From equilibrium scalars on a 10 ms grid, say whether a resistive wall mode (RWM) onset comes within the next 100 ms in a DIII-D discharge that is known to have one.
+2. **Shots.** 33 shots from Jeremy Hanson's onset lists (20 in 2014, 13 in 2018; 56 listed onsets merge into 48 n=1 and 6 n=2 events) and 132 matched comparison shots without a listed onset.
+3. **Labels.** A 612-row tiered interval table (categories 0 assumed absent, 1 minimal present, 2 uncertain or candidate, 4 unassessed; no verified absence) and forecast labels of 480 positive and 5,255 assumed-negative 10 ms slices.
+4. **Result.** A balanced random forest after Piccione 2022 (`rwm-brf`) shows no demonstrated skill beyond elapsed time or βN/li under phase control and sits below βN/li within shot (−0.071 [−0.133, −0.010]).
+5. **Limitation.** No input senses the RWM, so `rwm-brf` is an equilibrium-scalar timing baseline, not an RWM predictor; the next step is a fetch of the radial-field sensor with confirmed semantics.
+<!-- rwm:abstract:end -->
+
+## Glossary
+
+<!-- rwm:glossary:start -->
+- **Phase-controlled AUROC:** AUROC over positive-negative slice pairs from the same campaign and the same 100 ms elapsed-time bin; a bin needs both classes and at least 5 slices, bins are weighted by pair count, ties count half. It removes the ranking that discharge phase supplies on its own.
+- **Residual-phase floor:** the phase-controlled AUROC of elapsed time itself (0.522 [0.511, 0.536]), what time since flat-top still ranks inside one bin. A model must beat it to show more than phase.
+- **Primary and broad masks:** primary positives are slices with a merged n=1 onset in the next 100 ms; primary negatives end at the last n=1 onset (aftermath and n=2-only time excluded). The broad mask keeps the same scores and positives and adds post-last-onset and n=2-only Hanson time as negatives.
+- **Assumed negatives:** slices of a Hanson shot with no listed onset in the next 100 ms. The onset lists are unverified for completeness, so none is a confirmed absence.
+- **Categories 0/1/2/4:** interval labels of the export. 0 assumed absent (before the first onset's 100 ms precursor); 1 minimal present ([o, o+10 ms)); 2 uncertain, either a Hanson pre-onset window ([o−20, o) ms, tier `onset_window_uncertain`) or a comparison-shot screen candidate (tier `unlabelled_screen`); 4 unassessed. None is verified absence.
+- **High-β and above-proxy strata:** evaluation masks, βN at least 0.8 times the shot's p95 and βN/li above 4; not predictors.
+<!-- rwm:glossary:end -->
 
 ## Records and scope
 
@@ -12,7 +33,8 @@ below are relative to the repository; large artifacts live under
 
 - **E**: [evaluation.json](../../outputs/labeler/rwm/evaluation.json), written by
   `scripts/labeler/rwm_evaluate.py`. The summary retains metrics and counts below
-  0.5 MB; `external_details` identifies the complete record and SHA-256.
+  0.6 MB; `external_details` identifies the complete record and SHA-256. Every
+  bootstrap interval carries its finite-draw count `n_finite`.
 - **S**: [shots.json](../../outputs/labeler/rwm/shots.json), written by
   `scripts/labeler/rwm_build.py`; roster, matching, labels and input audits.
 - **G**: [growth.json](../../outputs/labeler/rwm/growth.json), written by
@@ -21,6 +43,9 @@ below are relative to the repository; large artifacts live under
   written by `scripts/labeler/rwm_comparison_sensitivity.py`; label-noisy negatives.
 - **A**: [rotation_ablation.json](../../outputs/labeler/rwm/rotation_ablation.json),
   written by `scripts/labeler/rwm_rotation_ablation.py`; input dependence.
+- **D**: [data_audit.json](../../outputs/labeler/rwm/data_audit.json), written by
+  `scripts/labeler/rwm_data_audit.py`; flat-top starts and the saved OPERATIONS
+  n=1 probe traces.
 - **P**: [presentation.json](../../outputs/labeler/rwm/presentation.json), written
   by `scripts/labeler/rwm_tables.py`; numerical prose, table cells and artifacts.
 - **F**: [figure.json](../../outputs/labeler/rwm/figure.json), written by
@@ -33,9 +58,9 @@ verifies and loads the external payload, including per-shot warnings and source
 arrays. C uses the same storage contract. [tables.md](../../outputs/labeler/rwm/tables.md)
 contains the full score, split, campaign, run-record, alarm and onset tables.
 Reference results use seed 0. Marked numerical blocks and README model lines
-regenerate from E/C.
+regenerate from the JSON records.
 
-## Data and physical evidence
+## Data and labels
 
 The roster has **33 Hanson shots** (20 in 2014, 13 in 2018) and **132 comparisons**
 (80 in 2014, 52 in 2018). The 56 listed onset points merge into 48 n=1 and six
@@ -79,26 +104,42 @@ Every row has `coverage_verified=false`.
 
 The minimal pre/post windows **deviate from the brief's growth-window positives**:
 wall time motivates a millisecond convention but does not establish measured
-pre-onset growth. Hanson's `ONSET_TIME` is not defined as growth start versus
-threshold/detection time; Piccione's NSTX threshold convention cannot resolve its
-DIII-D meaning. The source search is preserved in interval metadata and
-[sensor_probe.json](../../outputs/labeler/rwm/sensor_probe.json).
+pre-onset growth. The 20 ms length assumes a wall time τw of about 5 ms, which is
+an assumption: the Piccione 2022 digest says only "milliseconds", and no DIII-D
+value is cited (\citeph{DIII-D wall time}). The 20 ms uncertain window and the
+20 ms growth window both rest on it. Hanson's `ONSET_TIME` is not defined as
+growth start versus threshold/detection time; Piccione's NSTX threshold
+convention cannot resolve its DIII-D meaning. The source search is preserved in
+interval metadata and [sensor_probe.json](../../outputs/labeler/rwm/sensor_probe.json).
 
 **Reader contract:** category 2 mixes two evidence types. Inspect
 `attrs.evidence_tier` before analysis; category alone cannot distinguish onset
 uncertainty from comparison candidates. Onset-derived intervals additionally
 retain `attrs.source_onsets`: contributing `NTOR`, `MODE_TYPE`, original
 `ONSET_TIME` in ms and source, including merged duplicate points. The review
-reader retains rows/attributes; the category-only editor rejects tier-less saves.
-See [editor guide](equilibrium_review.md).
+reader retains rows and attributes when it loads a tiered source, but its
+`save()` refuses tiered sources, so expert review of these labels needs a
+tier-preserving save path before it can edit them; the category-only editor
+rejects tier-less saves. See [editor guide](equilibrium_review.md).
 
-## Inputs and onset physics
+## What the inputs sense
 
-The forest uses βN, li, q95, qmin, W_MHD, |Ip|, βN/li, βN−4li, N1RMS/N2RMS
-trailing means, peaks and log slopes, and ZIPFIT rotation. Rotation is sampled at
-rho=0.25 and rho=0.625; the latter is a fixed radius, not an identified q=2
-surface. Sources: `E#/configs/rwm-brf/options/columns`,
-`S#/feature_coverage`, `src/labeler/rwm/features.py` and the feature namespace.
+The forest uses βN, li, q95, qmin, W_MHD, |Ip|, βN/li, βN−4li, the N1RMS
+trailing mean, peak and log slope, the N2RMS trailing mean (N2RMS enters no other
+way), and ZIPFIT rotation. Rotation is sampled at rho=0.25 and rho=0.625; the
+latter is a fixed radius, not an identified q=2 surface. Sources:
+`E#/configs/rwm-brf/options/columns`, `S#/feature_coverage`,
+`src/labeler/rwm/features.py` and the feature namespace.
+
+<!-- rwm:physics:start -->
+No model input senses the RWM, and the evidence that it could is negative:
+
+- `dusbradial` is unusable: zero on 79/100 selected 2014 traces (15/20 Hanson) and flagged corrupted for shots 176030–176912, which covers all 2018 Hanson shots (`S#/input_audit`).
+- N1RMS shows no growth at onsets: the median maximum log-slope is **111.7/s at 48 n=1 onsets versus 109.8/s at 7,704 controls** under an identical search (`G#/{max_growth_per_s_n1,control_max_growth_per_s_n1,controls}`).
+- The OPERATIONS n=1 amplitudes (CN1BAMP, ILN1BAMP, IUN1BAMP) are applied-field amplitudes, not a plasma response. Flat-top medians (Gauss, `D#/operations_n1_probe`): 2014 shots 156785 and 158021 have I-coil amplitudes 11.9/11.9 and 13.8/13.7 G and C-coil 0.02 and 0.01 G, varying with the coil programme (5th to 95th percentile of the I-coil amplitude 0.4–17.1 G on 156785 and 4.0–33.6 G on 158021); 2018 shot 176068 has a C-coil plateau of 19.6 G (61% of flat-top samples within 5% of the median) and I-coil 0.05/0.03 G. Their semantics are unverified (`sensor_probe.json`), and none was promoted to an input.
+
+A near-constant applied n=1 field in 2018 suggests active n=1 control there, which does not establish but would explain a campaign dependence and is a physical reason to stratify every result by campaign (the campaign tables do). N1RMS cannot distinguish an RWM from a tearing mode or an applied-field response. The forest can therefore only learn the βN/li-and-time trajectory of a Hanson shot, and its labels cannot be checked against any input. **Next step:** fetch the radial-field sensor with confirmed semantics (PTDATA ONSBRADIAL, disruption-py's fallback for DUSBRADIAL, is the lead candidate; none is cached for the zero-trace 2014 shots, `O#`).
+<!-- rwm:physics:end -->
 
 <!-- rwm:rotation_units:start -->
 The `TROTFIT` units field says kHz, but core magnitudes (median 75, maximum 174) match krad/s, the ZIPFIT convention; kHz would imply supersonic toroidal velocity. Legacy `rot_*_khz` names retain raw values without conversion and do not establish physical units. The forest is invariant to a positive constant unit conversion (`E#/forecast_label_audit/rotation_raw`; namespace metadata).
@@ -111,24 +152,14 @@ unbounded timing bias here. Analysis-span selection and the screen's
 whole-flat-top median/MAD threshold are retrospective. Only βN and the
 RMS-amplitude concept overlap Piccione's seven NSTX inputs.
 
-DUSBRADIAL is excluded: **79/100** selected 2014 traces are zero, including
-**15/20** Hanson traces, and the namespace flags 176030–176912 as corrupted,
-covering the 2018 Hanson shots (`S#/input_audit`). A prior isolated probe of
-OPERATIONS CN1BAMP, ILN1BAMP and IUN1BAMP produced finite Gauss traces, but node
-names/units do not establish corrected plasma-mode amplitude, filtering or
-applied-field subtraction. None was promoted to an input. The 2018 records use
-active applied n=1 fields; feedback state, I/C-coil currents and NBI torque were
-not model inputs.
-
 PTDATA ONSBRADIAL is disruption-py's reported fallback for unavailable
 DUSBRADIAL, but that behavior is not independently verified here. No trace is
 cached on any of the 79 relevant zero-DUSBRADIAL 2014 shots, including 15 Hanson
 shots. O inspected existing HDF5 names and locator attributes without a fetch;
 `LABELER_NO_FETCH=1`. A validated low-frequency n=1 RWM-specific sensor remains
 missing. DCON wall limits, E-cross-B frequency, ion collisionality and MHD peak
-frequency are also unavailable. N1RMS cannot distinguish RWM, tearing and
-applied-field response; RWM frequencies of order 1/τw differ from kHz rotating
-tearing modes.
+frequency are also unavailable. RWM frequencies of order 1/τw differ from kHz
+rotating tearing modes.
 
 The onset tables list βN, li, βN/li and elapsed time for all **48 merged n=1
 points**. Exact-onset values hold the last original EFIT sample for at most
@@ -140,8 +171,7 @@ collapses and missing-data boundaries (`E#/onset_physics/{rows,by_campaign}`).
 
 G applies identical maximum trailing-log-slope searches at onsets and random
 flat-top centres, using 90 offsets from −150 to +28 ms and trailing 20 ms fits;
-controls stay at least 170 ms from listed onsets. Median maximum N1RMS slope is
-**111.7/s at onsets versus 109.8/s at 7,704 controls**; median slope at onset is
+controls stay at least 170 ms from listed onsets. Median slope at onset is
 −1.75/s. This does not establish pre-onset growth extent. G records the search,
 controls and per-centre CSV paths.
 
@@ -160,7 +190,7 @@ of conditional failure.
 The retrospective `rwm_candidates` screen serves a concurrent review role, with 62 post-onset Hanson slice calls and calls on 36/132 unlabelled comparisons, so it is excluded from forecasting tables (`E#/screen_audit` and that screen's `counts`).
 <!-- rwm:screen:end -->
 
-## Fitting, masks and phase control
+## The baseline: fitting, masks and phase control
 
 `rwm-brf` reimplements the balanced forest rather than copying an unlicensed
 repository: 300 trees, depth 8, minimum leaf size 5, with balanced per-tree
@@ -194,12 +224,14 @@ and βN/li in fixed directions. nnPU is excluded because its earlier development
 used an outer evaluation fold and the unlabelled prior is unidentified.
 
 Phase-controlled AUROC compares only primary positive-negative pairs in the
-same campaign and elapsed-time bin. Each cell needs both classes and at least
-five eligible slices; missing elapsed time is omitted. Cells are weighted by
-positive-times-negative pair counts, with half credit for ties. The headline
-uses **100 ms** bins. Elapsed time's remaining ranking is the **residual-phase
-floor**, not evidence of skill beyond phase. Narrower bins reduce but do not
-remove differences within bins.
+same campaign and elapsed-time bin. Each bin needs both classes and at least
+five eligible slices; slices with no elapsed time are omitted (counted in
+Appendix C). Bins are weighted by positive-times-negative pair counts, with half
+credit for ties. The headline uses **100 ms** bins. Elapsed time's remaining
+ranking is the **residual-phase floor**, not evidence of skill beyond phase.
+Narrower bins reduce but do not remove differences within bins.
+
+## Results
 
 <!-- rwm:phase:start -->
 | Model / rule | Phase AUROC (95% CI) | Forest minus rule (95% CI) |
@@ -229,44 +261,47 @@ remove differences within bins.
 <!-- rwm:phase:end -->
 
 All reference-split forest-minus-scalar phase intervals include zero. The split
-table shows the split-dependent elapsed-time margin and the four-run holdout.
-The bin-width table uses saved
-reference-split predictions and the same primary mask/minimum cell size. “No
-time control” retains campaign control; it differs from the pooled primary
-AUROC. These are point sensitivities, not tuned bin choices or independent
-experiments (`E#/configs/<model>/phase_bin_width_sensitivity`). Bootstrap phase
-intervals resample shots within campaign, preserving campaign shot counts. Pairs
-are formed within one copy of a shot or between different shots; pairs between
+table shows the split-dependent elapsed-time margin and the four-run holdout. The
+bin-width table uses saved reference-split predictions and the same primary
+mask/minimum cell size; the 100 ms default was set in fix round 10, after an
+earlier run with 200 ms bins in which seed 0's forest is below elapsed time (the
+200 ms row: 0.544 against 0.582 as rounded in the table, −0.0375 unrounded), so it
+is a post-hoc choice and the width sensitivity is a point
+check, not an independent experiment. “No time control” retains campaign
+control; it differs from the pooled primary AUROC
+(`E#/configs/<model>/phase_bin_width_sensitivity`). Bootstrap phase intervals
+resample shots within campaign, preserving campaign shot counts. Pairs are
+formed within one copy of a shot or between different shots; pairs between
 copies of the same shot are excluded.
 
-Within-shot mean AUROC weights two-class Hanson shots equally. The primary
-mask ends with positives, making elapsed time almost perfect within shot; that
-point statistic is therefore confined to the repository supplement. Paired
-within-shot differences share shot draws. Complete values and class counts are
-in `E#/configs/<model>/within_shot_auroc` and `E#/paired`.
-
-## Sensitivities and uncertainty
-
-Individual intervals use **1,000 percentile shot-bootstrap resamples**;
-between-model differences use **basic paired intervals** with common draws.
-Intervals condition on fixed fitted predictions, are exploratory and unadjusted
-for multiple comparisons. Shots with no eligible slices still participate in
-the appropriate resampling strata. F1, TPR and FPR apply each fold's inner-chosen
-slice cutoff; neither slice AUROC nor a confidence interval validates an alarm
-operating point.
-
-Five forest seeds change shot partitions/model randomness at fixed
-hyperparameters. Leave-one-run-record-out holds each of four logbook records
-out of fitting/tuning, including all sibling shots. `20180314` and `20180314A`
-share a calendar date, so this is not calendar-day isolation. Run-holdout
-intervals are shot-sampling intervals at fixed predictions, not four-run
-population intervals. E/tables.md retain per-record and campaign results.
+Within-shot mean AUROC weights two-class Hanson shots equally. The primary mask
+ends with positives, making elapsed time almost perfect within shot; that point
+statistic is therefore confined to the repository supplement. Paired within-shot
+differences share shot draws; the forest-minus-βN/li primary difference is the
+one in the headline. Complete values and class counts are in
+`E#/configs/<model>/within_shot_auroc` and `E#/paired`.
 
 The reference forest's **2014 high-beta AUROC is 0.311**, with paired difference
 against elapsed time **−0.255 [−0.422, −0.067]**. Its conditional failure and
 campaign dependence remain material; no cross-campaign generalisation is
 established (`E#/configs/rwm-brf/by_campaign/2014/metrics/high_beta_auroc` and
 `E#/split_sensitivity/paired_time_by_campaign/2014/0/high_beta_auroc`).
+
+Individual intervals use **1,000 percentile shot-bootstrap resamples**;
+between-model differences use **basic paired intervals** with common draws.
+Intervals condition on fixed fitted predictions, are exploratory and unadjusted
+for multiple comparisons. F1, TPR and FPR apply each fold's inner-chosen slice
+cutoff; neither slice AUROC nor a confidence interval validates an alarm
+operating point.
+
+## Appendix A: sensitivities and uncertainty
+
+Five forest seeds change shot partitions/model randomness at fixed
+hyperparameters. Leave-one-run-record-out holds each of four logbook records
+out of fitting/tuning, including all sibling shots. `20180314` and `20180314A`
+share a calendar date, so this is not calendar-day isolation. Run-holdout
+intervals are shot-sampling intervals at fixed predictions, not four-run
+population intervals. E and tables.md retain per-record and campaign results.
 
 <!-- rwm:sensitivity:start -->
 Adding the unverified comparisons as label-noisy training negatives gives phase-controlled AUROC **0.587 [0.506, 0.665]**, a paired change of **+0.053 [-0.030, 0.127]**. It alarms on **3/132** comparison shots and warns **5/48** onsets. The paired interval includes zero; whether verified stable-shot negatives would help is untested. Source: `C#/{phase_controlled_auroc,paired_change,counts}`.
@@ -284,7 +319,7 @@ A excludes both rotation columns using the same folds/seeds. Primary AUROC is
 `A#/{metrics,paired_change}`). Input dependence does not bound upstream timing
 bias, and no isolated rotation benefit is claimed.
 
-## Alarm interpretation
+## Appendix B: alarm interpretation
 
 Hysteresis needs a high crossing, continued low-threshold support and the chosen
 hold duration. Gaps reset the alarm. Matching accepts warnings **10–400 ms**
@@ -320,11 +355,38 @@ and matching imbalance further limit comparisons of unlabelled-shot incidence.
 Operational forecasting and verified stable-shot false-positive performance
 remain unvalidated.
 
-Legacy Piccione NSTX results are separately sourced: AUROC **0.918**, TPR
-**92.4%**, FPR **21.4%**, **10/11** unstable shots detected and **2/17** stable
-shots alarmed. Different machine, expert-reviewed negatives, inputs and
-validation make these non-comparable; F1/CIs are unavailable in the local
-Piccione 2022 digest (doi:10.1088/1741-4326/ac44af; `E#/legacy`).
+Published NSTX results of Piccione et al. (2022, doi:10.1088/1741-4326/ac44af)
+are quoted here only as text: AUROC **0.918**, TPR **92.4%**, FPR **21.4%**,
+**10/11** unstable shots detected and **2/17** stable shots alarmed. That is a
+different machine with expert-reviewed negatives, different inputs and a
+different validation, so it is not comparable to any number above; F1 and
+intervals are unavailable in the local digest (`E#/legacy`). No table sets it
+beside the DIII-D rows.
+
+## Appendix C: deviations and audits
+
+<!-- rwm:audit:start -->
+- **Phase-bootstrap eligibility** is decided on resampled slices: a duplicated shot can lift a bin to the minimum cell size, so eligibility is not decided on unique slices (documented, not changed). On the reference split 43 of 43 two-class bins reach the minimum, holding 466/480 positives and 3,129/5,185 negatives (the rest sit in bins with only one class, which are not scored); 35,059 pairs are scored. Replaying the 1,000 campaign-stratified draws, 14 resamples score a bin that is eligible only through duplicates: on average 0.014 bins, at most 1, carrying at most 0.11% of that resample's pairs (`E#/phase_eligibility`).
+- **Primary slices without elapsed time:** 70 assumed negatives and 0 positives on 4 shots precede the first |Ip| ≥ 0.5 MA sample, so no phase bin contains them (`E#/forecast_label_audit/primary_without_elapsed_time`).
+- **Flat-top start of comparison shot 157975** is −212 ms, the only negative start among 165 roster shots (next smallest 84 ms, median 189 ms). Its saved Ip is a smooth rise from 0.001 MA at −300 ms to 0.46 MA at −200 ms and its peak is only 0.81 MA, so the 50%-of-peak crossing (0.40 MA) falls before t = 0; the first |Ip| ≥ 0.5 MA sample is at −189 ms. It is a fast ramp on a low-current shot, not a corrupted time base. Comparison shots enter only alarm incidence, the interval export and the comparison-negative sensitivity's training (`D#/outliers`).
+- **Finite bootstrap draws:** every interval records its finite draws (`n_finite`) and a build fails below 90% of 1,000. Over 1,865 intervals in E, C and A the smallest finite share is 99.7%; 3 intervals lose draws. Warning means and medians exist only in resamples that warn an onset and are exempt (96 intervals), as are 36 intervals whose point estimate is itself undefined.
+<!-- rwm:audit:end -->
+
+Deviations from the brief, with reasons:
+
+- **Fetch route.** `scripts/labeler/rwm_fetch.py` resolves features through
+  `labeler.features.resolve_fdp` instead of the `labeler.events.raw` `FETCH_SPECS`
+  the brief named. `FETCH_SPECS` covers only co2, ece, ip, pcphd03, filterscopes
+  and pinj, while the RWM inputs (n=1/n=2 RMS, βN, li, q95, qmin, W_MHD, ZIPFIT
+  rotation, locked mode) are namespace features that `resolve_fdp` already
+  resolves; it writes the same per-shot raw cache layout (`raw.cache_path`), so
+  nothing downstream differs.
+- **Minimal windows.** The [o−20, o) and [o, o+10 ms) windows replace the brief's
+  growth-window positives (see Data and labels); τw ≈ 5 ms is an assumption.
+- **Evaluation summary size.** The summary cap rose from 0.5 MB to 0.6 MB when
+  each bootstrap interval began to carry its finite-draw count.
+- **Audit script.** `scripts/labeler/rwm_data_audit.py` is new this round; it
+  reads only saved arrays and the roster.
 
 ## Reproduction and paper outputs
 
@@ -339,16 +401,19 @@ scripts/labeler/rwm_evaluate.py --rescore-saved --workers 5 --replicates 1000
 scripts/labeler/rwm_comparison_sensitivity.py --rescore-saved
 scripts/labeler/rwm_rotation_ablation.py --rescore-saved
 scripts/labeler/rwm_growth.py
-scripts/labeler/rwm_tables.py
+scripts/labeler/rwm_data_audit.py
 scripts/labeler/rwm_figure.py
+scripts/labeler/rwm_tables.py
 ```
 
 Replay retains prediction files/fold rules; P records check logs/artifact hashes.
 
-Use **table_rwm.tex and table_rwm_alarms.tex** for the paper. Within-shot means,
-split/campaign pairs and exact-onset/window snapshots stay in repository
-supplements. Small LaTeX sources live under `outputs/labeler/rwm/`; vector PDFs
-and 150-dpi PNGs live under `$LABELER_ROOT/round4/rwm/`.
+Use **table_rwm_compact.tex** for the paper: one column-width row group (forest,
+elapsed time, βN/li). Everything else is appendix or repository supplement:
+table_rwm.tex (full scores), table_rwm_alarms.tex (alarms), the split, campaign,
+within-shot and onset tables. Small LaTeX sources live under
+`outputs/labeler/rwm/`; vector PDFs and 150-dpi PNGs live under
+`$LABELER_ROOT/round4/rwm/`.
 
 The score figure selects six Hanson/two comparison examples by shot number and
 matching. Its 156785 panel is below the proxy; 156796/158022 have earlier

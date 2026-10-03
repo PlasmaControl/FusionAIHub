@@ -1,3 +1,4 @@
+% Appendix table: the paper's main-text row group is table_rwm_compact.tex.
 \begin{table*}[t]
 \centering
 \small
@@ -16,13 +17,8 @@ $\beta_N$ & \shortstack{$0.529$\\{\scriptsize $[0.410, 0.638]$}} & \shortstack{$
 \addlinespace[1.5pt]
 $\beta_N/l_i$ & \shortstack{$0.588$\\{\scriptsize $[0.471, 0.690]$}} & \shortstack{$0.723$\\{\scriptsize $[0.664, 0.784]$}} & \shortstack{$0.752$\\{\scriptsize $[0.688, 0.815]$}} & \shortstack{$0.159$\\{\scriptsize $[0.127, 0.232]$}} & \shortstack{$0.261$\\{\scriptsize $[0.212, 0.328]$}} & \shortstack{$0.735$\\{\scriptsize $[0.602, 0.847]$}} & \shortstack{$0.356$\\{\scriptsize $[0.269, 0.427]$}} \\
 \addlinespace[1.5pt]
-\midrule
-\multicolumn{8}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\
-\midrule
-\multicolumn{8}{@{}l}{NSTX RUS forest: AUROC $0.918$; TPR $0.924$; FPR $0.214$} \\
-\multicolumn{8}{@{}l}{Detected unstable shots: 10/11; stable shots with false alarms: 2/17} \\
 \bottomrule
 \end{tabular}
-\caption{Within-RWM-shot timing with assumed negatives. Phase-controlled AUROC 0.53--0.63 over 5 splits (seed 0 lowest); above the elapsed-time floor on every split, CI excluding zero on 1 of 5; never distinguishable from $\beta_N/l_i$ alone. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Legacy differs in machine, inputs and validation.}
+\caption{No demonstrated skill beyond elapsed time or $\beta_N/l_i$ under phase control; below $\beta_N/l_i$ within shot ($-0.071$ $[-0.133, -0.010]$). Equilibrium-scalar timing baseline on Hanson's onset list with assumed negatives; no input senses the RWM. Phase-controlled AUROC 0.53--0.63 over 5 splits in 100 ms bins only: the width was fixed after an earlier run with 200 ms bins, where seed 0's forest-minus-elapsed-time margin was $-0.037$. The forest-minus-elapsed-time interval excludes zero on 1 of 5 splits and the forest-minus-$\beta_N/l_i$ interval on 0 of 5. In 2014 the forest-minus-elapsed-time difference is negative on every split in both conditional strata (high-$\beta$ and above-proxy) and ranges from $-0.047$ to $+0.025$ in primary AUROC; the 2018 run-record holdout gives $-0.049$ $[-0.073, -0.013]$ in primary AUROC. Phase control compares pairs within campaign and 100 ms bins (at least 5 slices); elapsed time measures the residual-phase floor. Primary negatives end at the last target onset: 480 positive / 5,255 assumed-negative slices (prevalence 8.37\%). Broad adds later Hanson time and 1,349 negatives from $n=2$-only shots. Cutoffs use inner-fold primary slices. Brackets: exploratory shot-bootstrap intervals at fixed predictions, unadjusted for multiplicity. Published NSTX results are a different machine and are not comparable.}
 \label{tab:rwm-baseline}
 \end{table*}
