@@ -1,0 +1,1337 @@
+{
+ "git": "808a48163654940a0c07e4e0e5408519def7bde6",
+ "created": "2026-10-03T14:49:37+00:00",
+ "display_name": "DSM refit, limited inputs (60 of the original 124)",
+ "shots": [
+  185857,
+  185866,
+  185945,
+  185961,
+  186013,
+  186093,
+  186427,
+  186569,
+  186636,
+  186945,
+  187035,
+  187076,
+  187105,
+  187196,
+  187328,
+  189004,
+  189044,
+  189061,
+  189272,
+  189324,
+  189559,
+  189688,
+  189741,
+  189885,
+  190094,
+  190177,
+  190218,
+  190300,
+  190335,
+  190637,
+  190643,
+  190695,
+  190790,
+  190991,
+  191326,
+  191382,
+  191470,
+  191677,
+  192003,
+  192010,
+  192015,
+  192148,
+  192226,
+  192229,
+  192232,
+  192425,
+  192432,
+  192721,
+  192732,
+  192751,
+  192914,
+  193008,
+  193022,
+  193075,
+  193276,
+  194155,
+  194160,
+  194445,
+  194600,
+  194608,
+  195016,
+  195024,
+  195066,
+  195102,
+  195103,
+  195111,
+  195186,
+  195263,
+  195279,
+  195646,
+  195786,
+  195959,
+  196332,
+  196405,
+  196541,
+  198806,
+  198899,
+  198971,
+  199087,
+  199789,
+  199790,
+  199909,
+  199921,
+  200127,
+  200198,
+  200320,
+  200385,
+  200427,
+  200636,
+  200917,
+  200954,
+  200990,
+  201270,
+  201395,
+  201447,
+  201494,
+  201707,
+  201973,
+  201978,
+  203012,
+  203041,
+  203132,
+  203187,
+  203470,
+  203521,
+  203576,
+  203629,
+  203719,
+  203764,
+  203778,
+  203941,
+  203959,
+  204233,
+  204240,
+  204243,
+  204256,
+  204530,
+  204560,
+  204937
+ ],
+ "workers": 1,
+ "pace_seconds": 1.0,
+ "cohort_test_shots_used": 0,
+ "store": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features",
+ "source": "DIII-D PTDATA via canonical fdp resolver",
+ "rows": [
+  {
+   "shot": 185857,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185866,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185945,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 185961,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186013,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186093,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186427,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186569,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186636,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 186945,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187035,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187076,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187105,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187196,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 187328,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189004,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189044,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189061,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189272,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189324,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189559,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189688,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189741,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 189885,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190094,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190177,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190218,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190300,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190335,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190637,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190643,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190695,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190790,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 190991,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 191326,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 191382,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 191470,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 191677,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192003,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192010,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192015,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192148,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192226,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192229,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192232,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192425,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192432,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192721,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192732,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192751,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 192914,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 193008,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 193022,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 193075,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 193276,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 194155,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 194160,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 194445,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 194600,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 194608,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195016,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195024,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195066,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195102,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195103,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195111,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195186,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195263,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195279,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195646,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195786,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 195959,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 196332,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 196405,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 196541,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 198806,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 198899,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 198971,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 199087,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 199789,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 199790,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 199909,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 199921,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200127,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200198,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200320,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200385,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200427,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200636,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200917,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200954,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 200990,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 201270,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 201395,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 201447,
+   "already_served": [
+    "ip",
+    "bt"
+   ]
+  },
+  {
+   "shot": 201494,
+   "already_served": []
+  },
+  {
+   "shot": 201707,
+   "already_served": []
+  },
+  {
+   "shot": 201973,
+   "already_served": []
+  },
+  {
+   "shot": 201978,
+   "already_served": []
+  },
+  {
+   "shot": 203012,
+   "already_served": []
+  },
+  {
+   "shot": 203041,
+   "already_served": []
+  },
+  {
+   "shot": 203132,
+   "already_served": []
+  },
+  {
+   "shot": 203187,
+   "already_served": []
+  },
+  {
+   "shot": 203470,
+   "already_served": []
+  },
+  {
+   "shot": 203521,
+   "already_served": []
+  },
+  {
+   "shot": 203576,
+   "already_served": []
+  },
+  {
+   "shot": 203629,
+   "already_served": []
+  },
+  {
+   "shot": 203719,
+   "already_served": []
+  },
+  {
+   "shot": 203764,
+   "already_served": []
+  },
+  {
+   "shot": 203778,
+   "already_served": []
+  },
+  {
+   "shot": 203941,
+   "already_served": []
+  },
+  {
+   "shot": 203959,
+   "already_served": []
+  },
+  {
+   "shot": 204233,
+   "already_served": []
+  },
+  {
+   "shot": 204240,
+   "already_served": []
+  },
+  {
+   "shot": 204243,
+   "already_served": []
+  },
+  {
+   "shot": 204256,
+   "already_served": []
+  },
+  {
+   "shot": 204530,
+   "already_served": []
+  },
+  {
+   "shot": 204560,
+   "already_served": []
+  },
+  {
+   "shot": 204937,
+   "already_served": []
+  },
+  {
+   "shot": 201494,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201494.npz",
+   "sha256": "60d98e0acce2d817a785c3042d58ecfc9b02616387e640b8a5f1ef550767de55"
+  },
+  {
+   "shot": 201707,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201707.npz",
+   "sha256": "0c1ec953aed995cbeea642de4b244c5c034f65be806fbf4eb5d8cfc055b04b7f"
+  },
+  {
+   "shot": 201973,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201973.npz",
+   "sha256": "e4392341339a5a98f63f9c617c2be56dda752fa93789c567aa54fa122db2c485"
+  },
+  {
+   "shot": 201978,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201978.npz",
+   "sha256": "537642cd956358fd65613f2ef3dfc00944102f9d1aad57e32056b5605ff45d24"
+  },
+  {
+   "shot": 203012,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203012.npz",
+   "sha256": "e418aff29d01fba3b2c89bea03affa5014607c5570bade7b8675aaffad538364"
+  },
+  {
+   "shot": 203041,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203041.npz",
+   "sha256": "f308e5344b527f92e2584e7c9ff303640a2ebe136519f8f0ed73d1b9d3c9b7ad"
+  },
+  {
+   "shot": 203132,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203132.npz",
+   "sha256": "2f86502e154bf3194b66160cf28f2e4d59fc559322cab229ef78d079d9d461de"
+  },
+  {
+   "shot": 203187,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203187.npz",
+   "sha256": "6429a90a100d570666559f69c4aeaccc61786f66d37ccb216da1a56788256774"
+  },
+  {
+   "shot": 203470,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203470.npz",
+   "sha256": "3536d2551bcc4f9e451ccdaf761b4e4d026d8226938ddcf30b26bd23ca26e484"
+  },
+  {
+   "shot": 203521,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203521.npz",
+   "sha256": "ace6c34584951ddc067093d5cd658cbf2ec458b53acf0b3f2e6ecf590ea64fc8"
+  },
+  {
+   "shot": 203576,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203576.npz",
+   "sha256": "ab74ad0e7a1974726c4bb8b59ccd8844d4c58418c4394415fd11dbfa106eeef3"
+  },
+  {
+   "shot": 203629,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203629.npz",
+   "sha256": "24f7f6311a30d1a6fa1c4709d7bd667284ba6ef30a36fff57db61c1debf95469"
+  },
+  {
+   "shot": 203719,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203719.npz",
+   "sha256": "3b59a8261a29765bba4944c811e34b044eafce45528972af30ee9dcb841b2ce1"
+  },
+  {
+   "shot": 203764,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203764.npz",
+   "sha256": "5e968c78f1cd87e2d87221a0bdd9a423fd00a7ea787e8effef4c842e919b1f08"
+  },
+  {
+   "shot": 203778,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203778.npz",
+   "sha256": "4b360c1f97f9f656ab26eb6d7ede5fac05091584bc3bfddced133402b679fdb8"
+  },
+  {
+   "shot": 203941,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203941.npz",
+   "sha256": "917e01550a755e6b9837d042addc7ea33f1909d3ce817b33f1462a2c63acd36e"
+  },
+  {
+   "shot": 203959,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203959.npz",
+   "sha256": "772cc670168a2a2df5182a7eb6deed545ff6bdf03f27b8b8d842c8c9afb8ec8c"
+  },
+  {
+   "shot": 204233,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204233.npz",
+   "sha256": "3a5ba3f4fe04b6dfa01dfb618ed3dff83f2460d0236b4d5418785ba21ec6accd"
+  },
+  {
+   "shot": 204240,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204240.npz",
+   "sha256": "f94c4436acb5f1e5a7ac21477da468232bb540254ced1156fcd1685571b7552a"
+  },
+  {
+   "shot": 204243,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204243.npz",
+   "sha256": "9dc42469e414e56bf8b46ff316a10e1aba017a7efd028d7318d2da7881e1ddc6"
+  },
+  {
+   "shot": 204256,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204256.npz",
+   "sha256": "ea0cbd51816e82ac99a823cf086b41bf82b792c0b0ba64608dcefd543fb69465"
+  },
+  {
+   "shot": 204530,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204530.npz",
+   "sha256": "6b426a07cd77c85e3e2f84bdd9e836a6402ac215a50cd6c8fe74df11f429c7f7"
+  },
+  {
+   "shot": 204560,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204560.npz",
+   "sha256": "c5d08c2f818b1c0dd79d0837d18b070d4d0579423a7a6af58c7e28ae1209259b"
+  },
+  {
+   "shot": 204937,
+   "requested": [
+    "ip",
+    "bt"
+   ],
+   "fetched": {
+    "ip": {
+     "samples": 24013
+    },
+    "bt": {
+     "samples": 24013
+    }
+   },
+   "missing": {},
+   "file": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204937.npz",
+   "sha256": "4834f11a3f8e1196449ef884f0a8eb79fcb44eacc65d08ab66f550fade2970cf"
+  }
+ ],
+ "stopped_on_auth_error": false,
+ "requested_shots": 24,
+ "code_provenance": {
+  "recorded_at_fetch_git": "808a48163654940a0c07e4e0e5408519def7bde6",
+  "mapped_committed_revision": "808a48163654940a0c07e4e0e5408519def7bde6",
+  "script_sha256": "3870bbf98a8a5bccfca9684c3809926d159304d900cf196b21c6cfefd9728d3e",
+  "fetch_functions_sha256": "7f4b371c5288312c0d32bf282118292cd869cca5361cc0d5ee1e9cc5df8e7eec",
+  "hashes_captured_after_fetch": true,
+  "note": "Fetch script and the three fetched-feature resolver functions were unchanged from each successful fetch launch through mapped commit; this is an honest retrospective producing-code mapping, not an at-launch hash. The first part began from an uncommitted working tree at its recorded base git. The resumed second part ran the committed source."
+ },
+ "completion_note": "Completed, exit 0; no authentication or signal-fetch errors."
+}

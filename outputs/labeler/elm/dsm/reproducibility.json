@@ -1,0 +1,81 @@
+{
+ "display_name": "DSM refit, limited inputs (60 of the original 124)",
+ "fit_producing_git": "808a48163654940a0c07e4e0e5408519def7bde6",
+ "rescore_git": "808a48163654940a0c07e4e0e5408519def7bde6",
+ "fit_used_rescore_flag": false,
+ "exact_results_reproduced": true,
+ "checks": {
+  "own_target": {
+   "identical": true,
+   "fit_result_sha256": "1e502864c7d19319090daee745fe77a4f5ec0ca4ef5d7012b49c9bf752d2b868",
+   "rescore_result_sha256": "1e502864c7d19319090daee745fe77a4f5ec0ca4ef5d7012b49c9bf752d2b868"
+  },
+  "published_thresholds": {
+   "identical": true,
+   "fit_result_sha256": "1c8355cea931109a27c85e5c362011fd5a213428e0b1563b24dd936d3011bd78",
+   "rescore_result_sha256": "1c8355cea931109a27c85e5c362011fd5a213428e0b1563b24dd936d3011bd78"
+  },
+  "detector_config": {
+   "identical": true,
+   "fit_result_sha256": "634083360f2afbeb2f8e382d432c30b303ea4da42864b84cc9f93c2221bd532e",
+   "rescore_result_sha256": "634083360f2afbeb2f8e382d432c30b303ea4da42864b84cc9f93c2221bd532e"
+  },
+  "detectors": {
+   "identical": true,
+   "fit_result_sha256": "8b1a4bfe45233cabd7df288e017be02e513b6ac66df563f4dbd0d65942919b64",
+   "rescore_result_sha256": "8b1a4bfe45233cabd7df288e017be02e513b6ac66df563f4dbd0d65942919b64"
+  },
+  "rows": {
+   "identical": true,
+   "fit_result_sha256": "7ded39ef2212aa80ad14b6ae533695259b38a89e57a5476e53ce1367a642ac3d",
+   "rescore_result_sha256": "7ded39ef2212aa80ad14b6ae533695259b38a89e57a5476e53ce1367a642ac3d"
+  },
+  "row_diagnostics": {
+   "identical": true,
+   "fit_result_sha256": "5af7bb6d147f44eb0f73ac55aa4b432f2c7576dcf8c1088ad705ee8e559dc099",
+   "rescore_result_sha256": "5af7bb6d147f44eb0f73ac55aa4b432f2c7576dcf8c1088ad705ee8e559dc099"
+  },
+  "sets": {
+   "identical": true,
+   "fit_result_sha256": "44cbfe2d30e95e4a12554390d48cd559c21639087b2e62e7fac6530f8501967f",
+   "rescore_result_sha256": "44cbfe2d30e95e4a12554390d48cd559c21639087b2e62e7fac6530f8501967f"
+  }
+ },
+ "fit_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained.json",
+ "rescore_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
+ "original_proof": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility_before_phase_fix.json",
+ "correction": {
+  "git": "6cb9dbb1a22e4d165f13bba5196e1461ae3f4f74",
+  "script_sha256": "61d83e0f513cdf282afd7e80454655d494620298fee7f1bd572f5772532f95a8",
+  "dsm_sha256": "19e2a9507c1fcb89cfafafdf8b295bf43fea9128a8d84323c44f0a8f7f0f1565",
+  "created": "2026-10-03T15:29:08+00:00",
+  "scope": "phase-ID decoding, original-refit overlap, physical-shot own-target bootstrap and early-stopping selection interpretation; no new model fit",
+  "original_no_rescore_producing_git": "808a48163654940a0c07e4e0e5408519def7bde6",
+  "reviewed_bin_results_unchanged": true,
+  "upstream_identifier_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4321-4326 (<shot>_<phase> strings), and the original split pickle",
+  "early_stopping_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/training_no_bes.json:split_note",
+  "original_snapshots": {
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_before_phase_fix.json",
+    "sha256": "743940ff22d5b86c43c6429de4e1ddb8d5fab3673edaa269f0af1d530fea850b"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation_trained_before_phase_fix.json",
+    "sha256": "c713f2db143518c7a0c6f098510aaca229d3de0a90785843ea7581fa64c3acd2"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation_before_phase_fix.json",
+    "sha256": "b966901ef7e8f23d5d9bbcdc6b7281a02eb0af9109ab95c8925628ccff4cb440"
+   },
+   "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility.json": {
+    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/reproducibility_before_phase_fix.json",
+    "sha256": "b05b45f800d952e07a9f896928fe09e207832e0d218f3ff8877e0a8f67d3dc46"
+   },
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits.json": {
+    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fits_before_phase_fix.json",
+    "sha256": "50ffd359acdcc262af4330eb03c4e4859c8375f28f415b2a2b5de38711728d81"
+   }
+  }
+ },
+ "verification_scope": "original fit/rescore reviewed-bin results retained; identical own-target correction applied to both records; not a new fit or full rescore"
+}

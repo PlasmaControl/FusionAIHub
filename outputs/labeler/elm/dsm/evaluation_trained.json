@@ -1,10 +1,10 @@
 {
  "git": "808a48163654940a0c07e4e0e5408519def7bde6",
- "created": "2026-10-03T15:03:32+00:00",
+ "created": "2026-10-03T14:57:23+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
  "cohort_test_shots_used": 0,
- "rescored_from_saved_scores": true,
+ "rescored_from_saved_scores": false,
  "display_name": "DSM refit, limited inputs (60 of the original 124)",
  "method_display_names": {
   "elm-ours": "elm-ours",

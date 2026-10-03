@@ -1,0 +1,435 @@
+{
+ "git": "808a48163654940a0c07e4e0e5408519def7bde6",
+ "display_name": "DSM refit, limited inputs (60 of the original 124)",
+ "parts": [
+  {
+   "path": "outputs/labeler/elm/dsm/fetch_part1.json",
+   "sha256": "cd9e9aac80240a2bd23bc2fc48188c75db5c1455660cb97684738b6a29a264d0"
+  },
+  {
+   "path": "outputs/labeler/elm/dsm/fetch_part2.json",
+   "sha256": "9d043063875a5f6e99209f2d6e3b03910b09d6ca489f43ad39bd93536ec0107d"
+  }
+ ],
+ "all_reviewed_shots_have_ip_and_bt": true,
+ "missing_ip_bt_by_shot": {},
+ "fetched_feature_files": {
+  "189004": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189004.npz",
+   "sha256": "147a0a00534bb9a3fcde273c6a22eb500fb9ecdd7fd3e5ba8071ede6e889bd49"
+  },
+  "189044": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189044.npz",
+   "sha256": "4afe672376f015114692222cbae14dafa8449c0b36440e30bcc6ad54285fbb92"
+  },
+  "189061": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189061.npz",
+   "sha256": "d421386da218187d2e7201971cb7c2b50e08b9696a8faae4d405c22912a7a4a4"
+  },
+  "189272": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189272.npz",
+   "sha256": "c6b8c2fe5c7813ec0e520381e60c4619498f62696949650dd8cc517ea3ad23bd"
+  },
+  "189324": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189324.npz",
+   "sha256": "308d71a6714cc8f734284586eea8615c17370e058e674930b318c42b88665d49"
+  },
+  "189559": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189559.npz",
+   "sha256": "607f2a92cdbf4430d3c1a6b4c2c08d55ac3b76e54b3604c74894d099fa23b066"
+  },
+  "189688": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189688.npz",
+   "sha256": "f774a2a68f9c67f7f3e3104b1a9206c345e5103904b8d86e77c1c4d09a9e0156"
+  },
+  "189741": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189741.npz",
+   "sha256": "da2b83ca6fc4d61e8d2137403bfec10417746fe8d73b8f7cfe6bbc3250f48661"
+  },
+  "189885": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/189885.npz",
+   "sha256": "c5781ae99ff4589d01dbcd8538d3e5a883612d0b08254074c48e8ed4b4411032"
+  },
+  "190094": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190094.npz",
+   "sha256": "5168dc7e7dfde5d45ab949e897d80c7e128f56a991d4aa9b4d2c1577a0980fa6"
+  },
+  "190177": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190177.npz",
+   "sha256": "5bfa308ae9629c0582239753adcd14414d516bb55e15597f0e3f6b720c9e9a25"
+  },
+  "190218": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190218.npz",
+   "sha256": "0b5d46b1891110b60a1f741ad916b8bde774392465a12f7c02d5f4380d140243"
+  },
+  "190300": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190300.npz",
+   "sha256": "01a5e90bb8118fb3f779f4218e8257317c2abb6ad8da428d9449e46434268caf"
+  },
+  "190335": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190335.npz",
+   "sha256": "798460575685b272ff57589af1ec87077f77ad8ddbc2a582adb3584569cfdd98"
+  },
+  "190637": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190637.npz",
+   "sha256": "a9cbd075235bb89b91791469d39b0bdb7e1f84d8f4ed92e08351bcdb56caa446"
+  },
+  "190643": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190643.npz",
+   "sha256": "cfec415d922c9f8fc1fec61747aea42f3b707d1ea6dea79208491f1c00c54d2e"
+  },
+  "190695": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190695.npz",
+   "sha256": "f412fd4b9661d52e93a74ec093c48a14f3cad1d9e3ff8985e3a502260588cdd1"
+  },
+  "190790": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190790.npz",
+   "sha256": "29337f5d8c72268295172473a17ebda605142c1a8ad4ef778b4910518a862827"
+  },
+  "190991": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/190991.npz",
+   "sha256": "cb75e867a09fd2bfd5a831c1e6c96d20f9e51169907113329a06a9e7165df452"
+  },
+  "191326": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191326.npz",
+   "sha256": "a3807a86f32a634ad8de2a389768da9ae57a88d37705e936d489195652189c4e"
+  },
+  "191382": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191382.npz",
+   "sha256": "7a8feaf3083c4249911a302e730dfa8cb9a998a0e1c71a6d01538a6ae68e62ad"
+  },
+  "191470": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191470.npz",
+   "sha256": "bc82ca95de9265856f7c40166926ba8fc854d4e1645fb781e21753d3890c11b1"
+  },
+  "191677": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/191677.npz",
+   "sha256": "3d7a6e2fb325931b2a0386a48bd9e32adb3e4e033fd66516761e06e5566a42fa"
+  },
+  "192003": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192003.npz",
+   "sha256": "d0d1a98fa209fbea2da49c1d678f75551825b515e34be5d6e79c4aa28f7b8b76"
+  },
+  "192010": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192010.npz",
+   "sha256": "b12de27a268ac5d0db2aa47ba77e9610912b8e50a12490f228dafa79976abbe0"
+  },
+  "192015": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192015.npz",
+   "sha256": "eac2f878c9b7d9d61cdf949d8640db721cb4e6b95684c3d69042acc6d69b7583"
+  },
+  "192148": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192148.npz",
+   "sha256": "5ace67a6dc088793063466493b5261e943bd66da5cbfb6e4719d5dd008a0c57c"
+  },
+  "192226": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192226.npz",
+   "sha256": "bd2fb8ce9aac44fd41f0241e487b9dc9e4e8b1546eba414fefa5b6f30cfa00af"
+  },
+  "192229": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192229.npz",
+   "sha256": "5445d1001f704551092da2850b04b5fcf9f12b259eb19d15da890a26e3902d36"
+  },
+  "192232": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192232.npz",
+   "sha256": "6958ab641951acc35baf1fca7ec0842dac4c144999f59b0f6ec1f17d5a82bc39"
+  },
+  "192425": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192425.npz",
+   "sha256": "de70bbac26b7bd8ea09b69ee7b3cabfb79e4c977cce814c1718623e38caf048a"
+  },
+  "192432": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192432.npz",
+   "sha256": "4c6c609e1e2a0b8bf95c8a90046c2b851932afcbba9fba4f841ed1fec04eef67"
+  },
+  "192721": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192721.npz",
+   "sha256": "a7178ea5f3e098231d83669d98cd67cc7213e243f17416a557fca819a7662124"
+  },
+  "192732": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192732.npz",
+   "sha256": "55f2f99704f209dbf433289e624208406275aca9f318b8d459b14f5d4b2b7449"
+  },
+  "192751": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192751.npz",
+   "sha256": "f16ce8c19a467b1a93e0b54a121c85336ccf13d4007872f0b3314a0172335faf"
+  },
+  "192914": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/192914.npz",
+   "sha256": "2c3731c76adf02b11ba0c8d288f0b7b82997ac9a44bfa9828e1b3bb905dfcf89"
+  },
+  "193008": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193008.npz",
+   "sha256": "0b7ee8befbfb80cb891dcfb22374df2b527d03b823691fd6ceff21e740fe4f21"
+  },
+  "193022": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193022.npz",
+   "sha256": "add51d36316c0250e50c84dcc3c16196c7c1544cdeba0401e55468a8e0a9f8c7"
+  },
+  "193075": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193075.npz",
+   "sha256": "aebded7d5dade37d92d7ae0903b0775a4f4a747e2d3adc5fd9aad15851c2dc32"
+  },
+  "193276": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/193276.npz",
+   "sha256": "d2bf2ced015d7d01fecc1867872fc936058d43ed74c922760f81f224d3f7d963"
+  },
+  "194155": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194155.npz",
+   "sha256": "c5760a7c94d4807bad9417e4e71ece670337f6661ca03ad707ee17143d41daf6"
+  },
+  "194160": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194160.npz",
+   "sha256": "07615524ed798674992726dd8ab32a52e1f7f28eccd2194311491be89a2c00c0"
+  },
+  "194445": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194445.npz",
+   "sha256": "cda70a58a2589c05cdf0a7a1b7db91e83035debbecf1e4839387d5d98f86d830"
+  },
+  "194600": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194600.npz",
+   "sha256": "483dcfa1ccdb401caafa4228a32f9b53c6aec08121591021b8468c27c1c21eab"
+  },
+  "194608": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/194608.npz",
+   "sha256": "31559142d79fd96a83f5b8d76da3b0dc8709f7f9b83d0c350a774e2b09c031c9"
+  },
+  "195016": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195016.npz",
+   "sha256": "b805643be463456563d417ca75f126b099da8070ef0beb1f352b09f55bbadc49"
+  },
+  "195024": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195024.npz",
+   "sha256": "504988f4fc439b133f1564e15d4d5f790aa4f30629e70c89d5f64dbaf4b75548"
+  },
+  "195066": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195066.npz",
+   "sha256": "2df83465f4828cafb8efc14f66a6b2df070b889a0ed4b05e63a0fa9a9fa120fd"
+  },
+  "195102": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195102.npz",
+   "sha256": "f83d5bd8b9bfb4259caf44cb210d53148f8a96449008712412f4a683a205fd0f"
+  },
+  "195103": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195103.npz",
+   "sha256": "3aa1b4fc4bfafbba35f77917f96fc0101f7cdfdac6105abc9b3b92c8df512e77"
+  },
+  "195111": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195111.npz",
+   "sha256": "f0ce279c51a643270c3dd216a792dafb42cf6e9ebd372ddea5fd870d3ccfdcab"
+  },
+  "195186": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195186.npz",
+   "sha256": "366510885e034fcc859837f9f32779bcf858fcef9ac0d4e8a9ada01975ef18b3"
+  },
+  "195263": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195263.npz",
+   "sha256": "dcb3ddcc48ce52e421fe89dca1cce0966d1286d7d829a437da1f162dd8d527c2"
+  },
+  "195279": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195279.npz",
+   "sha256": "3b432bc49461a49bb256d9099f0afcbfcf604071ef3c9c0aaae1702ace494a20"
+  },
+  "195646": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195646.npz",
+   "sha256": "11b8400a83f739d6811b60f9b4d7f3e73f1520c7537b9f757cc67964b503e2c9"
+  },
+  "195786": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195786.npz",
+   "sha256": "695a93f357d7574b61c9dc0737abd535d7c230f90c90565d7a0e63315e3a119e"
+  },
+  "195959": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/195959.npz",
+   "sha256": "659a8612c26306741b72375cccb5b02bd40ca69a68b5aadaf6e681fbe0f9cd0b"
+  },
+  "196332": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196332.npz",
+   "sha256": "123371c240b60db3f50d9b65c62214086cc6d9985c244ff1279d8e70f39e1cf4"
+  },
+  "196405": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196405.npz",
+   "sha256": "78654a6ccfc9f822df94643896657297658154f7eb2a49c99e62947ec99017a2"
+  },
+  "196541": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/196541.npz",
+   "sha256": "395596e7feb01dec4bd5d46f9dbc110d5ec395b7c3350ba8ae577aee4018cb91"
+  },
+  "198806": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198806.npz",
+   "sha256": "c90e87ad9590f2c0b8cd2e0cba57efc96c65a2f747a187e39bba090ec617b91f"
+  },
+  "198899": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198899.npz",
+   "sha256": "68cdfd72854bc8e6f819c96ae4202d7f212a694b41d57fbceb04e24bd9dbea00"
+  },
+  "198971": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/198971.npz",
+   "sha256": "984e68db62a7b416498be399fb9a598f4e58ba005ef0d54c0b7c1494e23c9e46"
+  },
+  "199087": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199087.npz",
+   "sha256": "c45c6ba1a26c2bd13b9bacab65210e395cf19545d75001f4111f5367db38338b"
+  },
+  "199789": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199789.npz",
+   "sha256": "b4395f9ba490e2dcabe67e93259ce3234ae0c39a55384bf10836ed69de91f4e5"
+  },
+  "199790": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199790.npz",
+   "sha256": "9ca5f158903a5497603844d53ca9edd232163f22629e59e451b541840d327727"
+  },
+  "199909": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199909.npz",
+   "sha256": "e682fdd98550a88037c8fa703939f3e68ad26e865b12c5bafc839a88c100a1d7"
+  },
+  "199921": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/199921.npz",
+   "sha256": "56b559ff6c6589f80e6cabfba53f566d810b7ede9f4f1c36ae28bd01d1ce8609"
+  },
+  "200127": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200127.npz",
+   "sha256": "58414d9f19b0a2d2274cf806984ee0b3194312089c16439e73a082fba9df9876"
+  },
+  "200198": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200198.npz",
+   "sha256": "a4552a8e5bed9f2d34150514feb19e1cf164fda850750365e74dccdc9a5961c3"
+  },
+  "200320": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200320.npz",
+   "sha256": "1b81eb0230ce145fb46f139b830c7b700548a923f45d1d3318c8c64e1e029788"
+  },
+  "200385": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200385.npz",
+   "sha256": "a179db47be69e296737c858668f626a170b70af918d5c9b18d72894350c512b5"
+  },
+  "200427": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200427.npz",
+   "sha256": "db0f1676465dacc184ee843508771651e1736162ee90e121868c77427d8ddc85"
+  },
+  "200636": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200636.npz",
+   "sha256": "68ffd77738feb3144419b4295dc3fa72c0f81e1f4a8e4fcfc078af80f668b19b"
+  },
+  "200917": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200917.npz",
+   "sha256": "6428f14eb7b4cfb0aa308257c8869986c8b76246a29101e3fba6c1244dd6c58f"
+  },
+  "200954": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200954.npz",
+   "sha256": "32ca6905c9375c715b8c5728cc9b58860dce124a62f686430e7de31aad158cf1"
+  },
+  "200990": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/200990.npz",
+   "sha256": "fb2712e642b6ed447c8597583cb50fdc0ef1865f3fe4397c0651f027d31708e9"
+  },
+  "201270": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201270.npz",
+   "sha256": "1bd96e50df4c6b44e6e2daaab12c19404c7772d55cb823143c7817a8d33bda12"
+  },
+  "201395": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201395.npz",
+   "sha256": "a1ec353a4147639247de0153c5d9566c46b7532760d14ea4729edae83d40c275"
+  },
+  "201447": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201447.npz",
+   "sha256": "ebb1b261cdbfe8712a429f397e4162331d4b3dfeebb3b145d4a656abc1e663ad"
+  },
+  "201494": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201494.npz",
+   "sha256": "60d98e0acce2d817a785c3042d58ecfc9b02616387e640b8a5f1ef550767de55"
+  },
+  "201707": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201707.npz",
+   "sha256": "0c1ec953aed995cbeea642de4b244c5c034f65be806fbf4eb5d8cfc055b04b7f"
+  },
+  "201973": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201973.npz",
+   "sha256": "e4392341339a5a98f63f9c617c2be56dda752fa93789c567aa54fa122db2c485"
+  },
+  "201978": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/201978.npz",
+   "sha256": "537642cd956358fd65613f2ef3dfc00944102f9d1aad57e32056b5605ff45d24"
+  },
+  "203012": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203012.npz",
+   "sha256": "e418aff29d01fba3b2c89bea03affa5014607c5570bade7b8675aaffad538364"
+  },
+  "203041": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203041.npz",
+   "sha256": "f308e5344b527f92e2584e7c9ff303640a2ebe136519f8f0ed73d1b9d3c9b7ad"
+  },
+  "203132": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203132.npz",
+   "sha256": "2f86502e154bf3194b66160cf28f2e4d59fc559322cab229ef78d079d9d461de"
+  },
+  "203187": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203187.npz",
+   "sha256": "6429a90a100d570666559f69c4aeaccc61786f66d37ccb216da1a56788256774"
+  },
+  "203470": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203470.npz",
+   "sha256": "3536d2551bcc4f9e451ccdaf761b4e4d026d8226938ddcf30b26bd23ca26e484"
+  },
+  "203521": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203521.npz",
+   "sha256": "ace6c34584951ddc067093d5cd658cbf2ec458b53acf0b3f2e6ecf590ea64fc8"
+  },
+  "203576": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203576.npz",
+   "sha256": "ab74ad0e7a1974726c4bb8b59ccd8844d4c58418c4394415fd11dbfa106eeef3"
+  },
+  "203629": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203629.npz",
+   "sha256": "24f7f6311a30d1a6fa1c4709d7bd667284ba6ef30a36fff57db61c1debf95469"
+  },
+  "203719": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203719.npz",
+   "sha256": "3b59a8261a29765bba4944c811e34b044eafce45528972af30ee9dcb841b2ce1"
+  },
+  "203764": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203764.npz",
+   "sha256": "5e968c78f1cd87e2d87221a0bdd9a423fd00a7ea787e8effef4c842e919b1f08"
+  },
+  "203778": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203778.npz",
+   "sha256": "4b360c1f97f9f656ab26eb6d7ede5fac05091584bc3bfddced133402b679fdb8"
+  },
+  "203941": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203941.npz",
+   "sha256": "917e01550a755e6b9837d042addc7ea33f1909d3ce817b33f1462a2c63acd36e"
+  },
+  "203959": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/203959.npz",
+   "sha256": "772cc670168a2a2df5182a7eb6deed545ff6bdf03f27b8b8d842c8c9afb8ec8c"
+  },
+  "204233": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204233.npz",
+   "sha256": "3a5ba3f4fe04b6dfa01dfb618ed3dff83f2460d0236b4d5418785ba21ec6accd"
+  },
+  "204240": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204240.npz",
+   "sha256": "f94c4436acb5f1e5a7ac21477da468232bb540254ced1156fcd1685571b7552a"
+  },
+  "204243": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204243.npz",
+   "sha256": "9dc42469e414e56bf8b46ff316a10e1aba017a7efd028d7318d2da7881e1ddc6"
+  },
+  "204256": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204256.npz",
+   "sha256": "ea0cbd51816e82ac99a823cf086b41bf82b792c0b0ba64608dcefd543fb69465"
+  },
+  "204530": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204530.npz",
+   "sha256": "6b426a07cd77c85e3e2f84bdd9e836a6402ac215a50cd6c8fe74df11f429c7f7"
+  },
+  "204560": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204560.npz",
+   "sha256": "c5d08c2f818b1c0dd79d0837d18b070d4d0579423a7a6af58c7e28ae1209259b"
+  },
+  "204937": {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/fetched_features/204937.npz",
+   "sha256": "4834f11a3f8e1196449ef884f0a8eb79fcb44eacc65d08ab66f550fade2970cf"
+  }
+ },
+ "provenance_note": "This manifest is a post-fetch completion/provenance record; original per-attempt results and recorded-at-fetch git values are retained in the linked parts."
+}

@@ -1,8 +1,9 @@
 {
- "git": "fd0ebd2",
- "created": "2026-10-03T13:58:43+00:00",
+ "git": "6ad7f75f",
+ "created": "2026-10-03T15:34:22+00:00",
  "run": "cv2",
  "cohort_test_shots_used": 0,
+ "cohort_test_shots_used_scope": "reviewed-label detector training/tuning; the fixed DSM refit and initialized detector inherit prior pretraining overlap, recorded separately in legacy_trained_method",
  "overlap": {
   "reviewed_shots": 119,
   "legacy_table": {
@@ -57,7 +58,3401 @@
    "note": "the ELM-O benchmark truth; none of its shots is in the review"
   }
  },
- "conversion": "The reference swap for ELMs: the same bins scored against two references.\n\nThe review's dense ELM spans are the reference this package scores against. The lab's\nolder ELM annotation is Hiro's table of 50 ms bins (`edge_localized_mode/format`, one\nrow per run of bins, `category` 1 where at least one ELM *onset* falls in the bin and 0\nwhere none does). It marks onsets, not ELMy time, and covers 8 of the 119 reviewed\nshots. This module converts it to the scored bins, in the manner of the AE audit, and\nmeasures the two references against each other.\n\n**Conversion.** A scored bin is the cell `[50k, 50k + 50)` of the shot's clock; the\ntable's bins are the same cells, so a bin takes the category of the table row that\ncontains its midpoint. A bin the table does not cover has no legacy value and is\ndropped from the comparison. The legacy reference marks a bin present exactly when an\nonset falls in it; the review marks it present when it lies wholly inside an\nindividual-ELM span or a crowd (an ELMing period). The two agree on a bin holding one\nisolated ELM's onset and disagree on the rest of a crowd or an ELM longer than one bin\n(`onset_truth` converts any list of onsets the same way).\n\n**Finding 1** (`agreement_counts`): the legacy reference read as a detector of the\nreview's present bins; `|M|` is the number of review-present bins it marks absent,\n`|P|` the number of review-absent bins it marks present.\n\n**Finding 2** (`retruth`, `rankings`): every method's calls and scores, unchanged,\nscored against the legacy truth over the bins both references cover.\n",
+ "conversion": "The reference swap for ELMs: the same bins scored against two references.\n\nThe review's dense ELM spans are the reference this package scores against. The lab's\nolder ELM annotation is Hiro's table of 50 ms bins (`edge_localized_mode/format`, one\nrow per run of bins, `category` 1 where at least one ELM *onset* falls in the bin and 0\nwhere none does). It marks onsets, not ELMy time, and covers 8 of the 119 reviewed\nshots. The coverage audit uses per-bin majority occupancy over all legacy-covered\nbins in the review window. Detector comparisons use the stricter benchmark bins;\nthat restriction is a deviation from the AE audit.\n\n**Conversion.** A scored bin is the cell `[50k, 50k + 50)` of the shot's clock; the\ntable's bins are the same cells, so a bin takes the category of the table row that\ncontains its midpoint. A bin the table does not cover has no legacy value and is\ndropped from the comparison. The legacy reference marks a bin present exactly when an\nonset falls in it; the review marks interval occupancy. Interior-bin scoring\nusually excludes span starts, so agreement does not measure missed physical ELMs.\n`start_agreement` separately asks whether a legacy onset is near each span start;\nthese starts are not independently verified millisecond ELM onset labels.\n\n**Finding 1** (`agreement_counts`): the legacy reference read as a detector of the\nreview's present bins; `|M|` is the number of review-present bins it marks absent,\n`|P|` the number of review-absent bins it marks present.\n\n**Finding 2** (`retruth`, `rankings`): every method's calls and scores, unchanged,\nscored against the legacy truth over the bins both references cover.\n",
+ "legacy_trained_method": {
+  "id": "elm-dsm",
+  "display_name": "DSM refit, limited inputs (60 of the original 124)",
+  "training_label_source": "Hiro's onsets via elm_survival_labels.pkl and the wpqh_elm_hiro survival-row split; same source as legacy onset table",
+  "ae_analogue": "legacy-trained RCN/LSTM",
+  "reviewed_source_overlap": {
+   "train": [
+    190637,
+    190643,
+    192721,
+    192751,
+    196541
+   ],
+   "test": [
+    190643
+   ]
+  },
+  "cohort_source_overlap": {
+   "train": {
+    "train": [
+     190627,
+     190643,
+     192721,
+     192751,
+     192766
+    ],
+    "val": [
+     190637,
+     196541
+    ],
+    "test": [
+     190646
+    ]
+   },
+   "test": {
+    "train": [
+     190643,
+     192741
+    ],
+    "val": [],
+    "test": [
+     190532
+    ]
+   }
+  },
+  "own_target_selection_role": "early-stopping validation (upstream key: test)"
+ },
+ "interval_audit": {
+  "definition": "All legacy-covered 50 ms bins intersecting the review window; >=25 ms majority rule, no DSM/diagnostic restriction. M/P compare onset-bin presence with reviewed interval occupancy, not physical ELM omissions.",
+  "n_shots": 8,
+  "shots": [
+   189885,
+   190637,
+   190643,
+   192721,
+   192732,
+   192751,
+   196541,
+   200385
+  ],
+  "legacy_covered_bins": 837,
+  "legacy_present_bins": 196,
+  "known_review_majority": {
+   "counts": {
+    "tp": 135,
+    "fp": 14,
+    "fn": 60,
+    "tn": 573,
+    "crowd_bins": 117,
+    "crowd_legacy_present": 97,
+    "non_crowd_bins": 78,
+    "non_crowd_legacy_present": 38
+   },
+   "M": 60,
+   "P": 14,
+   "bins": 782,
+   "point": {
+    "precision": 0.9060402684563759,
+    "recall": 0.6923076923076923,
+    "f1": 0.7848837209302325,
+    "missed_share_of_present": 0.3076923076923077,
+    "crowd_bin_recall": 0.8290598290598291,
+    "non_crowd_bin_recall": 0.48717948717948717,
+    "review_prevalence": 0.24936061381074168,
+    "legacy_prevalence": 0.19053708439897699
+   },
+   "ci95": {
+    "precision": [
+     0.7108433734939759,
+     0.986182899489351
+    ],
+    "recall": [
+     0.44280266343825664,
+     0.812734441602728
+    ],
+    "f1": [
+     0.5680712324588164,
+     0.872748171368861
+    ],
+    "missed_share_of_present": [
+     0.18726555839727194,
+     0.5571973365617433
+    ],
+    "crowd_bin_recall": [
+     0.7692307692307693,
+     0.9459459459459459
+    ],
+    "non_crowd_bin_recall": [
+     0.13043478260869565,
+     0.7065065681444991
+    ],
+    "review_prevalence": [
+     0.12707822075825778,
+     0.38393600191226834
+    ],
+    "legacy_prevalence": [
+     0.08074626728082279,
+     0.2993452793650035
+    ]
+   }
+  },
+  "excluded_review_states": {
+   "uncertain": {
+    "bins": 53,
+    "legacy_present_bins": 47,
+    "bin_list": [
+     {
+      "shot": 189885,
+      "t_start_ms": 2200.0,
+      "t_end_ms": 2250.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2500.0,
+      "t_end_ms": 2550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2550.0,
+      "t_end_ms": 2600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2600.0,
+      "t_end_ms": 2650.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2650.0,
+      "t_end_ms": 2700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2700.0,
+      "t_end_ms": 2750.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2750.0,
+      "t_end_ms": 2800.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2800.0,
+      "t_end_ms": 2850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2850.0,
+      "t_end_ms": 2900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2900.0,
+      "t_end_ms": 2950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2950.0,
+      "t_end_ms": 3000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3000.0,
+      "t_end_ms": 3050.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3050.0,
+      "t_end_ms": 3100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3100.0,
+      "t_end_ms": 3150.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3150.0,
+      "t_end_ms": 3200.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3200.0,
+      "t_end_ms": 3250.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3250.0,
+      "t_end_ms": 3300.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3300.0,
+      "t_end_ms": 3350.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3350.0,
+      "t_end_ms": 3400.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3400.0,
+      "t_end_ms": 3450.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3450.0,
+      "t_end_ms": 3500.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3500.0,
+      "t_end_ms": 3550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3550.0,
+      "t_end_ms": 3600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3600.0,
+      "t_end_ms": 3650.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3650.0,
+      "t_end_ms": 3700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3700.0,
+      "t_end_ms": 3750.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3750.0,
+      "t_end_ms": 3800.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3800.0,
+      "t_end_ms": 3850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3850.0,
+      "t_end_ms": 3900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3900.0,
+      "t_end_ms": 3950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3950.0,
+      "t_end_ms": 4000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4000.0,
+      "t_end_ms": 4050.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4050.0,
+      "t_end_ms": 4100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4100.0,
+      "t_end_ms": 4150.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4150.0,
+      "t_end_ms": 4200.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4200.0,
+      "t_end_ms": 4250.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4250.0,
+      "t_end_ms": 4300.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4300.0,
+      "t_end_ms": 4350.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4350.0,
+      "t_end_ms": 4400.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4400.0,
+      "t_end_ms": 4450.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4450.0,
+      "t_end_ms": 4500.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4500.0,
+      "t_end_ms": 4550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4550.0,
+      "t_end_ms": 4600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4600.0,
+      "t_end_ms": 4650.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4650.0,
+      "t_end_ms": 4700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4700.0,
+      "t_end_ms": 4750.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4750.0,
+      "t_end_ms": 4800.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4800.0,
+      "t_end_ms": 4850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4850.0,
+      "t_end_ms": 4900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4900.0,
+      "t_end_ms": 4950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4950.0,
+      "t_end_ms": 5000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 5000.0,
+      "t_end_ms": 5050.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 5050.0,
+      "t_end_ms": 5100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     }
+    ]
+   },
+   "not_observable": {
+    "bins": 0,
+    "legacy_present_bins": 0,
+    "bin_list": []
+   },
+   "mixed_or_unlabelled": {
+    "bins": 2,
+    "legacy_present_bins": 0,
+    "bin_list": [
+     {
+      "shot": 189885,
+      "t_start_ms": 2950.0,
+      "t_end_ms": 3000.0,
+      "review_status": "mixed_or_unlabelled",
+      "legacy_present": false
+     },
+     {
+      "shot": 200385,
+      "t_start_ms": 5050.0,
+      "t_end_ms": 5100.0,
+      "review_status": "mixed_or_unlabelled",
+      "legacy_present": false
+     }
+    ]
+   }
+  },
+  "per_shot": {
+   "189885": {
+    "review_window_ms": [
+     4.0,
+     2956.0
+    ],
+    "legacy_covered_bins": 60,
+    "legacy_present_bins": 5,
+    "counts": {
+     "tp": 5,
+     "fp": 0,
+     "fn": 8,
+     "tn": 45,
+     "crowd_bins": 0,
+     "crowd_legacy_present": 0,
+     "non_crowd_bins": 13,
+     "non_crowd_legacy_present": 5
+    },
+    "excluded_review_bins": [
+     {
+      "shot": 189885,
+      "t_start_ms": 2200.0,
+      "t_end_ms": 2250.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 189885,
+      "t_start_ms": 2950.0,
+      "t_end_ms": 3000.0,
+      "review_status": "mixed_or_unlabelled",
+      "legacy_present": false
+     }
+    ],
+    "review_spans": [
+     {
+      "t_start": 4,
+      "t_end": 1197,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1197,
+      "t_end": 1665,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1665,
+      "t_end": 1843,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1843,
+      "t_end": 2051,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2051,
+      "t_end": 2224,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2224,
+      "t_end": 2254,
+      "kind": "uncertain",
+      "crowd": 0
+     },
+     {
+      "t_start": 2254,
+      "t_end": 2692,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2692,
+      "t_end": 2708,
+      "kind": "uncertain",
+      "crowd": 0
+     },
+     {
+      "t_start": 2708,
+      "t_end": 2956,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1350.0,
+     1650.0
+    ]
+   },
+   "190637": {
+    "review_window_ms": [
+     5.0,
+     6138.0
+    ],
+    "legacy_covered_bins": 120,
+    "legacy_present_bins": 33,
+    "counts": {
+     "tp": 27,
+     "fp": 6,
+     "fn": 8,
+     "tn": 79,
+     "crowd_bins": 0,
+     "crowd_legacy_present": 0,
+     "non_crowd_bins": 35,
+     "non_crowd_legacy_present": 27
+    },
+    "excluded_review_bins": [],
+    "review_spans": [
+     {
+      "t_start": 5,
+      "t_end": 1210,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1210,
+      "t_end": 1274,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1274,
+      "t_end": 1321,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1321,
+      "t_end": 1374,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1374,
+      "t_end": 1421,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1421,
+      "t_end": 1469,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1469,
+      "t_end": 1514,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1514,
+      "t_end": 1568,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1568,
+      "t_end": 1712,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1712,
+      "t_end": 1774,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1774,
+      "t_end": 1877,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1877,
+      "t_end": 1944,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1944,
+      "t_end": 2018,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2018,
+      "t_end": 2073,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2073,
+      "t_end": 2179,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2179,
+      "t_end": 2220,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2220,
+      "t_end": 2255,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2255,
+      "t_end": 2312,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2312,
+      "t_end": 2341,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2341,
+      "t_end": 2374,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2374,
+      "t_end": 2413,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2413,
+      "t_end": 2460,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2460,
+      "t_end": 2528,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2528,
+      "t_end": 2586,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2586,
+      "t_end": 2619,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2619,
+      "t_end": 2651,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2651,
+      "t_end": 2695,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2695,
+      "t_end": 2754,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2754,
+      "t_end": 2786,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2786,
+      "t_end": 2820,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2820,
+      "t_end": 2871,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2871,
+      "t_end": 2946,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2946,
+      "t_end": 3003,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3003,
+      "t_end": 3052,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3052,
+      "t_end": 3116,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3116,
+      "t_end": 3162,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3162,
+      "t_end": 3207,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3207,
+      "t_end": 3250,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3250,
+      "t_end": 3335,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3335,
+      "t_end": 3409,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3409,
+      "t_end": 3473,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3473,
+      "t_end": 3531,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3531,
+      "t_end": 3582,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3582,
+      "t_end": 3638,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3638,
+      "t_end": 3687,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3687,
+      "t_end": 3747,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3747,
+      "t_end": 3790,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3790,
+      "t_end": 3832,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3832,
+      "t_end": 3911,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3911,
+      "t_end": 3970,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3970,
+      "t_end": 4005,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4005,
+      "t_end": 4057,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4057,
+      "t_end": 4117,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4117,
+      "t_end": 4160,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4160,
+      "t_end": 4257,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4257,
+      "t_end": 4318,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4318,
+      "t_end": 4349,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4349,
+      "t_end": 4403,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4403,
+      "t_end": 4458,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4458,
+      "t_end": 4515,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4515,
+      "t_end": 4576,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4576,
+      "t_end": 4624,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4624,
+      "t_end": 4700,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4700,
+      "t_end": 4753,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4753,
+      "t_end": 4826,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4826,
+      "t_end": 4875,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4875,
+      "t_end": 4962,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4962,
+      "t_end": 5012,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 5012,
+      "t_end": 5046,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 5046,
+      "t_end": 5097,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 5097,
+      "t_end": 5123,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 5123,
+      "t_end": 5194,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 5194,
+      "t_end": 6138,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1200.0,
+     5100.0
+    ]
+   },
+   "190643": {
+    "review_window_ms": [
+     4.0,
+     5335.0
+    ],
+    "legacy_covered_bins": 107,
+    "legacy_present_bins": 17,
+    "counts": {
+     "tp": 15,
+     "fp": 2,
+     "fn": 10,
+     "tn": 80,
+     "crowd_bins": 15,
+     "crowd_legacy_present": 12,
+     "non_crowd_bins": 10,
+     "non_crowd_legacy_present": 3
+    },
+    "excluded_review_bins": [],
+    "review_spans": [
+     {
+      "t_start": 4,
+      "t_end": 1256,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1256,
+      "t_end": 2008,
+      "kind": "crowd",
+      "crowd": 1
+     },
+     {
+      "t_start": 2008,
+      "t_end": 2107,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2107,
+      "t_end": 2153,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2153,
+      "t_end": 2297,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2297,
+      "t_end": 2350,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2350,
+      "t_end": 2638,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2638,
+      "t_end": 2677,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2677,
+      "t_end": 3049,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3049,
+      "t_end": 3122,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3122,
+      "t_end": 3843,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3843,
+      "t_end": 3925,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3925,
+      "t_end": 4649,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4649,
+      "t_end": 4725,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4725,
+      "t_end": 5033,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 5033,
+      "t_end": 5128,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 5128,
+      "t_end": 5335,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1250.0,
+     3900.0
+    ]
+   },
+   "192721": {
+    "review_window_ms": [
+     6.0,
+     5198.0
+    ],
+    "legacy_covered_bins": 104,
+    "legacy_present_bins": 1,
+    "counts": {
+     "tp": 0,
+     "fp": 1,
+     "fn": 14,
+     "tn": 89,
+     "crowd_bins": 0,
+     "crowd_legacy_present": 0,
+     "non_crowd_bins": 14,
+     "non_crowd_legacy_present": 0
+    },
+    "excluded_review_bins": [],
+    "review_spans": [
+     {
+      "t_start": 6,
+      "t_end": 1847,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1847,
+      "t_end": 1856,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1856,
+      "t_end": 1960,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1960,
+      "t_end": 1976,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 1976,
+      "t_end": 2100,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2100,
+      "t_end": 2119,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2119,
+      "t_end": 2225,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2225,
+      "t_end": 2257,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2257,
+      "t_end": 2346,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2346,
+      "t_end": 2451,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2451,
+      "t_end": 2520,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2520,
+      "t_end": 2560,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2560,
+      "t_end": 2644,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2644,
+      "t_end": 2695,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2695,
+      "t_end": 2759,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2759,
+      "t_end": 2793,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2793,
+      "t_end": 2847,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2847,
+      "t_end": 2917,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2917,
+      "t_end": 2959,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2959,
+      "t_end": 2993,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 2993,
+      "t_end": 3234,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3234,
+      "t_end": 3267,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3267,
+      "t_end": 3376,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3376,
+      "t_end": 3515,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3515,
+      "t_end": 3684,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3684,
+      "t_end": 3715,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3715,
+      "t_end": 3774,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 3774,
+      "t_end": 3815,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 3815,
+      "t_end": 4122,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4122,
+      "t_end": 4163,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4163,
+      "t_end": 4223,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4223,
+      "t_end": 4258,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4258,
+      "t_end": 4584,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4584,
+      "t_end": 4627,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4627,
+      "t_end": 5198,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     3350.0,
+     3400.0
+    ]
+   },
+   "192732": {
+    "review_window_ms": [
+     6.0,
+     5191.0
+    ],
+    "legacy_covered_bins": 104,
+    "legacy_present_bins": 35,
+    "counts": {
+     "tp": 35,
+     "fp": 0,
+     "fn": 2,
+     "tn": 67,
+     "crowd_bins": 37,
+     "crowd_legacy_present": 35,
+     "non_crowd_bins": 0,
+     "non_crowd_legacy_present": 0
+    },
+    "excluded_review_bins": [],
+    "review_spans": [
+     {
+      "t_start": 6,
+      "t_end": 1421,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1421,
+      "t_end": 3271,
+      "kind": "crowd",
+      "crowd": 1
+     },
+     {
+      "t_start": 3271,
+      "t_end": 5191,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1400.0,
+     3150.0
+    ]
+   },
+   "192751": {
+    "review_window_ms": [
+     6.0,
+     6109.0
+    ],
+    "legacy_covered_bins": 120,
+    "legacy_present_bins": 52,
+    "counts": {
+     "tp": 0,
+     "fp": 5,
+     "fn": 0,
+     "tn": 63,
+     "crowd_bins": 0,
+     "crowd_legacy_present": 0,
+     "non_crowd_bins": 0,
+     "non_crowd_legacy_present": 0
+    },
+    "excluded_review_bins": [
+     {
+      "shot": 192751,
+      "t_start_ms": 2500.0,
+      "t_end_ms": 2550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2550.0,
+      "t_end_ms": 2600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2600.0,
+      "t_end_ms": 2650.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2650.0,
+      "t_end_ms": 2700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2700.0,
+      "t_end_ms": 2750.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2750.0,
+      "t_end_ms": 2800.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2800.0,
+      "t_end_ms": 2850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2850.0,
+      "t_end_ms": 2900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2900.0,
+      "t_end_ms": 2950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 2950.0,
+      "t_end_ms": 3000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3000.0,
+      "t_end_ms": 3050.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3050.0,
+      "t_end_ms": 3100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3100.0,
+      "t_end_ms": 3150.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3150.0,
+      "t_end_ms": 3200.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3200.0,
+      "t_end_ms": 3250.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3250.0,
+      "t_end_ms": 3300.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3300.0,
+      "t_end_ms": 3350.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3350.0,
+      "t_end_ms": 3400.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3400.0,
+      "t_end_ms": 3450.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3450.0,
+      "t_end_ms": 3500.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3500.0,
+      "t_end_ms": 3550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3550.0,
+      "t_end_ms": 3600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3600.0,
+      "t_end_ms": 3650.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3650.0,
+      "t_end_ms": 3700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3700.0,
+      "t_end_ms": 3750.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3750.0,
+      "t_end_ms": 3800.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3800.0,
+      "t_end_ms": 3850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3850.0,
+      "t_end_ms": 3900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3900.0,
+      "t_end_ms": 3950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 3950.0,
+      "t_end_ms": 4000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4000.0,
+      "t_end_ms": 4050.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4050.0,
+      "t_end_ms": 4100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4100.0,
+      "t_end_ms": 4150.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4150.0,
+      "t_end_ms": 4200.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4200.0,
+      "t_end_ms": 4250.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4250.0,
+      "t_end_ms": 4300.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4300.0,
+      "t_end_ms": 4350.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4350.0,
+      "t_end_ms": 4400.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4400.0,
+      "t_end_ms": 4450.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4450.0,
+      "t_end_ms": 4500.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4500.0,
+      "t_end_ms": 4550.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4550.0,
+      "t_end_ms": 4600.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4600.0,
+      "t_end_ms": 4650.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4650.0,
+      "t_end_ms": 4700.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4700.0,
+      "t_end_ms": 4750.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4750.0,
+      "t_end_ms": 4800.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4800.0,
+      "t_end_ms": 4850.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4850.0,
+      "t_end_ms": 4900.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4900.0,
+      "t_end_ms": 4950.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 4950.0,
+      "t_end_ms": 5000.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 5000.0,
+      "t_end_ms": 5050.0,
+      "review_status": "uncertain",
+      "legacy_present": false
+     },
+     {
+      "shot": 192751,
+      "t_start_ms": 5050.0,
+      "t_end_ms": 5100.0,
+      "review_status": "uncertain",
+      "legacy_present": true
+     }
+    ],
+    "review_spans": [
+     {
+      "t_start": 6,
+      "t_end": 2478,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 2478,
+      "t_end": 5115,
+      "kind": "uncertain",
+      "crowd": 1
+     },
+     {
+      "t_start": 5115,
+      "t_end": 6109,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1750.0,
+     5100.0
+    ]
+   },
+   "196541": {
+    "review_window_ms": [
+     8.0,
+     7017.0
+    ],
+    "legacy_covered_bins": 120,
+    "legacy_present_bins": 53,
+    "counts": {
+     "tp": 53,
+     "fp": 0,
+     "fn": 16,
+     "tn": 51,
+     "crowd_bins": 65,
+     "crowd_legacy_present": 50,
+     "non_crowd_bins": 4,
+     "non_crowd_legacy_present": 3
+    },
+    "excluded_review_bins": [],
+    "review_spans": [
+     {
+      "t_start": 8,
+      "t_end": 1060,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 1060,
+      "t_end": 4313,
+      "kind": "crowd",
+      "crowd": 1
+     },
+     {
+      "t_start": 4313,
+      "t_end": 4379,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4379,
+      "t_end": 4619,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 4619,
+      "t_end": 6950,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 6950,
+      "t_end": 7017,
+      "kind": "not_observable",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     1050.0,
+     4600.0
+    ]
+   },
+   "200385": {
+    "review_window_ms": [
+     6.0,
+     5058.0
+    ],
+    "legacy_covered_bins": 102,
+    "legacy_present_bins": 0,
+    "counts": {
+     "tp": 0,
+     "fp": 0,
+     "fn": 2,
+     "tn": 99,
+     "crowd_bins": 0,
+     "crowd_legacy_present": 0,
+     "non_crowd_bins": 2,
+     "non_crowd_legacy_present": 0
+    },
+    "excluded_review_bins": [
+     {
+      "shot": 200385,
+      "t_start_ms": 5050.0,
+      "t_end_ms": 5100.0,
+      "review_status": "mixed_or_unlabelled",
+      "legacy_present": false
+     }
+    ],
+    "review_spans": [
+     {
+      "t_start": 6,
+      "t_end": 4895,
+      "kind": "absent",
+      "crowd": 0
+     },
+     {
+      "t_start": 4895,
+      "t_end": 5007,
+      "kind": "non_crowd",
+      "crowd": 0
+     },
+     {
+      "t_start": 5007,
+      "t_end": 5058,
+      "kind": "absent",
+      "crowd": 0
+     }
+    ],
+    "legacy_positive_extent_ms": [
+     NaN,
+     NaN
+    ]
+   }
+  }
+ },
+ "onset_agreement": {
+  "definition": "Legacy onset within inclusive +/-k ms of each reviewed present span start. Proximity per annotation, not one-to-one ELM recall; crowd starts are not its non-crowd ELMs. Review starts are not independently verified millisecond onset truth.",
+  "source_files": {
+   "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/raw/elm_labels_dict.pkl": "d251cfb1bdc504b2a8ffbd8d3ce70b648a2c16f6e77745a9b57b2cb34a302022",
+   "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/raw/elm_labels_dict_wpqh.pkl": "7574320be457e982b954ff31b308adbe60f1dd88c93cc3a376bc5e18399c6922"
+  },
+  "summary": {
+   "tol_5ms": {
+    "non_crowd": {
+     "matched": 8,
+     "spans": 64,
+     "share": 0.125,
+     "ci95": [
+      0.04,
+      0.3217261904761902
+     ]
+    },
+    "crowd": {
+     "matched": 2,
+     "spans": 3,
+     "share": 0.6666666666666666,
+     "ci95": [
+      0.0,
+      1.0
+     ]
+    }
+   },
+   "tol_10ms": {
+    "non_crowd": {
+     "matched": 13,
+     "spans": 64,
+     "share": 0.203125,
+     "ci95": [
+      0.04,
+      0.4289682539682536
+     ]
+    },
+    "crowd": {
+     "matched": 2,
+     "spans": 3,
+     "share": 0.6666666666666666,
+     "ci95": [
+      0.0,
+      1.0
+     ]
+    }
+   },
+   "tol_50ms": {
+    "non_crowd": {
+     "matched": 40,
+     "spans": 64,
+     "share": 0.625,
+     "ci95": [
+      0.07016523867809057,
+      0.8919160231660231
+     ]
+    },
+    "crowd": {
+     "matched": 3,
+     "spans": 3,
+     "share": 1.0,
+     "ci95": [
+      1.0,
+      1.0
+     ]
+    }
+   }
+  },
+  "per_shot": {
+   "189885": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1392.0,
+     1463.0,
+     1526.0,
+     1574.0,
+     1649.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 2,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        1197.0,
+        1843.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        195.0,
+        194.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 2,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        1197.0,
+        1843.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        195.0,
+        194.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 2,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        1197.0,
+        1843.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        195.0,
+        194.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     }
+    }
+   },
+   "190637": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1239.0,
+     1346.0,
+     1436.0,
+     1529.0,
+     1741.0,
+     1904.0,
+     2032.0,
+     2181.0,
+     2273.0,
+     2345.0,
+     2427.0,
+     2550.0,
+     2622.0,
+     2715.0,
+     2786.0,
+     2898.0,
+     3020.0,
+     3136.0,
+     3214.0,
+     3492.0,
+     3595.0,
+     3712.0,
+     3806.0,
+     3929.0,
+     4017.0,
+     4127.0,
+     4275.0,
+     4370.0,
+     4475.0,
+     4588.0,
+     4706.0,
+     4833.0,
+     5072.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 36,
+       "matched": 4,
+       "share": 0.1111111111111111,
+       "starts_ms": [
+        1210.0,
+        1321.0,
+        1421.0,
+        1514.0,
+        1712.0,
+        1877.0,
+        2018.0,
+        2179.0,
+        2255.0,
+        2341.0,
+        2413.0,
+        2528.0,
+        2619.0,
+        2695.0,
+        2786.0,
+        2871.0,
+        3003.0,
+        3116.0,
+        3207.0,
+        3335.0,
+        3473.0,
+        3582.0,
+        3687.0,
+        3790.0,
+        3911.0,
+        4005.0,
+        4117.0,
+        4257.0,
+        4349.0,
+        4458.0,
+        4576.0,
+        4700.0,
+        4826.0,
+        4962.0,
+        5046.0,
+        5123.0
+       ],
+       "matched_starts_ms": [
+        2179.0,
+        2341.0,
+        2619.0,
+        2786.0
+       ],
+       "nearest_onset_distance_ms": [
+        29.0,
+        25.0,
+        15.0,
+        15.0,
+        29.0,
+        27.0,
+        14.0,
+        2.0,
+        18.0,
+        4.0,
+        14.0,
+        22.0,
+        3.0,
+        20.0,
+        0.0,
+        27.0,
+        17.0,
+        20.0,
+        7.0,
+        121.0,
+        19.0,
+        13.0,
+        25.0,
+        16.0,
+        18.0,
+        12.0,
+        10.0,
+        18.0,
+        21.0,
+        17.0,
+        12.0,
+        6.0,
+        7.0,
+        110.0,
+        26.0,
+        51.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 36,
+       "matched": 8,
+       "share": 0.2222222222222222,
+       "starts_ms": [
+        1210.0,
+        1321.0,
+        1421.0,
+        1514.0,
+        1712.0,
+        1877.0,
+        2018.0,
+        2179.0,
+        2255.0,
+        2341.0,
+        2413.0,
+        2528.0,
+        2619.0,
+        2695.0,
+        2786.0,
+        2871.0,
+        3003.0,
+        3116.0,
+        3207.0,
+        3335.0,
+        3473.0,
+        3582.0,
+        3687.0,
+        3790.0,
+        3911.0,
+        4005.0,
+        4117.0,
+        4257.0,
+        4349.0,
+        4458.0,
+        4576.0,
+        4700.0,
+        4826.0,
+        4962.0,
+        5046.0,
+        5123.0
+       ],
+       "matched_starts_ms": [
+        2179.0,
+        2341.0,
+        2619.0,
+        2786.0,
+        3207.0,
+        4117.0,
+        4700.0,
+        4826.0
+       ],
+       "nearest_onset_distance_ms": [
+        29.0,
+        25.0,
+        15.0,
+        15.0,
+        29.0,
+        27.0,
+        14.0,
+        2.0,
+        18.0,
+        4.0,
+        14.0,
+        22.0,
+        3.0,
+        20.0,
+        0.0,
+        27.0,
+        17.0,
+        20.0,
+        7.0,
+        121.0,
+        19.0,
+        13.0,
+        25.0,
+        16.0,
+        18.0,
+        12.0,
+        10.0,
+        18.0,
+        21.0,
+        17.0,
+        12.0,
+        6.0,
+        7.0,
+        110.0,
+        26.0,
+        51.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 36,
+       "matched": 33,
+       "share": 0.9166666666666666,
+       "starts_ms": [
+        1210.0,
+        1321.0,
+        1421.0,
+        1514.0,
+        1712.0,
+        1877.0,
+        2018.0,
+        2179.0,
+        2255.0,
+        2341.0,
+        2413.0,
+        2528.0,
+        2619.0,
+        2695.0,
+        2786.0,
+        2871.0,
+        3003.0,
+        3116.0,
+        3207.0,
+        3335.0,
+        3473.0,
+        3582.0,
+        3687.0,
+        3790.0,
+        3911.0,
+        4005.0,
+        4117.0,
+        4257.0,
+        4349.0,
+        4458.0,
+        4576.0,
+        4700.0,
+        4826.0,
+        4962.0,
+        5046.0,
+        5123.0
+       ],
+       "matched_starts_ms": [
+        1210.0,
+        1321.0,
+        1421.0,
+        1514.0,
+        1712.0,
+        1877.0,
+        2018.0,
+        2179.0,
+        2255.0,
+        2341.0,
+        2413.0,
+        2528.0,
+        2619.0,
+        2695.0,
+        2786.0,
+        2871.0,
+        3003.0,
+        3116.0,
+        3207.0,
+        3473.0,
+        3582.0,
+        3687.0,
+        3790.0,
+        3911.0,
+        4005.0,
+        4117.0,
+        4257.0,
+        4349.0,
+        4458.0,
+        4576.0,
+        4700.0,
+        4826.0,
+        5046.0
+       ],
+       "nearest_onset_distance_ms": [
+        29.0,
+        25.0,
+        15.0,
+        15.0,
+        29.0,
+        27.0,
+        14.0,
+        2.0,
+        18.0,
+        4.0,
+        14.0,
+        22.0,
+        3.0,
+        20.0,
+        0.0,
+        27.0,
+        17.0,
+        20.0,
+        7.0,
+        121.0,
+        19.0,
+        13.0,
+        25.0,
+        16.0,
+        18.0,
+        12.0,
+        10.0,
+        18.0,
+        21.0,
+        17.0,
+        12.0,
+        6.0,
+        7.0,
+        110.0,
+        26.0,
+        51.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     }
+    }
+   },
+   "190643": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1251.0,
+     1326.0,
+     1395.0,
+     1443.0,
+     1469.0,
+     1504.0,
+     1582.0,
+     1613.0,
+     1635.0,
+     1735.0,
+     1827.0,
+     1903.0,
+     1992.0,
+     2112.0,
+     2298.0,
+     2634.0,
+     3060.0,
+     3851.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 7,
+       "matched": 3,
+       "share": 0.42857142857142855,
+       "starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0,
+        3049.0,
+        3843.0,
+        4649.0,
+        5033.0
+       ],
+       "matched_starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0,
+        1.0,
+        4.0,
+        11.0,
+        8.0,
+        798.0,
+        1182.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1256.0
+       ],
+       "matched_starts_ms": [
+        1256.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 7,
+       "matched": 4,
+       "share": 0.5714285714285714,
+       "starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0,
+        3049.0,
+        3843.0,
+        4649.0,
+        5033.0
+       ],
+       "matched_starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0,
+        3843.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0,
+        1.0,
+        4.0,
+        11.0,
+        8.0,
+        798.0,
+        1182.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1256.0
+       ],
+       "matched_starts_ms": [
+        1256.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 7,
+       "matched": 5,
+       "share": 0.7142857142857143,
+       "starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0,
+        3049.0,
+        3843.0,
+        4649.0,
+        5033.0
+       ],
+       "matched_starts_ms": [
+        2107.0,
+        2297.0,
+        2638.0,
+        3049.0,
+        3843.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0,
+        1.0,
+        4.0,
+        11.0,
+        8.0,
+        798.0,
+        1182.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1256.0
+       ],
+       "matched_starts_ms": [
+        1256.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     }
+    }
+   },
+   "192721": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     3377.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 17,
+       "matched": 1,
+       "share": 0.058823529411764705,
+       "starts_ms": [
+        1847.0,
+        1960.0,
+        2100.0,
+        2225.0,
+        2346.0,
+        2520.0,
+        2644.0,
+        2759.0,
+        2847.0,
+        2959.0,
+        3234.0,
+        3376.0,
+        3684.0,
+        3774.0,
+        4122.0,
+        4223.0,
+        4584.0
+       ],
+       "matched_starts_ms": [
+        3376.0
+       ],
+       "nearest_onset_distance_ms": [
+        1530.0,
+        1417.0,
+        1277.0,
+        1152.0,
+        1031.0,
+        857.0,
+        733.0,
+        618.0,
+        530.0,
+        418.0,
+        143.0,
+        1.0,
+        307.0,
+        397.0,
+        745.0,
+        846.0,
+        1207.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 17,
+       "matched": 1,
+       "share": 0.058823529411764705,
+       "starts_ms": [
+        1847.0,
+        1960.0,
+        2100.0,
+        2225.0,
+        2346.0,
+        2520.0,
+        2644.0,
+        2759.0,
+        2847.0,
+        2959.0,
+        3234.0,
+        3376.0,
+        3684.0,
+        3774.0,
+        4122.0,
+        4223.0,
+        4584.0
+       ],
+       "matched_starts_ms": [
+        3376.0
+       ],
+       "nearest_onset_distance_ms": [
+        1530.0,
+        1417.0,
+        1277.0,
+        1152.0,
+        1031.0,
+        857.0,
+        733.0,
+        618.0,
+        530.0,
+        418.0,
+        143.0,
+        1.0,
+        307.0,
+        397.0,
+        745.0,
+        846.0,
+        1207.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 17,
+       "matched": 1,
+       "share": 0.058823529411764705,
+       "starts_ms": [
+        1847.0,
+        1960.0,
+        2100.0,
+        2225.0,
+        2346.0,
+        2520.0,
+        2644.0,
+        2759.0,
+        2847.0,
+        2959.0,
+        3234.0,
+        3376.0,
+        3684.0,
+        3774.0,
+        4122.0,
+        4223.0,
+        4584.0
+       ],
+       "matched_starts_ms": [
+        3376.0
+       ],
+       "nearest_onset_distance_ms": [
+        1530.0,
+        1417.0,
+        1277.0,
+        1152.0,
+        1031.0,
+        857.0,
+        733.0,
+        618.0,
+        530.0,
+        418.0,
+        143.0,
+        1.0,
+        307.0,
+        397.0,
+        745.0,
+        846.0,
+        1207.0
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     }
+    }
+   },
+   "192732": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1407.0,
+     1456.0,
+     1486.0,
+     1514.0,
+     1542.0,
+     1571.0,
+     1589.0,
+     1609.0,
+     1636.0,
+     1652.0,
+     1697.0,
+     1719.0,
+     1738.0,
+     1756.0,
+     1781.0,
+     1798.0,
+     1815.0,
+     1842.0,
+     1865.0,
+     1895.0,
+     1909.0,
+     1923.0,
+     1955.0,
+     1981.0,
+     2005.0,
+     2026.0,
+     2043.0,
+     2067.0,
+     2079.0,
+     2098.0,
+     2112.0,
+     2132.0,
+     2156.0,
+     2188.0,
+     2204.0,
+     2220.0,
+     2241.0,
+     2257.0,
+     2271.0,
+     2288.0,
+     2309.0,
+     2348.0,
+     2359.0,
+     2378.0,
+     2410.0,
+     2435.0,
+     2451.0,
+     2474.0,
+     2501.0,
+     2533.0,
+     2550.0,
+     2571.0,
+     2592.0,
+     2618.0,
+     2648.0,
+     2670.0,
+     2693.0,
+     2717.0,
+     2740.0,
+     2763.0,
+     2784.0,
+     2804.0,
+     2823.0,
+     2846.0,
+     2867.0,
+     2885.0,
+     2913.0,
+     2939.0,
+     2961.0,
+     2990.0,
+     3035.0,
+     3052.0,
+     3087.0,
+     3104.0,
+     3129.0,
+     3142.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        1421.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        14.0
+       ]
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        1421.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        14.0
+       ]
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1421.0
+       ],
+       "matched_starts_ms": [
+        1421.0
+       ],
+       "nearest_onset_distance_ms": [
+        14.0
+       ]
+      }
+     }
+    }
+   },
+   "192751": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1781.0,
+     1884.0,
+     1925.0,
+     2443.0,
+     2456.0,
+     2477.0,
+     2509.0,
+     2526.0,
+     2576.0,
+     2589.0,
+     2601.0,
+     2679.0,
+     2733.0,
+     2756.0,
+     2811.0,
+     2829.0,
+     2858.0,
+     2879.0,
+     2924.0,
+     2942.0,
+     2978.0,
+     2998.0,
+     3018.0,
+     3037.0,
+     3052.0,
+     3077.0,
+     3091.0,
+     3105.0,
+     3119.0,
+     3135.0,
+     3148.0,
+     3169.0,
+     3191.0,
+     3209.0,
+     3224.0,
+     3244.0,
+     3257.0,
+     3270.0,
+     3293.0,
+     3308.0,
+     3320.0,
+     3350.0,
+     3361.0,
+     3374.0,
+     3389.0,
+     3402.0,
+     3421.0,
+     3465.0,
+     3487.0,
+     3501.0,
+     3515.0,
+     3528.0,
+     3549.0,
+     3560.0,
+     3594.0,
+     3611.0,
+     3677.0,
+     3710.0,
+     3751.0,
+     3838.0,
+     3852.0,
+     3926.0,
+     3957.0,
+     4015.0,
+     4030.0,
+     4056.0,
+     4103.0,
+     4220.0,
+     4288.0,
+     4315.0,
+     4331.0,
+     4345.0,
+     4369.0,
+     4384.0,
+     4404.0,
+     4444.0,
+     4472.0,
+     4521.0,
+     4586.0,
+     4656.0,
+     4689.0,
+     4803.0,
+     4862.0,
+     4901.0,
+     4980.0,
+     5096.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     }
+    }
+   },
+   "196541": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [
+     1055.0,
+     1111.0,
+     1154.0,
+     1208.0,
+     1266.0,
+     1296.0,
+     1316.0,
+     1330.0,
+     1369.0,
+     1404.0,
+     1447.0,
+     1467.0,
+     1488.0,
+     1529.0,
+     1550.0,
+     1587.0,
+     1656.0,
+     1687.0,
+     1729.0,
+     1807.0,
+     1860.0,
+     1923.0,
+     1946.0,
+     2000.0,
+     2115.0,
+     2139.0,
+     2169.0,
+     2254.0,
+     2335.0,
+     2362.0,
+     2387.0,
+     2461.0,
+     2523.0,
+     2568.0,
+     2617.0,
+     2710.0,
+     2786.0,
+     2847.0,
+     2946.0,
+     2970.0,
+     3062.0,
+     3132.0,
+     3206.0,
+     3250.0,
+     3319.0,
+     3345.0,
+     3389.0,
+     3478.0,
+     3503.0,
+     3572.0,
+     3610.0,
+     3633.0,
+     3662.0,
+     3731.0,
+     3772.0,
+     3797.0,
+     3902.0,
+     3950.0,
+     3985.0,
+     4009.0,
+     4105.0,
+     4241.0,
+     4281.0,
+     4411.0,
+     4486.0,
+     4565.0
+    ],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        4379.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        32.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1060.0
+       ],
+       "matched_starts_ms": [
+        1060.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        4379.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        32.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1060.0
+       ],
+       "matched_starts_ms": [
+        1060.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        4379.0
+       ],
+       "matched_starts_ms": [
+        4379.0
+       ],
+       "nearest_onset_distance_ms": [
+        32.0
+       ]
+      },
+      "crowd": {
+       "spans": 1,
+       "matched": 1,
+       "share": 1.0,
+       "starts_ms": [
+        1060.0
+       ],
+       "matched_starts_ms": [
+        1060.0
+       ],
+       "nearest_onset_distance_ms": [
+        5.0
+       ]
+      }
+     }
+    }
+   },
+   "200385": {
+    "onset_bins_match_legacy": true,
+    "legacy_onsets_in_review_window_ms": [],
+    "by_tolerance": {
+     "tol_5ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        4895.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        null
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_10ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        4895.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        null
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     },
+     "tol_50ms": {
+      "non_crowd": {
+       "spans": 1,
+       "matched": 0,
+       "share": 0.0,
+       "starts_ms": [
+        4895.0
+       ],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": [
+        null
+       ]
+      },
+      "crowd": {
+       "spans": 0,
+       "matched": 0,
+       "share": NaN,
+       "starts_ms": [],
+       "matched_starts_ms": [],
+       "nearest_onset_distance_ms": []
+      }
+     }
+    }
+   }
+  }
+ },
  "swap": {
   "overlap": {
    "shots": [
@@ -71,6 +3466,7 @@
     200385
    ],
    "n_shots": 8,
+   "restriction_deviation": "Ranking uses bins wholly inside one known review span and analysed time, with DSM forecast/detection rows; unlike the AE all-frame audit. Full majority counts are interval_audit.",
    "reviewed": {
     "methods": {
      "elm-ours": {
@@ -82,8 +3478,8 @@
        "tn": 399,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -94,7 +3490,7 @@
        "f1": 0.7195767195767195,
        "false_alarm_bin_rate": 0.19230769230769232,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9634525875127379,
        "auprc": 0.9034049409148295,
@@ -121,7 +3517,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -138,57 +3534,59 @@
         0.9925804975839784
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 8,
       "counts": {
-       "tp": 147,
-       "fp": 358,
-       "fn": 0,
-       "tn": 136,
+       "tp": 146,
+       "fp": 361,
+       "fn": 1,
+       "tn": 133,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.29108910891089107,
-       "recall": 1.0,
-       "f1": 0.450920245398773,
-       "false_alarm_bin_rate": 0.7246963562753036,
+       "precision": 0.2879684418145957,
+       "recall": 0.9931972789115646,
+       "f1": 0.44648318042813456,
+       "false_alarm_bin_rate": 0.7307692307692307,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8206367567269823,
-       "auprc": 0.6064731830159517,
+       "auroc": 0.8151560219229392,
+       "auprc": 0.5974204775440702,
        "prevalence": 0.22932917316692666
       },
       "ci95": {
        "precision": [
-        0.1055580203095731,
-        0.5045193885582299
+        0.10179100039199254,
+        0.5009972718501512
        ],
        "recall": [
-        1.0,
+        0.9639474336722044,
         1.0
        ],
        "f1": [
-        0.19095874766398266,
-        0.6706718115943675
+        0.18427602374183252,
+        0.6667775665399238
        ],
        "false_alarm_bin_rate": [
-        0.5794368922337638,
-        0.8353650021159542
+        0.585355662748828,
+        0.8427289168094422
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -197,65 +3595,67 @@
         NaN
        ],
        "auroc": [
-        0.6458349158680771,
-        0.928267586494622
+        0.6445640621824833,
+        0.9229947324332918
        ],
        "auprc": [
-        0.12547126502328965,
-        0.865601629050306
+        0.1290263229907982,
+        0.8611523795848329
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": true
      },
      "elm-dsm-detect": {
       "shots": 8,
       "counts": {
-       "tp": 146,
-       "fp": 287,
-       "fn": 1,
-       "tn": 207,
+       "tp": 76,
+       "fp": 191,
+       "fn": 71,
+       "tn": 303,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.3371824480369515,
-       "recall": 0.9931972789115646,
-       "f1": 0.503448275862069,
-       "false_alarm_bin_rate": 0.5809716599190283,
+       "precision": 0.2846441947565543,
+       "recall": 0.5170068027210885,
+       "f1": 0.3671497584541063,
+       "false_alarm_bin_rate": 0.3866396761133603,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7716130986807679,
-       "auprc": 0.4734531322238844,
+       "auroc": 0.7613401635958027,
+       "auprc": 0.4745576512813058,
        "prevalence": 0.22932917316692666
       },
       "ci95": {
        "precision": [
-        0.1219044065387349,
-        0.5529252494297504
+        0.10600909090909091,
+        0.44013650330917115
        ],
        "recall": [
-        0.959176684372379,
+        0.1299302396117683,
         1.0
        ],
        "f1": [
-        0.2163355408388521,
-        0.7121079239773986
+        0.12409854961098837,
+        0.5608213096559378
        ],
        "false_alarm_bin_rate": [
-        0.4401856230128997,
-        0.6957577449793328
+        0.27333298819631396,
+        0.49295774647887325
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -264,65 +3664,67 @@
         NaN
        ],
        "auroc": [
-        0.6689285149587643,
-        0.9006435592901012
+        0.6436120641859338,
+        0.9068146997457548
        ],
        "auprc": [
-        0.16439779678537095,
-        0.6704138339389221
+        0.13618837060916367,
+        0.7500003394783827
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 8,
       "counts": {
-       "tp": 146,
-       "fp": 343,
-       "fn": 1,
-       "tn": 151,
+       "tp": 76,
+       "fp": 211,
+       "fn": 71,
+       "tn": 283,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2985685071574642,
-       "recall": 0.9931972789115646,
-       "f1": 0.4591194968553459,
-       "false_alarm_bin_rate": 0.694331983805668,
+       "precision": 0.26480836236933797,
+       "recall": 0.5170068027210885,
+       "f1": 0.35023041474654376,
+       "false_alarm_bin_rate": 0.4271255060728745,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7071524966261808,
-       "auprc": 0.3888741461727624,
+       "auroc": 0.7390178743562202,
+       "auprc": 0.40136663440896314,
        "prevalence": 0.22932917316692666
       },
       "ci95": {
        "precision": [
-        0.09813955422488357,
-        0.5152390873211319
+        0.09951044216447061,
+        0.41527660806400674
        ],
        "recall": [
-        0.959176684372379,
+        0.1299302396117683,
         1.0
        ],
        "f1": [
-        0.1781358847886981,
-        0.6800762683525636
+        0.11534280936454851,
+        0.5343050208085713
        ],
        "false_alarm_bin_rate": [
-        0.5570175438596491,
-        0.8035061400064256
+        0.26997206095072024,
+        0.579754614653505
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -331,15 +3733,17 @@
         NaN
        ],
        "auroc": [
-        0.5335338456011189,
-        0.88182576777059
+        0.6385932486482436,
+        0.8918572511939385
        ],
        "auprc": [
-        0.12040477152817429,
-        0.559406391379372
+        0.1639927729202151,
+        0.5279197866668431
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 8,
@@ -350,8 +3754,8 @@
        "tn": 462,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -362,7 +3766,7 @@
        "f1": 0.4298245614035088,
        "false_alarm_bin_rate": 0.06477732793522267,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -386,7 +3790,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -395,7 +3799,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 8,
@@ -406,8 +3812,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -418,7 +3824,7 @@
        "f1": 0.3730964467005076,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -443,7 +3849,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -452,50 +3858,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.14281583078575555,
+      "value": 0.14829656558979865,
       "ci95": [
-       0.046740133808539835,
-       0.24098934179480913
+       0.04700774612693648,
+       0.24686441598176695
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.2686564741779465,
+      "value": 0.273093539148585,
       "ci95": [
-       0.11742215586896598,
-       0.3470173563358127
+       0.12287547315969871,
+       0.35096475226822027
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.19183948883197,
+      "value": 0.20211242391693518,
       "ci95": [
-       0.04533223796830898,
-       0.28699816904629216
+       0.04845551634245667,
+       0.3143513068529582
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.21612844371465056,
+      "value": 0.35242696112261324,
       "ci95": [
-       0.07705454428998317,
-       0.2827780152459327
+       0.03928039010791806,
+       0.6579646249964787
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.25630009088655703,
+      "value": 0.22443471315651764,
       "ci95": [
-       0.0681009449272247,
-       0.39862166712597263
+       0.04251785503526011,
+       0.3332150853050545
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.2604572227213736,
+      "value": 0.3693463048301758,
       "ci95": [
-       0.10860216951326124,
-       0.34284002129513075
+       0.032908513812028854,
+       0.6715312591337106
       ]
      },
      "elm-ours - elm-clock: f1": {
@@ -517,10 +3925,10 @@
      ],
      "f1": [
       "elm-ours",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init",
       "elm-dsm",
-      "elm-clock"
+      "elm-clock",
+      "elm-dsm-detect",
+      "elm-dsm-detect-init"
      ]
     }
    },
@@ -535,8 +3943,8 @@
        "tn": 404,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -547,7 +3955,7 @@
        "f1": 0.6140350877192983,
        "false_alarm_bin_rate": 0.23773584905660378,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9546829848716641,
        "auprc": 0.7913371059906473,
@@ -574,7 +3982,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -591,57 +3999,59 @@
         0.9487798893157346
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 8,
       "counts": {
        "tp": 111,
-       "fp": 394,
+       "fp": 396,
        "fn": 0,
-       "tn": 136,
+       "tn": 134,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2198019801980198,
+       "precision": 0.21893491124260356,
        "recall": 1.0,
-       "f1": 0.36038961038961037,
-       "false_alarm_bin_rate": 0.7433962264150943,
+       "f1": 0.3592233009708738,
+       "false_alarm_bin_rate": 0.7471698113207547,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8510283868774435,
-       "auprc": 0.6049320214230469,
+       "auroc": 0.8461329253782084,
+       "auprc": 0.5953053084249109,
        "prevalence": 0.1731669266770671
       },
       "ci95": {
        "precision": [
-        0.05950963718820861,
-        0.3871824368371679
+        0.05895547617019464,
+        0.3857687401527566
        ],
        "recall": [
         1.0,
         1.0
        ],
        "f1": [
-        0.11233428770781705,
-        0.5582285535937221
+        0.11134646525564985,
+        0.5567577225247011
        ],
        "false_alarm_bin_rate": [
-        0.6207160433070866,
-        0.8451437451437451
+        0.6200455216535433,
+        0.8511856572811916
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -650,65 +4060,67 @@
         NaN
        ],
        "auroc": [
-        0.7174063819588726,
-        0.9442261871823608
+        0.7254571595462762,
+        0.9410921483687409
        ],
        "auprc": [
-        0.11177002121018452,
-        0.8928524663682568
+        0.11898143215691476,
+        0.8927081073161272
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": true
      },
      "elm-dsm-detect": {
       "shots": 8,
       "counts": {
-       "tp": 110,
-       "fp": 323,
-       "fn": 1,
-       "tn": 207,
+       "tp": 59,
+       "fp": 208,
+       "fn": 52,
+       "tn": 322,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2540415704387991,
-       "recall": 0.990990990990991,
-       "f1": 0.40441176470588236,
-       "false_alarm_bin_rate": 0.6094339622641509,
+       "precision": 0.2209737827715356,
+       "recall": 0.5315315315315315,
+       "f1": 0.31216931216931215,
+       "false_alarm_bin_rate": 0.39245283018867927,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7793302736698963,
-       "auprc": 0.4114571191116533,
+       "auroc": 0.7755736868944416,
+       "auprc": 0.43554092643551645,
        "prevalence": 0.1731669266770671
       },
       "ci95": {
        "precision": [
-        0.07183371615969834,
-        0.41852886814093987
+        0.05930843039044113,
+        0.37425149700598803
        ],
        "recall": [
-        0.9258547008547009,
+        0.10344827586206896,
         1.0
        ],
        "f1": [
-        0.13366790211561042,
-        0.5900713524717888
+        0.07883611782424434,
+        0.5052417877380597
        ],
        "false_alarm_bin_rate": [
-        0.47848458080509104,
-        0.7119255468593216
+        0.2629605800653595,
+        0.5103974677063642
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -717,65 +4129,67 @@
         NaN
        ],
        "auroc": [
-        0.6645812405421939,
-        0.9171879111126578
+        0.6477931035247015,
+        0.9410055523323019
        ],
        "auprc": [
-        0.10927171671659038,
-        0.5959103770536115
+        0.12778667507700434,
+        0.7073776596038274
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 8,
       "counts": {
-       "tp": 111,
-       "fp": 378,
-       "fn": 0,
-       "tn": 152,
+       "tp": 59,
+       "fp": 228,
+       "fn": 52,
+       "tn": 302,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.22699386503067484,
-       "recall": 1.0,
-       "f1": 0.37,
-       "false_alarm_bin_rate": 0.7132075471698113,
+       "precision": 0.20557491289198607,
+       "recall": 0.5315315315315315,
+       "f1": 0.2964824120603015,
+       "false_alarm_bin_rate": 0.43018867924528303,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7241373448920618,
-       "auprc": 0.33856791591946905,
+       "auroc": 0.7444501104878464,
+       "auprc": 0.33989303914840197,
        "prevalence": 0.1731669266770671
       },
       "ci95": {
        "precision": [
-        0.058060271646859084,
-        0.3921970882766226
+        0.054330593849416756,
+        0.3522396540027137
        ],
        "recall": [
-        1.0,
+        0.10344827586206896,
         1.0
        ],
        "f1": [
-        0.10974851352991143,
-        0.5634217903367147
+        0.0727123695976155,
+        0.48163563235513185
        ],
        "false_alarm_bin_rate": [
-        0.594375,
-        0.8118137891830437
+        0.25975339978819617,
+        0.5948216755236496
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -784,15 +4198,17 @@
         NaN
        ],
        "auroc": [
-        0.5253098883237287,
-        0.8998380666493562
+        0.6171678208993066,
+        0.9101134215500946
        ],
        "auprc": [
-        0.08220599779301387,
-        0.48557696782201265
+        0.11450762653846709,
+        0.46427007534458065
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 8,
@@ -803,8 +4219,8 @@
        "tn": 488,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -815,7 +4231,7 @@
        "f1": 0.40625,
        "false_alarm_bin_rate": 0.07924528301886792,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -839,7 +4255,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -848,7 +4264,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 8,
@@ -859,8 +4277,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -871,7 +4289,7 @@
        "f1": 0.29521276595744683,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -896,7 +4314,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -905,50 +4323,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.10365459799422061,
+      "value": 0.10855005949345575,
       "ci95": [
-       0.027585742951421525,
-       0.16527521863453823
+       0.024585498225507242,
+       0.17068641723402964
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.2536454773296879,
+      "value": 0.2548117867484245,
       "ci95": [
-       0.09761022838287202,
-       0.3434015578910765
+       0.09814585002739185,
+       0.34545681557703495
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.17535271120176787,
+      "value": 0.17910929797722253,
       "ci95": [
-       0.030486783404977815,
-       0.27370705655953836
+       0.008124727166937058,
+       0.2935877973631228
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.2096233230134159,
+      "value": 0.3018657755499861,
       "ci95": [
-       0.07859378663624765,
-       0.2863320309816993
+       0.020893617853694726,
+       0.5755329516095927
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.2305456399796023,
+      "value": 0.21023287438381777,
       "ci95": [
-       0.06613152149656998,
-       0.3863963344627996
+       0.02113282650142329,
+       0.33327361176491027
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.24403508771929827,
+      "value": 0.31755267565899675,
       "ci95": [
-       0.09355958023019634,
-       0.3283307347906352
+       0.02099486507325012,
+       0.5770861758433367
       ]
      },
      "elm-ours - elm-clock: f1": {
@@ -971,9 +4391,9 @@
      "f1": [
       "elm-ours",
       "elm-clock",
+      "elm-dsm",
       "elm-dsm-detect",
-      "elm-dsm-detect-init",
-      "elm-dsm"
+      "elm-dsm-detect-init"
      ]
     }
    },
@@ -985,8 +4405,8 @@
      "tn": 490,
      "crowd_bins": 114,
      "crowd_legacy_present": 94,
-     "individual_bins": 33,
-     "individual_legacy_present": 13
+     "non_crowd_bins": 33,
+     "non_crowd_legacy_present": 13
     },
     "M": 40,
     "P": 4,
@@ -997,7 +4417,7 @@
      "f1": 0.8294573643410853,
      "missed_share_of_present": 0.272108843537415,
      "crowd_bin_recall": 0.8245614035087719,
-     "individual_bin_recall": 0.3939393939393939,
+     "non_crowd_bin_recall": 0.3939393939393939,
      "review_prevalence": 0.22932917316692666,
      "legacy_prevalence": 0.1731669266770671
     },
@@ -1022,7 +4442,7 @@
       0.765625,
       0.9444444444444444
      ],
-     "individual_bin_recall": [
+     "non_crowd_bin_recall": [
       0.19980769230769233,
       0.5909090909090909
      ],
@@ -1043,8 +4463,8 @@
       "tn": 37,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 13,
-      "individual_legacy_present": 5
+      "non_crowd_bins": 13,
+      "non_crowd_legacy_present": 5
      },
      "190637": {
       "tp": 3,
@@ -1053,8 +4473,8 @@
       "tn": 49,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 4,
-      "individual_legacy_present": 3
+      "non_crowd_bins": 4,
+      "non_crowd_legacy_present": 3
      },
      "190643": {
       "tp": 13,
@@ -1063,8 +4483,8 @@
       "tn": 71,
       "crowd_bins": 14,
       "crowd_legacy_present": 11,
-      "individual_bins": 5,
-      "individual_legacy_present": 2
+      "non_crowd_bins": 5,
+      "non_crowd_legacy_present": 2
      },
      "192721": {
       "tp": 0,
@@ -1073,8 +4493,8 @@
       "tn": 67,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 5,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 5,
+      "non_crowd_legacy_present": 0
      },
      "192732": {
       "tp": 34,
@@ -1083,8 +4503,8 @@
       "tn": 64,
       "crowd_bins": 36,
       "crowd_legacy_present": 34,
-      "individual_bins": 0,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 0,
+      "non_crowd_legacy_present": 0
      },
      "192751": {
       "tp": 0,
@@ -1093,8 +4513,8 @@
       "tn": 60,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 0,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 0,
+      "non_crowd_legacy_present": 0
      },
      "196541": {
       "tp": 52,
@@ -1103,8 +4523,8 @@
       "tn": 46,
       "crowd_bins": 64,
       "crowd_legacy_present": 49,
-      "individual_bins": 4,
-      "individual_legacy_present": 3
+      "non_crowd_bins": 4,
+      "non_crowd_legacy_present": 3
      },
      "200385": {
       "tp": 0,
@@ -1113,8 +4533,8 @@
       "tn": 96,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 2,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 2,
+      "non_crowd_legacy_present": 0
      }
     },
     "as_methods": {
@@ -1127,8 +4547,8 @@
        "tn": 490,
        "crowd_bins": 114,
        "crowd_hit": 94,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1139,7 +4559,7 @@
        "f1": 0.8294573643410853,
        "false_alarm_bin_rate": 0.008097165991902834,
        "crowd_bin_recall": 0.8245614035087719,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -1163,7 +4583,7 @@
         0.765625,
         0.9444444444444444
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1183,8 +4603,8 @@
        "tn": 494,
        "crowd_bins": 114,
        "crowd_hit": 114,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1195,7 +4615,7 @@
        "f1": 1.0,
        "false_alarm_bin_rate": 0.0,
        "crowd_bin_recall": 1.0,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -1219,7 +4639,7 @@
         1.0,
         1.0
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1243,56 +4663,48 @@
       [
        "elm-clock",
        "elm-dsm"
-      ],
-      [
-       "elm-clock",
-       "elm-dsm-detect"
-      ],
-      [
-       "elm-clock",
-       "elm-dsm-detect-init"
       ]
      ]
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
-      "first": 0.14281583078575555,
-      "second": 0.10365459799422061,
+      "first": 0.14829656558979865,
+      "second": 0.10855005949345575,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm: f1": {
-      "first": 0.2686564741779465,
-      "second": 0.2536454773296879,
+      "first": 0.273093539148585,
+      "second": 0.2548117867484245,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "first": 0.19183948883197,
-      "second": 0.17535271120176787,
+      "first": 0.20211242391693518,
+      "second": 0.17910929797722253,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "first": 0.21612844371465056,
-      "second": 0.2096233230134159,
+      "first": 0.35242696112261324,
+      "second": 0.3018657755499861,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "first": 0.25630009088655703,
-      "second": 0.2305456399796023,
+      "first": 0.22443471315651764,
+      "second": 0.21023287438381777,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "first": 0.2604572227213736,
-      "second": 0.24403508771929827,
+      "first": 0.3693463048301758,
+      "second": 0.31755267565899675,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
@@ -1303,6 +4715,28 @@
       "same_sign": true,
       "first_ci_excludes_zero": false,
       "second_ci_excludes_zero": false
+     }
+    },
+    "auroc_changes": {
+     "elm-ours": {
+      "review": 0.9634525875127379,
+      "legacy": 0.9546829848716641,
+      "legacy_minus_review": -0.008769602641073737
+     },
+     "elm-dsm": {
+      "review": 0.8151560219229392,
+      "legacy": 0.8461329253782084,
+      "legacy_minus_review": 0.030976903455269156
+     },
+     "elm-dsm-detect": {
+      "review": 0.7613401635958027,
+      "legacy": 0.7755736868944416,
+      "legacy_minus_review": 0.014233523298638917
+     },
+     "elm-dsm-detect-init": {
+      "review": 0.7390178743562202,
+      "legacy": 0.7444501104878464,
+      "legacy_minus_review": 0.005432236131626134
      }
     }
    }
@@ -1318,6 +4752,7 @@
     200385
    ],
    "n_shots": 7,
+   "restriction_deviation": "Ranking uses bins wholly inside one known review span and analysed time, with DSM forecast/detection rows; unlike the AE all-frame audit. Full majority counts are interval_audit.",
    "reviewed": {
     "methods": {
      "elm-ours": {
@@ -1329,8 +4764,8 @@
        "tn": 315,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1341,7 +4776,7 @@
        "f1": 0.7365269461077845,
        "false_alarm_bin_rate": 0.19642857142857142,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9647426134632958,
        "auprc": 0.9205149145224278,
@@ -1368,7 +4803,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1385,57 +4820,59 @@
         0.9967732944591506
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 7,
       "counts": {
        "tp": 134,
-       "fp": 324,
+       "fp": 327,
        "fn": 0,
-       "tn": 68,
+       "tn": 65,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2925764192139738,
+       "precision": 0.29067245119305857,
        "recall": 1.0,
-       "f1": 0.4527027027027027,
-       "false_alarm_bin_rate": 0.826530612244898,
+       "f1": 0.4504201680672269,
+       "false_alarm_bin_rate": 0.8341836734693877,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8261308254645142,
-       "auprc": 0.6372121388209611,
+       "auroc": 0.8207812975936644,
+       "auprc": 0.6277818419907735,
        "prevalence": 0.25475285171102663
       },
       "ci95": {
        "precision": [
-        0.07960199004975124,
-        0.5360282178217822
+        0.07901234567901234,
+        0.5328123397208885
        ],
        "recall": [
         1.0,
         1.0
        ],
        "f1": [
-        0.14746543778801843,
-        0.6979405696457326
+        0.14645308924485126,
+        0.6952088321859722
        ],
        "false_alarm_bin_rate": [
-        0.685212455247786,
-        0.9255945698247222
+        0.692006678639578,
+        0.9298594847775175
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1444,65 +4881,67 @@
         NaN
        ],
        "auroc": [
-        0.6800085251491901,
-        0.9412367620041966
+        0.6917423987457076,
+        0.9381849634682136
        ],
        "auprc": [
-        0.09743053952352518,
-        0.9268064955943198
+        0.10152852799893933,
+        0.9218006191153242
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": true
      },
      "elm-dsm-detect": {
       "shots": 7,
       "counts": {
-       "tp": 133,
-       "fp": 257,
-       "fn": 1,
-       "tn": 135,
+       "tp": 63,
+       "fp": 174,
+       "fn": 71,
+       "tn": 218,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.34102564102564104,
-       "recall": 0.9925373134328358,
-       "f1": 0.5076335877862596,
-       "false_alarm_bin_rate": 0.6556122448979592,
+       "precision": 0.26582278481012656,
+       "recall": 0.4701492537313433,
+       "f1": 0.33962264150943394,
+       "false_alarm_bin_rate": 0.44387755102040816,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7333041425525434,
-       "auprc": 0.4772183112845837,
+       "auroc": 0.7161513859275054,
+       "auprc": 0.47436778522490874,
        "prevalence": 0.25475285171102663
       },
       "ci95": {
        "precision": [
-        0.09090909090909091,
-        0.6056242531580744
+        0.058033357771261,
+        0.4298868778280543
        ],
        "recall": [
-        0.9364648033126294,
-        1.0
+        0.061721021362659584,
+        0.9905704053109713
        ],
        "f1": [
-        0.16574585635359115,
-        0.7543785483087041
+        0.06162300999629767,
+        0.5625578703703703
        ],
        "false_alarm_bin_rate": [
-        0.4691967558651027,
-        0.8110706553208631
+        0.3197525604921885,
+        0.5495227852479572
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1511,65 +4950,67 @@
         NaN
        ],
        "auroc": [
-        0.6034963233845065,
-        0.9011702527978666
+        0.5635189638218526,
+        0.9081880925550068
        ],
        "auprc": [
-        0.12765877493130912,
-        0.6920938615083096
+        0.10217777669744373,
+        0.7650756079778465
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 7,
       "counts": {
-       "tp": 133,
-       "fp": 308,
-       "fn": 1,
-       "tn": 84,
+       "tp": 63,
+       "fp": 191,
+       "fn": 71,
+       "tn": 201,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.30158730158730157,
-       "recall": 0.9925373134328358,
-       "f1": 0.46260869565217394,
-       "false_alarm_bin_rate": 0.7857142857142857,
+       "precision": 0.24803149606299213,
+       "recall": 0.4701492537313433,
+       "f1": 0.3247422680412371,
+       "false_alarm_bin_rate": 0.4872448979591837,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.6584678647578435,
-       "auprc": 0.39218480121908417,
+       "auroc": 0.6985226926591532,
+       "auprc": 0.39987995679612415,
        "prevalence": 0.25475285171102663
       },
       "ci95": {
        "precision": [
-        0.07345655232480236,
-        0.5474481377249351
+        0.053715651135005975,
+        0.4043321299638989
        ],
        "recall": [
-        0.9364648033126294,
-        1.0
+        0.061721021362659584,
+        0.9905704053109713
        ],
        "f1": [
-        0.1365413014941508,
-        0.7075495030581039
+        0.060943138326954624,
+        0.5255972696245734
        ],
        "false_alarm_bin_rate": [
-        0.6091258670956068,
-        0.9128800786369593
+        0.3175688341220576,
+        0.6494565217391305
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1578,15 +5019,17 @@
         NaN
        ],
        "auroc": [
-        0.4508746396428771,
-        0.8889381402679275
+        0.5816824867763205,
+        0.8869200201788385
        ],
        "auprc": [
-        0.10465854247279198,
-        0.561525390500535
+        0.13550093112312028,
+        0.5504537037531958
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-elmo": {
       "shots": 7,
@@ -1597,8 +5040,8 @@
        "tn": 362,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1609,8 +5052,11 @@
        "f1": 0.4744186046511628,
        "false_alarm_bin_rate": 0.07653061224489796,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
-       "absent_span_alarm_rate": NaN
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "auroc": 0.6032687328662808,
+       "auprc": 0.41068504584868676,
+       "prevalence": 0.25475285171102663
       },
       "ci95": {
        "precision": [
@@ -1633,16 +5079,26 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
        "absent_span_alarm_rate": [
         NaN,
         NaN
+       ],
+       "auroc": [
+        0.3745796312916215,
+        0.94732768336146
+       ],
+       "auprc": [
+        0.15326206546570972,
+        0.839444401963851
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM-O",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 7,
@@ -1653,8 +5109,8 @@
        "tn": 360,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1665,7 +5121,7 @@
        "f1": 0.3883495145631068,
        "false_alarm_bin_rate": 0.08163265306122448,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -1689,7 +5145,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1698,7 +5154,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 7,
@@ -1709,8 +5167,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1721,7 +5179,7 @@
        "f1": 0.40606060606060607,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -1746,7 +5204,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1755,50 +5213,59 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.1386117879987816,
+      "value": 0.14396131586963146,
       "ci95": [
-       0.030999057692698877,
-       0.22285409539135675
+       0.032818312230744995,
+       0.23295146258246052
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.2838242434050818,
+      "value": 0.28610677804055756,
       "ci95": [
-       0.09701006179446825,
-       0.3760016579165515
+       0.09867668134149535,
+       0.3791751551632927
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.23143847091075243,
+      "value": 0.24859122753579044,
       "ci95": [
-       0.048461446360153336,
-       0.34492873793233697
+       0.05499655756810632,
+       0.3835285285285285
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.2288933583215249,
+      "value": 0.3969043045983505,
       "ci95": [
-       0.0708302329391268,
-       0.3126515657030184
+       0.02843559781401339,
+       0.7322278978388997
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.30627474870545235,
+      "value": 0.2662199208041426,
       "ci95": [
-       0.06771317643137909,
-       0.49275064670855023
+       0.05478685804185733,
+       0.38891291872309536
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.2739182504556105,
+      "value": 0.41178467806654734,
       "ci95": [
-       0.09081941622646622,
-       0.37798047798178236
+       0.028410812836441115,
+       0.7383923253231294
+      ]
+     },
+     "elm-ours - elm-elmo: auroc": {
+      "value": 0.361473880597015,
+      "ci95": [
+       0.008765200590976296,
+       0.5967975717360964
       ]
      },
      "elm-ours - elm-elmo: f1": {
@@ -1823,15 +5290,16 @@
       "elm-ours",
       "elm-dsm",
       "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-init",
+      "elm-elmo"
      ],
      "f1": [
       "elm-ours",
-      "elm-dsm-detect",
       "elm-elmo",
-      "elm-dsm-detect-init",
       "elm-dsm",
-      "elm-clock"
+      "elm-clock",
+      "elm-dsm-detect",
+      "elm-dsm-detect-init"
      ]
     }
    },
@@ -1846,8 +5314,8 @@
        "tn": 320,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -1858,7 +5326,7 @@
        "f1": 0.6535947712418301,
        "false_alarm_bin_rate": 0.23809523809523808,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9511230907457322,
        "auprc": 0.8041380229424264,
@@ -1885,7 +5353,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1902,57 +5370,59 @@
         0.9685446602155368
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 7,
       "counts": {
        "tp": 106,
-       "fp": 352,
+       "fp": 355,
        "fn": 0,
-       "tn": 68,
+       "tn": 65,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2314410480349345,
+       "precision": 0.2299349240780911,
        "recall": 1.0,
-       "f1": 0.375886524822695,
-       "false_alarm_bin_rate": 0.8380952380952381,
+       "f1": 0.37389770723104054,
+       "false_alarm_bin_rate": 0.8452380952380952,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8394878706199461,
-       "auprc": 0.6239683140591631,
+       "auroc": 0.8342542677448338,
+       "auprc": 0.6142859649188073,
        "prevalence": 0.20152091254752852
       },
       "ci95": {
        "precision": [
-        0.052050594468855,
-        0.412561693242217
+        0.05133785485347985,
+        0.4100006529025142
        ],
        "recall": [
         1.0,
         1.0
        ],
        "f1": [
-        0.09895074271300448,
-        0.5841318543089777
+        0.09766195432654964,
+        0.581559423891392
        ],
        "false_alarm_bin_rate": [
-        0.7112860892388452,
-        0.9286129568106313
+        0.7172003624967506,
+        0.933474945533769
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -1961,65 +5431,67 @@
         NaN
        ],
        "auroc": [
-        0.7150142698468518,
-        0.9696012719887493
+        0.7236057269749255,
+        0.968726089621208
        ],
        "auprc": [
-        0.12985762386893324,
-        0.9375356434592873
+        0.13850678574508984,
+        0.9383624456816422
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": true
      },
      "elm-dsm-detect": {
       "shots": 7,
       "counts": {
-       "tp": 105,
-       "fp": 285,
-       "fn": 1,
-       "tn": 135,
+       "tp": 54,
+       "fp": 183,
+       "fn": 52,
+       "tn": 237,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.2692307692307692,
-       "recall": 0.9905660377358491,
-       "f1": 0.42338709677419356,
-       "false_alarm_bin_rate": 0.6785714285714286,
+       "precision": 0.22784810126582278,
+       "recall": 0.5094339622641509,
+       "f1": 0.31486880466472306,
+       "false_alarm_bin_rate": 0.4357142857142857,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7524483378256963,
-       "auprc": 0.42538976833137665,
+       "auroc": 0.7464061096136568,
+       "auprc": 0.44939868477725164,
        "prevalence": 0.20152091254752852
       },
       "ci95": {
        "precision": [
-        0.06465517241379311,
-        0.4707171861281825
+        0.04477611940298507,
+        0.40067934782608694
        ],
        "recall": [
-        0.9031451612903225,
+        0.06579813346280414,
         1.0
        ],
        "f1": [
-        0.12,
-        0.6392115379965665
+        0.05605084995216719,
+        0.5280258064516129
        ],
        "false_alarm_bin_rate": [
-        0.5146060483690044,
-        0.8118685321070729
+        0.2911262057179272,
+        0.5558139534883721
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2028,65 +5500,67 @@
         NaN
        ],
        "auroc": [
-        0.6107007992007992,
-        0.9229407010352223
+        0.5980655605531738,
+        0.9467186029948417
        ],
        "auprc": [
-        0.10722235906624455,
-        0.6121158077595408
+        0.13800708560901678,
+        0.7235759263981754
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 7,
       "counts": {
-       "tp": 106,
-       "fp": 335,
-       "fn": 0,
-       "tn": 85,
+       "tp": 54,
+       "fp": 200,
+       "fn": 52,
+       "tn": 220,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.24036281179138322,
-       "recall": 1.0,
-       "f1": 0.3875685557586837,
-       "false_alarm_bin_rate": 0.7976190476190477,
+       "precision": 0.2125984251968504,
+       "recall": 0.5094339622641509,
+       "f1": 0.3,
+       "false_alarm_bin_rate": 0.47619047619047616,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.6753369272237196,
-       "auprc": 0.344424157963052,
+       "auroc": 0.714937106918239,
+       "auprc": 0.3511404151659915,
        "prevalence": 0.20152091254752852
       },
       "ci95": {
        "precision": [
-        0.05790559917585478,
-        0.4340325670498083
+        0.041379310344827586,
+        0.3742230940618037
        ],
        "recall": [
-        1.0,
+        0.06579813346280414,
         1.0
        ],
        "f1": [
-        0.10947211831122675,
-        0.6053311255716065
+        0.05398887633614322,
+        0.5024101756367202
        ],
        "false_alarm_bin_rate": [
-        0.6384214092140921,
-        0.9151785714285714
+        0.29263748827392116,
+        0.6511627906976745
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2095,15 +5569,17 @@
         NaN
        ],
        "auroc": [
-        0.4441949544313829,
-        0.8978154232261009
+        0.5749676863420939,
+        0.9102073097968724
        ],
        "auprc": [
-        0.07399165520391716,
-        0.49616707587134057
+        0.10568863951056573,
+        0.4759490927931697
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-elmo": {
       "shots": 7,
@@ -2114,8 +5590,8 @@
        "tn": 389,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2126,8 +5602,11 @@
        "f1": 0.5347593582887701,
        "false_alarm_bin_rate": 0.07380952380952381,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
-       "absent_span_alarm_rate": NaN
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "auroc": 0.6466868823000899,
+       "auprc": 0.3924177553496442,
+       "prevalence": 0.20152091254752852
       },
       "ci95": {
        "precision": [
@@ -2150,16 +5629,26 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
        "absent_span_alarm_rate": [
         NaN,
         NaN
+       ],
+       "auroc": [
+        0.398676888099999,
+        0.9714922564929089
+       ],
+       "auprc": [
+        0.13681105880502686,
+        0.8239642221561829
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM-O",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 7,
@@ -2170,8 +5659,8 @@
        "tn": 382,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2182,7 +5671,7 @@
        "f1": 0.38202247191011235,
        "false_alarm_bin_rate": 0.09047619047619047,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -2206,7 +5695,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2215,7 +5704,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 7,
@@ -2226,8 +5717,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2238,7 +5729,7 @@
        "f1": 0.33544303797468356,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -2263,7 +5754,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2272,50 +5763,59 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.11163522012578608,
+      "value": 0.1168688230008984,
       "ci95": [
-       -0.00670203057266705,
-       0.18695270514747347
+       -0.007828226347573297,
+       0.19070759418943373
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.27770824641913505,
+      "value": 0.27969706401078953,
       "ci95": [
-       0.0930956692140808,
-       0.37971607686006564
+       0.09409933121107704,
+       0.38222473435710164
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.1986747529200359,
+      "value": 0.20471698113207537,
       "ci95": [
-       0.023120432682383063,
-       0.3124198909078231
+       -0.014937343358395916,
+       0.33659189071336665
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.2302076744676365,
+      "value": 0.338725966577107,
       "ci95": [
-       0.07777874086273151,
-       0.32611549320093797
+       0.01994662139857472,
+       0.6301338631125596
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.2757861635220126,
+      "value": 0.23618598382749323,
       "ci95": [
-       0.056700305969997464,
-       0.4682132443027783
+       0.02292358803986716,
+       0.3689950568147712
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.26602621548314637,
+      "value": 0.3535947712418301,
       "ci95": [
-       0.0841342486651411,
-       0.3653121148873206
+       0.02203878052081118,
+       0.6351604072548381
+      ]
+     },
+     "elm-ours - elm-elmo: auroc": {
+      "value": 0.30443620844564234,
+      "ci95": [
+       -0.06119599164511626,
+       0.5439080740282153
       ]
      },
      "elm-ours - elm-elmo: f1": {
@@ -2340,15 +5840,16 @@
       "elm-ours",
       "elm-dsm",
       "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-init",
+      "elm-elmo"
      ],
      "f1": [
       "elm-ours",
       "elm-elmo",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init",
       "elm-clock",
-      "elm-dsm"
+      "elm-dsm",
+      "elm-dsm-detect",
+      "elm-dsm-detect-init"
      ]
     }
    },
@@ -2360,8 +5861,8 @@
      "tn": 388,
      "crowd_bins": 114,
      "crowd_legacy_present": 94,
-     "individual_bins": 20,
-     "individual_legacy_present": 8
+     "non_crowd_bins": 20,
+     "non_crowd_legacy_present": 8
     },
     "M": 32,
     "P": 4,
@@ -2372,7 +5873,7 @@
      "f1": 0.85,
      "missed_share_of_present": 0.23880597014925373,
      "crowd_bin_recall": 0.8245614035087719,
-     "individual_bin_recall": 0.4,
+     "non_crowd_bin_recall": 0.4,
      "review_prevalence": 0.25475285171102663,
      "legacy_prevalence": 0.20152091254752852
     },
@@ -2397,7 +5898,7 @@
       0.765625,
       0.9444444444444444
      ],
-     "individual_bin_recall": [
+     "non_crowd_bin_recall": [
       0.10526315789473684,
       0.75
      ],
@@ -2418,8 +5919,8 @@
       "tn": 45,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 4,
-      "individual_legacy_present": 3
+      "non_crowd_bins": 4,
+      "non_crowd_legacy_present": 3
      },
      "190643": {
       "tp": 13,
@@ -2428,8 +5929,8 @@
       "tn": 67,
       "crowd_bins": 14,
       "crowd_legacy_present": 11,
-      "individual_bins": 5,
-      "individual_legacy_present": 2
+      "non_crowd_bins": 5,
+      "non_crowd_legacy_present": 2
      },
      "192721": {
       "tp": 0,
@@ -2438,8 +5939,8 @@
       "tn": 59,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 5,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 5,
+      "non_crowd_legacy_present": 0
      },
      "192732": {
       "tp": 34,
@@ -2448,8 +5949,8 @@
       "tn": 56,
       "crowd_bins": 36,
       "crowd_legacy_present": 34,
-      "individual_bins": 0,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 0,
+      "non_crowd_legacy_present": 0
      },
      "192751": {
       "tp": 0,
@@ -2458,8 +5959,8 @@
       "tn": 52,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 0,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 0,
+      "non_crowd_legacy_present": 0
      },
      "196541": {
       "tp": 52,
@@ -2468,8 +5969,8 @@
       "tn": 26,
       "crowd_bins": 64,
       "crowd_legacy_present": 49,
-      "individual_bins": 4,
-      "individual_legacy_present": 3
+      "non_crowd_bins": 4,
+      "non_crowd_legacy_present": 3
      },
      "200385": {
       "tp": 0,
@@ -2478,8 +5979,8 @@
       "tn": 83,
       "crowd_bins": 0,
       "crowd_legacy_present": 0,
-      "individual_bins": 2,
-      "individual_legacy_present": 0
+      "non_crowd_bins": 2,
+      "non_crowd_legacy_present": 0
      }
     },
     "as_methods": {
@@ -2492,8 +5993,8 @@
        "tn": 388,
        "crowd_bins": 114,
        "crowd_hit": 94,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2504,7 +6005,7 @@
        "f1": 0.85,
        "false_alarm_bin_rate": 0.01020408163265306,
        "crowd_bin_recall": 0.8245614035087719,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -2528,7 +6029,7 @@
         0.765625,
         0.9444444444444444
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2548,8 +6049,8 @@
        "tn": 392,
        "crowd_bins": 114,
        "crowd_hit": 114,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2560,7 +6061,7 @@
        "f1": 1.0,
        "false_alarm_bin_rate": 0.0,
        "crowd_bin_recall": 1.0,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -2584,7 +6085,7 @@
         1.0,
         1.0
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2608,55 +6109,58 @@
       [
        "elm-clock",
        "elm-dsm"
-      ],
-      [
-       "elm-dsm-detect",
-       "elm-elmo"
       ]
      ]
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
-      "first": 0.1386117879987816,
-      "second": 0.11163522012578608,
+      "first": 0.14396131586963146,
+      "second": 0.1168688230008984,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": false
      },
      "elm-ours - elm-dsm: f1": {
-      "first": 0.2838242434050818,
-      "second": 0.27770824641913505,
+      "first": 0.28610677804055756,
+      "second": 0.27969706401078953,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "first": 0.23143847091075243,
-      "second": 0.1986747529200359,
+      "first": 0.24859122753579044,
+      "second": 0.20471698113207537,
       "same_sign": true,
       "first_ci_excludes_zero": true,
-      "second_ci_excludes_zero": true
+      "second_ci_excludes_zero": false
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "first": 0.2288933583215249,
-      "second": 0.2302076744676365,
+      "first": 0.3969043045983505,
+      "second": 0.338725966577107,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "first": 0.30627474870545235,
-      "second": 0.2757861635220126,
+      "first": 0.2662199208041426,
+      "second": 0.23618598382749323,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "first": 0.2739182504556105,
-      "second": 0.26602621548314637,
+      "first": 0.41178467806654734,
+      "second": 0.3535947712418301,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-elmo: auroc": {
+      "first": 0.361473880597015,
+      "second": 0.30443620844564234,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": false
      },
      "elm-ours - elm-elmo: f1": {
       "first": 0.26210834145662165,
@@ -2671,6 +6175,33 @@
       "same_sign": true,
       "first_ci_excludes_zero": false,
       "second_ci_excludes_zero": false
+     }
+    },
+    "auroc_changes": {
+     "elm-ours": {
+      "review": 0.9647426134632958,
+      "legacy": 0.9511230907457322,
+      "legacy_minus_review": -0.013619522717563615
+     },
+     "elm-dsm": {
+      "review": 0.8207812975936644,
+      "legacy": 0.8342542677448338,
+      "legacy_minus_review": 0.013472970151169439
+     },
+     "elm-dsm-detect": {
+      "review": 0.7161513859275054,
+      "legacy": 0.7464061096136568,
+      "legacy_minus_review": 0.030254723686151452
+     },
+     "elm-dsm-detect-init": {
+      "review": 0.6985226926591532,
+      "legacy": 0.714937106918239,
+      "legacy_minus_review": 0.01641441425908574
+     },
+     "elm-elmo": {
+      "review": 0.6032687328662808,
+      "legacy": 0.6466868823000899,
+      "legacy_minus_review": 0.04341814943380906
      }
     }
    }
@@ -2695,8 +6226,8 @@
        "tn": 6246,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2707,7 +6238,7 @@
        "f1": 0.8336928386540121,
        "false_alarm_bin_rate": 0.11990982105114838,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9388279006710349,
        "auprc": 0.878248301434313,
@@ -2734,7 +6265,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2751,57 +6282,59 @@
         0.951162983240613
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 119,
       "counts": {
-       "tp": 3407,
-       "fp": 2723,
-       "fn": 1149,
-       "tn": 4374,
+       "tp": 3181,
+       "fp": 2411,
+       "fn": 1375,
+       "tn": 4686,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.5557911908646003,
-       "recall": 0.7478050921861282,
-       "f1": 0.6376567471457982,
-       "false_alarm_bin_rate": 0.3836832464421587,
+       "precision": 0.5688483547925608,
+       "recall": 0.6982001755926251,
+       "f1": 0.6269215608986992,
+       "false_alarm_bin_rate": 0.3397210088769903,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.779636605903668,
-       "auprc": 0.6657603510709039,
+       "auroc": 0.7770468033396,
+       "auprc": 0.6621488069893174,
        "prevalence": 0.3909722818158414
       },
       "ci95": {
        "precision": [
-        0.482339471792251,
-        0.6268060347129735
+        0.49128436698841427,
+        0.6465718318510152
        ],
        "recall": [
-        0.6692186847345247,
-        0.8212071713498544
+        0.6062234435050363,
+        0.7837166260983348
        ],
        "f1": [
-        0.5767156015191482,
-        0.6992450358221688
+        0.5590246198897908,
+        0.691649224505657
        ],
        "false_alarm_bin_rate": [
-        0.32374365072526234,
-        0.44396838647127046
+        0.2779575944843949,
+        0.404186022551846
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2810,65 +6343,67 @@
         NaN
        ],
        "auroc": [
-        0.7336673699931648,
-        0.8287292545049897
+        0.7295772183742613,
+        0.8240772322903194
        ],
        "auprc": [
-        0.5941651112434865,
-        0.7374646619171608
+        0.5923494670229715,
+        0.7357936107208473
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": false
      },
      "elm-dsm-detect": {
       "shots": 119,
       "counts": {
-       "tp": 3979,
-       "fp": 2299,
-       "fn": 577,
-       "tn": 4798,
+       "tp": 3814,
+       "fp": 1899,
+       "fn": 742,
+       "tn": 5198,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.633800573431029,
-       "recall": 0.8733538191395961,
-       "f1": 0.7345394129592026,
-       "false_alarm_bin_rate": 0.3239396928279555,
+       "precision": 0.6676002100472607,
+       "recall": 0.8371378402107111,
+       "f1": 0.7428181906709515,
+       "false_alarm_bin_rate": 0.2675778497956883,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8554121255651802,
-       "auprc": 0.7617793891999681,
+       "auroc": 0.8502146599429974,
+       "auprc": 0.7610194054575621,
        "prevalence": 0.3909722818158414
       },
       "ci95": {
        "precision": [
-        0.5569102725229831,
-        0.7062334622594985
+        0.592438559860743,
+        0.7380612202557584
        ],
        "recall": [
-        0.8065665303076089,
-        0.9367989426219944
+        0.7608229276495789,
+        0.9049596788198053
        ],
        "f1": [
-        0.6718052864275751,
-        0.7915129325271554
+        0.6800244229253375,
+        0.7981961671029489
        ],
        "false_alarm_bin_rate": [
-        0.2573495956155062,
-        0.3784950971553401
+        0.20760884743649302,
+        0.3223636642620949
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2877,65 +6412,67 @@
         NaN
        ],
        "auroc": [
-        0.8119398555846495,
-        0.8962816446624865
+        0.8016613359690132,
+        0.894814936347389
        ],
        "auprc": [
-        0.6834400787975354,
-        0.835036793103437
+        0.6714803384951537,
+        0.8344173514298532
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 119,
       "counts": {
-       "tp": 3988,
-       "fp": 2291,
-       "fn": 568,
-       "tn": 4806,
+       "tp": 3727,
+       "fp": 1811,
+       "fn": 829,
+       "tn": 5286,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.63513298295907,
-       "recall": 0.8753292361720808,
-       "f1": 0.7361329026303646,
-       "false_alarm_bin_rate": 0.3228124559673101,
+       "precision": 0.6729866377753702,
+       "recall": 0.8180421422300264,
+       "f1": 0.7384584901921933,
+       "false_alarm_bin_rate": 0.25517824432858954,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8538908908449488,
-       "auprc": 0.7610673403967168,
+       "auroc": 0.8625497047497966,
+       "auprc": 0.7919098320230736,
        "prevalence": 0.3909722818158414
       },
       "ci95": {
        "precision": [
-        0.5579377584388279,
-        0.7099005161419437
+        0.5988809465046226,
+        0.7443883588761768
        ],
        "recall": [
-        0.8019734954920573,
-        0.9348441385267381
+        0.7328287541227011,
+        0.8877015236633448
        ],
        "f1": [
-        0.6710621511138103,
-        0.7948875614898102
+        0.6752996297095544,
+        0.7927764877845604
        ],
        "false_alarm_bin_rate": [
-        0.2519419090413728,
-        0.38217696605647744
+        0.1964327341036743,
+        0.3079218714321139
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -2944,15 +6481,17 @@
         NaN
        ],
        "auroc": [
-        0.812187792719704,
-        0.893147776419974
+        0.8173083293518605,
+        0.9045953105525693
        ],
        "auprc": [
-        0.6817480593510795,
-        0.833904652976523
+        0.7100156769753679,
+        0.857449893444325
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 119,
@@ -2963,8 +6502,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -2975,7 +6514,7 @@
        "f1": 0.5621568264544389,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -3000,7 +6539,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3009,50 +6548,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.15919129476736693,
+      "value": 0.16178109733143498,
       "ci95": [
-       0.09871075758488347,
-       0.210484745688679
+       0.10396405123553491,
+       0.21521290267004822
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.19603609150821388,
+      "value": 0.2067712777553129,
       "ci95": [
-       0.12832668383046797,
-       0.25634190742582463
+       0.13233282925776996,
+       0.2785241116163983
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.08341577510585474,
+      "value": 0.08861324072803756,
       "ci95": [
-       0.043242039007837116,
-       0.12836381269552902
+       0.04532792722148659,
+       0.13275271632047492
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.09915342569480956,
+      "value": 0.09087464798306066,
       "ci95": [
-       0.048435210933656735,
-       0.14785223994916608
+       0.03910332870310707,
+       0.14345957858257616
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.0849370098260861,
+      "value": 0.0762781959212383,
       "ci95": [
-       0.044764521800995466,
-       0.12665181442300127
+       0.03552553290239637,
+       0.11673972173745242
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.09755993602364754,
+      "value": 0.09523434846181877,
       "ci95": [
-       0.04645489681582891,
-       0.14674043084821398
+       0.04705018502490619,
+       0.14912816146047014
       ]
      }
     },
@@ -3061,14 +6602,14 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect",
       "elm-dsm-detect-init",
+      "elm-dsm-detect",
       "elm-dsm"
      ],
      "f1": [
       "elm-ours",
-      "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-init",
       "elm-dsm"
      ]
     }
@@ -3084,8 +6625,8 @@
        "tn": 6218,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -3096,7 +6637,7 @@
        "f1": 0.6822645169111408,
        "false_alarm_bin_rate": 0.23423645320197045,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.8377405538769575,
        "auprc": 0.6470775271210054,
@@ -3123,7 +6664,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3140,57 +6681,59 @@
         0.7783680276444719
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 119,
       "counts": {
-       "tp": 2624,
-       "fp": 3506,
-       "fn": 909,
-       "tn": 4614,
+       "tp": 2401,
+       "fp": 3191,
+       "fn": 1132,
+       "tn": 4929,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.42805872756933117,
-       "recall": 0.7427115765638268,
-       "f1": 0.5431025561419849,
-       "false_alarm_bin_rate": 0.43177339901477835,
+       "precision": 0.4293633762517883,
+       "recall": 0.679592414378715,
+       "f1": 0.5262465753424658,
+       "false_alarm_bin_rate": 0.39298029556650244,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.725237207525387,
-       "auprc": 0.47907140357473893,
+       "auroc": 0.7115498975876988,
+       "auprc": 0.465290369483005,
        "prevalence": 0.30318372951171374
       },
       "ci95": {
        "precision": [
-        0.34667963250585115,
-        0.5147681591297143
+        0.34433551041443233,
+        0.5230711117810104
        ],
        "recall": [
-        0.6586351782092147,
-        0.8214245013273914
+        0.5790975302960045,
+        0.7779557721164814
        ],
        "f1": [
-        0.467332004278907,
-        0.6166163472852446
+        0.4477719660505606,
+        0.6068153322645878
        ],
        "false_alarm_bin_rate": [
-        0.36976410446962144,
-        0.4887766695902749
+        0.33126928820979534,
+        0.4540913538546009
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3199,65 +6742,67 @@
         NaN
        ],
        "auroc": [
-        0.6693987187306911,
-        0.78052790503516
+        0.6515370863352561,
+        0.7684945283420923
        ],
        "auprc": [
-        0.38366884121346584,
-        0.5937974025512361
+        0.375423856042587,
+        0.5730620943408319
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": false
      },
      "elm-dsm-detect": {
       "shots": 119,
       "counts": {
-       "tp": 2812,
-       "fp": 3466,
-       "fn": 721,
-       "tn": 4654,
+       "tp": 2824,
+       "fp": 2889,
+       "fn": 709,
+       "tn": 5231,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.44791334820006373,
-       "recall": 0.7959241437871497,
-       "f1": 0.5732341249617776,
-       "false_alarm_bin_rate": 0.42684729064039406,
+       "precision": 0.4943112200245055,
+       "recall": 0.7993206906311916,
+       "f1": 0.6108587497296128,
+       "false_alarm_bin_rate": 0.3557881773399015,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7504194965414063,
-       "auprc": 0.47455442958701716,
+       "auroc": 0.7684577432483871,
+       "auprc": 0.512385570845018,
        "prevalence": 0.30318372951171374
       },
       "ci95": {
        "precision": [
-        0.358685875027019,
-        0.5376194532453977
+        0.4007698867781466,
+        0.5887360719044417
        ],
        "recall": [
-        0.7185121152186134,
-        0.869853816925665
+        0.7208516122222994,
+        0.8705215954954978
        ],
        "f1": [
-        0.4846930383152191,
-        0.6527407719163456
+        0.523942648578708,
+        0.6856438059094606
        ],
        "false_alarm_bin_rate": [
-        0.3547446020369736,
-        0.4896747601219317
+        0.2819515017522469,
+        0.4187206211736217
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3266,65 +6811,67 @@
         NaN
        ],
        "auroc": [
-        0.6908444482315876,
-        0.8084890210048138
+        0.7124122232508056,
+        0.8236306822900821
        ],
        "auprc": [
-        0.3716961376744066,
-        0.6128034712943468
+        0.4006964713999509,
+        0.6495644581036971
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 119,
       "counts": {
-       "tp": 2902,
-       "fp": 3377,
-       "fn": 631,
-       "tn": 4743,
+       "tp": 2728,
+       "fp": 2810,
+       "fn": 805,
+       "tn": 5310,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.4621755056537665,
-       "recall": 0.821398245117464,
-       "f1": 0.5915205870362821,
-       "false_alarm_bin_rate": 0.41588669950738916,
+       "precision": 0.49259660527266164,
+       "recall": 0.7721483158788565,
+       "f1": 0.6014772351449674,
+       "false_alarm_bin_rate": 0.3460591133004926,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7569438712268143,
-       "auprc": 0.4836943401415471,
+       "auroc": 0.7704283783161996,
+       "auprc": 0.5210021654955546,
        "prevalence": 0.30318372951171374
       },
       "ci95": {
        "precision": [
-        0.37488998782820965,
-        0.551217837789708
+        0.3993089728731342,
+        0.5894438978509059
        ],
        "recall": [
-        0.7463520450320181,
-        0.8934050767225574
+        0.6885965003790329,
+        0.8435475044794649
        ],
        "f1": [
-        0.5078687020209722,
-        0.6690662046960532
+        0.5179650902211915,
+        0.6749077475242379
        ],
        "false_alarm_bin_rate": [
-        0.33755145295313305,
-        0.4821452388854034
+        0.2727138605883171,
+        0.4101297035326082
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3333,15 +6880,17 @@
         NaN
        ],
        "auroc": [
-        0.702588331212257,
-        0.8140964835337495
+        0.7156478528966471,
+        0.82540526552778
        ],
        "auprc": [
-        0.37818842458529045,
-        0.6146753187749388
+        0.4111781751711486,
+        0.6556768459133054
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 119,
@@ -3352,8 +6901,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -3364,7 +6913,7 @@
        "f1": 0.4652969840642697,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -3389,7 +6938,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3398,50 +6947,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.11250334635157044,
+      "value": 0.12619065628925863,
       "ci95": [
-       0.04153319349154087,
-       0.17485201480448212
+       0.052337410162560945,
+       0.19332795919609372
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.13916196076915588,
+      "value": 0.156017941568675,
       "ci95": [
-       0.07026398757830545,
-       0.20594090304096024
+       0.06970709275769361,
+       0.2336134113651973
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.08732105733555118,
+      "value": 0.06928281062857033,
       "ci95": [
-       0.03262721292014751,
-       0.14546546089636384
+       0.018137625266437824,
+       0.12239997257147751
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.10903039194936315,
+      "value": 0.07140576718152791,
       "ci95": [
-       0.06020733685840202,
-       0.1592960878462489
+       0.024757113055627007,
+       0.11891606882623149
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.08079668265014317,
+      "value": 0.06731217556075786,
       "ci95": [
-       0.02832609513471721,
-       0.1326408040651496
+       0.019006086756926478,
+       0.1183427291277322
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.09074392987485869,
+      "value": 0.08078728176617334,
       "ci95": [
-       0.04030143444950833,
-       0.14078235444146042
+       0.035461305284461696,
+       0.12892003177664535
       ]
      }
     },
@@ -3456,68 +7007,85 @@
      ],
      "f1": [
       "elm-ours",
-      "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-init",
       "elm-dsm"
      ]
     }
    },
    "comparison": {
     "order_changes": {
-     "auroc": true,
+     "auroc": false,
      "f1": false
     },
     "order_flips": {
-     "auroc": [
-      [
-       "elm-dsm-detect",
-       "elm-dsm-detect-init"
-      ]
-     ],
+     "auroc": [],
      "f1": []
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
-      "first": 0.15919129476736693,
-      "second": 0.11250334635157044,
+      "first": 0.16178109733143498,
+      "second": 0.12619065628925863,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm: f1": {
-      "first": 0.19603609150821388,
-      "second": 0.13916196076915588,
+      "first": 0.2067712777553129,
+      "second": 0.156017941568675,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "first": 0.08341577510585474,
-      "second": 0.08732105733555118,
+      "first": 0.08861324072803756,
+      "second": 0.06928281062857033,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "first": 0.09915342569480956,
-      "second": 0.10903039194936315,
+      "first": 0.09087464798306066,
+      "second": 0.07140576718152791,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "first": 0.0849370098260861,
-      "second": 0.08079668265014317,
+      "first": 0.0762781959212383,
+      "second": 0.06731217556075786,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "first": 0.09755993602364754,
-      "second": 0.09074392987485869,
+      "first": 0.09523434846181877,
+      "second": 0.08078728176617334,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
+     }
+    },
+    "auroc_changes": {
+     "elm-ours": {
+      "review": 0.9388279006710349,
+      "legacy": 0.8377405538769575,
+      "legacy_minus_review": -0.10108734679407749
+     },
+     "elm-dsm": {
+      "review": 0.7770468033396,
+      "legacy": 0.7115498975876988,
+      "legacy_minus_review": -0.06549690575190115
+     },
+     "elm-dsm-detect": {
+      "review": 0.8502146599429974,
+      "legacy": 0.7684577432483871,
+      "legacy_minus_review": -0.08175691669461027
+     },
+     "elm-dsm-detect-init": {
+      "review": 0.8625497047497966,
+      "legacy": 0.7704283783161996,
+      "legacy_minus_review": -0.09212132643359705
      }
     }
    }
@@ -3540,8 +7108,8 @@
        "tn": 3314,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -3552,7 +7120,7 @@
        "f1": 0.8483870967741935,
        "false_alarm_bin_rate": 0.12972689075630253,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9391835117643969,
        "auprc": 0.8763147241897526,
@@ -3579,7 +7147,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3596,57 +7164,59 @@
         0.9619482824717032
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 73,
       "counts": {
-       "tp": 1990,
-       "fp": 1909,
-       "fn": 729,
-       "tn": 1899,
+       "tp": 1866,
+       "fp": 1725,
+       "fn": 853,
+       "tn": 2083,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.5103872787894332,
-       "recall": 0.7318867230599485,
-       "f1": 0.6013901480809912,
-       "false_alarm_bin_rate": 0.501313025210084,
+       "precision": 0.5196324143692564,
+       "recall": 0.6862817212210371,
+       "f1": 0.5914421553090333,
+       "false_alarm_bin_rate": 0.4529936974789916,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.7315912803149947,
-       "auprc": 0.6471438664625535,
+       "auroc": 0.7149179366487308,
+       "auprc": 0.6306414524325701,
        "prevalence": 0.4165772943159185
       },
       "ci95": {
        "precision": [
-        0.40998199838698524,
-        0.6018675391295438
+        0.4189245940189902,
+        0.6238207475508949
        ],
        "recall": [
-        0.6238744168398602,
-        0.8358742797083137
+        0.5712176806511085,
+        0.800034509202454
        ],
        "f1": [
-        0.5173708285585822,
-        0.6734229365216651
+        0.5038902648761434,
+        0.6738263601111861
        ],
        "false_alarm_bin_rate": [
-        0.4151888077490635,
-        0.5859738237585385
+        0.3582255740779048,
+        0.5459104177427181
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3655,65 +7225,67 @@
         NaN
        ],
        "auroc": [
-        0.660038528879773,
-        0.8054347262245981
+        0.6327473321084771,
+        0.7938470394830442
        ],
        "auprc": [
-        0.553876429390272,
-        0.7429821888408584
+        0.5355446761220937,
+        0.7300422934121452
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": false
      },
      "elm-dsm-detect": {
       "shots": 73,
       "counts": {
-       "tp": 2537,
-       "fp": 1429,
-       "fn": 182,
-       "tn": 2379,
+       "tp": 2414,
+       "fp": 1200,
+       "fn": 305,
+       "tn": 2608,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.6396873424104892,
-       "recall": 0.9330636263332107,
-       "f1": 0.7590127150336574,
-       "false_alarm_bin_rate": 0.3752626050420168,
+       "precision": 0.6679579413392362,
+       "recall": 0.8878264067671938,
+       "f1": 0.76235591346913,
+       "false_alarm_bin_rate": 0.31512605042016806,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8536228002602292,
-       "auprc": 0.7508383761897505,
+       "auroc": 0.8432373937990054,
+       "auprc": 0.7502657454636863,
        "prevalence": 0.4165772943159185
       },
       "ci95": {
        "precision": [
-        0.5441596198887817,
-        0.7296460945162296
+        0.5694202834667833,
+        0.7534837851472032
        ],
        "recall": [
-        0.8819839240043844,
-        0.9680443566066856
+        0.8083686927913318,
+        0.9443446242912158
        ],
        "f1": [
-        0.6811509928211034,
-        0.822357359242282
+        0.6814429809768922,
+        0.8263429208365318
        ],
        "false_alarm_bin_rate": [
-        0.2955996460041055,
-        0.4619175090656197
+        0.2353071166250669,
+        0.3931484680386033
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3722,65 +7294,67 @@
         NaN
        ],
        "auroc": [
-        0.8032434237230466,
-        0.8982367221087693
+        0.7876629547491306,
+        0.8919985924937236
        ],
        "auprc": [
-        0.6546597677541537,
-        0.8465159095658468
+        0.647726443295515,
+        0.8447442114787935
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 73,
       "counts": {
-       "tp": 2486,
-       "fp": 1502,
-       "fn": 233,
-       "tn": 2306,
+       "tp": 2342,
+       "fp": 1193,
+       "fn": 377,
+       "tn": 2615,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.623370110330993,
-       "recall": 0.914306730415594,
-       "f1": 0.7413150439838975,
-       "false_alarm_bin_rate": 0.3944327731092437,
+       "precision": 0.6625176803394626,
+       "recall": 0.8613460831187937,
+       "f1": 0.7489606651742885,
+       "false_alarm_bin_rate": 0.3132878151260504,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8371682619351529,
-       "auprc": 0.7383243169423835,
+       "auroc": 0.8525061734881522,
+       "auprc": 0.7790126049853042,
        "prevalence": 0.4165772943159185
       },
       "ci95": {
        "precision": [
-        0.5240883644454962,
-        0.715055166999361
+        0.5689697921511412,
+        0.7465760403443942
        ],
        "recall": [
-        0.8409128170002154,
-        0.9654836704349143
+        0.7580556345033395,
+        0.9361255921093214
        ],
        "f1": [
-        0.6540526019559348,
-        0.8112553530190616
+        0.6707925028163545,
+        0.8112043142615898
        ],
        "false_alarm_bin_rate": [
-        0.30979071213243503,
-        0.486251609681346
+        0.24007019729052298,
+        0.3952853089113403
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3789,15 +7363,17 @@
         NaN
        ],
        "auroc": [
-        0.7824059422197588,
-        0.8849642199870921
+        0.7962037432013622,
+        0.9003629423099413
        ],
        "auprc": [
-        0.6446526250804067,
-        0.8259262912224233
+        0.6806499094358275,
+        0.8596197620177736
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 73,
@@ -3808,8 +7384,8 @@
        "tn": 3455,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -3820,7 +7396,7 @@
        "f1": 0.7135678391959799,
        "false_alarm_bin_rate": 0.09269957983193278,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -3844,7 +7420,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3853,7 +7429,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 73,
@@ -3864,8 +7442,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -3876,7 +7454,7 @@
        "f1": 0.5881462253947654,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -3901,7 +7479,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -3910,50 +7488,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.2075922314494022,
+      "value": 0.22426557511566603,
       "ci95": [
-       0.1243267898028146,
-       0.2928328118682352
+       0.12928342127780168,
+       0.32054704691038544
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.24699694869320232,
+      "value": 0.2569449414651602,
       "ci95": [
-       0.1693568817327606,
-       0.3283982968874272
+       0.1664429601542017,
+       0.3511288198065834
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.08556071150416766,
+      "value": 0.09594611796539143,
       "ci95": [
-       0.03752361773032037,
-       0.13748727830324725
+       0.04486387920765865,
+       0.15478287505542584
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.08937438174053614,
+      "value": 0.08603118330506354,
       "ci95": [
-       0.03559117940620572,
-       0.1512746414188997
+       0.02744392114234413,
+       0.15260629696875075
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.10201524982924393,
+      "value": 0.08667733827624469,
       "ci95": [
-       0.051372083507779144,
-       0.1585529584452796
+       0.042331273305361614,
+       0.140660162220556
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.10707205279029608,
+      "value": 0.09942643159990505,
       "ci95": [
-       0.050172111259394754,
-       0.17041599547908423
+       0.04694063180337138,
+       0.15785337638748811
       ]
      },
      "elm-ours - elm-clock: f1": {
@@ -3969,8 +7549,8 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect",
       "elm-dsm-detect-init",
+      "elm-dsm-detect",
       "elm-dsm"
      ],
      "f1": [
@@ -3993,8 +7573,8 @@
        "tn": 3216,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -4005,7 +7585,7 @@
        "f1": 0.8158082975679543,
        "false_alarm_bin_rate": 0.15279241306638566,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.9157962823130131,
        "auprc": 0.8520108557736735,
@@ -4032,7 +7612,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4049,57 +7629,59 @@
         0.8985077233836816
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "elm-ours",
+      "degenerate_f1": false
      },
      "elm-dsm": {
       "shots": 73,
       "counts": {
-       "tp": 1945,
-       "fp": 1954,
-       "fn": 786,
-       "tn": 1842,
+       "tp": 1826,
+       "fp": 1765,
+       "fn": 905,
+       "tn": 2031,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.4988458579122852,
-       "recall": 0.7121933357744415,
-       "f1": 0.5867269984917044,
-       "false_alarm_bin_rate": 0.5147523709167545,
+       "precision": 0.5084934558618769,
+       "recall": 0.6686195532771878,
+       "f1": 0.5776652957924707,
+       "false_alarm_bin_rate": 0.4649631190727081,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.6832691931494116,
-       "auprc": 0.5949896698218635,
+       "auroc": 0.6765874309676319,
+       "auprc": 0.5867400226143643,
        "prevalence": 0.41841581124559524
       },
       "ci95": {
        "precision": [
-        0.4093199725350155,
-        0.5872198565502988
+        0.41540743697164423,
+        0.6033409892997608
        ],
        "recall": [
-        0.6108775263133774,
-        0.8107699533844982
+        0.5563691399506305,
+        0.7811645510513899
        ],
        "f1": [
-        0.5038009161207395,
-        0.6583456643542634
+        0.49385592363399816,
+        0.6547217319216476
        ],
        "false_alarm_bin_rate": [
-        0.42636565580204416,
-        0.5961706011059394
+        0.3730390226655693,
+        0.5562939169843518
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4108,65 +7690,67 @@
         NaN
        ],
        "auroc": [
-        0.613110830812926,
-        0.7573632971154874
+        0.5973404716522878,
+        0.7542807178804739
        ],
        "auprc": [
-        0.5039064980771534,
-        0.6922514992296277
+        0.4971590955822558,
+        0.6861509369861233
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124)",
+      "degenerate_f1": false
      },
      "elm-dsm-detect": {
       "shots": 73,
       "counts": {
-       "tp": 2430,
-       "fp": 1536,
-       "fn": 301,
-       "tn": 2260,
+       "tp": 2412,
+       "fp": 1202,
+       "fn": 319,
+       "tn": 2594,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.6127080181543116,
-       "recall": 0.8897839619187111,
-       "f1": 0.7256980737643721,
-       "false_alarm_bin_rate": 0.40463645943098,
+       "precision": 0.667404537908135,
+       "recall": 0.8831929696082021,
+       "f1": 0.7602836879432624,
+       "false_alarm_bin_rate": 0.3166491043203372,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8298839978408153,
-       "auprc": 0.7203748033617801,
+       "auroc": 0.8322146420966162,
+       "auprc": 0.730469897254129,
        "prevalence": 0.41841581124559524
       },
       "ci95": {
        "precision": [
-        0.5232475243347166,
-        0.6999876373574943
+        0.5801951845855514,
+        0.7441888103946934
        ],
        "recall": [
-        0.8348432443476389,
-        0.9332792235370063
+        0.8218019126976612,
+        0.9270530927553274
        ],
        "f1": [
-        0.6496129861368494,
-        0.7847442118964385
+        0.6897970199492588,
+        0.8156268716056536
        ],
        "false_alarm_bin_rate": [
-        0.3203358246164754,
-        0.48625309000141437
+        0.24154653460018757,
+        0.3926468001700242
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4175,65 +7759,67 @@
         NaN
        ],
        "auroc": [
-        0.7905337371079281,
-        0.8676976163954725
+        0.7864575261980565,
+        0.8729547742185777
        ],
        "auprc": [
-        0.639977549719795,
-        0.8032597681785896
+        0.6454036797191313,
+        0.8157738368939167
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective",
+      "degenerate_f1": false
      },
      "elm-dsm-detect-init": {
       "shots": 73,
       "counts": {
-       "tp": 2417,
-       "fp": 1571,
-       "fn": 314,
-       "tn": 2225,
+       "tp": 2352,
+       "fp": 1183,
+       "fn": 379,
+       "tn": 2613,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
       },
       "point": {
-       "precision": 0.6060682046138415,
-       "recall": 0.8850238008055658,
-       "f1": 0.7194522994493228,
-       "false_alarm_bin_rate": 0.4138566912539515,
+       "precision": 0.6653465346534654,
+       "recall": 0.8612229952398389,
+       "f1": 0.7507181615065432,
+       "false_alarm_bin_rate": 0.3116438356164384,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
-       "auroc": 0.8200257242393948,
-       "auprc": 0.7096053966150225,
+       "auroc": 0.8421865950745432,
+       "auprc": 0.7578697957479912,
        "prevalence": 0.41841581124559524
       },
       "ci95": {
        "precision": [
-        0.5122078566848225,
-        0.6949781767247706
+        0.580478295818381,
+        0.7417305932679756
        ],
        "recall": [
-        0.8177795559378442,
-        0.937949661972159
+        0.782250960533035,
+        0.920950250193853
        ],
        "f1": [
-        0.6385737558730532,
-        0.785700766099796
+        0.6807509949514492,
+        0.8053624522887525
        ],
        "false_alarm_bin_rate": [
-        0.32829112287123985,
-        0.4995164642925322
+        0.2428179353885691,
+        0.38702430089429424
        ],
        "crowd_bin_recall": [
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4242,15 +7828,17 @@
         NaN
        ],
        "auroc": [
-        0.7756580223561028,
-        0.8608119217847987
+        0.7983617425150612,
+        0.8798662967417976
        ],
        "auprc": [
-        0.6372508428981879,
-        0.7880726958498031
+        0.6822850449409572,
+        0.8239803447675682
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "DSM refit, limited inputs (60 of the original 124), detection objective, refit initialization",
+      "degenerate_f1": false
      },
      "elm-clock": {
       "shots": 73,
@@ -4261,8 +7849,8 @@
        "tn": 3349,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -4273,7 +7861,7 @@
        "f1": 0.672514619883041,
        "false_alarm_bin_rate": 0.11775553213909379,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN
       },
       "ci95": {
@@ -4297,7 +7885,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4306,7 +7894,9 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "ELM clock",
+      "degenerate_f1": false
      },
      "always present": {
       "shots": 73,
@@ -4317,8 +7907,8 @@
        "tn": 0,
        "crowd_bins": 0,
        "crowd_hit": 0,
-       "individual_spans": 0,
-       "individual_span_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
        "absent_spans": 0,
        "absent_span_alarm": 0,
        "crowd_spans": 0
@@ -4329,7 +7919,7 @@
        "f1": 0.5899762367682004,
        "false_alarm_bin_rate": 1.0,
        "crowd_bin_recall": NaN,
-       "individual_span_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
        "absent_span_alarm_rate": NaN,
        "auroc": 0.5
       },
@@ -4354,7 +7944,7 @@
         NaN,
         NaN
        ],
-       "individual_span_recall": [
+       "non_crowd_span_touch_recall": [
         NaN,
         NaN
        ],
@@ -4363,50 +7953,52 @@
         NaN
        ]
       },
-      "replicates": 1000
+      "replicates": 1000,
+      "display_name": "always present",
+      "degenerate_f1": true
      }
     },
     "paired": {
      "elm-ours - elm-dsm: auroc": {
-      "value": 0.23252708916360154,
+      "value": 0.23920885134538128,
       "ci95": [
-       0.1589344860990486,
-       0.30427265248437285
+       0.15913793351706804,
+       0.3176055637018185
       ]
      },
      "elm-ours - elm-dsm: f1": {
-      "value": 0.22908129907624986,
+      "value": 0.23814300177548353,
       "ci95": [
-       0.15885105296877985,
-       0.30489999211398083
+       0.15270560659970378,
+       0.32853788501624603
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "value": 0.08591228447219779,
+      "value": 0.08358164021639691,
       "ci95": [
-       0.04343322844816287,
-       0.13338859658196267
+       0.038128399828054965,
+       0.13515751018044417
       ]
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "value": 0.09011022380358213,
+      "value": 0.055524609624691856,
       "ci95": [
-       0.0433106781384227,
-       0.1393567140903673
+       0.0031700425269264817,
+       0.11062626743199791
       ]
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "value": 0.09577055807361834,
+      "value": 0.07360968723846995,
       "ci95": [
-       0.05418798537792677,
-       0.14382588612535713
+       0.032868216409964526,
+       0.12111139794221039
       ]
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "value": 0.09635599811863149,
+      "value": 0.06509013606141101,
       "ci95": [
-       0.05017846341151174,
-       0.15080506548370715
+       0.017021124519017904,
+       0.11508396126418306
       ]
      },
      "elm-ours - elm-clock: f1": {
@@ -4422,8 +8014,8 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect",
       "elm-dsm-detect-init",
+      "elm-dsm-detect",
       "elm-dsm"
      ],
      "f1": [
@@ -4446,43 +8038,43 @@
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
-      "first": 0.2075922314494022,
-      "second": 0.23252708916360154,
+      "first": 0.22426557511566603,
+      "second": 0.23920885134538128,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm: f1": {
-      "first": 0.24699694869320232,
-      "second": 0.22908129907624986,
+      "first": 0.2569449414651602,
+      "second": 0.23814300177548353,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
-      "first": 0.08556071150416766,
-      "second": 0.08591228447219779,
+      "first": 0.09594611796539143,
+      "second": 0.08358164021639691,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: f1": {
-      "first": 0.08937438174053614,
-      "second": 0.09011022380358213,
+      "first": 0.08603118330506354,
+      "second": 0.055524609624691856,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: auroc": {
-      "first": 0.10201524982924393,
-      "second": 0.09577055807361834,
+      "first": 0.08667733827624469,
+      "second": 0.07360968723846995,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect-init: f1": {
-      "first": 0.10707205279029608,
-      "second": 0.09635599811863149,
+      "first": 0.09942643159990505,
+      "second": 0.06509013606141101,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
@@ -4493,6 +8085,28 @@
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
+     }
+    },
+    "auroc_changes": {
+     "elm-ours": {
+      "review": 0.9391835117643969,
+      "legacy": 0.9157962823130131,
+      "legacy_minus_review": -0.023387229451383718
+     },
+     "elm-dsm": {
+      "review": 0.7149179366487308,
+      "legacy": 0.6765874309676319,
+      "legacy_minus_review": -0.03833050568109897
+     },
+     "elm-dsm-detect": {
+      "review": 0.8432373937990054,
+      "legacy": 0.8322146420966162,
+      "legacy_minus_review": -0.0110227517023892
+     },
+     "elm-dsm-detect-init": {
+      "review": 0.8525061734881522,
+      "legacy": 0.8421865950745432,
+      "legacy_minus_review": -0.010319578413608976
      }
     }
    }

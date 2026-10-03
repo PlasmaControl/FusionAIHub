@@ -1,0 +1,37 @@
+{
+ "git": "6ad7f75f",
+ "sources": {
+  "ours": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
+   "sha256": "408ee3ff375289e57e78ec644227f3f57817bf5dd76b0ccd12f74b89aff212b5"
+  },
+  "dsm": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
+   "sha256": "8b85e0c886058e99c22d61208fac96c13c1a1783c2d7ba454640584f310f4e66"
+  },
+  "swap": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/evaluation.json",
+   "sha256": "630ef4f7dc22d9887c84d6ac392190456baa92c23ef4d654588df90e18b8e0cd"
+  }
+ },
+ "tables": {
+  "table_elm_benchmark.tex": "05d44772e2f960d7bd3abc1e75cec8e8336770e4461e4e41894fcfc4722ee2bf",
+  "table_elm_proxy_clock_spans.tex": "a9e6a39c185fff2272cc76d8b54af3f48119f7705de598660113f64a1f76391d",
+  "table_elm_proxy_elmo_onsets.tex": "6d88c4aaa2148abd63486bac05436e8a52ecdf6add57b98e4ce2523028e61419",
+  "table_elm_swap.tex": "47d25db767169f177ca743f6d18d03ace4a9055e8077744ed457d2abdda2ae84",
+  "table_elm_swap_all.tex": "612a230adbed316d92d178bbe94795ae714f427314077f7f10f3ab04118cf206",
+  "table_elm_swap_bes.tex": "94672de4257cc4de2fa7b3b38efaa6958a12f5849e9a5d53d81f5596ea39b912",
+  "table_elm_swap_full.tex": "c5dcc40dfc10b137d5132a275f72c710405cb7b529c4f819d7a6ebd7d926e386"
+ },
+ "benchmark_json_paths": [
+  "ours/evaluation.json:sets.all119.methods",
+  "ours/evaluation.json:sets.bes73.methods",
+  "dsm/evaluation.json:sets.all119.methods",
+  "dsm/evaluation.json:sets.bes73.methods"
+ ],
+ "swap_json_paths": [
+  "swap/evaluation.json:swap.overlap",
+  "swap/evaluation.json:swap.overlap_bes",
+  "swap/evaluation.json:interval_audit"
+ ]
+}
