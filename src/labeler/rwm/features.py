@@ -114,11 +114,9 @@ def trailing_max(t_src_ms, y_src, t_grid_ms, width_ms):
 
 
 def trailing_log_slope(t_src_ms, y_src, t_grid_ms, width_ms, floor):
-    """Growth rate in 1/s: least-squares slope of `log(max(y, floor))` in the window.
+    """Trailing log-amplitude slope in 1/s, fitted to `log(max(y, floor))`.
 
-    NaN with fewer than half the window's samples or a flat time axis. The slope of a
-    log amplitude is the exponential growth rate, which is what a resistive wall mode
-    shows on the wall time while a rotating mode's RMS does not grow steadily.
+    NaN with fewer than half the window's samples or a flat time axis.
     """
     t_src = np.asarray(t_src_ms, dtype=float) / 1000.0
     y_src = np.asarray(y_src, dtype=float)

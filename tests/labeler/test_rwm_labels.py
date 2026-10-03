@@ -65,7 +65,8 @@ def test_window_rows_do_not_infer_physical_recovery_from_the_forecast_horizon():
         (7, lab.ABSENT, 100.0, 200.0),
         (7, 4, 200.0, 280.0),
         (7, lab.UNCERTAIN, 280.0, 300.0),
-        (7, 4, 300.0, 800.0),
+        (7, lab.PRESENT, 300.0, 310.0),
+        (7, 4, 310.0, 800.0),
     ]
     # An unexamined shot's physical state stays explicitly unassessed.
     assert lab.window_rows(8, [], (100.0, 800.0), assumed_absent=False) == [
@@ -86,7 +87,8 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
     assert rows == [
         (7, 4, 100.0, 130.0),
         (7, lab.UNCERTAIN, 130.0, 150.0),
-        (7, 4, 150.0, 200.0),
+        (7, lab.PRESENT, 150.0, 160.0),
+        (7, 4, 160.0, 200.0),
     ]
 
 
@@ -95,9 +97,11 @@ def test_later_onsets_do_not_establish_absence_after_an_earlier_onset():
         (7, lab.ABSENT, 100.0, 200.0),
         (7, 4, 200.0, 280.0),
         (7, lab.UNCERTAIN, 280.0, 300.0),
-        (7, 4, 300.0, 580.0),
+        (7, lab.PRESENT, 300.0, 310.0),
+        (7, 4, 310.0, 580.0),
         (7, lab.UNCERTAIN, 580.0, 600.0),
-        (7, 4, 600.0, 800.0),
+        (7, lab.PRESENT, 600.0, 610.0),
+        (7, 4, 610.0, 800.0),
     ]
 
 
@@ -110,7 +114,10 @@ def test_an_empty_onset_list_does_not_establish_physical_absence():
 def test_uncertain_onset_extent_does_not_change_the_distinct_forecast_target():
     # ONSET_TIME does not establish that the preceding 20 ms contains the mode.
     rows = lab.window_rows(7, [300.0], None, assumed_absent=False)
-    assert rows == [(7, lab.UNCERTAIN, 280.0, 300.0)]
+    assert rows == [
+        (7, lab.UNCERTAIN, 280.0, 300.0),
+        (7, lab.PRESENT, 300.0, 310.0),
+    ]
     # A forecast needs only the listed point time, not a physical mode interval.
     assert lab.slice_labels([199.0, 200.0, 280.0, 299.0, 300.0], [300.0]).tolist() == [
         lab.NEGATIVE,
@@ -119,6 +126,20 @@ def test_uncertain_onset_extent_does_not_change_the_distinct_forecast_target():
         lab.POSITIVE,
         lab.EXCLUDED,
     ]
+
+
+def test_overlapping_onset_windows_preserve_present_time_and_tile_coverage():
+    rows = lab.window_rows(7, [300.0, 305.0], None, assumed_absent=False)
+    assert rows == [
+        (7, lab.UNCERTAIN, 280.0, 300.0),
+        (7, lab.PRESENT, 300.0, 315.0),
+    ]
+    assert lab.window_rows(7, [800.0], (100.0, 800.0), assumed_absent=False)[-1] == (
+        7,
+        lab.PRESENT,
+        800.0,
+        810.0,
+    )
 
 
 def test_other_onsets_are_excluded_but_never_positive():

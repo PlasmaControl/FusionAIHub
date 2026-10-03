@@ -13,10 +13,10 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 NAMES = (
     "rwm-brf",
-    "rule-elapsed-time",
-    "rule-betan",
-    "rule-betan-over-li",
-    "rule-rwm-candidates",
+    "rwm-rule-elapsed-time",
+    "rwm-rule-betan",
+    "rwm-rule-betan-over-li",
+    "rwm-rule-rwm-candidates",
 )
 
 
@@ -296,7 +296,7 @@ def forest_alarm_splits(record):
             ),
         ]
     )
-    betan = record["configs"]["rule-betan"]
+    betan = record["configs"]["rwm-rule-betan"]
     betan_count = betan["counts"]
     return table(
         [
@@ -415,7 +415,7 @@ def paired(record, prefix):
     rows = [
         [name, interval(m[f"{prefix}_auroc"]), interval(m[f"{prefix}_auprc"])]
         for name, m in record["paired"].items()
-        if not name.endswith("rule-rwm-candidates")
+        if not name.endswith("rwm-rule-rwm-candidates")
     ]
     return table(
         [
@@ -591,10 +591,7 @@ def legacy_table(legacy):
                 f"{100 * legacy['slice_tpr']:.1f}%",
                 f"{100 * legacy['slice_fpr']:.1f}%",
                 f"{legacy['onsets_warned']}/{legacy['target_onsets']}",
-                (
-                    f"{legacy['comparison_shots_with_an_alarm']}/"
-                    f"{legacy['comparison_shots']}"
-                ),
+                (f"{legacy['stable_shots_with_an_alarm']}/{legacy['stable_shots']}"),
             ]
         ],
     ) + (
@@ -627,10 +624,10 @@ def write_latex(record, out_dir):
     configs, legacy = record["configs"], record["legacy"]
     labels = {
         "rwm-brf": r"\texttt{rwm-brf}",
-        "rule-elapsed-time": "Elapsed time",
-        "rule-betan": r"$\beta_N$",
-        "rule-betan-over-li": r"$\beta_N/l_i$",
-        "rule-rwm-candidates": "RWM screen",
+        "rwm-rule-elapsed-time": "Elapsed time",
+        "rwm-rule-betan": r"$\beta_N$",
+        "rwm-rule-betan-over-li": r"$\beta_N/l_i$",
+        "rwm-rule-rwm-candidates": "RWM screen",
     }
     keys = (
         "slice_auroc",
@@ -652,7 +649,7 @@ def write_latex(record, out_dir):
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
             r"\shortstack{Broad\\AUROC} & "
-            r"\shortstack{Within-shot mean\\AUROC (primary)} & "
+            r"\shortstack{Within-shot mean AUROC\\(primary point estimate)} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
             r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\"
         ),
@@ -692,8 +689,8 @@ def write_latex(record, out_dir):
         r"\multicolumn{8}{@{}l}{Detected unstable shots: "
         f"{legacy['onsets_warned']}/{legacy['target_onsets']}; "
         "stable shots with false alarms: "
-        f"{legacy['comparison_shots_with_an_alarm']}/"
-        f"{legacy['comparison_shots']}" + r"} \\",
+        f"{legacy['stable_shots_with_an_alarm']}/"
+        f"{legacy['stable_shots']}" + r"} \\",
         r"\bottomrule",
         r"\end{tabular}",
     ]
@@ -702,10 +699,11 @@ def write_latex(record, out_dir):
         r"end at the last $n=1$ "
         r"onset; broad adds post-onset and $n=2$-only time, with unchanged "
         r"exclusions. Brackets: 95\% shot-bootstrap intervals at fixed predictions. "
-        r"Within-shot means weight two-class shots equally. No AUROC advantage "
+        r"Within-shot point means weight two-class shots equally. No AUROC advantage "
         r"over the strongest scalar, or onset-specific warning skill, was "
-        r"established; within shot the forest ranks below both continuous plasma "
-        r"scalars on both masks (Supplement). Legacy uses different inputs and "
+        r"established. Paired within-shot intervals place the forest below "
+        r"$\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad "
+        r"$\beta_N/l_i$ is distinguishable (Supplement). Legacy uses different inputs and "
         r"validation; results are not comparable."
     )
     lines += [
@@ -734,8 +732,8 @@ def write_latex(record, out_dir):
                     "slice_fpr",
                     "onsets_warned",
                     "target_onsets",
-                    "comparison_shots_with_an_alarm",
-                    "comparison_shots",
+                    "stable_shots_with_an_alarm",
+                    "stable_shots",
                 )
             },
             "slice_f1": "not available in source digest",
@@ -837,7 +835,9 @@ def write_supplemental_latex(record, out_dir):
                 ),
                 (
                     latex_cell(
-                        record["paired"]["rwm-brf - rule-elapsed-time"]["broad_auroc"],
+                        record["paired"]["rwm-brf - rwm-rule-elapsed-time"][
+                            "broad_auroc"
+                        ],
                         stacked=True,
                         bound_digits=3,
                     )
@@ -891,8 +891,8 @@ def write_supplemental_latex(record, out_dir):
         {
             "split_sensitivity.auroc_ranges": summary["auroc_ranges"],
             "broad_ranges": broad_ranges,
-            "paired.rwm-brf - rule-elapsed-time.broad_auroc": record["paired"][
-                "rwm-brf - rule-elapsed-time"
+            "paired.rwm-brf - rwm-rule-elapsed-time.broad_auroc": record["paired"][
+                "rwm-brf - rwm-rule-elapsed-time"
             ]["broad_auroc"],
             "split_sensitivity.paired_time_by_seed": summary["paired_time_by_seed"],
             "split_sensitivity.paired_time_ranges": summary["paired_time_ranges"],
@@ -915,21 +915,42 @@ def write_supplemental_latex(record, out_dir):
         ]
         for name in NAMES
     ]
+    rows += [
+        [
+            name,
+            *(
+                latex_cell(pair["within_shot_auroc"][mask], bound_digits=3)
+                for mask in ("primary", "broad")
+            ),
+        ]
+        for name, pair in record["paired"].items()
+    ]
     write(
         "within_shot",
         "lcc",
-        ["Model / rule", "Primary mean AUROC", "Broad mean AUROC"],
+        ["Model / rule (or difference)", "Primary mean AUROC", "Broad mean AUROC"],
         rows,
         r"Within-shot AUROC means on the reference split; each of 30 two-class "
-        r"Hanson shots receives equal weight. The forest ranks below both "
-        r"continuous plasma scalars on both masks, and below elapsed time on "
-        r"primary only. One-class shots are omitted; comparisons are unlabelled.",
+        r"Hanson shots receives equal weight. Model means are point estimates; "
+        r"differences have 95\% basic paired shot-bootstrap intervals "
+        f"({n_bootstrap:,} replicates, seed 0). The forest is below "
+        r"$\beta_N/l_i$ on primary; neither $\beta_N$ mask nor broad "
+        r"$\beta_N/l_i$ is distinguishable. It is below elapsed time on primary "
+        r"and above it on broad. One-class shots are omitted; comparisons are unlabelled.",
         {
-            f"configs.{name}.within_shot_auroc": {
-                mask: {k: row[k] for k in ("mean", "median", "n_shots")}
-                for mask, row in record["configs"][name]["within_shot_auroc"].items()
-            }
-            for name in NAMES
+            "paired_within_shot_auroc": {
+                name: pair["within_shot_auroc"]
+                for name, pair in record["paired"].items()
+            },
+            **{
+                f"configs.{name}.within_shot_auroc": {
+                    mask: {k: row[k] for k in ("mean", "median", "n_shots")}
+                    for mask, row in record["configs"][name][
+                        "within_shot_auroc"
+                    ].items()
+                }
+                for name in NAMES
+            },
         },
     )
     rows = []
@@ -1142,6 +1163,23 @@ def main():
                 for mask, row in config["within_shot_auroc"].items()
             ],
         ),
+        "Paired within-shot mean AUROC differences (95% basic shot CIs)": table(
+            ["forest minus scalar", "primary", "broad", "two-class shots per mask"],
+            [
+                [
+                    name,
+                    *(
+                        interval(pair["within_shot_auroc"][mask])
+                        for mask in ("primary", "broad")
+                    ),
+                    "/".join(
+                        str(pair["within_shot_auroc"][mask]["n_shots"])
+                        for mask in ("primary", "broad")
+                    ),
+                ]
+                for name, pair in record["paired"].items()
+            ],
+        ),
         "Broad-mask run-record holdout — forest minus elapsed time": table(
             ["AUROC difference (95% basic paired CI)"],
             [[interval(run_out["paired_time"]["broad_auroc"])]],
@@ -1207,7 +1245,7 @@ def main():
         [
             [name, *(interval(m[k]) for k in alarm_keys)]
             for name, m in record["paired"].items()
-            if not name.endswith("rule-rwm-candidates")
+            if not name.endswith("rwm-rule-rwm-candidates")
         ],
     )
     runs = forest_runs(record)

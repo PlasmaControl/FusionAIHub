@@ -1,5 +1,8 @@
 """Non-negative positive-unlabelled risk (Kiryo et al. 2017) on a small MLP.
 
+Excluded development code: neither this module nor evaluate.Nnpu contributes to
+any reported RWM result; outer-fold-informed development invalidated comparisons.
+
 Only positives are labelled. With the class prior `pi` known, the risk of a classifier
 `g` under the sigmoid loss is estimated from positives `P` and unlabelled `U` as
 

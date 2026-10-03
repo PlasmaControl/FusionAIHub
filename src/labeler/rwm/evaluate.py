@@ -93,7 +93,8 @@ class Imputer:
 class Brf:
     """Piccione et al.'s balanced random forest on the slice features.
 
-    `use_comparison` adds the unlabelled comparison slices as assumed negatives.
+    `use_comparison=True` is excluded development code, unused in every reported
+    result; it adds unlabelled comparison slices as assumed negatives.
     """
 
     def __init__(self, columns, use_comparison=False, seed=0, **forest):
@@ -247,6 +248,8 @@ def score_alarms(
         if end is not None:
             stop = min(stop, end)
         outcome["span_ms"] = max(0.0, stop - start)
+        outcome["span_start_ms"] = start
+        outcome["span_end_ms"] = max(start, stop)
         if role == "comparison":
             outcome["category"] = "Alarm" if outcome["alarms"] else "No alarm"
         out[shot] = outcome
@@ -524,6 +527,7 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
                 "above_proxy": rows.above_proxy.to_numpy(),
                 "called": rows.called.to_numpy(),
                 "warning_ms": warnings,
+                "target_onsets_ms": list(target_onsets.get(int(shot), [])),
                 "false_alarms": len(outcome["false"]),
                 "alarms": len(outcome["alarms"]),
                 "early_alarms": len(outcome.get("early", [])),
@@ -539,6 +543,8 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
                 "span_ms": outcome.get(
                     "span_ms", float(rows.t_ms.max() - rows.t_ms.min())
                 ),
+                "span_start_ms": outcome.get("span_start_ms", float(rows.t_ms.min())),
+                "span_end_ms": outcome.get("span_end_ms", float(rows.t_ms.max())),
             }
         )
     return groups
@@ -548,7 +554,8 @@ def chance_detection(records, window_ms=alarm.MAX_WARNING_MS - alarm.MIN_WARNING
     """Expected share of onsets warned if each shot's alarms fell at random.
 
     Each of a shot's `alarms` is placed uniformly and independently over its scored span
-    (`span_ms`); an onset is warned when one lands in its warning range of `window_ms`.
+    (`span_ms`); each warning range is intersected with that span before computing
+    its probability. Legacy records without onset times/bounds use `window_ms`.
     The expectation for an onset is `1 - (1 - window / span) ** alarms`, averaged over
     the target onsets of `records` (the shots' `warning_ms` entries). It is the share a
     scorer with no skill but this alarm rate would get, to read the detection rate against.
@@ -558,10 +565,25 @@ def chance_detection(records, window_ms=alarm.MAX_WARNING_MS - alarm.MIN_WARNING
         n = len(record["warning_ms"])
         if not n:
             continue
-        share = (
-            min(1.0, window_ms / record["span_ms"]) if record["span_ms"] > 0 else 1.0
+        widths = [window_ms] * n
+        if "target_onsets_ms" in record and "span_start_ms" in record:
+            widths = [
+                max(
+                    0.0,
+                    min(o - alarm.MIN_WARNING_MS, record["span_end_ms"])
+                    - max(o - alarm.MAX_WARNING_MS, record["span_start_ms"]),
+                )
+                for o in record["target_onsets_ms"]
+            ]
+        probabilities = [
+            1.0 - (1.0 - min(1.0, width / record["span_ms"])) ** record["alarms"]
+            if record["span_ms"] > 0
+            else 0.0
+            for width in widths
+        ]
+        expected += (
+            n * probabilities[0] if len(set(widths)) == 1 else sum(probabilities)
         )
-        expected += n * (1.0 - (1.0 - share) ** record["alarms"])
         onsets += n
     return expected / onsets if onsets else float("nan")
 
@@ -712,6 +734,43 @@ def within_shot_auroc(oof):
             "median": float(np.median(values)) if values else None,
             "per_shot": rows,
         }
+    return result
+
+
+def paired_within_shot_auroc(first, second, *, replicates=1000, seed=0):
+    """Basic paired intervals for equal-shot mean AUROC differences, both masks.
+
+    Resample only two-class Hanson shots, using identical shot draws for both
+    models. These intervals condition on the fixed fitted predictions.
+    """
+    a, b = first.get("hanson", []), second.get("hanson", [])
+    if [r["shot"] for r in a] != [r["shot"] for r in b]:
+        raise ValueError("paired within-shot records must have the same shot order")
+    result = {}
+    for mask, column in (("primary", "label"), ("broad", "label_broad")):
+        values_a, values_b = [], []
+        for r, s in zip(a, b):
+            y = np.asarray(r[column])
+            if not np.array_equal(y, s[column]):
+                raise ValueError("paired within-shot records must have identical masks")
+            keep = np.isin(y, [labels.NEGATIVE, labels.POSITIVE])
+            if len(np.unique(y[keep])) != 2:
+                continue
+            values_a.append(metrics.auroc(np.asarray(r["score"])[keep], y[keep]))
+            values_b.append(metrics.auroc(np.asarray(s["score"])[keep], y[keep]))
+        interval = metrics.paired_bootstrap(
+            {"hanson": values_a},
+            {"hanson": values_b},
+            lambda groups: (
+                float(np.mean(groups.get("hanson", [])))
+                if groups.get("hanson")
+                else float("nan")
+            ),
+            replicates=replicates,
+            seed=seed,
+            method="basic",
+        )
+        result[mask] = {"n_shots": len(values_a), **interval}
     return result
 
 

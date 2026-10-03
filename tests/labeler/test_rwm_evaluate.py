@@ -51,6 +51,41 @@ def test_campaign_pairs_keep_shot_draws_inside_each_campaign():
         ev.paired_time_by_campaign(first, second, replicates=20)
 
 
+def test_paired_within_shot_intervals_use_shared_shots_and_separate_masks():
+    first = {
+        "hanson": [
+            {
+                "shot": 1,
+                "score": [0, 1, 2],
+                "label": [0, 1, -1],
+                "label_broad": [0, 1, 0],
+            },
+            {"shot": 2, "score": [0, 1], "label": [0, 1], "label_broad": [0, 1]},
+            {"shot": 3, "score": [0, 1], "label": [0, -1], "label_broad": [0, 1]},
+        ]
+    }
+    second = {
+        "hanson": [{**r, "score": [0] * len(r["score"])} for r in first["hanson"]]
+    }
+    result = ev.paired_within_shot_auroc(first, second, replicates=1000, seed=0)
+    assert result["primary"] == {
+        "n_shots": 2,
+        "estimate": 0.5,
+        "low": 0.5,
+        "high": 0.5,
+    }
+    assert result["broad"]["n_shots"] == 3
+    assert result["broad"]["estimate"] == pytest.approx(1 / 3)
+    assert result["broad"]["low"] == pytest.approx(1 / 6)
+    assert result["broad"]["high"] == pytest.approx(2 / 3)
+    identical = ev.paired_within_shot_auroc(first, first, replicates=1000)
+    for row in identical.values():
+        assert row["estimate"] == row["low"] == row["high"] == 0.0
+    second["hanson"].reverse()
+    with pytest.raises(ValueError, match="shot order"):
+        ev.paired_within_shot_auroc(first, second)
+
+
 def test_onset_physics_separates_window_snapshot_from_actual_onset():
     table = pd.DataFrame(
         {
@@ -258,6 +293,24 @@ def test_shot_records_carry_the_alarm_count_and_scored_span():
     record = groups["hanson"][0]
     assert record["alarms"] == 0
     assert record["span_ms"] == pytest.approx(600.0)  # last onset +100 minus start
+    assert record["span_start_ms"] == 100.0
+    assert record["span_end_ms"] == 700.0
+    assert record["target_onsets_ms"] == [600.0]
+
+
+def test_random_alarm_reference_clips_each_warning_window_to_scored_span():
+    records = [
+        {
+            "warning_ms": [None, None],
+            "target_onsets_ms": [1598.05, 1990.0],
+            "alarms": 1,
+            "span_ms": 800.0,
+            "span_start_ms": 1210.0,
+            "span_end_ms": 2010.0,
+        }
+    ]
+    # First warning interval [1198.05, 1588.05] has only 378.05 ms in coverage.
+    assert ev.chance_detection(records) == pytest.approx((378.05 + 390) / 1600)
 
 
 def test_primary_fit_ignores_comparison_slices_and_their_feature_values():

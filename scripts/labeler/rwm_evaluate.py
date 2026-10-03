@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from multiprocessing import Pool
@@ -35,10 +36,10 @@ FOREST = {"n_estimators": 300, "max_depth": 8, "min_leaf": 5}
 SEED = 0
 CONFIGS = {
     "rwm-brf": {"kind": "brf", "columns": ALL, "comparison": False},
-    "rule-elapsed-time": {"kind": "rule", "column": features.TIME_COLUMN},
-    "rule-betan": {"kind": "rule", "column": "betan"},
-    "rule-betan-over-li": {"kind": "rule", "column": "betan_over_li"},
-    "rule-rwm-candidates": {
+    "rwm-rule-elapsed-time": {"kind": "rule", "column": features.TIME_COLUMN},
+    "rwm-rule-betan": {"kind": "rule", "column": "betan"},
+    "rwm-rule-betan-over-li": {"kind": "rule", "column": "betan_over_li"},
+    "rwm-rule-rwm-candidates": {
         "kind": "rule",
         "column": "rule_candidate",
         "binary": True,
@@ -46,7 +47,7 @@ CONFIGS = {
 }
 SPLIT_SEEDS = (1, 2, 3, 4)
 PAIRS = tuple(
-    ("rwm-brf", n) for n in CONFIGS if n not in ("rwm-brf", "rule-rwm-candidates")
+    ("rwm-brf", n) for n in CONFIGS if n not in ("rwm-brf", "rwm-rule-rwm-candidates")
 )
 _STATE: dict = {}
 
@@ -159,15 +160,14 @@ def run_config(args):
     }
     table = ev.relabel(slices, target, other, labels.HORIZON_MS)
     saved_record = _STATE["saved_record"]
-    saved = saved_record["configs"][name] if saved_record else None
-    if saved and seed != SEED:
+    saved = saved_record["configs"][name] if saved_record is not None else None
+    if saved is not None and seed != SEED:
         saved = saved["split_seeds"][str(seed)]
-    if saved:
+    if saved_record is not None and saved is None:
+        raise ValueError(f"saved replay has no prediction record for {name} seed={seed}")
+    if saved is not None:
         oof, alarms, rules = replay(saved, target, every)
         oof_path = Path(saved["predictions"])
-        if name == "rule-elapsed-time":
-            oof_path = _STATE["out_dir"] / f"predictions_{name}_seed{seed}.parquet"
-            oof.to_parquet(oof_path, index=False)
     else:
         oof, alarms, rules = ev.cross_validate(
             table, factory(config), target, explanation_onsets=every, seed=seed
@@ -186,7 +186,7 @@ def run_config(args):
         **summary,
     }
     if seed == SEED:
-        if name == "rule-elapsed-time":
+        if name == "rwm-rule-elapsed-time":
             primary = oof[(oof.role == "hanson") & oof.label.isin([0, 1])]
             top = primary.nlargest(60, "score")
             result["top_score_concentration"] = {
@@ -194,15 +194,12 @@ def run_config(args):
                 "shots": {str(s): int(n) for s, n in top.shot.value_counts().items()},
             }
         # The former objective is independently re-tuned on the same inner folds.
-        if saved:
+        if saved is not None:
             full_saved = saved["full_trace_alarm_sensitivity"]
             full_oof, full_alarms, full_rules = replay(
                 full_saved, target, every, "full_trace"
             )
             full_path = Path(full_saved["predictions"])
-            if name == "rule-elapsed-time":
-                full_path = _STATE["out_dir"] / f"predictions_{name}_full_trace.parquet"
-                full_oof.to_parquet(full_path, index=False)
         else:
             full_oof, full_alarms, full_rules = ev.cross_validate(
                 table,
@@ -231,6 +228,9 @@ def run_pair(args):
         seed=SEED,
         method="basic",
     )
+    interval["within_shot_auroc"] = ev.paired_within_shot_auroc(
+        groups_first, groups_second, replicates=_STATE["replicates"], seed=SEED
+    )
     return f"{first} - {second}", clean(interval)
 
 
@@ -247,7 +247,7 @@ def run_records(time_groups):
     if len(runs) != 4 or table.run_record.isna().any():
         raise ValueError(f"expected exactly four Hanson run records, got {runs}")
     saved_record = _STATE["saved_record"]
-    if saved_record:
+    if saved_record is not None:
         saved = (
             saved_record.get("leave_one_run_record_out")
             or saved_record["leave_one_run_day_out"]
@@ -277,7 +277,8 @@ def run_records(time_groups):
         groups, reference, replicates=_STATE["replicates"], seed=SEED
     )
     path = _STATE["out_dir"] / "predictions_rwm-brf_leave_run_record_out.parquet"
-    oof.to_parquet(path, index=False)
+    if saved_record is None:
+        oof.to_parquet(path, index=False)
     result["predictions"] = str(path)
     result["protocol"] = {
         "outer_folds": 4,
@@ -426,8 +427,8 @@ def legacy_record():
         "slice_fpr": 0.214,
         "onsets_warned": 10,
         "target_onsets": 11,
-        "comparison_shots_with_an_alarm": 2,
-        "comparison_shots": 17,
+        "stable_shots_with_an_alarm": 2,
+        "stable_shots": 17,
         "slice_f1": None,
         "date": "2022",
         "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
@@ -457,15 +458,47 @@ def main() -> None:
     paths = Paths.from_env()
     slices_path = args.slices or paths.root / "round4" / "rwm" / "slices.parquet"
     names = args.only or list(CONFIGS)
-    if "rwm-brf" in names and "rule-elapsed-time" not in names:
-        names = [*names, "rule-elapsed-time"]
+    if "rwm-brf" in names and "rwm-rule-elapsed-time" not in names:
+        names = [*names, "rwm-rule-elapsed-time"]
     if args.rescore_saved and args.only:
         parser.error("--rescore-saved requires the complete saved configuration set")
     saved_record = json.loads(args.out.read_text()) if args.rescore_saved else None
-    if saved_record and "rule-time-since-flattop" in saved_record["configs"]:
-        saved_record["configs"]["rule-elapsed-time"] = saved_record["configs"].pop(
-            "rule-time-since-flattop"
-        )
+    if args.rescore_saved and not isinstance(saved_record, dict):
+        parser.error("saved replay requires an evaluation object; fitting is forbidden")
+    if saved_record is not None:
+        renames = {n.removeprefix("rwm-"): n for n in CONFIGS if "-rule-" in n}
+
+        def rename_saved(value):
+            if isinstance(value, str):
+                return re.sub(
+                    r"(?<!rwm-)"
+                    + "|(?<!rwm-)".join(
+                        re.escape(n) for n in sorted(renames, key=len, reverse=True)
+                    ),
+                    lambda match: renames[match.group()],
+                    value,
+                )
+            if isinstance(value, dict):
+                return {rename_saved(k): rename_saved(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [rename_saved(v) for v in value]
+            return value
+
+        saved_record = rename_saved(saved_record)
+        if set(saved_record["configs"]) != set(CONFIGS):
+            parser.error(
+                "saved replay requires all model records; fitting is forbidden"
+            )
+        for old, new in renames.items():
+            for path in (paths.root / "round4" / "rwm").glob(
+                f"predictions_{old}_*.parquet"
+            ):
+                target = path.with_name(path.name.replace(old, new))
+                if target.exists():
+                    raise FileExistsError(
+                        f"refusing to replace saved predictions: {target}"
+                    )
+                path.rename(target)
     jobs = [(n, CONFIGS[n], SEED) for n in names]
     if "rwm-brf" in names:
         jobs += [("rwm-brf", CONFIGS["rwm-brf"], s) for s in SPLIT_SEEDS]
@@ -479,14 +512,14 @@ def main() -> None:
         pairs = [(a, b, kept[a], kept[b]) for a, b in PAIRS if a in kept and b in kept]
         paired = dict(pool.map(run_pair, pairs, chunksize=1))
         leave_run_record_out = (
-            pool.map(run_records, [kept["rule-elapsed-time"]])[0]
+            pool.map(run_records, [kept["rwm-rule-elapsed-time"]])[0]
             if "rwm-brf" in names
             else None
         )
         time_pairs = [
-            (str(s), "time", g, kept["rule-elapsed-time"])
+            (str(s), "time", g, kept["rwm-rule-elapsed-time"])
             for n, s, _, g in done
-            if n == "rwm-brf" and "rule-elapsed-time" in kept
+            if n == "rwm-brf" and "rwm-rule-elapsed-time" in kept
         ]
         paired_time = {
             name.split(" - ")[0]: {
@@ -537,6 +570,11 @@ def main() -> None:
                 "primary and broad Hanson masks, fixed score orientation; "
                 "equal-shot mean/median over shots with both classes; "
                 "per-shot class counts include excluded one-class shots"
+            ),
+            "paired_within_shot_auroc": (
+                "forest minus each continuous scalar, primary and broad masks; "
+                "equal-shot mean of per-shot AUROCs over shared two-class Hanson "
+                "shots; 95% basic paired shot-bootstrap intervals, seed 0"
             ),
             "primary_mask_mechanism": (
                 "primary negatives end at last n=1 onset; final labelled slices "
