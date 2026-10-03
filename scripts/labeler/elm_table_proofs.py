@@ -47,8 +47,30 @@ def render(out, audit):
     tmp = Path(os.environ["TMPDIR"]) / "table-proofs"
     tmp.mkdir(exist_ok=True)
     out.mkdir(parents=True, exist_ok=True)
+    sources = sorted(OUTPUTS.rglob("*.tex"))
+    current = {source.stem for source in sources}
+    removed = (
+        json.loads(audit.read_text()).get("removed_stale_proofs", [])
+        if audit.exists()
+        else []
+    )
+    # Old individual table proofs must not outlive their consolidated sources.
+    for path in sorted(out.iterdir()):
+        if path.suffix not in (".pdf", ".png"):
+            continue
+        stem = path.stem
+        if path.suffix == ".png":
+            stem = stem.rsplit("-", 1)[0]
+        if stem.startswith(("table_elm_", "elm_table_")) and stem not in current:
+            removed.append({"path": str(path), "sha256": sha256(path)})
+            path.unlink()
+    figures = Path(os.environ["LABELER_ROOT"]) / "round4/elm/figures"
+    for path in sorted(figures.glob("tableproof*")):
+        if path.is_file() and path.suffix in (".png", ".pdf", ".aux", ".log"):
+            removed.append({"path": str(path), "sha256": sha256(path)})
+            path.unlink()
     artifacts = []
-    for source in sorted(OUTPUTS.rglob("*.tex")):
+    for source in sources:
         name = source.stem
         build = tmp / name
         build.mkdir(exist_ok=True)
@@ -140,6 +162,7 @@ def render(out, audit):
         "compile_failures": 0,
         "warning_count": sum(a["warning_count"] for a in artifacts),
         "all_pages_viewed": False,
+        "removed_stale_proofs": removed,
         "artifacts": artifacts,
     }
     audit.write_text(json.dumps(record, indent=1) + "\n")

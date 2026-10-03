@@ -1,9 +1,9 @@
 {
  "script": {
   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_table_proofs.py",
-  "sha256": "8b1b92ff59efae76ab676f9c3231d1809dd9bd947aa4c1f64f3cdbd1b755e608"
+  "sha256": "145323bfe95daeb5f76585db72699de8e4237ca6406aeda27b2b263ef69ea466"
  },
- "created": "2026-10-03T20:31:06+00:00",
+ "created": "2026-10-03T21:23:25+00:00",
  "proof_directory": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs",
  "compile_protocol": "article 10 pt; 8.5x11 in; 0.65 in margins; booktabs/amsmath; two pdflatex passes",
  "raster_dpi": 150,
@@ -12,20 +12,266 @@
  "compile_failures": 0,
  "warning_count": 0,
  "all_pages_viewed": true,
+ "removed_stale_proofs": [
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_proxy_clock_spans-1.png",
+   "sha256": "e31acec625132e8c7b8edb59fd8664a34e55846b896c8425dc0fa7c540e2307b"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_proxy_clock_spans.pdf",
+   "sha256": "3d322df2bac279c74462aba3b0c01a1b7ec64257a4ae3f608f52973611172ef4"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_proxy_elmo_onsets-1.png",
+   "sha256": "ef403cb280306cb3d49d5654665dfcea3193c88e33f11a2e2ead0af1c3e15569"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_proxy_elmo_onsets.pdf",
+   "sha256": "f4b55e4163b656fe41029e4ba9765752da3328e7434646eb02aed0e86f671149"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_all-1.png",
+   "sha256": "19b3777cdf2c46a49c1ec06eaa8cae9ee684185c63e44776c30554c061f6eda0"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_all.pdf",
+   "sha256": "ba882f4ea84011f13e9d254aaae848980f19fa5c387a25cd9287d181ded88f79"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_bes-1.png",
+   "sha256": "c0b1a56f3e6cb985200fab306d63ec26f7dec525ac4bc8c278721b5cefd01852"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_bes.pdf",
+   "sha256": "eaeb2ac2ff9d2393c232502342e4ad4df60993a6739338e3e32465965c9edac5"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_bes_dsm_heldout-1.png",
+   "sha256": "282f64bb20a988fb0fcf81aa0f8d2dfa7cf7f38f5fa78834b336645ad326d43e"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_bes_dsm_heldout.pdf",
+   "sha256": "27c905c7a72115e41809114dfb3b8025991f9a21530798cb274d5c74312d6b47"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_dsm_heldout-1.png",
+   "sha256": "a87e7bdb3da8fea369c13b4f642a71969c7bab7b8a275066144882b906005e0a"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_dsm_heldout.pdf",
+   "sha256": "169e5167cbddf3f7e5a1d0e34ccf78e20ea39369055f52be66af1f0e96ddadfd"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_100ms-1.png",
+   "sha256": "f9e33346b5fdddb3fcf31afb97ed0c705c50b3f6127314700a5735da29cbf3e5"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_100ms.pdf",
+   "sha256": "cae359b490f1bfab6e85f79fb973d18c4ac2083aa5fb8bab1f1033a1a7588f9f"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_200ms-1.png",
+   "sha256": "54c4e1f5ab40535cd4e1a0b7001ea9ff3f9463957ef080ee9d2931e4cb876b8e"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_200ms.pdf",
+   "sha256": "3f2b98c36e5e687884fb3077088b75bd0818f32558c93f8c16f13f9cb04fbb5f"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_300ms-1.png",
+   "sha256": "43f000049f5f1997bb189bbf68ed1fd2e2fecd237159576afb4e3db20cc01853"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full_occupancy_300ms.pdf",
+   "sha256": "e535675c7a89f36afb48c981e8cbbc6ddfe53c31693f845fdde2af7ecaa57813"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_100ms-1.png",
+   "sha256": "31ff65803f869272bb164b67dc010831595a7d97457ab73326ea72baa48a959a"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_100ms.pdf",
+   "sha256": "341a5c8bf11f487ccfb1439ff681dfc64018facb73769dee21b1834c56fa5d7d"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_200ms-1.png",
+   "sha256": "97e912760396b083cf00726447eca481695bb303713a20aa3c877f968868cb70"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_200ms.pdf",
+   "sha256": "69760eadfeb7f9510d5a10adceb4a785aaca8516f9a5416ff0661f879ee21164"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_300ms-1.png",
+   "sha256": "fd93d645120d84fe967675306d8526adeb72590c869ef34177d812777461a139"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_occupancy_300ms.pdf",
+   "sha256": "811517658c0c03c7c40329115f332404088996dad3a94aecaf737e17ca6aab1a"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_100ms-1.png",
+   "sha256": "6fea9fa8aa1dba35010a91b2fff7dda747a56e1bb65478bcbf52dbf5a7c4a38f"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_100ms.pdf",
+   "sha256": "d323e41180fcc6348ee86c15bf01307c736c2c9ca4d281cdfde1403762d24e30"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_200ms-1.png",
+   "sha256": "4098888a2c7cdee983b65595f838334a1bdcf5f4b19ed67e924152701a49a670"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_200ms.pdf",
+   "sha256": "4726ea69cb7218c0615331c38182c632566a11a1d4979bf3223b7311811bc403"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_300ms-1.png",
+   "sha256": "614ff8cbcd6f3db90c9db923c942a00cac9fdc24d9b30b2d81fccddc40cd039a"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_dsm_heldout_occupancy_300ms.pdf",
+   "sha256": "2793d1587ef458ac3654e7f0179912f48ba32c3b5d24d0af833c1d53223854da"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_100ms-1.png",
+   "sha256": "960cf5dcafa16e9a4aac81f91767b7285ad4844986266b9ba7c17376de13f1fd"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_100ms.pdf",
+   "sha256": "924d368ca66e4d9768e12ee5851ab510405d142838701fa994d96f35970d1dd8"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_200ms-1.png",
+   "sha256": "d72c922705dd274540d5d193fb550e307a893e485b20840bae9325ce52d2346b"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_200ms.pdf",
+   "sha256": "32bba84bb0dcbece7b1a31d6a33e13a5212630971680e20a89d6af363ad9d3d8"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_300ms-1.png",
+   "sha256": "aff50d97dbe3a339530a3f550c2e9deef1e5f2317b617703dc2ca58034732d7b"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_bes_occupancy_300ms.pdf",
+   "sha256": "80bdd1447721bd82b800fd6a62ae33097cabdc1a39fd527b29c93cc9cff71036"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_100ms-1.png",
+   "sha256": "a77ce3301187126058a258d4144ddbe89362eb837c51190bbc2bcab105a4bc2a"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_100ms.pdf",
+   "sha256": "4c484a38ca4a296b02c882931480012dbc487af505336b7633e1d3cb9f633afc"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_200ms-1.png",
+   "sha256": "9deb043bcb76c76f9adee575064d47ddd3483f9155933ce29feee31ce1e86cd2"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_200ms.pdf",
+   "sha256": "581c2f3aa4f779fd59d46facbe27b2edb3a6de62c511cb636837e1b49c294aa1"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_300ms-1.png",
+   "sha256": "85a2d93a0001b4e7b9cd73851ebf19e907e9d55e984cfc62cda9b821ac0788f4"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_dsm_heldout_occupancy_300ms.pdf",
+   "sha256": "601515ae5030ee2a713a8d572eb6a2e73287f3722174ee80f535bdf1bf450f3c"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_100ms-1.png",
+   "sha256": "45f51fda157260e5df770d295ae130b2fcdf1a8196c0ef50f85c525001ca0ed7"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_100ms.pdf",
+   "sha256": "8ad4efbe7e4de986c7c639d337d07fff0f50e0e9ab0a8b6c93c61102b78c8869"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_200ms-1.png",
+   "sha256": "e548cf467d1a1542dd43e0eb0de48b27425cbe7ce6ed51ebc6d52eff70bfa40e"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_200ms.pdf",
+   "sha256": "0cfea6ba044ce3c416375b533d451ee8c26c4dc1f5e50a26c8b8e7832abe7ae3"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_300ms-1.png",
+   "sha256": "edf265e14f1f67c17d7fa6c53b79cbf6e63f71353da83451f8012dea6637746e"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_overlap_occupancy_300ms.pdf",
+   "sha256": "d8df48009d74ac397627d1c0d6db702384e926c12ca33341f2fbe29ea83da1cf"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings_auroc-1.png",
+   "sha256": "5b16e388568171f43b02e683d53d7da355f43a66d7ce13577f187bdba42f651c"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings_auroc.pdf",
+   "sha256": "4397ad45ba1d884051c83193a910ddc9442b560f7d90dafdcc708f5d209475da"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings_f1-1.png",
+   "sha256": "e5b09b6121e72d16475a1850457efcee97a651afe220ff04105fe6e59facb7a6"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings_f1.pdf",
+   "sha256": "23ea61958e2f8a32834503e7266126ddca2403a52fcc2050e0752feebd4f37b8"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-1.png",
+   "sha256": "181612b648e8eea1b712c1ac261b734878eea0b227f99e1a6a5f9280ef858ec1"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-2.png",
+   "sha256": "d930b7193b3b7b4e459c2062bc097727e51e6a545b86ef5abfc99f2f2693247e"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-3.png",
+   "sha256": "54ec4a3d14eea49542f8e9b3e7cb15706f56eab0dcc7d9f38fd91ba46516ca8c"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-4.png",
+   "sha256": "079ad349c004e9021cd77de8798144c1a1ff902d77284fb825e50f5596f8d612"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-5.png",
+   "sha256": "bc3be2a125c62dafab46f3ffa1d8508afdc3a0c2a629f1d01f60cdc0fa304d69"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof-6.png",
+   "sha256": "62ee700e2c26c1f6c51507733a71fdae465057c072fb9f081ef4a230f5ec5061"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof.aux",
+   "sha256": "d871c9a49f639dc117b463eb835a737d0b54ed0770e013f5e7e5b93a28ba17f9"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof.log",
+   "sha256": "4d29ae2a35425d03941f42a8de9cae4438f5c27f2beaf990b578ce01fd1ff3b9"
+  },
+  {
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/figures/tableproof.pdf",
+   "sha256": "499fd0aefa352d7809fa488f58a53479b899f544a256486a1531b5ef1c627e7a"
+  }
+ ],
  "artifacts": [
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_annotation_modes.tex",
-    "sha256": "2d50823700fc8f9e73fa61fde57c27e26bd6aaabed4a9d21466d924d6c59c65a"
+    "sha256": "09c999ab02a30bc9eb58c2d400d0146f1806d37b8782360371ca234e3b172da4"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_annotation_modes.pdf",
-    "sha256": "f10d95e363c45076d9440260f02aa5fd5127e850c7a2df8f9a694b71e41a1f3a"
+    "sha256": "d98e0bdecb9061af63d533d4e2980cc20d581a17b27523c737413343311e18ff"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_annotation_modes-1.png",
-     "sha256": "4ff171e6fc393b82d3a06d94de0944241681f6c79402f1af923d64b1e12e9901",
+     "sha256": "799bd922f630c54c03649760175ffcf77d1ae7065dfe968a62933b1b0646898d",
      "viewed": true
     }
    ],
@@ -39,16 +285,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_dsm_native.tex",
-    "sha256": "0578b1b24321d1b64c68d57a187298929f55943402fc82e1364f86560567de47"
+    "sha256": "3f32b8e9c6c6ad008a609df85162099a635a0b4b9fc43fa547d8db6f38d060fd"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_native.pdf",
-    "sha256": "17fe09553e34209ac0fd42db54f2ce27a1dda9c58d476e2b572fd311ab8d163b"
+    "sha256": "3cdedc3b36d69ae20b01a91b5e4323a02efc7e7aa7703a1a46f98c400aeea509"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_native-1.png",
-     "sha256": "443499f16d404aa1acaf11ecc66f2c233027785d89baf8fe4a5cb8184641e617",
+     "sha256": "e23016d7efae857b9544a0a69984bbe5b3e02fc29d01b1a97fa0be968f2a8ee1",
      "viewed": true
     }
    ],
@@ -62,16 +308,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_dsm_own_target.tex",
-    "sha256": "323442d6ce4c2aa9739683297c394402874d8b74df9da12786bc3640976438ff"
+    "sha256": "fe7364551944e5bfd6fdd3958bf0917f17fd74d5e22b9dc1f9fffb213a98c4d1"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_own_target.pdf",
-    "sha256": "e155699a60d4d56715679e01b8fc3252219ffa7d1d922fd789f264e97b12a8e0"
+    "sha256": "aa9cd81b265bc298c3b98d975948130681df2729e110064cd36390c6f6ca0196"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_dsm_own_target-1.png",
-     "sha256": "b427eda2803090be9746f43244e52ca6d91ed9350b12d622029d85a0601e6a55",
+     "sha256": "9b45067dd0396bd53085a08c5e58ed081c1bed12cbe72ac90fce41d2f7e8266c",
      "viewed": true
     }
    ],
@@ -85,16 +331,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_per_kind.tex",
-    "sha256": "f6689976f07b40f0c4be97303d6354f490dae952dccff9600ba51ff09676491a"
+    "sha256": "0822e0acdf6384f0c6760e3243bed7ddccf96dfa0082a418809e364e140b93e5"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_per_kind.pdf",
-    "sha256": "2cc947825cc2e3a65ae4fac29c7a37545208d61348b8a6763f8b6c8ac2a7bdb0"
+    "sha256": "edd0d6e5ed8e778cc9a36717c7ae76d78e8db17be9a60a85ed95257a21fbded1"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_per_kind-1.png",
-     "sha256": "b9d06cd62f35b0f3e4e3c8f9e695593027d8959352c91184e4694a5ce14d6af9",
+     "sha256": "f8aab42b24b810309e04ba5804b9fb199ee2d5f5db3206e25895ddf8a4ce92ed",
      "viewed": true
     }
    ],
@@ -108,16 +354,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_smith.tex",
-    "sha256": "b8169a83c2e8209112d2083164c71765c657d6a6534998c6345638640624ecb0"
+    "sha256": "a99315f7637e50c9b7d1a09777445f3a3199ffc25c28749656f477bff6c00c09"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_smith.pdf",
-    "sha256": "f57a89a03dc2de85b964f831bb8fc879246d448c9334a1a85c77d6c87680fe8f"
+    "sha256": "4850ddec6708a35dde679f738806950a8ea0f2ed216a5f767033b249898bfaa9"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_smith-1.png",
-     "sha256": "049bd2f0265a0875a52f32022f0c1a3929604cc1ea93938af6308b8056151be2",
+     "sha256": "0ab9583b05044cca86eaa9543b60ea54a2dc01628fa65be689ebae8f1c79a199",
      "viewed": true
     }
    ],
@@ -131,16 +377,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/appendix/table_elm_supplemental.tex",
-    "sha256": "f08e8eb8291880bdf5ed9f96a9107e242a4cc0f7f8a6a21a23dd9a76fcff2155"
+    "sha256": "4ffe06f5abbab2153eff7d37f53cfdb58e2cde917379823ecd0e9cb09feb8485"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_supplemental.pdf",
-    "sha256": "1e6ea49c52e4b032a21126f6ee34625821a10088f48e6aabc31283ce1c317b8d"
+    "sha256": "85ed188276cf71602d0c14643a9395db0e30ef72ffea55e0124e40b4fb93bc99"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_supplemental-1.png",
-     "sha256": "c1872453706c35c822c692a9d232ac84e680b34c812f33d77bcd82bcb99b6849",
+     "sha256": "19bd23889a872df9238794f4f2391ec71360746c1c65fba584cf927c3bc09246",
      "viewed": true
     }
    ],
@@ -154,16 +400,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
-    "sha256": "6fb9ee3a298857fa84bcf1e1b2cafd02dbe7f9b1bae490d437bbc825c16285c0"
+    "sha256": "345bceec1e1805a9231bcea5c44de48ca4cd21008932409be3f56e8c4069d973"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/elm_table_notes.pdf",
-    "sha256": "980a8092a1bae4f219506b70ff57674ec524428128ee83f3df52d8da64fb3793"
+    "sha256": "6714f801af70f3769bdfc520572d95e135e03f32b056b4c6688d48bd16880ecb"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/elm_table_notes-1.png",
-     "sha256": "49b7e183356d105ecaebc01c6a3af66cc12a1197964c895eeb42fae0a5b0558b",
+     "sha256": "e40c7bcf2be12045e656a88b4055ed1b4995fe94b8de566121207de02ad5df2c",
      "viewed": true
     }
    ],
@@ -177,16 +423,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap.tex",
-    "sha256": "58f69b7876e5b91c0a6300836920b7f418bffa1d2cffd809eaeff1df9ce38a9b"
+    "sha256": "998df8351178fdfc95bd62af997fbfd7c5819f97cff743295c5a069797ba657f"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap.pdf",
-    "sha256": "91f4425fd8d4f03725d5a41838af328f84284f885f3718dd38315b00f090e98b"
+    "sha256": "262a19b106adf5d9285c128a763533e793f0b177b4c44a70519e989431fbf407"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap-1.png",
-     "sha256": "6d9815200f2cabc357bb5e558fde35711ac240b41184d277a6add1a0b55fbb70",
+     "sha256": "fec7003f00c94947b6af3796488447a0b2c5732020b235c7dbb481ba77254537",
      "viewed": true
     }
    ],
@@ -200,16 +446,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_full.tex",
-    "sha256": "92c48f8c286988370b6d5b7dc184790f0b909bcea250648b762b0b81fd6ed098"
+    "sha256": "35794c34f62be29dd6e24095af05ad1016ac4d31a1e688e844285ea1f63c4879"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full.pdf",
-    "sha256": "b2c63d6253898e3fa3bd1e3cfbc6b2edfb7424676831f5b4596d17affd8e7f88"
+    "sha256": "3e6b7013f1a51b6b3d9ecc836b19b7a3b007ac0c51891b9bbb8bbb6f1fb67c2c"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_full-1.png",
-     "sha256": "10f1a10c5503e6ca21a3f871092cb56b9f477cf5eeeed40e37d00f70cfaca396",
+     "sha256": "517d4ec8670156fe2de2256d679c7c648aea197e9c8d23d37db052191f020e9f",
      "viewed": true
     }
    ],
@@ -223,16 +469,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_rankings.tex",
-    "sha256": "f7016a91d22d3c718459cc581ee0fd3b7b0220426ae8e218718078931384a94f"
+    "sha256": "d3446eef9ea96403e04b672d0b831d03f896ef2d98ba3d64e7e20a5801b7505e"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings.pdf",
-    "sha256": "38801c43fbe0338fdf920180ee1f3cc1b27352771fd2367ad6c71eeda7d2450c"
+    "sha256": "6e27cef29a242fa74c3de044d8c1efd6d22454e2b6c1696c0a0dc8f8cda9293c"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_rankings-1.png",
-     "sha256": "7fe7c2333f271f0ef2beedbfb59f7f681306e5307f447ba2aa447c3e1ce2b722",
+     "sha256": "15401f0ba374c5383c02732eb0860a22d43c0c88fb0cb458634d3289bf5e22ae",
      "viewed": true
     }
    ],
@@ -246,16 +492,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/table_elm_swap_sensitivity.tex",
-    "sha256": "7cf4a9528cf26c2137c15bced83bc04a0e09974ec723384cfd19f64fc298a4fc"
+    "sha256": "73c94d281cb75d74e180c0c012610b44e2467135421db3d2f24aabf683b16719"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_sensitivity.pdf",
-    "sha256": "316ef68660d22904fdd8388b2f80325d3722e68217142781de1041f598891deb"
+    "sha256": "42aa1e07ccff3b8dddc2d13a6f20f15602cb12384591664d342571156dd406c8"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_swap_sensitivity-1.png",
-     "sha256": "8c5496f7a1443ec1e9db44c6fbfb553bb0cc57245f30e0f3f8284e4ac37fdfb7",
+     "sha256": "a1ca0ee50157addefda0e471a105d642213dd0af599d033f9e22a662b5c2b8fc",
      "viewed": true
     }
    ],
@@ -269,16 +515,16 @@
   {
    "source": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/table_elm_benchmark.tex",
-    "sha256": "d2284d9bd3df5acfe66fd4a2c9a1a75566294db9f72e3a2568e4afbc7d71e1fe"
+    "sha256": "32190fc26cd873e39babc8c16d7aed76b1361707428c7bc0c9a3252e2a6cf2d0"
    },
    "pdf": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_benchmark.pdf",
-    "sha256": "de594973523a690890f92465614e5c154669ddadbf1d051c5538dd5321d796cb"
+    "sha256": "55e810ae117995c2de6e460fee3f9590eef0d800b4bfbe7e5315502d37328f1b"
    },
    "pngs": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/table-proofs/table_elm_benchmark-1.png",
-     "sha256": "5341931ca3a371ce6a9c674bb154bb962e423b48cbcb651e65d0c2e8448677a8",
+     "sha256": "95284f895d2131b6fb8f1c2c223cd98f1b24279ca4247a94e9e6d273daa32639",
      "viewed": true
     }
    ],
@@ -290,5 +536,5 @@
    "viewed": true
   }
  ],
- "viewed_at": "2026-10-03T20:32:37+00:00"
+ "viewed_at": "2026-10-03T21:26:10+00:00"
 }

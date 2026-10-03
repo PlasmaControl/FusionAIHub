@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Score `elm-ours` against the reviewed ELM spans, beside ELM-O and the ELM clock.
 
-    python scripts/labeler/elm_ours_evaluate.py --run cv2 [--out-dir DIR]
+    python scripts/labeler/elm_ours_evaluate.py --run RUN [--out-dir DIR]
 
 `elm-ours` (`labeler.elm`) is a 1D U-Net over filterscope D-alpha and line density.
 Its predictions here are the out-of-fold ones of `python -m labeler.elm.train`: every
@@ -174,8 +174,7 @@ def main(argv: list[str] | None = None) -> int:
             pd.concat([data[s].spans for s in shots_all], ignore_index=True)
         ),
         "onset_head": "Dropped from paper outputs: reviewed span starts are not "
-        "verified physical ELM onsets; reviewed non-crowd starts sit about 5 ms "
-        "before BES onsets and the auxiliary head has weak agreement. "
+        "verified physical ELM onsets and the auxiliary head has weak agreement. "
         "Existing checkpoints retain it; no onset retraining was performed.",
         "span_alarm_definition": {
             "raw": "Any detected-span touch inside panel coverage on a sufficiently "
@@ -200,8 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         "ci_method": "95% percentile bootstrap of physical shots within each group, "
         "1000 replicates, seed 20261003; the same draws are used across methods.",
         "note": "Per-ELM annotations and whole ELMing-period crowds define different "
-        "occupancy targets across shots; non-crowd starts sit about 5 ms before "
-        "BES onsets and are not verified physical onsets.",
+        "occupancy targets across shots; non-crowd starts are annotation "
+        "boundaries without independently verified physical-onset truth.",
     }
     boot_bes = score.draws(len(bes.shots))
     record["sets"]["bes73"] = evaluate_set(

@@ -32,8 +32,8 @@ labelmaker:
     blind_cohort_normalization_shots: [190532, 190646]
     validation_policy: >-
       adapter.training_shots includes weight-training, early-stopping and
-      pre-split normalization exposure. General validation's in_training subset
-      means source-exposed for this adapter; no exposed shot is held_out.
+      pre-split normalization. General validation's in_training subset
+      includes every shot used in those roles; none is marked held_out.
   serving:
     interpretation: offline risk score, not a causal forecast
     trained_row_ms: 1.0
@@ -41,11 +41,14 @@ labelmaker:
     serving_grid_ms: 25.0
     centered_nbi_lookahead_ms: 25.0
   preprocessing_exposure:
-    applies_to: [elm-dsm refit, elm-dsm detection exposed, elm-dsm detection init]
+    applies_to:
+      - elm-dsm refit
+      - elm-dsm (source statistics, detection)
+      - elm-dsm (source weights and statistics, detection)
     scope: upstream means and standard deviations computed before the source split
     blind_cohort_shots: [190532, 190646]
-    role: feature-statistics exposure, independent of reviewed-label CV
-    decision: retain historical exposed fits as supplemental; isolated detection refits preprocessing
+    role: feature statistics reuse upstream shots regardless of reviewed-label folds
+    decision: historical fits are supplemental; isolated detection refits preprocessing
   isolated_detection:
     normalization: measured usable labeled optimizer-training rows within each fold
     inner_validation_in_normalization: false
@@ -170,8 +173,10 @@ labelmaker:
 Deep Survival Machines refit. Serving uses 50 ms means on a 25 ms grid for a
 model trained on 1 ms rows. The centered NBI boxcar incorporates the row 25 ms
 later, so these scores do not support causal forecasting claims. The paper's
-short names are `elm-dsm refit`, `elm-dsm detection` (isolated),
-`elm-dsm detection exposed` and `elm-dsm detection init` (historical supplemental);
+short names are `elm-dsm refit`,
+`elm-dsm (60-input 1×128 refit, detection)` (separate preprocessing per fold),
+`elm-dsm (source statistics, detection)` and
+`elm-dsm (source weights and statistics, detection)` (historical supplemental);
 the existing adapter slug remains `d3d_elm_time_to_event_dsm` for compatibility.
 
 ## Model details
@@ -268,23 +273,23 @@ native-input development panels below have separate coverage and exposure limits
 5. **Catalog-wide adapter validation remains incomplete.** The reviewed
    occupancy benchmark and native-input audits below evaluate separate panels;
    they do not establish fidelity across the full corpus.
-6. **Pre-split feature exposure in historical DSM variants.** The normalization
+6. **Pre-split feature statistics in historical DSM variants.** The normalization
    constants were computed over all 365 source physical shots before the
    upstream split, including blind-cohort shots 190532 and 190646. The refit,
-   historical scratch detection model and initialized detection model use them.
-   This is feature-statistics exposure, independent of reviewed-label CV. Their
-   scores remain supplemental. The confirmatory detector instead extracts raw
+   historical random-weight detection model and pretrained detection model use them.
+   These statistics reuse upstream shots regardless of reviewed-label folds.
+   Their scores remain supplemental. The reviewed detection adaptation instead extracts raw
    rows without source normalization or clipping, fits measured-column statistics
    inside each optimizer-training partition, then fills missing columns and clips
-   with that fold's statistics. It initializes independent random weights and
+   with that fold's statistics. It starts from independent random weights and
    reuses no source model parameters. Inner-validation and outer-test shots do
    not enter its preprocessing fit.
 
 `training_membership.json` records source hashes and separate physical-shot
 roles: 300 weight-training shots, 80 early-stopping shots, 15 physical shots on
-both sides, and 365 normalization-exposed shots. These IDs are decoded from
+both sides, and 365 shots used for normalization. These IDs are decoded from
 upstream `<shot>_<phase>` identifiers. General validation's `in_training` subset
-uses the union of all three roles, so source-exposed shots are never labelled
+uses the union of all three roles, so shots used for any role are never labelled
 held out. The refit overlaps reviewed labels on shots 190637, 190643, 192721,
 192751 and 196541; comparisons on those shots are in sample for the survival
 weights and labels. The normalization source is `compiled_model10.pkl`, with
@@ -316,11 +321,13 @@ mode, and a stop at the first non-finite loss.
 
 ## Evaluation
 
-### Isolated reviewed-label detection
+### Reduced-input reviewed-label detection adaptation
 
 These are developmental shot-CV occupancy estimates on five fixed folds.
-Preliminary outer-fold predictions existed before cv2 (influence unresolved);
-16 review run days span folds. Inner-validation AUPRC selects checkpoints
+Preliminary outer-fold predictions were available before the reported recipe
+was fixed and could have informed inputs, scaling, architecture, selection
+or evaluation; the saved records do not establish their influence.
+Inner-validation AUPRC selects checkpoints
 at zero-based epochs 35, 31, 2, 24, 0; inner-validation F1 selects
 thresholds 0.067, 0.122, 0.482, 0.021, 0.395. Each fold fits its own normalization and starts
 from random weights. No blind-cohort shots enter these fits.
@@ -333,8 +340,24 @@ from random weights. No blind-cohort shots enter these fits.
 Source: [dsm/evaluation.json](../../../../outputs/labeler/elm/dsm/evaluation.json), `detectors.elm-dsm-detect` and `sets`.
 The detector uses 60 input columns, including measured PCPHD02/03 on
 119 shots and DENV2F/3F means on 115 per chord (four mean-filled).
-The inputs and architecture were designed for WPQH breakthrough-ELM
-forecasting from 50 ms means; density calibration remains unresolved.
+This is elm-dsm (60-input 1×128 refit, detection), a reduced-input
+adaptation trained and evaluated on 50 ms rows. The source model
+trained on native 1 ms rows with 124 inputs and layers [100, 1000]
+for WPQH breakthrough-ELM forecasting; this is not an objective-only
+retrain of that model. Fast-density units and filterscope sightlines
+are unverified in retained metadata; fixed input scaling, clipping and
+magnitude screening do not establish physical calibration.
+The companion occupancy U-Net omits FS01 because its retained cache
+contains FS02–04 only. Its fast-density inputs divide native values
+by `1e14`, clip to `[-3, 12]`, and clip ten times the 0.2 s high-pass
+to `[-10, 10]`; chords with median absolute native magnitude above
+`1e16` are zeroed by a heuristic failed-digitiser screen.
+Offline metadata audits made no new fetches and changed no saved
+inputs or weights. Sources: `density_units.json`,
+`filterscope_metadata.json` and `src/labeler/elm/inputs.py`.
+No independently validated physical-onset detector is delivered,
+and run days cross folds in both developmental analyses
+(16 review days; 21 of 31 Smith days).
 
 ### Limited-input survival refit (selection evidence)
 
@@ -360,15 +383,16 @@ ReLU6; the Keras conversion's unbounded ReLU is not substituted.
 
 The corrected forward presence target asks whether a reviewed present
 span intersects (t, t+h]; the separate onset target asks whether a
-non-crowd start lies in that interval. Reviewed non-crowd starts sit
-about 5 ms before BES onsets and are not verified physical onsets.
+non-crowd start lies in that interval. Reviewed non-crowd starts
+are annotation boundaries without independent physical-onset truth.
 
 Exact-export 50 ms AUROC is **0.607**, CI **null**:
-descriptive only on 4 source-exposed shots and 11,565 rows
+descriptive only on 4 shots reused in source fitting and 11,565 rows
 (190637, 190643, 192721, 196541).
 196541 entered optimizer fitting; the other three entered checkpoint
-selection; all entered source normalization. Five shots have exports,
-but 192751 has no scored overlap. No operating threshold is selected.
+selection; all entered source normalization. Five shots have exact exports,
+but 192751 has no scored overlap: the exact-export panel and figure
+therefore contain four shots. No operating threshold is selected.
 
 | Native panel | Horizon | Shots | Rows | AUROC [95% physical-shot CI] |
 |---|---|---:|---:|---|
@@ -384,7 +408,7 @@ but 192751 has no scored overlap. No operating threshold is selected.
 Reconstruction is a sensitivity: source smoothing of concatenated
 phase rows differs from within-shot NBI smoothing. Source validation
 retains the original reversed chronological split and selected weights.
-It is not independent evaluation. Coverage, inputs, targets and exposure
+It is not independent evaluation. Coverage, inputs, targets and memberships
 are in [native_evaluation.json](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
 Reproduce scoring without training with `elm_dsm_evaluate.py --rescore`
 and `elm_dsm_native.py`; render this block with `elm_protocol.py`.
@@ -405,7 +429,7 @@ controls `t > h`, rows censored inside `h` excluded; IPCW is
 | `all124`‡ | 124 | 1.2553 | 0.7562 | 0.7624 | 0.7680 | 0.7807 | 0.7680 |
 | **`no_bes`**‡ | **60** | **1.1542** | **0.7581** | **0.7643** | **0.7699** | **0.7771** | **0.7699** |
 
-‡ marks supplemental source exposure: these rows selected the checkpoints and
+‡ marks supplemental reuse of upstream data: these rows selected the checkpoints and
 input set, and were included in upstream normalization.
 
 **Decision rule, written before the run:** adopt `no_bes` if its test NLL is

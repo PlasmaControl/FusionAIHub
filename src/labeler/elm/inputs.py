@@ -22,8 +22,9 @@ keeps its height), the interferometers the mean.
 * `fs02_c`, `fs03_c`, `fs04_c`: that channel minus its running median over
   `BASELINE_S` (0.5 s), the contrast against the shot's own baseline.
 * `ne2f`, `ne3f`: the fast chord's native ordinate divided by 1e14, clipped to
-  `[-3, 12]`. A chord whose median magnitude exceeds `BAD_DENSITY` is a failed
-  digitiser (194445 reads 1e18) and is set to zero.
+  `[-3, 12]`. A chord whose median magnitude exceeds `BAD_DENSITY` is set to
+  zero by a heuristic screen for possible failed digitisers (194445 reads 1e18).
+  The rejection has not been verified against diagnostic calibration records.
 * `ne2f_hp`, `ne3f_hp`: ten times the density minus its running mean over
   `HP_S` (0.2 s): the density drop an ELM crash leaves.
 * `valid`: 1 where both records have samples in the cell.

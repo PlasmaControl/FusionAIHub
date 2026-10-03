@@ -1,6 +1,6 @@
 {
- "git": "1a675d02",
- "created": "2026-10-03T20:24:52+00:00",
+ "git": "a2a483d5",
+ "created": "2026-10-03T21:10:13+00:00",
  "run": "cv2",
  "train_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
  "reference": "expert-reviewed spans (review/labels.csv)",
@@ -1013,7 +1013,7 @@
    }
   ]
  },
- "onset_head": "Dropped from paper outputs: reviewed span starts are not verified physical ELM onsets; reviewed non-crowd starts sit about 5 ms before BES onsets and the auxiliary head has weak agreement. Existing checkpoints retain it; no onset retraining was performed.",
+ "onset_head": "Dropped from paper outputs: reviewed span starts are not verified physical ELM onsets and the auxiliary head has weak agreement. Existing checkpoints retain it; no onset retraining was performed.",
  "span_alarm_definition": {
   "raw": "Any detected-span touch inside panel coverage on a sufficiently analysed absent span. Detections are intersected with panel coverage before raw and guarded span metrics.",
   "guard25": "Touch in [start+25ms,end-25ms), with the same raw denominator; empty interiors counted separately. A conditional nonempty-interior rate is also reported.",
@@ -6603,6 +6603,6 @@
   "crowd_present_shots": 76,
   "group_definition": "Disjoint groups use the complete reviewed annotation of each shot; metrics use only the panel's covered scored bins and spans.",
   "ci_method": "95% percentile bootstrap of physical shots within each group, 1000 replicates, seed 20261003; the same draws are used across methods.",
-  "note": "Per-ELM annotations and whole ELMing-period crowds define different occupancy targets across shots; non-crowd starts sit about 5 ms before BES onsets and are not verified physical onsets."
+  "note": "Per-ELM annotations and whole ELMing-period crowds define different occupancy targets across shots; non-crowd starts are annotation boundaries without independently verified physical-onset truth."
  }
 }

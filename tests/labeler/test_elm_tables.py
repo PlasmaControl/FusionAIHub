@@ -1,4 +1,4 @@
-"""Paper table regression checks for reference scope and source exposure."""
+"""Paper table regression checks for reference scope and metric conditioning."""
 
 import json
 from pathlib import Path
@@ -64,15 +64,18 @@ def test_generated_captions_are_short_and_table_specific(tmp_path):
         for caption in re.findall(
             r"\\caption\{(.*?)\}\n\\label", path.read_text(), re.DOTALL
         ):
-            assert len(caption.split()) <= 100, path.name
+            assert len(caption.split()) <= 150, path.name
             assert "source\\_formatters" not in caption and "Hiro" not in caption
-            assert "WPQH phases" in caption and "domain shift" in caption
+            assert "source exposure" not in caption
             if "rankings" in path.name:
                 assert "Brackets" not in caption and "Numerical F1" not in caption
     caption = (tmp_path / "table_elm_swap.tex").read_text()
     assert "inconclusive" in caption
     assert "eight" in caption and "3 shots; 2 with BES" in caption
     assert "AUROC" in caption and "review-tuned" in caption
+    assert "AE Finding-2 analogue" in caption
+    assert r"dalpha\_wpqh.pkl" in caption and "PCPHD02/03" in caption
+    assert "0.815" in caption and "0.846" in caption
 
 
 def test_descriptive_metric_cell_suppresses_interval():
@@ -101,21 +104,39 @@ def test_main_occupancy_table_has_two_panels_and_only_six_core_rows():
     feature = json.loads((root / "ours/feature_only.json").read_text())
     text = paper_module().benchmark_table(ours, dsm, feature)
     assert text.count("common bins") == 2
+    visible_rows = (
+        text.replace(r"\shortstack[l]{", "")
+        .replace(r"\\", " ")
+        .replace("} &", " &")
+    )
     for name in (
         "elm-ours",
         "elm-elmo",
-        "elm-dsm (detection)",
+        r"elm-dsm (60-input $1\times128$ refit, detection)",
         "elm-clock",
         "always-present",
         "elm-feature",
     ):
-        assert text.count(name + " & ") == 2
+        assert visible_rows.count(name + " & ") == 2
     assert "detection init" not in text and "source exposure" not in text
-    assert "photodiodes" in text and "56" in text and "44" in text and "33" in text
-    assert "WPQH breakthrough-ELM" in text
-    assert "developmental shot-cv" in text.lower()
-    assert "16 review run days" in text
-    assert "60 input columns" in text and "BES subset only" in text
+    caption = text.split(r"\caption{", 1)[1].rsplit(r"}\label", 1)[0]
+    # Decimal points are not sentence breaks; the caption has four sentences.
+    import re
+
+    assert len(re.split(r"(?<=[.!?])\s+", caption)) == 4
+    for tag in ("all119", "bes73"):
+        assert f"{dsm['sets'][tag]['bins']:,}" in caption
+    assert "50 ms bins wholly inside reviewed spans" in caption
+    assert "inner-validation F1" in caption and "shot-bootstrap" in caption
+    assert "bin-mean probability" in caption and r"$\geq$ threshold" in caption
+    assert "aligned score" in caption and "input means" in caption
+    assert "any detected-span touch" in caption
+    assert "Review was seeded by the clock" in caption
+    for metric, label in (("auroc", "AUROC"), ("auprc", "AUPRC"), ("f1", "F1")):
+        delta = dsm["sets"]["bes73"]["paired"][f"elm-ours - elm-elmo: {metric}"]
+        lo, hi = delta["ci95"]
+        assert f"{label} {delta['value']:+.3f} [{lo:.3f}, {hi:.3f}]" in caption
+    assert "cv2" not in caption and "unresolved" not in caption
     assert "domain shift" not in text and "192721:" not in text
 
 
@@ -134,10 +155,13 @@ def test_smith_and_per_kind_captions_have_specific_limits():
     ours = json.loads((root / "ours/evaluation.json").read_text())
     module = paper_module()
     text = module.smith_table(smith)
-    assert "not estimable under selected" in text
-    assert "within-Smith run-day sharing" in text
-    assert "historical tuning events is unresolved" in text
+    assert "Conditional precision" in text and "Conditional F1" in text
+    assert "conditional on selected windows" in text
+    assert "continuous-discharge precision/F1 are unavailable for every method" in text
+    assert "21 of 31 Smith run days crossing folds" in text
+    assert "unknown because event membership" in text
     assert "domain shift" not in text and "192721:" not in text
-    assert r"\textit{NE}" in text
+    assert "[0.98, 0.98]" not in text
     kinds = module.per_kind_table(ours)
-    assert "5 ms before" in kinds and "domain shift" not in kinds
+    assert "Span-touch recall does not measure onset timing" in kinds
+    assert "5 ms before" not in kinds and "domain shift" not in kinds

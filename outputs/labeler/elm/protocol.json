@@ -1,13 +1,13 @@
 {
- "git": "21d54fec",
+ "git": "a2a483d5",
  "sources": {
   "ours": {
    "path": "ours/evaluation.json",
-   "sha256": "978e5c4e014dc5af0c07a6d1f368813de0ec66a55dbf6465f4926fd8f470509d"
+   "sha256": "bc6af0eb49175b60cfc5c241123a34cfab4095de69d61be050e6b194911d468a"
   },
   "dsm": {
    "path": "dsm/evaluation.json",
-   "sha256": "011192e7dffc9e4f94314c6555559f0228283ffbf9229d54a55f25d2eda8b442"
+   "sha256": "17b07ef490c776adb949f2ae798bf9f4841ab9094fcf88121cf471a0d8820328"
   },
   "native": {
    "path": "dsm/native_evaluation.json",
@@ -15,7 +15,7 @@
   },
   "swap": {
    "path": "swap/evaluation.json",
-   "sha256": "3d66e07b4e7fd29ec79a7ee43ab146b828ab098cc05e55683d89c080bc398c6b"
+   "sha256": "a3b6ab1bc32ffb1a75872f13bf5b7f1fce269f07e4fc34b10299016b06f57d2d"
   },
   "feature": {
    "path": "ours/feature_only.json",
@@ -23,21 +23,37 @@
   },
   "smith": {
    "path": "smith/evaluation.json",
-   "sha256": "71082c474b2f9eef83b435d2cb40256caf037d233382f740a8ff6a4546718bff"
+   "sha256": "2dff76cfd893f0ab93cd8a3d714cce0901d6107138457d7818fdd8052003ea83"
   },
   "strata": {
    "path": "ours/annotation_strata.json",
    "sha256": "770b6c5311b4410bb4bcc7419193d48ec79a377ce516eeb403781568c9fd9866"
+  },
+  "offsets": {
+   "path": "review_start_offsets.json",
+   "sha256": "f863000745b8a6085f9d7a9daf0e35964386b34c56cad566cca5f887baec6487"
+  },
+  "density": {
+   "path": "density_units.json",
+   "sha256": "a3da0c5d9afe8719a4fe592af279ce34307685433445f50720a428172397e12c"
+  },
+  "filterscope": {
+   "path": "filterscope_metadata.json",
+   "sha256": "74c8efd8602145f6584c21804ad5161f3a45c6bce7affbc5591e11ec4b3ee739"
+  },
+  "history": {
+   "path": "training_history.json",
+   "sha256": "b276bf9bd1b618dc6b6be5f32d22dacb148800d79905b9774f3a1bbb26cdbc80"
   }
  },
  "artifacts": {
-  "docs/labeler/elm_ours.md": "c95864e3afdc1eeb9385b3cccfde9dbdbdeb9695f6c56dd84b4d73383d294dc9",
-  "data/events/edge_localized_mode/README.md": "d8c90c4dfe58d157edbed54fa17c05a7f27f6db624ffc3bb62e4257060b12e1c",
-  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "8e14514bd212f094a1a5ee3025bb2d6f333c55da305e9093d3b1de8b2b5d079d"
+  "docs/labeler/elm_ours.md": "86f2c3d1841fd09c4a9dc0ad122dbc3a7ecc6e9851beb9d0187ff0b1ab2ed6e4",
+  "data/events/edge_localized_mode/README.md": "243a8bd46ee26dd2556f11b357a240cf986d26ec7fe2960bfe21c17f079fe2ba",
+  "src/labeler/models/d3d_elm_time_to_event_dsm/README.md": "4beb14dcf404e4138257570cd8aa17216d3dca8214735e07495121bc02f7a4a8"
  },
  "model_names": {
   "elm-ours": "elm-ours",
-  "elm-dsm-detect": "elm-dsm (detection)",
+  "elm-dsm-detect": "elm-dsm (60-input $1\\times128$ refit, detection)",
   "elm-clock": "elm-clock",
   "always present": "always-present",
   "elm-feature-only": "elm-feature",

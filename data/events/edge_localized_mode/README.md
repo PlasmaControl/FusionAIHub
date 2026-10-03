@@ -48,15 +48,16 @@ These are typically found via filterscope D-alpha bursts, divertor Langmuir prob
 
 **all**:
 - elm-ours | 2026_10_03 | AUROC: 0.939 [0.901, 0.966] | AUPRC: 0.878 [0.775, 0.951] | F1: 0.834 [0.782, 0.875] (119 shots / 11,653 common bins)
-- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.777 [0.730, 0.824] | AUPRC: 0.662 [0.592, 0.736] | F1: 0.627 [0.559, 0.692] (elm-dsm refit; supplemental source-exposed offline risk score; 119 shots / 11,653 common bins)
-- elm-dsm (detection) | 2026_10_03 | AUROC: 0.845 [0.796, 0.893] | AUPRC: 0.748 [0.651, 0.832] | F1: 0.742 [0.681, 0.798] (119 shots / 11,653 common bins)
+- d3d_elm_time_to_event_dsm | 2026_09_06 | AUROC: 0.777 [0.730, 0.824] | AUPRC: 0.662 [0.592, 0.736] | F1: 0.627 [0.559, 0.692] (elm-dsm refit; supplemental offline risk score reusing source data; 119 shots / 11,653 common bins)
+- elm-dsm (60-input 1×128 refit, detection) | 2026_10_03 | AUROC: 0.845 [0.796, 0.893] | AUPRC: 0.748 [0.651, 0.832] | F1: 0.742 [0.681, 0.798] (119 shots / 11,653 common bins)
 - elm-clock | 2026_09_13 | AUROC: -- | AUPRC: -- | F1: 0.759 [0.683, 0.829] (119 shots / 11,653 common bins)
+- elm-ours (BES subset) | 2026_10_03 | AUROC: 0.939 [0.893, 0.972] | AUPRC: 0.876 [0.752, 0.962] | F1: 0.848 [0.790, 0.899] (73 shots / 6,527 common bins)
 - elm-elmo | 2026_10_01 | AUROC: 0.914 [0.869, 0.948] | AUPRC: 0.833 [0.755, 0.892] | F1: 0.841 [0.786, 0.885] (73 shots / 6,527 common bins)
 - always-present | 2026_10_03 | AUROC: 0.500 [0.500, 0.500] | AUPRC: 0.391 [0.332, 0.450] | F1: 0.562 [0.499, 0.621] (119 shots / 11,653 common bins)
 - elm-feature | 2026_10_03 | AUROC: 0.833 [0.782, 0.879] | AUPRC: 0.704 [0.612, 0.789] | F1: 0.713 [0.649, 0.770] (119 shots / 11,653 common bins)
 - elm-ours-onset | 2026_10_03 | Recall ±2/5 ms: 0.930 [0.915, 0.945] | Matched errors ≤0.82 ms; 94% correct 1 ms cell (211 Smith shots; developmental selected-window shot CV)
 
-Brackets are 95% shot-bootstrap intervals. Review results are developmental shot-CV occupancy estimates (97% crowd positives; clock-seeded review). Reviewed non-crowd starts sit about 5 ms before BES onsets. Catalog physical-onset output is withheld. Smith onset precision/F1 are not estimable under selected windows. Inputs, run-day sharing and timing limits: [elm_ours.md](../../../docs/labeler/elm_ours.md).
+Brackets are 95% shot-bootstrap intervals. Review results are developmental shot-CV occupancy estimates (97% crowd positives; clock-seeded review). `elm-ours` matches ELM-O without BES; extends coverage to all 119 shots. On the common BES subset, paired elm-ours minus ELM-O is AUROC +0.025 [-0.013, 0.071], AUPRC +0.044 [-0.056, 0.131], F1 +0.007 [-0.044, 0.063]; every interval includes zero. Source: [dsm/evaluation.json](../../../outputs/labeler/elm/dsm/evaluation.json), `sets.bes73.paired`. Catalog physical-onset output is withheld. Every Smith method's precision/F1 is conditional on selected windows; continuous-discharge precision/F1 is unavailable. Inputs, run-day sharing and timing limits: [elm_ours.md](../../../docs/labeler/elm_ours.md).
 
 ## Inputs
 **elm-dsm** (internal adapter slug `d3d_elm_time_to_event_dsm`):
@@ -80,6 +81,10 @@ Brackets are 95% shot-bootstrap intervals. Review results are developmental shot
 - `interferometer` chords `DENV2F`, `DENV3F` (`\BCI::`, 100 kS/s; density and its 0.2 s high-pass)
 - a validity mask; 10 kHz grid, no BES
 
+FS01 is omitted from elm-ours because its retained input cache contains FS02–04
+only. The available metadata does not establish whether FS01–04 view the
+divertor or midplane.
+
 **elm-frames (label view)**:
 - `D-alpha FS` (the ELM spans' channel)
 
@@ -95,7 +100,13 @@ for >= 50 ms) and the ELM rate. Coverage is the D-alpha span actually processed.
 
 elm-dsm writes offline risk scores for an ELM within 5, 10, 20 and 50 ms.
 Centered NBI preprocessing includes 25 ms lookahead, so these are not causal
-forecasts and do not report observed events. The survival adapter and supplemental historical detection variants use upstream normalization including blind-cohort shots 190646 and 190532. The isolated detection retrain fits preprocessing within each outer training partition and uses independent random weights.
+forecasts and do not report observed events. The survival adapter and supplemental
+historical detection variants use upstream normalization including blind-cohort
+shots 190646 and 190532. The detection baseline is a reduced-input adaptation
+trained and evaluated on 50 ms rows with 60 inputs and one 128-unit layer;
+preprocessing is fitted within each outer training partition and weights start
+randomly. The source DSM trained on native 1 ms rows with 124 inputs and layers
+[100, 1000], so this adaptation is not an objective-only retrain of that model.
 
 Known gap: a narrow ELM riding on a broad D-alpha hump measures wide and is dropped.
 
@@ -108,7 +119,14 @@ with three additional training-seed repeats on the same partitions. The
 auxiliary span-start head is dropped from paper outputs; the existing
 checkpoints retain its loss. Fast-density values retain their numerical scale;
 physical ordinate units were not retained in the original source cache and are
-explicitly unverified, rather than speculatively rescaled.
+unverified. Fixed numerical preprocessing divides fast density by `1e14`
+native ordinate units and clips it to `[-3, 12]`; ten times its 0.2 s high-pass
+is clipped to `[-10, 10]`. Chords with median absolute native magnitude above
+`1e16` are zeroed by the heuristic failed-digitiser screen. This scaling,
+clipping and magnitude screen do not establish physical calibration or validate
+diagnostic failure. Offline metadata audits made no new fetches and changed no
+saved inputs or weights; see `density_units.json` and
+`filterscope_metadata.json` under `outputs/labeler/elm/`.
 
 ## Alias
 edge localized mode, edge localised mode, elm, elms, elmy, elming

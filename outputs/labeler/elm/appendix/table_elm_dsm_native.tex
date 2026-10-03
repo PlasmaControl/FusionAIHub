@@ -4,28 +4,29 @@
 \begin{tabular}{lrrrcc}
 \toprule
 Risk horizon & Shots & Rows & Positive rows & AUROC & AUPRC \\
-\midrule\multicolumn{6}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
-\multicolumn{6}{l}{Coverage: 119 reviewed; 5 exact exports; 45 reconstructable} \\
+\midrule\multicolumn{6}{l}{\emph{Supplemental: upstream data reused$^{\ddagger}$}} \\
+\multicolumn{6}{l}{Coverage: 119 reviewed; 5 available exact exports (4 scored)} \\
+\multicolumn{6}{l}{45 shots have inputs recoverable from stored signals} \\
 \multicolumn{6}{l}{Reviewed source overlap: 1 optimizer-trained; 4 checkpoint-selected} \\
 \midrule
 \multicolumn{6}{l}{Any reviewed present within horizon, reconstructed inputs} \\
-5 ms$^{\ddagger}$ & 33 & 138,049 & 60,142 & 0.610 {\scriptsize[0.54, 0.70]} & 0.527 \\
-10 ms$^{\ddagger}$ & 33 & 137,986 & 60,565 & 0.613 {\scriptsize[0.54, 0.71]} & 0.533 \\
-20 ms$^{\ddagger}$ & 33 & 137,825 & 61,421 & 0.620 {\scriptsize[0.55, 0.72]} & 0.546 \\
-50 ms$^{\ddagger}$ & 33 & 137,282 & 63,796 & 0.709 {\scriptsize[0.63, 0.79]} & 0.633 \\
+5 ms$^{\ddagger}$ & 33 & 138,049 & 60,142 & 0.610 {\scriptsize[0.541, 0.705]} & 0.527 \\
+10 ms$^{\ddagger}$ & 33 & 137,986 & 60,565 & 0.613 {\scriptsize[0.544, 0.708]} & 0.533 \\
+20 ms$^{\ddagger}$ & 33 & 137,825 & 61,421 & 0.620 {\scriptsize[0.549, 0.715]} & 0.546 \\
+50 ms$^{\ddagger}$ & 33 & 137,282 & 63,796 & 0.709 {\scriptsize[0.630, 0.789]} & 0.633 \\
 \midrule
 \multicolumn{6}{l}{Non-crowd starts within horizon (per-ELM shots)} \\
-5 ms$^{\ddagger}$ & 9 & 32,215 & 332 & 0.743 {\scriptsize[0.53, 0.84]} & 0.027 \\
-10 ms$^{\ddagger}$ & 9 & 32,197 & 665 & 0.748 {\scriptsize[0.54, 0.85]} & 0.055 \\
-20 ms$^{\ddagger}$ & 9 & 32,147 & 1,334 & 0.748 {\scriptsize[0.52, 0.85]} & 0.106 \\
-50 ms$^{\ddagger}$ & 9 & 31,994 & 3,337 & 0.757 {\scriptsize[0.52, 0.87]} & 0.245 \\
+5 ms$^{\ddagger}$ & 9 & 32,215 & 332 & 0.743 {\scriptsize[0.532, 0.842]} & 0.027 \\
+10 ms$^{\ddagger}$ & 9 & 32,197 & 665 & 0.748 {\scriptsize[0.536, 0.848]} & 0.055 \\
+20 ms$^{\ddagger}$ & 9 & 32,147 & 1,334 & 0.748 {\scriptsize[0.524, 0.851]} & 0.106 \\
+50 ms$^{\ddagger}$ & 9 & 31,994 & 3,337 & 0.757 {\scriptsize[0.523, 0.872]} & 0.245 \\
 \midrule
 \multicolumn{6}{l}{Source survival target, early-stopping validation} \\
-5 ms$^{\ddagger}$ & 326 & 699,512 & 8,867 & 0.926 {\scriptsize[0.91, 0.94]} & 0.081 \\
-10 ms$^{\ddagger}$ & 326 & 697,855 & 16,248 & 0.931 {\scriptsize[0.92, 0.94]} & 0.148 \\
-20 ms$^{\ddagger}$ & 326 & 694,596 & 30,468 & 0.939 {\scriptsize[0.93, 0.95]} & 0.274 \\
-50 ms$^{\ddagger}$ & 326 & 685,337 & 67,130 & 0.955 {\scriptsize[0.94, 0.96]} & 0.543 \\
+5 ms$^{\ddagger}$ & 326 & 699,512 & 8,867 & 0.926 {\scriptsize[0.915, 0.937]} & 0.081 \\
+10 ms$^{\ddagger}$ & 326 & 697,855 & 16,248 & 0.931 {\scriptsize[0.919, 0.941]} & 0.148 \\
+20 ms$^{\ddagger}$ & 326 & 694,596 & 30,468 & 0.939 {\scriptsize[0.927, 0.949]} & 0.274 \\
+50 ms$^{\ddagger}$ & 326 & 685,337 & 67,130 & 0.955 {\scriptsize[0.945, 0.964]} & 0.543 \\
 \bottomrule
-\end{tabular}\caption{Original 124-input DSM checkpoint on native 1 ms inputs, scored without operating thresholds. Coverage is reported separately for each panel. Reconstruction is a sensitivity with source/serving smoothing disagreement. Reviewed panels use forward targets; the survival panel uses source early-stopping validation. AUROC brackets show 95\% physical-shot bootstrap intervals. $^{\ddagger}$ marks supplemental source exposure, not independent confirmatory evidence. Reviewed non-crowd starts are about 5 ms before BES onsets. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; comparisons with reviewed occupancy involve definition and domain shift.}
+\end{tabular}\caption{Original 124-input DSM checkpoint on native 1 ms inputs, scored without operating thresholds. Coverage is reported separately for each panel. Reconstruction is a sensitivity with source/serving smoothing disagreement. Reviewed panels use forward targets; the survival panel uses source early-stopping validation. AUROC brackets show 95\% physical-shot bootstrap intervals. Five exact exports are available, but 192751 has no scored reviewed overlap, leaving four shots in the exact-export JSON and figure. $^{\ddagger}$ marks shots used in source training, normalization or checkpoint selection; they do not provide independent confirmation. The DSM and legacy onset table were built on WPQH phases with breakthrough-ELM targets; comparisons with reviewed occupancy involve definition and domain shift.}
 \label{tab:elm-dsm-native}
 \end{table*}
