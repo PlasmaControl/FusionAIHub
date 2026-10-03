@@ -195,7 +195,7 @@ def main():
             assert row["state"] == state
         geometry = drawn["layout"]
         assert geometry["n_panel_height_units"] >= 0.8
-        assert geometry["n_panel_height_in"] >= 0.75
+        assert geometry["n_panel_height_in"] >= 0.8
         assert geometry["n_panel_band_khz"] == [0, 30]
         assert geometry["processed_omitted_band_khz"] == []
         assert geometry["processed_restored_strip_khz"] == [30, 55]
@@ -300,6 +300,8 @@ def main():
                 "Evenly spaced magnetics-only lines after 2.8 s remain unlabelled"
                 in caption
             )
+        if drawn.get("ae_physical_review_caveat"):
+            assert drawn["ae_physical_review_caveat"] in caption
         if shot in (191376, 191782):
             assert record["publication_suitability"]["suitable_alternate"] is False
         label = re.search(r"\\label\{([^}]+)\}", caption)[1]
@@ -394,6 +396,7 @@ def main():
                 "largest_dalpha_peak_ms": drawn["largest_dalpha_peak_ms"],
                 "expert_elm_start_ms": drawn["expert_elm_start_ms"],
                 "lmode_inferred": drawn["lmode_inferred"],
+                "ae_physical_review_caveat": drawn.get("ae_physical_review_caveat"),
                 "ntm_performance": ntm["performance"],
                 "publication_suitability": record["publication_suitability"],
                 "elm_hmode_conflicts_ms": drawn["elm_hmode_conflicts_ms"],

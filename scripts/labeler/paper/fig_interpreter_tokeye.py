@@ -938,10 +938,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 0.85, "raw_mid": 0.25, "raw_lo": 1.35,
+        "h_raw": 0.32, "raw_hi": 0.85, "raw_mid": 0.25, "raw_lo": 1.60,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 0.85, "pr_mid": 0.25, "pr_lo": 1.35,
+        "pr_hi": 0.85, "pr_mid": 0.25, "pr_lo": 1.60,
         "crashes": 0.16 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
@@ -1037,8 +1037,8 @@ def draw(
             )
         # Leaders identify representative structures, never claim seeding.
         ntm_n1 = [b for b in blobs_low if mode_tags.NTM in b.tags and b.dominant_n == 1]
-        if ntm_n1:
-            b = max(ntm_n1, key=lambda b: b.n_pix)
+        ntm_points = []
+        for b in ntm_n1:
             rr, cc = b.component.rows, b.component.cols
             keep = mode_tags.present_columns(low.t[cc], spans[mode_tags.NTM])
             if low.n_map is not None:
@@ -1047,23 +1047,25 @@ def draw(
                 # Rightmost support shortens the leader across the n panel.
                 support = np.flatnonzero(keep)
                 i = support[np.argmax(low.t[cc[support]])]
-                description = figure_sources.ntm_description(
-                    track_record(by_key[mode_tags.NTM])
-                )
-                description = description.replace(
-                    "NTM detector suggestions", "NTM detector\nsuggestions"
-                )
-                description = description.replace(" (", "\n(").replace(
-                    ", below acceptance bar", ", below\nacceptance bar"
-                )
-                leader(
-                    ax["pr_lo"],
-                    description
-                    if by_key[mode_tags.NTM].source.tier == lf.GENERATED
-                    else "n=1 mode; NTM label",
-                    (low.t[cc[i]], low.all_f[rr[i]]),
-                    y=0.23,
-                )
+                ntm_points.append((low.t[cc[i]], low.all_f[rr[i]]))
+        if ntm_points:
+            description = figure_sources.ntm_description(
+                track_record(by_key[mode_tags.NTM])
+            )
+            description = description.replace(
+                "NTM detector suggestions", "NTM detector\nsuggestions"
+            )
+            description = description.replace(" (", "\n(").replace(
+                ", below acceptance bar", ", below\nacceptance bar"
+            )
+            leader(
+                ax["pr_lo"],
+                description
+                if by_key[mode_tags.NTM].source.tier == lf.GENERATED
+                else "n=1 mode; NTM label",
+                max(ntm_points),
+                y=0.23,
+            )
         strip = ax["crashes"]
         strip.set_facecolor("#222222")
         strip.set_ylim(0, 1)
@@ -1199,7 +1201,7 @@ def draw(
         if elm_chip is not None and regime_texts:
             clear_of(elm_chip, regime_texts)
         for i, text in enumerate(regime_texts):
-            clear_of(text, regime_texts[i + 1:])
+            clear_of(text, regime_texts[i + 1 :])
 
         # ---- label tracks
         titles = {
@@ -1340,6 +1342,10 @@ def draw(
             and r.category == ABSENT
             and min(b, r.t_end, t1) > max(a, r.t_start, t0)
         ],
+        "ae_physical_review_caveat": {
+            203187: "AE suggestions persist after NBI turns off.",
+            186636: "Persistent pink lines may be pickup.",
+        }.get(candidate.shot),
         "elm_uncertain_spans_ms": uncertain_elm,
         "elm_crowd_spans_ms": [
             {"span_ms": [r.t_start, r.t_end], "category": r.category}

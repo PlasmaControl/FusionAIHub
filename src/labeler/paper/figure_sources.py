@@ -733,6 +733,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         sentences.append(
             "Expert ELM intervals overlap H-mode-detector absent time; sources disagree."
         )
+    if drawn.get("ae_physical_review_caveat"):
+        sentences.append(drawn["ae_physical_review_caveat"])
     keys = []
     states = drawn.get("display_state_keys")
     if states is None or "uncertain" in states:
