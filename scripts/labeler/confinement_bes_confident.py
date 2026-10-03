@@ -14,7 +14,10 @@ by label status and by label source, and looks at QH against WPQH in particular,
 that boundary is the one the experts mark least sharply.
 
 A flagged interval is a candidate for review, not a correction: the classifier sees BES
-alone, and a window it calls L inside a labelled H interval may be a real dither.
+alone, and a window it calls L inside a labelled H interval may be a real dither. As a
+second opinion that shares no input with it, the held-out 0D segmenter (``confine-ours``,
+which never sees BES) is read over the same interval: an interval that both put mostly
+outside the labelled class is the strongest candidate.
 
 Writes ``confident_<row>.json`` (summary and the flagged list) next to the ablation
 record, and the verdict on every interval to ``$LABELER_ROOT/round4/conf/confident/``.
@@ -137,6 +140,31 @@ def analyse(
     return record, flags
 
 
+def add_ours(flags: pd.DataFrame, ours_dir: Path) -> pd.DataFrame:
+    """Share of each interval's interior bins that confine-ours (held out by shot) puts
+    in the given class and in the class the BES network prefers; NaN without a
+    prediction for the shot."""
+    probs: dict[int, np.ndarray] = {}
+    for path in sorted(ours_dir.glob("fold*_pred.npz")):
+        with np.load(path) as d:
+            probs.update({int(k[1:]): d[k] for k in d.files})
+    index = {c: i for i, c in enumerate(confident.CLASSES)}
+    given, other = [], []
+    for r in flags.itertuples():
+        p = probs.get(int(r.shot))
+        lo, hi = int(np.ceil(r.t_start + MARGIN_MS)), int(np.floor(r.t_end - MARGIN_MS))
+        if p is None or hi <= lo:
+            given.append(np.nan)
+            other.append(np.nan)
+            continue
+        guess = p[:, lo : min(hi, p.shape[1])].argmax(0)
+        given.append(float((guess == index[r.given]).mean()))
+        other.append(
+            float((guess == index[r.other]).mean()) if r.other in index else np.nan
+        )
+    return flags.assign(ours_share_given=given, ours_share_other=other)
+
+
 def flagged_list(flags: pd.DataFrame, limit: int) -> dict[str, list[dict]]:
     cols = [
         "shot",
@@ -148,6 +176,8 @@ def flagged_list(flags: pd.DataFrame, limit: int) -> dict[str, list[dict]]:
         "windows",
         "share_given",
         "share_other",
+        "ours_share_given",
+        "ours_share_other",
         "sources",
         "status",
     ]
@@ -181,6 +211,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--runs-dir", type=Path, default=WORK / "ablation")
     ap.add_argument("--out-dir", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--limit", type=int, default=60)
+    ap.add_argument(
+        "--ours-dir",
+        type=Path,
+        default=WORK / "ours",
+        help="fold predictions of confine-ours, the second opinion",
+    )
     ap.add_argument("--allow-partial", action="store_true")
     args = ap.parse_args(argv)
     pred = load_predictions(args.runs_dir / args.row, args.allow_partial)
@@ -188,6 +224,18 @@ def main(argv: list[str] | None = None) -> int:
     windows = windows_table(pred, intervals)
     probs = windows[["p_L", "p_H", "p_QH", "p_WP"]].to_numpy()
     record, flags = analyse(windows, probs, intervals)
+    flags = add_ours(flags, args.ours_dir)
+    # ours also puts less than half of the interval in the labelled class
+    both = flags[flags.flagged & (flags.ours_share_given < 0.5)]
+    record["flagged_and_confine_ours_disagrees_too"] = {
+        "intervals": len(both),
+        "of_flagged": int(flags.flagged.sum()),
+        "qh_wp": int(
+            (both.given.isin(["QH", "WP"]) & both.other.isin(["QH", "WP"])).sum()
+        ),
+        "same_other_class_as_bes": int((both.ours_share_other > 0.5).sum()),
+        "shots": sorted({int(s) for s in both.shot}),
+    }
     record.update(
         {
             "row": args.row,
