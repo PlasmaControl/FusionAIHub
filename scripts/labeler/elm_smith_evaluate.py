@@ -97,7 +97,56 @@ def audit(paths, d):
 def prepare_shot(job):
     shot, rows, source, output = job
     rows = pd.DataFrame(rows)
-    x = inputs.read_channels(source)
+    data = dict(np.load(source))
+    record_audit = {}
+    for time_key, signal_key in (
+        ("t_fs_ms", "filterscopes"),
+        ("t_int_ms", "interferometer"),
+    ):
+        time, values, diagnostic_audit = smith.first_monotone_segment(
+            data[time_key], data[signal_key]
+        )
+        data[time_key], data[signal_key] = time, values
+        record_audit[signal_key] = diagnostic_audit
+    if any(row["time_resets"] for row in record_audit.values()):
+        if not all(
+            np.isfinite(data[key]).all() for key in ("filterscopes", "interferometer")
+        ):
+            raise ValueError(f"Nonfinite channels in retained acquisition: {shot}")
+        derivative = output / "records" / f"{shot}.npz"
+        np.savez_compressed(derivative, **data)
+        refetch = output / "refetch" / f"{shot}.npz"
+        refetched = dict(np.load(refetch)) if refetch.exists() else None
+        (output / "records" / f"{shot}.audit.json").write_text(
+            json.dumps(
+                {
+                    "source": str(source),
+                    "source_sha256": sha256_of(source),
+                    "derivative": str(derivative),
+                    "derivative_sha256": sha256_of(derivative),
+                    "retained_channels_finite": True,
+                    "refetch": str(refetch) if refetch.exists() else None,
+                    "refetch_sha256": sha256_of(refetch) if refetch.exists() else None,
+                    "original_refetch_samples_identical": all(
+                        np.array_equal(np.load(source)[key], refetched[key])
+                        for key in (
+                            "t_fs_ms",
+                            "filterscopes",
+                            "t_int_ms",
+                            "interferometer",
+                        )
+                    )
+                    if refetched is not None
+                    else None,
+                    "diagnostics": record_audit,
+                },
+                indent=1,
+            )
+            + "\n"
+        )
+    x = inputs.channels(
+        data["t_fs_ms"], data["filterscopes"], data["t_int_ms"], data["interferometer"]
+    )
     np.save(output / "inputs" / f"{shot}.npy", x)
     n_ms = x.shape[1] // inputs.CELLS_PER_MS
     state, target, mask = smith.targets(rows, n_ms)
@@ -106,7 +155,6 @@ def prepare_shot(job):
     state[~mask] = -1
     target[~mask] = 0
     elmo = elmo_module()
-    data = dict(np.load(source))
     calls = np.zeros(n_ms, dtype=bool)
     detections, window_counts = [], []
     handles = {}
@@ -149,6 +197,7 @@ def prepare_shot(job):
         elmo_call=calls,
         elmo_events=np.array(smith.deduplicate_events(detections)),
         elmo_overlap_counts=np.sum(window_counts, axis=0),
+        input_valid=valid,
         window_t0=rows.t0_ms.to_numpy(float),
         window_t1=rows.end_ms.to_numpy(float),
     )
@@ -157,7 +206,7 @@ def prepare_shot(job):
 
 def run_prepare(paths, args):
     output = work_dir(paths)
-    for sub in ("inputs", "targets", "frozen", "cv/pred"):
+    for sub in ("inputs", "targets", "frozen", "cv/pred", "records"):
         (output / sub).mkdir(parents=True, exist_ok=True)
     d = windows(paths)
     protocol = {
@@ -409,6 +458,13 @@ def run_evaluate(paths, args):
         str(p.relative_to(REPO)): sha256_of(p)
         for p in (Path(__file__), REPO / "src/labeler/elm/smith.py")
     }
+    protocol["input_source_repairs"] = [
+        json.loads(path.read_text())
+        for path in sorted((directory / "records").glob("*.audit.json"))
+    ]
+    protocol["onset_postprocessing"] = (
+        "Local maxima at 1 ms output resolution, minimum separation 10 ms, scored in whole Smith-window cells; thresholds frozen for elm-ours and chosen only on inner validation for elm-ours-onset."
+    )
     frozen = json.loads((directory / "frozen/sources.json").read_text())
     cv = json.loads((directory / "cv/run.json").read_text())
     thresholds = {s: r["threshold"] for r in cv["fold_records"] for s in r["test"]}

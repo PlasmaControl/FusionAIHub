@@ -59,6 +59,17 @@ def test_detection_dedup_preserves_close_distinct_events():
     assert smith.deduplicate_events([1.0, 1.01, 3.0], 0.1) == [1.0, 3.0]
 
 
+def test_first_monotone_segment_does_not_mix_repeated_acquisitions():
+    time = np.array([0.0, 1.0, 2.0, 0.0, 1.0])
+    signal = np.array([[10.0, 11.0, 12.0, 100.0, 101.0]])
+    t, y, audit = smith.first_monotone_segment(time, signal)
+    np.testing.assert_array_equal(t, [0.0, 1.0, 2.0])
+    np.testing.assert_array_equal(y, [[10.0, 11.0, 12.0]])
+    assert audit["discarded_samples"] == 2
+    t, y, audit = smith.first_monotone_segment(t, y)
+    assert audit["discarded_samples"] == 0
+
+
 def test_event_bootstrap_records_undefined_draws():
     parts = [
         {"tp": 1, "fp": 0, "fn": 0, "errors_ms": [0.1]},

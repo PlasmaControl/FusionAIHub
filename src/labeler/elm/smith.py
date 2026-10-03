@@ -17,6 +17,30 @@ SEED = 20261003
 SIGMA_MS = 1.0
 
 
+def first_monotone_segment(time: np.ndarray, values: np.ndarray):
+    """Retain the first chronological acquisition, never mix repeated segments.
+
+    Cached shot 179859 has three overlapping FS time segments. Choosing by source
+    acquisition order is independent of ELM labels and preserves ordinary records.
+    The frozen input transformations themselves remain unchanged.
+    """
+    resets = np.flatnonzero(np.diff(time) <= 0)
+    stop = int(resets[0] + 1) if len(resets) else len(time)
+    return (
+        time[:stop],
+        values[:, :stop],
+        {
+            "time_resets": len(resets),
+            "original_samples": len(time),
+            "retained_samples": stop,
+            "discarded_samples": len(time) - stop,
+            "retained_start_ms": float(time[0]),
+            "retained_stop_ms": float(time[stop - 1]),
+            "rule": "first monotone acquisition in original source order; independent of labels",
+        },
+    )
+
+
 def check_disjoint(shots, review_shots, cohort: pd.DataFrame) -> None:
     """Forbid review exposure and the fixed cohort blind test split."""
     overlap = sorted(set(shots) & set(review_shots))
