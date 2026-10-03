@@ -17,14 +17,21 @@
  },
  "filter": {
   "mask": "coherent >= threshold and not transient >= threshold",
-  "pickup_row_share": 0.4,
+  "persistent_line_candidate_row_share": 0.8,
   "min_size_px": {
    "zoom": 40,
    "wide": 30
   },
   "hole_area_px": 10,
-  "components": "skimage connectivity 2 (8-connected)",
-  "tag_cover": 0.5,
+  "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
+  "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2}; sawtooth crash ticks, no mode tag",
+  "ae_box_min_span_ms": 100.0,
+  "n_palette": {
+   "1": "#0072B2",
+   "2": "#56B4E9",
+   "3": "#009E73"
+  },
+  "unkeyed_n_colour": "#999999",
   "bands_khz": {
    "alfven_eigenmode": [
     60.0,
@@ -49,6 +56,15 @@
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt",
    "sha256": "f4693f8304365ce39766360511155131c43a5b5a9ea4924bdb9ab764359d9024",
    "rows": 31,
+   "model": "CO2 xpower frame model (80-250 kHz)",
+   "primary_bars": null,
+   "metadata": null,
+   "metadata_sha256": null,
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
    "present_spans_ms": [
     [
      250.0,
@@ -118,6 +134,15 @@
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv",
    "sha256": "f6d09fb6ccdffc8c8c84bd18698d612079bbb2d72b3e3313a657b0b815495a7b",
    "rows": 2,
+   "model": "the tearing-mode archive",
+   "primary_bars": null,
+   "metadata": "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.meta.json",
+   "metadata_sha256": "f9d40a20b1177379c4f8b25ac810784204e2ef529cae63aee49f3c5c53eebe82",
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
    "present_spans_ms": [
     [
      3629.0,
@@ -131,20 +156,22 @@
   },
   "confinement": {
    "tier": "generated: automated labeler",
-   "what": "the H-mode frame model, its present spans as H-mode",
-   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/hmode_frames/v2/high_confinement_mode_suggest_hmode_frames_v2.csv",
-   "sha256": "c7786a4063ca83153362545eac27139a7d4aa44fc77193a0222b6074f15d58a7",
-   "rows": 5,
-   "present_spans_ms": [
-    [
-     450.0,
-     950.0
-    ],
-    [
-     1150.0,
-     5500.0
-    ]
-   ]
+   "what": "D-alpha L-H transition detector (dalpha_lh)",
+   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv",
+   "sha256": "31dfaccbda8fabcb8ac503dba0a405af1e420b8687004cde6e6957c7dfdd58af",
+   "rows": 2,
+   "model": "dalpha_lh",
+   "primary_bars": null,
+   "metadata": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.meta.json",
+   "metadata_sha256": "17cf7be88e2deac4213a5d42bb92d78855207b3166850d6661f5230dfaac8663",
+   "states": {
+    "1": "H-mode",
+    "2": "L-mode",
+    "3": "QH-mode",
+    "4": "WPQH-mode",
+    "5": "uncertain"
+   },
+   "present_spans_ms": []
   },
   "edge_localized_mode": {
    "tier": "silver: expert review",
@@ -152,6 +179,15 @@
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv",
    "sha256": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
    "rows": 3,
+   "model": "the expert's review",
+   "primary_bars": null,
+   "metadata": null,
+   "metadata_sha256": null,
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
    "present_spans_ms": []
   },
   "sawtooth_oscillation": {
@@ -160,6 +196,15 @@
    "path": "/scratch/gpfs/nc1514/FusionAIHub/data/events/sawtooth_oscillation/review/labels.csv",
    "sha256": "dd602f56b59a6c20621ee7975d65ea5a47637c98ebf06455839aeb128e36345a",
    "rows": 8,
+   "model": "the expert's review",
+   "primary_bars": null,
+   "metadata": null,
+   "metadata_sha256": null,
+   "states": {
+    "1": "present",
+    "2": "uncertain",
+    "3": "not observable"
+   },
    "present_spans_ms": [
     [
      1635.0,
@@ -180,33 +225,146 @@
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/186636_processed.h5",
   "sha256": "b6a705298420c1e9665877a13e7a068721cbfa82aff1ff32e736d9ca6a616eee"
  },
+ "ae_ours_lookup": {
+  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/labels/186636_labels.h5",
+  "exists": false,
+  "selected": false
+ },
+ "caption": {
+  "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/caption.tex",
+  "sha256": "55a8382b511eca856383efda8655b9dd957aae96b716bfc7074c5c50d66a6cb1"
+ },
  "drawn": {
   "figure": [
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png"
   ],
   "blobs": {
-   "wide_above_fold": 874,
-   "zoom_below_fold": 131,
+   "wide_above_fold": 929,
+   "zoom_below_fold": 138,
    "tagged": {
-    "alfven_eigenmode": 290,
-    "neoclassical_tearing_mode": 12,
-    "sawtooth_oscillation": 107
+    "alfven_eigenmode": 358,
+    "neoclassical_tearing_mode": 5,
+    "sawtooth_oscillation": 0
    },
-   "untagged": 608
+   "untagged": 704
   },
   "elm_peaks_in_label": 27,
   "n_map": {
-   "kept_share": 0.0668,
+   "kept_share": 0.0695,
    "keys": [
     "n=1",
     "n=2",
-    "n=3"
+    "n=3",
+    "other n"
+   ],
+   "support_khz": [
+    -0.04882812451170916,
+    30.029296574701135
+   ],
+   "outside_support": "unknown; cannot supply dominant n evidence"
+  },
+  "ntm_dominant_n": {
+   "1": 1,
+   "2": 4
+  },
+  "ae_boxes_ms_khz": [
+   [
+    1300.160055001191,
+    1479.8720574877145,
+    60.0,
+    244.18749664905582
+   ],
+   [
+    2510.0160717409485,
+    2619.840073260491,
+    60.0,
+    250.0
+   ],
+   [
+    2750.144075063397,
+    2919.872077411781,
+    60.0,
+    250.0
+   ],
+   [
+    2970.0480781060232,
+    3069.8880794874253,
+    60.0,
+    250.0
+   ]
+  ],
+  "sawtooth_crashes": {
+   "source": "ece_sawtooth crash detector, ECE/SXR union",
+   "implementation": "labeler.events.heuristics.sawtooth_events_v3",
+   "diagnostics": {
+    "diagnostics": [
+     "ece",
+     "sxr"
+    ],
+    "sxr_fan": "SX90RM1S",
+    "crashes": {
+     "ece": 3,
+     "sxr": 3
+    },
+    "collapses_ms": []
+   },
+   "signals": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/foundation_model/186636_processed.h5",
+     "sha256": "faaa7bcbdae980450626314223bf5ea29d18478a3da9f2f62cdcc4a733791c31"
+    },
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/raw/186636_processed.h5",
+     "sha256": "b6a705298420c1e9665877a13e7a068721cbfa82aff1ff32e736d9ca6a616eee"
+    }
+   ],
+   "all_times_ms": [
+    3804.4999992549424,
+    4044.499999254942,
+    4091.4999992549415,
+    6093.499999254942,
+    6114.499999254942,
+    6136.499999254943
+   ],
+   "present_times_ms": [
+    3804.4999992549424
+   ],
+   "drawn_times_ms": [
+    3804.4999992549424
    ]
   },
-  "regimes_shown": [
-   "H-mode"
-  ],
+  "projection_audit": {
+   "zoom": {
+    "alfven_eigenmode": {
+     "pixels": 0,
+     "outside_present": 0,
+     "outside_band": 0,
+     "pixels_55_to_60": 0
+    },
+    "neoclassical_tearing_mode": {
+     "pixels": 8027,
+     "outside_present": 0,
+     "outside_band": 0,
+     "pixels_55_to_60": 0
+    }
+   },
+   "wide": {
+    "alfven_eigenmode": {
+     "pixels": 177174,
+     "outside_present": 0,
+     "outside_band": 0,
+     "pixels_55_to_60": 0
+    },
+    "neoclassical_tearing_mode": {
+     "pixels": 0,
+     "outside_present": 0,
+     "outside_band": 0,
+     "pixels_55_to_60": 0
+    }
+   }
+  },
+  "regimes_shown": [],
   "stores": {
    "edge_localized_mode": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/186636.h5",
@@ -226,5 +384,5 @@
    }
   }
  },
- "git": "563f477"
+ "git": "2725813"
 }
