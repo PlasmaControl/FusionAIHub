@@ -357,6 +357,26 @@ FEATURES: tuple[FeatureSpec, ...] = (
         sources=("fdp",), locators=(r"\MHD::N2RMS",),
         notes="n=2 magnetic RMS amplitude; not specific to resistive wall modes",
     ),
+    # Added for the resistive-wall-mode baseline (2026-10-03). Both were fetched
+    # live on shots 156785 (2014) and 176068 (2018) before being listed: q95 is
+    # 234 / 329 finite EFIT01 slices; DUSBRADIAL is PTDATA in volts, 40,202 /
+    # 40,204 samples. It is NOT a calibrated field: on 156785 it is zero for the
+    # whole shot, and the radial-field data of shots 176030-176912 are said to
+    # be corrupted (Fu et al. 2020), so a model must check it per campaign.
+    FeatureSpec(
+        name="q95", kind="scalar", units="",
+        sources=("fdp",),
+        locators=(r"\efit01::top.results.aeqdsk:q95",),
+        notes="edge safety factor from the EFIT01 scalar tree",
+    ),
+    FeatureSpec(
+        name="dusbradial", kind="scalar", units="V",
+        sources=("fdp",), locators=("DUSBRADIAL",),
+        step=0.001,
+        notes="PTDATA locked-mode (n=1) radial-field detector signal, in volts "
+              "as the node reports them, decimated to 1 ms. Not calibrated to "
+              "gauss; read as an indicator of a locked or very slow mode",
+    ),
     FeatureSpec(
         name="qmin", kind="scalar", units="",
         sources=("fdp",),

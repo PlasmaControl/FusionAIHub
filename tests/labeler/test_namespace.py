@@ -51,6 +51,17 @@ def test_wmhd_is_the_efit01_stored_energy_signal():
     assert spec.locator_for("fdp") == r"\efit01::top.results.aeqdsk:wmhd"
 
 
+def test_rwm_baseline_features_are_fdp_scalars():
+    """q95 and the locked-mode detector were added for the RWM baseline."""
+    q95, lock = ns.by_name("q95"), ns.by_name("dusbradial")
+    assert q95.kind == lock.kind == "scalar"
+    assert q95.sources == lock.sources == ("fdp",)
+    assert q95.locator_for("fdp") == r"\efit01::top.results.aeqdsk:q95"
+    assert lock.locator_for("fdp") == "DUSBRADIAL"
+    # A PTDATA point at ~5 kHz is stored at 1 ms; an EFIT scalar keeps its cadence.
+    assert lock.step == 0.001 and q95.step == 0.0
+
+
 def test_lookup_helpers_and_locators():
     assert ns.by_name("ip").sources[0] == "archive"
     assert ns.by_name("pres").locator_for("archive") == "pres_EFIT01"
