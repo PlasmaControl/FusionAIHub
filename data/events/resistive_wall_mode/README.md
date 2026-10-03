@@ -9,7 +9,7 @@ limits,
 
     beta_N^no-wall  <  beta_N  <  beta_N^ideal-wall
 
-(empirically beta_N^no-wall ~ 4 l_i on DIII-D), and is stabilised by plasma rotation
+(empirically beta_N^no-wall ~ 4 l_i on conventional DIII-D plasmas; this proxy is uncertain for the high-qmin, low-li roster here), and is stabilised by plasma rotation
 and kinetic resonances or by active feedback with the C- and I-coils. Its onset
 often ends a high-beta_N discharge in a disruption; error-field amplification
 (resonant field amplification, RFA) is its marginally stable precursor.
@@ -34,7 +34,7 @@ no-wall limit.
 
 ### Dataset 2
 
-**Dataset File(s)**: `extend_rwm_growth/rwm_windows.csv`, `rwm_windows.meta.json`, `rwm_windows.shots.csv`
+**Dataset File(s)**: `extend_rwm_onset_window/rwm_windows.csv`, `rwm_windows.meta.json`, `rwm_windows.shots.csv`
 
 **Author**: built here from Dataset 1 and DIII-D inputs fetched for 208 candidate shots (raw cache `$LABELER_ROOT/raw`).
 
@@ -49,22 +49,24 @@ no-wall limit.
 
 **all** (reference split (seed 0); Hanson primary 100 ms forecasts on 10 ms slices; assumed negatives):
 
-- rwm-brf | 2026_10_03 | AUROC 0.760 [0.706, 0.809] | AUPRC 0.163 [0.123, 0.220] | F1 0.275 [0.227, 0.337]
-- rule-elapsed-time | 2026_10_03 | AUROC 0.759 [0.712, 0.815] | AUPRC 0.228 [0.212, 0.307] | F1 0.267 [0.217, 0.331]
-- rule-betan | 2026_10_03 | AUROC 0.707 [0.639, 0.772] | AUPRC 0.166 [0.128, 0.246] | F1 0.246 [0.194, 0.312]
-- rule-betan-over-li | 2026_10_03 | AUROC 0.723 [0.664, 0.784] | AUPRC 0.159 [0.127, 0.232] | F1 0.261 [0.212, 0.328]
-- rule-rwm-candidates | 2026_10_03 | AUROC 0.500 [0.500, 0.500] | AUPRC 0.084 [0.070, 0.102] | F1 0.000 [0.000, 0.000]
+- rwm-brf | 2026_10_03 | AUROC: 0.760 [0.706, 0.809] | AUPRC: 0.163 [0.123, 0.220] | F1: 0.275 [0.227, 0.337]
+- rule-elapsed-time | 2026_10_03 | AUROC: 0.759 [0.712, 0.815] | AUPRC: 0.228 [0.212, 0.307] | F1: 0.267 [0.217, 0.331]
+- rule-betan | 2026_10_03 | AUROC: 0.707 [0.639, 0.772] | AUPRC: 0.166 [0.128, 0.246] | F1: 0.246 [0.194, 0.312]
+- rule-betan-over-li | 2026_10_03 | AUROC: 0.723 [0.664, 0.784] | AUPRC: 0.159 [0.127, 0.232] | F1: 0.261 [0.212, 0.328]
+- rule-rwm-candidates | 2026_10_03 | AUROC: 0.500 [0.500, 0.500] | AUPRC: 0.084 [0.070, 0.102] | F1: 0.000 [0.000, 0.000]
 
-The Piccione-style forest on generic 0D inputs has five-split high-beta AUROC 0.602–0.696 pooled, **at or below chance in 2014 (0.31–0.53; split-0 CI [0.22, 0.41]) and below elapsed time on every split**, versus 0.698–0.747 in 2018; many 2014 onsets precede the beta_N peak, and **7/26 (26.9%)** have no high-beta slice in their 100 ms forecast window.
-Forest detection ranges **0.125–0.271**, detection minus the rate-matched random reference **−0.002 to +0.057**, and median warning **135–356 ms** across five splits: **no improvement over the approximate random reference was established (all five CIs include 0)**; run-record holdout gives **0.167**, **0.014 [−0.025, 0.053]**, **214 ms**, while the reference-split beta_N rule exceeds its reference by **0.058 [0.014, 0.115]** on **4/48** warned onsets.
-The primary seed-3 forest-minus-elapsed-time interval is borderline (**0.047 [−0.0001, 0.098]**); all results and the noncomparable NSTX Legacy reference, exact source JSON pointers, onset physics, offline input and coverage caveats, and physical window uncertainty are in [the current protocol](../../../docs/labeler/rwm_baseline.md) and [evaluation.json](../../../outputs/labeler/rwm/evaluation.json).
+Primary negatives end at the last n=1 onset, so elapsed time ranks within-shot almost perfectly (median AUROC **1.0**, mean **0.93**, **30** two-class shots; forest median **0.83**). Broad-mask forest minus elapsed time is **+0.350 [0.287, 0.414]** (run-record holdout **+0.362 [0.304, 0.428]**); forest minus beta_N/l_i is **−0.013 [−0.092, 0.072]**. **The forest matches the best single scalar under either mask (elapsed time on primary, beta_N/l_i on broad); no onset-specific skill.** Sources: `evaluation.json/configs/<model>/within_shot_auroc`, `paired/rwm-brf - <rule>/broad_auroc`, `leave_one_run_record_out/paired_time/broad_auroc`.
+
+The Piccione-style forest on generic 0D inputs has five-split high-beta AUROC 0.602–0.696 pooled, **about chance or below in 2014 (0.31–0.53; split-0 CI [0.22, 0.41]) and below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds)**, versus 0.698–0.747 in 2018; **7/26** 2014 targets versus **1/22** in 2018 have no high-beta slice in their 100 ms forecast window (`evaluation.json/onset_physics/by_campaign`). Forest detection ranges **0.125–0.271**, detection minus the rate-matched random reference **−0.002 to +0.057**, and median warning **135–356 ms** across five splits: **no improvement over the approximate random reference was established (all five CIs include 0)**.
+
+Primary forest-minus-elapsed-time differences span **0.001–0.047**; seed 3 is borderline (**0.047 [−0.0001, 0.098]**). Run-record holdout detection is **0.167**, reference difference **0.014 [−0.025, 0.053]**, median warning **214 ms**; the reference-split beta_N rule exceeds its reference by **0.058 [0.014, 0.115]** on **4/48** warned onsets. All results and the noncomparable NSTX Legacy reference, exact source pointers, onset physics, offline input and coverage caveats are in [the current protocol](../../../docs/labeler/rwm_baseline.md) and [evaluation.json](../../../outputs/labeler/rwm/evaluation.json).
 
 ## Inputs
 **rwm-brf** (stored scalars and profiles; trailing/held features on a 10 ms grid):
 
 - `betan`, `li`, `q95`, `qmin`, `wmhd`, `ip`, with beta_N/l_i and beta_N-4l_i derived.
 - `n1rms`, `n2rms`: postprocessed magnetic RMS, trailing mean, peak and log-slope calculations; upstream timing is uncertain. N1RMS is not a direct RWM sensor.
-- ZIPFIT toroidal rotation at the configured radii; its upstream time smoothing is mildly acausal. The inherited `rot_*_khz` columns have values matching krad/s rather than kHz; units remain unresolved.
+- ZIPFIT toroidal rotation at fixed rho=0.25 (core) and rho=0.625 (mid-radius, not an identified q=2 surface); its upstream time smoothing is acausal, with timing bias unbounded here. The inherited `rot_*_khz` columns have values matching krad/s rather than kHz; units remain unresolved. No rotation ablation is needed because no skill or rotation benefit is claimed.
 - `dusbradial` is excluded: it is zero on most 2014 traces and flagged corrupted for 176030-176912, including all 2018 Hanson shots. The exact zero/nonzero audit is in `shots.json/input_audit`. The isolated OPERATIONS CN1BAMP/ILN1BAMP/IUN1BAMP probe succeeded on three Hanson shots, but corrected RWM-sensor semantics remain unverified; no candidate was added to model inputs (see `outputs/labeler/rwm/sensor_probe.json`).
 
 **rules**: beta_N, beta_N/l_i, elapsed time since the first |Ip| ≥0.5 MA sample, and the existing `rwm_candidates` call. The analysis span and the candidate screen's whole-flat-top median/MAD threshold are retrospective; the screen is not a causal alarm comparator.

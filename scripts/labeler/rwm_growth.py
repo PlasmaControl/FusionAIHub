@@ -165,7 +165,7 @@ def main() -> None:
             "n2": int((frame.ntor == 2).sum()),
             "shots": int(frame.shot.nunique()),
         },
-        "growth_window_ms": labels.GROWTH_MS,
+        "onset_window_ms": labels.ONSET_WINDOW_MS,
         "annotation_status": "20 ms tau_w convention; not a measured growth interval",
         "search": {
             "offsets_ms": SEARCH_OFFSETS_MS.tolist(),

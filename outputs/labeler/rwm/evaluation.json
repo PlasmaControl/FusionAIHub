@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_evaluate.py",
-  "made_at": "2026-10-03T17:37:15+00:00",
+  "made_at": "2026-10-03T18:13:45+00:00",
   "protocol": {
     "outer_folds": 5,
     "inner_folds": 3,
@@ -26,6 +26,8 @@
     "step_ms": 10.0,
     "primary_training": "Hanson positives and assumed negatives only",
     "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
+    "within_shot_auroc": "primary and broad Hanson masks, fixed score orientation; equal-shot mean/median over shots with both classes; per-shot class counts include excluded one-class shots",
+    "primary_mask_mechanism": "primary negatives end at last n=1 onset; final labelled slices are positive, giving increasing elapsed time nearly perfect within-shot ranking",
     "broad_sensitivity": "same predictions; post-last-onset and n=2-only negatives added",
     "high_beta": "beta_N >= 0.8 times each shot's whole-window p95 (evaluation only)",
     "above_proxy": "beta_N/l_i > 4 (evaluation only)",
@@ -117,6 +119,418 @@
         "above_proxy_negative_slices": 1913,
         "above_proxy_prevalence": 0.16022827041264268,
         "prevalence": 0.08369659982563209
+      },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "mean": 0.7836439827099465,
+          "median": 0.8302005206940208,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 31,
+              "auroc": 0.9838709677419355
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 162,
+              "auroc": 0.7521604938271605
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9029126213592233
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 135,
+              "auroc": 0.9837037037037037
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 78,
+              "auroc": 0.985897435897436
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 199,
+              "auroc": 0.7015075376884422
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 204,
+              "auroc": 0.4965686274509804
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 43,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 141,
+              "auroc": 0.5212765957446809
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 127,
+              "auroc": 0.5094488188976378
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 50,
+              "auroc": 0.683
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 73,
+              "auroc": 0.8602739726027397
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 220,
+              "auroc": 0.6613636363636364
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 119,
+              "auroc": 0.45714285714285713
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 158,
+              "auroc": 0.5860759493670886
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 118,
+              "auroc": 0.8728813559322034
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 65,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 254,
+              "auroc": 0.6448818897637796
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 201,
+              "auroc": 0.8681592039800995
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 209,
+              "auroc": 0.8971291866028708
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 279,
+              "auroc": 0.8217443249701314
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 216,
+              "auroc": 0.9706018518518519
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 245,
+              "auroc": 0.8661224489795918
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 264,
+              "auroc": 0.743560606060606
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 105,
+              "auroc": 0.6038095238095238
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 335,
+              "auroc": 0.8386567164179104
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 318,
+              "auroc": 0.9811320754716981
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 275,
+              "auroc": 0.9541818181818181
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 282,
+              "auroc": 0.6527186761229314
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 246,
+              "auroc": 0.7085365853658536
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            }
+          ]
+        },
+        "broad": {
+          "n_shots": 30,
+          "mean": 0.7188760518785681,
+          "median": 0.7604579989299091,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 435,
+              "auroc": 0.24367816091954023
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 229,
+              "auroc": 0.8246724890829694
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9029126213592233
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 434,
+              "auroc": 0.7778801843317973
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 305,
+              "auroc": 0.9937704918032787
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 234,
+              "auroc": 0.7461538461538462
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 262,
+              "auroc": 0.6051526717557252
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 298,
+              "auroc": 0.23271812080536913
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 372,
+              "auroc": 0.4135752688172043
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 183,
+              "auroc": 0.6595628415300546
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 331,
+              "auroc": 0.9194864048338368
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 457,
+              "auroc": 0.7916849015317287
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 254,
+              "auroc": 0.7066929133858267
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 267,
+              "auroc": 0.7576779026217229
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 340,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 511,
+              "auroc": 0.46731898238747555
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 539,
+              "auroc": 0.8923933209647495
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 540,
+              "auroc": 0.7396296296296296
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 335,
+              "auroc": 0.7307462686567164
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 463,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 569,
+              "auroc": 0.7843585237258348
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 510,
+              "auroc": 0.8613725490196078
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 530,
+              "auroc": 0.9047798742138364
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 525,
+              "auroc": 0.7632380952380953
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 534,
+              "auroc": 0.9372659176029963
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 528,
+              "auroc": 0.7214015151515152
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.2798913043478261
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 524,
+              "auroc": 0.8840648854961832
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 548,
+              "auroc": 0.9613138686131387
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.8840579710144928
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 491,
+              "auroc": 0.5497623896809233
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 547,
+              "auroc": 0.6290676416819013
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 546,
+              "auroc": null
+            }
+          ]
+        }
       },
       "rules_by_fold": [
         {
@@ -3221,6 +3635,418 @@
           "above_proxy_prevalence": 0.16022827041264268,
           "prevalence": 0.08369659982563209
         },
+        "within_shot_auroc": {
+          "primary": {
+            "n_shots": 30,
+            "mean": 0.7836439827099465,
+            "median": 0.8302005206940208,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 31,
+                "auroc": 0.9838709677419355
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 162,
+                "auroc": 0.7521604938271605
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9029126213592233
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 135,
+                "auroc": 0.9837037037037037
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 78,
+                "auroc": 0.985897435897436
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 199,
+                "auroc": 0.7015075376884422
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 204,
+                "auroc": 0.4965686274509804
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 43,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 141,
+                "auroc": 0.5212765957446809
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 127,
+                "auroc": 0.5094488188976378
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 50,
+                "auroc": 0.683
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 73,
+                "auroc": 0.8602739726027397
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 220,
+                "auroc": 0.6613636363636364
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 119,
+                "auroc": 0.45714285714285713
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 158,
+                "auroc": 0.5860759493670886
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 118,
+                "auroc": 0.8728813559322034
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 65,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 254,
+                "auroc": 0.6448818897637796
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 201,
+                "auroc": 0.8681592039800995
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 209,
+                "auroc": 0.8971291866028708
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 279,
+                "auroc": 0.8217443249701314
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 216,
+                "auroc": 0.9706018518518519
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 245,
+                "auroc": 0.8661224489795918
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 264,
+                "auroc": 0.743560606060606
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 105,
+                "auroc": 0.6038095238095238
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 335,
+                "auroc": 0.8386567164179104
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 318,
+                "auroc": 0.9811320754716981
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 275,
+                "auroc": 0.9541818181818181
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 282,
+                "auroc": 0.6527186761229314
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 246,
+                "auroc": 0.7085365853658536
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              }
+            ]
+          },
+          "broad": {
+            "n_shots": 30,
+            "mean": 0.7188760518785681,
+            "median": 0.7604579989299091,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 435,
+                "auroc": 0.24367816091954023
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 229,
+                "auroc": 0.8246724890829694
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9029126213592233
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 434,
+                "auroc": 0.7778801843317973
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 305,
+                "auroc": 0.9937704918032787
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 234,
+                "auroc": 0.7461538461538462
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 262,
+                "auroc": 0.6051526717557252
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 298,
+                "auroc": 0.23271812080536913
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 372,
+                "auroc": 0.4135752688172043
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 183,
+                "auroc": 0.6595628415300546
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 331,
+                "auroc": 0.9194864048338368
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 457,
+                "auroc": 0.7916849015317287
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 254,
+                "auroc": 0.7066929133858267
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 267,
+                "auroc": 0.7576779026217229
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 340,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 511,
+                "auroc": 0.46731898238747555
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 539,
+                "auroc": 0.8923933209647495
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 540,
+                "auroc": 0.7396296296296296
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 335,
+                "auroc": 0.7307462686567164
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 463,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 569,
+                "auroc": 0.7843585237258348
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 510,
+                "auroc": 0.8613725490196078
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 530,
+                "auroc": 0.9047798742138364
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 525,
+                "auroc": 0.7632380952380953
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 534,
+                "auroc": 0.9372659176029963
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 528,
+                "auroc": 0.7214015151515152
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.2798913043478261
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 524,
+                "auroc": 0.8840648854961832
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 548,
+                "auroc": 0.9613138686131387
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.8840579710144928
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 491,
+                "auroc": 0.5497623896809233
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 547,
+                "auroc": 0.6290676416819013
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 546,
+                "auroc": null
+              }
+            ]
+          }
+        },
         "rules_by_fold": [
           {
             "fold": 0,
@@ -6224,6 +7050,418 @@
             "above_proxy_negative_slices": 1913,
             "above_proxy_prevalence": 0.16022827041264268,
             "prevalence": 0.08369659982563209
+          },
+          "within_shot_auroc": {
+            "primary": {
+              "n_shots": 30,
+              "mean": 0.8257531187158516,
+              "median": 0.8769753274444105,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 31,
+                  "auroc": 0.9903225806451613
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 162,
+                  "auroc": 0.8601851851851852
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9009708737864077
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 135,
+                  "auroc": 0.914074074074074
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 78,
+                  "auroc": 0.9064102564102564
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 199,
+                  "auroc": 0.9133165829145728
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 204,
+                  "auroc": 0.5698529411764706
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 43,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 141,
+                  "auroc": 0.6273049645390071
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 127,
+                  "auroc": 0.5015748031496063
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 50,
+                  "auroc": 0.801
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 73,
+                  "auroc": 0.9835616438356164
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 220,
+                  "auroc": 0.5788636363636364
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 119,
+                  "auroc": 0.7621848739495798
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 158,
+                  "auroc": 0.6037974683544304
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 118,
+                  "auroc": 0.9
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 65,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 254,
+                  "auroc": 0.7062992125984252
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 201,
+                  "auroc": 0.8731343283582089
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 209,
+                  "auroc": 0.8851674641148325
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 279,
+                  "auroc": 0.7799283154121864
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 216,
+                  "auroc": 0.9930555555555556
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 245,
+                  "auroc": 0.8808163265306123
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 264,
+                  "auroc": 0.7477272727272727
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 105,
+                  "auroc": 0.7209523809523809
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 335,
+                  "auroc": 0.9113432835820896
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 318,
+                  "auroc": 0.9990566037735849
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 275,
+                  "auroc": 0.9883636363636363
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 282,
+                  "auroc": 0.6591016548463356
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 246,
+                  "auroc": 0.8142276422764227
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                }
+              ]
+            },
+            "broad": {
+              "n_shots": 30,
+              "mean": 0.7431660300169026,
+              "median": 0.7816567164179105,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 435,
+                  "auroc": 0.2128735632183908
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 229,
+                  "auroc": 0.9010917030567686
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9009708737864077
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 434,
+                  "auroc": 0.5748847926267281
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 305,
+                  "auroc": 0.9760655737704919
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 234,
+                  "auroc": 0.9262820512820513
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 262,
+                  "auroc": 0.6553435114503817
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 298,
+                  "auroc": 0.2424496644295302
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 372,
+                  "auroc": 0.7501344086021505
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 183,
+                  "auroc": 0.6540983606557377
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 331,
+                  "auroc": 0.9031722054380664
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 457,
+                  "auroc": 0.7735229759299781
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 254,
+                  "auroc": 0.635236220472441
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 267,
+                  "auroc": 0.8906367041198502
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 340,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 511,
+                  "auroc": 0.4876712328767123
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 539,
+                  "auroc": 0.9651205936920223
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 540,
+                  "auroc": 0.7957407407407407
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 335,
+                  "auroc": 0.7773134328358209
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 463,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 569,
+                  "auroc": 0.7105448154657293
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 510,
+                  "auroc": 0.8171078431372549
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 530,
+                  "auroc": 0.8832704402515723
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 525,
+                  "auroc": 0.786
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 534,
+                  "auroc": 0.9451310861423221
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 528,
+                  "auroc": 0.7168560606060606
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.3318840579710145
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 524,
+                  "auroc": 0.9426526717557252
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 548,
+                  "auroc": 0.9892335766423358
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.825
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 491,
+                  "auroc": 0.5941615750169722
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 547,
+                  "auroc": 0.7305301645338208
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 546,
+                  "auroc": null
+                }
+              ]
+            }
           },
           "rules_by_fold": [
             {
@@ -9521,6 +10759,418 @@
             "above_proxy_prevalence": 0.16022827041264268,
             "prevalence": 0.08369659982563209
           },
+          "within_shot_auroc": {
+            "primary": {
+              "n_shots": 30,
+              "mean": 0.8098624213618867,
+              "median": 0.8690228104759223,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 31,
+                  "auroc": 0.917741935483871
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 162,
+                  "auroc": 0.725925925925926
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9567961165048544
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 135,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 78,
+                  "auroc": 0.9282051282051282
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 199,
+                  "auroc": 0.8296482412060302
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 204,
+                  "auroc": 0.6002450980392157
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 43,
+                  "auroc": 0.9976744186046511
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 141,
+                  "auroc": 0.6039007092198582
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 127,
+                  "auroc": 0.5228346456692914
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 50,
+                  "auroc": 0.686
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 73,
+                  "auroc": 0.8780821917808219
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 220,
+                  "auroc": 0.5543181818181818
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 119,
+                  "auroc": 0.7689075630252101
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 158,
+                  "auroc": 0.589873417721519
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 118,
+                  "auroc": 0.888135593220339
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 65,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 254,
+                  "auroc": 0.8751968503937008
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 201,
+                  "auroc": 0.872636815920398
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 209,
+                  "auroc": 0.8906698564593302
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 279,
+                  "auroc": 0.7751493428912783
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 216,
+                  "auroc": 0.975
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 245,
+                  "auroc": 0.8820408163265306
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 264,
+                  "auroc": 0.7884469696969697
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 105,
+                  "auroc": 0.7209523809523809
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 335,
+                  "auroc": 0.9192537313432836
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 318,
+                  "auroc": 0.8654088050314466
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 275,
+                  "auroc": 0.9269090909090909
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 282,
+                  "auroc": 0.6530732860520094
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 246,
+                  "auroc": 0.7028455284552846
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                }
+              ]
+            },
+            "broad": {
+              "n_shots": 30,
+              "mean": 0.7355647311711482,
+              "median": 0.7719191017316017,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 435,
+                  "auroc": 0.2745977011494253
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 229,
+                  "auroc": 0.8061135371179039
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9567961165048544
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 434,
+                  "auroc": 0.6320276497695853
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 305,
+                  "auroc": 0.9626229508196721
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 234,
+                  "auroc": 0.8551282051282051
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 262,
+                  "auroc": 0.6868320610687023
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 298,
+                  "auroc": 0.21610738255033557
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 372,
+                  "auroc": 0.7288978494623656
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 183,
+                  "auroc": 0.6688524590163935
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 331,
+                  "auroc": 0.8996978851963746
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 457,
+                  "auroc": 0.7312910284463895
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 254,
+                  "auroc": 0.613976377952756
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 267,
+                  "auroc": 0.897003745318352
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 340,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 511,
+                  "auroc": 0.536986301369863
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 539,
+                  "auroc": 0.9530612244897959
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 540,
+                  "auroc": 0.6844444444444444
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 335,
+                  "auroc": 0.9053731343283582
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 463,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 569,
+                  "auroc": 0.6908611599297012
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 510,
+                  "auroc": 0.8193627450980392
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 530,
+                  "auroc": 0.879119496855346
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 525,
+                  "auroc": 0.7655238095238095
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 534,
+                  "auroc": 0.9417602996254681
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 528,
+                  "auroc": 0.778314393939394
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.3382246376811594
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 524,
+                  "auroc": 0.9372137404580153
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 548,
+                  "auroc": 0.8609489051094891
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.8367753623188405
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 491,
+                  "auroc": 0.5929395790902919
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 547,
+                  "auroc": 0.6160877513711152
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 546,
+                  "auroc": null
+                }
+              ]
+            }
+          },
           "rules_by_fold": [
             {
               "fold": 0,
@@ -12655,6 +14305,418 @@
             "above_proxy_negative_slices": 1913,
             "above_proxy_prevalence": 0.16022827041264268,
             "prevalence": 0.08369659982563209
+          },
+          "within_shot_auroc": {
+            "primary": {
+              "n_shots": 30,
+              "mean": 0.8470290414609806,
+              "median": 0.8938535477950056,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 31,
+                  "auroc": 0.9967741935483871
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 162,
+                  "auroc": 0.8098765432098766
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.8941747572815534
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 135,
+                  "auroc": 0.9629629629629629
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 78,
+                  "auroc": 0.9307692307692308
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 199,
+                  "auroc": 0.9118090452261306
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 204,
+                  "auroc": 0.5044117647058823
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 43,
+                  "auroc": 0.9988372093023256
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 141,
+                  "auroc": 0.7131205673758865
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 127,
+                  "auroc": 0.5094488188976378
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 50,
+                  "auroc": 0.769
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 73,
+                  "auroc": 0.9438356164383561
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 220,
+                  "auroc": 0.7156818181818182
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 119,
+                  "auroc": 0.9571428571428572
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 158,
+                  "auroc": 0.6037974683544304
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 118,
+                  "auroc": 0.8457627118644068
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 65,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 254,
+                  "auroc": 0.8082677165354331
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 201,
+                  "auroc": 0.8935323383084577
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 209,
+                  "auroc": 0.9123205741626794
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 279,
+                  "auroc": 0.8077658303464755
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 216,
+                  "auroc": 0.9685185185185186
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 245,
+                  "auroc": 0.9412244897959183
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 264,
+                  "auroc": 0.8018939393939394
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 105,
+                  "auroc": 0.7952380952380952
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 335,
+                  "auroc": 0.9335820895522388
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 318,
+                  "auroc": 0.9783018867924528
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 275,
+                  "auroc": 0.9978181818181818
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 282,
+                  "auroc": 0.7037825059101654
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 246,
+                  "auroc": 0.801219512195122
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                }
+              ]
+            },
+            "broad": {
+              "n_shots": 30,
+              "mean": 0.7769613421830556,
+              "median": 0.7997045657749229,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 435,
+                  "auroc": 0.27241379310344827
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 229,
+                  "auroc": 0.8655021834061135
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.8941747572815534
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 434,
+                  "auroc": 0.7412442396313365
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 305,
+                  "auroc": 0.9777049180327869
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 234,
+                  "auroc": 0.925
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 262,
+                  "auroc": 0.6061068702290077
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 298,
+                  "auroc": 0.2832214765100671
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 372,
+                  "auroc": 0.8009408602150537
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 183,
+                  "auroc": 0.6595628415300546
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 331,
+                  "auroc": 0.9439577039274925
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 457,
+                  "auroc": 0.7984682713347921
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 254,
+                  "auroc": 0.753740157480315
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 267,
+                  "auroc": 0.9808988764044944
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 340,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 511,
+                  "auroc": 0.7896281800391389
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 539,
+                  "auroc": 0.925974025974026
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 540,
+                  "auroc": 0.6905555555555556
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 335,
+                  "auroc": 0.8546268656716418
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 463,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 569,
+                  "auroc": 0.7650263620386644
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 510,
+                  "auroc": 0.8726470588235294
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 530,
+                  "auroc": 0.8987421383647799
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 525,
+                  "auroc": 0.7877142857142857
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 534,
+                  "auroc": 0.9655430711610486
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 528,
+                  "auroc": 0.718844696969697
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.3644927536231884
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 524,
+                  "auroc": 0.9498091603053435
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 548,
+                  "auroc": 0.9461678832116789
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.933695652173913
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 491,
+                  "auroc": 0.6674813306177868
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 547,
+                  "auroc": 0.6749542961608775
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 546,
+                  "auroc": null
+                }
+              ]
+            }
           },
           "rules_by_fold": [
             {
@@ -15805,6 +17867,418 @@
             "above_proxy_prevalence": 0.16022827041264268,
             "prevalence": 0.08369659982563209
           },
+          "within_shot_auroc": {
+            "primary": {
+              "n_shots": 30,
+              "mean": 0.8264793570975073,
+              "median": 0.880727717345476,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 31,
+                  "auroc": 0.9290322580645162
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 162,
+                  "auroc": 0.8101851851851852
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9320388349514563
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 135,
+                  "auroc": 0.9133333333333333
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 78,
+                  "auroc": 0.941025641025641
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 199,
+                  "auroc": 0.8869346733668342
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 204,
+                  "auroc": 0.6029411764705882
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 43,
+                  "auroc": 0.9988372093023256
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 141,
+                  "auroc": 0.498936170212766
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 127,
+                  "auroc": 0.5425196850393701
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 50,
+                  "auroc": 0.843
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 73,
+                  "auroc": 0.9958904109589041
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 220,
+                  "auroc": 0.6075
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 119,
+                  "auroc": 0.6563025210084034
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 158,
+                  "auroc": 0.6158227848101265
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 118,
+                  "auroc": 0.8813559322033898
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 65,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 254,
+                  "auroc": 0.8842519685039371
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 201,
+                  "auroc": 0.8800995024875622
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 209,
+                  "auroc": 0.8996411483253588
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 279,
+                  "auroc": 0.831063321385902
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 216,
+                  "auroc": 0.9634259259259259
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 245,
+                  "auroc": 0.8428571428571429
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 264,
+                  "auroc": 0.7560606060606061
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 105,
+                  "auroc": 0.7819047619047619
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 335,
+                  "auroc": 0.908955223880597
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 318,
+                  "auroc": 0.9449685534591195
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 275,
+                  "auroc": 1.0
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 282,
+                  "auroc": 0.6881796690307329
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 246,
+                  "auroc": 0.7573170731707317
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 0,
+                  "auroc": null
+                }
+              ]
+            },
+            "broad": {
+              "n_shots": 30,
+              "mean": 0.7426995793264041,
+              "median": 0.7911752906852019,
+              "per_shot": [
+                {
+                  "shot": 156785,
+                  "n_positive": 10,
+                  "n_negative": 435,
+                  "auroc": 0.18229885057471265
+                },
+                {
+                  "shot": 156786,
+                  "n_positive": 20,
+                  "n_negative": 229,
+                  "auroc": 0.8657205240174672
+                },
+                {
+                  "shot": 156787,
+                  "n_positive": 20,
+                  "n_negative": 103,
+                  "auroc": 0.9320388349514563
+                },
+                {
+                  "shot": 156790,
+                  "n_positive": 10,
+                  "n_negative": 434,
+                  "auroc": 0.5981566820276498
+                },
+                {
+                  "shot": 156791,
+                  "n_positive": 10,
+                  "n_negative": 305,
+                  "auroc": 0.9839344262295082
+                },
+                {
+                  "shot": 156792,
+                  "n_positive": 20,
+                  "n_negative": 234,
+                  "auroc": 0.9038461538461539
+                },
+                {
+                  "shot": 156793,
+                  "n_positive": 20,
+                  "n_negative": 262,
+                  "auroc": 0.6683206106870229
+                },
+                {
+                  "shot": 156794,
+                  "n_positive": 20,
+                  "n_negative": 298,
+                  "auroc": 0.2181208053691275
+                },
+                {
+                  "shot": 156795,
+                  "n_positive": 20,
+                  "n_negative": 372,
+                  "auroc": 0.6826612903225806
+                },
+                {
+                  "shot": 156796,
+                  "n_positive": 10,
+                  "n_negative": 183,
+                  "auroc": 0.6825136612021858
+                },
+                {
+                  "shot": 156797,
+                  "n_positive": 20,
+                  "n_negative": 331,
+                  "auroc": 0.9640483383685801
+                },
+                {
+                  "shot": 158012,
+                  "n_positive": 10,
+                  "n_negative": 457,
+                  "auroc": 0.7669584245076586
+                },
+                {
+                  "shot": 158013,
+                  "n_positive": 20,
+                  "n_negative": 254,
+                  "auroc": 0.6600393700787401
+                },
+                {
+                  "shot": 158014,
+                  "n_positive": 10,
+                  "n_negative": 267,
+                  "auroc": 0.8265917602996254
+                },
+                {
+                  "shot": 158015,
+                  "n_positive": 0,
+                  "n_negative": 340,
+                  "auroc": null
+                },
+                {
+                  "shot": 158018,
+                  "n_positive": 10,
+                  "n_negative": 511,
+                  "auroc": 0.5152641878669276
+                },
+                {
+                  "shot": 158019,
+                  "n_positive": 10,
+                  "n_negative": 539,
+                  "auroc": 0.8871985157699444
+                },
+                {
+                  "shot": 158021,
+                  "n_positive": 10,
+                  "n_negative": 540,
+                  "auroc": 0.6892592592592592
+                },
+                {
+                  "shot": 158022,
+                  "n_positive": 10,
+                  "n_negative": 335,
+                  "auroc": 0.9122388059701493
+                },
+                {
+                  "shot": 158023,
+                  "n_positive": 0,
+                  "n_negative": 463,
+                  "auroc": null
+                },
+                {
+                  "shot": 176067,
+                  "n_positive": 10,
+                  "n_negative": 569,
+                  "auroc": 0.7351493848857645
+                },
+                {
+                  "shot": 176068,
+                  "n_positive": 40,
+                  "n_negative": 510,
+                  "auroc": 0.8153921568627451
+                },
+                {
+                  "shot": 176069,
+                  "n_positive": 30,
+                  "n_negative": 530,
+                  "auroc": 0.910377358490566
+                },
+                {
+                  "shot": 176070,
+                  "n_positive": 20,
+                  "n_negative": 525,
+                  "auroc": 0.9043809523809524
+                },
+                {
+                  "shot": 176071,
+                  "n_positive": 10,
+                  "n_negative": 534,
+                  "auroc": 0.8960674157303371
+                },
+                {
+                  "shot": 176074,
+                  "n_positive": 20,
+                  "n_negative": 528,
+                  "auroc": 0.6898674242424242
+                },
+                {
+                  "shot": 176077,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.30579710144927535
+                },
+                {
+                  "shot": 176078,
+                  "n_positive": 20,
+                  "n_negative": 524,
+                  "auroc": 0.9350190839694656
+                },
+                {
+                  "shot": 176085,
+                  "n_positive": 10,
+                  "n_negative": 548,
+                  "auroc": 0.9352189781021898
+                },
+                {
+                  "shot": 176087,
+                  "n_positive": 10,
+                  "n_negative": 552,
+                  "auroc": 0.9351449275362319
+                },
+                {
+                  "shot": 176088,
+                  "n_positive": 30,
+                  "n_negative": 491,
+                  "auroc": 0.6281737949762389
+                },
+                {
+                  "shot": 176089,
+                  "n_positive": 10,
+                  "n_negative": 547,
+                  "auroc": 0.6511882998171846
+                },
+                {
+                  "shot": 176092,
+                  "n_positive": 0,
+                  "n_negative": 546,
+                  "auroc": null
+                }
+              ]
+            }
+          },
           "rules_by_fold": [
             {
               "fold": 0,
@@ -18825,6 +21299,418 @@
         "above_proxy_negative_slices": 1913,
         "above_proxy_prevalence": 0.16022827041264268,
         "prevalence": 0.08369659982563209
+      },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "mean": 0.9309497992055623,
+          "median": 1.0,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 31,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 162,
+              "auroc": 0.9320987654320988
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.8689320388349514
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 135,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 78,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 199,
+              "auroc": 0.7211055276381909
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 204,
+              "auroc": 0.8578431372549019
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 43,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 141,
+              "auroc": 0.8475177304964538
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 127,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 50,
+              "auroc": 0.8
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 73,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 220,
+              "auroc": 0.6772727272727272
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 119,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 158,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 118,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 65,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 254,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 201,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 209,
+              "auroc": 0.9282296650717703
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 279,
+              "auroc": 0.8243727598566308
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 216,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 245,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 264,
+              "auroc": 0.8049242424242424
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 105,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 335,
+              "auroc": 0.9238805970149254
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 318,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 275,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 282,
+              "auroc": 0.7423167848699763
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 246,
+              "auroc": 1.0
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            }
+          ]
+        },
+        "broad": {
+          "n_shots": 30,
+          "mean": 0.4167464276737933,
+          "median": 0.418884686257395,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 435,
+              "auroc": 0.07126436781609195
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 229,
+              "auroc": 0.6593886462882096
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.8689320388349514
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 434,
+              "auroc": 0.31105990783410137
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 305,
+              "auroc": 0.25573770491803277
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 234,
+              "auroc": 0.6132478632478633
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 262,
+              "auroc": 0.6679389312977099
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 298,
+              "auroc": 0.14429530201342283
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 372,
+              "auroc": 0.32123655913978494
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 183,
+              "auroc": 0.6939890710382514
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 331,
+              "auroc": 0.12084592145015106
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 457,
+              "auroc": 0.15973741794310722
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 254,
+              "auroc": 0.5866141732283464
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 267,
+              "auroc": 0.44569288389513106
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 340,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 511,
+              "auroc": 0.30919765166340507
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 539,
+              "auroc": 0.2189239332096475
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 540,
+              "auroc": 0.12037037037037036
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 335,
+              "auroc": 0.7582089552238805
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 463,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 569,
+              "auroc": 0.3532513181019332
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 510,
+              "auroc": 0.3803921568627451
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 530,
+              "auroc": 0.4339622641509434
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 525,
+              "auroc": 0.4114285714285714
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 534,
+              "auroc": 0.45880149812734083
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 528,
+              "auroc": 0.4024621212121212
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.19021739130434784
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 524,
+              "auroc": 0.5906488549618321
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 548,
+              "auroc": 0.5802919708029197
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.49818840579710144
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 491,
+              "auroc": 0.4263408010862186
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 547,
+              "auroc": 0.44972577696526506
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 546,
+              "auroc": null
+            }
+          ]
+        }
       },
       "rules_by_fold": [
         {
@@ -22059,6 +24945,418 @@
           "above_proxy_negative_slices": 1913,
           "above_proxy_prevalence": 0.16022827041264268,
           "prevalence": 0.08369659982563209
+        },
+        "within_shot_auroc": {
+          "primary": {
+            "n_shots": 30,
+            "mean": 0.9309497992055623,
+            "median": 1.0,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 31,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 162,
+                "auroc": 0.9320987654320988
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.8689320388349514
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 135,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 78,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 199,
+                "auroc": 0.7211055276381909
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 204,
+                "auroc": 0.8578431372549019
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 43,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 141,
+                "auroc": 0.8475177304964538
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 127,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 50,
+                "auroc": 0.8
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 73,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 220,
+                "auroc": 0.6772727272727272
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 119,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 158,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 118,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 65,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 254,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 201,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 209,
+                "auroc": 0.9282296650717703
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 279,
+                "auroc": 0.8243727598566308
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 216,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 245,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 264,
+                "auroc": 0.8049242424242424
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 105,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 335,
+                "auroc": 0.9238805970149254
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 318,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 275,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 282,
+                "auroc": 0.7423167848699763
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 246,
+                "auroc": 1.0
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              }
+            ]
+          },
+          "broad": {
+            "n_shots": 30,
+            "mean": 0.4167464276737933,
+            "median": 0.418884686257395,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 435,
+                "auroc": 0.07126436781609195
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 229,
+                "auroc": 0.6593886462882096
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.8689320388349514
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 434,
+                "auroc": 0.31105990783410137
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 305,
+                "auroc": 0.25573770491803277
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 234,
+                "auroc": 0.6132478632478633
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 262,
+                "auroc": 0.6679389312977099
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 298,
+                "auroc": 0.14429530201342283
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 372,
+                "auroc": 0.32123655913978494
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 183,
+                "auroc": 0.6939890710382514
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 331,
+                "auroc": 0.12084592145015106
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 457,
+                "auroc": 0.15973741794310722
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 254,
+                "auroc": 0.5866141732283464
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 267,
+                "auroc": 0.44569288389513106
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 340,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 511,
+                "auroc": 0.30919765166340507
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 539,
+                "auroc": 0.2189239332096475
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 540,
+                "auroc": 0.12037037037037036
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 335,
+                "auroc": 0.7582089552238805
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 463,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 569,
+                "auroc": 0.3532513181019332
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 510,
+                "auroc": 0.3803921568627451
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 530,
+                "auroc": 0.4339622641509434
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 525,
+                "auroc": 0.4114285714285714
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 534,
+                "auroc": 0.45880149812734083
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 528,
+                "auroc": 0.4024621212121212
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.19021739130434784
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 524,
+                "auroc": 0.5906488549618321
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 548,
+                "auroc": 0.5802919708029197
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.49818840579710144
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 491,
+                "auroc": 0.4263408010862186
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 547,
+                "auroc": 0.44972577696526506
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 546,
+                "auroc": null
+              }
+            ]
+          }
         },
         "rules_by_fold": [
           {
@@ -25346,6 +28644,418 @@
         "above_proxy_prevalence": 0.16022827041264268,
         "prevalence": 0.08369659982563209
       },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "mean": 0.8144481602535586,
+          "median": 0.8840988626421697,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 31,
+              "auroc": 0.9741935483870968
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 162,
+              "auroc": 0.8861111111111111
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9817961165048543
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 135,
+              "auroc": 0.997037037037037
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 78,
+              "auroc": 0.9416666666666667
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 199,
+              "auroc": 0.9072864321608041
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 204,
+              "auroc": 0.7698529411764706
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 43,
+              "auroc": 0.9936046511627907
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 141,
+              "auroc": 0.9544326241134752
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 127,
+              "auroc": 0.5059055118110236
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 50,
+              "auroc": 0.6495
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 73,
+              "auroc": 0.9506849315068493
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 220,
+              "auroc": 0.6145454545454545
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 119,
+              "auroc": 0.6235294117647059
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 158,
+              "auroc": 0.8781645569620253
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 118,
+              "auroc": 0.911864406779661
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 65,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 254,
+              "auroc": 0.8820866141732283
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 201,
+              "auroc": 0.83681592039801
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 209,
+              "auroc": 0.9098086124401914
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 279,
+              "auroc": 0.532258064516129
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 216,
+              "auroc": 0.3738425925925926
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 245,
+              "auroc": 0.43020408163265306
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 264,
+              "auroc": 0.8542613636363636
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 105,
+              "auroc": 0.9923809523809524
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 335,
+              "auroc": 0.985820895522388
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 318,
+              "auroc": 0.9849056603773585
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 275,
+              "auroc": 0.6276363636363637
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 282,
+              "auroc": 0.8417848699763594
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 246,
+              "auroc": 0.6414634146341464
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            }
+          ]
+        },
+        "broad": {
+          "n_shots": 30,
+          "mean": 0.7393274123226601,
+          "median": 0.821346960019261,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 435,
+              "auroc": 0.1811494252873563
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 229,
+              "auroc": 0.9194323144104803
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9817961165048543
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 434,
+              "auroc": 0.9935483870967742
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 305,
+              "auroc": 0.8752459016393442
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 234,
+              "auroc": 0.9211538461538461
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 262,
+              "auroc": 0.8208015267175572
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 298,
+              "auroc": 0.1695469798657718
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 372,
+              "auroc": 0.8903897849462366
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 183,
+              "auroc": 0.657103825136612
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 331,
+              "auroc": 0.45294561933534744
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 457,
+              "auroc": 0.6564551422319475
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 254,
+              "auroc": 0.6661417322834645
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 267,
+              "auroc": 0.8322097378277153
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 340,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 511,
+              "auroc": 0.7202544031311154
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 539,
+              "auroc": 0.8218923933209648
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 540,
+              "auroc": 0.6018518518518519
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 335,
+              "auroc": 0.9105970149253731
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 463,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 569,
+              "auroc": 0.8678383128295255
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 510,
+              "auroc": 0.8728431372549019
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 530,
+              "auroc": 0.5959119496855346
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 525,
+              "auroc": 0.3818095238095238
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 534,
+              "auroc": 0.6722846441947565
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 528,
+              "auroc": 0.8581912878787878
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.6414855072463768
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 524,
+              "auroc": 0.9909351145038168
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 548,
+              "auroc": 0.9908759124087592
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.6731884057971015
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 491,
+              "auroc": 0.864867617107943
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 547,
+              "auroc": 0.6970749542961608
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 546,
+              "auroc": null
+            }
+          ]
+        }
+      },
       "rules_by_fold": [
         {
           "fold": 0,
@@ -28501,6 +32211,418 @@
           "above_proxy_negative_slices": 1913,
           "above_proxy_prevalence": 0.16022827041264268,
           "prevalence": 0.08369659982563209
+        },
+        "within_shot_auroc": {
+          "primary": {
+            "n_shots": 30,
+            "mean": 0.8144481602535586,
+            "median": 0.8840988626421697,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 31,
+                "auroc": 0.9741935483870968
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 162,
+                "auroc": 0.8861111111111111
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9817961165048543
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 135,
+                "auroc": 0.997037037037037
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 78,
+                "auroc": 0.9416666666666667
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 199,
+                "auroc": 0.9072864321608041
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 204,
+                "auroc": 0.7698529411764706
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 43,
+                "auroc": 0.9936046511627907
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 141,
+                "auroc": 0.9544326241134752
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 127,
+                "auroc": 0.5059055118110236
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 50,
+                "auroc": 0.6495
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 73,
+                "auroc": 0.9506849315068493
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 220,
+                "auroc": 0.6145454545454545
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 119,
+                "auroc": 0.6235294117647059
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 158,
+                "auroc": 0.8781645569620253
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 118,
+                "auroc": 0.911864406779661
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 65,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 254,
+                "auroc": 0.8820866141732283
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 201,
+                "auroc": 0.83681592039801
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 209,
+                "auroc": 0.9098086124401914
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 279,
+                "auroc": 0.532258064516129
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 216,
+                "auroc": 0.3738425925925926
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 245,
+                "auroc": 0.43020408163265306
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 264,
+                "auroc": 0.8542613636363636
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 105,
+                "auroc": 0.9923809523809524
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 335,
+                "auroc": 0.985820895522388
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 318,
+                "auroc": 0.9849056603773585
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 275,
+                "auroc": 0.6276363636363637
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 282,
+                "auroc": 0.8417848699763594
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 246,
+                "auroc": 0.6414634146341464
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              }
+            ]
+          },
+          "broad": {
+            "n_shots": 30,
+            "mean": 0.7393274123226601,
+            "median": 0.821346960019261,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 435,
+                "auroc": 0.1811494252873563
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 229,
+                "auroc": 0.9194323144104803
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9817961165048543
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 434,
+                "auroc": 0.9935483870967742
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 305,
+                "auroc": 0.8752459016393442
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 234,
+                "auroc": 0.9211538461538461
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 262,
+                "auroc": 0.8208015267175572
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 298,
+                "auroc": 0.1695469798657718
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 372,
+                "auroc": 0.8903897849462366
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 183,
+                "auroc": 0.657103825136612
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 331,
+                "auroc": 0.45294561933534744
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 457,
+                "auroc": 0.6564551422319475
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 254,
+                "auroc": 0.6661417322834645
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 267,
+                "auroc": 0.8322097378277153
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 340,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 511,
+                "auroc": 0.7202544031311154
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 539,
+                "auroc": 0.8218923933209648
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 540,
+                "auroc": 0.6018518518518519
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 335,
+                "auroc": 0.9105970149253731
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 463,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 569,
+                "auroc": 0.8678383128295255
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 510,
+                "auroc": 0.8728431372549019
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 530,
+                "auroc": 0.5959119496855346
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 525,
+                "auroc": 0.3818095238095238
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 534,
+                "auroc": 0.6722846441947565
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 528,
+                "auroc": 0.8581912878787878
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.6414855072463768
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 524,
+                "auroc": 0.9909351145038168
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 548,
+                "auroc": 0.9908759124087592
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.6731884057971015
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 491,
+                "auroc": 0.864867617107943
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 547,
+                "auroc": 0.6970749542961608
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 546,
+                "auroc": null
+              }
+            ]
+          }
         },
         "rules_by_fold": [
           {
@@ -31682,6 +35804,418 @@
         "above_proxy_prevalence": 0.16022827041264268,
         "prevalence": 0.08369659982563209
       },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "mean": 0.8546671454496839,
+          "median": 0.8998095512082853,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 31,
+              "auroc": 1.0
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 162,
+              "auroc": 0.8719135802469136
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9657766990291262
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 135,
+              "auroc": 0.997037037037037
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 78,
+              "auroc": 0.9621794871794872
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 199,
+              "auroc": 0.9409547738693468
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 204,
+              "auroc": 0.8399509803921569
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 43,
+              "auroc": 0.9982558139534884
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 141,
+              "auroc": 0.9601063829787234
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 127,
+              "auroc": 0.5106299212598425
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 50,
+              "auroc": 0.6495
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 73,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 220,
+              "auroc": 0.6263636363636363
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 119,
+              "auroc": 0.7949579831932773
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 158,
+              "auroc": 0.8781645569620253
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 118,
+              "auroc": 0.9220338983050848
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 65,
+              "auroc": 1.0
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 254,
+              "auroc": 0.6832677165354331
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 201,
+              "auroc": 0.982089552238806
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 209,
+              "auroc": 0.94377990430622
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 279,
+              "auroc": 0.5837514934289127
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 216,
+              "auroc": 0.6030092592592593
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 245,
+              "auroc": 0.7902040816326531
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 264,
+              "auroc": 0.7898674242424243
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 105,
+              "auroc": 0.9580952380952381
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 335,
+              "auroc": 0.8523880597014926
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 318,
+              "auroc": 0.9811320754716981
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 275,
+              "auroc": 0.9214545454545454
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 282,
+              "auroc": 0.8128250591016548
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 246,
+              "auroc": 0.8203252032520325
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            }
+          ]
+        },
+        "broad": {
+          "n_shots": 30,
+          "mean": 0.785614913350108,
+          "median": 0.8655014768721094,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 435,
+              "auroc": 0.35172413793103446
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 229,
+              "auroc": 0.9093886462882096
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.9657766990291262
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 434,
+              "auroc": 0.9990783410138249
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 305,
+              "auroc": 0.9018032786885246
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 234,
+              "auroc": 0.9497863247863247
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 262,
+              "auroc": 0.875381679389313
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 298,
+              "auroc": 0.16434563758389262
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 372,
+              "auroc": 0.9249327956989247
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 183,
+              "auroc": 0.6603825136612022
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 331,
+              "auroc": 0.4890483383685801
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 457,
+              "auroc": 0.6433260393873085
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 254,
+              "auroc": 0.6763779527559055
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 267,
+              "auroc": 0.9086142322097378
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 340,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 511,
+              "auroc": 0.8654598825831703
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 539,
+              "auroc": 0.8307977736549165
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 540,
+              "auroc": 0.705925925925926
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 335,
+              "auroc": 0.7598507462686567
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 463,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 569,
+              "auroc": 0.9894551845342706
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 510,
+              "auroc": 0.9488235294117647
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 530,
+              "auroc": 0.6230188679245283
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 525,
+              "auroc": 0.5724761904761905
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 534,
+              "auroc": 0.8655430711610487
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 528,
+              "auroc": 0.8934185606060606
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.5728260869565217
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 524,
+              "auroc": 0.9056297709923664
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 548,
+              "auroc": 0.9890510948905109
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.9391304347826087
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 491,
+              "auroc": 0.8561778682959945
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 547,
+              "auroc": 0.8308957952468007
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 546,
+              "auroc": null
+            }
+          ]
+        }
+      },
       "rules_by_fold": [
         {
           "fold": 0,
@@ -34768,6 +39302,418 @@
           "above_proxy_prevalence": 0.16022827041264268,
           "prevalence": 0.08369659982563209
         },
+        "within_shot_auroc": {
+          "primary": {
+            "n_shots": 30,
+            "mean": 0.8546671454496839,
+            "median": 0.8998095512082853,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 31,
+                "auroc": 1.0
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 162,
+                "auroc": 0.8719135802469136
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9657766990291262
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 135,
+                "auroc": 0.997037037037037
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 78,
+                "auroc": 0.9621794871794872
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 199,
+                "auroc": 0.9409547738693468
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 204,
+                "auroc": 0.8399509803921569
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 43,
+                "auroc": 0.9982558139534884
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 141,
+                "auroc": 0.9601063829787234
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 127,
+                "auroc": 0.5106299212598425
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 50,
+                "auroc": 0.6495
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 73,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 220,
+                "auroc": 0.6263636363636363
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 119,
+                "auroc": 0.7949579831932773
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 158,
+                "auroc": 0.8781645569620253
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 118,
+                "auroc": 0.9220338983050848
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 65,
+                "auroc": 1.0
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 254,
+                "auroc": 0.6832677165354331
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 201,
+                "auroc": 0.982089552238806
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 209,
+                "auroc": 0.94377990430622
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 279,
+                "auroc": 0.5837514934289127
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 216,
+                "auroc": 0.6030092592592593
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 245,
+                "auroc": 0.7902040816326531
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 264,
+                "auroc": 0.7898674242424243
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 105,
+                "auroc": 0.9580952380952381
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 335,
+                "auroc": 0.8523880597014926
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 318,
+                "auroc": 0.9811320754716981
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 275,
+                "auroc": 0.9214545454545454
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 282,
+                "auroc": 0.8128250591016548
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 246,
+                "auroc": 0.8203252032520325
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              }
+            ]
+          },
+          "broad": {
+            "n_shots": 30,
+            "mean": 0.785614913350108,
+            "median": 0.8655014768721094,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 435,
+                "auroc": 0.35172413793103446
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 229,
+                "auroc": 0.9093886462882096
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.9657766990291262
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 434,
+                "auroc": 0.9990783410138249
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 305,
+                "auroc": 0.9018032786885246
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 234,
+                "auroc": 0.9497863247863247
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 262,
+                "auroc": 0.875381679389313
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 298,
+                "auroc": 0.16434563758389262
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 372,
+                "auroc": 0.9249327956989247
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 183,
+                "auroc": 0.6603825136612022
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 331,
+                "auroc": 0.4890483383685801
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 457,
+                "auroc": 0.6433260393873085
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 254,
+                "auroc": 0.6763779527559055
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 267,
+                "auroc": 0.9086142322097378
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 340,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 511,
+                "auroc": 0.8654598825831703
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 539,
+                "auroc": 0.8307977736549165
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 540,
+                "auroc": 0.705925925925926
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 335,
+                "auroc": 0.7598507462686567
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 463,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 569,
+                "auroc": 0.9894551845342706
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 510,
+                "auroc": 0.9488235294117647
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 530,
+                "auroc": 0.6230188679245283
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 525,
+                "auroc": 0.5724761904761905
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 534,
+                "auroc": 0.8655430711610487
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 528,
+                "auroc": 0.8934185606060606
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.5728260869565217
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 524,
+                "auroc": 0.9056297709923664
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 548,
+                "auroc": 0.9890510948905109
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.9391304347826087
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 491,
+                "auroc": 0.8561778682959945
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 547,
+                "auroc": 0.8308957952468007
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 546,
+                "auroc": null
+              }
+            ]
+          }
+        },
         "rules_by_fold": [
           {
             "fold": 0,
@@ -37847,6 +42793,418 @@
         "above_proxy_prevalence": 0.16022827041264268,
         "prevalence": 0.08369659982563209
       },
+      "within_shot_auroc": {
+        "primary": {
+          "n_shots": 30,
+          "mean": 0.5,
+          "median": 0.5,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 31,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 162,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 135,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 78,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 199,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 204,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 43,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 141,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 127,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 50,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 73,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 220,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 119,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 158,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 118,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 65,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 254,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 201,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 209,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 279,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 216,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 245,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 264,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 105,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 335,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 318,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 275,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 282,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 246,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 0,
+              "auroc": null
+            }
+          ]
+        },
+        "broad": {
+          "n_shots": 30,
+          "mean": 0.49873122790816765,
+          "median": 0.5,
+          "per_shot": [
+            {
+              "shot": 156785,
+              "n_positive": 10,
+              "n_negative": 435,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156786,
+              "n_positive": 20,
+              "n_negative": 229,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156787,
+              "n_positive": 20,
+              "n_negative": 103,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156790,
+              "n_positive": 10,
+              "n_negative": 434,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156791,
+              "n_positive": 10,
+              "n_negative": 305,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156792,
+              "n_positive": 20,
+              "n_negative": 234,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156793,
+              "n_positive": 20,
+              "n_negative": 262,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156794,
+              "n_positive": 20,
+              "n_negative": 298,
+              "auroc": 0.4899328859060403
+            },
+            {
+              "shot": 156795,
+              "n_positive": 20,
+              "n_negative": 372,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156796,
+              "n_positive": 10,
+              "n_negative": 183,
+              "auroc": 0.5
+            },
+            {
+              "shot": 156797,
+              "n_positive": 20,
+              "n_negative": 331,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158012,
+              "n_positive": 10,
+              "n_negative": 457,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158013,
+              "n_positive": 20,
+              "n_negative": 254,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158014,
+              "n_positive": 10,
+              "n_negative": 267,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158015,
+              "n_positive": 0,
+              "n_negative": 340,
+              "auroc": null
+            },
+            {
+              "shot": 158018,
+              "n_positive": 10,
+              "n_negative": 511,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158019,
+              "n_positive": 10,
+              "n_negative": 539,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158021,
+              "n_positive": 10,
+              "n_negative": 540,
+              "auroc": 0.48148148148148145
+            },
+            {
+              "shot": 158022,
+              "n_positive": 10,
+              "n_negative": 335,
+              "auroc": 0.5
+            },
+            {
+              "shot": 158023,
+              "n_positive": 0,
+              "n_negative": 463,
+              "auroc": null
+            },
+            {
+              "shot": 176067,
+              "n_positive": 10,
+              "n_negative": 569,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176068,
+              "n_positive": 40,
+              "n_negative": 510,
+              "auroc": 0.4950980392156863
+            },
+            {
+              "shot": 176069,
+              "n_positive": 30,
+              "n_negative": 530,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176070,
+              "n_positive": 20,
+              "n_negative": 525,
+              "auroc": 0.4990476190476191
+            },
+            {
+              "shot": 176071,
+              "n_positive": 10,
+              "n_negative": 534,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176074,
+              "n_positive": 20,
+              "n_negative": 528,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176077,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.4963768115942029
+            },
+            {
+              "shot": 176078,
+              "n_positive": 20,
+              "n_negative": 524,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176085,
+              "n_positive": 10,
+              "n_negative": 548,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176087,
+              "n_positive": 10,
+              "n_negative": 552,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176088,
+              "n_positive": 30,
+              "n_negative": 491,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176089,
+              "n_positive": 10,
+              "n_negative": 547,
+              "auroc": 0.5
+            },
+            {
+              "shot": 176092,
+              "n_positive": 0,
+              "n_negative": 546,
+              "auroc": null
+            }
+          ]
+        }
+      },
       "rules_by_fold": [
         {
           "fold": 0,
@@ -40914,6 +46272,418 @@
           "above_proxy_negative_slices": 1913,
           "above_proxy_prevalence": 0.16022827041264268,
           "prevalence": 0.08369659982563209
+        },
+        "within_shot_auroc": {
+          "primary": {
+            "n_shots": 30,
+            "mean": 0.5,
+            "median": 0.5,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 31,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 162,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 135,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 78,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 199,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 204,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 43,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 141,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 127,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 50,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 73,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 220,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 119,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 158,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 118,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 65,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 254,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 201,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 209,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 279,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 216,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 245,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 264,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 105,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 335,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 318,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 275,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 282,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 246,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 0,
+                "auroc": null
+              }
+            ]
+          },
+          "broad": {
+            "n_shots": 30,
+            "mean": 0.49873122790816765,
+            "median": 0.5,
+            "per_shot": [
+              {
+                "shot": 156785,
+                "n_positive": 10,
+                "n_negative": 435,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156786,
+                "n_positive": 20,
+                "n_negative": 229,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156787,
+                "n_positive": 20,
+                "n_negative": 103,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156790,
+                "n_positive": 10,
+                "n_negative": 434,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156791,
+                "n_positive": 10,
+                "n_negative": 305,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156792,
+                "n_positive": 20,
+                "n_negative": 234,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156793,
+                "n_positive": 20,
+                "n_negative": 262,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156794,
+                "n_positive": 20,
+                "n_negative": 298,
+                "auroc": 0.4899328859060403
+              },
+              {
+                "shot": 156795,
+                "n_positive": 20,
+                "n_negative": 372,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156796,
+                "n_positive": 10,
+                "n_negative": 183,
+                "auroc": 0.5
+              },
+              {
+                "shot": 156797,
+                "n_positive": 20,
+                "n_negative": 331,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158012,
+                "n_positive": 10,
+                "n_negative": 457,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158013,
+                "n_positive": 20,
+                "n_negative": 254,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158014,
+                "n_positive": 10,
+                "n_negative": 267,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158015,
+                "n_positive": 0,
+                "n_negative": 340,
+                "auroc": null
+              },
+              {
+                "shot": 158018,
+                "n_positive": 10,
+                "n_negative": 511,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158019,
+                "n_positive": 10,
+                "n_negative": 539,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158021,
+                "n_positive": 10,
+                "n_negative": 540,
+                "auroc": 0.48148148148148145
+              },
+              {
+                "shot": 158022,
+                "n_positive": 10,
+                "n_negative": 335,
+                "auroc": 0.5
+              },
+              {
+                "shot": 158023,
+                "n_positive": 0,
+                "n_negative": 463,
+                "auroc": null
+              },
+              {
+                "shot": 176067,
+                "n_positive": 10,
+                "n_negative": 569,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176068,
+                "n_positive": 40,
+                "n_negative": 510,
+                "auroc": 0.4950980392156863
+              },
+              {
+                "shot": 176069,
+                "n_positive": 30,
+                "n_negative": 530,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176070,
+                "n_positive": 20,
+                "n_negative": 525,
+                "auroc": 0.4990476190476191
+              },
+              {
+                "shot": 176071,
+                "n_positive": 10,
+                "n_negative": 534,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176074,
+                "n_positive": 20,
+                "n_negative": 528,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176077,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.4963768115942029
+              },
+              {
+                "shot": 176078,
+                "n_positive": 20,
+                "n_negative": 524,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176085,
+                "n_positive": 10,
+                "n_negative": 548,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176087,
+                "n_positive": 10,
+                "n_negative": 552,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176088,
+                "n_positive": 30,
+                "n_negative": 491,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176089,
+                "n_positive": 10,
+                "n_negative": 547,
+                "auroc": 0.5
+              },
+              {
+                "shot": 176092,
+                "n_positive": 0,
+                "n_negative": 546,
+                "auroc": null
+              }
+            ]
+          }
         },
         "rules_by_fold": [
           {
@@ -44437,6 +50207,418 @@
       "above_proxy_prevalence": 0.16022827041264268,
       "prevalence": 0.08369659982563209
     },
+    "within_shot_auroc": {
+      "primary": {
+        "n_shots": 30,
+        "mean": 0.8242435067791553,
+        "median": 0.875093808630394,
+        "per_shot": [
+          {
+            "shot": 156785,
+            "n_positive": 10,
+            "n_negative": 31,
+            "auroc": 0.9419354838709677
+          },
+          {
+            "shot": 156786,
+            "n_positive": 20,
+            "n_negative": 162,
+            "auroc": 0.9450617283950618
+          },
+          {
+            "shot": 156787,
+            "n_positive": 20,
+            "n_negative": 103,
+            "auroc": 0.8966019417475728
+          },
+          {
+            "shot": 156790,
+            "n_positive": 10,
+            "n_negative": 135,
+            "auroc": 0.9844444444444445
+          },
+          {
+            "shot": 156791,
+            "n_positive": 10,
+            "n_negative": 78,
+            "auroc": 0.8871794871794871
+          },
+          {
+            "shot": 156792,
+            "n_positive": 20,
+            "n_negative": 199,
+            "auroc": 0.9040201005025126
+          },
+          {
+            "shot": 156793,
+            "n_positive": 20,
+            "n_negative": 204,
+            "auroc": 0.5884803921568628
+          },
+          {
+            "shot": 156794,
+            "n_positive": 20,
+            "n_negative": 43,
+            "auroc": 0.9982558139534884
+          },
+          {
+            "shot": 156795,
+            "n_positive": 20,
+            "n_negative": 141,
+            "auroc": 0.699290780141844
+          },
+          {
+            "shot": 156796,
+            "n_positive": 10,
+            "n_negative": 127,
+            "auroc": 0.5181102362204725
+          },
+          {
+            "shot": 156797,
+            "n_positive": 20,
+            "n_negative": 50,
+            "auroc": 0.683
+          },
+          {
+            "shot": 158012,
+            "n_positive": 10,
+            "n_negative": 73,
+            "auroc": 0.9054794520547945
+          },
+          {
+            "shot": 158013,
+            "n_positive": 20,
+            "n_negative": 220,
+            "auroc": 0.5713636363636364
+          },
+          {
+            "shot": 158014,
+            "n_positive": 10,
+            "n_negative": 119,
+            "auroc": 0.9184873949579831
+          },
+          {
+            "shot": 158015,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          },
+          {
+            "shot": 158018,
+            "n_positive": 10,
+            "n_negative": 158,
+            "auroc": 0.6765822784810127
+          },
+          {
+            "shot": 158019,
+            "n_positive": 10,
+            "n_negative": 118,
+            "auroc": 0.9415254237288135
+          },
+          {
+            "shot": 158021,
+            "n_positive": 10,
+            "n_negative": 65,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158022,
+            "n_positive": 10,
+            "n_negative": 254,
+            "auroc": 0.9279527559055119
+          },
+          {
+            "shot": 158023,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          },
+          {
+            "shot": 176067,
+            "n_positive": 10,
+            "n_negative": 201,
+            "auroc": 0.7601990049751244
+          },
+          {
+            "shot": 176068,
+            "n_positive": 40,
+            "n_negative": 209,
+            "auroc": 0.8595693779904306
+          },
+          {
+            "shot": 176069,
+            "n_positive": 30,
+            "n_negative": 279,
+            "auroc": 0.8293906810035843
+          },
+          {
+            "shot": 176070,
+            "n_positive": 20,
+            "n_negative": 216,
+            "auroc": 0.8395833333333333
+          },
+          {
+            "shot": 176071,
+            "n_positive": 10,
+            "n_negative": 245,
+            "auroc": 0.9865306122448979
+          },
+          {
+            "shot": 176074,
+            "n_positive": 20,
+            "n_negative": 264,
+            "auroc": 0.7962121212121213
+          },
+          {
+            "shot": 176077,
+            "n_positive": 10,
+            "n_negative": 105,
+            "auroc": 0.3852380952380952
+          },
+          {
+            "shot": 176078,
+            "n_positive": 20,
+            "n_negative": 335,
+            "auroc": 0.9047761194029851
+          },
+          {
+            "shot": 176085,
+            "n_positive": 10,
+            "n_negative": 318,
+            "auroc": 0.8389937106918239
+          },
+          {
+            "shot": 176087,
+            "n_positive": 10,
+            "n_negative": 275,
+            "auroc": 0.9963636363636363
+          },
+          {
+            "shot": 176088,
+            "n_positive": 30,
+            "n_negative": 282,
+            "auroc": 0.6796690307328606
+          },
+          {
+            "shot": 176089,
+            "n_positive": 10,
+            "n_negative": 246,
+            "auroc": 0.8630081300813008
+          },
+          {
+            "shot": 176092,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          }
+        ]
+      },
+      "broad": {
+        "n_shots": 30,
+        "mean": 0.7542282977333081,
+        "median": 0.7934382794213576,
+        "per_shot": [
+          {
+            "shot": 156785,
+            "n_positive": 10,
+            "n_negative": 435,
+            "auroc": 0.19448275862068964
+          },
+          {
+            "shot": 156786,
+            "n_positive": 20,
+            "n_negative": 229,
+            "auroc": 0.9611353711790394
+          },
+          {
+            "shot": 156787,
+            "n_positive": 20,
+            "n_negative": 103,
+            "auroc": 0.8966019417475728
+          },
+          {
+            "shot": 156790,
+            "n_positive": 10,
+            "n_negative": 434,
+            "auroc": 0.9801843317972351
+          },
+          {
+            "shot": 156791,
+            "n_positive": 10,
+            "n_negative": 305,
+            "auroc": 0.8619672131147541
+          },
+          {
+            "shot": 156792,
+            "n_positive": 20,
+            "n_negative": 234,
+            "auroc": 0.9183760683760683
+          },
+          {
+            "shot": 156793,
+            "n_positive": 20,
+            "n_negative": 262,
+            "auroc": 0.6156488549618321
+          },
+          {
+            "shot": 156794,
+            "n_positive": 20,
+            "n_negative": 298,
+            "auroc": 0.31669463087248323
+          },
+          {
+            "shot": 156795,
+            "n_positive": 20,
+            "n_negative": 372,
+            "auroc": 0.5716397849462366
+          },
+          {
+            "shot": 156796,
+            "n_positive": 10,
+            "n_negative": 183,
+            "auroc": 0.6655737704918033
+          },
+          {
+            "shot": 156797,
+            "n_positive": 20,
+            "n_negative": 331,
+            "auroc": 0.9039274924471299
+          },
+          {
+            "shot": 158012,
+            "n_positive": 10,
+            "n_negative": 457,
+            "auroc": 0.7649890590809628
+          },
+          {
+            "shot": 158013,
+            "n_positive": 20,
+            "n_negative": 254,
+            "auroc": 0.628740157480315
+          },
+          {
+            "shot": 158014,
+            "n_positive": 10,
+            "n_negative": 267,
+            "auroc": 0.9614232209737827
+          },
+          {
+            "shot": 158015,
+            "n_positive": 0,
+            "n_negative": 340,
+            "auroc": null
+          },
+          {
+            "shot": 158018,
+            "n_positive": 10,
+            "n_negative": 511,
+            "auroc": 0.7929549902152642
+          },
+          {
+            "shot": 158019,
+            "n_positive": 10,
+            "n_negative": 539,
+            "auroc": 0.8771799628942486
+          },
+          {
+            "shot": 158021,
+            "n_positive": 10,
+            "n_negative": 540,
+            "auroc": 0.7287037037037037
+          },
+          {
+            "shot": 158022,
+            "n_positive": 10,
+            "n_negative": 335,
+            "auroc": 0.9453731343283582
+          },
+          {
+            "shot": 158023,
+            "n_positive": 0,
+            "n_negative": 463,
+            "auroc": null
+          },
+          {
+            "shot": 176067,
+            "n_positive": 10,
+            "n_negative": 569,
+            "auroc": 0.6050966608084358
+          },
+          {
+            "shot": 176068,
+            "n_positive": 40,
+            "n_negative": 510,
+            "auroc": 0.793921568627451
+          },
+          {
+            "shot": 176069,
+            "n_positive": 30,
+            "n_negative": 530,
+            "auroc": 0.9047169811320754
+          },
+          {
+            "shot": 176070,
+            "n_positive": 20,
+            "n_negative": 525,
+            "auroc": 0.6510476190476191
+          },
+          {
+            "shot": 176071,
+            "n_positive": 10,
+            "n_negative": 534,
+            "auroc": 0.9464419475655431
+          },
+          {
+            "shot": 176074,
+            "n_positive": 20,
+            "n_negative": 528,
+            "auroc": 0.7317234848484848
+          },
+          {
+            "shot": 176077,
+            "n_positive": 10,
+            "n_negative": 552,
+            "auroc": 0.27844202898550724
+          },
+          {
+            "shot": 176078,
+            "n_positive": 20,
+            "n_negative": 524,
+            "auroc": 0.9365458015267175
+          },
+          {
+            "shot": 176085,
+            "n_positive": 10,
+            "n_negative": 548,
+            "auroc": 0.8664233576642336
+          },
+          {
+            "shot": 176087,
+            "n_positive": 10,
+            "n_negative": 552,
+            "auroc": 0.956340579710145
+          },
+          {
+            "shot": 176088,
+            "n_positive": 30,
+            "n_negative": 491,
+            "auroc": 0.6433129667345553
+          },
+          {
+            "shot": 176089,
+            "n_positive": 10,
+            "n_negative": 547,
+            "auroc": 0.7272394881170018
+          },
+          {
+            "shot": 176092,
+            "n_positive": 0,
+            "n_negative": 546,
+            "auroc": null
+          }
+        ]
+      }
+    },
     "rules_by_fold": [
       {
         "fold": 0,
@@ -47727,6 +53909,25 @@
         "onset_efit_missing": 3,
         "no_high_beta_pre_onset_slices": 1,
         "no_high_beta_pre_onset_fraction": 0.045454545454545456
+      }
+    },
+    "labelled_slice_qmin": {
+      "scope": "Hanson primary 10 ms slices labelled 0 or 1; held offline qmin; fraction among all labelled slices, with missing values in denominator; finite-only fraction separate",
+      "by_campaign": {
+        "2014": {
+          "n_labelled_slices": 2540,
+          "n_finite": 2498,
+          "n_above_two": 2108,
+          "fraction_above_two": 0.8299212598425196,
+          "finite_fraction_above_two": 0.8438751000800641
+        },
+        "2018": {
+          "n_labelled_slices": 3195,
+          "n_finite": 3087,
+          "n_above_two": 3074,
+          "fraction_above_two": 0.9621283255086072,
+          "finite_fraction_above_two": 0.9957887917071591
+        }
       }
     }
   }

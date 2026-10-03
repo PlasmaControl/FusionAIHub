@@ -112,6 +112,7 @@ def summarise(oof, alarms, target, rules):
     groups = ev.shot_records(oof, alarms, target)
     result = {
         "counts": ev.counts(groups),
+        "within_shot_auroc": ev.within_shot_auroc(oof),
         "rules_by_fold": rules,
         "metrics": metrics.shot_bootstrap(
             groups, ev.statistic, replicates=_STATE["replicates"], seed=SEED
@@ -371,7 +372,29 @@ def run_onset_physics(_):
     signals = {
         shot: data.load_signals(shot, Paths.from_env()) for shot in _STATE["onsets"]
     }
-    return clean(ev.onset_physics(table, _STATE["onsets"], signals))
+    result = ev.onset_physics(table, _STATE["onsets"], signals)
+    result["labelled_slice_qmin"] = {
+        "scope": (
+            "Hanson primary 10 ms slices labelled 0 or 1; held offline qmin; "
+            "fraction among all labelled slices, with missing values in "
+            "denominator; finite-only fraction separate"
+        ),
+        "by_campaign": {
+            str(year): {
+                "n_labelled_slices": len(part),
+                "n_finite": int(np.isfinite(part.qmin).sum()),
+                "n_above_two": int((part.qmin > 2).sum()),
+                "fraction_above_two": float((part.qmin > 2).mean()),
+                "finite_fraction_above_two": float(
+                    (part.qmin[np.isfinite(part.qmin)] > 2).mean()
+                ),
+            }
+            for year, part in table[
+                (table.role == "hanson") & table.label.isin([0, 1])
+            ].groupby("campaign")
+        },
+    }
+    return clean(result)
 
 
 def screen_audit(_):
@@ -510,6 +533,16 @@ def main() -> None:
             "step_ms": features.STEP_MS,
             "primary_training": "Hanson positives and assumed negatives only",
             "primary_scoring": "Hanson only, before last n=1 onset; no verified negatives",
+            "within_shot_auroc": (
+                "primary and broad Hanson masks, fixed score orientation; "
+                "equal-shot mean/median over shots with both classes; "
+                "per-shot class counts include excluded one-class shots"
+            ),
+            "primary_mask_mechanism": (
+                "primary negatives end at last n=1 onset; final labelled slices "
+                "are positive, giving increasing elapsed time nearly perfect "
+                "within-shot ranking"
+            ),
             "broad_sensitivity": "same predictions; post-last-onset and n=2-only negatives added",
             "high_beta": "beta_N >= 0.8 times each shot's whole-window p95 (evaluation only)",
             "above_proxy": "beta_N/l_i > 4 (evaluation only)",

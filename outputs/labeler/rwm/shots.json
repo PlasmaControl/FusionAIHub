@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_build.py",
-  "made_at": "2026-10-03T17:35:13+00:00",
+  "made_at": "2026-10-03T18:11:13+00:00",
   "pool": {
     "shots": 208,
     "usable": 207,
@@ -326,7 +326,7 @@
     "unlabelled_comparison_rows": 68006
   },
   "windows": {
-    "csv": "data/events/resistive_wall_mode/extend_rwm_growth/rwm_windows.csv",
+    "csv": "data/events/resistive_wall_mode/extend_rwm_onset_window/rwm_windows.csv",
     "rows": 558,
     "conventional_weak_windows": 0,
     "uncertain_onset_windows": 54,
@@ -335,7 +335,7 @@
     "hanson_unassessed_spans": 87,
     "comparison_unassessed_spans": 258,
     "candidate_spans_on_comparison_shots": 126,
-    "growth_ms": 20.0,
+    "onset_window_ms": 20.0,
     "horizon_ms": 100.0,
     "post_ms": 100.0
   },

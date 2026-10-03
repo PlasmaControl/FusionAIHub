@@ -15,7 +15,7 @@
     "attrs"
   ],
   "coverage": "Hanson category 0 is assumed absence before the first precursor; Hanson category 2 is the uncertain 20 ms pre-onset convention. Comparison category 2 is the rwm_candidates screen, unlabelled and not negative. Category 1 has no duration rows here: only the raw onset points are verified. Reviewed negative coverage is unknown.",
-  "made_at": "2026-10-03T17:35:13+00:00",
+  "made_at": "2026-10-03T18:11:13+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
   "n_rows": 558,
   "n_shots": 165,

@@ -97,5 +97,25 @@
   "pdf": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.pdf",
   "png": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_onset_scores.png",
   "source_rows_csv": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/rwm_figure_rows.csv",
-  "caption": "Held-out rwm-brf scores (solid blue) and beta_N/li (dashed orange). Vertical lines mark listed n=1 onsets; grey spans show the 100 ms forecast target, not verified instability intervals. Bottom panels are unlabelled comparison shots; their zero is the matched Hanson onset time, not an onset on those shots. The dotted orange line is the no-wall proxy beta_N/li=4. Examples were chosen by shot number, not model performance; this figure does not estimate warning skill. On 156796 and 158022, beta_N/li collapses about 400 ms before the listed onset, within assumed-negative time, visibly limiting the onset-list completeness assumption."
+  "onset_physics_source": "outputs/labeler/rwm/evaluation.json#/onset_physics/rows",
+  "first_panel_onset_physics": {
+    "shot": 156785,
+    "campaign": 2014,
+    "onset_ms": 856.0,
+    "sample_ms": 840.0,
+    "betan": 1.281380534172058,
+    "li": 0.5201455354690552,
+    "betan_over_li": 2.463503859581413,
+    "elapsed_time_ms": 733.0,
+    "onset_betan": 1.281380534172058,
+    "onset_li": 0.5201455354690552,
+    "onset_betan_over_li": 2.463503859581413,
+    "onset_elapsed_time_ms": 749.0,
+    "onset_efit_missing": false,
+    "onset_below_proxy": true,
+    "n_high_beta_pre_onset_slices": 0,
+    "efit_missing": false,
+    "below_proxy": true
+  },
+  "caption": "Held-out rwm-brf scores (solid blue) and beta_N/li (dashed orange). Vertical lines mark listed n=1 onsets; grey spans show the 100 ms forecast target, not verified instability intervals. Bottom panels are unlabelled comparison shots; their zero is the matched Hanson onset time, not an onset on those shots. The dotted orange line is the no-wall proxy beta_N/li=4. Examples were chosen by shot number, not model performance; this figure does not estimate warning skill. The first panel, 156785, has beta_N 1.28 and beta_N/li 2.46 at its listed onset, far below the conventional proxy, whose applicability is uncertain for high-qmin, low-li plasmas. On 156796 and 158022, beta_N/li collapses about 400 ms before the listed onset, within assumed-negative time, visibly limiting the onset-list completeness assumption."
 }

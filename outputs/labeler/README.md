@@ -20,7 +20,8 @@
   and a separately sourced published NSTX reference. `evaluation.json` and
   `tables.md` are written by `scripts/labeler/rwm_{growth,build,evaluate,tables}.py`;
   `figure.json` records the paper figure and caption. Large prediction, figure,
-  and LaTeX artifacts live under `$LABELER_ROOT/round4/rwm/`.
+  and compiled PDF/PNG artifacts live under `$LABELER_ROOT/round4/rwm/`; small
+  LaTeX sources are committed in `outputs/labeler/rwm/`.
   See [scope and results](../../docs/labeler/rwm_baseline.md).
 
 In the presentation figures, blue is a model on its own archived training inputs (its

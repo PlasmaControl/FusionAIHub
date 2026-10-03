@@ -3,7 +3,7 @@
 An onset is a point in time. Two labels are made from it, and they are different
 things:
 
-* the **uncertain onset window** `[onset - GROWTH_MS, onset)` (category 2),
+* the **uncertain onset window** `[onset - ONSET_WINDOW_MS, onset)` (category 2),
   a wall-time convention whose physical extent and direction are unverified;
 * the **forecast target** of the baseline, as Piccione et al. 2022 define their
   stability label: a time slice is positive when an onset follows within
@@ -30,7 +30,7 @@ POST_MS = 100.0
 #: Hanson's ONSET_TIME has no documented detection/threshold meaning in the
 #: supplied sources, so neither the direction nor extent establishes presence.
 #: N1RMS is not RWM-specific; a random-time slope search gives similar maxima.
-GROWTH_MS = 20.0
+ONSET_WINDOW_MS = 20.0
 
 #: Listed onsets this close are one event.
 MERGE_MS = 10.0
@@ -111,15 +111,11 @@ def merge_close(onsets_ms, within_ms=MERGE_MS):
     return kept
 
 
-def growth_windows(onsets_ms, *, growth_ms=GROWTH_MS):
-    """Merged uncertain `(start, end)` onset windows (overlaps joined).
-
-    The historic function name is retained for callers; these are not measured
-    growth intervals and do not imply that growth preceded ONSET_TIME.
-    """
+def uncertain_onset_windows(onsets_ms, *, window_ms=ONSET_WINDOW_MS):
+    """Merged uncertain `(start, end)` windows with unverified extent/direction."""
     merged: list[list[float]] = []
     for onset in sorted(float(o) for o in onsets_ms):
-        start = onset - growth_ms
+        start = onset - window_ms
         if merged and start <= merged[-1][1]:
             merged[-1][1] = onset
         else:
@@ -150,7 +146,7 @@ def window_rows(
     flattop,
     *,
     assumed_absent,
-    growth_ms=GROWTH_MS,
+    window_ms=ONSET_WINDOW_MS,
     horizon_ms=HORIZON_MS,
     post_ms=POST_MS,
 ):
@@ -171,7 +167,7 @@ def window_rows(
     physical recovery and does not change these state intervals.
     """
     onsets = sorted(float(o) for o in onsets_ms)
-    windows = growth_windows(onsets, growth_ms=growth_ms)
+    windows = uncertain_onset_windows(onsets, window_ms=window_ms)
     rows = [(shot, UNCERTAIN, a, b) for a, b in windows]
     bounds = windows + ([flattop] if flattop is not None else [])
     if not bounds:

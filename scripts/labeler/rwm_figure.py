@@ -180,6 +180,9 @@ def main():
     plt.close(fig)
     source_rows = out_dir / "rwm_figure_rows.csv"
     pd.concat(frames).to_csv(source_rows, index=False)
+    first_onset = next(
+        row for row in record["onset_physics"]["rows"] if row["shot"] == 156785
+    )
     metadata = {
         "script": "scripts/labeler/rwm_figure.py",
         "model": "rwm-brf",
@@ -194,6 +197,10 @@ def main():
         "pdf": str(stem.with_suffix(".pdf")),
         "png": str(stem.with_suffix(".png")),
         "source_rows_csv": str(source_rows),
+        "onset_physics_source": (
+            "outputs/labeler/rwm/evaluation.json#/onset_physics/rows"
+        ),
+        "first_panel_onset_physics": first_onset,
         "caption": (
             "Held-out rwm-brf scores (solid blue) and beta_N/li (dashed orange). "
             "Vertical lines mark listed n=1 onsets; grey spans show the 100 ms "
@@ -202,7 +209,12 @@ def main():
             "onset time, not an onset on those shots. The dotted orange line is "
             "the no-wall proxy beta_N/li=4. Examples were chosen by shot number, "
             "not model performance; this figure does not estimate warning skill. "
-            "On 156796 and 158022, beta_N/li collapses about 400 ms before the "
+            "The first panel, 156785, has beta_N "
+            f"{first_onset['onset_betan']:.2f} and beta_N/li "
+            f"{first_onset['onset_betan_over_li']:.2f} at its listed onset, far below "
+            "the conventional proxy, whose applicability is uncertain for "
+            "high-qmin, low-li plasmas. On 156796 and 158022, beta_N/li "
+            "collapses about 400 ms before the "
             "listed onset, within assumed-negative time, visibly limiting the "
             "onset-list completeness assumption."
         ),

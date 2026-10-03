@@ -614,7 +614,7 @@ def onset_physics(table, onsets, signals_by_shot):
         signals = signals_by_shot[shot]
         for onset in onsets[shot]:
             window = frame[
-                (frame.t_ms >= onset - labels.GROWTH_MS) & (frame.t_ms < onset)
+                (frame.t_ms >= onset - labels.ONSET_WINDOW_MS) & (frame.t_ms < onset)
             ]
             snapshot = window.iloc[0] if len(window) else None
             values = {
@@ -623,11 +623,7 @@ def onset_physics(table, onsets, signals_by_shot):
                 )
                 for key in ("betan", "li")
             }
-            ratio = (
-                values["betan"] / values["li"]
-                if values["li"] > 0
-                else float("nan")
-            )
+            ratio = values["betan"] / values["li"] if values["li"] > 0 else float("nan")
             missing = not np.isfinite(ratio)
             row = {
                 "shot": int(shot),
@@ -685,6 +681,38 @@ def onset_physics(table, onsets, signals_by_shot):
         "rows": rows,
         "by_campaign": by_campaign,
     }
+
+
+def within_shot_auroc(oof):
+    """Equal-shot summaries of Hanson AUROC, separate from pooled slice ranking.
+
+    Keep every Hanson's class counts; one-class shots have null AUROC and do not
+    enter the mean or median. Scores retain the model's fixed orientation and
+    missing-input ranking. No bootstrap or comparison-negative claim is made.
+    """
+    result = {}
+    for mask, column in (("primary", "label"), ("broad", "label_broad")):
+        rows = []
+        for shot, frame in oof[oof.role == "hanson"].groupby("shot", sort=True):
+            keep = frame[column].isin([labels.NEGATIVE, labels.POSITIVE])
+            y = frame.loc[keep, column].to_numpy()
+            auc = metrics.auroc(frame.loc[keep, "score"].to_numpy(), y)
+            rows.append(
+                {
+                    "shot": int(shot),
+                    "n_positive": int((y == labels.POSITIVE).sum()),
+                    "n_negative": int((y == labels.NEGATIVE).sum()),
+                    "auroc": float(auc) if np.isfinite(auc) else None,
+                }
+            )
+        values = [r["auroc"] for r in rows if r["auroc"] is not None]
+        result[mask] = {
+            "n_shots": len(values),
+            "mean": float(np.mean(values)) if values else None,
+            "median": float(np.median(values)) if values else None,
+            "per_shot": rows,
+        }
+    return result
 
 
 def statistic(groups):

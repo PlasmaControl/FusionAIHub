@@ -142,10 +142,23 @@ def campaign_pairs(record):
         "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals "
         "condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times "
         "the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 "
-        "high-beta AUROC is at or below chance across the five splits "
+        "high-beta AUROC is about chance or below across the five splits "
         f"({split_range(ranges, 2)}; reference-split CI "
         f"[{reference['low']:.2f}, {reference['high']:.2f}]) and below elapsed time "
-        "on every split."
+        "on every split (point estimates; CI excludes zero on 2 of 5 seeds). "
+        "Included 2018 run-record holdout CIs exclude zero: primary "
+        + interval(
+            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
+                "slice_auroc"
+            ]
+        )
+        + "; high-beta "
+        + interval(
+            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
+                "high_beta_auroc"
+            ]
+        )
+        + "."
     )
 
 
@@ -289,7 +302,7 @@ def forest_alarm_splits(record):
             "evaluation",
             "onsets warned",
             "onset detection (95% CI)",
-            "detection minus random reference (95% basic CI)",
+            "detection minus random reference (95% percentile CI)",
             "median warning, ms (95% CI)",
         ],
         rows,
@@ -721,24 +734,47 @@ def write_latex(record, out_dir):
     ]
     n_hanson = configs["rwm-brf"]["counts"]["hanson_shots"]
     n_bootstrap = record["protocol"]["bootstrap_replicates"]
+    within = configs["rule-elapsed-time"]["within_shot_auroc"]["primary"]
+    campaign_pairs = summary["paired_time_by_campaign"]["2014"]
+    n_exclude_zero = sum(
+        not (row["high_beta_auroc"]["low"] <= 0 <= row["high_beta_auroc"]["high"])
+        for row in campaign_pairs.values()
+    )
+    broad_time = record["paired"]["rwm-brf - rule-elapsed-time"]["broad_auroc"]
+    broad_ratio = record["paired"]["rwm-brf - rule-betan-over-li"]["broad_auroc"]
     caption = (
         f"Retrospective DIII-D forecasting on {n_hanson} Hanson shots with offline ZIPFIT "
         r"and postprocessed magnetic-RMS inputs, and unverified negative coverage. "
         r"Positives precede listed $n=1$ "
-        r"onsets by at most 100 ms; high-$\beta$ conditions on $\beta_N\geq0.8$ "
+        r"onsets by at most 100 ms. Primary negatives end at the last onset, so "
+        r"elapsed time ranks within-shot almost perfectly (median AUROC "
+        f"{within['median']:.1f}, mean {within['mean']:.2f}, "
+        f"{within['n_shots']} shots). "
+        r"High-$\beta$ conditions on $\beta_N\geq0.8$ "
         r"shot whole-window p95; above-proxy conditions on $\beta_N/l_i>4$. "
         r"Brackets: 95\% "
         f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed fitted "
-        r"predictions. Five-split forest-minus-elapsed-time AUROC ranges: "
-        r"high-$\beta$ "
+        r"predictions. Between-model differences use basic paired intervals. "
+        r"Five-split forest-minus-elapsed-time AUROC ranges: primary "
+        + latex_range(summary["paired_time_ranges"]["slice_auroc"], 3)
+        + r"; high-$\beta$ "
         + latex_range(summary["paired_time_ranges"]["high_beta_auroc"])
         + r"; above-proxy "
         + latex_range(summary["paired_time_ranges"]["above_proxy_auroc"])
         + r". The primary seed-3 lower bound is borderline near zero. "
-        r"Campaign 2014 high-$\beta$ AUROC is at or below chance ("
+        r"Campaign 2014 high-$\beta$ AUROC is about chance or below ("
         + latex_range(campaign_range)
         + f"; reference-split CI [{campaign_reference['low']:.2f}, "
-        + f"{campaign_reference['high']:.2f}]) and below elapsed time on every split. "
+        + f"{campaign_reference['high']:.2f}]) and below elapsed time on every split "
+        + f"(point estimates; CI excludes zero on {n_exclude_zero} of 5 seeds). "
+        r"Under broad negatives, forest minus elapsed time is "
+        + latex_cell(broad_time, bound_digits=3)
+        + r" (run-record holdout "
+        + latex_cell(holdout["paired_time"]["broad_auroc"], bound_digits=3)
+        + r"); forest minus $\beta_N/l_i$ is "
+        + latex_cell(broad_ratio, bound_digits=3)
+        + r". The forest matches the best single scalar under either mask "
+        r"(elapsed time on primary, $\beta_N/l_i$ on broad); no onset-specific skill. "
         r"Run-record holdout retains four records across three dates. "
         r"Legacy uses different inputs and expert-reviewed stable shots; results "
         r"are not comparable."
@@ -766,6 +802,17 @@ def write_latex(record, out_dir):
         "paired_time_ranges": {
             "json_path": "split_sensitivity.paired_time_ranges",
             "values": summary["paired_time_ranges"],
+        },
+        "within_shot_elapsed_time": {
+            "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary",
+            "values": within,
+        },
+        "broad_pairs": {
+            "paired.rwm-brf - rule-elapsed-time.broad_auroc": broad_time,
+            "paired.rwm-brf - rule-betan-over-li.broad_auroc": broad_ratio,
+            "leave_one_run_record_out.paired_time.broad_auroc": holdout["paired_time"][
+                "broad_auroc"
+            ],
         },
         "paired_time_by_campaign": {
             "json_path": "split_sensitivity.paired_time_by_campaign",
@@ -804,9 +851,8 @@ def write_supplemental_latex(record, out_dir):
 
     def write(name, columns, header, rows, caption, source, long=False):
         environment = "longtable" if long else "tabular"
-        lines = [r"\small", r"\setlength{\tabcolsep}{4pt}"]
-        if not long:
-            lines += [r"\begin{table*}[t]", r"\centering"]
+        lines = [r"\begingroup"] if long else [r"\begin{table*}[t]", r"\centering"]
+        lines += [r"\small", r"\setlength{\tabcolsep}{4pt}"]
         lines += [r"\begin{" + environment + "}{@{}" + columns + "@{}}"]
         if long:
             lines += [r"\caption{" + caption + r"} \\"]
@@ -829,6 +875,8 @@ def write_supplemental_latex(record, out_dir):
         lines += [r"\end{" + environment + "}"]
         if not long:
             lines += [r"\caption{" + caption + "}", r"\end{table*}"]
+        else:
+            lines += [r"\endgroup"]
         path = out_dir / f"table_rwm_{name}.tex"
         source_path = OUT / path.name
         tex = "\n".join(lines) + "\n"
@@ -879,8 +927,22 @@ def write_supplemental_latex(record, out_dir):
         r"fitted predictions. High-$\beta$: $\beta_N\geq0.8$ shot p95; "
         r"above-proxy: $\beta_N/l_i>4$. All five 2014 point differences are "
         r"negative in both conditional strata; all five 2018 split-seed "
-        r"intervals include zero. Run-record holdout intervals are tabulated "
-        r"separately.",
+        r"intervals include zero. The included 2018 run-record holdout "
+        r"intervals exclude zero: primary "
+        + latex_cell(
+            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
+                "slice_auroc"
+            ],
+            bound_digits=3,
+        )
+        + r"; high-$\beta$ "
+        + latex_cell(
+            record["leave_one_run_record_out"]["paired_time_by_campaign"]["2018"][
+                "high_beta_auroc"
+            ],
+            bound_digits=3,
+        )
+        + ".",
         {
             "split_sensitivity.paired_time_by_campaign": campaigns,
             "leave_one_run_record_out.paired_time_by_campaign": record[
@@ -930,8 +992,10 @@ def write_supplemental_latex(record, out_dir):
         ],
         rows,
         r"Forest alarms across all five splits and the run-record holdout. "
-        r"Brackets: 95\% shot-bootstrap intervals (basic paired intervals for "
-        r"differences), conditional on fixed fitted predictions. No improvement "
+        r"Brackets: 95\% percentile shot-bootstrap intervals, including "
+        r"detection-minus-reference, conditional on fixed fitted predictions. "
+        r"Between-model differences elsewhere use basic paired intervals. "
+        r"No improvement "
         r"over the approximate rate-matched random reference was established: "
         r"all five difference intervals include zero; equivalence is not "
         r"established. Warning medians condition on detected onsets. The "
@@ -1025,6 +1089,27 @@ def main():
         "Broader Hanson-negative sensitivity — same models and predictions": scores(
             configs, "broad"
         ),
+        (
+            "Within-shot AUROC — primary and broad Hanson masks "
+            "(reference split, seed 0)"
+        ): table(
+            ["model", "mask", "shots with both classes", "median", "mean"],
+            [
+                [
+                    name,
+                    mask,
+                    str(row["n_shots"]),
+                    point(row["median"]),
+                    point(row["mean"]),
+                ]
+                for name, config in configs.items()
+                for mask, row in config["within_shot_auroc"].items()
+            ],
+        ),
+        "Broad-mask run-record holdout — forest minus elapsed time": table(
+            ["AUROC difference (95% basic paired CI)"],
+            [[interval(run_out["paired_time"]["broad_auroc"])]],
+        ),
         "High-beta conditional scores — all models": scores(configs, "high_beta", True),
         "Above no-wall-proxy conditional scores — all models": scores(
             configs, "above_proxy", True
@@ -1064,6 +1149,7 @@ def main():
     }
     for prefix, label in (
         ("slice", "primary"),
+        ("broad", "broad"),
         ("high_beta", "high-beta conditional"),
         ("above_proxy", "above-proxy conditional"),
     ):
@@ -1128,7 +1214,11 @@ def main():
         "Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% "
         f"shot-bootstrap intervals ({record['protocol']['bootstrap_replicates']:,} "
         "resamples), conditional on fixed "
-        "fitted predictions; differences use basic paired intervals. High-beta "
+        "fitted predictions. Individual metrics and detection-minus-reference use "
+        "percentile intervals; between-model differences use basic paired intervals. "
+        "Within-shot means/medians weight each two-class Hanson shot equally; "
+        "one-class shots are omitted from those summaries, with counts in JSON. "
+        "High-beta "
         "means beta_N >= 0.8 times the shot's whole-window beta_N p95; "
         "above-proxy means beta_N/li > 4. Negative slices are assumed negative.\n\n"
         + "\n\n".join(f"### {name}\n\n{body}" for name, body in sections.items())
@@ -1181,6 +1271,7 @@ def main():
             ("table_ruff_format", "tables-format.log"),
             ("table_validation", "tables-validation.log"),
             ("latex_compile", "tables-latex.log"),
+            ("visual_inspection", "tables-visual.log"),
         )
         if (tmp_dir / filename).is_file()
     }

@@ -29,9 +29,9 @@ ZIPFIT_MAX_AGE_MS = 100.0
 RMS_WINDOW_MS = 5.0
 #: Window of the growth-rate feature, about four wall times (tau_w ~ 5 ms).
 GROWTH_WINDOW_MS = 20.0
-#: Radii of the two rotation features: the core and near the q = 2 surface.
+#: Fixed rotation radii: core and mid-radius; neither identifies a q = 2 surface.
 ROTATION_RHO = (0.25, 0.625)
-#: The empirical no-wall limit betaN ~ 4 l_i (DIII-D rule of thumb).
+#: Conventional betaN ~ 4 l_i proxy; uncertain for high-qmin, low-li plasmas.
 NO_WALL_FACTOR = 4.0
 #: A growth rate needs this floor so an RMS of exactly zero stays finite.
 LOG_FLOOR_G = 0.05

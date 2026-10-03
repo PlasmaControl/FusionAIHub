@@ -44,8 +44,8 @@ def test_primary_negative_time_ends_at_last_target_onset():
     assert out.tolist() == [0, -1, 0, 1, -1, -1]
 
 
-def test_growth_windows_merge_overlaps_and_keep_separate_ones():
-    assert lab.growth_windows([100.0, 110.0, 500.0], growth_ms=20.0) == [
+def test_uncertain_onset_windows_merge_overlaps_and_keep_separate_ones():
+    assert lab.uncertain_onset_windows([100.0, 110.0, 500.0], window_ms=20.0) == [
         (80.0, 110.0),
         (480.0, 500.0),
     ]
@@ -57,7 +57,7 @@ def test_window_rows_do_not_infer_physical_recovery_from_the_forecast_horizon():
         [300.0],
         (100.0, 800.0),
         assumed_absent=True,
-        growth_ms=20.0,
+        window_ms=20.0,
         horizon_ms=100.0,
         post_ms=100.0,
     )
@@ -79,7 +79,7 @@ def test_window_rows_drop_a_hole_wider_than_the_flattop():
         [150.0],
         (100.0, 200.0),
         assumed_absent=True,
-        growth_ms=20.0,
+        window_ms=20.0,
         horizon_ms=100.0,
         post_ms=100.0,
     )

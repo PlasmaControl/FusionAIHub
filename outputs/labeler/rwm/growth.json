@@ -6,7 +6,7 @@
     "n2": 6,
     "shots": 33
   },
-  "growth_window_ms": 20.0,
+  "onset_window_ms": 20.0,
   "annotation_status": "20 ms tau_w convention; not a measured growth interval",
   "search": {
     "offsets_ms": [

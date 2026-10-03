@@ -10,6 +10,29 @@ from labeler.rwm import evaluate as ev
 from labeler.rwm import features, labels
 
 
+def test_within_shot_auroc_separates_masks_and_weights_shots_equally():
+    table = pd.DataFrame(
+        {
+            "shot": [1] * 4 + [2] * 2 + [3] + [4] * 2,
+            "role": ["hanson"] * 7 + ["comparison"] * 2,
+            "label": [0, 0, 1, -1, 0, 1, 0, 0, 1],
+            "label_broad": [0, 0, 1, 0, 0, 1, 0, 0, 1],
+            "score": [0, 1, 2, 3, 1, 0, 0, 0, 1],
+        }
+    )
+    result = ev.within_shot_auroc(table)
+    primary, broad = result["primary"], result["broad"]
+    assert primary["n_shots"] == 2
+    assert primary["mean"] == primary["median"] == 0.5
+    assert [r["auroc"] for r in primary["per_shot"]] == [1.0, 0.0, None]
+    assert primary["per_shot"][0]["n_negative"] == 2
+    assert broad["per_shot"][0]["auroc"] == pytest.approx(2 / 3)
+    assert broad["mean"] == pytest.approx(1 / 3)
+    empty = ev.within_shot_auroc(table[table.shot == 3])["primary"]
+    assert empty["n_shots"] == 0
+    assert empty["mean"] is None and empty["median"] is None
+
+
 def test_campaign_pairs_keep_shot_draws_inside_each_campaign():
     table, onsets = _table(n_hanson=4, n_comparison=0)
     # Give the two campaigns opposite ranking errors; pooling hides the failure.

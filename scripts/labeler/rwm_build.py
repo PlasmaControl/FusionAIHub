@@ -42,7 +42,7 @@ from labeler.events import raw, rwm
 from labeler.events.interval_tables import validate_intervals
 from labeler.rwm import data, features, labels, shots
 
-LABEL_DIR = REPO / "data" / "events" / "resistive_wall_mode" / "extend_rwm_growth"
+LABEL_DIR = REPO / "data" / "events" / "resistive_wall_mode" / "extend_rwm_onset_window"
 STEM = "rwm_windows"
 CAMPAIGN_SPLIT = 170000  # shots below are the 2014 campaign, above the 2018 one
 
@@ -114,6 +114,8 @@ def main() -> None:
     hanson_shots = sorted(table.shot.unique())
 
     stats = pool.copy()
+    # Repair the archived high-beta_p title without changing roster selection.
+    stats["run_title"] = stats.run_title.str.replace("ã\x8eâ²", "β", regex=False)
     stats["campaign"] = stats.shot.map(campaign)
     measured = pd.DataFrame([measure(int(s), paths) for s in stats.shot])
     stats = pd.concat([stats.reset_index(drop=True), measured], axis=1)
@@ -317,7 +319,7 @@ def main() -> None:
                     & ~windows.shot.isin(hanson_shots)
                 ).sum()
             ),
-            "growth_ms": labels.GROWTH_MS,
+            "onset_window_ms": labels.ONSET_WINDOW_MS,
             "horizon_ms": labels.HORIZON_MS,
             "post_ms": labels.POST_MS,
         },
@@ -420,7 +422,8 @@ def main() -> None:
                 "No post-onset physical absence is inferred without mode termination evidence"
             ),
             "uncertain": (
-                f"Hanson: [{labels.GROWTH_MS:g} ms before ONSET_TIME, ONSET_TIME), "
+                f"Hanson: [{labels.ONSET_WINDOW_MS:g} ms before ONSET_TIME, "
+                "ONSET_TIME), "
                 "of either mode number, as a convention with unverified direction "
                 "and extent. Comparison: rwm_candidates screen spans."
             ),

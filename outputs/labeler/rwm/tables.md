@@ -1,4 +1,4 @@
-Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions; differences use basic paired intervals. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
+Source: outputs/labeler/rwm/evaluation.json. Brackets report 95% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. Individual metrics and detection-minus-reference use percentile intervals; between-model differences use basic paired intervals. Within-shot means/medians weight each two-class Hanson shot equally; one-class shots are omitted from those summaries, with counts in JSON. High-beta means beta_N >= 0.8 times the shot's whole-window beta_N p95; above-proxy means beta_N/li > 4. Negative slices are assumed negative.
 
 ### Five-split AUROC ranges — rwm-brf (seeds 0–4)
 
@@ -40,7 +40,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals 
 | 2018 | seed 4 | -0.012 [-0.041, 0.045] | -0.005 [-0.052, 0.080] | -0.014 [-0.084, 0.101] |
 | 2018 | run-record holdout | -0.049 [-0.073, -0.013] | -0.070 [-0.117, -0.010] | -0.057 [-0.109, 0.011] |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 high-beta AUROC is at or below chance across the five splits (0.31–0.53; reference-split CI [0.22, 0.41]) and below elapsed time on every split.
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 high-beta AUROC is about chance or below across the five splits (0.31–0.53; reference-split CI [0.22, 0.41]) and below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
 
 ### Piccione-style primary scores — all models (reference split, seed 0)
 
@@ -61,6 +61,27 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 | rule-betan | 0.715 [0.641, 0.776] | 0.064 [0.043, 0.099] |
 | rule-betan-over-li | 0.752 [0.688, 0.815] | 0.074 [0.052, 0.115] |
 | rule-rwm-candidates | 0.498 [0.495, 0.500] | 0.034 [0.026, 0.041] |
+
+### Within-shot AUROC — primary and broad Hanson masks (reference split, seed 0)
+
+| model | mask | shots with both classes | median | mean |
+|---|---|---|---|---|
+| rwm-brf | primary | 30 | 0.830 | 0.784 |
+| rwm-brf | broad | 30 | 0.760 | 0.719 |
+| rule-elapsed-time | primary | 30 | 1.000 | 0.931 |
+| rule-elapsed-time | broad | 30 | 0.419 | 0.417 |
+| rule-betan | primary | 30 | 0.884 | 0.814 |
+| rule-betan | broad | 30 | 0.821 | 0.739 |
+| rule-betan-over-li | primary | 30 | 0.900 | 0.855 |
+| rule-betan-over-li | broad | 30 | 0.866 | 0.786 |
+| rule-rwm-candidates | primary | 30 | 0.500 | 0.500 |
+| rule-rwm-candidates | broad | 30 | 0.500 | 0.499 |
+
+### Broad-mask run-record holdout — forest minus elapsed time
+
+| AUROC difference (95% basic paired CI) |
+|---|
+| 0.362 [0.304, 0.428] |
 
 ### High-beta conditional scores — all models
 
@@ -154,7 +175,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition o
 
 ### Forest alarm sensitivity — five splits and run-record holdout
 
-| evaluation | onsets warned | onset detection (95% CI) | detection minus random reference (95% basic CI) | median warning, ms (95% CI) |
+| evaluation | onsets warned | onset detection (95% CI) | detection minus random reference (95% percentile CI) | median warning, ms (95% CI) |
 |---|---|---|---|---|
 | seed 0 | 9/48 | 0.188 [0.049, 0.333] | -0.002 [-0.058, 0.052] | 356 [286, 389] |
 | seed 1 | 8/48 | 0.167 [0.046, 0.302] | 0.031 [-0.042, 0.118] | 179 [75, 343] |
@@ -319,6 +340,14 @@ Piccione et al. (2022), doi:10.1088/1741-4326/ac44af. Different machine (NSTX), 
 | rwm-brf - rule-elapsed-time | 0.001 [-0.049, 0.060] | -0.065 [-0.100, 0.016] |
 | rwm-brf - rule-betan | 0.053 [-0.038, 0.140] | -0.003 [-0.064, 0.069] |
 | rwm-brf - rule-betan-over-li | 0.037 [-0.038, 0.115] | 0.004 [-0.047, 0.071] |
+
+### Paired differences — rwm-brf versus rules, broad
+
+| first model minus rule | AUROC difference (95% basic CI) | AUPRC difference (95% basic CI) |
+|---|---|---|
+| rwm-brf - rule-elapsed-time | 0.350 [0.287, 0.414] | 0.040 [0.006, 0.058] |
+| rwm-brf - rule-betan | 0.025 [-0.068, 0.117] | 0.001 [-0.037, 0.036] |
+| rwm-brf - rule-betan-over-li | -0.013 [-0.092, 0.072] | -0.009 [-0.045, 0.029] |
 
 ### Paired differences — rwm-brf versus rules, high-beta conditional
 

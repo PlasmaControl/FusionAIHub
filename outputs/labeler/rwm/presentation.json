@@ -1,7 +1,7 @@
 {
   "script": "scripts/labeler/rwm_tables.py",
   "source": "outputs/labeler/rwm/evaluation.json",
-  "source_sha256": "2e142ecb78e2072bc56f227b23cfced436ba35fb6778f520933d7affae140a65",
+  "source_sha256": "c671a3d3819a61ab073d839dace8344f6fdf40c046b7242dd595b443acd1d61b",
   "latex": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex",
     "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm.tex",
@@ -197,8 +197,8 @@
         }
       }
     },
-    "caption": "Retrospective DIII-D forecasting on 33 Hanson shots with offline ZIPFIT and postprocessed magnetic-RMS inputs, and unverified negative coverage. Positives precede listed $n=1$ onsets by at most 100 ms; high-$\\beta$ conditions on $\\beta_N\\geq0.8$ shot whole-window p95; above-proxy conditions on $\\beta_N/l_i>4$. Brackets: 95\\% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. Five-split forest-minus-elapsed-time AUROC ranges: high-$\\beta$ $-0.04$ to $0.05$; above-proxy $-0.05$ to $0.06$. The primary seed-3 lower bound is borderline near zero. Campaign 2014 high-$\\beta$ AUROC is at or below chance ($0.31$ to $0.53$; reference-split CI [0.22, 0.41]) and below elapsed time on every split. Run-record holdout retains four records across three dates. Legacy uses different inputs and expert-reviewed stable shots; results are not comparable.",
-    "caption_words": 114,
+    "caption": "Retrospective DIII-D forecasting on 33 Hanson shots with offline ZIPFIT and postprocessed magnetic-RMS inputs, and unverified negative coverage. Positives precede listed $n=1$ onsets by at most 100 ms. Primary negatives end at the last onset, so elapsed time ranks within-shot almost perfectly (median AUROC 1.0, mean 0.93, 30 shots). High-$\\beta$ conditions on $\\beta_N\\geq0.8$ shot whole-window p95; above-proxy conditions on $\\beta_N/l_i>4$. Brackets: 95\\% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. Between-model differences use basic paired intervals. Five-split forest-minus-elapsed-time AUROC ranges: primary $0.001$ to $0.047$; high-$\\beta$ $-0.04$ to $0.05$; above-proxy $-0.05$ to $0.06$. The primary seed-3 lower bound is borderline near zero. Campaign 2014 high-$\\beta$ AUROC is about chance or below ($0.31$ to $0.53$; reference-split CI [0.22, 0.41]) and below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Under broad negatives, forest minus elapsed time is $0.350$ {\\scriptsize $[0.287, 0.414]$} (run-record holdout $0.362$ {\\scriptsize $[0.304, 0.428]$}); forest minus $\\beta_N/l_i$ is $-0.013$ {\\scriptsize $[-0.092, 0.072]$}. The forest matches the best single scalar under either mask (elapsed time on primary, $\\beta_N/l_i$ on broad); no onset-specific skill. Run-record holdout retains four records across three dates. Legacy uses different inputs and expert-reviewed stable shots; results are not comparable.",
+    "caption_words": 201,
     "split_ranges": {
       "json_path": "split_sensitivity.auroc_ranges",
       "values": {
@@ -327,6 +327,231 @@
           "max": 0.060514575829400896,
           "all_cis_include_zero": true
         }
+      }
+    },
+    "within_shot_elapsed_time": {
+      "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary",
+      "values": {
+        "n_shots": 30,
+        "mean": 0.9309497992055623,
+        "median": 1.0,
+        "per_shot": [
+          {
+            "shot": 156785,
+            "n_positive": 10,
+            "n_negative": 31,
+            "auroc": 1.0
+          },
+          {
+            "shot": 156786,
+            "n_positive": 20,
+            "n_negative": 162,
+            "auroc": 0.9320987654320988
+          },
+          {
+            "shot": 156787,
+            "n_positive": 20,
+            "n_negative": 103,
+            "auroc": 0.8689320388349514
+          },
+          {
+            "shot": 156790,
+            "n_positive": 10,
+            "n_negative": 135,
+            "auroc": 1.0
+          },
+          {
+            "shot": 156791,
+            "n_positive": 10,
+            "n_negative": 78,
+            "auroc": 1.0
+          },
+          {
+            "shot": 156792,
+            "n_positive": 20,
+            "n_negative": 199,
+            "auroc": 0.7211055276381909
+          },
+          {
+            "shot": 156793,
+            "n_positive": 20,
+            "n_negative": 204,
+            "auroc": 0.8578431372549019
+          },
+          {
+            "shot": 156794,
+            "n_positive": 20,
+            "n_negative": 43,
+            "auroc": 1.0
+          },
+          {
+            "shot": 156795,
+            "n_positive": 20,
+            "n_negative": 141,
+            "auroc": 0.8475177304964538
+          },
+          {
+            "shot": 156796,
+            "n_positive": 10,
+            "n_negative": 127,
+            "auroc": 1.0
+          },
+          {
+            "shot": 156797,
+            "n_positive": 20,
+            "n_negative": 50,
+            "auroc": 0.8
+          },
+          {
+            "shot": 158012,
+            "n_positive": 10,
+            "n_negative": 73,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158013,
+            "n_positive": 20,
+            "n_negative": 220,
+            "auroc": 0.6772727272727272
+          },
+          {
+            "shot": 158014,
+            "n_positive": 10,
+            "n_negative": 119,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158015,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          },
+          {
+            "shot": 158018,
+            "n_positive": 10,
+            "n_negative": 158,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158019,
+            "n_positive": 10,
+            "n_negative": 118,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158021,
+            "n_positive": 10,
+            "n_negative": 65,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158022,
+            "n_positive": 10,
+            "n_negative": 254,
+            "auroc": 1.0
+          },
+          {
+            "shot": 158023,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          },
+          {
+            "shot": 176067,
+            "n_positive": 10,
+            "n_negative": 201,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176068,
+            "n_positive": 40,
+            "n_negative": 209,
+            "auroc": 0.9282296650717703
+          },
+          {
+            "shot": 176069,
+            "n_positive": 30,
+            "n_negative": 279,
+            "auroc": 0.8243727598566308
+          },
+          {
+            "shot": 176070,
+            "n_positive": 20,
+            "n_negative": 216,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176071,
+            "n_positive": 10,
+            "n_negative": 245,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176074,
+            "n_positive": 20,
+            "n_negative": 264,
+            "auroc": 0.8049242424242424
+          },
+          {
+            "shot": 176077,
+            "n_positive": 10,
+            "n_negative": 105,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176078,
+            "n_positive": 20,
+            "n_negative": 335,
+            "auroc": 0.9238805970149254
+          },
+          {
+            "shot": 176085,
+            "n_positive": 10,
+            "n_negative": 318,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176087,
+            "n_positive": 10,
+            "n_negative": 275,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176088,
+            "n_positive": 30,
+            "n_negative": 282,
+            "auroc": 0.7423167848699763
+          },
+          {
+            "shot": 176089,
+            "n_positive": 10,
+            "n_negative": 246,
+            "auroc": 1.0
+          },
+          {
+            "shot": 176092,
+            "n_positive": 0,
+            "n_negative": 0,
+            "auroc": null
+          }
+        ]
+      }
+    },
+    "broad_pairs": {
+      "paired.rwm-brf - rule-elapsed-time.broad_auroc": {
+        "estimate": 0.34954769340939723,
+        "low": 0.28685367671869855,
+        "high": 0.4143236212777892
+      },
+      "paired.rwm-brf - rule-betan-over-li.broad_auroc": {
+        "estimate": -0.012667217287695043,
+        "low": -0.09228155988188085,
+        "high": 0.07215373979683953
+      },
+      "leave_one_run_record_out.paired_time.broad_auroc": {
+        "estimate": 0.3620500252744078,
+        "low": 0.30433474588668763,
+        "high": 0.4277080079581293
       }
     },
     "paired_time_by_campaign": {
@@ -717,7 +942,7 @@
     "campaign_pairs": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_campaign_pairs.tex",
-      "caption": "Forest minus elapsed time by campaign. Brackets: 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata; all five 2018 split-seed intervals include zero. Run-record holdout intervals are tabulated separately.",
+      "caption": "Forest minus elapsed time by campaign. Brackets: 95\\% basic paired shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. All five 2014 point differences are negative in both conditional strata; all five 2018 split-seed intervals include zero. The included 2018 run-record holdout intervals exclude zero: primary $-0.049$ {\\scriptsize $[-0.073, -0.013]$}; high-$\\beta$ $-0.070$ {\\scriptsize $[-0.117, -0.010]$}.",
       "source": {
         "split_sensitivity.paired_time_by_campaign": {
           "2014": {
@@ -1116,7 +1341,7 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. Brackets: 95\\% shot-bootstrap intervals (basic paired intervals for differences), conditional on fixed fitted predictions. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. The reference-split $\\beta_N$ rule warns 4/48 onsets; detection minus reference is $0.058$ {\\scriptsize $[0.014, 0.115]$}. Its low detection coverage limits this result.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. The reference-split $\\beta_N$ rule warns 4/48 onsets; detection minus reference is $0.058$ {\\scriptsize $[0.014, 0.115]$}. Its low detection coverage limits this result.",
       "source": {
         "configs.rwm-brf": {
           "0": {
@@ -3192,6 +3417,25 @@
               "no_high_beta_pre_onset_slices": 1,
               "no_high_beta_pre_onset_fraction": 0.045454545454545456
             }
+          },
+          "labelled_slice_qmin": {
+            "scope": "Hanson primary 10 ms slices labelled 0 or 1; held offline qmin; fraction among all labelled slices, with missing values in denominator; finite-only fraction separate",
+            "by_campaign": {
+              "2014": {
+                "n_labelled_slices": 2540,
+                "n_finite": 2498,
+                "n_above_two": 2108,
+                "fraction_above_two": 0.8299212598425196,
+                "finite_fraction_above_two": 0.8438751000800641
+              },
+              "2018": {
+                "n_labelled_slices": 3195,
+                "n_finite": 3087,
+                "n_above_two": 3074,
+                "fraction_above_two": 0.9621283255086072,
+                "finite_fraction_above_two": 0.9957887917071591
+              }
+            }
           }
         }
       }
@@ -4141,6 +4385,25 @@
               "no_high_beta_pre_onset_slices": 1,
               "no_high_beta_pre_onset_fraction": 0.045454545454545456
             }
+          },
+          "labelled_slice_qmin": {
+            "scope": "Hanson primary 10 ms slices labelled 0 or 1; held offline qmin; fraction among all labelled slices, with missing values in denominator; finite-only fraction separate",
+            "by_campaign": {
+              "2014": {
+                "n_labelled_slices": 2540,
+                "n_finite": 2498,
+                "n_above_two": 2108,
+                "fraction_above_two": 0.8299212598425196,
+                "finite_fraction_above_two": 0.8438751000800641
+              },
+              "2018": {
+                "n_labelled_slices": 3195,
+                "n_finite": 3087,
+                "n_above_two": 3074,
+                "fraction_above_two": 0.9621283255086072,
+                "finite_fraction_above_two": 0.9957887917071591
+              }
+            }
           }
         }
       }
@@ -4153,6 +4416,8 @@
     "Campaign paired AUROC \u2014 five splits and run-record holdout",
     "Piccione-style primary scores \u2014 all models (reference split, seed 0)",
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
+    "Within-shot AUROC \u2014 primary and broad Hanson masks (reference split, seed 0)",
+    "Broad-mask run-record holdout \u2014 forest minus elapsed time",
     "High-beta conditional scores \u2014 all models",
     "Above no-wall-proxy conditional scores \u2014 all models",
     "Leave-one-run-record-out \u2014 rwm-brf (95% shot CIs)",
@@ -4170,6 +4435,7 @@
     "Alarm definition sensitivity \u2014 rwm-brf",
     "Legacy NSTX \u2014 separately sourced published reference",
     "Paired differences \u2014 rwm-brf versus rules, primary",
+    "Paired differences \u2014 rwm-brf versus rules, broad",
     "Paired differences \u2014 rwm-brf versus rules, high-beta conditional",
     "Paired differences \u2014 rwm-brf versus rules, above-proxy conditional",
     "Paired alarm differences \u2014 rwm-brf versus rules (95% basic CIs)",
@@ -4185,37 +4451,37 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "2e996ccc52e94e6b50509eccec187092dccbbfef082514247b2a82b39d217318"
+        "sha256": "7426646e15d7d6e2e758e45c39e206578bc0fb900056c07d4137c6dc40e58706"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "3f9c6878c12eba5aa0cf3122560a14fe496a9124bd57490890c12102b52269aa"
+        "sha256": "ee75607dbae3c6fc93dee7dfae7ad2516224bc670b62b3f8b1caf4451a45c976"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "649f056f871208edd9d2ee06a8005f3ad73cc8ec42b33c82e7453b227cabb133"
+        "sha256": "708e7293c2e56b5bb29426e0ed414e7898755a8f49342310130bdda411471f04"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
-        "sha256": "07df7b5908b196d2b6b5add8514f2b8ef8cb31c7fdfe5698dda4b48a976cada2"
+        "sha256": "c48e98f16073084b90346baf88981d58d6c640715da8e0f8575c27fb4e33d5ec"
       }
     ],
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "c2d600a68ffc8aaed9821add5ce859bdf1ef0b5dae5e81063f1e7aa4625935b5"
+        "sha256": "061a1627e970ec33f96010992dcc2a6141d1dc6aec1643bba6b503fa43a83935"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "3a06e8d03f8bb8e4e1622e573d63aa0036bfcf237820a48f733f31b84e0d1fdf"
+        "sha256": "6ca98507f70f0f6b7c7b70777a50256c793c1562c08cd1e9ab75763f5900fee0"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "152c7c3dc4ccf07436901d6857ae55ffba950b578a3e4f4c969a1df06e0d1f15"
+        "sha256": "dec760e4017faf70373c3989ab5e2a5db4d7a788c2e11d8c77d3ab946243e56f"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -4225,7 +4491,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "629c58a3f79361318580e1db781b4cf6b5a1f272e752b475c1101977c293aa81"
+        "sha256": "d056373cd0fa6a7224746b20a65ce5ddb98109a2fe42fdb1d90e3029684b8404"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -4236,7 +4502,7 @@
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": ".........................................                                [100%]\n41 passed in 8.10s"
+      "output": "..................................................                       [100%]\n50 passed in 4.73s"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -4244,7 +4510,7 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "4 files already formatted"
+      "output": "10 files already formatted"
     },
     "table_ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-ruff.log",
@@ -4252,15 +4518,19 @@
     },
     "table_ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-format.log",
-      "output": "1 file already formatted"
+      "output": "10 files already formatted"
     },
     "table_validation": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-validation.log",
-      "output": "PASS: five table source/mirror pairs and ten PDF/PNG hashes match.\nPASS: all five campaign seeds and holdouts are rendered; caption claims match intervals.\nPASS: 48 snapshots keep exact onset (5 below/4 missing) separate from window (6 below/3 missing).\nPASS: seed-3 lower-bound sign perturbation retains the neutral caption and renders successfully."
+      "output": "PASS: every pre-existing score, alarm, interval, fold rule and prediction path is unchanged.\nPASS: all rules, forest seeds and holdout emit both-mask per-shot AUROC/counts and equal-shot summaries.\nPASS: qmin audit uses all primary labelled slices; missing and finite denominators are explicit.\nPASS: export/roster/labels unchanged except naming, timestamp and nine title repairs.\nPASS: five scoped table fragments match mirrors; all compile to one page with restored formatting and no warnings.\nPASS: percentile reference-difference and basic between-model captions are distinct; 2018 negative holdouts are reported.\nPASS: requested stale predictions removed only under round4/rwm; all committed outputs remain below 2 MB."
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-latex.log",
-      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsf\nonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></\nusr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texli\nve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/\nfonts/type1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_standalone.pdf (1 page, 100832 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex)\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/publ\nic/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams\nfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.\npfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></\nusr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_alarms_standalone.pdf (1 page, 60989 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_alarms_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.t\nex) [1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/ty\npe1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu\nblic/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am\nsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/\ncm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy1\n0.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.pdf (1 page, 61787 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.tex\n) [1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_actual_standalone.pdf (1 page, 44825 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_actual_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.tex\n) [1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_window_standalone.pdf (1 page, 45104 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_window_standalone.log."
+      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsf\nonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></\nusr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texli\nve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/\nfonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/t\nype1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_standalone.pdf (1 page, 108634 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.t\nex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/ty\npe1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu\nblic/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am\nsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/\ncm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></u\nsr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texl\nive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.pdf (1 page, 90583 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/publ\nic/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams\nfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></u\nsr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share\n/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texliv\ne/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_alarms_standalone.pdf (1 page, 81461 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_alarms_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.tex\n)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_actual_standalone.pdf (1 page, 44825 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_actual_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.tex\n)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_window_standalone.pdf (1 page, 45104 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_window_standalone.log."
+    },
+    "visual_inspection": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-visual.log",
+      "output": "Manual visual inspection via tools.view_image: table_rwm-1.png, table_rwm_campaign_pairs-1.png, table_rwm_alarms-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png, rwm_onset_scores.png under $LABELER_ROOT/round4/rwm. All row labels and values are readable and aligned; main caption is readable and fully inside the page; no clipping or overlap found. Main table and all supplements retain 9 pt body and 7 pt CI text in the standalone article."
     }
   }
 }
