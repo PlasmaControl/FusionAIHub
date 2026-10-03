@@ -252,6 +252,7 @@ def score_alarms(
         outcome["span_end_ms"] = max(start, stop)
         if role == "comparison":
             outcome["category"] = "Alarm" if outcome["alarms"] else "No alarm"
+            outcome["any_alarm_category"] = outcome["category"]
         out[shot] = outcome
     return out
 
@@ -521,6 +522,9 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
                 "shot": int(shot),
                 "campaign": int(rows.campaign.iloc[0]),
                 "score": rows.score.to_numpy(),
+                "elapsed_time_ms": rows.get(
+                    features.TIME_COLUMN, pd.Series(np.nan, index=rows.index)
+                ).to_numpy(),
                 "label": rows.label.to_numpy(),
                 "label_broad": rows.get("label_broad", rows.label).to_numpy(),
                 "high_beta": rows.high_beta.to_numpy(),
@@ -539,6 +543,9 @@ def shot_records(oof, alarms, target_onsets, all_onsets=None):
                     else "Missed"
                     if warnings
                     else "No target",
+                ),
+                "any_alarm_category": outcome.get(
+                    "any_alarm_category", outcome.get("category", "No target")
                 ),
                 "span_ms": outcome.get(
                     "span_ms", float(rows.t_ms.max() - rows.t_ms.min())
@@ -737,6 +744,80 @@ def within_shot_auroc(oof):
     return result
 
 
+def phase_controlled_auroc(groups, *, bin_ms=200.0):
+    """Primary Hanson AUROC using only within-campaign, within-time-bin pairs.
+
+    Bins are [200*k, 200*(k+1)) ms since the fixed high-current crossing. Weight
+    each cell's AUROC by its positive-times-negative pair count, omitting cells
+    with one class and slices with missing elapsed time. Ties get half credit.
+    """
+    records = groups.get("hanson", [])
+    if not records:
+        return float("nan")
+    score, label, elapsed = (
+        _stack(records, k) for k in ("score", "label", "elapsed_time_ms")
+    )
+    campaign = np.concatenate(
+        [np.full(len(r["label"]), r["campaign"]) for r in records]
+    )
+    keep = np.isin(label, [labels.NEGATIVE, labels.POSITIVE]) & np.isfinite(elapsed)
+    score, label, campaign = score[keep], label[keep], campaign[keep]
+    bins = np.floor(elapsed[keep] / bin_ms)
+    concordant, pairs = 0.0, 0
+    for year in np.unique(campaign):
+        for time_bin in np.unique(bins[campaign == year]):
+            cell = (campaign == year) & (bins == time_bin)
+            y = label[cell] == labels.POSITIVE
+            weight = int(y.sum()) * int((~y).sum())
+            if weight:
+                concordant += weight * metrics.auroc(score[cell], y)
+                pairs += weight
+    return concordant / pairs if pairs else float("nan")
+
+
+def phase_controlled_bootstrap(first, second=None, *, replicates=1000, seed=0):
+    """Campaign-stratified shot CI, or a basic paired CI when second is supplied.
+
+    Both models must use identical ordered Hanson shots, primary masks and time
+    coordinates. Comparison shots never enter the metric or the resamples.
+    """
+    a = first.get("hanson", [])
+    if second is not None:
+        b = second.get("hanson", [])
+        if len(a) != len(b) or any(
+            r["shot"] != s["shot"]
+            or r["campaign"] != s["campaign"]
+            or not np.array_equal(r["label"], s["label"])
+            or not np.array_equal(
+                r["elapsed_time_ms"], s["elapsed_time_ms"], equal_nan=True
+            )
+            for r, s in zip(a, b)
+        ):
+            raise ValueError("phase-controlled pairs must have aligned shots and bins")
+    campaigns = sorted({r["campaign"] for r in a})
+
+    def stratify(records):
+        return {str(c): [r for r in records if r["campaign"] == c] for c in campaigns}
+
+    def statistic(draws):
+        return phase_controlled_auroc(
+            {"hanson": [r for rows in draws.values() for r in rows]}
+        )
+
+    if second is None:
+        return metrics.shot_bootstrap(
+            stratify(a), statistic, replicates=replicates, seed=seed
+        )
+    return metrics.paired_bootstrap(
+        stratify(a),
+        stratify(b),
+        statistic,
+        replicates=replicates,
+        seed=seed,
+        method="basic",
+    )
+
+
 def paired_within_shot_auroc(first, second, *, replicates=1000, seed=0):
     """Basic paired intervals for equal-shot mean AUROC differences, both masks.
 
@@ -810,7 +891,7 @@ def statistic(groups):
     out["slice_fpr"] = fp / (fp + tn) if fp + tn else np.nan
     out["slice_precision"] = tp / (tp + fp) if tp + fp else np.nan
     out["slice_f1"] = 2 * tp / (2 * tp + fp + fn) if tp + fp + fn else np.nan
-    # Onset detection retains all targets; shot categories use any-hit precedence.
+    # Onset detection retains all alarms; primary shot categories use the first.
     warnings = [w for r in hanson for w in r["warning_ms"]]
     detected = [w for w in warnings if w is not None]
     out["onset_detection_rate"] = len(detected) / len(warnings) if warnings else np.nan
@@ -828,6 +909,11 @@ def statistic(groups):
     ):
         out[f"hanson_shot_{key}_rate"] = (
             float(np.mean([r["category"] == category for r in target_shots]))
+            if target_shots
+            else np.nan
+        )
+        out[f"hanson_any_alarm_shot_{key}_rate"] = (
+            float(np.mean([r["any_alarm_category"] == category for r in target_shots]))
             if target_shots
             else np.nan
         )
@@ -879,6 +965,14 @@ def counts(groups):
         ),
         "comparison_shots_with_an_alarm": sum(r["alarms"] > 0 for r in comparison),
     }
+    for category, key in (
+        ("Detected", "detected"),
+        ("Early", "early"),
+        ("Missed", "missed"),
+    ):
+        out[f"hanson_any_alarm_{key}_shots"] = sum(
+            r["any_alarm_category"] == category for r in hanson
+        )
     for key in ("early", "ignored"):
         out[f"hanson_{key}_alarms"] = sum(r[f"{key}_alarms"] for r in hanson)
         out[f"hanson_shots_with_an_{key}_alarm"] = sum(

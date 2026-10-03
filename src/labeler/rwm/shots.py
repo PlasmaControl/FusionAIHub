@@ -9,12 +9,13 @@ day, and `run_title`):
 ``same_day``
     every other plasma shot of a run day that holds a Hanson shot;
 ``same_experiment``
-    every plasma shot of a run day of the same calendar year whose title is one
-    of the high-beta or RWM experiments the Hanson days belong to
-    (`EXPERIMENT_TITLES`).
+    every plasma shot of a run day of the same calendar year whose title matches
+    a selected high-beta, kinetic-RWM, high-li or impurity-seeding experiment
+    (`EXPERIMENT_TITLES`). The name denotes a title match, not identical physics.
 
 A comparison shot is *unlabelled*, not negative: the onset tables list onsets and
-say nothing about shots they omit, and these are RWM experiment days.
+say nothing about shots they omit. The pool spans distinct experimental aims,
+including days likely to contain unlisted RWMs or resonant field amplification.
 """
 
 from __future__ import annotations
@@ -39,9 +40,8 @@ RUN_COLUMNS = (
     "shot_type",
 )
 
-#: Title fragments (lower case, whitespace collapsed) of the experiments the
-#: Hanson run days belong to: the 2014 beta_N ~ 5 and kinetic-RWM-stability days
-#: and the 2018 RWM-control and high-beta_p scenario days.
+#: Title fragments (lower case, whitespace collapsed) of the selected high-beta
+#: and RWM-related pool, including high-li and impurity-seeding scenario days.
 EXPERIMENT_TITLES = (
     "explore access to bn~5",
     "explore access to beta_n~5",

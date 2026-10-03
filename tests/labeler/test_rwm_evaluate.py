@@ -6,8 +6,35 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from labeler.rwm import alarm, features, labels
 from labeler.rwm import evaluate as ev
-from labeler.rwm import features, labels
+
+
+@pytest.mark.parametrize(
+    ("alarms", "targets", "explanations", "category", "any_category"),
+    [
+        ([100.0, 400.0], [600.0], [600.0], "Early", "Detected"),
+        ([600.0, 900.0], [1000.0], [600.0, 1000.0], "Detected", "Detected"),
+        ([300.0, 900.0], [1000.0], [300.0, 1000.0], "Missed", "Detected"),
+        ([600.0, 900.0], [600.0, 1000.0], [600.0, 1000.0], "Detected", "Detected"),
+        ([590.0], [600.0], [600.0], "Detected", "Detected"),
+        ([591.0], [600.0], [600.0], "Missed", "Missed"),
+        ([701.0], [600.0], [600.0], "Missed", "Missed"),
+        ([100.0], [], [600.0], "No target", "No target"),
+        ([], [600.0], [600.0], "Missed", "Missed"),
+    ],
+)
+def test_first_considered_alarm_decides_shot_category(
+    alarms, targets, explanations, category, any_category
+):
+    outcome = alarm.shot_outcome(
+        alarms[::-1], targets, explanations, ignore_after_ms=max(explanations) + 100
+    )
+    assert outcome["category"] == category
+    assert outcome["any_alarm_category"] == any_category
+    if alarms == [100.0, 400.0]:
+        assert outcome["warning_ms"] == [200.0]
+        assert outcome["early"] == [100.0]
 
 
 def test_within_shot_auroc_separates_masks_and_weights_shots_equally():
@@ -31,6 +58,69 @@ def test_within_shot_auroc_separates_masks_and_weights_shots_equally():
     empty = ev.within_shot_auroc(table[table.shot == 3])["primary"]
     assert empty["n_shots"] == 0
     assert empty["mean"] is None and empty["median"] is None
+
+
+def test_phase_controlled_auroc_excludes_cross_bin_and_campaign_pairs():
+    groups = {
+        "hanson": [
+            {
+                "shot": 1,
+                "campaign": 2014,
+                "score": [0, 0, 0, 4, 3, 2, 1, 100],
+                "label": [1, 1, 0, 1, 0, 0, 0, -1],
+                "elapsed_time_ms": [0, 1, 199, 200, 201, 202, 399, 0],
+            },
+            {
+                "shot": 2,
+                "campaign": 2018,
+                "score": [1000],
+                "label": [1],
+                "elapsed_time_ms": [0],
+            },
+            {
+                "shot": 3,
+                "campaign": 2014,
+                "score": [-1000, -1000],
+                "label": [0, 0],
+                "elapsed_time_ms": [400, np.nan],
+            },
+        ],
+        "comparison": [
+            {
+                "shot": 4,
+                "campaign": 2014,
+                "score": [1000],
+                "label": [1],
+                "elapsed_time_ms": [0],
+            }
+        ],
+    }
+    # Bin 0 has two tied pairs; bin 1 has three concordant pairs: (1+3)/5.
+    assert ev.phase_controlled_auroc(groups) == 0.8
+    assert np.isnan(ev.phase_controlled_auroc({"hanson": groups["hanson"][1:]}))
+    interval = ev.phase_controlled_bootstrap(groups, replicates=20)
+    assert interval["estimate"] == interval["low"] == interval["high"] == 0.8
+    paired = ev.phase_controlled_bootstrap(groups, groups, replicates=20)
+    assert paired == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+
+
+def test_phase_paired_bootstrap_rejects_misaligned_shots_and_bins():
+    first = {
+        "hanson": [
+            {
+                "shot": 1,
+                "campaign": 2014,
+                "score": [1, 0],
+                "label": [1, 0],
+                "elapsed_time_ms": [0, 199],
+            }
+        ]
+    }
+    r = first["hanson"][0]
+    for replacement in ({"shot": 2}, {"elapsed_time_ms": [0, 200]}, {"label": [0, 1]}):
+        second = {"hanson": [{**r, **replacement}]}
+        with pytest.raises(ValueError, match="aligned"):
+            ev.phase_controlled_bootstrap(first, second, replicates=20)
 
 
 def test_campaign_pairs_keep_shot_draws_inside_each_campaign():
@@ -402,7 +492,8 @@ def test_primary_alarms_stop_after_last_explanation_but_comparison_keeps_trace()
     assert primary[7]["ignored"] == [1100.0]
     assert primary[7]["early"] == [50.0]
     assert primary[7]["false"] == [50.0]
-    assert primary[7]["category"] == "Detected"
+    assert primary[7]["category"] == "Early"
+    assert primary[7]["any_alarm_category"] == "Detected"
     assert primary[7]["span_ms"] == 1000.0
     assert primary[8]["alarms"] == [50.0, 200.0, 700.0, 1000.0, 1100.0]
     assert primary[8]["ignored"] == [] and primary[8]["span_ms"] == 1200.0
@@ -456,7 +547,7 @@ def test_shot_categories_carry_early_ignored_and_multiple_target_counts():
     )
     groups = ev.shot_records(table, outcomes, targets, explanations)
     assert [r["category"] for r in groups["hanson"]] == [
-        "Detected",
+        "Early",
         "Early",
         "Missed",
         "No target",
@@ -467,15 +558,18 @@ def test_shot_categories_carry_early_ignored_and_multiple_target_counts():
     assert groups["hanson"][1]["span_ms"] == 600.0
     sizes = ev.counts(groups)
     assert sizes["hanson_target_shots"] == 3
-    assert sizes["hanson_detected_shots"] == 1
-    assert sizes["hanson_early_shots"] == 1
+    assert sizes["hanson_detected_shots"] == 0
+    assert sizes["hanson_early_shots"] == 2
+    assert sizes["hanson_any_alarm_detected_shots"] == 1
+    assert sizes["hanson_any_alarm_early_shots"] == 1
     assert sizes["hanson_missed_shots"] == 1
     assert sizes["hanson_no_target_shots"] == 1
     assert sizes["hanson_early_alarms"] == 2
     assert sizes["hanson_ignored_alarms"] == 1
     stats = ev.statistic(groups)
-    assert stats["hanson_shot_detection_rate"] == pytest.approx(1 / 3)
-    assert stats["hanson_shot_early_rate"] == pytest.approx(1 / 3)
+    assert stats["hanson_shot_detection_rate"] == 0.0
+    assert stats["hanson_shot_early_rate"] == pytest.approx(2 / 3)
+    assert stats["hanson_any_alarm_shot_detection_rate"] == pytest.approx(1 / 3)
     assert stats["hanson_shot_miss_rate"] == pytest.approx(1 / 3)
     assert stats["onset_detection_rate"] == 0.5
     assert stats["comparison_alarm_incidence"] == 1.0

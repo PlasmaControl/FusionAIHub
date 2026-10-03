@@ -75,10 +75,11 @@ def shot_outcome(alarms, target_onsets, explanation_onsets, *, ignore_after_ms=N
 
     Alarms after `ignore_after_ms` are retained as `ignored`, without affecting any
     scored outcome. An Early alarm is unexplained by every explanation onset and
-    more than 400 ms before a future target onset. A shot is Detected if any target
-    has a 10--400 ms warning; otherwise Early if it has any Early alarm; otherwise
-    Missed. Shots without targets are No target. Thus early alarms can coexist with
-    a Detected shot. Matching is per target, not one-to-one: the same alarm can warn
+    more than 400 ms before a future target onset. Only the first considered alarm
+    decides the shot category: Detected if it warns a target by 10--400 ms, Early
+    if it is an Early alarm, otherwise Missed. Shots without targets are No target.
+    `any_alarm_category` preserves any-warning precedence as a sensitivity.
+    Per-onset matching retains all alarms, not one-to-one: the same alarm can warn
     multiple targets with overlapping warning windows. `false` retains every
     unexplained alarm (including Early), not a verified false-positive label.
     """
@@ -90,7 +91,7 @@ def shot_outcome(alarms, target_onsets, explanation_onsets, *, ignore_after_ms=N
     early = [
         a for a in unexplained if any(a < t - MAX_WARNING_MS for t in target_onsets)
     ]
-    category = (
+    any_category = (
         "Detected"
         if any(w is not None for w in warnings)
         else "Early"
@@ -99,6 +100,17 @@ def shot_outcome(alarms, target_onsets, explanation_onsets, *, ignore_after_ms=N
         if len(target_onsets)
         else "No target"
     )
+    first = considered[:1]
+    first_warnings, _ = match_alarms(first, target_onsets)
+    category = (
+        "No target"
+        if not len(target_onsets)
+        else "Detected"
+        if any(w is not None for w in first_warnings)
+        else "Early"
+        if first and first[0] in early
+        else "Missed"
+    )
     return {
         "alarms": considered,
         "warning_ms": warnings,
@@ -106,4 +118,5 @@ def shot_outcome(alarms, target_onsets, explanation_onsets, *, ignore_after_ms=N
         "early": early,
         "ignored": ignored,
         "category": category,
+        "any_alarm_category": any_category,
     }

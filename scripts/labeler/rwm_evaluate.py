@@ -86,6 +86,7 @@ def _init(slices_path, replicates, saved_record=None):
     slices["run_record"] = slices.shot.map(roster.set_index("shot").run.astype(str))
     _STATE.update(
         slices=slices,
+        roster=roster,
         onsets=onsets,
         other=other,
         replicates=replicates,
@@ -114,6 +115,9 @@ def summarise(oof, alarms, target, rules):
     result = {
         "counts": ev.counts(groups),
         "within_shot_auroc": ev.within_shot_auroc(oof),
+        "phase_controlled_auroc": ev.phase_controlled_bootstrap(
+            groups, replicates=_STATE["replicates"], seed=SEED
+        ),
         "rules_by_fold": rules,
         "metrics": metrics.shot_bootstrap(
             groups, ev.statistic, replicates=_STATE["replicates"], seed=SEED
@@ -131,6 +135,7 @@ def summarise(oof, alarms, target, rules):
                     "early_alarms": r["early_alarms"],
                     "ignored_alarms": r["ignored_alarms"],
                     "category": r["category"],
+                    "any_alarm_category": r["any_alarm_category"],
                     "alarms": r["alarms"],
                     "span_ms": r["span_ms"],
                 }
@@ -147,6 +152,25 @@ def summarise(oof, alarms, target, rules):
             "metrics": metrics.shot_bootstrap(
                 part, ev.statistic, replicates=_STATE["replicates"], seed=SEED
             ),
+        }
+    roster = _STATE["roster"].set_index("shot")
+    comparison = groups["comparison"]
+    for column, key in (("run_title", "run_title"), ("role", "pool_role")):
+        cells = {}
+        for r in comparison:
+            value = roster.loc[r["shot"], column]
+            cell = cells.setdefault(value, {"shots": [], "alarm_shots": []})
+            cell["shots"].append(r["shot"])
+            if r["alarms"]:
+                cell["alarm_shots"].append(r["shot"])
+        result[f"comparison_by_{key}"] = {
+            value: {
+                **cell,
+                "n_shots": len(cell["shots"]),
+                "n_alarm_shots": len(cell["alarm_shots"]),
+                "alarm_incidence": len(cell["alarm_shots"]) / len(cell["shots"]),
+            }
+            for value, cell in sorted(cells.items())
         }
     return result, groups
 
@@ -231,6 +255,9 @@ def run_pair(args):
         method="basic",
     )
     interval["within_shot_auroc"] = ev.paired_within_shot_auroc(
+        groups_first, groups_second, replicates=_STATE["replicates"], seed=SEED
+    )
+    interval["phase_controlled_auroc"] = ev.phase_controlled_bootstrap(
         groups_first, groups_second, replicates=_STATE["replicates"], seed=SEED
     )
     return f"{first} - {second}", clean(interval)
@@ -578,6 +605,13 @@ def main() -> None:
                 "equal-shot mean of per-shot AUROCs over shared two-class Hanson "
                 "shots; 95% basic paired shot-bootstrap intervals, seed 0"
             ),
+            "phase_controlled_auroc": (
+                "primary Hanson slices; positive-negative pairs restricted to "
+                "campaign x floor(elapsed_ms/200), bins [200*k,200*(k+1)); "
+                "pair-count-weighted cell AUROC; omit one-class cells and missing "
+                "time; 1000 campaign-stratified shot resamples, seed 0; individual "
+                "percentile and forest-minus-scalar basic paired intervals"
+            ),
             "primary_mask_mechanism": (
                 "primary negatives end at last n=1 onset; final labelled slices "
                 "are positive, giving increasing elapsed time nearly perfect "
@@ -596,7 +630,17 @@ def main() -> None:
             ),
             "primary_alarm_scope": "Hanson traces end at last n=1/n=2 onset +100 ms; comparison traces retain full span; physical state remains unassessed",
             "full_trace_alarm_sensitivity": "independently retune on full Hanson traces; same forest fits and inner folds",
-            "shot_categories": "any Detected warning takes precedence, then Early (>400 ms before a target), then Missed; n=2-only No target; comparison FP means alarm incidence, not verified stable-shot FPR",
+            "shot_categories": (
+                "first considered alarm decides: Detected if it warns any n=1 "
+                "target by 10-400 ms; Early if unexplained and >400 ms before a "
+                "future target; otherwise Missed; n=2-only No target; comparison "
+                "FP means alarm incidence, not verified stable-shot FPR"
+            ),
+            "any_alarm_category_sensitivity": (
+                "any target warning wins, otherwise any Early alarm, otherwise "
+                "Missed; category sensitivity only, no refit or retuning; "
+                "per-onset metrics retain all alarms"
+            ),
             "alarm_grid": {
                 "high_quantiles": ev.HIGH_QUANTILES,
                 "low_fractions": ev.LOW_FRACTIONS,
@@ -606,6 +650,9 @@ def main() -> None:
             "nnpu": "excluded: outer-fold-informed development and unidentified U prior",
             "rotation_claim": "removed; no isolated rotation benefit claimed",
             "interval_scope": "shot sampling at fixed fitted OOF predictions; split sensitivity separate",
+            "multiplicity": (
+                "exploratory intervals, unadjusted for multiple comparisons"
+            ),
         },
         "configs": results,
         "paired": paired,
