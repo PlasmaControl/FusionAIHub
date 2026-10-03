@@ -34,16 +34,34 @@ while true; do
         exit 0
     fi
     if (( FALLBACK_STARTED == 0 && $(date +%s) > DEADLINE )); then
-        mapfile -t PENDING < <(awk '$2 == "PD" {print $1}' <<< "$QUEUE")
+        # Pending array elements can disappear into a compressed sacct record
+        # after cancellation. Include previously cancelled, incomplete tasks
+        # so restarting this watcher safely resumes the fallback.
+        PENDING=()
+        for TASK in {0..8}; do
+            ID="${JOB_ID}_${TASK}"
+            ARM=${ARMS[$((TASK % 3))]}
+            SEED=$((TASK / 3))
+            STATE=$(awk -v id="$ID" '$1 == id {print $2}' <<< "$QUEUE")
+            if [[ ! -f "$OUT/models/$ARM/seed-$SEED/run.json" ]] && \
+                [[ $STATE == PD || -z $STATE ]]; then
+                PENDING+=("$ID")
+            fi
+        done
         FALLBACK_TASKS=()
         for ID in "${PENDING[@]}"; do
             # Restrict cancellation to pending state, avoiding a start-time race.
-            scancel -t PENDING "$ID"
-            sleep 1
-            STATE=$(sacct -n -X -j "$ID" -o State -P | head -1)
-            if [[ $STATE == CANCELLED* ]]; then
+            STATE=$(squeue -h -r -j "$JOB_ID" -o '%i %t' | \
+                awk -v id="$ID" '$1 == id {print $2}')
+            if [[ $STATE == PD ]]; then
+                scancel -t PENDING "$ID"
+                sleep 1
+            fi
+            STATE=$(squeue -h -r -j "$JOB_ID" -o '%i %t' | \
+                awk -v id="$ID" '$1 == id {print $2}')
+            if [[ -z $STATE ]]; then
                 FALLBACK_TASKS+=("${ID##*_}")
-                echo "fallback $ID cancelled pending at $(date -Is)"
+                echo "fallback $ID absent from queue after cancellation at $(date -Is)"
             fi
         done
         FALLBACK_STARTED=1

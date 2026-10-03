@@ -146,16 +146,18 @@ def render_report(record: dict, manifest: dict, out: Path, repo: Path) -> None:
             "",
             "Shots: " + ", ".join(map(str, block["shots"])) + ".",
             "",
+            "Scorable frames and positives: "
+            + "; ".join(
+                f"{reference}: {results['n_frames']} frames, "
+                f"{results['n_positive']} positives"
+                for reference, results in block["references"].items()
+            )
+            + ".",
+            "",
             "| Model / supervision | Reference | AUROC | AUPRC | F1 |",
             "|---|---|---|---|---|",
         ]
         for reference, results in block["references"].items():
-            doc += [
-                (
-                    f"<!-- {reference}: {results['n_frames']} scorable frames; "
-                    f"{results['n_positive']} positives. -->"
-                )
-            ]
             for name, metrics in results["seed_summary"]["methods"].items():
                 doc.append(
                     f"| {name} | {reference} | "
