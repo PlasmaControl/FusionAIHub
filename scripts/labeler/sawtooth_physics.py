@@ -287,7 +287,7 @@ def process_shot(job):
     rule = frozen_rule(work)
     prior = paths.root / "round4/saw/fix2/shots" / f"{shot}.json"
     prior_failed = prior.exists() and bool(json.loads(prior.read_text()).get("error"))
-    if "wait_geometry" in options and not prior_failed:
+    if ("wait_geometry" in options or "wait_height" in options) and not prior_failed:
         # Fetch workers and label workers share an ordered shot queue. A node
         # inventory is written only after the per-shot HDF5 writer closes.
         deadline = time.monotonic() + 3600
@@ -295,12 +295,17 @@ def process_shot(job):
         while time.monotonic() < deadline:
             try:
                 with h5py.File(metadata, "r", locking=False) as eqfile:
-                    if "fetch_missing_json" in eqfile.attrs:
+                    if "wait_height" in options and "ecegeom/ECEZH" in eqfile:
+                        break
+                    if "wait_height" not in options and "fetch_missing_json" in eqfile.attrs:
                         break
             except OSError:
                 pass
             stopped = False
-            for ledger_name in ("geometry_fetch.json", "geometry_minimal_fetch.json"):
+            for ledger_name in (
+                "geometry_fetch.json", "geometry_minimal_fetch.json",
+                "geometry_height_fetch.json",
+            ):
                 ledger = work / ledger_name
                 if not ledger.exists():
                     continue
@@ -315,6 +320,9 @@ def process_shot(job):
                     )
                     if attempted and attempted.get("status") == "worker_failed":
                         stopped = True
+                        break
+                    if attempted and "wait_height" in options and ledger_name == "geometry_height_fetch.json":
+                        stopped = True  # Measured height may be unavailable.
                         break
                 except json.JSONDecodeError:
                     pass  # Writer progress is informational, never label truth.
@@ -590,6 +598,35 @@ def process_shot(job):
             )
     except (OSError, KeyError, ValueError) as exc:
         result["error"] = f"{type(exc).__name__}: {exc}"
+        if signal.exists():
+            archive = work / "stale_signals" / signal.name
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            if archive.exists():
+                archive = archive.with_stem(f"{shot}-{time.time_ns()}")
+            signal.replace(archive)
+            result["stale_signal_archived"] = str(archive)
+        result["error_kind"] = (
+            "unsupported_physical_core"
+            if "physical" in str(exc) and "core channels" in str(exc)
+            else "reader_or_auxiliary_failure"
+        )
+        if "window_s" in result:
+            # A valid native-ECE window with unsupported physical geometry
+            # has explicit unassessed support, never a negative label.
+            start = float(t[0])
+            end = float(t[-1] + np.median(np.diff(t)))
+            result.update(
+                states=[{
+                    "start_s": start, "end_s": end, "state": "unassessed",
+                    "reason": result["error_kind"],
+                }],
+                state_seconds={
+                    "present": 0, "absent": 0, "uncertain": 0,
+                    "unassessed": end - start,
+                },
+                observable_spans=[], assessed_spans=[],
+                absent_evidence_spans=[],
+            )
     result["elapsed_s"] = round(time.monotonic() - started, 3)
     save_json(record, result)
     return result
@@ -684,6 +721,9 @@ def export_csv(records, destination, *, compact=False, prefix="labels"):
                             "train_ids",
                             "period_ms",
                             "state",
+                            "reason",
+                            "central_channel",
+                            "central_selection",
                             "central_relative_drop",
                             "q_conflict",
                             "candidate_state",
@@ -759,6 +799,7 @@ def labels(args):
             windows.get(s),
             *(("wait_geometry",) if getattr(args, "wait_geometry", False) else ()),
             *(("refresh",) if getattr(args, "refresh", False) else ()),
+            *(("wait_height",) if getattr(args, "wait_height", False) else ()),
         )
         for s in shots
     ]
@@ -1216,6 +1257,7 @@ def main():
     parser.add_argument("--records-only", action="store_true")
     parser.add_argument("--wait-geometry", action="store_true")
     parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--wait-height", action="store_true")
     parser.add_argument("--shots", nargs="+", type=int)
     parser.add_argument("--shard", type=int, default=0)
     parser.add_argument("--shards", type=int, default=1)

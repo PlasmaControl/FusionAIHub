@@ -9,16 +9,27 @@ from ..scoring.events import match
 HISTOGRAM_BINS = 512
 
 
-def classification_metrics(cells):
+def classification_metrics(cells, *, unclassified=None):
     """Three-regime window scores; rows are truth and columns are prediction.
 
     Macro F1 averages over all three declared classes, with zero F1 for a class
     with no truth or predictions. Recall is undefined when no truth is available.
+    Unclassified counts retain the original truth support and count as errors.
     """
     cells = np.asarray(cells)
     if cells.shape != (3, 3) or not np.isfinite(cells).all() or (cells < 0).any():
         raise ValueError("classification requires a finite nonnegative 3x3 matrix")
-    support, predicted = cells.sum(axis=1), cells.sum(axis=0)
+    unclassified = np.asarray(
+        np.zeros(3) if unclassified is None else unclassified, dtype=float
+    )
+    if (
+        unclassified.shape != (3,)
+        or not np.isfinite(unclassified).all()
+        or (unclassified < 0).any()
+    ):
+        raise ValueError("unclassified counts require three finite nonnegative values")
+    support = cells.sum(axis=1) + unclassified
+    predicted = cells.sum(axis=0)
     true_positive = cells.diagonal()
     denominators = support + predicted
     f1 = np.divide(
@@ -35,10 +46,15 @@ def classification_metrics(cells):
             float(tp / total) if total else None
             for tp, total in zip(true_positive, support, strict=True)
         ],
-        "per_class_f1": f1.tolist() if cells.sum() else [None] * 3,
-        "window_accuracy": float(cells.trace() / cells.sum()) if cells.sum() else None,
-        "macro_f1": float(f1.mean()) if cells.sum() else None,
-        "windows": int(cells.sum()),
+        "per_class_f1": f1.tolist() if support.sum() else [None] * 3,
+        "window_accuracy": float(cells.trace() / support.sum())
+        if support.sum()
+        else None,
+        "macro_f1": float(f1.mean()) if support.sum() else None,
+        "windows": int(support.sum()),
+        "classified_windows": int(cells.sum()),
+        "unclassified_windows": int(unclassified.sum()),
+        "unclassified_by_true_class": unclassified.astype(int).tolist(),
     }
 
 
@@ -51,8 +67,11 @@ def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
     if not rows:
         raise ValueError("classification bootstrap requires at least one shot")
     cells = np.stack([r["cells"] for r in rows])
+    unclassified = np.stack([r.get("unclassified", np.zeros(3)) for r in rows])
     majority = np.stack([r["majority_cells"] for r in rows])
-    result = classification_metrics(cells.sum(axis=0))
+    result = classification_metrics(
+        cells.sum(axis=0), unclassified=unclassified.sum(axis=0)
+    )
     baseline = classification_metrics(majority.sum(axis=0))
     samples = {name: [] for name in ("window_accuracy", "macro_f1")}
     baseline_samples = {name: [] for name in samples}
@@ -60,7 +79,9 @@ def bootstrap_classification(rows, *, replicates=1000, seed=20261003):
     rng = np.random.default_rng(seed)
     for _ in range(replicates):
         selected = rng.integers(0, len(rows), size=len(rows))
-        values = classification_metrics(cells[selected].sum(axis=0))
+        values = classification_metrics(
+            cells[selected].sum(axis=0), unclassified=unclassified[selected].sum(axis=0)
+        )
         majority_values = classification_metrics(majority[selected].sum(axis=0))
         for name, sample in samples.items():
             if values[name] is not None:
@@ -288,14 +309,20 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
     """Each row is one held-out shot, with event cells and a presence histogram."""
     if not rows:
         return {"shots": 0, "crash": None, "presence": None, "ci95": {}}
-    events = np.stack([r["cells"] for r in rows])
+    if any(r["cells"] is None for r in rows) and not all(
+        r["cells"] is None for r in rows
+    ):
+        raise ValueError("crash availability must be the same for every shot")
+    events = (
+        np.stack([r["cells"] for r in rows]) if rows[0]["cells"] is not None else None
+    )
     hist = np.stack([r["histogram"] for r in rows])
     presence_cells = (
         np.stack([r["presence_cells"] for r in rows])
         if all("presence_cells" in r for r in rows)
         else None
     )
-    crash = point_metrics(events.sum(axis=0))
+    crash = point_metrics(events.sum(axis=0)) if events is not None else None
     presence = (
         presence_from_cells(hist.sum(axis=0), presence_cells.sum(axis=0), threshold)
         if presence_cells is not None
@@ -313,7 +340,11 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
     for _ in range(replicates):
         selected = rng.integers(0, len(rows), size=len(rows))
         values = {
-            "crash": point_metrics(events[selected].sum(axis=0)),
+            "crash": (
+                point_metrics(events[selected].sum(axis=0))
+                if events is not None
+                else None
+            ),
             "presence": (
                 presence_from_cells(
                     hist[selected].sum(axis=0),
@@ -326,13 +357,15 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
         }
         for key, sample in samples.items():
             kind, name = key.split("_", 1)
-            value = values[kind][name]
+            value = values[kind][name] if values[kind] is not None else None
             if value is not None:
                 sample.append(value)
     return {
         "shots": len(rows),
         "shot_ids": [r["shot"] for r in rows],
-        "crash_cells": events.sum(axis=0).astype(int).tolist(),
+        "crash_cells": (
+            events.sum(axis=0).astype(int).tolist() if events is not None else None
+        ),
         "crash": crash,
         "presence": presence,
         "ci95": {
@@ -345,6 +378,94 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
         "presence_threshold": "per-fold inner-selected"
         if presence_cells is not None
         else threshold,
+    }
+
+
+def paired_bootstrap(rows, baseline_rows, *, replicates=1000, seed=20261003):
+    """Model minus baseline with the same whole-shot draw on both sides.
+
+    Shots are paired by ID, not input ordering. Crash differences stay undefined
+    for a presence-only baseline. Both ranking and operating presence metrics
+    use each shot's already-frozen threshold/confusion cells.
+    """
+    left = {r["shot"]: r for r in rows}
+    right = {r["shot"]: r for r in baseline_rows}
+    if (
+        not left
+        or set(left) != set(right)
+        or len(left) != len(rows)
+        or len(right) != len(baseline_rows)
+    ):
+        raise ValueError("paired comparison requires the same unique shots")
+    shots = sorted(left)
+    groups = [[side[shot] for shot in shots] for side in (left, right)]
+    arrays = []
+    for group in groups:
+        arrays.append(
+            {
+                "events": np.stack([r["cells"] for r in group])
+                if all(r["cells"] is not None for r in group)
+                else None,
+                "histogram": np.stack([r["histogram"] for r in group]),
+                "presence_cells": np.stack([r["presence_cells"] for r in group]),
+            }
+        )
+
+    def differences(selected):
+        values = []
+        for side in arrays:
+            crash = (
+                point_metrics(side["events"][selected].sum(axis=0))
+                if side["events"] is not None
+                else {"precision": None, "recall": None, "f1": None}
+            )
+            presence = presence_from_cells(
+                side["histogram"][selected].sum(axis=0),
+                side["presence_cells"][selected].sum(axis=0),
+            )
+            values.append(
+                {
+                    **{f"crash_{key}": value for key, value in crash.items()},
+                    **{
+                        f"presence_{key}": presence[key]
+                        for key in (
+                            "auroc",
+                            "auprc",
+                            "f1",
+                            "precision",
+                            "recall",
+                            "accuracy",
+                        )
+                    },
+                }
+            )
+        return {
+            key: values[0][key] - values[1][key]
+            if values[0][key] is not None and values[1][key] is not None
+            else None
+            for key in values[0]
+        }
+
+    result = differences(np.arange(len(shots)))
+    samples = {key: [] for key in result}
+    rng = np.random.default_rng(seed)
+    for _ in range(replicates):
+        selected = rng.integers(0, len(shots), size=len(shots))
+        for key, value in differences(selected).items():
+            if value is not None:
+                samples[key].append(value)
+    return {
+        "difference": result,
+        "ci95": {
+            key: np.quantile(sample, [0.025, 0.975]).tolist() if sample else None
+            for key, sample in samples.items()
+        },
+        "shot_ids": shots,
+        "shots": len(shots),
+        "bootstrap_replicates": replicates,
+        "bootstrap_seed": seed,
+        "direction": "model minus derivative-only baseline",
+        "resampling": "identical whole-shot draws for model and baseline",
     }
 
 

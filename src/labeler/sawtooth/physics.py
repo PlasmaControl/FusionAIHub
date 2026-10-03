@@ -676,6 +676,13 @@ def detect(
     # Terminal channels have no verified radial ordering, even when their
     # apparent temperature looks plausible. They cannot supply an inversion.
     values[40:] = np.nan
+    if radius_geometry is not None and radius_geometry.lcfs_outer_R_m is not None:
+        if radius_geometry.R_m.shape != values.shape:
+            raise ValueError("radius geometry and ECE sample axes disagree")
+        overlap = (
+            radius_geometry.R_m < 2 / 3 * radius_geometry.lcfs_outer_R_m[None]
+        )
+        values[overlap] = np.nan
     finite = np.isfinite(values)
     proxy = np.asarray(
         np.arange(len(values)) if core_channels is None else core_channels, dtype=int
@@ -904,10 +911,30 @@ def detect(
         if not len(usable):
             reject("unobservable_central_channel")
             continue
-        central = int(usable[np.argmax(pre[usable])])
+        central_selection = "hottest_available_core_proxy"
+        if radius_geometry is not None:
+            distances = np.abs(
+                radius_geometry.R_m[usable, k] - radius_geometry.axis_R_m[k]
+            )
+            mapped = np.isfinite(distances)
+            if mapped.any():
+                central = int(usable[mapped][np.argmin(distances[mapped])])
+                central_selection = "nearest_nominal_EFIT_magnetic_axis"
+            else:
+                central = int(usable[np.argmax(pre[usable])])
+        elif geometry is not None and geometry.psi is not None:
+            mapped = np.isfinite(psi[usable])
+            if mapped.any():
+                central = int(usable[mapped][np.argmin(psi[usable[mapped]])])
+                central_selection = "minimum_calibrated_poloidal_flux"
+            else:
+                central = int(usable[np.argmax(pre[usable])])
+        else:
+            central = int(usable[np.argmax(pre[usable])])
         amplitude = float((pre[central] - post[central]) / pre[central])
         attrs.update(
             central_channel=central,
+            central_selection=central_selection,
             central_te_pre_kev=float(pre[central]),
             central_te_post_kev=float(post[central]),
             central_relative_drop=amplitude,

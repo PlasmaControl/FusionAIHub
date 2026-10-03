@@ -17,7 +17,7 @@ from torch.nn import functional as F
 class HL3(nn.Module):
     """20 ms / 200 sample / four-channel three-regime classifier."""
 
-    def __init__(self, channels=4):
+    def __init__(self, channels=4, *, dropout=0.5):
         super().__init__()
         self.first = nn.Sequential(
             nn.Conv1d(channels, 16, 3, padding=1), nn.BatchNorm1d(16), nn.ReLU()
@@ -34,10 +34,10 @@ class HL3(nn.Module):
         self.head = nn.Sequential(
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(dropout),
             nn.Linear(128, 32),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(dropout),
             nn.Linear(32, 3),
         )
 

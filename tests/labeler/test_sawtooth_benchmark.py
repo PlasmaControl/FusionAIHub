@@ -3,6 +3,7 @@
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -23,6 +24,16 @@ SYNTHETIC_SPLIT = {
     "blind_test_excluded": [99],
     "all_reviewed_excluded": [100],
 }
+
+
+def test_manifest_cannot_admit_stale_signal_after_failed_refresh(tmp_path):
+    (tmp_path / "signals").mkdir()
+    (tmp_path / "shots").mkdir()
+    for shot, record in ((1, {}), (2, {"error": "unsupported physical core"})):
+        (tmp_path / "signals" / f"{shot}.npz").touch()
+        (tmp_path / "shots" / f"{shot}.json").write_text(json.dumps(record))
+    (tmp_path / "signals/3.npz").touch()
+    assert benchmark.usable_signal_shots(tmp_path) == {1}
 
 
 def test_undefined_metrics_remain_null_through_bootstrap():
@@ -266,6 +277,8 @@ def test_derivative_calibration_can_select_above_previous_grid_limit(tmp_path):
     signal = {
         "t": t,
         "baseline": np.tile(core, (4, 1)),
+        "y": np.tile(core, (48, 1)),
+        "central_channel": np.array(12),
         "observable": np.ones(len(t), dtype=bool),
         "assessed": np.ones(len(t), dtype=bool),
     }
@@ -309,3 +322,333 @@ def test_ensemble_averages_frozen_probabilities_and_retains_native_support():
     np.testing.assert_allclose(result["crash"], [0.5, 0.5, 0.5])
     np.testing.assert_array_equal(result["observable"], [True, True, False])
     np.testing.assert_array_equal(result["assessed"], [True, False, False])
+
+
+def test_derivative_uses_axis_selected_single_channel_not_core_mean():
+    t = np.arange(10000) * 0.0001
+    core = 0.001 * np.sin(2 * np.pi * 1000 * t) - (t >= 0.5)
+    y = np.zeros((48, len(t)))
+    y[12] = core
+    signal = {
+        "t": t,
+        "y": y,
+        "baseline": np.zeros((4, len(t))),
+        "central_channel": np.array(12),
+        "observable": np.ones(len(t), dtype=bool),
+        "assessed": np.zeros(len(t), dtype=bool),
+    }
+    peaks, amplitude = benchmark.derivative_candidates(signal)
+    assert any(abs(t[peak] - 0.5) < 0.002 for peak in peaks[amplitude >= 20])
+    signal["baseline"][:] = 100
+    np.testing.assert_array_equal(benchmark.derivative_candidates(signal)[0], peaks)
+
+
+def test_derivative_refuses_missing_axis_selected_channel():
+    signal = {
+        "t": np.arange(100) * 0.0001,
+        "baseline": np.zeros((4, 100)),
+        "observable": np.ones(100, bool),
+    }
+    with pytest.raises(ValueError, match="central_channel"):
+        benchmark.derivative_candidates(signal)
+
+
+def test_derivative_gap_cannot_manufacture_edge_at_missing_boundary():
+    t = np.arange(10000) * 0.0001
+    core = np.full(len(t), 2.0)
+    core[t >= 0.7] = 1.0
+    core[(t >= 0.3) & (t < 0.7)] = np.nan
+    signal = {
+        "t": t,
+        "y": np.tile(core, (48, 1)),
+        "central_channel": 12,
+        "observable": np.ones(len(t), bool),
+        "assessed": np.ones(len(t), bool),
+    }
+    peaks, amplitude = benchmark.derivative_candidates(signal)
+    assert not len(peaks[amplitude >= 20])
+
+
+def test_derivative_period_classes_keep_single_edge_abstentions_and_gap_support():
+    t = np.arange(8001) * 0.0001
+    observable = np.ones(len(t), bool)
+    observable[(t >= 0.25) & (t < 0.35)] = False
+    signal = {"t": t, "observable": observable, "assessed": observable}
+    classes = benchmark.derivative_classes(
+        signal,
+        np.array([0.01, 0.1, 0.16, 0.4, 0.5, 0.75]),
+        20,
+        80,
+        derivative=(np.array([1000, 1600, 4000, 5000]), np.full(4, 25.0)),
+    )
+    assert classes.tolist() == [1, 1, 1, 2, 2, 0]
+    # A separate observable run with one edge cannot fabricate a period class.
+    classes = benchmark.derivative_classes(
+        signal,
+        np.array([0.4, 0.5]),
+        20,
+        80,
+        derivative=(np.array([4000]), np.array([25.0])),
+    )
+    assert classes.tolist() == [-1, -1]
+
+
+def test_derivative_period_cannot_cross_missing_selected_channel_measurements():
+    t = np.arange(8001) * 0.0001
+    y = np.full((48, len(t)), 2.0)
+    y[12, (t >= 0.25) & (t < 0.35)] = np.nan
+    # Other core measurements keep rule observability true across this gap.
+    signal = {
+        "t": t,
+        "y": y,
+        "central_channel": 12,
+        "observable": np.ones(len(t), bool),
+        "assessed": np.ones(len(t), bool),
+    }
+    result = benchmark.derivative_classes(
+        signal,
+        np.array([0.16, 0.4]),
+        20,
+        80,
+        derivative=(np.array([1000, 1600, 4000, 5000]), np.full(4, 25.0)),
+    )
+    assert result.tolist() == [1, 2]
+
+
+def test_derivative_presence_has_exact_125ms_support_and_pick_counts():
+    t = np.array([0.0, 0.3749, 0.375, 0.5, 0.625, 0.6251, 1.0])
+    signal = {
+        "t": t,
+        "observable": np.array([True, True, True, True, True, True, False]),
+        "assessed": np.array([True, True, False, False, True, True, False]),
+    }
+    prediction = benchmark.derivative_prediction(
+        signal, 20, derivative=(np.array([3, 6]), np.array([20.0, 30.0]))
+    )
+    assert prediction["presence"].tolist() == [0, 0, 1, 1, 1, 0, 0]
+    assert prediction["picks"].tolist() == [0.5]
+    assert benchmark.pick_counts(signal, prediction["picks"]) == {
+        "observable_picks": 1,
+        "assessed_picks": 0,
+        "excluded_picks": 1,
+    }
+
+
+def test_phase_picker_keeps_observable_uncertain_picks_for_reporting():
+    t = np.arange(200) * 0.0001
+    crash = np.zeros(len(t))
+    crash[[40, 140]] = 1
+    signal = {
+        "t": t,
+        "observable": np.ones(len(t), dtype=bool),
+        "assessed": t < 0.01,
+    }
+    prediction = {"t": t, "crash": crash}
+    actual = benchmark.picks("saw-ours", prediction, signal, 0.99)
+    assert actual.tolist() == [0.004, 0.014]
+
+
+def test_derivative_calibration_refuses_fixed_validation(tmp_path):
+    with pytest.raises(ValueError, match="fixed train"):
+        benchmark.calibrate_derivative(tmp_path, [98], split=SYNTHETIC_SPLIT)
+
+
+def test_derivative_crash_and_presence_select_independent_inner_z(tmp_path):
+    (tmp_path / "signals").mkdir()
+    (tmp_path / "shots").mkdir()
+    t = np.arange(10000) * 0.0001
+    core = 0.005 * np.sin(2 * np.pi * 1000 * t)
+    core -= 0.3 * (t >= 0.2) + 0.18 * (t >= 0.5) + 0.6 * (t >= 0.58)
+    assessed = ~((t >= 0.198) & (t < 0.202))
+    np.savez(
+        tmp_path / "signals/1.npz",
+        t=t,
+        y=np.tile(core, (48, 1)),
+        central_channel=12,
+        observable=np.ones(len(t), bool),
+        assessed=assessed,
+    )
+    (tmp_path / "shots/1.json").write_text(
+        json.dumps(
+            {
+                "intervals": [{"start_s": 0.455, "end_s": 0.705}],
+                "crashes": [{"time_s": 0.5}, {"time_s": 0.58}],
+            }
+        )
+    )
+    selected = benchmark.calibrate_derivative(tmp_path, [1], split=SYNTHETIC_SPLIT)
+    assert selected["cells"] == [2, 0, 0]
+    assert selected["presence_z"] > selected["z"]
+
+
+def test_dense_picker_calibration_can_reject_peaks_above_point95(tmp_path):
+    (tmp_path / "signals").mkdir()
+    (tmp_path / "shots").mkdir()
+    t = np.arange(10000) * 0.0001
+    signal = {
+        "t": t,
+        "observable": np.ones(len(t), bool),
+        "assessed": np.ones(len(t), bool),
+    }
+    np.savez(tmp_path / "signals/1.npz", **signal)
+    (tmp_path / "shots/1.json").write_text(
+        json.dumps(
+            {
+                "intervals": [{"start_s": 0.4, "end_s": 0.6}],
+                "crashes": [{"time_s": 0.5}],
+            }
+        )
+    )
+    crash = np.zeros(len(t))
+    crash[[2500, 5000]] = [0.98, 1.0]
+    selected, _ = benchmark.calibrate(
+        "saw-ours",
+        {1: {"t": t, "presence": np.ones(len(t)), "crash": crash}},
+        tmp_path,
+        selection_shots=[1],
+        split=SYNTHETIC_SPLIT,
+    )
+    assert selected["threshold"] > 0.98
+    assert selected["cells"] == [1, 0, 0]
+
+
+def test_evaluation_exports_peer_baselines_fixed_holdout_and_excluded_picks(
+    tmp_path, monkeypatch
+):
+    import pandas as pd
+
+    cohort = tmp_path / "data/events/catalog/cohort.csv"
+    cohort.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "shot": [1, 2, 3, 4, 5, 6, 7, 99],
+            "split": ["train", "train", "train", "val", "val", "val", "train", "test"],
+        }
+    ).to_csv(cohort, index=False)
+    review = tmp_path / "review.csv"
+    pd.DataFrame(
+        {
+            "shot": [5, 5, 5],
+            "t_start": [0, 40, 80],
+            "t_end": [40, 80, 200],
+            "category": [0, 1, 0],
+        }
+    ).to_csv(review, index=False)
+    monkeypatch.setattr(benchmark, "REPO", tmp_path)
+    monkeypatch.setattr(benchmark, "REVIEW", review)
+    monkeypatch.setattr(benchmark, "OUTPUT", tmp_path / "output")
+    work = tmp_path / "work"
+    (work / "signals").mkdir(parents=True)
+    (work / "shots").mkdir()
+    t = np.arange(2000) * 0.0001
+    core = 0.001 * np.sin(2 * np.pi * 1000 * t) - (t >= 0.05)
+    observable, assessed = np.ones(len(t), bool), t < 0.1
+    for shot in (1, 2, 3, 4, 5):
+        np.savez(
+            work / "signals" / f"{shot}.npz",
+            t=t,
+            y=np.tile(core, (48, 1)),
+            baseline=np.tile(core, (4, 1)),
+            central_channel=12,
+            observable=observable,
+            assessed=assessed,
+        )
+        (work / "shots" / f"{shot}.json").write_text(
+            json.dumps(
+                {
+                    "observable_spans": [[0, 0.2]],
+                    "assessed_spans": [[0, 0.1]],
+                    "intervals": [
+                        {"start_s": 0.04, "end_s": 0.08, "attrs": {"period_ms": 60}}
+                    ],
+                    "crashes": [{"time_s": 0.05}],
+                }
+            )
+        )
+    for shot in (6, 7):
+        (work / "shots" / f"{shot}.json").write_text(
+            json.dumps({"error": "unusable ECE core", "error_kind": "core_geometry"})
+        )
+    split = benchmark.manifest(work)
+    assert split["fixed_validation_nonexpert"] == [4, 6]
+    assert split["fixed_validation_supported"] == [4]
+    assert split["requested_training_cohort"] == [1, 2, 3, 7]
+    requested, supported, unavailable = benchmark.prediction_population(
+        split, work, [4, 5, 6]
+    )
+    assert requested == [4, 5, 6]
+    assert supported == [4, 5]
+    assert unavailable[0]["shot"] == 6
+    assert unavailable[0]["exclusion_reason"] == "unusable ECE core"
+    for name in benchmark.MODELS:
+        for fold in range(3):
+            directory = work / "models" / name / f"fold_{fold}"
+            directory.mkdir(parents=True)
+            (directory / "complete.json").write_text(
+                json.dumps(
+                    {
+                        "input_policy": benchmark.INPUT_POLICY,
+                        "training_shots": [],
+                        "selection_shots": [],
+                        "heldout_shots": [
+                            s for s in (1, 2, 3) if split["folds"][s] == fold
+                        ],
+                        "presence_threshold": 0.5,
+                        "period_boundary_ms": 50,
+                        "selected_crash_threshold": {"threshold": 0.99, "z": 20},
+                        "derivative_baseline": {"z": 20, "presence_z": 20},
+                        "majority_class": 0,
+                    }
+                )
+            )
+            destination = work / "predictions" / name / f"fold_{fold}"
+            destination.mkdir(parents=True)
+            for shot in (1, 2, 3, 4, 5):
+                prediction = {
+                    "t": t,
+                    "observable": observable,
+                    "assessed": assessed,
+                    "presence": np.ones(len(t)),
+                    "picks": np.array([0.05, 0.15]),
+                }
+                if name == "saw-ours":
+                    prediction["crash"] = np.zeros(len(t))
+                    prediction["crash"][[500, 1500]] = 1
+                else:
+                    prediction["class_t"] = t[100::20]
+                    prediction["class_prob"] = np.tile([0, 0, 1], (95, 1))
+                np.savez(destination / f"{shot}.npz", **prediction)
+    benchmark.evaluate(SimpleNamespace(work=work, models=list(benchmark.MODELS)))
+    result = json.loads((work / "benchmark.json").read_text())
+    scores = result["Tokamak-SI"]
+    assert set(scores) == {
+        "saw-hl3",
+        "saw-ours",
+        "saw-derivative",
+        "saw-always-present",
+    }
+    assert scores["saw-always-present"]["crash_tolerance_2ms"]["crash"] is None
+    assert scores["saw-hl3"]["crash_metric_label"] == "derivative picker gated by HL-3"
+    assert scores["saw-ours"]["assessment_totals"]["observable_picks"] == 6
+    assert scores["saw-ours"]["assessment_totals"]["excluded_picks"] == 3
+    derivative_classes = scores["saw-derivative"]["three_class"]
+    assert derivative_classes["windows"] == scores["saw-hl3"]["three_class"]["windows"]
+    assert derivative_classes["unclassified_windows"] > 0
+    assert scores["saw-always-present"]["three_class"]["window_accuracy"] is None
+    for score in scores.values():
+        assert score["fixed_validation"]["crash_tolerance_2ms"]["shot_ids"] == [4]
+        assert score["coverage"]["requested_shots"] == 4
+        assert score["coverage"]["supported_shots"] == 3
+        assert score["crash_tolerance_2ms"]["shot_ids"] == [1, 2, 3]
+        fixed = score["fixed_validation"]
+        assert fixed["coverage"]["requested_shots"] == 2
+        assert fixed["coverage"]["supported_shots"] == 1
+        assert fixed["coverage"]["scored_shots"] == 1
+        missing = next(row for row in fixed["by_shot"] if row["shot"] == 6)
+        assert missing["outcome_status"] == "unknown"
+        assert missing["observable_bins"] == missing["assessed_bins"] == 0
+        assert missing["presence"] is missing["observable_picks"] is None
+        assert missing["exclusion_reason"] == "unusable ECE core"
+        assert score["expert"]["by_shot"][0]["shot"] == 5
+    paired = scores["saw-ours"]["fixed_validation"]["paired_vs_derivative"]
+    assert paired["crash_tolerance_2ms"]["bootstrap_replicates"] == 1000

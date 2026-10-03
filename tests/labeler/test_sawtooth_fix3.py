@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from labeler.sawtooth import physics
+from labeler.sawtooth.geometry import RadiusGeometry
 
 
 def waveform(qvalue, *, crashes=True):
@@ -90,3 +91,50 @@ def test_standalone_profile_cannot_use_unverified_terminal_gain():
     verdict, attrs = physics.inversion_profile(step, level)
     assert verdict != "accept"
     assert set(range(40, 48)) <= set(attrs["masked_channels"])
+
+
+def test_central_drop_uses_efit_axis_instead_of_hottest_nearby_channel():
+    t, y, qmin = waveform(0.8)
+    y[4] *= 1.4
+    radius = np.repeat((3.5 - 0.2 * np.arange(12))[:, None], len(t), axis=1)
+    geometry = RadiusGeometry(
+        t,
+        radius,
+        np.full(len(t), 2.9),
+        np.full(len(t), 2.6),
+        np.full(len(t), 3.2),
+    )
+    result = physics.detect(
+        t,
+        y,
+        shot=1,
+        qmin=qmin,
+        core_channels=[2, 3, 4],
+        radius_geometry=geometry,
+        spatially_verified=True,
+    )
+    assert result.crashes
+    assert all(event.attrs["central_channel"] == 3 for event in result.crashes)
+
+
+def test_direct_detector_excludes_harmonic_overlap_profile_evidence():
+    t, y, qmin = waveform(0.8)
+    radius = np.repeat((3.5 - 0.2 * np.arange(12))[:, None], len(t), axis=1)
+    geometry = RadiusGeometry(
+        t,
+        radius,
+        np.full(len(t), 2.9),
+        np.full(len(t), 2.6),
+        np.full(len(t), 3.2),
+        np.full(len(t), 4.5),
+    )
+    result = physics.detect(
+        t,
+        y,
+        shot=1,
+        qmin=qmin,
+        core_channels=[2, 3, 4],
+        radius_geometry=geometry,
+        spatially_verified=True,
+    )
+    assert not result.crashes
