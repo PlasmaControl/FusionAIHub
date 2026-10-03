@@ -16,23 +16,39 @@
  "sources": {
   "ours": {
    "path": "outputs/labeler/elm/ours/evaluation.json",
-   "sha256": "8a8e78f0774c5481fb051a231316a7db07d9178430c562ca78d0f9c0ed29442e"
+   "sha256": "24a89272b1bf28765d49cc234db54363284c4bbd021042156ebfd98235d2d330"
   },
   "dsm": {
    "path": "outputs/labeler/elm/dsm/evaluation.json",
-   "sha256": "9f2861cc223f84632c3349ade2f55b36c400193bba2000d49b6f8bcefaa11341"
+   "sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
   },
   "swap": {
    "path": "outputs/labeler/elm/swap/evaluation.json",
-   "sha256": "6b28194d408f451d0f2cc2954b8f4343b931ed49b6545ec6f2ddd9befcc42941"
+   "sha256": "f6c9490ce5fa6e111cf86fe38944cc9ff55a8f2de2142d2be104f138a56931d1"
   },
   "repeats": {
    "path": "outputs/labeler/elm/ours/seed_repeats.json",
-   "sha256": "e6ee2db136a922f74f0563ac57590129e541b9061750ad203341bf02675b9f04"
+   "sha256": "5cc854e7761c687e6339da3bf544f62f49a3f988f96b773d90c3654fb026c7e2"
+  },
+  "strata": {
+   "path": "outputs/labeler/elm/ours/annotation_strata.json",
+   "sha256": "3defd14c9d534524e6fb5f806889d119f0073554c9f359de29c62a14094a8dd9"
+  },
+  "filterscopes": {
+   "path": "outputs/labeler/elm/filterscope_metadata.json",
+   "sha256": "e2b29ed97bf9a14b98efd233c711aef2ea93a8720d232e74c380cdcb0245400d"
+  },
+  "native": {
+   "path": "outputs/labeler/elm/dsm/native_evaluation.json",
+   "sha256": "2ab8b4ade688034b4cbc744b8474d9d6c5eb6160f4815392748de9d4633a88dd"
+  },
+  "native_fetch": {
+   "path": "outputs/labeler/elm/dsm/native_fetch.json",
+   "sha256": "3eceb58bb8d72deaa7f9d5e354353925aaf50db5992edfe1ff6df81c1afb4f5a"
   }
  },
  "artifacts": {
-  "docs/labeler/elm_ours.md": "5b5d9df123b4c5eea34b2c4f4b512d613cf51b96f362afd0d839d0029959dd27",
-  "data/events/edge_localized_mode/README.md": "6f1f10c9be2e08461f147a6cef27ea10ddd3b21af773bd6bbbbd171cd70811b7"
+  "docs/labeler/elm_ours.md": "ebb828ab16d1c94f7de52858065a302c0740a89eac54b919031ace118f3e13e9",
+  "data/events/edge_localized_mode/README.md": "f86fdab747ca28e634fe98b577034d93d02125b7d15bef151b4a22f576ba5b04"
  }
 }

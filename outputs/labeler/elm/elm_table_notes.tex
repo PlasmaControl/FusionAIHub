@@ -1,0 +1,70 @@
+\paragraph{Shared ELM table protocol and limitations.}\label{app:elm-table-notes}
+Tables score reviewed interval occupancy in 50 ms bins wholly inside a known
+reviewed state and analyzed coverage. Primary panels use available D-alpha/density
+coverage; BES panels use ELM-O chunks. Common DSM panels additionally require both
+forecast and detection rows. Annotation-mode groups use complete shot annotations
+and are mutually exclusive. Mixed shots contain crowd and non-crowd annotations;
+no-present shots contribute absent-bin false-positive fractions. The reviewed
+positive-bin distribution is predominantly crowd occupancy, so aggregate F1
+principally measures ELMy-phase occupancy, not individual ELM detection.
+
+Brackets are 95\% percentile intervals from 1,000 physical-shot bootstrap
+resamples, shared across methods and references within a panel. Learned occupancy
+detectors use shot-grouped out-of-fold predictions, with thresholds selected on
+inner-validation reviewed bins. The fixed cohort test shots are excluded. ELM-O
+hard calls use its selected threshold and rank scores use the saved nested sweep
+on the same bins. The clock has hard calls only and seeded the review. elm-ours
+calls a bin present from its mean score; ELM-O and the clock use any touching
+detection. Detections are clipped to panel coverage before span-touch and alarm
+counts. The always present rule is a degenerate recall control. $^{\dagger}$ marks
+recall $\geq0.99$ while retaining numerical F1; companion precision/recall rows
+make these operating points explicit.
+
+$^{\ddagger}$ marks supplemental DSM source exposure. The survival refit
+and source-initialized detection retain source fitting or selection exposure;
+the historical exposed detection retains upstream preprocessing exposure.
+Source normalization was computed before the source split and includes two
+blind-cohort shots. For the 60-input refit, five reviewed swap shots were source-training shots. Subsets
+outside source fitting and selection have only three shots, or two with BES;
+their historical source normalization exposure remains. The clean detection
+retrain starts from scratch and fits preprocessing on each outer training
+partition, excluding both inner-validation and held-out shots.
+
+DSM deployment adaptations use 60 of 124 source inputs, no D-alpha input,
+mean-filled unavailable diagnostics and clipped standardized inputs. The survival
+refit was trained on 1 ms rows and is served from 50 ms means; occupancy detection
+heads train on reviewed 50 ms rows. CO2 is missing on 75 of the 119 reviewed shots.
+Centered NBI smoothing adds 25 ms lookahead, so the survival score is offline,
+not a causal forecast. Source-target results use early-stopping validation rows,
+not an untouched test set. The 60-input refit's results do not constitute a native
+full-input checkpoint comparison. Review annotations and elm-ours share D-alpha evidence, whereas the
+60-input DSM adaptations have no D-alpha input; model gaps therefore also reflect input choice. The
+individual-onset deliverable remains incomplete without independent adjudication.
+
+Legacy onset bins mark nonzero 1 ms onset counts in each 50 ms bin. Occupancy
+sensitivities merge positive intervals across covered gaps of at most
+$\tau=100,200,300$ ms and never bridge missing coverage. $|M|$ counts reviewed
+present/legacy absent bins and $|P|$ the converse; these are reference
+disagreements, not independently verified omitted ELMs. All-covered audits use
+at least 25 ms majority occupancy and separate uncertain or mixed review states.
+Strict swaps reuse identical reviewed interior bins, predictions and thresholds.
+Because learned F1 thresholds were tuned against review labels, only AUROC is
+compared across references. Eight overlap shots and the tiny source-unexposed
+subsets leave the evidence inconclusive; point rankings cannot establish or rule
+out an AE-style ranking-reversal result.
+
+The native full-input checkpoint is evaluated separately on its exact source
+exports and on reconstructed 124-input, 1 ms rows. These panels remain historical
+and source-exposed. Reconstruction uses available original diagnostics without
+mean filling or clipping; finite rows inside the source normalization/filter
+domain are retained. Native centered NBI smoothing adds 50 ms lookahead.
+Source smoothing concatenates filtered phase rows, whereas reconstruction smooths
+within each shot before filtering, so reconstructed inputs are a sensitivity,
+not a claim of exact native-export equivalence. The agreement audit and explicit
+per-panel coverage must accompany that interpretation.
+
+Checkpoint selection is noisy: 1 of 20 selected epochs fall inside warm-up, and a three-epoch smoothed validation criterion chooses a different candidate in 15 of 20 folds. Inner-validation thresholds span 0.109--0.911. The smoothed candidates have not been rescored; the reported numbers retain the original saved checkpoints.
+
+The survival-refit checkpoint was selected after epoch 1 from a 7-epoch run; the one-epoch description refers to the selected checkpoint, not the run length.
+
+The main AUROC leader is unchanged across reference conversions, but the clean DSM detector and ELM-O exchange point-AUROC order in the BES occupancy sensitivities. This is a point-order crossing on seven overlapping shots, with wide intervals, not evidence of a population-level ranking reversal.

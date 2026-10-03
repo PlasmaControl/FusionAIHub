@@ -1,0 +1,31 @@
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrrcc}
+\toprule
+Risk horizon & Shots & Rows & Positive rows & AUROC & AUPRC \\
+\midrule\multicolumn{6}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
+\multicolumn{6}{l}{Coverage: 119 reviewed; 5 exact exports; 45 reconstructable} \\
+\multicolumn{6}{l}{Reviewed source overlap: 1 optimizer-trained; 4 checkpoint-selected} \\
+\midrule
+\multicolumn{6}{l}{Reviewed occupancy, exact native exports} \\
+5 ms$^{\ddagger}$ & 4 & 11,565 & 5,836 & 0.471 {\scriptsize[0.23, 0.66]} & 0.516 \\
+10 ms$^{\ddagger}$ & 4 & 11,565 & 5,836 & 0.469 {\scriptsize[0.23, 0.66]} & 0.515 \\
+20 ms$^{\ddagger}$ & 4 & 11,565 & 5,836 & 0.465 {\scriptsize[0.21, 0.66]} & 0.514 \\
+50 ms$^{\ddagger}$ & 4 & 11,565 & 5,836 & 0.465 {\scriptsize[0.14, 0.65]} & 0.507 \\
+\midrule
+\multicolumn{6}{l}{Reviewed occupancy, reconstructed inputs (sensitivity)} \\
+5 ms$^{\ddagger}$ & 33 & 138,100 & 59,719 & 0.608 {\scriptsize[0.54, 0.70]} & 0.521 \\
+10 ms$^{\ddagger}$ & 33 & 138,100 & 59,719 & 0.609 {\scriptsize[0.54, 0.70]} & 0.523 \\
+20 ms$^{\ddagger}$ & 33 & 138,100 & 59,719 & 0.611 {\scriptsize[0.54, 0.70]} & 0.524 \\
+50 ms$^{\ddagger}$ & 33 & 138,100 & 59,719 & 0.689 {\scriptsize[0.61, 0.77]} & 0.579 \\
+\midrule
+\multicolumn{6}{l}{Source survival target, early-stopping validation} \\
+5 ms$^{\ddagger}$ & 326 & 699,512 & 8,867 & 0.926 {\scriptsize[0.91, 0.94]} & 0.081 \\
+10 ms$^{\ddagger}$ & 326 & 697,855 & 16,248 & 0.931 {\scriptsize[0.92, 0.94]} & 0.148 \\
+20 ms$^{\ddagger}$ & 326 & 694,596 & 30,468 & 0.939 {\scriptsize[0.93, 0.95]} & 0.274 \\
+50 ms$^{\ddagger}$ & 326 & 685,337 & 67,130 & 0.955 {\scriptsize[0.94, 0.96]} & 0.543 \\
+\bottomrule
+\end{tabular}\caption{Original 124-input DSM checkpoint on native 1 ms inputs, scored without operating thresholds. Coverage is reported separately for each panel. Exact source exports provide the faithful comparison; reconstruction is a sensitivity with source/serving smoothing disagreement. Reviewed panels score interval occupancy; the survival panel uses source early-stopping validation. AUROC brackets show 95\% physical-shot bootstrap intervals. $^{\ddagger}$ marks supplemental source exposure, not independent confirmatory evidence.}
+\label{tab:elm-dsm-native}
+\end{table*}

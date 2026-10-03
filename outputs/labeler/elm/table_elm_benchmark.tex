@@ -8,32 +8,40 @@ Method & AUROC & AUPRC & F1 \\
 \multicolumn{4}{l}{Primary reviewed bins, All reviewed shots: 119 shots/12,409 bins} \\
 elm-ours & 0.941 {\scriptsize[0.91, 0.97]} & 0.877 {\scriptsize[0.77, 0.95]} & 0.830 {\scriptsize[0.78, 0.87]} \\
 elm-clock & -- & -- & 0.757 {\scriptsize[0.68, 0.83]} \\
-Always-present rule & 0.500 {\scriptsize[0.50, 0.50]} & 0.376 {\scriptsize[0.32, 0.43]} & 0.546 {\scriptsize[0.49, 0.60]}$^{\dagger}$ \\
 \midrule
-\multicolumn{4}{l}{Primary reviewed bins, BES subset, ELM-O chunks: 73 shots/6,843 bins} \\
+always present & 0.500 {\scriptsize[0.50, 0.50]} & 0.376 {\scriptsize[0.32, 0.43]} & 0.546 {\scriptsize[0.49, 0.60]}$^{\dagger}$ \\
+\midrule
+\multicolumn{4}{l}{Primary reviewed bins, BES, ELM-O chunks: 73 shots/6,843 bins} \\
 elm-ours & 0.941 {\scriptsize[0.90, 0.97]} & 0.875 {\scriptsize[0.75, 0.96]} & 0.845 {\scriptsize[0.79, 0.90]} \\
 ELM-O & 0.918 {\scriptsize[0.88, 0.95]} & 0.833 {\scriptsize[0.75, 0.89]} & 0.842 {\scriptsize[0.79, 0.88]} \\
 elm-clock & -- & -- & 0.708 {\scriptsize[0.60, 0.80]} \\
-Always-present rule & 0.500 {\scriptsize[0.50, 0.50]} & 0.402 {\scriptsize[0.32, 0.48]} & 0.573 {\scriptsize[0.49, 0.65]}$^{\dagger}$ \\
+\midrule
+always present & 0.500 {\scriptsize[0.50, 0.50]} & 0.402 {\scriptsize[0.32, 0.48]} & 0.573 {\scriptsize[0.49, 0.65]}$^{\dagger}$ \\
 \midrule
 \multicolumn{4}{l}{Common DSM bins, All reviewed shots: 119 shots/11,653 bins} \\
 elm-ours & 0.939 {\scriptsize[0.90, 0.97]} & 0.878 {\scriptsize[0.77, 0.95]} & 0.834 {\scriptsize[0.78, 0.88]} \\
+elm-dsm detection & 0.855 {\scriptsize[0.81, 0.90]} & 0.778 {\scriptsize[0.70, 0.84]} & 0.754 {\scriptsize[0.70, 0.81]} \\
 elm-clock & -- & -- & 0.759 {\scriptsize[0.68, 0.83]} \\
-elm-dsm refit & 0.777 {\scriptsize[0.73, 0.82]} & 0.662 {\scriptsize[0.59, 0.74]} & 0.627 {\scriptsize[0.56, 0.69]} \\
-elm-dsm detection & 0.850 {\scriptsize[0.80, 0.89]} & 0.761 {\scriptsize[0.67, 0.83]} & 0.743 {\scriptsize[0.68, 0.80]} \\
-elm-dsm detection init & 0.863 {\scriptsize[0.82, 0.90]} & 0.792 {\scriptsize[0.71, 0.86]} & 0.738 {\scriptsize[0.68, 0.79]} \\
-Always-present rule & 0.500 {\scriptsize[0.50, 0.50]} & 0.391 {\scriptsize[0.33, 0.45]} & 0.562 {\scriptsize[0.50, 0.62]}$^{\dagger}$ \\
+\midrule\multicolumn{4}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
+elm-dsm refit$^{\ddagger}$ & 0.777 {\scriptsize[0.73, 0.82]} & 0.662 {\scriptsize[0.59, 0.74]} & 0.627 {\scriptsize[0.56, 0.69]} \\
+elm-dsm detection exposed$^{\ddagger}$ & 0.850 {\scriptsize[0.80, 0.89]} & 0.761 {\scriptsize[0.67, 0.83]} & 0.743 {\scriptsize[0.68, 0.80]} \\
+elm-dsm detection init$^{\ddagger}$ & 0.863 {\scriptsize[0.82, 0.90]} & 0.792 {\scriptsize[0.71, 0.86]} & 0.738 {\scriptsize[0.68, 0.79]} \\
 \midrule
-\multicolumn{4}{l}{Common DSM bins, BES subset, ELM-O chunks: 73 shots/6,527 bins} \\
+always present & 0.500 {\scriptsize[0.50, 0.50]} & 0.391 {\scriptsize[0.33, 0.45]} & 0.562 {\scriptsize[0.50, 0.62]}$^{\dagger}$ \\
+\midrule
+\multicolumn{4}{l}{Common DSM bins, BES, ELM-O chunks: 73 shots/6,527 bins} \\
 elm-ours & 0.939 {\scriptsize[0.89, 0.97]} & 0.876 {\scriptsize[0.75, 0.96]} & 0.848 {\scriptsize[0.79, 0.90]} \\
 ELM-O & 0.914 {\scriptsize[0.87, 0.95]} & 0.833 {\scriptsize[0.75, 0.89]} & 0.841 {\scriptsize[0.79, 0.88]} \\
+elm-dsm detection & 0.856 {\scriptsize[0.81, 0.90]} & 0.767 {\scriptsize[0.67, 0.86]} & 0.780 {\scriptsize[0.70, 0.84]} \\
 elm-clock & -- & -- & 0.714 {\scriptsize[0.61, 0.81]} \\
-elm-dsm refit & 0.715 {\scriptsize[0.63, 0.79]} & 0.631 {\scriptsize[0.54, 0.73]} & 0.591 {\scriptsize[0.50, 0.67]} \\
-elm-dsm detection & 0.843 {\scriptsize[0.79, 0.89]} & 0.750 {\scriptsize[0.65, 0.84]} & 0.762 {\scriptsize[0.68, 0.83]} \\
-elm-dsm detection init & 0.853 {\scriptsize[0.80, 0.90]} & 0.779 {\scriptsize[0.68, 0.86]} & 0.749 {\scriptsize[0.67, 0.81]} \\
-Always-present rule & 0.500 {\scriptsize[0.50, 0.50]} & 0.417 {\scriptsize[0.34, 0.50]} & 0.588 {\scriptsize[0.50, 0.67]}$^{\dagger}$ \\
+\midrule\multicolumn{4}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\
+elm-dsm refit$^{\ddagger}$ & 0.715 {\scriptsize[0.63, 0.79]} & 0.631 {\scriptsize[0.54, 0.73]} & 0.591 {\scriptsize[0.50, 0.67]} \\
+elm-dsm detection exposed$^{\ddagger}$ & 0.843 {\scriptsize[0.79, 0.89]} & 0.750 {\scriptsize[0.65, 0.84]} & 0.762 {\scriptsize[0.68, 0.83]} \\
+elm-dsm detection init$^{\ddagger}$ & 0.853 {\scriptsize[0.80, 0.90]} & 0.779 {\scriptsize[0.68, 0.86]} & 0.749 {\scriptsize[0.67, 0.81]} \\
+\midrule
+always present & 0.500 {\scriptsize[0.50, 0.50]} & 0.417 {\scriptsize[0.34, 0.50]} & 0.588 {\scriptsize[0.50, 0.67]}$^{\dagger}$ \\
 \bottomrule
 \end{tabular}
-\caption{ELM interval-occupancy benchmark. Primary reviewed bins, All reviewed shots: 119 shots/12,409 bins; Primary reviewed bins, BES subset, ELM-O chunks: 73 shots/6,843 bins; Common DSM bins, All reviewed shots: 119 shots/11,653 bins; Common DSM bins, BES subset, ELM-O chunks: 73 shots/6,527 bins. All cells pool identical 50 ms bins within a panel: bins are wholly inside one reviewed absent, non-crowd present or crowd span and analysed time. Primary panels use fetched-signal coverage or ELM-O chunks; common panels also require DSM offline-risk and detection rows. elm-ours and DSM detection heads use shot-grouped out-of-fold predictions; the initialized variant retains a pretrained embedding with reviewed and cohort-test shot overlap. Operating thresholds come only from each fold's inner-validation shots. ELM-O uses eta 0.997 for hard calls; its rank metrics come from the saved nested eta sweep on these same bins. Clock and always-present rows are rules; the clock seeded the review and is not independent. Brackets are 95\% percentile intervals from 1,000 shared shot-bootstrap resamples. elm-dsm refit uses 60 of the original 124 inputs and the legacy onset table (Hiro Farre Josep Kaga annotations, compiled by labels\_format.py/source\_formatters) source with reviewed and cohort-test shot overlap, unavailable diagnostics mean-filled and inputs clipped at $|z|=10$. Every DSM variant has no D-alpha input (pcphd02/03 mean-filled), 50 ms-mean serving of a 1 ms-trained model, and CO2 missing on 75/119 shots. The 1 ms training refers to the source survival refit; detection heads are refitted on reviewed 50 ms-mean rows. The refit is an offline risk score with 25 ms centered-NBI lookahead (not a causal forecast). Every DSM variant uses upstream normalization constants computed before the upstream split, including blind-cohort source shots 190646 and 190532 (feature-statistics exposure). The original full-input model is not evaluated here. A dagger marks recall $\geq0.99$; numeric F1 and intervals are retained. Dagger cells: primary bes73 Always-present rule: precision 0.402, recall 1.000; primary all119 Always-present rule: precision 0.376, recall 1.000; common bes73 Always-present rule: precision 0.417, recall 1.000; common all119 Always-present rule: precision 0.391, recall 1.000.}
+\caption{ELMy-phase occupancy benchmark on identical reviewed 50 ms interior bins within each panel; 97\% of primary positive bins are crowd annotations. Primary panels use signal coverage; common panels also require DSM rows. ELM-O panels use BES chunks. Shot-grouped predictions and review-tuned thresholds exclude blind-cohort shots for learned detectors. Brackets show 95\% shot-bootstrap intervals. $^{\ddagger}$ marks supplemental source exposure; $^{\dagger}$ marks recall $\geq0.99$. Companions separate annotation modes and crowd/non-crowd performance.}
 \label{tab:elm-benchmark}
 \end{table*}

@@ -1,51 +1,175 @@
 {
- "git": "c0ec16ae",
+ "git": "aa4ccbf2",
  "sources": {
   "ours": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/evaluation.json",
-   "sha256": "8a8e78f0774c5481fb051a231316a7db07d9178430c562ca78d0f9c0ed29442e"
+   "sha256": "24a89272b1bf28765d49cc234db54363284c4bbd021042156ebfd98235d2d330"
   },
   "dsm": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
-   "sha256": "9f2861cc223f84632c3349ade2f55b36c400193bba2000d49b6f8bcefaa11341"
+   "sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3"
   },
   "swap": {
    "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/swap/evaluation.json",
-   "sha256": "6b28194d408f451d0f2cc2954b8f4343b931ed49b6545ec6f2ddd9befcc42941"
+   "sha256": "f6c9490ce5fa6e111cf86fe38944cc9ff55a8f2de2142d2be104f138a56931d1"
+  },
+  "strata": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/ours/annotation_strata.json",
+   "sha256": "3defd14c9d534524e6fb5f806889d119f0073554c9f359de29c62a14094a8dd9"
+  },
+  "native": {
+   "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_evaluation.json",
+   "sha256": "2ab8b4ade688034b4cbc744b8474d9d6c5eb6160f4815392748de9d4633a88dd"
   }
  },
  "tables": {
-  "table_elm_benchmark.tex": "d004bc25b28f47add2ccfe92d8a7565ddaa450d7e0bb12b5b348825ce5252482",
-  "table_elm_proxy_clock_spans.tex": "41a73146a70c35cda92b643067769184fc3f46925260da6ebc4bc2edefced196",
-  "table_elm_proxy_elmo_onsets.tex": "bb9708198b0aae4a015bfd1916311bf5446d5a5418a18e2128ab49c496b28190",
-  "table_elm_swap.tex": "f65827b0bbab2da43db585caabf79f161b3f4b9178d796f798298cad921ff9a0",
-  "table_elm_swap_all.tex": "897858d6bff8bf82b9aec4b9f2b8e17e8800306ad72499560ef0cb978f970458",
-  "table_elm_swap_bes.tex": "d42dada5140719db188c76335b89444f242aab688c8a6ece7108ef8cd20bdd86",
-  "table_elm_swap_bes_dsm_heldout.tex": "7470f042a8157900795bb14ac36e8f348d16010d6b95a6c85cc02a78b081f378",
-  "table_elm_swap_dsm_heldout.tex": "9efa9e83b580a9c8a85ad1dea5d6ff31659d67e290bbe03437974110a6100f78",
-  "table_elm_swap_full.tex": "3cb158c1487760d5c39987c220596a96621d99e432911d56679f4cf9173be3fc",
-  "table_elm_swap_full_occupancy_100ms.tex": "1c196920284a9a2f9ce60ebda1d11920b1c5e7bd6bb185dd1c26daa38c05c43f",
-  "table_elm_swap_full_occupancy_200ms.tex": "8ed78a36d03c7948f02810c5f513c1ec4b0e4215240119576573040f416d9e98",
-  "table_elm_swap_full_occupancy_300ms.tex": "2651814241bd14c65dabd29bd5ecd3ae0861d0af5bca46d6138b24436edb21d2",
-  "table_elm_swap_occupancy_100ms.tex": "796c3f61274c70ca1911003bd20b21fd6ff49a9aa27fd207086b8be93dc9742c",
-  "table_elm_swap_occupancy_200ms.tex": "35a652a71006ef626458006b0e4c977ed535e8e9f9753db775b87953943705f1",
-  "table_elm_swap_occupancy_300ms.tex": "a4a2eb6e32e9e55c600c1ae067a89faa1c3d98da9f06f1a557f8b595a845455a",
-  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_100ms.tex": "a7f790625f7cad44b78e5c98b5f4285693d15f5d437158d2970a304eeb6b9fdf",
-  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_200ms.tex": "0c7cde656dcb128559dcc612fba7eaf748c81eacb51523e9f883852a2a8d13b4",
-  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_300ms.tex": "2e2929b7303c03234d643bf55b50132720b05928cc01f7a7524af077b5ff7dba",
-  "table_elm_swap_overlap_bes_occupancy_100ms.tex": "2f6da78a652a5686bb46ae4736d7d1bddde30dc923bcab8ebf58805765f02186",
-  "table_elm_swap_overlap_bes_occupancy_200ms.tex": "f7019d626a5a3a67497300eef6c895b43658fc1835ace5787cad3ba0f99722fd",
-  "table_elm_swap_overlap_bes_occupancy_300ms.tex": "8dd0e4afaf2b90483ff8aff6418385eb2a8db95565dc6f6d10aa74007b886738",
-  "table_elm_swap_overlap_dsm_heldout_occupancy_100ms.tex": "d50a36b39d3ad0f1ea75399cdd72393548a4eb4e7db4ed50fcf18bf371a4c8a0",
-  "table_elm_swap_overlap_dsm_heldout_occupancy_200ms.tex": "54bdba9f7dd764c0f76446aaf6e06850ee6b46b9454937864280c2fb3ab55011",
-  "table_elm_swap_overlap_dsm_heldout_occupancy_300ms.tex": "04a8d0d6bf6a896984305ba792430698b1ee9e35798a3104099447de3c092c78",
-  "table_elm_swap_overlap_occupancy_100ms.tex": "fb78aed6996c311968dd8d1bcf1a84c69e3f0430ca7aa52854dc063b9f866e0a",
-  "table_elm_swap_overlap_occupancy_200ms.tex": "1e38f19214d1f26490fd925e8fcc3466bb51fd868583a063071e74a87b7136e1",
-  "table_elm_swap_overlap_occupancy_300ms.tex": "ee6f9268cf7c8f5a736b5ffa35ed1574717f09d45f899c4731a513e2dae40bf1",
-  "table_elm_swap_rankings.tex": "68ff6734b1443acd50faec134fe53ed89b347ddd787234699efecd6d10275e0c",
-  "table_elm_swap_rankings_auroc.tex": "8841f276d2299ae5f7036e247b67b78bc07bd9566965572a3f375760cecedd8d",
-  "table_elm_swap_rankings_f1.tex": "1c82e312c8f4aec8c292fa9c6f62e914b62422ac9ad905a32bec7805b56bbc18",
-  "table_elm_swap_sensitivity.tex": "58c78fec04769ae3f9426079715f380aabd23a544b94ace0dc2151058639cdda"
+  "table_elm_annotation_modes.tex": "40d417f9ec1a767aabc130a81d9742ab7507a966af87905d7bcd68c3ebbdab42",
+  "table_elm_benchmark.tex": "e15a6d946010023a120d7a72783117c717a9ef9294f6ce95de3783d168695508",
+  "table_elm_dsm_native.tex": "a99fd4397f518d5e837a43eb248b7ea5e1000713d93a35d64a694855a00b9c84",
+  "table_elm_dsm_own_target.tex": "f1757b7cded93ccd33eac7ff9e1deff0d14604fbd6d61c0ad78000438a3057d7",
+  "table_elm_per_kind.tex": "463c498f81457753d2509213b2acbe274ad5bebd3fe1c498d8bfb3b875311692",
+  "table_elm_proxy_clock_spans.tex": "d68bd590b85c305e471205e32d06a1468d6a0c094ed7bce8e5198b64c1595d06",
+  "table_elm_proxy_elmo_onsets.tex": "a09f0aca6986e1b9d6eac3408515eb7662b3009bae50d98fe0e6c787f98aac31",
+  "table_elm_swap.tex": "05aafece47b96c719c9b1eba3e92656472cd873f23209211e7faa72212cbc56c",
+  "table_elm_swap_all.tex": "a6e65fde40cf2e712728cb49c434fa06748174c3cf617e53d3c393f125090097",
+  "table_elm_swap_bes.tex": "5a1786b0fbf257d0f89562bcf6b1ea425b788ec525424c76596e520a97014b66",
+  "table_elm_swap_bes_dsm_heldout.tex": "e4b361cf55c5c5b68ad3389855f4c38e4927b8e7d39e91e2b00ff61a9ed8585f",
+  "table_elm_swap_dsm_heldout.tex": "b7c11bbae5a3413ac897e3567d3677cdafd79ac9c042e8db7f721c31b9c98c97",
+  "table_elm_swap_full.tex": "04ccdd9b0b30ab0d3bf6a4f21a8b823ede7ef804fab293f3af5d740079d1c5e7",
+  "table_elm_swap_full_occupancy_100ms.tex": "deadd6f3dc2015b21123ea75de62b7b772d57d58b698bb09a060ca2b98e9c634",
+  "table_elm_swap_full_occupancy_200ms.tex": "78b3b8aa83a993bccc74704ff50a1f2f4d94d4b37dce2d9f659909e266d1ca53",
+  "table_elm_swap_full_occupancy_300ms.tex": "903f2ca045525847fc51d6787ec01ea181c29f025bd009eb8c07ded0bf3e6113",
+  "table_elm_swap_occupancy_100ms.tex": "f5eea08a73d34399e88821a94e97040b729e84f53867b73bb821a79c3c4c2fd2",
+  "table_elm_swap_occupancy_200ms.tex": "faf191b87ada515c61cb5268a0a151dec30cc4249129eb0abaae7d1bc25425fb",
+  "table_elm_swap_occupancy_300ms.tex": "52cb50c5d968959ddd62521665a063042a7e239b10d751e95337f61b194c7e10",
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_100ms.tex": "87d604d7115db44b78891e1cd485214080a06ff7fa57ec26e7bf21e14b93bede",
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_200ms.tex": "ea9664ef6f8a21a2f4a2c6299cf2adff6425ec990e5e4362ff42f8337bef7fec",
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_300ms.tex": "dfb791548c1d4015a49c6631ef25012bd93dc7ec44f2c792eee0fe5f025ed507",
+  "table_elm_swap_overlap_bes_occupancy_100ms.tex": "2852b80ddc702fb5d89883580dcce95647e9f95ca9450c2ef3b00154d5d95c1f",
+  "table_elm_swap_overlap_bes_occupancy_200ms.tex": "1e8b5f5f1d79016d5390fe143bab32ea1c7f7b1316ff777137a270bc3cfec5fd",
+  "table_elm_swap_overlap_bes_occupancy_300ms.tex": "42fa2f52b7675c23bff16ea57f2bf4713859cafa7e0fa04aa0a680b5e903e2e9",
+  "table_elm_swap_overlap_dsm_heldout_occupancy_100ms.tex": "89e0f907e9c38a0b15fde6be91fd3a5d58f504104ec1da3a050f8c169fb0ab21",
+  "table_elm_swap_overlap_dsm_heldout_occupancy_200ms.tex": "b0406fd8c94adf91019a9067244d82cafa3b6c1066b7f1cb948ac528ab1eb377",
+  "table_elm_swap_overlap_dsm_heldout_occupancy_300ms.tex": "5f39ba44a1090de2ef755f84c004b1c8498f284bea7a720d4b3fa91076c745bc",
+  "table_elm_swap_overlap_occupancy_100ms.tex": "0caaf1e4e148f375d53f4e4f46d4c44b203513631ee5c5f45ea6001854dea141",
+  "table_elm_swap_overlap_occupancy_200ms.tex": "74e7c0adac43ee3e9cbcbbacc0c3f944541bd328308745e0f37597f280104af4",
+  "table_elm_swap_overlap_occupancy_300ms.tex": "03befe647f9e1ce48544378a5a8ad17c62c9bc75b7ba051e6e44dbeaa1349551",
+  "table_elm_swap_rankings.tex": "69f38d047266b876ffdeddbc8e7643d48a38adf21ce1aaad6304406c846f4b72",
+  "table_elm_swap_rankings_auroc.tex": "bdb67f5c6fbdd14d60d559c304bec9f2e38607da435b535649f09ae2f867fc27",
+  "table_elm_swap_rankings_f1.tex": "f2987f2390b4d16a418d51378231d47c75136a764e9189c4a0377544ef8deb4f",
+  "table_elm_swap_sensitivity.tex": "e64767e5f7726a17641d490a5a93613fa415393271a6dc15b4ce02e0bd967430"
+ },
+ "caption_word_counts": {
+  "table_elm_annotation_modes.tex": [
+   66
+  ],
+  "table_elm_benchmark.tex": [
+   69
+  ],
+  "table_elm_dsm_native.tex": [
+   63
+  ],
+  "table_elm_dsm_own_target.tex": [
+   65
+  ],
+  "table_elm_per_kind.tex": [
+   46
+  ],
+  "table_elm_proxy_clock_spans.tex": [
+   47
+  ],
+  "table_elm_proxy_elmo_onsets.tex": [
+   47
+  ],
+  "table_elm_swap.tex": [
+   70
+  ],
+  "table_elm_swap_all.tex": [
+   42
+  ],
+  "table_elm_swap_bes.tex": [
+   42
+  ],
+  "table_elm_swap_bes_dsm_heldout.tex": [
+   42
+  ],
+  "table_elm_swap_dsm_heldout.tex": [
+   42
+  ],
+  "table_elm_swap_full.tex": [
+   50
+  ],
+  "table_elm_swap_full_occupancy_100ms.tex": [
+   54
+  ],
+  "table_elm_swap_full_occupancy_200ms.tex": [
+   54
+  ],
+  "table_elm_swap_full_occupancy_300ms.tex": [
+   54
+  ],
+  "table_elm_swap_occupancy_100ms.tex": [
+   46
+  ],
+  "table_elm_swap_occupancy_200ms.tex": [
+   46
+  ],
+  "table_elm_swap_occupancy_300ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_100ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_200ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_dsm_heldout_occupancy_300ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_occupancy_100ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_occupancy_200ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_bes_occupancy_300ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_dsm_heldout_occupancy_100ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_dsm_heldout_occupancy_200ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_dsm_heldout_occupancy_300ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_occupancy_100ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_occupancy_200ms.tex": [
+   46
+  ],
+  "table_elm_swap_overlap_occupancy_300ms.tex": [
+   46
+  ],
+  "table_elm_swap_rankings.tex": [
+   57,
+   56
+  ],
+  "table_elm_swap_rankings_auroc.tex": [
+   57
+  ],
+  "table_elm_swap_rankings_f1.tex": [
+   56
+  ],
+  "table_elm_swap_sensitivity.tex": [
+   52
+  ]
+ },
+ "shared_notes": {
+  "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/elm_table_notes.tex",
+  "sha256": "83e631f5984b2710a8aa81c6b18e96e78e14dcda656f11281150d8ebeb07fa64"
  },
  "benchmark_json_paths": [
   "ours/evaluation.json:sets.all119.methods",
@@ -53,6 +177,14 @@
   "dsm/evaluation.json:sets.all119.methods",
   "dsm/evaluation.json:sets.bes73.methods"
  ],
+ "stratified_json_paths": [
+  "ours/evaluation.json:sets.all119.annotation_modes",
+  "ours/evaluation.json:sets.all119.per_kind",
+  "ours/evaluation.json:sets.bes73.annotation_modes",
+  "ours/evaluation.json:sets.bes73.per_kind"
+ ],
+ "own_target_json_path": "dsm/evaluation.json:own_target",
+ "native_json_path": "dsm/native_evaluation.json",
  "swap_json_paths": [
   "swap/evaluation.json:swap.overlap",
   "swap/evaluation.json:swap.overlap_bes",
