@@ -561,7 +561,8 @@ def detect(
             )
             padding = rule.frame_ms / 2000
             start = max(float(t[run[0]]), start - padding)
-            end = min(float(t[run[1] - 1] + dt), end + padding)
+            run_stop = t[run[1]] if run[1] < len(t) else t[-1] + dt
+            end = min(float(run_stop), end + padding)
         output.append(
             Event(t0_s=start, t1_s=end, confidence=1.0, attrs=attrs, **kwargs)
         )

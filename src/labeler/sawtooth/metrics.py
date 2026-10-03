@@ -37,9 +37,9 @@ def event_cells(reference_s, estimate_s, tolerance_ms=2.0):
 def point_metrics(cells):
     tp, fp, fn = np.asarray(cells, dtype=float)
     return {
-        "precision": float(tp / (tp + fp)) if tp + fp else 0.0,
-        "recall": float(tp / (tp + fn)) if tp + fn else 0.0,
-        "f1": float(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else 0.0,
+        "precision": float(tp / (tp + fp)) if tp + fp else None,
+        "recall": float(tp / (tp + fn)) if tp + fn else None,
+        "f1": float(2 * tp / (2 * tp + fp + fn)) if 2 * tp + fp + fn else None,
     }
 
 
@@ -65,6 +65,50 @@ def interval_cells(reference, estimate, minimum_iou=0.1):
     )
 
 
+def masked_interval_cells(reference, estimate, support, minimum_iou=0.1):
+    """One-to-one span matching using only supported duration for overlap/union.
+
+    A gap does not create another annotation or prediction. Original intervals
+    with no assessed support are excluded from all matching denominators. Support
+    intervals are merged first, so duplicated or overlapping cells count once.
+    """
+    merged = []
+    for start, end in sorted((a, b) for a, b in support if b > a):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(end, merged[-1][1]))
+        else:
+            merged.append((start, end))
+
+    def duration(start, end):
+        return sum(max(0.0, min(end, b) - max(start, a)) for a, b in merged)
+
+    references = [(a, b, duration(a, b)) for a, b in reference]
+    estimates = [(a, b, duration(a, b)) for a, b in estimate]
+    references = [span for span in references if span[2] > 0]
+    estimates = [span for span in estimates if span[2] > 0]
+    possible = []
+    for i, (a, b, ref_duration) in enumerate(references):
+        for j, (c, d, est_duration) in enumerate(estimates):
+            overlap = duration(max(a, c), min(b, d))
+            union = ref_duration + est_duration - overlap
+            iou = overlap / union if union > 0 else 0.0
+            if overlap > 0 and iou >= minimum_iou:
+                possible.append((-iou, i, j))
+    used_ref, used_est = set(), set()
+    for _, i, j in sorted(possible):
+        if i not in used_ref and j not in used_est:
+            used_ref.add(i)
+            used_est.add(j)
+    return np.array(
+        [
+            len(used_ref),
+            len(estimates) - len(used_est),
+            len(references) - len(used_ref),
+        ],
+        dtype=float,
+    )
+
+
 def bootstrap_cells(rows, *, replicates=1000, seed=20261003):
     """Precision/recall/F1 with equal-probability shot bootstrap draws."""
     cells = np.stack([r["cells"] for r in rows])
@@ -74,12 +118,14 @@ def bootstrap_cells(rows, *, replicates=1000, seed=20261003):
     for _ in range(replicates):
         selected = rng.integers(0, len(rows), size=len(rows))
         for k, v in point_metrics(cells[selected].sum(axis=0)).items():
-            samples[k].append(v)
+            if v is not None:
+                samples[k].append(v)
     return {
         "metrics": result,
         "cells": cells.sum(axis=0).astype(int).tolist(),
         "ci95": {
-            k: np.quantile(v, [0.025, 0.975]).tolist() for k, v in samples.items()
+            k: np.quantile(v, [0.025, 0.975]).tolist() if v else None
+            for k, v in samples.items()
         },
         "replicates": replicates,
         "seed": seed,
@@ -128,14 +174,51 @@ def presence_metrics(histogram, threshold=0.5):
     }
 
 
+def binary_cells(truth, estimate):
+    """Presence TP/FP/FN/TN, after observability and assessment filtering."""
+    truth, estimate = np.asarray(truth, bool), np.asarray(estimate, bool)
+    if truth.shape != estimate.shape:
+        raise ValueError("truth and estimate must have identical shapes")
+    return np.array(
+        [
+            (truth & estimate).sum(),
+            (~truth & estimate).sum(),
+            (truth & ~estimate).sum(),
+            (~truth & ~estimate).sum(),
+        ],
+        dtype=float,
+    )
+
+
+def presence_from_cells(histogram, cells, threshold=0.5):
+    """Retain ranking scores but use each fold's selected operating threshold."""
+    scores = presence_metrics(histogram, threshold)
+    cells = np.asarray(cells, float)
+    tp, fp, fn, tn = cells
+    scores.update(point_metrics([tp, fp, fn]))
+    scores["accuracy"] = float((tp + tn) / (tp + fp + fn + tn)) if cells.sum() else None
+    scores["positive_bins"] = int(tp + fn)
+    scores["negative_bins"] = int(tn + fp)
+    return scores
+
+
 def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
     """Each row is one held-out shot, with event cells and a presence histogram."""
     if not rows:
         return {"shots": 0, "crash": None, "presence": None, "ci95": {}}
     events = np.stack([r["cells"] for r in rows])
     hist = np.stack([r["histogram"] for r in rows])
+    presence_cells = (
+        np.stack([r["presence_cells"] for r in rows])
+        if all("presence_cells" in r for r in rows)
+        else None
+    )
     crash = point_metrics(events.sum(axis=0))
-    presence = presence_metrics(hist.sum(axis=0), threshold)
+    presence = (
+        presence_from_cells(hist.sum(axis=0), presence_cells.sum(axis=0), threshold)
+        if presence_cells is not None
+        else presence_metrics(hist.sum(axis=0), threshold)
+    )
     rng = np.random.default_rng(seed)
     samples = {
         f"{kind}_{name}": []
@@ -149,7 +232,15 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
         selected = rng.integers(0, len(rows), size=len(rows))
         values = {
             "crash": point_metrics(events[selected].sum(axis=0)),
-            "presence": presence_metrics(hist[selected].sum(axis=0), threshold),
+            "presence": (
+                presence_from_cells(
+                    hist[selected].sum(axis=0),
+                    presence_cells[selected].sum(axis=0),
+                    threshold,
+                )
+                if presence_cells is not None
+                else presence_metrics(hist[selected].sum(axis=0), threshold)
+            ),
         }
         for key, sample in samples.items():
             kind, name = key.split("_", 1)
@@ -169,7 +260,9 @@ def aggregate(rows, *, replicates=1000, seed=20261003, threshold=0.5):
         "bootstrap_replicates": replicates,
         "bootstrap_seed": seed,
         "probability_histogram_bins": HISTOGRAM_BINS,
-        "presence_threshold": threshold,
+        "presence_threshold": "per-fold inner-selected"
+        if presence_cells is not None
+        else threshold,
     }
 
 

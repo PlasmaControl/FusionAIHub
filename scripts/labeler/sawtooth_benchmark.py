@@ -1,8 +1,8 @@
 """Shot-grouped saw-hl3 / saw-ours training, calibration, inference and scoring.
 
-Only fixed cohort train shots enter the three CV folds. Fixed val shots select
-checkpoints and crash thresholds; fixed test shots are never loaded here. All
-expert-reviewed shots are excluded from training and checkpoint/threshold choice.
+Only fixed cohort train shots enter three outer folds. Within each outer training
+fold, a deterministic 20% inner selection split chooses early stopping and all
+operating thresholds. Fixed val/test and expert shots never enter selection.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from sawtooth_physics import REPO, REVIEW, SEED, WORK, save_json
+from sawtooth_physics import OUTPUT, REPO, REVIEW, SEED, WORK, save_json
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import find_peaks
 from torch.nn import functional as F
@@ -24,13 +24,18 @@ from torch.nn import functional as F
 from labeler.sawtooth.metrics import (
     aggregate,
     bin_times,
+    binary_cells,
     event_cells,
+    point_metrics,
+    presence_from_cells,
     score_histogram,
     spans_at,
 )
 from labeler.sawtooth.models import HL3, PhasePicker, soft_crash_target
 
 MODELS = ("saw-hl3", "saw-ours")
+THRESHOLDS = np.arange(1, 20) / 20
+DERIVATIVE_Z = tuple(range(2, 11))
 LEGACY = {
     "source": "OuYang et al. PPCF 67 (2025) 105004, doi:10.1088/1361-6587/ae0786; local digest",
     "real_time": {
@@ -65,14 +70,14 @@ def manifest(work):
     reviewed = {int(s) for s in pd.read_csv(REVIEW).shot}
     usable = {int(p.stem) for p in (work / "signals").glob("*.npz")}
     train = sorted(set(cohort[cohort.split == "train"].shot) & usable - reviewed)
-    validation = sorted(set(cohort[cohort.split == "val"].shot) & usable - reviewed)
     shuffled = np.random.default_rng(SEED).permutation(train)
     folds = {int(s): i % 3 for i, s in enumerate(shuffled)}
     data = {
         "seed": SEED,
         "folds": folds,
         "training_cohort": train,
-        "validation_shots": validation,
+        "fixed_validation_excluded": sorted(cohort[cohort.split == "val"].shot),
+        "inner_selection_fraction": 0.2,
         "expert_shots": sorted(reviewed & usable),
         "blind_test_excluded": sorted(cohort[cohort.split == "test"].shot),
         "unusable_train": sorted(set(cohort[cohort.split == "train"].shot) - usable),
@@ -80,7 +85,7 @@ def manifest(work):
         "all_reviewed_excluded": sorted(reviewed),
     }
     save_json(work / "split_manifest.json", data)
-    save_json(REPO / "outputs/labeler/sawtooth/split_manifest.json", data)
+    save_json(OUTPUT / "split_manifest.json", data)
     return data
 
 
@@ -88,11 +93,49 @@ def record(work, shot):
     return json.loads((work / "shots" / f"{shot}.json").read_text())
 
 
+def inner_split(outer_training, *, seed):
+    """Keep whole shots together; fixed val/test never enter this split."""
+    if len(outer_training) < 5:
+        raise ValueError("at least five outer training shots are required")
+    shuffled = np.random.default_rng(seed).permutation(sorted(outer_training))
+    count = max(1, round(len(shuffled) * 0.2))
+    return sorted(map(int, shuffled[count:])), sorted(map(int, shuffled[:count]))
+
+
+def present_rows(rec, key):
+    return [
+        row
+        for row in rec[key]
+        if row.get("attrs", {}).get("state", row.get("state", "present")) == "present"
+    ]
+
+
+def masks_at(signal, times):
+    """Sample explicit masks on the nearest native bin; out of range is unknown."""
+    t = signal["t"]
+    if "observable" not in signal or "assessed" not in signal:
+        raise ValueError("signals require explicit observable and assessed masks")
+    index = np.searchsorted(t, times)
+    right = np.clip(index, 0, len(t) - 1)
+    left = np.clip(index - 1, 0, len(t) - 1)
+    nearest = np.where(np.abs(t[left] - times) <= np.abs(t[right] - times), left, right)
+    inside = (np.asarray(times) >= t[0]) & (np.asarray(times) <= t[-1])
+    observable = signal["observable"][nearest].astype(bool) & inside
+    assessed = signal["assessed"][nearest].astype(bool) & observable
+    return observable, assessed
+
+
+def assessed_points(signal, times):
+    """No point truth/prediction from an unknown or uncertain bin is scored."""
+    times = np.asarray(times, dtype=float)
+    return times[masks_at(signal, times)[1]]
+
+
 def period_boundary(work, shots):
     periods = [
         r["attrs"]["period_ms"]
         for shot in shots
-        for r in record(work, shot)["intervals"]
+        for r in present_rows(record(work, shot), "intervals")
     ]
     if not periods:
         raise ValueError("training fold has no train periods")
@@ -100,11 +143,12 @@ def period_boundary(work, shots):
 
 
 def targets(t, rec, boundary):
-    spans = [(r["start_s"], r["end_s"]) for r in rec["intervals"]]
+    intervals = present_rows(rec, "intervals")
+    spans = [(r["start_s"], r["end_s"]) for r in intervals]
     presence = spans_at(t, spans).astype(np.float32)
-    picks = soft_crash_target(t, [r["time_s"] for r in rec["crashes"]])
+    picks = soft_crash_target(t, [r["time_s"] for r in present_rows(rec, "crashes")])
     classes = np.zeros(len(t), dtype=np.int64)
-    for r in rec["intervals"]:
+    for r in intervals:
         classes[(t >= r["start_s"]) & (t < r["end_s"])] = 1 + int(
             r["attrs"]["period_ms"] > boundary
         )
@@ -123,11 +167,15 @@ def windows(work, shots, model, boundary, *, per_shot=64):
             continue
         rec = record(work, shot)
         pick, present, classes = targets(t, rec, boundary)
+        observable, assessed = masks_at(data, t)
         rng = np.random.default_rng(SEED + shot)
         starts = rng.integers(0, len(t) - width + 1, size=per_shot)
         if model == "saw-ours":
             centers = np.array(
-                [np.searchsorted(t, r["time_s"]) - width // 2 for r in rec["crashes"]]
+                [
+                    np.searchsorted(t, r["time_s"]) - width // 2
+                    for r in present_rows(rec, "crashes")
+                ]
             )
             centers = np.clip(centers, 0, len(t) - width).astype(int)
             if len(centers):
@@ -140,21 +188,25 @@ def windows(work, shots, model, boundary, *, per_shot=64):
                     ),
                 ]
         for start in starts:
-            window = x[:, start : start + width]
-            # Missing input channels remain zero after normalization; reject only
-            # windows with inadequate ECE core coverage, not optional auxiliaries.
-            core = window[:2] if model == "saw-hl3" else window[20:36]
-            if np.isfinite(core).mean() < 0.8:
+            window = x[:, start : start + width].copy()
+            mask = assessed[start : start + width]
+            if observable[start : start + width].mean() < 0.8 or not mask.any():
                 continue
+            if model == "saw-hl3" and not mask[width // 2]:
+                continue
+            # Unknown input bins do not influence normalization or gradients.
+            window[:, ~mask] = np.nan
             xs.append(window.astype(np.float16))
             ys.append(
                 int(classes[start + width // 2])
                 if model == "saw-hl3"
                 else np.stack(
-                    [pick[start : start + width], present[start : start + width]]
+                    [pick[start : start + width], present[start : start + width], mask]
                 ).astype(np.float16)
             )
             owners.append(shot)
+    if not xs:
+        raise ValueError(f"no assessed windows for {model} on {shots}")
     return np.stack(xs), np.array(ys), np.array(owners)
 
 
@@ -190,15 +242,23 @@ def loss(model, logits, y, weights=None):
     if model == "saw-hl3":
         return F.cross_entropy(logits, y.long(), weight=weights)
     logp = F.log_softmax(logits[:, :2], dim=1)
-    pick, present = y[:, 0], y[:, 1]
-    point = -(20 * pick * logp[:, 1] + (1 - pick) * logp[:, 0]).mean()
-    interval = F.binary_cross_entropy_with_logits(logits[:, 2], present)
+    pick, present, mask = y[:, 0], y[:, 1], y[:, 2]
+    denominator = mask.sum().clamp_min(1)
+    point = -(mask * (20 * pick * logp[:, 1] + (1 - pick) * logp[:, 0])).sum()
+    point /= denominator
+    interval = (
+        F.binary_cross_entropy_with_logits(logits[:, 2], present, reduction="none")
+        * mask
+    ).sum() / denominator
     return point + interval
 
 
 def infer(model, name, signal, mean, std, *, batch=128):
     t = signal["t"]
-    values = signal["baseline" if name == "saw-hl3" else "y"]
+    values = signal["baseline" if name == "saw-hl3" else "y"].copy()
+    observable, assessed = masks_at(signal, t)
+    values[:, ~observable] = np.nan
+    device = next(model.parameters()).device
     model.eval()
     with torch.no_grad():
         if name == "saw-hl3":
@@ -208,8 +268,9 @@ def infer(model, name, signal, mean, std, *, batch=128):
                 selected = starts[offset : offset + batch]
                 x = values[:, selected[:, None] + np.arange(200)].transpose(1, 0, 2)
                 output = (
-                    model(torch.from_numpy(normalize(x, mean, std)))
+                    model(torch.from_numpy(normalize(x, mean, std)).to(device))
                     .softmax(dim=1)
+                    .cpu()
                     .numpy()
                 )
                 chunks.append(output)
@@ -227,6 +288,8 @@ def infer(model, name, signal, mean, std, *, batch=128):
                 "presence": presence.astype(np.float32),
                 "class_t": centers,
                 "class_prob": probabilities.astype(np.float32),
+                "observable": observable,
+                "assessed": assessed,
             }
         # Overlap-and-crop removes artificial seams; no shots are concatenated.
         width, margin, hop = 1000, 100, 800
@@ -241,16 +304,28 @@ def infer(model, name, signal, mean, std, *, batch=128):
                     np.arange(start - margin, start - margin + width), 0, len(t) - 1
                 )
                 chunks.append(values[:, index])
-            logits = model(torch.from_numpy(normalize(np.stack(chunks), mean, std)))
-            output = torch.stack(
-                [logits[:, :2].softmax(dim=1)[:, 1], logits[:, 2].sigmoid()], dim=1
-            ).numpy()
+            logits = model(
+                torch.from_numpy(normalize(np.stack(chunks), mean, std)).to(device)
+            )
+            output = (
+                torch.stack(
+                    [logits[:, :2].softmax(dim=1)[:, 1], logits[:, 2].sigmoid()], dim=1
+                )
+                .cpu()
+                .numpy()
+            )
             for start, p in zip(selected, output, strict=True):
                 end = min(len(t), start + hop)
                 probability[:, start:end] += p[:, margin : margin + end - start]
                 count[start:end] += 1
         probability /= np.maximum(count, 1)
-        return {"t": t, "crash": probability[0], "presence": probability[1]}
+        return {
+            "t": t,
+            "crash": probability[0],
+            "presence": probability[1],
+            "observable": observable,
+            "assessed": assessed,
+        }
 
 
 def picks(name, prediction, signal, threshold, z=4):
@@ -266,35 +341,82 @@ def picks(name, prediction, signal, threshold, z=4):
         scale = 1.4826 * np.median(np.abs(derivative - np.median(derivative)))
         peaks, _ = find_peaks(derivative, height=z * max(scale, 1e-8), distance=50)
         peaks = peaks[prediction["presence"][peaks] >= threshold]
-    return t[peaks]
+    return assessed_points(signal, t[peaks])
 
 
 def calibrate(name, predictions, work):
+    """Select only on inner held-out training shots, never fixed val/expert."""
+    references, truth_by_shot = {}, {}
+    signals = {}
+    for shot, prediction in predictions.items():
+        with np.load(work / "signals" / f"{shot}.npz") as data:
+            signals[shot] = {
+                key: data[key] for key in ("t", "baseline", "observable", "assessed")
+            }
+        rec = record(work, shot)
+        references[shot] = assessed_points(
+            signals[shot], [r["time_s"] for r in present_rows(rec, "crashes")]
+        )
+        t = bin_times((prediction["t"][0], prediction["t"][-1]))
+        valid = masks_at(signals[shot], t)[1]
+        truth = spans_at(
+            t, [(r["start_s"], r["end_s"]) for r in present_rows(rec, "intervals")]
+        )[valid]
+        probability = np.interp(t, prediction["t"], prediction["presence"])[valid]
+        truth_by_shot[shot] = truth, probability
     options = []
-    for threshold in (0.3, 0.5, 0.7):
-        for z in (2, 4, 6) if name == "saw-hl3" else (0,):
+    for threshold in THRESHOLDS:
+        for z in DERIVATIVE_Z if name == "saw-hl3" else (0,):
             cells = np.zeros(3)
             for shot, prediction in predictions.items():
-                signal = np.load(work / "signals" / f"{shot}.npz")
-                estimate = picks(name, prediction, signal, threshold, z)
-                reference = [r["time_s"] for r in record(work, shot)["crashes"]]
-                cells += event_cells(reference, estimate, 2)
-            tp, fp, fn = cells
-            f1 = 2 * tp / max(1, 2 * tp + fp + fn)
+                estimate = picks(name, prediction, signals[shot], threshold, z)
+                cells += event_cells(references[shot], estimate, 2)
+            scores = point_metrics(cells)
             options.append(
                 {
-                    "threshold": threshold,
+                    "threshold": float(threshold),
                     "z": z,
-                    "f1": float(f1),
+                    **scores,
                     "cells": cells.astype(int).tolist(),
                 }
             )
-    selected = max(options, key=lambda r: (r["f1"], r["threshold"], r["z"]))
+    selected = max(
+        options,
+        key=lambda r: (-1 if r["f1"] is None else r["f1"], r["threshold"], r["z"]),
+    )
+    presence_options = []
+    for threshold in THRESHOLDS:
+        cells = sum(
+            (
+                binary_cells(truth, probability >= threshold)
+                for truth, probability in truth_by_shot.values()
+            ),
+            start=np.zeros(4),
+        )
+        scores = point_metrics(cells[:3])
+        presence_options.append(
+            {
+                "threshold": float(threshold),
+                "cells": cells.astype(int).tolist(),
+                **scores,
+            }
+        )
+    best_presence = max(
+        presence_options,
+        key=lambda r: (-1 if r["f1"] is None else r["f1"], r["threshold"]),
+    )
+    selected["presence_threshold"] = best_presence["threshold"]
+    selected["presence_options"] = presence_options
     return selected, options
 
 
 def train(args):
     torch.set_num_threads(args.threads)
+    if not torch.cuda.is_available():
+        raise RuntimeError("GPU training requires the phase3 CUDA Python environment")
+    device = torch.device("cuda")
+    # The shared head-node GPU budget is 10 GB; reserve at most 28% of a V100S.
+    torch.cuda.set_per_process_memory_fraction(0.28)
     split = manifest(args.work)
     for name in args.models:
         for fold in args.folds:
@@ -305,25 +427,30 @@ def train(args):
                 continue
             seed = SEED + fold
             torch.manual_seed(seed)
+            torch.cuda.reset_peak_memory_stats()
             rng = np.random.default_rng(seed)
-            training = [
+            outer_training = [
                 s for s in split["training_cohort"] if split["folds"][s] != fold
             ]
             heldout = [s for s in split["training_cohort"] if split["folds"][s] == fold]
-            validation = split["validation_shots"]
+            training, validation = inner_split(outer_training, seed=seed)
             boundary = period_boundary(args.work, training)
             x, y, owners = windows(
                 args.work, training, name, boundary, per_shot=args.windows_per_shot
             )
             vx, vy, _ = windows(args.work, validation, name, boundary, per_shot=32)
+            selection_windows = len(vx)
             mean, std = normalizer(x)
             class_weights = None
             if name == "saw-hl3":
                 counts = np.bincount(y, minlength=3)
                 class_weights = torch.tensor(
-                    len(y) / (3 * np.maximum(counts, 1)), dtype=torch.float32
+                    len(y) / (3 * np.maximum(counts, 1)),
+                    dtype=torch.float32,
+                    device=device,
                 )
             model = HL3() if name == "saw-hl3" else PhasePicker()
+            model.to(device)
             optimizer = torch.optim.Adam(
                 model.parameters(),
                 lr=0.001,
@@ -333,7 +460,9 @@ def train(args):
             history, best, best_epoch, stale = [], float("inf"), -1, 0
             batch = 128 if name == "saw-hl3" else 32
             begun = time.monotonic()
-            for epoch in range(args.epochs):
+            epoch = 0
+            while stale < args.patience:
+                epoch += 1
                 model.train()
                 losses = []
                 for _ in range(args.steps):
@@ -341,29 +470,30 @@ def train(args):
                     xx = normalize(x[selected], mean, std)
                     yy = y[selected].astype(np.float32)
                     if name == "saw-hl3":
-                        # The paper's +/-0.2 temporal shift is ambiguous; use
-                        # +/-20% of the 20 ms input and shift the center label too.
-                        # Regime windows near boundaries are not rolled to avoid
-                        # invalid class supervision. Amplitude/noise augment only.
+                        # The paper's +/-0.2 temporal shift is ambiguous and
+                        # can alter the regime label near a boundary; omit it.
+                        # Retain amplitude and noise augmentation only.
                         xx *= rng.uniform(0.8, 1.2, size=(batch, 1, 1)).astype(
                             np.float32
                         )
                         xx += rng.normal(0, 0.1, size=xx.shape).astype(np.float32)
-                    logits = model(torch.from_numpy(xx))
-                    value = loss(name, logits, torch.from_numpy(yy), class_weights)
+                    logits = model(torch.from_numpy(xx).to(device))
+                    value = loss(
+                        name, logits, torch.from_numpy(yy).to(device), class_weights
+                    )
                     optimizer.zero_grad()
                     value.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)
                     optimizer.step()
                     losses.append(value.item())
                 model.eval()
-                vloss = []
+                vloss, vweights = [], []
                 with torch.no_grad():
                     for start in range(0, len(vx), batch):
                         logits = model(
                             torch.from_numpy(
                                 normalize(vx[start : start + batch], mean, std)
-                            )
+                            ).to(device)
                         )
                         vloss.append(
                             loss(
@@ -371,30 +501,42 @@ def train(args):
                                 logits,
                                 torch.from_numpy(
                                     vy[start : start + batch].astype(np.float32)
-                                ),
+                                ).to(device),
                                 class_weights,
                             ).item()
                         )
-                validation_loss = float(np.mean(vloss))
+                        if name == "saw-hl3":
+                            vweights.append(
+                                float(
+                                    class_weights[
+                                        torch.from_numpy(
+                                            vy[start : start + batch].astype(np.int64)
+                                        ).to(device)
+                                    ].sum()
+                                )
+                            )
+                        else:
+                            vweights.append(float(vy[start : start + batch, 2].sum()))
+                validation_loss = float(np.average(vloss, weights=vweights))
                 history.append(
                     {
-                        "epoch": epoch + 1,
+                        "epoch": epoch,
                         "train_loss": float(np.mean(losses)),
                         "val_loss": validation_loss,
                     }
                 )
                 print(
-                    f"{name} fold {fold} epoch {epoch + 1}: train {np.mean(losses):.4f} val {validation_loss:.4f}",
+                    f"{name} fold {fold} epoch {epoch}: train {np.mean(losses):.4f} val {validation_loss:.4f}",
                     flush=True,
                 )
-                if validation_loss < best:
-                    best, best_epoch, stale = validation_loss, epoch + 1, 0
+                if not np.isfinite(validation_loss):
+                    raise ValueError("nonfinite inner selection loss")
+                if validation_loss < best - args.min_delta:
+                    best, best_epoch, stale = validation_loss, epoch, 0
                     best_state = copy.deepcopy(model.state_dict())
                 else:
                     stale += 1
                 scheduler.step()
-                if stale >= 5:
-                    break
             model.load_state_dict(best_state)
             torch.save(
                 {
@@ -404,6 +546,7 @@ def train(args):
                     "boundary_ms": boundary,
                     "training_shots": training,
                     "validation_shots": validation,
+                    "selection_shots": validation,
                     "model": name,
                 },
                 out / "checkpoint.pt",
@@ -429,29 +572,54 @@ def train(args):
                 "model": name,
                 "fold": fold,
                 "seed": seed,
+                "label_work_root": str(args.work),
+                "label_freeze_json": str(args.work / "freeze.json"),
                 "training_shots": training,
                 "heldout_shots": heldout,
                 "validation_shots": validation,
+                "selection_shots": validation,
+                "outer_training_shots": outer_training,
                 "expert_shots": split["expert_shots"],
                 "training_windows": len(owners),
+                "selection_windows": selection_windows,
+                "training_class_counts": counts.tolist() if name == "saw-hl3" else None,
                 "period_boundary_ms": boundary,
                 "history": history,
                 "best_epoch": best_epoch,
                 "selected_crash_threshold": selected,
                 "threshold_candidates": options,
-                "presence_threshold": 0.5,
+                "presence_threshold": selected["presence_threshold"],
                 "batch_size": batch,
-                "max_epochs": args.epochs,
+                "stopping_reason": "inner selection loss patience exhausted",
+                "early_stopping_patience": args.patience,
+                "early_stopping_min_delta": args.min_delta,
+                "stale_epochs": stale,
+                "epochs_completed": epoch,
                 "steps_per_epoch": args.steps,
                 "cpu_threads": args.threads,
-                "device": "cpu",
+                "device": str(device),
+                "device_name": torch.cuda.get_device_name(),
+                "peak_cuda_memory_bytes": torch.cuda.max_memory_allocated(),
+                "threshold_grid": THRESHOLDS.tolist(),
+                "derivative_z_grid": list(DERIVATIVE_Z) if name == "saw-hl3" else [],
+                "input_channels": (
+                    [
+                        "ECE core mean channels 20-27",
+                        "ECE outer mean channels 8-15",
+                        "Mirnov mean channels 0-1",
+                        "Ip",
+                    ]
+                    if name == "saw-hl3"
+                    else [f"ECE channel {i}" for i in range(48)]
+                ),
+                "unknown_truth": "observable & assessed masks exclude unavailable, cutoff, low-Te and uncertain bins",
                 "seconds": round(time.monotonic() - begun, 1),
                 "parameters": sum(p.numel() for p in model.parameters()),
             }
             save_json(out / "complete.json", summary)
-            save_json(
-                REPO / f"outputs/labeler/sawtooth/{name}_fold_{fold}.json", summary
-            )
+            save_json(OUTPUT / f"{name}_fold_{fold}.json", summary)
+            del model, optimizer, scheduler, best_state, validation_predictions
+            torch.cuda.empty_cache()
 
 
 def evaluate(args):
@@ -460,72 +628,131 @@ def evaluate(args):
         "legacy": LEGACY,
         "Tokamak-SI": {},
         "protocol": {
-            "primary": "three-fold out-of-fold predictions on fixed train cohort; fixed val for checkpoint/crash threshold",
+            "primary": "three-fold out-of-fold on fixed train; 20% whole-shot inner selection from each outer training fold",
             "bin_ms": 2,
-            "interval_threshold": 0.5,
+            "interval_threshold": "selected independently per fold on inner selection shots, grid 0.05..0.95 step 0.05",
             "crash_tolerances_ms": [1, 2],
+            "fixed_validation_split": "excluded from fitting and selection",
             "test_split": "excluded, never loaded",
-            "expert": "all reviewed shots excluded from every fold and validation",
-            "bootstrap": "1000 shot resamples, seed 20261003; probabilities quantized to 512 bins for AUROC/AP",
+            "expert": "reviewed shots excluded from fitting and selection; per-shot results without bootstrap",
+            "bootstrap": "1000 OOF shot resamples, seed 20261003; 512 probability bins for AUROC/AP",
             "gaussian_target_sigma_ms": 0.5,
+            "assessment": "OOF pseudolabel scores intersect observable & assessed. Primary expert scores intersect known expert spans & observable, because independent expert truth resolves algorithm uncertainty; conditional algorithm-assessed scores also reported.",
+            "input_parity": "saw-hl3: two ECE averages (20-27, 8-15), Mirnov mean 0-1 and Ip; saw-ours: all 48 ECE channels. Adapted HL-3 ECE inputs replace published SXR; architecture and input access differ.",
         },
     }
+    review = pd.read_csv(REVIEW)
     for name in args.models:
+        summaries = [
+            json.loads(
+                (
+                    args.work / "models" / name / f"fold_{fold}" / "complete.json"
+                ).read_text()
+            )
+            for fold in range(3)
+        ]
         rows = {1: [], 2: []}
         class_cells = np.zeros((3, 3), dtype=int)
-        shot_class_cells = []
+        shot_class_cells, by_shot = [], []
         for shot in split["training_cohort"]:
             fold = split["folds"][shot]
+            summary = summaries[fold]
             path = args.work / "predictions" / name / f"fold_{fold}" / f"{shot}.npz"
             if not path.exists():
                 raise FileNotFoundError(path)
             pred = np.load(path)
+            signal = {key: pred[key] for key in ("t", "observable", "assessed")}
             rec = record(args.work, shot)
             t = bin_times((pred["t"][0], pred["t"][-1]))
-            truth = spans_at(t, [(r["start_s"], r["end_s"]) for r in rec["intervals"]])
-            hist = score_histogram(truth, np.interp(t, pred["t"], pred["presence"]))
-            ref = [r["time_s"] for r in rec["crashes"]]
+            observable, assessed = masks_at(signal, t)
+            truth = spans_at(
+                t, [(r["start_s"], r["end_s"]) for r in present_rows(rec, "intervals")]
+            )
+            probability = np.interp(t, pred["t"], pred["presence"])
+            hist = score_histogram(truth[assessed], probability[assessed])
+            presence_cells = binary_cells(
+                truth[assessed], probability[assessed] >= summary["presence_threshold"]
+            )
+            ref = assessed_points(
+                signal, [r["time_s"] for r in present_rows(rec, "crashes")]
+            )
+            estimated = assessed_points(signal, pred["picks"])
+            shot_result = {
+                "shot": shot,
+                "fold": fold,
+                "assessed_bins": int(assessed.sum()),
+                "observable_bins": int(observable.sum()),
+                "unassessed_bins": int((~observable).sum()),
+                "uncertain_bins": int((observable & ~assessed).sum()),
+                "presence_threshold": summary["presence_threshold"],
+                "presence_cells": presence_cells.astype(int).tolist(),
+                "presence": presence_from_cells(
+                    hist, presence_cells, summary["presence_threshold"]
+                ),
+            }
             for tolerance in (1, 2):
+                cells = event_cells(ref, estimated, tolerance)
                 rows[tolerance].append(
                     {
                         "shot": shot,
-                        "cells": event_cells(ref, pred["picks"], tolerance),
+                        "cells": cells,
                         "histogram": hist,
+                        "presence_cells": presence_cells,
                     }
                 )
+                shot_result[f"crash_tolerance_{tolerance}ms"] = point_metrics(cells)
+            by_shot.append(shot_result)
             if name == "saw-hl3":
-                summary = json.loads(
-                    (
-                        args.work / "models" / name / f"fold_{fold}" / "complete.json"
-                    ).read_text()
-                )
                 _, _, classes = targets(
                     pred["class_t"], rec, summary["period_boundary_ms"]
                 )
+                valid = masks_at(signal, pred["class_t"])[1]
                 cells = np.zeros((3, 3), dtype=int)
-                np.add.at(cells, (classes, pred["class_prob"].argmax(axis=1)), 1)
+                np.add.at(
+                    cells, (classes[valid], pred["class_prob"].argmax(axis=1)[valid]), 1
+                )
                 class_cells += cells
                 shot_class_cells.append(cells)
         score = {
             f"crash_tolerance_{tolerance}ms": aggregate(rows[tolerance])
             for tolerance in (1, 2)
         }
+        score["by_shot"] = by_shot
+        score["assessment_totals"] = {
+            key: sum(r[key] for r in by_shot)
+            for key in (
+                "assessed_bins",
+                "observable_bins",
+                "unassessed_bins",
+                "uncertain_bins",
+            )
+        }
         if name == "saw-hl3":
             score["three_class_confusion"] = class_cells.tolist()
-            score["three_class_window_accuracy"] = float(
-                class_cells.trace() / class_cells.sum()
+            score["three_class_window_accuracy"] = (
+                float(class_cells.trace() / class_cells.sum())
+                if class_cells.sum()
+                else None
             )
             cells = np.stack(shot_class_cells)
             rng = np.random.default_rng(SEED)
             accuracy = []
             for _ in range(1000):
                 totals = cells[rng.integers(0, len(cells), size=len(cells))].sum(axis=0)
-                accuracy.append(float(totals.trace() / totals.sum()))
-            score["three_class_accuracy_ci95"] = np.quantile(
-                accuracy, [0.025, 0.975]
-            ).tolist()
-        review = pd.read_csv(REVIEW)
-        expert = []
+                if totals.sum():
+                    accuracy.append(float(totals.trace() / totals.sum()))
+            score["three_class_accuracy_ci95"] = (
+                np.quantile(accuracy, [0.025, 0.975]).tolist() if accuracy else None
+            )
+        expert, expert_hist, expert_cells = [], [], []
+        conditional_hist, conditional_cells = [], []
+        presence_threshold = float(
+            np.mean([s["presence_threshold"] for s in summaries])
+        )
+        threshold = float(
+            np.mean([s["selected_crash_threshold"]["threshold"] for s in summaries])
+        )
+        z = float(np.mean([s["selected_crash_threshold"]["z"] for s in summaries]))
         for shot in split["expert_shots"]:
             predictions = [
                 np.load(
@@ -552,67 +779,120 @@ def evaluate(args):
                     min(t[-1], recs.t_end.max() / 1000),
                 )
             )
-            valid = spans_at(bins, known)
-            hist = score_histogram(
-                spans_at(bins, positive)[valid], np.interp(bins, t, present)[valid]
+            with np.load(args.work / "signals" / f"{shot}.npz") as data:
+                signal = {
+                    key: data[key]
+                    for key in ("t", "baseline", "observable", "assessed")
+                }
+            observable, assessed = masks_at(signal, bins)
+            valid = spans_at(bins, known) & observable
+            conditional_valid = spans_at(bins, known) & assessed
+            truth = spans_at(bins, positive)[valid]
+            probability = np.interp(bins, t, present)[valid]
+            hist = score_histogram(truth, probability)
+            cells = binary_cells(truth, probability >= presence_threshold)
+            expert_hist.append(hist)
+            expert_cells.append(cells)
+            conditional_truth = spans_at(bins, positive)[conditional_valid]
+            conditional_probability = np.interp(bins, t, present)[conditional_valid]
+            conditional_histogram = score_histogram(
+                conditional_truth, conditional_probability
             )
-            # Ensemble timing scores are only support checks because review has
-            # no point annotations. Do not turn span support into crash precision.
-            summaries = [
-                json.loads(
-                    (
-                        args.work / "models" / name / f"fold_{f}" / "complete.json"
-                    ).read_text()
-                )
-                for f in range(3)
-            ]
-            threshold = float(
-                np.mean([s["selected_crash_threshold"]["threshold"] for s in summaries])
+            conditional_confusion = binary_cells(
+                conditional_truth, conditional_probability >= presence_threshold
             )
-            z = float(np.mean([s["selected_crash_threshold"]["z"] for s in summaries]))
+            conditional_hist.append(conditional_histogram)
+            conditional_cells.append(conditional_confusion)
             ensemble = {"t": t, "presence": present}
             if name == "saw-ours":
                 ensemble["crash"] = np.mean([p["crash"] for p in predictions], axis=0)
-            estimate = picks(
-                name,
-                ensemble,
-                np.load(args.work / "signals" / f"{shot}.npz"),
-                threshold,
-                z,
-            )
-            assessed = spans_at(estimate, known)
-            supported = spans_at(estimate, positive)
+            expert_signal = {**signal, "assessed": signal["observable"]}
+            estimate = picks(name, ensemble, expert_signal, threshold, z)
+            known_picks = spans_at(estimate, known)
+            supported = spans_at(estimate, positive) & known_picks
+            # Span review provides no point timing annotations.
+            metrics = presence_from_cells(hist, cells, presence_threshold)
             expert.append(
                 {
                     "shot": shot,
-                    "cells": np.array(
-                        [supported.sum(), (assessed & ~supported).sum(), 0]
+                    "presence": metrics,
+                    "presence_cells": cells.astype(int).tolist(),
+                    "assessed_bins": int(valid.sum()),
+                    "conditional_assessed_presence": presence_from_cells(
+                        conditional_histogram,
+                        conditional_confusion,
+                        presence_threshold,
                     ),
-                    "histogram": hist,
-                    "assessed_picks": int(assessed.sum()),
+                    "conditional_assessed_presence_cells": conditional_confusion.astype(
+                        int
+                    ).tolist(),
+                    "algorithm_assessed_bins": int(conditional_valid.sum()),
+                    "observable_reviewed_bins": int(
+                        (spans_at(bins, known) & observable).sum()
+                    ),
+                    "excluded_reviewed_bins": int(
+                        (spans_at(bins, known) & ~assessed).sum()
+                    ),
+                    "uncertain_positive_bins": int(
+                        (spans_at(bins, positive) & observable & ~assessed).sum()
+                    ),
+                    "uncertain_negative_bins": int(
+                        (
+                            spans_at(bins, known)
+                            & ~spans_at(bins, positive)
+                            & observable
+                            & ~assessed
+                        ).sum()
+                    ),
+                    "unobservable_positive_bins": int(
+                        (spans_at(bins, positive) & ~observable).sum()
+                    ),
+                    "algorithm_assessed_positive_bins": int(conditional_truth.sum()),
+                    "expert_positive_observable_bins": int(
+                        (spans_at(bins, positive) & observable).sum()
+                    ),
+                    "assessment_mask": "known expert spans & observable",
+                    "conditional_assessment_mask": "known expert spans & observable & assessed",
+                    "assessed_picks": int(known_picks.sum()),
                     "supported_picks": int(supported.sum()),
+                    "span_supported_pick_fraction": float(
+                        supported.sum() / known_picks.sum()
+                    )
+                    if known_picks.any()
+                    else None,
+                    "crash_precision": None,
+                    "crash_recall": None,
                 }
             )
-        independent = aggregate(expert)
-        independent.pop("crash_cells")
-        independent["crash"] = {
-            "recall": None,
-            "precision": None,
-            "f1": None,
-            "span_supported_pick_fraction": sum(r["supported_picks"] for r in expert)
-            / max(1, sum(r["assessed_picks"] for r in expert)),
-            "assessed_picks": sum(r["assessed_picks"] for r in expert),
-            "supported_picks": sum(r["supported_picks"] for r in expert),
+        total_hist = np.stack(expert_hist).sum(axis=0)
+        total_cells = np.stack(expert_cells).sum(axis=0)
+        pooled = presence_from_cells(total_hist, total_cells, presence_threshold)
+        supported = sum(r["supported_picks"] for r in expert)
+        assessed = sum(r["assessed_picks"] for r in expert)
+        score["expert"] = {
+            "shots": len(expert),
+            "by_shot": expert,
+            "presence": pooled,
+            "conditional_assessed_presence": presence_from_cells(
+                np.stack(conditional_hist).sum(axis=0),
+                np.stack(conditional_cells).sum(axis=0),
+                presence_threshold,
+            ),
+            "presence_threshold": presence_threshold,
+            "crash": {
+                "recall": None,
+                "precision": None,
+                "f1": None,
+                "span_supported_pick_fraction": supported / assessed
+                if assessed
+                else None,
+                "assessed_picks": assessed,
+                "supported_picks": supported,
+            },
+            "note": "Three-fold ensemble; thresholds are means of inner selections. Per-shot scores without bootstrap because n=3. Expert review has spans, no point crash times.",
         }
-        independent["ci95"] = {
-            k: v for k, v in independent["ci95"].items() if not k.startswith("crash_")
-        }
-        independent["note"] = (
-            "Three-fold ensemble against reviewed spans; point crash truth is unavailable. Three shots give fragile bootstrap intervals."
-        )
-        score["expert"] = independent
         output["Tokamak-SI"][name] = score
-    save_json(REPO / "outputs/labeler/sawtooth/benchmark.json", output)
+    save_json(OUTPUT / "benchmark.json", output)
     save_json(args.work / "benchmark.json", output)
     print(
         json.dumps(
@@ -637,13 +917,16 @@ def main():
     parser.add_argument(
         "--folds", nargs="+", type=int, choices=(0, 1, 2), default=[0, 1, 2]
     )
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--patience", type=int, default=8)
+    parser.add_argument("--min-delta", type=float, default=0.001)
     parser.add_argument("--steps", type=int, default=80)
     parser.add_argument("--windows-per-shot", type=int, default=64)
     parser.add_argument("--threads", type=int, default=4)
     args = parser.parse_args()
     if not 1 <= args.threads <= 8:
         parser.error("threads must be 1..8")
+    if args.patience < 1 or args.min_delta <= 0:
+        parser.error("patience and min-delta must be positive")
     (train if args.stage == "train" else evaluate)(args)
 
 
