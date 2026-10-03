@@ -97,3 +97,14 @@ def test_live_shots_flags_a_dead_block():
     power[4:, :3] = 0.0
     table = pd.DataFrame({"shot": [1] * 4 + [2] * 4})
     assert bp.live_shots(table, power, slice(0, 4)) == {1}
+
+
+def test_paired_difference_is_positive_when_a_beats_b_on_every_shot():
+    good = np.tile(np.diag([9, 9, 9, 9]), (12, 1, 1))
+    bad = np.tile(
+        np.array([[5, 4, 0, 0], [4, 5, 0, 0], [0, 0, 5, 4], [0, 0, 4, 5]]), (12, 1, 1)
+    )
+    out = bp.paired_difference(good, bad, replicates=50)
+    assert out["difference"] > 0.3
+    assert out["ci95"][0] > 0
+    assert out["share_not_above_zero"] == 0.0

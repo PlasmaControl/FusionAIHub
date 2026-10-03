@@ -244,6 +244,37 @@ def bootstrap(
     return out
 
 
+def paired_difference(
+    conf_a: np.ndarray,
+    conf_b: np.ndarray,
+    *,
+    replicates: int = 1000,
+    seed: int = 20261001,
+) -> dict:
+    """Macro-F1 of ``a`` minus that of ``b`` on the same shots, with a 95 % interval.
+
+    ``conf_a`` and ``conf_b`` are ``(S, 4, 4)`` matrices of the same ``S`` shots in the
+    same order; a replicate draws the same shots for both, so the interval is of the
+    paired difference.
+    """
+    rng = np.random.default_rng(seed)
+    n = conf_a.shape[0]
+    draws = np.array(
+        [
+            macro_f1(conf_a[i].sum(axis=0)) - macro_f1(conf_b[i].sum(axis=0))
+            for i in (rng.integers(n, size=n) for _ in range(replicates))
+        ]
+    )
+    return {
+        "difference": macro_f1(conf_a.sum(axis=0)) - macro_f1(conf_b.sum(axis=0)),
+        "ci95": [
+            float(np.nanpercentile(draws, 2.5)),
+            float(np.nanpercentile(draws, 97.5)),
+        ],
+        "share_not_above_zero": float(np.nanmean(draws <= 0)),
+    }
+
+
 def summarise(
     pred: np.ndarray,
     truth: np.ndarray,

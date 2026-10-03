@@ -290,7 +290,9 @@ def score(args: argparse.Namespace) -> None:
         "mode_bins": MODE_BINS,
         **segments.summarise(smooth, replicates=REPLICATES),
     }
-    result["comparison_with_confine_cnn"] = compare_with_cnn(probs, ys, args)
+    result["comparison_with_confine_cnn"] = {
+        Path(d).name: compare_with_cnn(probs, ys, Path(d)) for d in args.cnn_predictions
+    }
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "scores.json").write_text(json.dumps(result, indent=1))
     pb = result["per_bin_all_labelled"]
@@ -314,7 +316,7 @@ def mode_filter(labels: np.ndarray, width: int) -> np.ndarray:
 
 
 def compare_with_cnn(
-    probs: dict[int, np.ndarray], ys: dict[int, np.ndarray], args: argparse.Namespace
+    probs: dict[int, np.ndarray], ys: dict[int, np.ndarray], path: Path
 ) -> dict:
     """confine-ours against the BES classifier on the BES windows both scored.
 
@@ -323,9 +325,8 @@ def compare_with_cnn(
     the BES row predicted, and the paper-criteria windows (gated, away from interval
     ends).
     """
-    path = Path(args.cnn_predictions) if args.cnn_predictions else None
-    if path is None or not path.exists():
-        return {"status": "no confine-cnn predictions given"}
+    if not path.exists():
+        return {"status": f"{path} does not exist"}
     pred = pd.concat(
         [pd.read_csv(f) for f in sorted(path.glob("*_predictions.csv"))],
         ignore_index=True,
@@ -348,12 +349,17 @@ def compare_with_cnn(
         ("all_windows", np.ones(len(pred), dtype=bool)),
         ("score_ok_windows", pred.score_ok.to_numpy().astype(bool)),
     ):
+        _, by_cnn = bp.confusion_by_shot(cnn.argmax(1), truth, shots, mask)
+        _, by_ours = bp.confusion_by_shot(ours.argmax(1), truth, shots, mask)
         out[name] = {
             "confine-cnn": bp.summarise(
                 cnn.argmax(1), truth, shots, mask, replicates=REPLICATES
             ),
             "confine-ours": bp.summarise(
                 ours.argmax(1), truth, shots, mask, replicates=REPLICATES
+            ),
+            "macro_f1_ours_minus_cnn": bp.paired_difference(
+                by_ours, by_cnn, replicates=REPLICATES
             ),
         }
     return out
@@ -534,8 +540,9 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--margin-ms", type=float, default=20.0)
     s.add_argument(
         "--cnn-predictions",
-        default=None,
-        help="directory of a confine-cnn ablation row",
+        nargs="*",
+        default=[],
+        help="directories of confine-cnn ablation rows to compare with",
     )
     a = sub.add_parser("apply")
     a.add_argument("--device", default="cuda:0")
