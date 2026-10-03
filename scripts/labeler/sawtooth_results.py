@@ -540,6 +540,9 @@ def main():
             (
                 "Absence requires candidate-free support within ±1.5 maximum periods "
                 "and a recorded core-ECE relaxation test with no periodic pattern. "
+                "Stable significant negative core edges protect their entire phase "
+                "without the positive train's period bounds or crossing an "
+                "observability gap. "
                 "Undetected ambiguous support stays uncertain. This is a conservative "
                 "research negative-label policy, not expert-validated absence."
             ),
@@ -573,6 +576,8 @@ def main():
             ),
             "",
             source(relative + "/state_transition_audit.json", "scopes"),
+            source(relative + "/cohort_phase_refinement.json", "changed_shots"),
+            source(relative + "/population_phase_refinement.json", "changed_shots"),
         ]
     population_path = args.output / "population_labels.json"
     if population_path.exists():
@@ -592,6 +597,23 @@ def main():
             ),
             "",
             source(relative + "/population_labels.json"),
+        ]
+        prior_population = read(
+            args.output.parent / "fix", "population_labels.json"
+        )
+        newly_excluded = sorted(
+            set(prior_population["processed_shots"])
+            - set(population["processed_shots"])
+        )
+        lines += [
+            "",
+            (
+                f"Previously processed shots now excluded: {newly_excluded}; "
+                "their screened ECE lacks enough coherent physical core channels. "
+                "These failures supply no training or scoring truth."
+            ),
+            "",
+            source(relative + "/population_labels.json", "errors"),
         ]
         current_cohort = read(args.output, "cohort_labels.json")
 

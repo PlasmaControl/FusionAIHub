@@ -34,7 +34,13 @@ profile-passing candidate protects surrounding support before the central-drop,
 current, core-membership and equilibrium gates. Significant negative core edges
 also protect support outside the positive train's period range. Each shot's
 `absence_diagnostics` records the tests, edge times, period bounds, noise windows
-and reason counts. Stable neighboring crashes retain continuous phase support;
+and reason counts. Stable sequences of significant negative core edges protect
+the entire intervening phase, without the positive train's minimum or maximum
+period bounds; this guard cannot cross an observability gap. Saved native-reader
+records were refined from their recorded edge times, preserving input values
+and changing only absence/assessment support. Exact changes appear in
+`fix2/cohort_phase_refinement.json` and `fix2/population_phase_refinement.json`.
+Stable neighboring crashes retain continuous phase support;
 other candidate gaps remain uncertain. State seconds and absent-in-hole seconds
 before/after are recorded by `fix2/state_transition_audit.json`.
 
@@ -100,8 +106,8 @@ guards, the original train-only development shot list, prior origins and
 per-shot checks appear in `fix2/freeze.json`. The central-amplitude minimum is
 a 5% prior floor clipped against train quantiles, not a data-derived optimum.
 No test or expert shot tunes a detector/model threshold.
-The 20 ms positive-train period floor is a prior and can leave faster trains
-uncertain; per-channel negative evidence also protects those faster relaxations.
+The 20–250 ms positive-train period range is a prior and can leave faster or
+slower trains uncertain. The negative-label phase guard has no period bounds.
 
 ## Models and evaluation
 
@@ -157,6 +163,8 @@ checkout's manifest and labelmaker environment. Scripts live in `scripts/labeler
 sawtooth_freeze.py freeze
 sawtooth_physics.py labels --workers 8
 sawtooth_population.sbatch (four disjoint shards)
+sawtooth_fix2_artifacts.py refine-records
+sawtooth_physics.py labels --records-only
 sawtooth_physics.py labels --population --records-only
 sawtooth_fix_validation.py validate
 sawtooth_fix2_artifacts.py audit

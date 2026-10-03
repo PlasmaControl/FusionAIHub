@@ -116,6 +116,42 @@ def test_subset_core_drops_cannot_be_hidden_by_proxy_averaging(opposing_rises):
     assert found.absence_diagnostics["core_relaxation_test"]["periodic_edges"] >= 10
 
 
+def test_slow_core_relaxation_phase_cannot_have_absent_islands():
+    t = np.arange(0, 4.5, 0.0001)
+    y = np.full((8, len(t)), 2.0)
+    for crash in (0.6, 1.5, 2.4, 3.3):
+        transient = np.where(t >= crash, np.exp(-(t - crash) / 0.08), 0)
+        y[2:4] -= 0.2 * transient
+    y += np.random.default_rng(59).normal(0, 0.0005, y.shape)
+    found = detect(t, y, shot=1, core_channels=range(7))
+    assert not found.intervals
+    assert found.absence_diagnostics["profile_passing_candidates"] == 0
+    assert not found.absent_mask[(t > 0.6) & (t < 3.3)].any()
+    phases = found.absence_diagnostics["core_relaxation_test"]["phase_spans"]
+    assert len(phases) == 1
+    assert phases[0]["period_ms"] == pytest.approx(900, abs=1)
+
+
+def test_core_relaxation_phases_do_not_cross_unobserved_support():
+    from labeler.sawtooth.physics import core_relaxation_phases
+
+    edges = [0.6, 1.5, 2.4, 3.3]
+    assert core_relaxation_phases(edges, [(0, 2), (2.1, 4.5)]) == []
+    phases = core_relaxation_phases(edges, [(0, 4.5)])
+    assert phases == [
+        {
+            "start_s": pytest.approx(0.225),
+            "end_s": pytest.approx(3.675),
+            "first_edge_s": 0.6,
+            "last_edge_s": 3.3,
+            "edges": 4,
+            "period_ms": pytest.approx(900),
+            "minimum_gap_ms": pytest.approx(900),
+            "maximum_gap_ms": pytest.approx(900),
+        }
+    ]
+
+
 def test_profile_candidate_below_central_amplitude_prevents_absence():
     t = np.arange(0, 2, 0.0001)
     y = np.full((8, len(t)), 2.0)

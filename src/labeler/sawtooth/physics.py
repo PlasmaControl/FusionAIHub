@@ -196,6 +196,59 @@ def trains(times_s, rule=DEFAULT_RULE):
     return groups
 
 
+def core_relaxation_phases(edge_times, observable_spans, rule=DEFAULT_RULE):
+    """JSON-ready uncertain phase spans, without positive-train period bounds.
+
+    ``edge_times`` are significant ambiguous negative core edges in seconds;
+    ``observable_spans`` are disjoint half-open ``(start_s, end_s)`` pairs.
+    At least ``minimum_train`` edges must have agreeing adjacent periods. The
+    complete first-to-last phase plus the usual absence horizon is protected,
+    even when its period lies outside the positive sawtooth train range.
+    Nothing groups or expands across an unobserved span. Recorded edge times
+    suffice to apply this guard to existing records without rereading ECE.
+    """
+    times = np.unique(np.asarray(edge_times, dtype=float))
+    if times.ndim != 1 or not np.isfinite(times).all():
+        raise ValueError("core edges must be finite times in seconds")
+    horizon = 1.5 * rule.maximum_period_ms / 1000
+    phases = []
+    for lo, hi in observable_spans:
+        if not np.isfinite([lo, hi]).all() or hi <= lo:
+            raise ValueError("observable spans must have finite increasing bounds")
+        left, right = np.searchsorted(times, [lo, hi])
+        edges = times[left:right]
+        if len(edges) < rule.minimum_train:
+            continue
+        groups, start, previous = [], 0, None
+        for index, gap in enumerate(np.diff(edges)):
+            agrees = previous is None or (
+                max(gap, previous) <= rule.period_ratio * min(gap, previous)
+            )
+            if not agrees:
+                if index + 1 - start >= rule.minimum_train:
+                    groups.append((start, index + 1))
+                # The boundary edge can end one phase and start another.
+                start = index
+            previous = gap
+        if len(edges) - start >= rule.minimum_train:
+            groups.append((start, len(edges)))
+        for a, b in groups:
+            periods = np.diff(edges[a:b]) * 1000
+            phases.append(
+                {
+                    "start_s": float(max(lo, edges[a] - horizon)),
+                    "end_s": float(min(hi, edges[b - 1] + horizon)),
+                    "first_edge_s": float(edges[a]),
+                    "last_edge_s": float(edges[b - 1]),
+                    "edges": int(b - a),
+                    "period_ms": float(np.median(periods)),
+                    "minimum_gap_ms": float(periods.min()),
+                    "maximum_gap_ms": float(periods.max()),
+                }
+            )
+    return phases
+
+
 def _window(trace, crash, lower, upper):
     """Finite native auxiliary samples in a time window, without interpolation."""
     tx, values = (np.asarray(x) for x in trace)
@@ -370,6 +423,15 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
     profile_near = proximity(candidates)
     periodic_near = proximity(periodic)
     core_edge_near = proximity(ambiguous_core_times)
+    observable_spans = [
+        (float(t[lo]), float(t[hi]) if hi < len(t) else float(t[-1] + dt))
+        for lo, hi in _runs(observable)
+    ]
+    phase_spans = core_relaxation_phases(ambiguous_core_times, observable_spans, rule)
+    phase_support = np.zeros(len(t), dtype=bool)
+    for phase in phase_spans:
+        lo, hi = np.searchsorted(t, [phase["start_s"], phase["end_s"]])
+        phase_support[lo:hi] = True
     absent = (
         observable
         & complete
@@ -377,6 +439,7 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
         & ~profile_near
         & ~periodic_near
         & ~core_edge_near
+        & ~phase_support
     )
     return absent, {
         "policy": "complete_quiet_core_context",
@@ -396,6 +459,19 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
             "ambiguous_edge_times_s": ambiguous_core_times,
             "periodic_edges": len(periodic),
             "periodic_edge_times_s": list(map(float, periodic)),
+            "phase_spans": phase_spans,
+            "phase_grouping": {
+                "edge_source": "ambiguous_edge_times_s",
+                "minimum_train": rule.minimum_train,
+                "period_ratio": rule.period_ratio,
+                "minimum_period_ms": None,
+                "maximum_period_ms": None,
+                "context_radius_ms": horizon * 1000,
+            },
+            "positive_train_period_bounds": {
+                "minimum_period_ms": rule.minimum_period_ms,
+                "maximum_period_ms": rule.maximum_period_ms,
+            },
             "noise_method": "maximum_period_block_relative_edge_MAD",
             "noise_windows": noise_rows,
         },
@@ -406,6 +482,7 @@ def _absence_evidence(t, observable, core_edge, core_level, candidates, rule, si
             "near_profile_candidate": int((observable & profile_near).sum()),
             "periodic_core_relaxation": int((observable & periodic_near).sum()),
             "core_edge_ambiguous": int((observable & core_edge_near).sum()),
+            "core_relaxation_phase": int((observable & phase_support).sum()),
             "tested_absence": int(absent.sum()),
         },
     }

@@ -14,12 +14,17 @@ import pandas as pd
 from sawtooth_physics import (
     ECE_GEOMETRY_ARCHIVE,
     OUTPUT,
+    READER_POLICY,
     REPO,
     REVIEW,
     WORK,
     records_at,
     save_json,
 )
+
+from labeler.sawtooth.metrics import spans_at
+from labeler.sawtooth.physics import Rule, core_relaxation_phases
+from labeler.sawtooth.preprocessing import mask_spans, state_spans
 
 STATES = ("present", "absent", "uncertain", "unassessed")
 COLORS = {
@@ -58,10 +63,201 @@ def short_holes(record, *, candidates=False):
     return {"holes": len(holes), "absent_seconds": seconds}
 
 
+def subtract_spans(spans, vetoes):
+    remaining = [tuple(s) for s in spans]
+    for veto in vetoes:
+        lo, hi = veto["start_s"], veto["end_s"]
+        pieces = []
+        for a, b in remaining:
+            if b <= lo or a >= hi:
+                pieces.append((a, b))
+            else:
+                if a < lo:
+                    pieces.append((a, lo))
+                if b > hi:
+                    pieces.append((hi, b))
+        remaining = pieces
+    return remaining
+
+
+def refine_records(args):
+    """Apply the unbounded phase guard to saved edges without reading corpus."""
+    cohort = set(pd.read_csv(REPO / "data/events/catalog/cohort.csv").shot)
+    paths = sorted((args.work / "shots").glob("*.json"))
+    if args.cohort_only:
+        paths = [p for p in paths if int(p.stem) in cohort]
+    counts = Counter()
+    changed = []
+    for path in paths:
+        record = json.loads(path.read_text())
+        prior_policy = record["reader_policy"]
+        record["reader_policy"] = READER_POLICY
+        if "error" in record:
+            save_json(path, record)
+            counts["failed_reads"] += 1
+            continue
+        counts["processed_shots"] += 1
+        if prior_policy == READER_POLICY and "phase_refinement" in record:
+            counts["already_refined_shots"] += 1
+            refinement = record["phase_refinement"]
+            target_changes = refinement["cached_assessment_cells_changed"]
+            if target_changes is not None:
+                counts["cached_input_arrays_retained"] += 1
+                counts["cached_target_cells_changed"] += target_changes
+            if refinement["removed_absent_seconds"] > 1e-8 or target_changes:
+                changed.append({"shot": record["shot"], **refinement})
+            continue
+        rule = Rule(**record["rule"])
+        diagnostics = record["absence_diagnostics"]
+        test = diagnostics["core_relaxation_test"]
+        phases = core_relaxation_phases(
+            test["ambiguous_edge_times_s"], record["observable_spans"], rule
+        )
+        test.update(
+            phase_spans=phases,
+            phase_grouping={
+                "edge_source": "ambiguous_edge_times_s",
+                "minimum_train": rule.minimum_train,
+                "period_ratio": rule.period_ratio,
+                "minimum_period_ms": None,
+                "maximum_period_ms": None,
+                "context_radius_ms": 1.5 * rule.maximum_period_ms,
+            },
+            positive_train_period_bounds={
+                "minimum_period_ms": rule.minimum_period_ms,
+                "maximum_period_ms": rule.maximum_period_ms,
+            },
+        )
+        old_seconds = dict(record["state_seconds"])
+        old_absence = list(record["absent_evidence_spans"])
+        new_absence = subtract_spans(old_absence, phases)
+        signal = args.work / "signals" / f"{record['shot']}.npz"
+        target_changes = None
+        if signal.exists():
+            with np.load(signal) as stored:
+                arrays = {key: stored[key] for key in stored.files}
+            t = arrays["t"]
+            old_assessed = arrays["assessed"].copy()
+            absence = spans_at(t, new_absence)
+            states, assessed = state_spans(
+                t,
+                arrays["observable"],
+                [(s["start_s"], s["end_s"]) for s in record["intervals"]],
+                [(s["start_s"], s["end_s"]) for s in record["uncertain_intervals"]],
+                absent=absence,
+            )
+            target_changes = int(np.count_nonzero(old_assessed != assessed))
+            assert np.all(~assessed | old_assessed)
+            arrays["assessed"] = assessed
+            arrays["absent_evidence"] = absence
+            if target_changes:
+                np.savez_compressed(signal, **arrays)
+            record["absent_evidence_spans"] = mask_spans(t, absence)
+            record["assessed_spans"] = mask_spans(t, assessed)
+            diagnostics["reason_samples"]["tested_absence"] = int(absence.sum())
+            diagnostics["reason_samples"]["core_relaxation_phase"] = int(
+                spans_at(t, [(p["start_s"], p["end_s"]) for p in phases]).sum()
+            )
+            counts["cached_input_arrays_retained"] += 1
+            counts["cached_target_cells_changed"] += target_changes
+        else:
+            states = []
+            for original in record["states"]:
+                if original["state"] != "absent":
+                    states.append(dict(original))
+                    continue
+                a, b = original["start_s"], original["end_s"]
+                cuts = sorted(
+                    {a, b}
+                    | {
+                        boundary
+                        for phase in phases
+                        for boundary in (phase["start_s"], phase["end_s"])
+                        if a < boundary < b
+                    }
+                )
+                for lo, hi in itertools.pairwise(cuts):
+                    middle = (lo + hi) / 2
+                    vetoed = any(p["start_s"] <= middle < p["end_s"] for p in phases)
+                    states.append(
+                        {
+                            "start_s": lo,
+                            "end_s": hi,
+                            "state": "uncertain" if vetoed else "absent",
+                        }
+                    )
+            record["absent_evidence_spans"] = new_absence
+            record["assessed_spans"] = [
+                (s["start_s"], s["end_s"])
+                for s in states
+                if s["state"] in ("present", "absent")
+            ]
+            if new_absence != old_absence:
+                diagnostics.setdefault(
+                    "reason_samples_before_phase_refinement",
+                    dict(diagnostics["reason_samples"]),
+                )
+                diagnostics["reason_samples"]["tested_absence"] = None
+            diagnostics["reason_samples"]["core_relaxation_phase"] = None
+        merged = []
+        for span in states:
+            if (
+                merged
+                and merged[-1]["state"] == span["state"]
+                and merged[-1]["end_s"] == span["start_s"]
+            ):
+                merged[-1]["end_s"] = span["end_s"]
+            else:
+                merged.append(dict(span))
+        record["states"] = merged
+        record["state_seconds"] = {
+            state: sum(s["end_s"] - s["start_s"] for s in merged if s["state"] == state)
+            for state in STATES
+        }
+        assert record["state_seconds"]["present"] == old_seconds["present"]
+        assert record["state_seconds"]["unassessed"] == old_seconds["unassessed"]
+        assert record["state_seconds"]["absent"] <= old_seconds["absent"] + 1e-8
+        removed = old_seconds["absent"] - record["state_seconds"]["absent"]
+        refinement = {
+            "source": "saved significant per-channel negative core edges",
+            "prior_reader_policy": prior_policy,
+            "removed_absent_seconds": removed,
+            "cached_assessment_cells_changed": target_changes,
+            "input_values_unchanged": True,
+            "no_corpus_reread": True,
+        }
+        record["phase_refinement"] = refinement
+        save_json(path, record)
+        if removed > 1e-8 or target_changes:
+            changed.append({"shot": record["shot"], **refinement})
+        if counts["processed_shots"] % 2000 == 0:
+            print(dict(counts), flush=True)
+    save_json(
+        args.output
+        / (
+            "cohort_phase_refinement.json"
+            if args.cohort_only
+            else "population_phase_refinement.json"
+        ),
+        {
+            "counts": dict(counts),
+            "changed_shots": changed,
+            "validation_status": "unvalidated conservative absence refinement",
+            "source_records": str(args.work / "shots"),
+            "reader_policy": READER_POLICY,
+            "count_scope": "cumulative saved refinements, including prior cohort pass",
+        },
+    )
+    print({"counts": dict(counts), "changed_shots": len(changed)}, flush=True)
+
+
 def audit(args):
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     current_shots = [int(p.stem) for p in (args.work / "shots").glob("*.json")]
     prior_shots = [int(p.stem) for p in (args.previous / "shots").glob("*.json")]
+    if args.cohort_only:
+        current_shots = sorted(set(current_shots) & set(cohort.shot))
+        prior_shots = sorted(set(prior_shots) & set(cohort.shot))
     current = {r["shot"]: r for r in records_at(args.work, current_shots)}
     prior = {r["shot"]: r for r in records_at(args.previous, prior_shots)}
     answer = {
@@ -74,10 +270,10 @@ def audit(args):
         "validation_status": "unvalidated research labels; no blind crash truth",
         "scopes": {},
     }
-    for name, shotset in (
-        ("cohort", set(cohort.shot)),
-        ("population", set(current) & set(prior)),
-    ):
+    scopes = [("cohort", set(cohort.shot))]
+    if not args.cohort_only:
+        scopes.append(("population", set(current) & set(prior)))
+    for name, shotset in scopes:
         shots = sorted(
             s
             for s in shotset & set(current) & set(prior)
@@ -131,6 +327,11 @@ def audit(args):
                 span["start_s"] - horizon <= point <= span["end_s"] - 0.0001 + horizon
                 for point in protected
             ), shot
+            assert not any(
+                span["start_s"] < phase["end_s"]
+                and span["end_s"] - 0.0001 >= phase["start_s"]
+                for phase in test["phase_spans"]
+            ), shot
             verified["tested_absent_spans"] += 1
         for point in record["crashes"]:
             assert (
@@ -168,6 +369,10 @@ def audit(args):
                 "rule"
             ],
             "source_records": str(args.work / "shots"),
+            "boundary_policy": (
+                "test sampled bins; a half-open span's end extends one 10kHz "
+                "sample beyond its final sample"
+            ),
         },
     )
     print({k: v["after"] for k, v in answer["scopes"].items()}, flush=True)
@@ -496,6 +701,10 @@ def report(args):
             "adjacent gain block, and records positive neutron/Mirnov evidence per "
             "crash. The relaxation check protects the strongest physical per-channel "
             "negative edge so channel averaging cannot erase localized crashes. "
+            "Stable negative-edge phases have no period bounds and cannot cross "
+            "observability gaps. Saved records were refined from recorded edges "
+            "with input values retained; both models were retrained after the "
+            "cohort assessment targets changed. "
             "Neutron evidence requires measured window noise and NBI-on support."
         ),
         "",
@@ -524,6 +733,25 @@ def report(args):
         source("freeze.json"),
         source("data_summary.json"),
         source("split_manifest.json"),
+        source("cohort_phase_refinement.json"),
+        source("population_phase_refinement.json"),
+    ]
+    refinement = read("population_phase_refinement.json")
+    removed_absent = sum(
+        row["removed_absent_seconds"] for row in refinement["changed_shots"]
+    )
+    lines += [
+        "",
+        (
+            "The saved-edge phase refinement removed "
+            f"{removed_absent:.4f} "
+            f"absent seconds on {len(refinement['changed_shots'])} population shots. "
+            "The cumulative cohort target change is "
+            f"{refinement['counts']['cached_target_cells_changed']:,} cells; "
+            "cached input arrays were retained."
+        ),
+        "",
+        source("population_phase_refinement.json", "counts; changed_shots"),
     ]
     for scope in ("cohort", "population"):
         record = read(f"{scope}_labels.json")
@@ -554,6 +782,23 @@ def report(args):
             "",
             source(f"{scope}_labels.json"),
         ]
+    population = read("population_labels.json")
+    previous_population = json.loads(
+        (args.output.parent / "fix/population_labels.json").read_text()
+    )
+    excluded = sorted(
+        set(previous_population["processed_shots"]) - set(population["processed_shots"])
+    )
+    lines += [
+        "",
+        (
+            "Previously processed shots excluded after the physical channel screen: "
+            f"`{[(s, population['errors'][str(s)]) for s in excluded]}`. Their "
+            "missing coherent core supplies no positive or negative training truth."
+        ),
+        "",
+        source("population_labels.json", "errors"),
+    ]
     lines += [
         "",
         "### State seconds and holes",
@@ -781,12 +1026,21 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "stage",
-        choices=["audit", "queue", "figure", "inspected", "verification", "report"],
+        choices=[
+            "audit",
+            "queue",
+            "figure",
+            "inspected",
+            "verification",
+            "report",
+            "refine-records",
+        ],
     )
     parser.add_argument("--work", type=Path, default=WORK)
     parser.add_argument("--previous", type=Path, default=WORK.parent / "fix")
     parser.add_argument("--output", type=Path, default=OUTPUT)
     parser.add_argument("--shot", type=int, default=196405)
+    parser.add_argument("--cohort-only", action="store_true")
     parser.add_argument("--commit-range", default="pending")
     parser.add_argument(
         "--report",
@@ -810,6 +1064,7 @@ def main():
             "figure": figure,
             "verification": verification,
             "report": report,
+            "refine-records": refine_records,
         }[args.stage](args)
 
 

@@ -38,7 +38,9 @@ from labeler.sawtooth.preprocessing import mask_spans, sample_native, state_span
 REPO = Path(__file__).resolve().parents[2]
 WORK = Paths.from_env().root / "round4/saw/fix2"
 OUTPUT = REPO / "outputs/labeler/sawtooth/fix2"
-READER_POLICY = "native_FIR_positive_absence_dynamic_core_perchannel_relaxation"
+READER_POLICY = (
+    "native_FIR_positive_absence_dynamic_core_perchannel_relaxation_phase_guard"
+)
 ECE_GEOMETRY_ARCHIVE = Path(os.environ.get(
     "LABELER_ECE_GEOMETRY_ROOT", str(REPO.parent / "omnimode/data")
 ))

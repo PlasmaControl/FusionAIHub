@@ -84,6 +84,9 @@ Where local neutron-rate and Mirnov data exist, their drop/burst flags provide
 optional corroboration. No SXR corroboration is claimed without verified
 core/edge spatial pairing. Calibrated ECE psi and trusted equilibrium profiles
 support a direction-aware radius test; unavailable mapping produces null radii.
+Absence requires complete candidate-free context and a noise-resolved core
+relaxation test. Stable significant negative core edges protect their entire
+phase without period bounds; ambiguous observable support remains uncertain.
 The untracked exports in `extend_saw_physics/` hold four-state spans and crash
 points. They are additive research labels and do not replace production labels.
 
