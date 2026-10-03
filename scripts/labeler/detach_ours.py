@@ -5,15 +5,16 @@
     CUDA_VISIBLE_DEVICES=1 $LABELER_ROOT/envs/phase3/bin/python \\
         scripts/labeler/detach_ours.py train               # torch, one GPU
 
-A small 1-D CNN reads a 2 s window (41 bins of 50 ms) of plasma current, heating
-power, line density, divertor D-alpha, the ELM share and the EFIT scalars, and
-predicts the label at the centre bin: attached, detached or marfe. None of the three
-indicators' own inputs is among them (no Langmuir probes, no bolometer, no camera),
-though the heating power and the line density also normalise Afrac and Prad,div, so
-the model is not wholly independent of them. It is trained on the bins where the
-label is a certain state. Only shots with every measured input present and windows
-with every sample finite are retained. No missingness channels or imputed values
-are inputs.
+A small 1-D CNN reads a 2 s window (41 bins of 50 ms) of plasma current, line
+density, divertor D-alpha, the ELM share and the EFIT scalars, and predicts the
+label at the centre bin: attached, detached or marfe. Heating power is excluded
+because it is the denominator of the Prad vote. The model also excludes Langmuir
+probes, bolometry and camera imagery; some remaining auxiliary inputs participate
+in the label's validity gates. Scores measure exploratory agreement with the
+constructed labels, with no independent physical benchmark. It is trained on bins
+where the label is a certain state. Only shots with every measured input present
+and windows with every sample finite are retained. No missingness channels or
+imputed values are inputs.
 
 Validation is by shot: 5-fold CV over the shots that are not in the cohort's test
 split, then a model trained on all of them scored on the test shots; both with
@@ -45,7 +46,6 @@ BOOTSTRAPS = 1000
 SEED = 0
 CHANNELS = (
     "ip_ma",
-    "p_in_mw",
     "ne_rel",
     "dalpha_rel",
     "elm_share",
@@ -56,6 +56,7 @@ CHANNELS = (
     "bcentr",
 )
 EFIT_NODES = ("betan", "wmhd", "q95", "kappa", "bcentr")
+CLASS_NAMES = tuple(core.STATE_NAMES[k + 1] for k in range(3))
 
 
 def root() -> Path:
@@ -95,7 +96,6 @@ def shot_channels(shot: int) -> np.ndarray | None:
                 dalpha = dalpha / np.nanmedian(dalpha)
     columns = {
         "ip_ma": bins["aux_ip_a"] / 1e6,
-        "p_in_mw": bins.get("aux_p_in_w", nan) / 1e6,
         "ne_rel": ne_rel,
         "dalpha_rel": dalpha,
         "elm_share": bins.get("aux_elm_share", nan),
@@ -184,24 +184,28 @@ def prep() -> None:
     print("dataset", len(target), "windows", len(set(shots)), "shots")
 
 
-def metrics(y: np.ndarray, pred: np.ndarray) -> dict:
+def metrics(
+    y: np.ndarray, pred: np.ndarray, reference_classes: tuple[int, ...] | None = None
+) -> dict:
+    """F1 requires reference support; macro averages a fixed reference class set."""
     labels = (0, 1, 2)
+    if reference_classes is None:
+        reference_classes = tuple(k for k in labels if np.any(y == k))
     f1 = {}
     for k in labels:
         tp = np.sum((y == k) & (pred == k))
         fp = np.sum((y != k) & (pred == k))
         fn = np.sum((y == k) & (pred != k))
-        f1[k] = 2 * tp / (2 * tp + fp + fn) if (2 * tp + fp + fn) else float("nan")
+        f1[k] = 2 * tp / (2 * tp + fp + fn) if np.any(y == k) else float("nan")
     po = float(np.mean(y == pred)) if len(y) else float("nan")
     pe = sum(np.mean(y == k) * np.mean(pred == k) for k in labels) if len(y) else 1.0
-    present = [k for k in labels if np.any(y == k)]
     return {
         "accuracy": po,
         "kappa": float((po - pe) / (1 - pe))
         if 1 - pe > np.finfo(float).eps
         else float("nan"),
-        "macro_f1": float(np.mean([f1[k] for k in present]))
-        if present
+        "macro_f1": float(np.mean([f1[k] for k in reference_classes]))
+        if reference_classes and all(np.isfinite(f1[k]) for k in reference_classes)
         else float("nan"),
         "f1_attached": f1[0],
         "f1_detached": f1[1],
@@ -209,20 +213,96 @@ def metrics(y: np.ndarray, pred: np.ndarray) -> dict:
     }
 
 
+def class_support(y, shot) -> dict:
+    """Reference bin counts and independent shot support, including absent classes."""
+    return {
+        name: {
+            "n_bins": int(np.sum(y == k)),
+            "n_shots": len(np.unique(shot[y == k])),
+            "shot_ids": [int(s) for s in np.unique(shot[y == k])],
+        }
+        for k, name in enumerate(CLASS_NAMES)
+    }
+
+
+def confusion_matrix(y, pred) -> dict:
+    return {
+        "labels": list(CLASS_NAMES),
+        "rows": "reference",
+        "columns": "prediction",
+        "counts": [
+            [int(np.sum((y == k) & (pred == j))) for j in range(3)] for k in range(3)
+        ],
+    }
+
+
+def fold_record(k, held, train_mask, test_mask, y, shot, prob, majority_pred) -> dict:
+    """Expose the supervised population and both predictors on each held fold."""
+    certain = test_mask & (y >= 0)
+    scored = certain & np.isfinite(prob).all(axis=1)
+    pred = prob[scored].argmax(axis=1)
+    training_labels = y[train_mask]
+    majority = np.bincount(training_labels).argmax() if len(training_labels) else -1
+    return {
+        "fold": k,
+        "training_shot_ids": [int(s) for s in np.unique(shot[train_mask])],
+        "heldout_shot_ids": sorted(int(s) for s in held),
+        "training_certain_bins": int(train_mask.sum()),
+        "predicted_bins": int(np.isfinite(prob[test_mask]).all(axis=1).sum()),
+        "heldout_certain_bins": int(certain.sum()),
+        "scored_certain_bins": int(scored.sum()),
+        "training_class_support": class_support(y[train_mask], shot[train_mask]),
+        "heldout_class_support": class_support(y[certain], shot[certain]),
+        "majority_class": CLASS_NAMES[majority] if majority >= 0 else None,
+        "model_metrics": metrics(y[scored], pred),
+        "majority_metrics": metrics(y[scored], majority_pred[scored]),
+        "model_confusion_matrix": confusion_matrix(y[scored], pred),
+        "majority_confusion_matrix": confusion_matrix(y[scored], majority_pred[scored]),
+    }
+
+
+def marfe_transfer(y, shot, split, records) -> dict:
+    training = (split != "test") & (y >= 0)
+    support = class_support(y[training], shot[training])
+    no_training_support = [
+        record["fold"]
+        for record in records
+        if record["heldout_class_support"]["marfe"]["n_bins"]
+        and not record["training_class_support"]["marfe"]["n_bins"]
+    ]
+    return {
+        "status": "unsupported",
+        "training_class_support": support["marfe"],
+        "heldout_marfe_folds_without_training_support": no_training_support,
+        "reason": "MARFE candidates lack an independent benchmark; single-shot "
+        "support cannot establish transfer to a different shot. Fold support "
+        "records show when held-out MARFE has no supervised training examples.",
+    }
+
+
 def with_ci(y, pred, shot, rng) -> dict:
-    point = metrics(y, pred)
+    reference_classes = tuple(k for k in range(3) if np.any(y == k))
+    point = metrics(y, pred, reference_classes)
     by_shot = {s: np.flatnonzero(shot == s) for s in np.unique(shot)}
     keys = list(by_shot)
     draws = {k: [] for k in point}
     for _ in range(BOOTSTRAPS if keys else 0):
         pick = rng.integers(0, len(keys), len(keys))
         idx = np.concatenate([by_shot[keys[j]] for j in pick])
-        for k, v in metrics(y[idx], pred[idx]).items():
+        for k, v in metrics(y[idx], pred[idx], reference_classes).items():
             draws[k].append(v)
     result = {
         "n_bins": len(y),
         "n_shots": len(keys),
         "shot_ids": [int(s) for s in keys],
+        "reference_class_ids": list(reference_classes),
+        "reference_classes": [CLASS_NAMES[k] for k in reference_classes],
+        "class_support": class_support(y, shot),
+        "confusion_matrix": confusion_matrix(y, pred),
+        "bootstrap_policy": "reference classes frozen before shot resampling; "
+        "per-class F1 undefined without reference support; macro-F1 undefined "
+        "unless every frozen reference class has support; intervals use only "
+        "defined replicates, with counts reported for each metric",
     }
     for k, value in point.items():
         finite = np.asarray(draws[k])[np.isfinite(draws[k])]
@@ -232,7 +312,7 @@ def with_ci(y, pred, shot, rng) -> dict:
             if len(finite)
             else [float("nan"), float("nan")],
             "valid_replicates": len(finite),
-            "replicates": BOOTSTRAPS,
+            "replicates": BOOTSTRAPS if keys else 0,
         }
     return result
 
@@ -277,6 +357,8 @@ def train() -> None:
 
     data = np.load(root() / "ours" / "dataset.npz")
     x, y, shot, split = data["x"], data["y"], data["shot"], data["split"]
+    if tuple(data["channels"].tolist()) != CHANNELS:
+        raise ValueError("Rerun prep: detach-ours input channel set has changed")
     device = "cuda" if torch.cuda.is_available() else "cpu"
     rng = np.random.default_rng(SEED)
 
@@ -349,22 +431,17 @@ def train() -> None:
         if train_mask.any():
             majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
         fold_records.append(
-            {
-                "fold": k,
-                "training_shot_ids": sorted(
-                    int(s) for s in np.unique(shot[train_mask])
-                ),
-                "heldout_shot_ids": sorted(int(s) for s in held),
-                "training_certain_bins": int(train_mask.sum()),
-                "predicted_bins": int(np.isfinite(prob[test_mask]).all(axis=1).sum()),
-            }
+            fold_record(k, held, train_mask, test_mask, y, shot, prob, majority_pred)
         )
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
+    fit_labels = y[(split != "test") & (y >= 0)]
+    major = np.bincount(fit_labels).argmax() if len(fit_labels) else -1
     if len(final):
         prob[final] = fit_predict(
             np.flatnonzero((split != "test") & (y >= 0)), final, SEED + FOLDS
         )
+        majority_pred[final] = major
     scored = np.isfinite(prob).all(axis=1)
     pred = np.full(len(y), -1, int)
     pred[scored] = prob[scored].argmax(axis=1)
@@ -391,6 +468,10 @@ def train() -> None:
         "eligibility": str(root() / "ours" / "eligibility.json"),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
+        "cv_majority_ci": with_ci(y[cv], majority_pred[cv], shot[cv], boot),
+        "marfe_transfer": marfe_transfer(y, shot, split, fold_records),
+        "evaluation_scope": "exploratory agreement with constructed labels; "
+        "no independent physical benchmark or established learning beyond majority",
     }
     result["n_cv_windows"] = len(cv)
     result["n_cv_shots"] = len(np.unique(shot[cv]))
@@ -398,13 +479,21 @@ def train() -> None:
     final = final[(y[final] >= 0) & scored[final]]
     if len(final):
         result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
-        result["test_majority"] = metrics(
-            y[final], np.full(len(final), np.bincount(y[cv]).argmax())
+        result["test_majority"] = metrics(y[final], majority_pred[final])
+        result["test_majority_ci"] = with_ci(
+            y[final], majority_pred[final], shot[final], boot
         )
         result["n_test_shots"] = len(np.unique(shot[final]))
     out = root() / "ours"
     np.savez_compressed(
-        out / "predictions.npz", prob=prob, y=y, shot=shot, start_ms=data["start_ms"]
+        out / "predictions.npz",
+        prob=prob,
+        y=y,
+        shot=shot,
+        start_ms=data["start_ms"],
+        split=split,
+        pred=pred,
+        majority_pred=majority_pred,
     )
     RESULT.parent.mkdir(parents=True, exist_ok=True)
     RESULT.write_text(dumps(result, indent=1))

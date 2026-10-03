@@ -102,7 +102,13 @@ def prep() -> None:
 
 def train() -> None:
     import torch
-    from detach_ours import baseline_strata, metrics, with_ci
+    from detach_ours import (
+        baseline_strata,
+        fold_record,
+        marfe_transfer,
+        metrics,
+        with_ci,
+    )
     from torch import nn
 
     data = np.load(root() / "victor" / "dataset.npz")
@@ -178,15 +184,7 @@ def train() -> None:
         if train_mask.any():
             majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
         fold_records.append(
-            {
-                "fold": k,
-                "training_shot_ids": sorted(
-                    int(s) for s in np.unique(shot[train_mask])
-                ),
-                "heldout_shot_ids": sorted(int(s) for s in held),
-                "training_certain_bins": int(train_mask.sum()),
-                "predicted_bins": int(np.isfinite(prob[test_mask]).all(axis=1).sum()),
-            }
+            fold_record(k, held, train_mask, test_mask, y, shot, prob, majority_pred)
         )
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
@@ -201,6 +199,7 @@ def train() -> None:
     boot = np.random.default_rng(1)
     fit_labels = y[(split != "test") & (y >= 0)]
     major = np.bincount(fit_labels).argmax() if len(fit_labels) else -1
+    majority_pred[split == "test"] = major
     result = {
         "input": f"TangTV channel 2 frame, {240 // BLOCK} x {720 // BLOCK}",
         "epochs": EPOCHS,
@@ -213,6 +212,10 @@ def train() -> None:
         "unscored_frames": int((~scored).sum()),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
         "cv_majority": metrics(y[cv], majority_pred[cv]),
+        "cv_majority_ci": with_ci(y[cv], majority_pred[cv], shot[cv], boot),
+        "marfe_transfer": marfe_transfer(y, shot, split, fold_records),
+        "evaluation_scope": "exploratory agreement with constructed labels; "
+        "no independent physical benchmark or established learning beyond majority",
     }
     result["n_cv_frames"] = len(cv)
     result["n_cv_shots"] = len(np.unique(shot[cv]))
@@ -240,10 +243,20 @@ def train() -> None:
     if len(final):
         result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
         result["test_majority"] = metrics(y[final], np.full(len(final), major))
+        result["test_majority_ci"] = with_ci(
+            y[final], majority_pred[final], shot[final], boot
+        )
         result["n_test_shots"] = len(np.unique(shot[final]))
     out = root() / "victor"
     np.savez_compressed(
-        out / "predictions.npz", prob=prob, y=y, shot=shot, start_ms=data["start_ms"]
+        out / "predictions.npz",
+        prob=prob,
+        y=y,
+        shot=shot,
+        start_ms=data["start_ms"],
+        split=split,
+        pred=pred,
+        majority_pred=majority_pred,
     )
     RESULT.parent.mkdir(parents=True, exist_ok=True)
     RESULT.write_text(dumps(result, indent=1))
