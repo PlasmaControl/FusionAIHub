@@ -321,24 +321,27 @@ def evaluate(
     edges=None,
     n: int = 1000,
     seed: int = 0,
+    tious=TIOUS,
+    bin_ms: float = BIN_MS,
 ) -> dict:
     """The benchmark's numbers for one detector on `shots`, with shot-bootstrap CIs.
 
     `y`, `valid` and `score` map a shot to its per-bin arrays (`label_bins`,
     `align_scores`); `threshold` is one number or a map from shot to the threshold its
     fold chose. A shot with no scored bin is left out and listed. `edges` default to
-    the pooled scores' quantiles.
+    the pooled scores' quantiles. `tious=()` leaves the segmental F1 out (for scores on
+    a model's own rows, which are not `bin_ms` apart, `bin_ms` is only recorded).
     """
     pooled = np.concatenate([np.asarray(score[s], dtype=float) for s in shots])
     edges = edges_for(pooled) if edges is None else np.asarray(edges, dtype=float)
     stats, empty = [], []
     for s in shots:
         thr = threshold[s] if isinstance(threshold, dict) else threshold
-        st = shot_stats(s, y[s], valid[s], score[s], edges, thr)
+        st = shot_stats(s, y[s], valid[s], score[s], edges, thr, tious=tious)
         (stats if st.n_bins else empty).append(st if st.n_bins else int(s))
     out = bootstrap(stats, n=n, seed=seed)
     out["shots_without_a_scored_bin"] = empty
     out["bins_scored"] = int(sum(s.n_bins for s in stats))
     out["bins_positive"] = int(sum(s.n_pos for s in stats))
-    out["bin_ms"] = BIN_MS
+    out["bin_ms"] = bin_ms
     return out

@@ -171,3 +171,18 @@ def test_evaluate_leaves_out_a_shot_with_no_scored_bin_and_takes_per_shot_thresh
     assert out["shots_without_a_scored_bin"] == [6]
     assert out["n_shots"] == 6 and out["bins_scored"] == 600
     assert out["auroc"]["value"] == 1.0 and out["f1"]["value"] == 1.0
+
+
+def test_evaluate_without_tious_has_no_segmental_f1_and_records_the_bin_width():
+    rng = np.random.default_rng(4)
+    y = {k: (rng.random(80) < 0.3).astype(int) for k in range(4)}
+    valid = {k: np.ones(80, bool) for k in range(4)}
+    score = {k: 0.2 + 0.6 * y[k] for k in range(4)}
+    full = scoring.evaluate(list(range(4)), y, valid, score, 0.5, n=10)
+    rows = scoring.evaluate(
+        list(range(4)), y, valid, score, 0.5, n=10, tious=(), bin_ms=25.0
+    )
+    assert "segf1_0.5" in full and full["bin_ms"] == scoring.BIN_MS
+    assert not any(key.startswith("segf1") for key in rows)
+    assert rows["bin_ms"] == 25.0
+    assert rows["f1"]["value"] == full["f1"]["value"] == 1.0
