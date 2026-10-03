@@ -63,7 +63,9 @@ def main():
             assert fold["threshold"] != 0.999
             assert not set(fold["validation"]) & set(fold["held"])
         checked.append([row["model"], row["setting"]])
-    assert any(r["setting"] == "Interval, fixed 0.5" for r in benchmark["rows"])
+    assert any(
+        r["setting"] == "Interval, published thr. 0.5" for r in benchmark["rows"]
+    )
     assert any(r["setting"] == "Uncertain = negative" for r in benchmark["rows"])
     audit = read(LOCAL / "sources/audit_fix2_current.json")
     for scope in ("cohort", "population"):
@@ -113,6 +115,7 @@ def main():
         figures.append(str(base))
     assert not list((TM / "results").glob("*_test.json"))
     doc = read(TM / "results/document_fix2.json")
+    assert doc["source_sha256"] == sha(REPO / "scripts/labeler/tm_write_doc.py")
     assert doc["document_sha256"] == sha(REPO / doc["document"])
     assert doc["benchmark_sha256"] == sha(LOCAL / "tm_benchmark.json")
     assert (

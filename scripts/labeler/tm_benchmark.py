@@ -722,7 +722,7 @@ def main(argv=None):
     add(
         "tm_prior_published_tm-onsetcnn_tokamak-si_dev",
         "tm-onsetcnn-published",
-        "Interval, published",
+        "Interval",
         held_out=False,
         note="Published weights; original training overlap unknown.",
     )
@@ -731,7 +731,7 @@ def main(argv=None):
         add(
             f"tm_prior_published_tm-dsm-{h}_tokamak-si_dev",
             f"tm-dsm-{h}-published",
-            "Interval, published",
+            "Interval",
             metric_key="metrics_outside_training",
             note="Outside published training list; fold-tuned risk threshold.",
             extra=h != "500ms",
@@ -740,7 +740,7 @@ def main(argv=None):
     add(
         "tm_prior_published_tm-onsetcnn_tokamak-si_dev",
         "tm-onsetcnn-published",
-        "Interval, fixed 0.5",
+        "Interval, published thr. 0.5",
         metric_key="metrics_fixed_published",
         held_out=False,
         note="Published weights and published threshold; original training overlap unknown.",
@@ -837,9 +837,10 @@ def main(argv=None):
             ),
             "source": str(full),
             "meaning": (
-                "Confirmed locking requires frequency drop plus locked-mode evidence; "
-                "interval ends at that time. Missing frequency means unknown locking "
-                "status."
+                "Confirmed locking requires independent n1 radial-voltage evidence "
+                "near an eligible frequency drop or abrupt RMS collapse. Unknown "
+                "locking status is not a negative; post-collapse time remains "
+                "uncertain until measured release or discharge end."
             ),
         }
     summary = {
@@ -920,19 +921,34 @@ def main(argv=None):
     write(LOCAL / "tm_benchmark.json", summary)
     write(TM / "results/tm_benchmark.json", summary)
     excluded = cov["ours"]["uncertain_fraction"] * 100
+    window_coverage = audit["audit_fix2_current"]["cohort"]["screening_coverage"]
+    window_excluded = (
+        100 * window_coverage["uncertain_seconds"] / window_coverage["window_seconds"]
+    )
+    recall = {
+        ref: agreements[f"{ref}_dev"]["agreement"]["n1"] for ref in ("seo", "survival")
+    }
+    weak_rows = pd.read_csv(LABELS).query("shot == 189879 and category == 2")
+    weak_end = float(weak_rows.t_end.max()) / 1e3
     caption = (
         "Recovery of a strong rotating n=1/n=2 magnetic rule, not independent TM "
         "identification. AUROC/AUPRC are primary. F1 uses positive-bearing stratified "
-        "inner validation; outer held-shot folds are unchanged. CNN fixed 0.5 is also "
-        f"shown. Mirnov-derived uncertainty shares tm-ours inputs and excludes {excluded:.1f}"
-        "\\% of observable development plasma (42\\% before this correction); "
+        "inner validation; outer held-shot folds are unchanged. The published CNN is "
+        "also shown at its own published threshold, 0.5. Mirnov-derived uncertainty shares tm-ours inputs and excludes "
+        f"{window_excluded:.0f}\\% of development catalog-window time "
+        f"({excluded:.1f}\\% of observable plasma); "
         "the sensitivity row scores uncertainty as negative. Legacy bins are 25 ms, "
-        "interval bins 10 ms; each row's input/reference-dependent shot set is listed "
-        "in the source JSON. Brackets: 95\\% shot-bootstrap intervals (1,000 draws); "
+        "interval bins 10 ms. Rows use available development shots; published DSM "
+        "excludes original training shots. Each input/reference-dependent shot set "
+        "is listed in the source JSON. Brackets: 95\\% shot-bootstrap intervals (1,000 draws); "
         "segmental IoU 0.5. $\\dagger$: published CNN training overlap unknown. "
-        "Archive onset recall before correction: Seo 13/26, survival 18/67. "
-        "Fast-locking and weak modes can be omitted (189879, 7 kHz, 2.6--4.5 s remains "
-        "absent). No TM coverage gain is claimed. RMS-input ablation is circular; "
+        "Recall of the lab's archived onsets within 100 ms: Seo "
+        f"{recall['seo']['matched']}/{recall['seo']['reference_onsets']}, survival "
+        f"{recall['survival']['matched']}/{recall['survival']['reference_onsets']} "
+        "(development shots with archive coverage); fast-locking and brief modes "
+        "are omitted, and weak modes below the weak-line screen stay absent (the "
+        f"7 kHz line of shot 189879 is uncertain to {weak_end:.1f} s and absent after). "
+        "No TM coverage gain is claimed. RMS-input ablation is circular; "
         "DSM horizon is 500 ms. Blind shots are excluded throughout."
     )
     lines = [

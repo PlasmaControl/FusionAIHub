@@ -39,6 +39,12 @@ def audit_set(name, intervals, table, shots):
     coverage = {
         "requested_shots": len(shots),
         "labelled_shots": int(table.shot.nunique()),
+        "mirnov_feature_shots": sum(
+            (OUT / "magfeatures" / f"{int(s)}.npz").is_file() for s in shots.shot
+        ),
+        "frequency_record_shots": sum(
+            (OUT / "signals_freq" / f"{int(s)}.npz").is_file() for s in shots.shot
+        ),
         "window_seconds": 0.0,
         "absent_seconds": 0.0,
         "present_seconds": 0.0,
@@ -231,6 +237,7 @@ def main(argv=None):
         choices=("cohort", "population"),
         default=["cohort", "population"],
     )
+    parser.add_argument("--fetch-log-dir", type=Path)
     args = parser.parse_args(argv)
     cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
     blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
@@ -255,6 +262,54 @@ def main(argv=None):
         "policy": __doc__,
         "source_sha256": audit["source_sha256"],
     }
+    if args.fetch_log_dir is not None:
+        events = []
+        for path in sorted(args.fetch_log_dir.glob("lock-*.log")):
+            for line in path.read_text().splitlines():
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if "shot" in event and event["shot"] not in blind:
+                    events.append(event)
+        requested = pd.read_csv(args.fetch_log_dir / "lock-fetch-population.csv")
+        requested = requested[~requested.shot.isin(blind)]
+        success = {e["shot"] for e in events if e.get("status") == "fetched"}
+        failure = {
+            e["shot"] for e in events if e.get("status") in ("failed", "missing")
+        }
+        unavailable = [
+            int(s)
+            for s in requested.shot
+            if not (OUT / "signals_lock" / f"{int(s)}.npz").is_file()
+        ]
+        final_modes = pd.read_csv(OUT / "labels/tm_intervals_full_population.csv")
+        final_modes = final_modes[~final_modes.shot.isin(blind)]
+        n1_shots = set(final_modes.loc[final_modes.n.eq(1), "shot"].astype(int))
+        n1_missing = {
+            s for s in n1_shots if not (OUT / "signals_lock" / f"{s}.npz").is_file()
+        }
+        audit["fetch_status"] = {
+            "source": str(OUT / "signals_lock/source.json"),
+            "log_dir": str(args.fetch_log_dir),
+            "requested_nonblind_mode_candidate_shots": len(requested),
+            "successful_unique_shots_in_logs": len(success),
+            "failed_unique_shots_in_logs": len(failure),
+            "available_requested_lock_records": len(requested) - len(unavailable),
+            "unavailable_requested_lock_shots": unavailable,
+            "final_population_n1_mode_shots": len(n1_shots),
+            "final_population_n1_missing_lock_record_shots": sorted(n1_missing),
+            "final_population_n1_unattempted_shots": sorted(
+                n1_missing - success - failure
+            ),
+            "auth_stop_marker_present": (OUT / "fetch_auth_stop.json").exists(),
+            "auth_error_events": sum(
+                e.get("stopped") == "authentication" for e in events
+            ),
+            "failure_events": [
+                e for e in events if e.get("status") in ("failed", "missing")
+            ],
+        }
     for name in args.sets:
         shots = pd.read_csv(REPO / f"data/events/catalog/{name}.csv")
         shots = shots[~shots.shot.isin(blind)]

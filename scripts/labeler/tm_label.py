@@ -304,8 +304,9 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
             "counts as decay: unknown unless DUSBRADIAL >=5 V continuously "
             "for 20 ms within 100 ms confirms a locked/very-slow phase. "
             "This voltage convention is local, not calibrated gauss. "
-            "Post-collapse time is uncertain until DUSBRADIAL <5 V for 20 ms "
-            "or discharge end; absent diagnostic leaves the entire tail uncertain. "
+            "Post-collapse time is uncertain until DUSBRADIAL stays <5 V for "
+            "200 ms (shorter dips are no release) or the discharge ends; an absent "
+            "diagnostic leaves the entire tail uncertain. "
             "Without "
             "frequency: ended=unknown and locked_known=false per row.",
             "intervals_without_a_frequency_record_shots": unlocked,

@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 
+import pandas as pd
+
 REPO = Path(__file__).resolve().parents[2]
 TM = (
     Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
@@ -15,6 +17,9 @@ TM = (
 )
 BENCH = REPO / "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
 DOC = REPO / "docs/labeler/tearing_detection.md"
+LABELS = (
+    REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+)
 
 
 def metric(value):
@@ -25,6 +30,12 @@ def metric(value):
 
 def main():
     b = json.loads(BENCH.read_text())
+    agreement = {
+        ref: b["agreement"][f"{ref}_dev"]["agreement"]["n1"]
+        for ref in ("seo", "survival")
+    }
+    weak = pd.read_csv(LABELS).query("shot == 189879 and category == 2")
+    weak_end = float(weak.t_end.max()) / 1e3
     lines = [
         "# Whole-interval tearing-mode labels and magnetic-rule recovery",
         "",
@@ -72,9 +83,12 @@ def main():
             "allow. Unscreened time above the frozen weak RMS thresholds "
             "(n1 2.0282 G, n2 1.8280 G) "
             "is uncertain rather than absent. Missing inputs are disclosed in metadata. "
-            "Quiet time can be absent even without a weak-line screen. Some visible "
-            "weak modes still remain cohort **absent**, including the 7 kHz line on "
-            "189879 at 2.6–4.5 s: this is a strong-mode label, not exhaustive TM truth."
+            "Quiet time can be absent even without a weak-line screen. Weak modes "
+            "that fail the screen still remain cohort **absent**: the weak 7 kHz n=2 "
+            f"line on 189879 is uncertain until {weak_end:.1f} s; its fading "
+            "continuation, below the fit/prominence screen, is absent. A review "
+            "of the earlier labels saw the line to about 4.5 s. This is a "
+            "strong-mode label, not exhaustive TM truth."
         ),
         "",
         "### Criterion pass rates",
@@ -123,7 +137,8 @@ def main():
                 "evidence it remains uncertain to the catalog discharge end. The fetched "
                 "n1 `DUSBRADIAL` PTDATA radial-field detector is in **volts**, not gauss. "
                 "Confirmation requires ≥5 V continuously for 20 ms within 100 ms of the "
-                "collapse or eligible frequency drop; release requires <5 V for 20 ms. "
+                "collapse or eligible frequency drop; release requires the field to stay below "
+                "5 V for 200 ms, so shorter dips are bridged. "
                 "This is a conservative local voltage convention, not a calibrated island-field "
                 "measurement. `N1FREQ`/`N2FREQ` dropping to ≤1 kHz for 20 ms after rotation "
                 "alone creates only a candidate. n2 has no independent radial confirmation."
@@ -160,12 +175,22 @@ def main():
             "## Historical-onset agreement and limitations",
             "",
             (
-                "Before correction, development recall was **Seo 13/26** and **survival "
-                "18/67**. The strong 50 ms seed rule omits short and fast-locking modes. "
-                "Current 100 ms tolerance agreement is below; strict containment and "
-                "miss reasons are in the linked JSONs. Survival agreement is near-circular "
-                "because it shares RMS, 12 G, 50 ms and release conventions. The rule was "
-                "not selected to maximize archive agreement."
+                "Recall of the lab's archived onsets within 100 ms is **Seo "
+                f"{agreement['seo']['matched']}/{agreement['seo']['reference_onsets']}** "
+                f"and **survival {agreement['survival']['matched']}/"
+                f"{agreement['survival']['reference_onsets']}** on the development shots "
+                "(13/26 and 18/67 on the earlier 500-shot labels). The strong 50 ms seed "
+                "rule omits short and fast-locking modes: of the missed onsets, "
+                f"{agreement['seo']['missed_reasons']['short_burst']}/"
+                f"{agreement['seo']['missed']} (Seo) and "
+                f"{agreement['survival']['missed_reasons']['short_burst']}/"
+                f"{agreement['survival']['missed']} (survival) are short bursts, "
+                f"{agreement['seo']['missed_reasons']['coherent_line_not_supported']} and "
+                f"{agreement['survival']['missed_reasons']['coherent_line_not_supported']} "
+                "lack a supported coherent line. Strict "
+                "containment and miss reasons are in the linked JSONs. Survival agreement "
+                "is near-circular because it shares RMS, 12 G, 50 ms and release "
+                "conventions. The rule was not selected to maximize archive agreement."
             ),
             "",
             "| Reference | Covered shots | Onsets | Matched | Strict contained |",
@@ -243,12 +268,19 @@ def main():
             )
         )
     cov = b["coverage"]
+    window_cov = b["rule_audit"]["audit_fix2_current"]["cohort"]["screening_coverage"]
+    window_uncertain_percent = (
+        100 * window_cov["uncertain_seconds"] / window_cov["window_seconds"]
+    )
     lines.extend(
         [
             "",
             (
-                f"The Mirnov-derived mask excludes **{100 * cov['ours']['uncertain_fraction']:.1f}%** "
-                "of current observable development plasma (42% in the preceding review). "
+                "The Mirnov-derived mask excludes about "
+                f"**{window_uncertain_percent:.0f}% of development "
+                "catalog-window time**, equivalent to "
+                f"**{100 * cov['ours']['uncertain_fraction']:.1f}%** of current "
+                "observable development plasma. "
                 "It shares `tm-ours` inputs, so the task emphasizes strong modes versus "
                 "quiet magnetic time and can favor the magnetic detector. The "
                 "uncertain-as-negative sensitivity row uses identical fits and validation "
@@ -296,6 +328,25 @@ def main():
             ]
         )
     )
+    ranking = b["cnn_ranking_common_bins"]
+    lines.extend(
+        [
+            "",
+            (
+                f"Published/retrained CNN ranking on exactly {len(ranking['shots'])} "
+                f"common shots and {ranking['bins_scored']} common 10 ms bins:"
+            ),
+            "",
+            "| Model | AUROC [95% CI] | AUPRC [95% CI] |",
+            "|---|---:|---:|",
+        ]
+    )
+    for name in ("published", "retrained"):
+        scores = ranking["metrics"][name]
+        lines.append(
+            f"| tm-onsetcnn-{name} | {metric(scores['auroc'])} | "
+            f"{metric(scores['auprc'])} |"
+        )
     lines.extend(
         [
             "",
@@ -390,16 +441,19 @@ def main():
             ),
         ]
     )
-    DOC.write_text("\n".join(lines) + "\n")
+    DOC.write_text("\n".join(line.rstrip() for line in lines) + "\n")
     provenance = {
         "made_by": "scripts/labeler/tm_write_doc.py",
+        "source_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         "benchmark_sha256": hashlib.sha256(BENCH.read_bytes()).hexdigest(),
         "document_sha256": hashlib.sha256(DOC.read_bytes()).hexdigest(),
         "document": str(DOC.relative_to(REPO)),
     }
-    (TM / "results/document_fix2.json").write_text(
-        json.dumps(provenance, indent=2) + "\n"
-    )
+    for path in (
+        TM / "results/document_fix2.json",
+        BENCH.parent / "sources/document_fix2.json",
+    ):
+        path.write_text(json.dumps(provenance, indent=2) + "\n")
     print(DOC)
 
 

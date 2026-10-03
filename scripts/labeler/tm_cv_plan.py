@@ -54,15 +54,15 @@ def main():
     groups = {}
     ours, _ = tm_ours.load(shots, False)
     groups["tm-ours"] = [s for s, d in ours.items() if np.any(d[2] & d[3])]
-    for kind in ("cnn", "dsm"):
+    for kind, model in (("cnn", "tm-onsetcnn"), ("dsm", "tm-dsm")):
         data, _ = retrained.load(kind, shots)
-        groups[f"tm-{kind}-retrained"] = [
+        groups[f"{model}-retrained"] = [
             s for s, d in data.items() if np.any((d["y"] > 0) & d["train_ok"])
         ]
         # A constant fake row score checks time-grid support without reading any
         # predicted probability. Published CNN rows have the published 25ms shift.
         shift = detectors.CNN_SHIFT_MS if kind == "cnn" else 0.0
-        groups[f"tm-{kind}-published-interval"] = []
+        groups[f"{model}-published-interval"] = []
         for s, d in data.items():
             bins = detectors.rows_to_bins(
                 d["t_ms"],
@@ -72,7 +72,7 @@ def main():
                 shift_ms=shift,
             )
             if np.any(d["y_bins"] & d["valid_bins"] & np.isfinite(bins)):
-                groups[f"tm-{kind}-published-interval"].append(s)
+                groups[f"{model}-published-interval"].append(s)
         if kind == "dsm":
             groups["tm-dsm-published-outside-training"] = [
                 s for s in groups["tm-dsm-published-interval"] if s not in training
