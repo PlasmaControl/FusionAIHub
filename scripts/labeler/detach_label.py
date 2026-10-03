@@ -420,8 +420,9 @@ def table_meta(args, best, eligible, labeler, producer) -> dict:
         "coverage": (
             "Bins where at least two of the three indicators (Afrac, Prad,div, "
             "TangTV front) are valid. Time with no row was not assessed; it is not "
-            "attached. 4 (uncertain) is an assessed bin where the labeler is "
-            "below its confidence threshold or every valid indicator abstains."
+            "attached. 4 (uncertain) includes conflicting compatible votes, "
+            "low posterior, candidate MARFE and the Afrac+Prad-only weak tier. "
+            "The interval attrs tier and bin tier preserve those distinctions."
         ),
         "labeler": labeler,
         "posterior_threshold": args.threshold,
@@ -494,8 +495,7 @@ def main() -> None:
     for key in work.columns:
         if key.startswith(("aux_", "afrac_", "prad_", "tangtv_")) or key == "split":
             labelled[key] = work[key].to_numpy()
-    # the posterior of the state the bin ended up with (a bin the despeckle pass
-    # moved into its neighbours' state keeps its own, low, posterior of that state)
+    # Confidence is the uncalibrated posterior of the gated observed state.
     post = labelled[["post_attached", "post_detached", "post_marfe"]].to_numpy()
     final = labelled.state_lm.to_numpy()
     certain = np.isin(final, core.VOTE_STATES)

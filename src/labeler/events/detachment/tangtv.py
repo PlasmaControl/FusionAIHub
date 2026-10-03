@@ -145,7 +145,8 @@ def tangtv_indicator(
     frame_valid: np.ndarray | None = None,
     elm_t_ms: np.ndarray | None = None,
     elm_flag: np.ndarray | None = None,
-) -> Indicator:
+    return_frame_mask: bool = False,
+) -> Indicator | tuple[Indicator, np.ndarray]:
     """TangTV indicator on a bin grid from per-frame ZE and the EFIT geometry.
 
     Each inverted frame takes the nearest EFIT slice (at most `max_efit_gap_ms`
@@ -222,7 +223,8 @@ def tangtv_indicator(
         valid &= ~bad
         reason[bad] = "elm_majority"
     vote = dz_vote(value)
-    return assemble("tangtv", value, valid, reason, vote)
+    result = assemble("tangtv", value, valid, reason, vote)
+    return (result, ok) if return_frame_mask else result
 
 
 def evidence_votes(dz, valid, spatial, second_cue):

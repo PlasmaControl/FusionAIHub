@@ -14,7 +14,8 @@ not a state).
 **The bin grid** is `BIN_MS` wide. 50 ms was chosen over 10 or 20 ms because it is
 the catalog's own label grid (`events.yaml`: `sample_interval_ms: 50`), because the
 slowest input, the TangTV inversion, arrives every 17-33 ms and EFIT every 20 ms
-(a bin must hold several samples of each for a median to reject an ELM), and
+(30 Hz full camera frames give about 1.5 independent frames per bin; the corpus
+50 fps grid is resampled, so explicit widened ELM masks are essential), and
 because the published low-pass constants (Eldon 2022: 10-50 ms; Chen 2026: Prad
 leads DZ by about 50 ms) are of that order, so a finer grid would resolve nothing
 the indicators can see.

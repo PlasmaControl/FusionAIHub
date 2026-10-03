@@ -134,3 +134,96 @@ def test_features_ignore_global_brightness_after_black_subtraction(surrogate):
     a = tv.features(frame + tv.BLACK, rx)
     b = tv.features(2 * frame + tv.BLACK, rx)
     np.testing.assert_allclose(a, b, atol=1e-5)
+
+
+def test_confinement_uses_tracked_store_without_environment(bins, monkeypatch):
+    monkeypatch.delenv("LABELER_LABEL_TABLES", raising=False)
+    mode, _ = bins.confinement(149993, np.array([1000.0, 1050.0, 1100.0]))
+    assert np.all(mode == 2)
+
+
+def test_spatial_evidence_excludes_rejected_camera_frames(bins, monkeypatch, tmp_path):
+    monkeypatch.setattr(bins, "root", lambda: tmp_path)
+    (tmp_path / "efit").mkdir()
+    ft = np.array([10.0, 20.0, 60.0, 70.0])
+    frames = np.zeros((4, 2, 2))
+    frames[[0, 2], 0, 0] = 10  # Only rejected frames have an inside peak.
+    frames[[1, 3], 1, 1] = 10
+    inv = {
+        "times_ms": ft,
+        "frames": frames,
+        "radii": np.array([1.3, 1.5]),
+        "elevation": np.array([-1.05, -0.9]),
+    }
+    monkeypatch.setattr(bins, "load_inversion", lambda shot: inv)
+    np.savez(
+        tmp_path / "efit/1.npz",
+        source="EFIT02",
+        gtime_ms=ft,
+        r=inv["radii"],
+        z=inv["elevation"],
+        ssimag=np.zeros(4),
+        ssibry=np.ones(4),
+        psirz=np.tile([[0.5, 1.2], [1.2, 1.2]], (4, 1, 1)),
+    )
+    geo = {"rxpt1": (ft, np.full(4, 1.3)), "zxpt1": (ft, np.full(4, -1.1))}
+    spatial = bins.spatial_evidence(
+        1, np.array([0.0, 50.0, 100.0]), geo, np.array([False, True, False, True])
+    )
+    assert not spatial.any()
+
+
+def test_processed_reference_excludes_quality_failures_and_keeps_method_name(
+    bins, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(bins, "root", lambda: tmp_path)
+    (tmp_path / "processed_probes").mkdir()
+    edges = np.arange(0.0, 550.0, 50.0)
+    t = core.bin_centres(edges)
+    np.savez(
+        tmp_path / "processed_probes/1.npz",
+        p1_t_ms=t,
+        p1_jsat=np.ones(10),
+        p1_rz=np.array([1.5, -1.25]),
+    )
+    geo = _cache(1.5, -1.25, 1.3, -1.1)
+    monkeypatch.setattr(bins.signals, "tangtv_geometry", lambda *args: (geo, "EFIT02"))
+    monkeypatch.setattr(bins.signals, "line_density", lambda cache: (t, np.ones(10)))
+    monkeypatch.setattr(
+        bins.signals, "heating_power", lambda *args: (t, np.ones(10), np.ones(10))
+    )
+    monkeypatch.setattr(
+        bins.signals,
+        "corpus_group",
+        lambda *args: (t, np.array([[0.0] * 7 + [10.0] * 3])),
+    )
+    monkeypatch.setattr(
+        bins, "confinement", lambda *args: (np.ones(10, int), np.zeros(10, bool))
+    )
+    reason = np.array(["ramp"] * 6 + [""] * 4)
+    base = core.assemble("afrac", np.ones(10), reason == "", reason, np.ones(10))
+    monkeypatch.setattr(bins.afrac, "afrac_indicator", lambda *args: base)
+    tv = core.assemble(
+        "tangtv", np.zeros(10), np.ones(10, bool), np.full(10, ""), np.ones(10)
+    )
+    seen = {}
+
+    def calibrate(jsat, positions, strike, scaling, attached, regime):
+        seen["attached"] = attached
+        return np.ones(10), np.ones(10, bool), np.zeros(10, int)
+
+    monkeypatch.setattr(bins.afrac, "calibrated_ratio", calibrate)
+    _, method = bins.processed_ratio(
+        1, edges, {"ipmeas": (t, np.ones(10))}, base, tv, None
+    )
+    assert not seen["attached"][:6].any()
+    assert method[-1] == "eldon_pre_puff_LH"
+
+
+def test_surrogate_training_rejects_stale_efit_geometry(surrogate, monkeypatch):
+    cache = _cache(1.5, -1.25, 1.3, -1.1)
+    monkeypatch.setattr(
+        surrogate.signals, "tangtv_geometry", lambda shot: (cache, "EFIT02")
+    )
+    *_, valid = surrogate.geometry(1, np.array([100.0, 600.0]))
+    assert valid.tolist() == [True, False]

@@ -90,6 +90,7 @@ def geometry(shot: int, at_ms: np.ndarray):
     rv, zv, rx, zx = (np.asarray(cache[k][1], float)[near] for k in need)
     valid, _ = tangtv.shelf_gate(rv, zv, rx, zx)
     valid &= source == "EFIT02"
+    valid &= np.abs(et[near] - at_ms) <= 40.0
     return rx, zx, zv, valid
 
 

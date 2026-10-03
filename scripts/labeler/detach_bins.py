@@ -10,7 +10,7 @@ One file per shot, `$LABELER_ROOT/round4/detach/bins/<shot>.npz`, holds on the
 shot's 50 ms grid (`start_ms`, the bin starts): for each indicator `<name>_value`,
 `<name>_valid`, `<name>_reason`, `<name>_vote`, and `tangtv_source` (`inversion`,
 `surrogate` or `none`); plus the quantities behind them (`aux_*`) and the
-independent divertor Thomson Te (`aux_te_div`), which is NOT an indicator.
+geometry and evidence provenance. Unfiltered divertor Thomson is not exported.
 
 The grid is the discharge only: bins where EFIT's plasma current is under
 `MIN_IP_A` are dropped. A shot with no fetch cache is skipped and logged.
@@ -56,7 +56,7 @@ def load_surrogate(shot: int):
         return {k: npz[k] for k in npz.files}
 
 
-def tangtv_for(shot, edges, cache, elm=None):
+def tangtv_for(shot, edges, cache, elm=None, *, with_frame_mask=False):
     """The TangTV indicator and where its front height came from.
 
     The inversion when the shot has one, else the regression from the raw frames,
@@ -78,10 +78,12 @@ def tangtv_for(shot, edges, cache, elm=None):
     inversion = load_inversion(shot)
     surrogate = None if inversion is not None else load_surrogate(shot)
     if inversion is None and surrogate is None:
-        return invalid("no_inversion"), "none"
+        result = (invalid("no_inversion"), "none")
+        return (*result, None) if with_frame_mask else result
     need = ("rvsod", "zvsod", "rxpt1", "zxpt1")
     if any(k not in cache for k in need):
-        return invalid("efit_missing"), "none"
+        result = (invalid("efit_missing"), "none")
+        return (*result, None) if with_frame_mask else result
     et = cache["rxpt1"][0]
     if inversion is not None:
         ft = inversion["times_ms"].astype(float)
@@ -100,7 +102,7 @@ def tangtv_for(shot, edges, cache, elm=None):
         ze = surrogate["ze"].astype(float)
         source = "surrogate"
         lower = False
-    indicator = tangtv.tangtv_indicator(
+    indicator, accepted = tangtv.tangtv_indicator(
         edges,
         ft,
         ze,
@@ -115,8 +117,10 @@ def tangtv_for(shot, edges, cache, elm=None):
         else surrogate.get("valid", np.zeros(len(ft), bool)),
         elm_t_ms=None if elm is None else elm[0],
         elm_flag=None if elm is None else elm[1],
+        return_frame_mask=True,
     )
-    return indicator, source
+    result = (indicator, source)
+    return (*result, accepted) if with_frame_mask else result
 
 
 def greenwald_cue(edges, cache):
@@ -141,7 +145,7 @@ def greenwald_cue(edges, cache):
     return np.isfinite(fraction) & (fraction >= 0.8), fraction
 
 
-def spatial_evidence(shot, edges, geo):
+def spatial_evidence(shot, edges, geo, frame_quality=None):
     """Global inversion peak psiN<1, within 30 cm of X and near/above ZX."""
     from scipy.interpolate import RegularGridInterpolator
 
@@ -149,7 +153,7 @@ def spatial_evidence(shot, edges, geo):
     result = np.zeros(n, bool)
     inv = load_inversion(shot)
     path = root() / "efit" / f"{shot}.npz"
-    if inv is None or not path.exists():
+    if inv is None or not path.exists() or frame_quality is None:
         return result
     with np.load(path) as f:
         if str(f.get("source", "EFIT01")) != "EFIT02":
@@ -157,6 +161,8 @@ def spatial_evidence(shot, edges, geo):
         ft = inv["times_ms"]
         flags = np.zeros(len(ft), bool)
         for j, t in enumerate(ft):
+            if not frame_quality[j]:
+                continue
             k = np.argmin(np.abs(f["gtime_ms"] - t))
             if abs(f["gtime_ms"][k] - t) > 40:
                 continue
@@ -173,7 +179,10 @@ def spatial_evidence(shot, edges, geo):
             flags[j] = bool(
                 0 < psi < 1 and zx - 0.02 <= z <= zx + 0.30 and abs(r - rx) <= 0.30
             )
-        result = core.bin_fraction(ft, flags, edges) >= 0.5
+        value, count = core.bin_median(
+            ft, flags.astype(float), edges, keep=frame_quality
+        )
+        result = (count > 0) & (value >= 0.5)
     return result
 
 
@@ -181,14 +190,19 @@ def confinement(shot, edges):
     """Project's explicit Jalal Butt confinement labels; unknown stays 0."""
     import pandas as pd
 
+    from labeler.config import STORE_EVENTS, Paths
+
     path = (
-        Path(os.environ["LABELER_LABEL_TABLES"])
-        / "confinement/raw/Jalal_28042024_confinement_regime_shotlist.csv"
+        Paths.from_env().label_tables
+        / STORE_EVENTS["confinement"]
+        / "raw/Jalal_28042024_confinement_regime_shotlist.csv"
     )
-    rows = pd.read_csv(path).query("Shot == @shot")
     times = core.bin_centres(edges)
     mode = np.zeros(len(times), int)
     back = np.zeros(len(times), bool)
+    if not path.is_file():
+        return mode, back
+    rows = pd.read_csv(path).query("Shot == @shot")
     for row in rows.to_dict("records"):
         hit = (times >= row["Confinement Start Time (ms)"]) & (
             times < row["Confinement Stop Time (ms)"]
@@ -210,7 +224,7 @@ def processed_ratio(shot, edges, cache, base, tv, elm):
     whole-shot 90th percentile reference, explicitly marked local_proxy.
     """
     n = len(edges) - 1
-    modes = np.full(n, "local_proxy")
+    modes = np.full(n, "local_proxy", dtype="U32")
     path = root() / "processed_probes" / f"{shot}.npz"
     if not path.exists():
         return base, modes
@@ -226,6 +240,8 @@ def processed_ratio(shot, edges, cache, base, tv, elm):
         jsat = np.vstack(per_probe)
         positions = np.array([f[k + "_rz"] for k in keys])
     geo, _ = signals.tangtv_geometry(shot, cache)
+    if any(k not in geo for k in ("rvsod", "zvsod")):
+        return base, modes
     strike = np.stack(
         [core.bin_median(*geo[k], edges)[0] for k in ("rvsod", "zvsod")], axis=1
     )
@@ -259,7 +275,15 @@ def processed_ratio(shot, edges, cache, base, tv, elm):
             if len(onset):
                 pre = np.arange(n) < onset[0]
     value, valid, which = afrac.calibrated_ratio(
-        jsat, positions, strike, scaling, pre & (tv.vote == core.ATTACHED), regime
+        jsat,
+        positions,
+        strike,
+        scaling,
+        pre
+        & tv.valid
+        & (tv.vote == core.ATTACHED)
+        & np.isin(base.reason, ("", "short_reference")),
+        regime,
     )
     valid &= np.isin(base.reason, ("", "short_reference"))
     value[~valid] = np.nan
@@ -322,10 +346,16 @@ def process(
         elm_t,
         elm_flag,
     )
-    tangtv_ind, tangtv_source = tangtv_for(shot, edges, cache, elm)
+    tangtv_ind, tangtv_source, frame_quality = tangtv_for(
+        shot, edges, cache, elm, with_frame_mask=True
+    )
     geo, geo_source = signals.tangtv_geometry(shot, cache)
     # Spatial evidence exists only for true inversions with a close flux map.
-    spatial = spatial_evidence(shot, edges, geo)
+    spatial = (
+        spatial_evidence(shot, edges, geo, frame_quality)
+        if geo_source == "EFIT02"
+        else np.zeros(n, bool)
+    )
     second, fg = greenwald_cue(edges, cache)
     _, back_transition = confinement(shot, edges)
     second |= back_transition
@@ -368,8 +398,11 @@ def process(
         )
     # Unlocalised real-time DTS is deliberately excluded from all claims.
     for key in ("rvsod", "zvsod", "rxpt1", "zxpt1"):
-        if key in geo:
-            out[f"aux_{key}"] = core.bin_median(*geo[key], edges)[0].astype(np.float32)
+        out[f"aux_{key}"] = (
+            core.bin_median(*geo[key], edges)[0].astype(np.float32)
+            if key in geo
+            else np.full(n, np.nan, np.float32)
+        )
     domain_record = (
         Path(__file__).resolve().parents[2]
         / "docs/labeler/results/detachment_tangtv_surrogate.json"
