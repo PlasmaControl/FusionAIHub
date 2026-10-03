@@ -33,9 +33,11 @@ from . import scoring
 #: The onset CNN's score at `t` describes the mode's presence at `t + 25 ms`.
 CNN_SHIFT_MS = 25.0
 #: Published alarm levels: the CNN's `tm_prob` at 0.5 (its card's F1 convention) and the
-#: DSM's default per-shot alarm at 0.7 (its card, "Bias, risks and limitations").
+#: DSM's upstream alarm is survival <= 0.7, equivalent to risk >= 0.3
+#: (/projects/EKOLEMEN/survival_tm/metrics_helpers.py, survival threshold).
 CNN_THRESHOLD = 0.5
-DSM_THRESHOLD = 0.7
+DSM_SURVIVAL_THRESHOLD = 0.7
+DSM_THRESHOLD = 1.0 - DSM_SURVIVAL_THRESHOLD
 DSM_HORIZONS_S = (0.25, 0.5, 1.0)
 
 

@@ -1,0 +1,26 @@
+\begin{table*}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llrllll}
+\toprule
+Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
+\midrule
+Survival MLP (250 ms) & Legacy & 80 & .743 [.643,.844] & .185 [.106,.322] & .081 [.042,.140] & -- \\
+Survival MLP (1 s) & Legacy & 80 & .722 [.612,.833] & .405 [.263,.551] & .243 [.144,.348] & -- \\
+Survival MLP (250 ms) & Interval, published & 235 & .798 [.712,.866] & .525 [.395,.659] & .470 [.346,.572] & .301 [.151,.472] \\
+Survival MLP (1 s) & Interval, published & 235 & .794 [.709,.862] & .513 [.383,.649] & .455 [.350,.548] & .266 [.138,.419] \\
+RMS threshold (12 G) & Fixed threshold extra & 450 & .988 [.982,.994] & .928 [.882,.960] & .522 [.429,.615] & .427 [.317,.543] \\
+Onset CNN, legacy$\dagger$ & Fixed published threshold extra & 79 & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
+Onset CNN, interval$\dagger$ & Fixed published threshold extra & 262 & .982 [.969,.993] & .951 [.911,.978] & .709 [.593,.810] & .585 [.419,.758] \\
+Survival MLP (250 ms), legacy & Fixed published threshold extra & 80 & .743 [.643,.844] & .185 [.106,.322] & .000 [.000,.000] & -- \\
+Survival MLP (250 ms), interval & Fixed published threshold extra & 235 & .798 [.712,.866] & .525 [.395,.659] & .000 [.000,.000] & .000 [.000,.000] \\
+Survival MLP (500 ms), legacy & Fixed published threshold extra & 80 & .721 [.614,.828] & .294 [.179,.442] & .000 [.000,.000] & -- \\
+Survival MLP (500 ms), interval & Fixed published threshold extra & 235 & .796 [.711,.864] & .521 [.391,.657] & .000 [.000,.000] & .000 [.000,.000] \\
+Survival MLP (1 s), legacy & Fixed published threshold extra & 80 & .722 [.612,.833] & .405 [.263,.551] & .049 [.000,.143] & -- \\
+Survival MLP (1 s), interval & Fixed published threshold extra & 235 & .794 [.709,.862] & .513 [.383,.649] & .008 [.000,.022] & .000 [.000,.000] \\
+\bottomrule
+\end{tabular}
+\caption{Additional DSM horizons and explicitly fixed-threshold results. Fixed DSM alarms use risk 0.3, equivalent to upstream survival probability 0.7. Other rows use shared-fold validation thresholds. Brackets give 95\% shot-bootstrap intervals; blind cohort tests are excluded.}
+\label{tab:tm-benchmark-appendix}
+\end{table*}

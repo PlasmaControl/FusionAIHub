@@ -5,9 +5,15 @@
       "model": "Onset CNN",
       "legacy": {
         "f1": {
-          "value": 0.6111967128916281,
-          "lo": 0.4368766505555833,
-          "hi": 0.749534664889375,
+          "value": 0.5670407560543415,
+          "lo": 0.37229461898791083,
+          "hi": 0.7186618709068995,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.6014439652202364,
+          "lo": 0.38539221952743935,
+          "hi": 0.7992659206090776,
           "valid_replicates": 1000
         },
         "shots": 79,
@@ -16,12 +22,18 @@
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.7251599319782979,
-          "lo": 0.6560665879502493,
-          "hi": 0.7863245422644557,
+          "value": 0.7597328244274809,
+          "lo": 0.6407669978162102,
+          "hi": 0.8538561146038172,
           "valid_replicates": 1000
         },
-        "shots": 286,
+        "auprc": {
+          "value": 0.9246473699185916,
+          "lo": 0.8585712822263264,
+          "hi": 0.9635454712522422,
+          "valid_replicates": 1000
+        },
+        "shots": 263,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-onsetcnn_cv.json"
       }
     },
@@ -29,23 +41,35 @@
       "model": "Survival MLP",
       "legacy": {
         "f1": {
-          "value": 0.0,
-          "lo": 0.0,
-          "hi": 0.0,
+          "value": 0.15696784073506892,
+          "lo": 0.08932490332064788,
+          "hi": 0.25042875508608237,
           "valid_replicates": 1000
         },
-        "shots": 219,
+        "auprc": {
+          "value": 0.29361007123965893,
+          "lo": 0.17949901845343233,
+          "hi": 0.44171796507941996,
+          "valid_replicates": 1000
+        },
+        "shots": 80,
         "held_out": true,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_published_tm-dsm-500ms_legacy.json"
       },
       "tokamak_si": {
         "f1": {
-          "value": 0.6465267918178472,
-          "lo": 0.5788205871630587,
-          "hi": 0.702585688358985,
+          "value": 0.6685248947914959,
+          "lo": 0.5639769072445228,
+          "hi": 0.7527743604305032,
           "valid_replicates": 1000
         },
-        "shots": 341,
+        "auprc": {
+          "value": 0.9059859037909461,
+          "lo": 0.8422990762586019,
+          "hi": 0.9525429669237541,
+          "valid_replicates": 1000
+        },
+        "shots": 319,
         "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_prior_retrained_tm-dsm_cv.json"
       }
     },
@@ -54,9 +78,15 @@
       "legacy": null,
       "tokamak_si": {
         "f1": {
-          "value": 0.7536227089260901,
-          "lo": 0.7067375968111369,
-          "hi": 0.7967489256367413,
+          "value": 0.8721622369878184,
+          "lo": 0.8150816853749174,
+          "hi": 0.9195941770400928,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9875485593116948,
+          "lo": 0.9726659762561887,
+          "hi": 0.9962328644379701,
           "valid_replicates": 1000
         },
         "shots": 450,
@@ -64,43 +94,498 @@
       }
     },
     {
-      "model": "RMS threshold (12 G)",
+      "model": "RMS threshold",
       "legacy": null,
       "tokamak_si": {
         "f1": {
-          "value": 0.3734514236035644,
-          "lo": 0.30860424069016695,
-          "hi": 0.44091157337397197,
+          "value": 0.7749044143204727,
+          "lo": 0.7007280269836187,
+          "hi": 0.8329403096429077,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9276431573241276,
+          "lo": 0.8815968656232933,
+          "hi": 0.9595909697289907,
           "valid_replicates": 1000
         },
         "shots": 450,
-        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_n1rms_12g_dev.json"
+        "source": "data/events/neoclassical_tearing_mode/benchmark/sources/tm_baseline_n1rms_cv_tuned_dev.json"
       }
     }
   ],
   "coverage": {
     "ours": {
       "labelled_shots": 500,
-      "labelled_seconds": 2747.69,
-      "definition": "observable 10 ms bins; uncertain and unobservable excluded"
+      "classifiable_shots": 482,
+      "observable_shots": 500,
+      "labelled_seconds": 1178.59,
+      "observable_plasma_seconds": 2346.94,
+      "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
+      "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
     },
     "ours_population": {
       "labelled_shots": 4848,
-      "labelled_seconds": 26621.63,
-      "definition": "observable 10 ms bins; uncertain and unobservable excluded"
+      "classifiable_shots": 4829,
+      "observable_shots": 4847,
+      "labelled_seconds": 19967.73,
+      "observable_plasma_seconds": 22858.82,
+      "definition": "labelled 10 ms bins from the measured plasma start to catalog window end; uncertain and unobservable bins excluded",
+      "observable_definition": "10 ms plasma bins from the measured plasma start to catalog window end; uncertain included, unavailable excluded"
     },
     "legacy_seo": {
       "labelled_shots": 92,
-      "labelled_seconds": 169.72500000000002,
-      "definition": "matched archived tm_label samples, each 25 ms; growth-phase target"
+      "labelled_seconds": 147.19,
+      "observable_plasma_seconds": 451.03000000000003,
+      "definition": "matched growth-phase label support on observable catalog-window 10 ms bins; temporal holes excluded"
     },
     "legacy_survival": {
       "labelled_shots": 200,
-      "labelled_seconds": 1200.0,
-      "definition": "native survival-label samples; an onset target, not present spans"
+      "labelled_seconds": 909.91,
+      "observable_plasma_seconds": 984.76,
+      "definition": "survival-label support on observable catalog-window 10 ms bins; fixed-grid time outside observable plasma excluded"
     }
   },
-  "scope": "fixed cohort comparison, plus separately named population supplement; all splits for coverage only, no model test scores",
-  "note": "Legacy and interval targets differ; this is not a paired performance gain. Null means no legacy model. CNN legacy overlap is unknown; DSM legacy uses 500 ms horizon. Coverage includes quiet labelled time, not just positives.",
+  "scope": "fixed cohort, all splits for coverage only; common 10 ms catalog-window grid and observable plasma domain for both legacy and interval labels",
+  "like_for_like_coverage": {
+    "legacy_seo": {
+      "labelled_shots": 92,
+      "labelled_seconds": 147.19,
+      "observable_plasma_seconds": 451.03000000000003,
+      "interval_seconds_on_same_shots": 199.01,
+      "common_labelled_seconds": 52.93
+    },
+    "legacy_survival": {
+      "labelled_shots": 200,
+      "labelled_seconds": 909.91,
+      "observable_plasma_seconds": 984.76,
+      "interval_seconds_on_same_shots": 435.68,
+      "common_labelled_seconds": 383.83
+    }
+  },
+  "threshold_policy": "F1 at shared-fold inner-validation-tuned thresholds for every row",
+  "paired_common_shots": {
+    "shots": [
+      185805,
+      185835,
+      185838,
+      185866,
+      185943,
+      185945,
+      185953,
+      185961,
+      185978,
+      185996,
+      186025,
+      186226,
+      186496,
+      186530,
+      186532,
+      186569,
+      186610,
+      186636,
+      186640,
+      186747,
+      186901,
+      186945,
+      186981,
+      187019,
+      187025,
+      187035,
+      187072,
+      187076,
+      187100,
+      187105,
+      187116,
+      187144,
+      187196,
+      187301,
+      187328,
+      189004,
+      189008,
+      189044,
+      189046,
+      189085,
+      189138,
+      189272,
+      189284,
+      189311,
+      189324,
+      189325,
+      189365,
+      189369,
+      189370,
+      189500,
+      189501,
+      189513,
+      189514,
+      189538,
+      189540,
+      189547,
+      189559,
+      189570,
+      189578,
+      189580,
+      189684,
+      189688,
+      189872,
+      189873,
+      189885,
+      189886,
+      189990,
+      189998,
+      190010,
+      190046,
+      190056,
+      190094,
+      190102,
+      190129,
+      190156,
+      190177,
+      190182,
+      190218,
+      190271,
+      190273,
+      190298,
+      190299,
+      190300,
+      190335,
+      190379,
+      190450,
+      190627,
+      190632,
+      190637,
+      190643,
+      190695,
+      190736,
+      190776,
+      190787,
+      190788,
+      190790,
+      190799,
+      190957,
+      190991,
+      191183,
+      191448,
+      191470,
+      191489,
+      191499,
+      191519,
+      191521,
+      191596,
+      191670,
+      191672,
+      191677,
+      191782,
+      191968,
+      192003,
+      192045,
+      192090,
+      192148,
+      192149,
+      192152,
+      192159,
+      192221,
+      192222,
+      192223,
+      192226,
+      192228,
+      192229,
+      192231,
+      192232,
+      192233,
+      192275,
+      192276,
+      192277,
+      192279,
+      192309,
+      192387,
+      192404,
+      192424,
+      192721,
+      192735,
+      192741,
+      192751,
+      192761,
+      192766,
+      192914,
+      193008,
+      193075,
+      193108,
+      193148,
+      193162,
+      193164,
+      193267,
+      193273,
+      193276,
+      193280,
+      193281,
+      193282,
+      195016,
+      195111,
+      195159,
+      195169,
+      195263,
+      195637,
+      195642,
+      195649,
+      195736,
+      195836,
+      195952,
+      195956,
+      196577,
+      196627,
+      198806,
+      198971,
+      199071,
+      199073,
+      199087,
+      199216,
+      199217,
+      199281,
+      199560,
+      199563,
+      199789,
+      199907,
+      199908,
+      199909,
+      199910,
+      199911,
+      199912,
+      199921,
+      200013,
+      200014,
+      200083,
+      200127,
+      200129,
+      200198,
+      200219,
+      200320,
+      200385,
+      200435,
+      200551,
+      200563,
+      200610,
+      200738,
+      200875,
+      200882,
+      200889,
+      200986,
+      200990,
+      201227,
+      201490,
+      201494,
+      201822,
+      201831,
+      201880,
+      201973,
+      201978,
+      201991,
+      202028,
+      202041,
+      202162,
+      202181,
+      202186,
+      202197,
+      203012,
+      203132,
+      203136,
+      203138,
+      203174,
+      203187,
+      203349,
+      203397,
+      203401,
+      203413,
+      203470,
+      203507,
+      203530,
+      203576,
+      203626,
+      203667,
+      203719,
+      203745,
+      203764,
+      203785,
+      203827,
+      203959,
+      204093,
+      204141,
+      204144,
+      204225,
+      204233,
+      204237,
+      204238,
+      204240,
+      204243,
+      204244,
+      204256,
+      204324,
+      204530,
+      204531,
+      204560,
+      204652,
+      204687,
+      204689,
+      204840,
+      204937
+    ],
+    "bins_scored": 25853,
+    "scored_seconds": 258.53,
+    "metrics": {
+      "tm-ours": {
+        "n_shots": 263,
+        "replicates": 1000,
+        "auroc": {
+          "value": 0.9956207815288711,
+          "lo": 0.987713979054056,
+          "hi": 0.9996511609840625,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9854721716710033,
+          "lo": 0.9590692292069389,
+          "hi": 0.9991486508093823,
+          "valid_replicates": 1000
+        },
+        "f1": {
+          "value": 0.8718769449631013,
+          "lo": 0.781498380116895,
+          "hi": 0.9490724026285653,
+          "valid_replicates": 1000
+        },
+        "precision": {
+          "value": 0.904112115065462,
+          "lo": 0.7560478430891573,
+          "hi": 0.9977193882604835,
+          "valid_replicates": 1000
+        },
+        "recall": {
+          "value": 0.8418612637362637,
+          "lo": 0.7238533345681654,
+          "hi": 0.9419446346757645,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.22527366263102927,
+          "lo": 0.15620871600983213,
+          "hi": 0.2933967906196051,
+          "valid_replicates": 1000
+        },
+        "segf1_0.3": {
+          "value": 0.8826291079812206,
+          "lo": 0.7999346405228759,
+          "hi": 0.9560439560439561,
+          "valid_replicates": 1000
+        },
+        "segf1_0.5": {
+          "value": 0.8732394366197183,
+          "lo": 0.7815604909409702,
+          "hi": 0.9558260159281192,
+          "valid_replicates": 1000
+        },
+        "segf1_0.7": {
+          "value": 0.8544600938967136,
+          "lo": 0.7534481552719007,
+          "hi": 0.9402508542903485,
+          "valid_replicates": 1000
+        },
+        "shots_without_a_scored_bin": [],
+        "bins_scored": 25853,
+        "bins_positive": 5824,
+        "bin_ms": 10.0,
+        "scored_seconds": 258.53,
+        "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+      },
+      "tm-onsetcnn-retrained": {
+        "n_shots": 263,
+        "replicates": 1000,
+        "auroc": {
+          "value": 0.9712675163252296,
+          "lo": 0.9518494892454451,
+          "hi": 0.9857446729152813,
+          "valid_replicates": 1000
+        },
+        "auprc": {
+          "value": 0.9245453638533726,
+          "lo": 0.8583783283338782,
+          "hi": 0.9634552443361695,
+          "valid_replicates": 1000
+        },
+        "f1": {
+          "value": 0.7597328244274809,
+          "lo": 0.6407669978162102,
+          "hi": 0.8538561146038172,
+          "valid_replicates": 1000
+        },
+        "precision": {
+          "value": 0.8550257731958762,
+          "lo": 0.6979944474356413,
+          "hi": 0.9646559541584909,
+          "valid_replicates": 1000
+        },
+        "recall": {
+          "value": 0.6835508241758241,
+          "lo": 0.5450193193534117,
+          "hi": 0.8151113884415622,
+          "valid_replicates": 1000
+        },
+        "prevalence": {
+          "value": 0.22527366263102927,
+          "lo": 0.15620871600983213,
+          "hi": 0.2933967906196051,
+          "valid_replicates": 1000
+        },
+        "segf1_0.3": {
+          "value": 0.7378640776699029,
+          "lo": 0.5935352588147037,
+          "hi": 0.8475874676824697,
+          "valid_replicates": 1000
+        },
+        "segf1_0.5": {
+          "value": 0.7184466019417476,
+          "lo": 0.5695364238410596,
+          "hi": 0.8357516611295681,
+          "valid_replicates": 1000
+        },
+        "segf1_0.7": {
+          "value": 0.6699029126213593,
+          "lo": 0.5276316103048071,
+          "hi": 0.7878787878787878,
+          "valid_replicates": 1000
+        },
+        "shots_without_a_scored_bin": [],
+        "bins_scored": 25853,
+        "bins_positive": 5824,
+        "bin_ms": 10.0,
+        "scored_seconds": 258.53,
+        "segment_missing_data_policy": "unavailable label or score bins are hard barriers to merging; excluded from IoU"
+      }
+    },
+    "difference_ours_minus_cnn": {
+      "auroc": {
+        "value": 0.02435326520364156,
+        "lo": 0.011891247273811833,
+        "hi": 0.03989371957477404
+      },
+      "auprc": {
+        "value": 0.06092680781763071,
+        "lo": 0.02866086829208472,
+        "hi": 0.11469508145408241
+      },
+      "f1": {
+        "value": 0.1121441205356204,
+        "lo": 0.014612604007253819,
+        "hi": 0.22299644856592798
+      },
+      "segf1_0.5": {
+        "value": 0.15479283467797067,
+        "lo": 0.021113753841988128,
+        "hi": 0.303844206355142
+      }
+    },
+    "policy": "same shots, same observable label and score bins; original fold thresholds; paired 1000-draw shot bootstrap"
+  },
+  "note": "Legacy and interval targets differ; no paired performance gain is implied. Null means no legacy model. CNN legacy overlap is unknown; DSM legacy uses 500 ms. Coverage is clipped to observable plasma within catalog windows on a common 10 ms grid and includes quiet labelled time.",
   "source": "data/events/neoclassical_tearing_mode/benchmark/tm_benchmark.json"
 }

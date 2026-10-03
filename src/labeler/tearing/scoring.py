@@ -42,11 +42,28 @@ def shot_folds(shots, k: int = 5, seed: int = 0) -> dict[int, int]:
 
 
 def inner_split(shots, seed: int, fraction: float = 0.1) -> tuple[list, list]:
-    """`(train, validation)`: a seeded `fraction` of the shots held back, at least one."""
+    """`(train, validation)`: hold back a seeded fraction of shots, at least one."""
     shots = list(shots)
     order = np.random.default_rng(seed).permutation(len(shots))
     k = max(1, round(fraction * len(shots)))
     return [shots[i] for i in order[k:]], [shots[i] for i in order[:k]]
+
+
+def shared_cv(shots, k: int = 5, seed: int = 0) -> tuple[dict, list[dict]]:
+    """One cohort-wide fold plan, before any detector's input-availability filter.
+
+    Intersect these lists with available inputs only after creating the plan. Thus
+    each scored shot has the same held fold and inner role for every detector.
+    """
+    shots = sorted({int(s) for s in shots})
+    folds = shot_folds(shots, k, seed)
+    splits = []
+    for fold in range(k):
+        held = [s for s in shots if folds[s] == fold]
+        pool = [s for s in shots if folds[s] != fold]
+        train, val = inner_split(pool, 100 + fold)
+        splits.append({"fold": fold, "train": train, "validation": val, "held": held})
+    return folds, splits
 
 
 def bin_centres(window, bin_ms: float = BIN_MS) -> np.ndarray:
@@ -145,13 +162,21 @@ def _hist(values, edges) -> np.ndarray:
 def segments(
     mask,
     *,
+    valid=None,
     bin_ms: float = BIN_MS,
     min_ms: float = MIN_SEGMENT_MS,
     merge_ms: float = MERGE_GAP_MS,
 ) -> list[tuple[int, int]]:
     """Half-open index runs `[a, b)` of a boolean mask: gaps of at most `merge_ms`
-    closed, runs shorter than `min_ms` dropped."""
+    closed, runs shorter than `min_ms` dropped. Unavailable bins in `valid` are
+    hard boundaries, including when their duration is below the gap limit."""
     m = np.asarray(mask, dtype=bool)
+    available = (
+        np.ones(m.shape, dtype=bool) if valid is None else np.asarray(valid, bool)
+    )
+    if available.shape != m.shape:
+        raise ValueError("mask and valid must have the same shape")
+    m = m & available
     edges = np.diff(np.concatenate(([0], m.astype(np.int8), [0])))
     runs = list(
         zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1), strict=True)
@@ -159,7 +184,7 @@ def segments(
     gap = int(np.floor(merge_ms / bin_ms + 1e-9))
     merged: list[list[int]] = []
     for a, b in runs:
-        if merged and a - merged[-1][1] <= gap:
+        if merged and a - merged[-1][1] <= gap and available[merged[-1][1] : a].all():
             merged[-1][1] = int(b)
         else:
             merged.append([int(a), int(b)])
@@ -167,20 +192,32 @@ def segments(
     return [(a, b) for a, b in merged if b - a >= need]
 
 
-def segment_counts(pred, true, tiou: float, **kw) -> tuple[int, int, int]:
+def segment_counts(
+    pred, true, tiou: float, *, valid=None, **kw
+) -> tuple[int, int, int]:
     """`(tp, fp, fn)` of predicted against true segments at temporal IoU `tiou`.
 
     Both masks are cut into segments by `segments`; each true segment is matched to at
     most one predicted segment, the best-overlapping first, and a match needs an IoU of
-    at least `tiou`.
+    at least `tiou`. Unavailable bins are hard boundaries and contribute neither
+    intersection nor union to IoU. Gap closing includes only available bins.
     """
-    p, t = segments(pred, **kw), segments(true, **kw)
+    p, t = segments(pred, valid=valid, **kw), segments(true, valid=valid, **kw)
+    available = (
+        np.ones(len(pred), dtype=bool)
+        if valid is None
+        else np.asarray(valid, dtype=bool)
+    )
     pairs = []
     for i, (pa, pb) in enumerate(p):
         for j, (ta, tb) in enumerate(t):
-            inter = min(pb, tb) - max(pa, ta)
+            lo, hi = max(pa, ta), min(pb, tb)
+            inter = int(available[lo:hi].sum()) if hi > lo else 0
             if inter > 0:
-                pairs.append((inter / (max(pb, tb) - min(pa, ta)), i, j))
+                union = (
+                    int(available[pa:pb].sum()) + int(available[ta:tb].sum()) - inter
+                )
+                pairs.append((inter / union, i, j))
     pairs.sort(reverse=True)
     used_p, used_t, tp = set(), set(), 0
     for iou, i, j in pairs:
@@ -222,7 +259,7 @@ def shot_stats(
         stats.fp = int((hit & use & ~y).sum())
         stats.fn = int((~hit & use & y).sum())
         for level in tious:
-            stats.seg[level] = segment_counts(hit & use, y & use, level)
+            stats.seg[level] = segment_counts(hit, y, level, valid=use)
     return stats
 
 
@@ -309,7 +346,12 @@ def bootstrap(
 
 
 def best_threshold(stats: list[ShotStats], edges) -> float:
-    """The edge that maximises the pooled histograms' F1 (for a validation set)."""
+    """Highest candidate edge attaining maximal pooled validation F1.
+
+    With no positive validation bins every candidate has zero F1 in this search,
+    so the deterministic tie convention returns the highest histogram lower edge.
+    That fallback is not an estimable F1 optimum and must be identified as such.
+    """
     pos = np.sum([s.pos_hist for s in stats], axis=0)[::-1].cumsum()
     neg = np.sum([s.neg_hist for s in stats], axis=0)[::-1].cumsum()
     total = float(np.sum([s.pos_hist for s in stats]))
@@ -317,6 +359,60 @@ def best_threshold(stats: list[ShotStats], edges) -> float:
     k = int(np.argmax(f1))
     # cumulative from the top: the k-th reversed bin starts at edges[len(edges) - 2 - k]
     return float(np.asarray(edges)[len(edges) - 2 - k])
+
+
+def cv_thresholds(cohort_shots, y, valid, score, *, edges=None) -> tuple[dict, list]:
+    """F1 thresholds using only each shared fold's inner validation shots.
+
+    Histogram edges, if not supplied, are derived separately from that validation
+    subset. Missing inputs are excluded; held-fold labels never choose thresholds.
+    """
+    _, splits = shared_cv(cohort_shots)
+    thresholds, info = {}, []
+    for split in splits:
+        val = [
+            s
+            for s in split["validation"]
+            if s in score and (np.asarray(valid[s]) & np.isfinite(score[s])).any()
+        ]
+        if not val:
+            raise ValueError(f"no observable validation scores in fold {split['fold']}")
+        pooled = np.concatenate(
+            [
+                np.asarray(score[s])[np.asarray(valid[s]) & np.isfinite(score[s])]
+                for s in val
+            ]
+        )
+        use_edges = edges
+        if use_edges is None:
+            use_edges = edges_for(pooled)
+        stats = [shot_stats(s, y[s], valid[s], score[s], use_edges) for s in val]
+        threshold = best_threshold(stats, use_edges)
+        held = [s for s in split["held"] if s in score]
+        thresholds.update({s: threshold for s in held})
+        info.append(
+            {
+                **split,
+                "validation_scored": val,
+                "held_scored": held,
+                "validation_bins_scored": sum(s.n_bins for s in stats),
+                "validation_bins_positive": sum(s.n_pos for s in stats),
+                "validation_bins_negative": sum(s.n_neg for s in stats),
+                "validation_shots_positive": [s.shot for s in stats if s.n_pos],
+                "threshold_estimable": bool(sum(s.n_pos for s in stats)),
+                "threshold_status": (
+                    "inner-validation F1 optimum"
+                    if any(s.n_pos for s in stats)
+                    else "no positive validation bins; deterministic highest-edge "
+                    "fallback, not an estimable F1 optimum"
+                ),
+                "validation_score_quantiles": np.quantile(
+                    pooled, [0.0, 0.05, 0.5, 0.95, 1.0]
+                ).tolist(),
+                "threshold": threshold,
+            }
+        )
+    return thresholds, info
 
 
 def evaluate(
@@ -352,4 +448,9 @@ def evaluate(
     out["bins_scored"] = int(sum(s.n_bins for s in stats))
     out["bins_positive"] = int(sum(s.n_pos for s in stats))
     out["bin_ms"] = bin_ms
+    out["scored_seconds"] = out["bins_scored"] * bin_ms / 1000.0
+    out["segment_missing_data_policy"] = (
+        "unavailable label or score bins are hard barriers to merging; "
+        "excluded from IoU"
+    )
     return out

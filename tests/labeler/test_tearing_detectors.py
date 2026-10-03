@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,6 +12,32 @@ import torch
 
 from labeler.models.runners import keras_h5
 from labeler.tearing import detectors
+
+
+def test_published_dsm_survival_alarm_is_converted_to_risk():
+    assert detectors.DSM_SURVIVAL_THRESHOLD == pytest.approx(0.7)
+    assert detectors.DSM_THRESHOLD == pytest.approx(0.3)
+
+
+def test_magnetic_batch_inputs_do_not_depend_on_targets_or_uncertainty():
+    script = Path(__file__).resolve().parents[2] / "scripts/labeler/tm_ours.py"
+    spec = importlib.util.spec_from_file_location("tm_ours_batch_regression", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    centres = np.arange(3.0)
+    features = np.array([[1.0, 2.0], [3.0, 4.0], [np.nan, 5.0]])
+    first = {1: (centres, features, np.array([1, 0, 1]), np.array([1, 1, 0]))}
+    second = {1: (centres, features, np.array([0, 1, 0]), np.array([0, 1, 0]))}
+    mean, std = np.array([1.0, 1.0]), np.array([2.0, 1.0])
+    x1, y1, mask1 = module.batch(first, [1], mean, std, "cpu")
+    x2, y2, mask2 = module.batch(second, [1], mean, std, "cpu")
+    torch.testing.assert_close(x1, x2)
+    # Finite features survive target uncertainty; missing feature bins are zero.
+    torch.testing.assert_close(x1[0], torch.tensor([[0.0, 1.0, 0.0], [1.0, 3.0, 0.0]]))
+    assert not torch.equal(y1, y2)
+    assert not torch.equal(mask1, mask2)
+    assert mask1.tolist() == [[1.0, 1.0, 0.0]]
+    assert mask2.tolist() == [[0.0, 1.0, 0.0]]
 
 
 def _layer(cls, name, inbound, **config):

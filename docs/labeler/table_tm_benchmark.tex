@@ -6,21 +6,17 @@
 \toprule
 Model & Setting & Shots & AUROC [CI] & AUPRC [CI] & F1 [CI] & Segmental F1 [CI] \\
 \midrule
-Onset CNN$\dagger$ & Legacy & 79 & .897 [.832,.952] & .601 [.385,.799] & .611 [.437,.750] & -- \\
-Survival MLP (250 ms) & Legacy & 219 & .781 [.713,.847] & .084 [.050,.154] & .000 [.000,.000] & -- \\
-Survival MLP (500 ms) & Legacy & 219 & .756 [.685,.825] & .133 [.081,.229] & .000 [.000,.000] & -- \\
-Survival MLP (1 s) & Legacy & 219 & .749 [.677,.823] & .189 [.121,.307] & .000 [.000,.000] & -- \\
-Onset CNN$\dagger$ & Interval, published & 286 & .930 [.905,.952] & .778 [.683,.855] & .628 [.537,.714] & .468 [.343,.588] \\
-Survival MLP (250 ms) & Interval, published & 252 & .698 [.624,.765] & .353 [.274,.434] & .000 [.000,.000] & .000 [.000,.000] \\
-Survival MLP (500 ms) & Interval, published & 252 & .697 [.624,.765] & .353 [.274,.433] & .000 [.000,.000] & .000 [.000,.000] \\
-Survival MLP (1 s) & Interval, published & 252 & .696 [.621,.763] & .353 [.275,.434] & .000 [.000,.000] & .000 [.000,.000] \\
-Onset CNN & Tokamak-SI & 286 & .926 [.898,.950] & .778 [.694,.852] & .725 [.656,.786] & .564 [.471,.644] \\
-Survival MLP & Tokamak-SI & 341 & .890 [.860,.913] & .681 [.581,.766] & .647 [.579,.703] & .409 [.326,.495] \\
-Magnetic detector & Tokamak-SI & 450 & .972 [.964,.978] & .852 [.799,.894] & .754 [.707,.797] & .475 [.414,.535] \\
-RMS threshold (12 G) & Tokamak-SI & 450 & .941 [.926,.955] & .750 [.682,.803] & .373 [.309,.441] & .282 [.213,.350] \\
-Magnetic detector + RMS & Tokamak-SI & 450 & .978 [.972,.984] & .877 [.835,.913] & .789 [.745,.831] & .593 [.534,.653] \\
+Onset CNN$\dagger$ & Legacy & 79 & .897 [.832,.952] & .601 [.385,.799] & .567 [.372,.719] & -- \\
+Survival MLP (500 ms) & Legacy & 80 & .721 [.614,.828] & .294 [.179,.442] & .157 [.089,.250] & -- \\
+Onset CNN$\dagger$ & Interval, published & 262 & .982 [.969,.993] & .951 [.911,.978] & .539 [.375,.688] & .497 [.322,.667] \\
+Survival MLP (500 ms) & Interval, published & 235 & .796 [.711,.864] & .521 [.391,.657] & .454 [.345,.549] & .257 [.132,.413] \\
+Onset CNN & Tokamak-SI & 263 & .971 [.952,.986] & .925 [.859,.964] & .760 [.641,.854] & .718 [.570,.836] \\
+Survival MLP & Tokamak-SI & 319 & .964 [.935,.986] & .906 [.842,.953] & .669 [.564,.753] & .540 [.420,.650] \\
+Magnetic detector & Tokamak-SI & 450 & .998 [.996,.999] & .988 [.973,.996] & .872 [.815,.920] & .714 [.628,.800] \\
+RMS threshold & Tokamak-SI & 450 & .988 [.982,.994] & .928 [.882,.960] & .775 [.701,.833] & .370 [.291,.467] \\
+Magnetic detector + RMS & Tokamak-SI & 450 & .998 [.997,1.000] & .987 [.972,.996] & .825 [.745,.892] & .708 [.615,.798] \\
 \bottomrule
 \end{tabular}
-\caption{Tearing-mode benchmarks. Legacy rows use published original targets. Tokamak-SI learned rows use shot-grouped development cross-validation; the RMS rule is fixed. Published interval rows reuse original weights. Brackets give 95\% shot-bootstrap intervals (1,000 draws). Segmental F1 uses temporal IoU 0.5; legacy targets lack present spans. Shot counts reflect input availability. A dagger marks unknown published training overlap. The RMS-input detector is a circular ablation. Blind cohort test shots are excluded.}
+\caption{Strong rotating n=1/n=2 mode (tearing-mode proxy) benchmarks. F1 thresholds follow shared development CV inner-validation splits. Zero-positive validation folds use a deterministic highest-edge fallback, making F1 sensitive to calibration coverage. Brackets give 95\% shot-bootstrap intervals (1,000 draws). Segmental F1 uses IoU 0.5 and hard barriers at unavailable bins. Legacy targets differ; a dagger marks unknown training overlap. RMS inputs define the label. DSM uses 500 ms; other horizons and fixed-threshold extras are in the appendix. Blind tests are excluded.}
 \label{tab:tm-benchmark}
 \end{table*}

@@ -34,6 +34,7 @@ Every number is written with its shots, bins and thresholds to
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -61,10 +62,9 @@ MODELS = {
     "cnn": ("tm-onsetcnn", "d3d_tearing_onset_cnn1d"),
     "dsm": ("tm-dsm", "d3d_tearing_time_to_event_dsm"),
 }
-#: Chosen by the mean validation loss of three seeds on the inner validation shots of
-#: fold 0, over a handful of settings (dev shots only; none of the five held-out
-#: folds or the test shots informed it). Both nets overfit the ~400 shots within a few
-#: epochs, so the rates are low and early stopping does the rest.
+#: Retained from the earlier development-only inner-validation search. The repaired
+#: benchmark changes cohort-wide fold roles and labels, and refits these fixed settings;
+#: only per-fold stopping and decision thresholds are tuned during this regeneration.
 HYPER = {
     "cnn": {"lr": 3e-4, "batch_size": 128, "weight_decay": 1e-4},
     "dsm": {"lr": 1e-4, "batch_size": 128, "weight_decay": 1e-4},
@@ -235,11 +235,13 @@ def main(argv=None) -> int:
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        torch.cuda.set_per_process_memory_fraction(0.28)
     name, slug = MODELS[args.model]
     cohort = pd.read_csv(CATALOG / "cohort.csv")
     dev_all = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
     test_all = sorted(int(s) for s in cohort[cohort.split == "test"].shot)
-    data, missing = load(args.model, dev_all + test_all)
+    data, missing = load(args.model, dev_all + (test_all if args.final else []))
     dev = [s for s in dev_all if s in data]
     test = [s for s in test_all if s in data]
     meta = {
@@ -248,22 +250,47 @@ def main(argv=None) -> int:
         "variant": "retrained from fresh weights, detection objective (horizon 0)",
         "git_sha": git_sha(),
         "labels": str(LABELS.relative_to(REPO)),
+        "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
         "bin_ms": scoring.BIN_MS,
         "shots_without_inputs": missing,
         "dev_shots": dev,
         "n_dev": len(dev),
         "hyper": HYPER,
+        "hyperparameter_provenance": (
+            "fixed from earlier development-only search; reused without selecting on "
+            "new held-fold or blind-test results"
+        ),
         "device": device,
     }
-    folds = scoring.shot_folds(dev, FOLDS, seed=0)
+    folds, shared_splits = scoring.shared_cv(dev_all)
+    meta["cv_cohort_shots"] = dev_all
+    meta["threshold_is"] = "F1-maximising on shared-fold inner validation shots only"
     oof, thresholds, fold_info = {}, {}, []
-    for k in range(min(args.folds, FOLDS)):
+    for split in shared_splits[: min(args.folds, FOLDS)]:
+        k = split["fold"]
         began = time.time()
-        held = [s for s in dev if folds[s] == k]
-        pool = [s for s in dev if folds[s] != k]
-        train, val = scoring.inner_split(pool, 100 + k, HYPER["val_fraction"])
+        held = [s for s in split["held"] if s in data]
+        train = [s for s in split["train"] if s in data]
+        val = [s for s in split["validation"] if s in data]
         nets = ensemble(args.model, data, train, val, device)
-        thr = pick_threshold(data, bin_scores(nets, data, val, device), val)
+        val_scores = bin_scores(nets, data, val, device)
+        thr = pick_threshold(data, val_scores, val)
+        validation_file = RESULTS / f"validation_{name}_fold{k}.npz"
+        RESULTS.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            validation_file,
+            **{f"s{s}": val_scores[s].astype(np.float32) for s in val},
+        )
+        validation_stats = [
+            scoring.shot_stats(
+                s,
+                data[s]["y_bins"],
+                data[s]["valid_bins"],
+                val_scores[s],
+                THRESHOLD_EDGES,
+            )
+            for s in val
+        ]
         oof.update(bin_scores(nets, data, held, device))
         thresholds.update({s: thr for s in held})
         fold_info.append(
@@ -273,6 +300,24 @@ def main(argv=None) -> int:
                 "n_val": len(val),
                 "n_held": len(held),
                 "threshold": thr,
+                "train": train,
+                "validation": val,
+                "held": held,
+                "shared_cohort_split": split,
+                "validation_scores": str(validation_file),
+                "validation_bins_scored": sum(s.n_bins for s in validation_stats),
+                "validation_bins_positive": sum(s.n_pos for s in validation_stats),
+                "validation_bins_negative": sum(s.n_neg for s in validation_stats),
+                "validation_shots_positive": [
+                    s.shot for s in validation_stats if s.n_pos
+                ],
+                "threshold_estimable": bool(sum(s.n_pos for s in validation_stats)),
+                "threshold_status": (
+                    "inner-validation F1 optimum"
+                    if any(s.n_pos for s in validation_stats)
+                    else "no positive validation bins; deterministic highest-edge "
+                    "fallback, not an estimable F1 optimum"
+                ),
                 "members": [record for _, record in nets],
                 "seconds": round(time.time() - began, 1),
             }
@@ -286,6 +331,9 @@ def main(argv=None) -> int:
     scored = [s for s in dev if s in oof]
     y, valid = truth(data, scored)
     res = scoring.evaluate(scored, y, valid, oof, thresholds, n=args.bootstrap, seed=0)
+    meta["cuda_peak_allocated_gb"] = (
+        torch.cuda.max_memory_allocated() / 1e9 if device == "cuda" else None
+    )
     write(
         f"tm_prior_retrained_{name}_cv",
         {
@@ -309,7 +357,9 @@ def main(argv=None) -> int:
         flush=True,
     )
     if args.final:
-        train, val = scoring.inner_split(dev, 999, HYPER["val_fraction"])
+        train_all, val_all = scoring.inner_split(dev_all, 999, HYPER["val_fraction"])
+        train = [s for s in train_all if s in data]
+        val = [s for s in val_all if s in data]
         nets = ensemble(args.model, data, train, val, device)
         thr = pick_threshold(data, bin_scores(nets, data, val, device), val)
         scores = bin_scores(nets, data, test, device)

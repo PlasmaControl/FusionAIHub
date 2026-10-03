@@ -95,6 +95,34 @@ def test_segments_merge_short_gaps_and_drop_short_runs():
     assert scoring.segments(m) == [(5, 25)]
 
 
+def test_segments_never_close_an_unavailable_bin():
+    mask = np.ones(20, dtype=bool)
+    valid = np.ones(20, dtype=bool)
+    valid[9:11] = False
+    assert scoring.segments(mask, valid=valid) == [(0, 9), (11, 20)]
+
+
+def test_segment_iou_excludes_unavailable_time_and_uses_hard_boundaries():
+    true = np.ones(20, dtype=bool)
+    pred = true.copy()
+    valid = true.copy()
+    valid[9:11] = False
+    # Missing time is neither a negative gap nor part of either segment's IoU.
+    assert scoring.segment_counts(pred, true, 1.0, valid=valid) == (2, 0, 0)
+    pred[11:20] = False
+    assert scoring.segment_counts(pred, true, 1.0, valid=valid) == (1, 0, 1)
+
+
+def test_shot_stats_preserves_missing_score_and_label_barriers():
+    y = np.ones(20, dtype=np.int8)
+    valid = np.ones(20, dtype=bool)
+    score = np.full(20, 0.9)
+    score[9] = np.nan
+    valid[10] = False
+    stats = scoring.shot_stats(1, y, valid, score, [0, 0.5, 1], 0.5)
+    assert stats.seg[0.5] == (2, 0, 0)
+
+
 def test_segment_counts_by_temporal_iou():
     true = np.zeros(100, dtype=bool)
     true[10:30] = True
@@ -195,3 +223,45 @@ def test_inner_split_holds_back_a_seeded_tenth_and_loses_no_shot():
     assert (train, val) == scoring.inner_split(shots, 7)
     assert val != scoring.inner_split(shots, 8)[1]
     assert len(scoring.inner_split([1, 2], 0)[1]) == 1
+
+
+def test_shared_cv_uses_complete_cohort_before_model_availability():
+    shots = list(range(100, 150))
+    folds, splits = scoring.shared_cv(shots)
+    assert folds == scoring.shot_folds(shots)
+    for split in splits:
+        held = [s for s in shots if folds[s] == split["fold"]]
+        pool = [s for s in shots if folds[s] != split["fold"]]
+        train, val = scoring.inner_split(pool, 100 + split["fold"])
+        assert split == {
+            "fold": split["fold"],
+            "train": train,
+            "validation": val,
+            "held": held,
+        }
+        assert not set(held) & (set(train) | set(val))
+
+
+def test_cv_thresholds_never_use_held_labels_and_intersect_availability():
+    shots = list(range(100, 150))
+    folds, splits = scoring.shared_cv(shots)
+    score = {s: np.array([0.1, 0.8]) for s in shots[:-1]}
+    y = {s: np.array([0, 1]) for s in score}
+    valid = {s: np.ones(2, dtype=bool) for s in score}
+    thresholds, info = scoring.cv_thresholds(shots, y, valid, score)
+    assert set(thresholds) == set(score)
+    for split, record in zip(splits, info, strict=True):
+        assert record["validation"] == split["validation"]
+        assert record["validation_scored"] == [
+            s for s in split["validation"] if s in score
+        ]
+        assert 0.1 < record["threshold"] <= 0.8
+    # Change one held fold's targets. Its own threshold must stay unchanged.
+    changed = dict(y)
+    for s in shots:
+        if folds[s] == 0 and s in changed:
+            changed[s] = 1 - changed[s]
+    other, _ = scoring.cv_thresholds(shots, changed, valid, score)
+    for s in thresholds:
+        if folds[s] == 0:
+            assert other[s] == thresholds[s]

@@ -2,7 +2,9 @@
 """The published tearing models as they are: against their own labels, and against ours.
 
 Reads the per-shot inputs and published outputs `tm_detector_inputs.py` wrote
-(``$TM_ROOT/detector_inputs``). Three settings, nothing here is fitted:
+(``$TM_ROOT/detector_inputs``). Published weights remain fixed; every main F1 row
+uses a threshold chosen on the same cohort-wide CV inner validation shots as the
+learned rows. Fixed published thresholds are explicitly labelled extra results.
 
 * ``--setting legacy``: each model against the label it was built for, on shots it was
   not trained on where that can be told.
@@ -14,12 +16,12 @@ Reads the per-shot inputs and published outputs `tm_detector_inputs.py` wrote
   - `tm-dsm` against an onset within 250 ms / 500 ms / 1 s on the rows before the
     survival label's first onset (``raw/tm_labels.h5``), on shots outside the model's
     ``training_shots.txt`` that the survival labels cover; F1 at the model's own
-    default alarm level, 0.7.
+    default survival alarm level, 0.7, equivalent to risk 0.3.
 
 * ``--setting tokamak-si``: the unretrained published outputs against the whole-interval
   labels at 10 ms bins. The CNN's score at ``t`` is read as the mode's presence at
   ``t + 25 ms``; the DSM's risk of an onset within a horizon is the score as it is,
-  at 0.7. Cohort ``--split dev`` (the 450 train and validation shots) or ``test``.
+  at a fold-tuned risk threshold. ``--split dev`` comprises 450 development shots.
 
 Every number is written with its shots, bins and threshold to
 ``$LABELER_ROOT/round4/tm/results/``, with 95 % shot-bootstrap intervals.
@@ -31,9 +33,11 @@ Every number is written with its shots, bins and threshold to
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -68,8 +72,25 @@ SI_MODELS = {
 }
 THRESHOLD_SOURCE = (
     "published: the CNN card's F1 convention (tm_prob >= 0.5) and the DSM card's "
-    "default alarm level (risk >= 0.7)"
+    "upstream metrics_helpers.py:85 default survival <= 0.7, equivalent to "
+    "risk >= 0.3; "
+    "the previous benchmark incorrectly applied 0.7 to risk"
 )
+CV_THRESHOLD_SOURCE = (
+    "F1-maximising thresholds on shared cohort-450 fold inner validation shots only; "
+    "cohort split=test excluded; same fold and inner shot roles for every model"
+)
+
+
+def development_shots():
+    cohort = pd.read_csv(CATALOG / "cohort.csv")
+    return sorted(int(s) for s in cohort[cohort.split != "test"].shot)
+
+
+def tune(y, valid, score):
+    return scoring.cv_thresholds(
+        development_shots(), y, valid, score, edges=np.linspace(0.0, 1.0, 1001)
+    )
 
 
 def git_sha() -> str:
@@ -133,37 +154,21 @@ def si_bins(slug, column, shift, shots, cohort, by_shot, table):
 def run_tokamak_si(args) -> None:
     cohort = pd.read_csv(CATALOG / "cohort.csv")
     dev = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
-    shots = (
-        sorted(int(s) for s in cohort[cohort.split == "test"].shot)
-        if args.split == "test"
-        else dev
-    )
+    if args.split != "dev":
+        raise ValueError("round-one regeneration scores development only")
+    shots = dev
     table = pd.read_csv(LABELS)
     by_shot = {s: g for s, g in table.groupby("shot")}
     for name, (slug, column, shift, threshold) in SI_MODELS.items():
-        # the one extra threshold: the F1-maximising level on the dev shots, which a
-        # score that never reaches its published level (the DSM's 0.7) needs to be read
-        d_score, d_y, d_valid, d_used, _ = si_bins(
-            slug, column, shift, dev, cohort, by_shot, table
+        score, y, valid, used, missing = si_bins(
+            slug, column, shift, shots, cohort, by_shot, table
         )
-        edges = scoring.edges_for(np.concatenate([d_score[s] for s in d_used]))
-        tuned = scoring.best_threshold(
-            [
-                scoring.shot_stats(s, d_y[s], d_valid[s], d_score[s], edges)
-                for s in d_used
-            ],
-            edges,
-        )
-        score, y, valid, used, missing = (
-            (d_score, d_y, d_valid, d_used, [])
-            if args.split == "dev"
-            else si_bins(slug, column, shift, shots, cohort, by_shot, table)
-        )
+        tuned, fold_info = tune(y, valid, score)
         res = {
             label: scoring.evaluate(
                 used, y, valid, score, thr, n=args.bootstrap, seed=0
             )
-            for label, thr in (("published", threshold), ("dev_tuned", tuned))
+            for label, thr in (("fixed_published", threshold), ("cv_tuned", tuned))
         }
         # the DSM's training shots are listed; scored apart, the rest are held out
         trained = dsm_training_shots() if slug == DSM else frozenset()
@@ -173,7 +178,7 @@ def run_tokamak_si(args) -> None:
                 label: scoring.evaluate(
                     outside, y, valid, score, thr, n=args.bootstrap, seed=0
                 )
-                for label, thr in (("published", threshold), ("dev_tuned", tuned))
+                for label, thr in (("fixed_published", threshold), ("cv_tuned", tuned))
             }
             if trained
             else None
@@ -187,22 +192,24 @@ def run_tokamak_si(args) -> None:
                 "split": args.split,
                 "git_sha": git_sha(),
                 "labels": str(LABELS.relative_to(REPO)),
+                "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
                 "score": (
                     "tm_prob"
                     if column is None
                     else f"risk, horizon {HORIZON_NAMES[column]}"
                 ),
                 "score_shift_ms": shift,
-                "threshold": threshold,
-                "threshold_is": THRESHOLD_SOURCE,
-                "dev_tuned_threshold": tuned,
-                "dev_tuned_threshold_is": (
-                    "the single level maximising F1 on the 450 dev shots' bins"
-                ),
+                "threshold": None,
+                "threshold_is": CV_THRESHOLD_SOURCE,
+                "fold_info": fold_info,
+                "folds": scoring.shared_cv(dev)[0],
+                "cv_cohort_shots": dev,
+                "fixed_published_threshold": threshold,
+                "fixed_published_threshold_is": THRESHOLD_SOURCE,
                 "shots": used,
                 "shots_without_inputs": missing,
-                "metrics": res["published"],
-                "metrics_dev_tuned": res["dev_tuned"],
+                "metrics": res["cv_tuned"],
+                "metrics_fixed_published": res["fixed_published"],
                 "shots_in_training": [s for s in used if s in trained],
                 "metrics_outside_training": held_out,
             },
@@ -210,9 +217,9 @@ def run_tokamak_si(args) -> None:
         print(
             name,
             args.split,
-            f"{len(used)} shots, AUROC {res['published']['auroc']['value']:.3f},"
-            f" F1 {res['published']['f1']['value']:.3f}"
-            f" (tuned {res['dev_tuned']['f1']['value']:.3f})",
+            f"{len(used)} shots, AUROC {res['cv_tuned']['auroc']['value']:.3f},"
+            f" F1 {res['cv_tuned']['f1']['value']:.3f}"
+            f" (fixed {res['fixed_published']['f1']['value']:.3f})",
         )
 
 
@@ -229,14 +236,17 @@ def seo_rows(shot, paths):
 def run_legacy_cnn(args) -> None:
     from labeler.config import Paths
 
-    paths = Paths.from_env()
+    # The scores and archive row indices must use the same exported input root.
+    paths = replace(Paths.from_env(), root=TM / "lroot")
     table = pd.read_csv(CATALOG / f"{args.set}.csv")
     blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
-    shots = [
-        int(s)
-        for s in table.shot
-        if s not in blind and (INPUTS / CNN / f"{int(s)}.npz").is_file()
-    ]
+    shots = sorted(
+        {
+            int(s)
+            for s in list(table.shot) + development_shots()
+            if s not in blind and (INPUTS / CNN / f"{int(s)}.npz").is_file()
+        }
+    )
     score, y, valid, used, skipped = {}, {}, {}, [], {}
     for shot in shots:
         truth, label, why = seo_rows(shot, paths)
@@ -251,8 +261,35 @@ def run_legacy_cnn(args) -> None:
         ok = z["valid"][index] & np.isfinite(z["tm_prob"][index])
         score[shot], y[shot], valid[shot] = z["tm_prob"][index], label, ok
         used.append(shot)
+    thresholds, fold_info = tune(y, valid, score)
+    selected = (
+        [s for s in used if s in set(development_shots())]
+        if args.set == "cohort"
+        else [s for s in used if s in set(table.shot)]
+    )
+    threshold, population_validation = None, []
+    if args.set != "cohort":
+        _, val = scoring.inner_split(development_shots(), 999)
+        val = [s for s in val if s in score and valid[s].any()]
+        population_validation = val
+        edges = np.linspace(0.0, 1.0, 1001)
+        threshold = scoring.best_threshold(
+            [scoring.shot_stats(s, y[s], valid[s], score[s], edges) for s in val], edges
+        )
+        thresholds = {s: threshold for s in selected}
     res = scoring.evaluate(
-        used,
+        selected,
+        y,
+        valid,
+        score,
+        thresholds,
+        n=args.bootstrap,
+        seed=0,
+        tious=(),
+        bin_ms=25.0,
+    )
+    fixed = scoring.evaluate(
+        selected,
         y,
         valid,
         score,
@@ -271,21 +308,33 @@ def run_legacy_cnn(args) -> None:
             "shot_set": args.set,
             "git_sha": git_sha(),
             "score": "tm_prob at the archive's rows (the label's own time grid, 25 ms)",
-            "threshold": detectors.CNN_THRESHOLD,
-            "threshold_is": THRESHOLD_SOURCE,
+            "threshold": threshold,
+            "threshold_is": (
+                CV_THRESHOLD_SOURCE
+                if args.set == "cohort"
+                else "F1-maximising on available shared-cohort development inner "
+                "validation shots (seed 999), then fixed for population supplement"
+            ),
+            "population_threshold_validation_shots": population_validation,
+            "fold_info": fold_info if args.set == "cohort" else [],
+            "folds": scoring.shared_cv(development_shots())[0],
+            "cv_cohort_shots": development_shots(),
+            "fixed_published_threshold": detectors.CNN_THRESHOLD,
+            "fixed_published_threshold_is": THRESHOLD_SOURCE,
             "held_out": (
                 "not established: the CNN's training shots are not on disk and the "
                 "archive is its training store, so these are an upper bound"
             ),
-            "shots": used,
+            "shots": selected,
             "blind_test_excluded": True,
             "segmental_f1": None,
             "segmental_reason": "the legacy target marks growth-phase rows, not spans",
             "skipped": {str(k): v for k, v in skipped.items()},
             "metrics": res,
+            "metrics_fixed_published": fixed,
         },
     )
-    print("tm-onsetcnn legacy", args.set, len(used), "shots", res["auroc"]["value"])
+    print("tm-onsetcnn legacy", args.set, len(selected), "shots", res["auroc"]["value"])
 
 
 def survival_onsets(shots) -> dict[int, float]:
@@ -313,13 +362,7 @@ def run_legacy_dsm(args) -> None:
     from labeler.models import registry
 
     training = registry.load_adapter(DSM).training_shots
-    pool = sorted(
-        {
-            int(s)
-            for name in ("cohort", "population")
-            for s in pd.read_csv(CATALOG / f"{name}.csv").shot
-        }
-    )
+    pool = development_shots()
     blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
     pool = [s for s in pool if s not in blind]
     have = [s for s in pool if (INPUTS / DSM / f"{s}.npz").is_file()]
@@ -335,7 +378,19 @@ def run_legacy_dsm(args) -> None:
             score[shot] = z["risk"][:, i]
             y[shot] = truth
             valid[shot] = keep & z["valid"] & np.isfinite(z["risk"][:, i])
+        thresholds, fold_info = tune(y, valid, score)
         res = scoring.evaluate(
+            held,
+            y,
+            valid,
+            score,
+            thresholds,
+            n=args.bootstrap,
+            seed=0,
+            tious=(),
+            bin_ms=25.0,
+        )
+        fixed = scoring.evaluate(
             held,
             y,
             valid,
@@ -357,8 +412,13 @@ def run_legacy_dsm(args) -> None:
                 ),
                 "git_sha": git_sha(),
                 "score": f"risk, horizon {horizon}",
-                "threshold": detectors.DSM_THRESHOLD,
-                "threshold_is": THRESHOLD_SOURCE,
+                "threshold": None,
+                "threshold_is": CV_THRESHOLD_SOURCE,
+                "fold_info": fold_info,
+                "folds": scoring.shared_cv(development_shots())[0],
+                "cv_cohort_shots": development_shots(),
+                "fixed_published_threshold": detectors.DSM_THRESHOLD,
+                "fixed_published_threshold_is": THRESHOLD_SOURCE,
                 "held_out": (
                     "shots outside the model's training_shots.txt that tm_labels.h5 "
                     "covers"
@@ -371,6 +431,7 @@ def run_legacy_dsm(args) -> None:
                 "n_in_training_dropped": int(sum(s in training for s in have)),
                 "shots_with_an_onset": [s for s in held if np.isfinite(onsets[s])],
                 "metrics": res,
+                "metrics_fixed_published": fixed,
             },
         )
         print(f"tm-dsm-{horizon} legacy", len(held), "shots", res["auroc"]["value"])

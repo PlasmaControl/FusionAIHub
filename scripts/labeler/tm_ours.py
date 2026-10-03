@@ -18,7 +18,8 @@ Protocol (frozen before any score was looked at):
   n = 1 and n = 2 RMS (the traces the labels are drawn from) as the ablation that says
   how much of the label is read back from them;
 * ``--baseline`` is no model: the smoothed n = 1 RMS of each bin against a threshold
-  (12 G, the onset level of the rule; the AUROC and AUPRC sweep every threshold).
+  chosen on the same inner-validation shots as every learned row. The fixed 12 G
+  threshold is a separately labelled extra; AUROC and AUPRC sweep every threshold.
 
 Every number is written with its shots, bins and thresholds to
 ``$LABELER_ROOT/round4/tm/results/<name>.json``.
@@ -33,6 +34,7 @@ Run in the CUDA venv (the library imports need only numpy, pandas and torch)::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -144,7 +146,9 @@ def batch(data, shots, mean, std, device):
     m = np.zeros((len(shots), length), dtype=np.float32)
     for i, s in enumerate(shots):
         _, X, lab, ok = data[s]
-        z = np.where(ok[:, None], (X - mean) / std, 0.0)
+        feature_ok = np.isfinite(X).all(axis=1)
+        # Target uncertainty masks loss/scoring only, never the model's input context.
+        z = np.where(feature_ok[:, None], (X - mean) / std, 0.0)
         x[i, :, : len(lab)] = z.T
         y[i, : len(lab)] = lab
         m[i, : len(lab)] = ok
@@ -237,6 +241,58 @@ def run_baseline(data, shots, rms_col=0):
     return {s: data[s][1][:, rms_col] for s in shots}, float(np.log10(12.0))
 
 
+def load_baseline(shots):
+    """RMS availability alone defines baseline coverage; no Mirnov input required."""
+    cohort = pd.read_csv(CATALOG / "cohort.csv").set_index("shot")
+    table = pd.read_csv(LABELS)
+    by_shot = {s: g for s, g in table.groupby("shot")}
+    data, missing = {}, []
+    for shot in shots:
+        path = TM / "signals" / f"{shot}.npz"
+        if not path.is_file():
+            missing.append(shot)
+            continue
+        row = cohort.loc[shot]
+        centres = scoring.bin_centres((row.window_start_ms, row.window_end_ms))
+        with np.load(path) as z:
+            features = magfeatures.rms_bin_features(
+                z["t_ms"], z["n1rms"], z["n2rms"], centres
+            )
+        y, valid = scoring.label_bins(by_shot.get(shot, table.iloc[:0]), centres)
+        data[shot] = (centres, features, y, valid & np.isfinite(features[:, 0]))
+    return data, missing
+
+
+def save_ensemble(nets, tag, fold, train, val, threshold):
+    """Persist deployable weights with their normalisation and decision threshold."""
+    import torch
+
+    path = TM / "checkpoints" / f"tm_ours_{tag}" / f"fold_{fold}.pt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(
+        {
+            "members": [
+                {
+                    "state_dict": {
+                        k: v.detach().cpu() for k, v in net.state_dict().items()
+                    },
+                    "mean": mean,
+                    "std": std,
+                    "val_loss": float(loss),
+                }
+                for net, mean, std, loss in nets
+            ],
+            "hyper": HYPER,
+            "threshold": threshold,
+            "train_shots": train,
+            "validation_shots": val,
+            "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
+        },
+        path,
+    )
+    return str(path)
+
+
 def write(name, record):
     out = TM / "results"
     out.mkdir(parents=True, exist_ok=True)
@@ -259,11 +315,14 @@ def main(argv=None) -> int:
         raise SystemExit("name --features or --baseline")
 
     cohort = pd.read_csv(CATALOG / "cohort.csv")
-    dev = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
+    dev_all = sorted(int(s) for s in cohort[cohort.split != "test"].shot)
     test = sorted(int(s) for s in cohort[cohort.split == "test"].shot)
     with_rms = args.baseline or args.features == "magnetics+rms"
-    data, skipped = load(dev + test, with_rms)
-    dev = [s for s in dev if s in data]
+    requested = dev_all + (test if args.final else [])
+    data, skipped = (
+        load_baseline(requested) if args.baseline else load(requested, with_rms)
+    )
+    dev = [s for s in dev_all if s in data]
     test = [s for s in test if s in data]
     meta = {
         "git_sha": git_sha(),
@@ -272,28 +331,47 @@ def main(argv=None) -> int:
         "shots_without_features": skipped,
         "dev_shots": dev,
         "n_dev": len(dev),
+        "cv_cohort_shots": dev_all,
+        "labels_sha256": hashlib.sha256(LABELS.read_bytes()).hexdigest(),
+        "input_mask_policy": (
+            "zero only nonfinite feature rows; target uncertainty masks loss and "
+            "evaluation, never model input context"
+        ),
     }
 
     if args.baseline:
         # the baseline needs no features of the magnetics: its n1 column is the RMS
-        score, onset = run_baseline(data, dev, rms_col=-2)
-        pooled = np.concatenate([score[s][data[s][3]] for s in dev])
-        edges = scoring.edges_for(pooled)
+        score, onset = run_baseline(data, dev)
         y, valid = truth_of(data, dev)
-        stats = [
-            scoring.shot_stats(s, y[s], valid[s], score[s], edges, None) for s in dev
-        ]
-        tuned = scoring.best_threshold(stats, edges)
+        tuned, info = scoring.cv_thresholds(dev_all, y, valid, score)
+        for fold in info:
+            fold["threshold_g"] = float(10 ** fold["threshold"])
         variants = {
             "12g": (onset, "the rule's onset level, 12 G"),
-            "tuned": (tuned, "the single threshold maximising F1 on the dev shots"),
+            "cv_tuned": (tuned, "F1-maximising on shared-fold inner validation only"),
         }
         for name, shots in (("dev", dev), ("test", test if args.final else [])):
             if not shots:
                 continue
-            score, _ = run_baseline(data, shots, rms_col=-2)
+            score, _ = run_baseline(data, shots)
             y, valid = truth_of(data, shots)
             for label, (thr, why) in variants.items():
+                if name == "test" and isinstance(thr, dict):
+                    _, val_all = scoring.inner_split(dev_all, 999)
+                    val = [s for s in val_all if s in data]
+                    val_score, _ = run_baseline(data, val)
+                    edges = scoring.edges_for(
+                        np.concatenate([val_score[s][data[s][3]] for s in val])
+                    )
+                    thr = scoring.best_threshold(
+                        [
+                            scoring.shot_stats(
+                                s, data[s][2], data[s][3], val_score[s], edges
+                            )
+                            for s in val
+                        ],
+                        edges,
+                    )
                 res = scoring.evaluate(
                     shots, y, valid, score, thr, n=args.bootstrap, seed=0
                 )
@@ -304,8 +382,12 @@ def main(argv=None) -> int:
                         "split": name,
                         "shots": shots,
                         "score": "log10 of the smoothed n=1 RMS, bin maximum",
-                        "threshold_log10_g": thr,
-                        "threshold_g": float(10**thr),
+                        "threshold_log10_g": thr if not isinstance(thr, dict) else None,
+                        "threshold_g": float(10**thr)
+                        if not isinstance(thr, dict)
+                        else None,
+                        "folds": scoring.shared_cv(dev_all)[0],
+                        "fold_info": info,
                         "threshold_is": why,
                         "metrics": res,
                     },
@@ -315,16 +397,31 @@ def main(argv=None) -> int:
     import torch
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cuda":
+        torch.cuda.set_per_process_memory_fraction(0.28)
     tag = args.features.replace("+", "_")
-    folds = scoring.shot_folds(dev, FOLDS, seed=0)
+    folds, shared_splits = scoring.shared_cv(dev_all)
     oof, thresholds, fold_info = {}, {}, []
-    for k in range(FOLDS):
-        held = [s for s in dev if folds[s] == k]
-        pool = [s for s in dev if folds[s] != k]
-        train, val = scoring.inner_split(pool, 100 + k, HYPER["val_fraction"])
+    for split in shared_splits:
+        k = split["fold"]
+        held = [s for s in split["held"] if s in data]
+        train = [s for s in split["train"] if s in data]
+        val = [s for s in split["validation"] if s in data]
         nets = ensemble(data, train, val, device)
         val_scores = predict(nets, data, val, device)
         thr = pick_threshold(data, val_scores, val)
+        validation_file = TM / "results" / f"validation_tm_ours_{tag}_fold{k}.npz"
+        validation_file.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            validation_file,
+            **{f"s{s}": val_scores[s].astype(np.float32) for s in val},
+        )
+        validation_stats = [
+            scoring.shot_stats(
+                s, data[s][2], data[s][3], val_scores[s], THRESHOLD_EDGES
+            )
+            for s in val
+        ]
         oof.update(predict(nets, data, held, device))
         thresholds.update({s: thr for s in held})
         fold_info.append(
@@ -334,18 +431,41 @@ def main(argv=None) -> int:
                 "n_val": len(val),
                 "n_held": len(held),
                 "threshold": thr,
+                "train": train,
+                "validation": val,
+                "held": held,
+                "shared_cohort_split": split,
+                "validation_scores": str(validation_file),
+                "validation_bins_scored": sum(s.n_bins for s in validation_stats),
+                "validation_bins_positive": sum(s.n_pos for s in validation_stats),
+                "validation_bins_negative": sum(s.n_neg for s in validation_stats),
+                "validation_shots_positive": [
+                    s.shot for s in validation_stats if s.n_pos
+                ],
+                "threshold_estimable": bool(sum(s.n_pos for s in validation_stats)),
+                "threshold_status": (
+                    "inner-validation F1 optimum"
+                    if any(s.n_pos for s in validation_stats)
+                    else "no positive validation bins; deterministic highest-edge "
+                    "fallback, not an estimable F1 optimum"
+                ),
+                "checkpoint": save_ensemble(nets, tag, k, train, val, thr),
                 "val_loss": [float(n[3]) for n in nets],
             }
         )
         print(f"fold {k}: threshold {thr:.3f}, val loss {fold_info[-1]['val_loss']}")
     y, valid = truth_of(data, dev)
     res = scoring.evaluate(dev, y, valid, oof, thresholds, n=args.bootstrap, seed=0)
+    meta["cuda_peak_allocated_gb"] = (
+        torch.cuda.max_memory_allocated() / 1e9 if device == "cuda" else None
+    )
     write(
         f"tm_ours_{tag}_cv",
         {
             **meta,
             "split": "dev, shot-grouped 5-fold out-of-fold",
             "hyper": HYPER,
+            "threshold_is": "F1-maximising on shared-fold inner validation shots only",
             "folds": {str(k): v for k, v in folds.items()},
             "fold_info": fold_info,
             "features": list(magfeatures.FEATURE_NAMES)
@@ -358,7 +478,9 @@ def main(argv=None) -> int:
         **{f"s{s}": oof[s].astype(np.float32) for s in dev},
     )
     if args.final:
-        train, val = scoring.inner_split(dev, 999, HYPER["val_fraction"])
+        train_all, val_all = scoring.inner_split(dev_all, 999, HYPER["val_fraction"])
+        train = [s for s in train_all if s in data]
+        val = [s for s in val_all if s in data]
         nets = ensemble(data, train, val, device)
         thr = pick_threshold(data, predict(nets, data, val, device), val)
         scores = predict(nets, data, test, device)
