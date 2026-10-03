@@ -80,21 +80,22 @@ def git_sha() -> str:
     return out.stdout.strip() or "unknown"
 
 
+def load_one(path: Path) -> pd.DataFrame:
+    """One shot's bins (`detach_bins.py`) as a frame, a row per bin."""
+    with np.load(path) as npz:
+        data = {k: npz[k] for k in npz.files}
+    n = len(data["start_ms"])
+    row = {"shot": np.full(n, int(path.stem)), "start_ms": data["start_ms"]}
+    for key, values in data.items():
+        if key != "start_ms":
+            row[key] = values
+    return pd.DataFrame(row)
+
+
 def load_all(bins_dir: Path) -> pd.DataFrame:
     """Every shot's bins as one frame (a row per bin)."""
-    frames = []
-    for path in sorted(bins_dir.glob("*.npz")):
-        if path.name.startswith("."):
-            continue
-        with np.load(path) as npz:
-            data = {k: npz[k] for k in npz.files}
-        n = len(data["start_ms"])
-        row = {"shot": np.full(n, int(path.stem)), "start_ms": data["start_ms"]}
-        for key, values in data.items():
-            if key != "start_ms":
-                row[key] = values
-        frames.append(pd.DataFrame(row))
-    return pd.concat(frames, ignore_index=True)
+    paths = [p for p in sorted(bins_dir.glob("*.npz")) if not p.name.startswith(".")]
+    return pd.concat([load_one(p) for p in paths], ignore_index=True)
 
 
 def cohort_split(shots) -> dict[int, str]:
@@ -191,14 +192,27 @@ def cv_structure(votes, valid, shots, seed=0) -> dict:
     return result
 
 
-def smooth_segments(state: np.ndarray, start_ms: np.ndarray) -> np.ndarray:
+def choose_structure(structure: dict) -> str:
+    """One-standard-error rule: the simplest structure (fewest correlated pairs)
+    whose held-out log-likelihood is within one standard error of the best one."""
+    top = max(structure, key=lambda k: structure[k]["mean_heldout_loglik_per_bin"])
+    folds = np.asarray(structure[top]["folds"])
+    margin = folds.std(ddof=1) / np.sqrt(len(folds))
+    floor = structure[top]["mean_heldout_loglik_per_bin"] - margin
+    ok = [k for k in structure if structure[k]["mean_heldout_loglik_per_bin"] >= floor]
+    return min(ok, key=lambda k: (len(STRUCTURES[k]), k))
+
+
+def smooth_segments(
+    state: np.ndarray, start_ms: np.ndarray, width_ms: float = core.BIN_MS
+) -> np.ndarray:
     """`despeckle` inside each stretch of consecutive assessed bins."""
     state = state.copy()
     assessed = state != core.ABSENT
     breaks = np.flatnonzero(
         np.r_[
             True,
-            (np.diff(start_ms) != core.BIN_MS) | (assessed[1:] != assessed[:-1]),
+            (np.diff(start_ms) != width_ms) | (assessed[1:] != assessed[:-1]),
         ]
     )
     for s, e in zip(breaks, np.r_[breaks[1:], len(state)], strict=True):
@@ -207,12 +221,13 @@ def smooth_segments(state: np.ndarray, start_ms: np.ndarray) -> np.ndarray:
     return state
 
 
-def label_frame(frame, model, threshold):
+def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     """Both labelers' states on every bin of `frame`."""
     votes, valid = matrices(frame)
     assessed = valid.sum(axis=1) >= 2
     has_vote = (votes > 0).any(axis=1)
-    posterior = model.posterior(votes)
+    resolves = votes[:, LF_NAMES.index("tangtv")] > 0
+    posterior = label_model.pool_marfe(model.posterior(votes), resolves)
     state_rule = label_model.rule(votes, valid)
     state_rule[~assessed] = core.ABSENT
     out = frame[["shot", "start_ms"]].copy()
@@ -225,7 +240,7 @@ def label_frame(frame, model, threshold):
         for key in ("state_lm", "state_rule"):
             column = out.columns.get_loc(key)
             out.iloc[idx, column] = smooth_segments(
-                out[key].to_numpy()[idx], frame.start_ms.to_numpy()[idx]
+                out[key].to_numpy()[idx], frame.start_ms.to_numpy()[idx], width_ms
             )
     return out, votes, valid
 
@@ -410,7 +425,7 @@ def main() -> None:
 
     shots_fit = work.shot.to_numpy()[fit_mask]
     structure = cv_structure(votes[fit_mask], valid[fit_mask], shots_fit)
-    best = max(structure, key=lambda k: structure[k]["mean_heldout_loglik_per_bin"])
+    best = choose_structure(structure)
     model = label_model.LabelModel(corr=STRUCTURES[best]).fit(
         votes[fit_mask], valid[fit_mask]
     )
@@ -450,8 +465,18 @@ def main() -> None:
             "n_bins": int(fit_mask.sum()),
             "excluded_split": "test",
         },
-        "structure_selection": {"cv_folds": CV_FOLDS, "candidates": structure},
+        "structure_selection": {
+            "cv_folds": CV_FOLDS,
+            "rule": "simplest structure within one standard error of the best",
+            "candidates": structure,
+        },
         "chosen_structure": best,
+        "model": {
+            "names": list(model.names),
+            "corr": [list(pair) for pair in model.corr],
+            "theta": [float(x) for x in model.theta],
+            "theta_layout": "prior(3), propensity(J), accuracy(J), correlation(P)",
+        },
         "prior_logit": [float(x) for x in model.theta[:3]],
         "labelling_functions": model.accuracies(),
         "state_counts_bins": {

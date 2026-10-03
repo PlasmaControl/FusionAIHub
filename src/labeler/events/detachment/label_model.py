@@ -14,7 +14,7 @@ when the state is one it is consistent with, see `COMPATIBLE`) and, optionally, 
 pairwise correlation factor. Three states times at most 4 votes per LF is a few
 dozen configurations, so `Z`, the marginal likelihood of the observed votes and its
 gradient are computed EXACTLY by enumeration (no sampling, no SGD). `acc` and `corr`
-are constrained non-negative (an LF is never worse than chance on average by
+are constrained to [0, WEIGHT_MAX] (an LF is never worse than chance on average by
 construction of its thresholds). Each LF has its own allowed vote set: Afrac and
 Prad never vote marfe (no position information), so a marfe state can only come from
 TangTV, and a bin where only they speak cannot be marfe.
@@ -55,9 +55,11 @@ COMPATIBLE = {
     "prad": {1: (1,), 2: (2, 3)},
     "tangtv": {1: (1,), 2: (2,), 3: (3,)},
 }
-#: Largest accuracy / correlation weight the fit may use (an LF that never errs would
-#: otherwise run to infinity on a finite sample).
-WEIGHT_MAX = 8.0
+#: Largest accuracy / correlation weight the fit may use. Without labelled data an LF
+#: that never disagrees on a finite sample would run to infinity; 4 caps the implied
+#: accuracy of a vote at 0.96 (three allowed votes) to 0.98 (two), the most a few
+#: thousand unlabelled bins from a few dozen shots can support.
+WEIGHT_MAX = 4.0
 #: L2 penalty on the propensity and prior terms, per observation, for stability.
 RIDGE = 1e-6
 
@@ -204,11 +206,22 @@ class LabelModel:
         return out
 
 
+def pool_marfe(posterior: np.ndarray, resolves_marfe: np.ndarray) -> np.ndarray:
+    """Posterior with the MARFE mass added to "detached" where no indicator that can
+    vote MARFE has voted (the two are then indistinguishable; see `decide`)."""
+    posterior = np.array(posterior, dtype=float)
+    pooled = ~np.asarray(resolves_marfe, dtype=bool)
+    posterior[pooled, 1] += posterior[pooled, 2]
+    posterior[pooled, 2] = 0.0
+    return posterior
+
+
 def decide(
     posterior: np.ndarray,
     assessed: np.ndarray,
     has_vote: np.ndarray,
     threshold: float = 0.7,
+    resolves_marfe: np.ndarray | None = None,
 ) -> np.ndarray:
     """State per bin from the posterior.
 
@@ -216,7 +229,15 @@ def decide(
     all (else ABSENT); `has_vote` is True where at least one indicator cast a vote.
     An assessed bin with no vote (every valid indicator in its transition band) or
     a posterior argmax below `threshold` is UNCERTAIN; otherwise the argmax.
+
+    `resolves_marfe` is True where an indicator that can vote MARFE (TangTV) cast a
+    vote. Elsewhere "detached" and "marfe" have the same likelihood, the posterior
+    only splits by the prior, so their masses are pooled into "detached" (read: not
+    attached, a MARFE not excluded) and a MARFE is never decided there. None means
+    every bin resolves it.
     """
+    if resolves_marfe is not None:
+        posterior = pool_marfe(posterior, resolves_marfe)
     best = posterior.argmax(axis=1)
     top = posterior.max(axis=1)
     sure = (top >= threshold) & np.asarray(has_vote, dtype=bool)

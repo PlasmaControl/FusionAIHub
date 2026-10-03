@@ -98,6 +98,21 @@ def test_decide_threshold_and_absence():
     assert state.tolist() == [1, 4, 0, 4]
 
 
+def test_marfe_mass_is_pooled_where_nothing_resolves_it():
+    # detached and marfe split the not-attached mass 0.55 / 0.40: neither reaches 0.7
+    # alone, but where only Afrac/Prad spoke the bin is "detached" (0.95); where
+    # TangTV voted the model's own split stands.
+    post = np.array([[0.05, 0.55, 0.40], [0.05, 0.55, 0.40]])
+    assessed = np.array([True, True])
+    has_vote = np.array([True, True])
+    resolves = np.array([False, True])
+    state = lm.decide(post, assessed, has_vote, 0.7, resolves_marfe=resolves)
+    assert state.tolist() == [2, 4]
+    pooled = lm.pool_marfe(post, resolves)
+    assert pooled[0].tolist() == pytest.approx([0.05, 0.95, 0.0])
+    assert pooled[1].tolist() == pytest.approx([0.05, 0.55, 0.40])
+
+
 def test_invalid_indicators_are_not_read_as_abstentions():
     # TangTV is invalid on most bins; the fit must still rate it by where it speaks.
     _, votes = simulate(n=9000, seed=3)
