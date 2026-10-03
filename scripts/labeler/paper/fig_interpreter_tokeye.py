@@ -1077,7 +1077,7 @@ def draw(
                         label="ECE-supported\ncrash candidates",
                     )
                 ],
-                bbox_to_anchor=(0.792, strip.get_position().y1 + 0.003),
+                bbox_to_anchor=(0.792, ax["nbi"].get_position().y1),
                 **legend_options,
             )
         if n_handles:
