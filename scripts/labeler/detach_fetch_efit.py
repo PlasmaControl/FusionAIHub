@@ -27,18 +27,20 @@ from pathlib import Path
 
 import numpy as np
 
-NODES = (
-    "psirz",
-    "ssimag",
-    "ssibry",
-    "rmaxis",
-    "zmaxis",
-    "gtime",
-    "rgrid",
-    "zgrid",
-    "rbbbs",
-    "zbbbs",
-)
+#: Name in the parked file -> EFIT01 node (the tree keeps the flux map, the axis and
+#: the time base at its top, and the boundary under `top.results.geqdsk`).
+NODES = {
+    "psirz": r"\efit01::psirz",
+    "ssimag": r"\efit01::ssimag",
+    "ssibry": r"\efit01::ssibry",
+    "rmaxis": r"\efit01::rmaxis",
+    "zmaxis": r"\efit01::zmaxis",
+    "gtime": r"\efit01::gtime",
+    "rgrid": r"\efit01::r",
+    "zgrid": r"\efit01::z",
+    "rbbbs": r"\efit01::top.results.geqdsk:rbbbs",
+    "zbbbs": r"\efit01::top.results.geqdsk:zbbbs",
+}
 AUTH_WORDS = ("auth", "token", "login", "credential", "401", "403", "permission")
 
 
@@ -77,8 +79,7 @@ def fetch(shot: int) -> dict:
     from labeler.features import resolve_fdp
 
     got = {}
-    for name in NODES:
-        expr = rf"\efit01::top.results.geqdsk:{name}"
+    for name, expr in NODES.items():
         got[name] = np.asarray(resolve_fdp._fetch_mds(expr, "efit01", shot)["data"])
     gtime = got["gtime"].astype("float64")
     r, z = got["rgrid"].astype("float64"), got["zgrid"].astype("float64")
