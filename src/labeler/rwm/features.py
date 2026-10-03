@@ -30,7 +30,11 @@ EFIT_MAX_AGE_MS = 50.0
 ZIPFIT_MAX_AGE_MS = 100.0
 #: The RMS window of the paper's MHD feature.
 RMS_WINDOW_MS = 5.0
-#: Window of the growth-rate feature, about four wall times (tau_w ~ 5 ms).
+#: Window of the growth-rate feature, about four wall times if tau_w ~ 5 ms.
+#: ASSUMPTION: Piccione 2022 gives only "milliseconds" for the wall flux-penetration
+#: time; 5 ms is an order-of-magnitude choice, not a cited DIII-D value (a source
+#: is still needed, \citeph{DIII-D wall time}). The 20 ms growth window here and
+#: the 20 ms uncertain window of `labels.ONSET_WINDOW_MS` both rest on it.
 GROWTH_WINDOW_MS = 20.0
 #: Fixed rotation radii: core and mid-radius; neither identifies a q = 2 surface.
 ROTATION_RHO = (0.25, 0.625)

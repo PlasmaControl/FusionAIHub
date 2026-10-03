@@ -28,6 +28,9 @@ HORIZON_MS = 100.0
 #: unstable; the mode is already acting, so they leave the training and scoring sets.
 POST_MS = 100.0
 #: Uncertain pre-onset interval motivated by the millisecond wall time tau_w.
+#: ASSUMPTION: 20 ms is about four wall times if tau_w ~ 5 ms, which is an
+#: order-of-magnitude choice (Piccione 2022 gives only "milliseconds"; a DIII-D
+#: source is still needed, \citeph{DIII-D wall time}), not a measured growth time.
 #: Hanson's ONSET_TIME has no documented detection/threshold meaning in the
 #: supplied sources, so pre-onset presence and extent remain uncertain.
 #: N1RMS is not RWM-specific; a random-time slope search gives similar maxima.

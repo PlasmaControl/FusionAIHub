@@ -55,8 +55,8 @@ def test_writer_rejects_oversize_summary_before_overwriting_records(tmp_path):
     summary, details = tmp_path / "summary.json", tmp_path / "details.json"
     write_evaluation({"per_shot": [{"shot": 7}]}, summary, details)
     before = summary.read_bytes(), details.read_bytes()
-    with pytest.raises(ValueError, match="below 0.5 MB"):
-        write_evaluation({"protocol": "x" * 500_000}, summary, details)
+    with pytest.raises(ValueError, match="below 0.6 MB"):
+        write_evaluation({"protocol": "x" * 600_000}, summary, details)
     assert (summary.read_bytes(), details.read_bytes()) == before
 
 

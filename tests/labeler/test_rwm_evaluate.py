@@ -98,14 +98,21 @@ def test_phase_controlled_auroc_excludes_cross_bin_and_campaign_pairs():
     # Bin 0 has two tied pairs; bin 1 has three concordant pairs: (1+3)/5.
     assert ev.phase_controlled_auroc(groups, bin_ms=200, min_slices=1) == 0.8
     assert np.isnan(ev.phase_controlled_auroc({"hanson": groups["hanson"][1:]}))
+    # Three shots in two campaigns: some resamples have no scorable pair, which the
+    # finite-draw floor would refuse on real data.
     interval = ev.phase_controlled_bootstrap(
-        groups, bin_ms=200, min_slices=1, replicates=20
+        groups, bin_ms=200, min_slices=1, replicates=20, floor=None
     )
     assert interval["estimate"] == interval["low"] == interval["high"] == 0.8
     paired = ev.phase_controlled_bootstrap(
-        groups, groups, bin_ms=200, min_slices=1, replicates=20
+        groups, groups, bin_ms=200, min_slices=1, replicates=20, floor=None
     )
-    assert paired == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+    assert {k: paired[k] for k in ("estimate", "low", "high")} == {
+        "estimate": 0.0,
+        "low": 0.0,
+        "high": 0.0,
+    }
+    assert 0 < paired["n_finite"] < 20
 
 
 def test_phase_default_uses_100_ms_and_bootstrap_keeps_the_same_bins():
@@ -125,7 +132,12 @@ def test_phase_default_uses_100_ms_and_bootstrap_keeps_the_same_bins():
     assert ev.phase_controlled_auroc(groups, bin_ms=None) == 0.25
     for bin_ms, expected in ((100, 0.0), (200, 0.25)):
         result = ev.phase_controlled_bootstrap(groups, bin_ms=bin_ms, replicates=20)
-        assert result == {"estimate": expected, "low": expected, "high": expected}
+        assert result == {
+            "estimate": expected,
+            "low": expected,
+            "high": expected,
+            "n_finite": 20,
+        }
 
 
 @pytest.mark.parametrize(("scores", "expected"), [([2, 1], 2 / 7), ([2, 2], 1 / 7)])
@@ -238,6 +250,7 @@ def test_paired_within_shot_intervals_use_shared_shots_and_separate_masks():
         "estimate": 0.5,
         "low": 0.5,
         "high": 0.5,
+        "n_finite": 1000,
     }
     assert result["broad"]["n_shots"] == 3
     assert result["broad"]["estimate"] == pytest.approx(1 / 3)
@@ -750,3 +763,41 @@ def test_explicit_outer_shot_folds_cover_every_shot_once():
             onsets,
             outer_shot_folds=[[0, 1], [1, 2, 3, 4, 5]],
         )
+
+
+def test_phase_eligibility_audit_counts_cells_scored_only_by_duplicated_slices():
+    first = {
+        "shot": 1,
+        "campaign": 2014,
+        "label": [0, 1, 0, -1],
+        "elapsed_time_ms": [0, 10, 20, 30],
+    }
+    second = {
+        "shot": 2,
+        "campaign": 2014,
+        "label": [0, 0, 1],
+        "elapsed_time_ms": [0, 10, np.nan],
+    }
+    audit = ev.phase_eligibility_audit(
+        [first, second], bin_ms=100, min_slices=5, replicates=200, seed=3
+    )
+    # Five distinct slices in one two-class cell: eligible; the NaN-time positive
+    # and the excluded slice never count.
+    assert audit["point"]["eligible_cells"] == 1
+    assert audit["point"]["positive_slices"] == 1
+    assert audit["point"]["positive_slices_in_eligible_cells"] == 1
+    # A draw of shot 1 twice and shot 2 never has six slices but only three distinct
+    # ones: scored by copies, ineligible by distinct slices.
+    rng = np.random.default_rng(3)
+    expected = sum(
+        np.array_equal(np.bincount(rng.integers(0, 2, 2), minlength=2), [2, 0])
+        for _ in range(200)
+    )
+    boot = audit["bootstrap"]
+    assert expected > 0
+    assert boot["replicates_with_a_duplicate_only_cell"] == expected
+    assert boot["max_duplicate_only_cells"] == 1
+    assert boot["max_pair_share_in_duplicate_only_cells"] == 1.0
+    # With every shot distinct in the draw the two rules agree everywhere.
+    solo = ev.phase_eligibility_audit([first], bin_ms=100, min_slices=2, replicates=5)
+    assert solo["bootstrap"]["replicates_with_a_duplicate_only_cell"] == 0

@@ -180,7 +180,12 @@ def test_paired_bootstrap_shares_resamples_between_the_two_models():
     assert out["mean"]["low"] == pytest.approx(1.0)
     assert out["mean"]["high"] == pytest.approx(1.0)
     same = metrics.paired_bootstrap(first, first, mean, replicates=50, seed=1)
-    assert same["mean"] == {"estimate": 0.0, "low": 0.0, "high": 0.0}
+    assert same["mean"] == {
+        "estimate": 0.0,
+        "low": 0.0,
+        "high": 0.0,
+        "n_finite": 50,
+    }
 
 
 def test_paired_bootstrap_rejects_different_shot_sets():
@@ -200,8 +205,8 @@ def test_paired_basic_bootstrap_reflects_a_skewed_distribution():
     basic = metrics.paired_bootstrap(
         first, second, mean, replicates=1000, seed=3, method="basic"
     )
-    assert percentile == {"estimate": 1.0, "low": 0.0, "high": 3.0}
-    assert basic == {"estimate": 1.0, "low": -1.0, "high": 2.0}
+    assert percentile == {"estimate": 1.0, "low": 0.0, "high": 3.0, "n_finite": 1000}
+    assert basic == {"estimate": 1.0, "low": -1.0, "high": 2.0, "n_finite": 1000}
     dictionary = metrics.paired_bootstrap(
         first,
         second,
@@ -221,3 +226,55 @@ def test_paired_bootstrap_rejects_an_unknown_interval_method():
             lambda g: np.mean(g["a"]),
             method="unknown",
         )
+
+
+def _undefined_without_first_shot(groups):
+    values = groups["a"]
+    return float(np.mean(values)) if 1.0 in values else float("nan")
+
+
+def test_bootstrap_records_finite_draws_per_interval():
+    groups = {"a": [1.0, 2.0, 3.0, 4.0]}
+    out = metrics.shot_bootstrap(
+        groups, lambda g: float(np.mean(g["a"])), replicates=50, seed=0
+    )
+    assert out["n_finite"] == 50
+    two = metrics.shot_bootstrap(
+        groups, lambda g: {"x": 1.0, "y": float(np.mean(g["a"]))}, replicates=20
+    )
+    assert two["x"]["n_finite"] == two["y"]["n_finite"] == 20
+
+
+def test_bootstrap_fails_below_the_finite_draw_floor():
+    # A resample of four shots misses shot 1.0 about a third of the time, so the
+    # statistic is undefined on far more than a tenth of the draws.
+    groups = {"a": [1.0, 2.0, 3.0, 4.0]}
+    message = r"only \d+ of 1000 bootstrap draws are finite"
+    with pytest.raises(ValueError, match=message):
+        metrics.shot_bootstrap(groups, _undefined_without_first_shot, seed=0)
+    with pytest.raises(ValueError, match="finite"):
+        metrics.paired_bootstrap(
+            groups, groups, lambda g: _undefined_without_first_shot(g), seed=0
+        )
+    # Recording without a floor keeps the count and the surviving draws' interval.
+    loose = metrics.shot_bootstrap(
+        groups, _undefined_without_first_shot, seed=0, floor=None
+    )
+    assert 500 < loose["n_finite"] < 900
+
+
+def test_bootstrap_floor_spares_conditional_keys_and_undefined_estimates():
+    groups = {"a": [1.0, 2.0, 3.0, 4.0]}
+
+    def conditional(g):
+        return {
+            "warning_ms_median": _undefined_without_first_shot(g),
+            "level": float(np.mean(g["a"])),
+        }
+
+    out = metrics.shot_bootstrap(groups, conditional, seed=0)
+    assert out["level"]["n_finite"] == 1000
+    assert 500 < out["warning_ms_median"]["n_finite"] < 900
+    # An estimate that is undefined on the observed shots has no interval to refuse.
+    nothing = metrics.shot_bootstrap(groups, lambda g: float("nan"), replicates=10)
+    assert nothing["n_finite"] == 0 and np.isnan(nothing["low"])

@@ -28,6 +28,34 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "rwm"
 SCORE_COLOR, BETA_COLOR = "#0072B2", "#D55E00"
 WINDOW_MS = (-800.0, 600.0)
+#: A pre-onset beta_N/l_i below this share of its earlier maximum counts as a collapse.
+COLLAPSE_FRACTION = 0.75
+
+
+def collapse_counts(rows, slices):
+    """Eligible n=1 onsets whose window beta_N/l_i is below 0.75 of the earlier peak.
+
+    For each merged n=1 onset (`onset_physics` rows) the value is the first cached
+    10 ms slice in [o-20 ms, o), the same snapshot the onset tables use; the
+    earlier peak is the largest finite beta_N/l_i of that shot's cached slices before
+    the snapshot. An onset with either missing is not eligible.
+    """
+    by_shot = {int(s): g for s, g in slices.groupby("shot")}
+    counts = {}
+    for row in rows:
+        value, shot = row["betan_over_li"], int(row["shot"])
+        cell = counts.setdefault(
+            str(row["campaign"]), {"eligible": 0, "below": 0, "below_shots": []}
+        )
+        prior = by_shot[shot]
+        prior = prior.betan_over_li[prior.t_ms < row["sample_ms"]].dropna()
+        if value is None or not len(prior):
+            continue
+        cell["eligible"] += 1
+        if value < COLLAPSE_FRACTION * prior.max():
+            cell["below"] += 1
+            cell["below_shots"].append(shot)
+    return counts
 
 
 def main():
@@ -185,6 +213,13 @@ def main():
     first_onset = next(
         row for row in record["onset_physics"]["rows"] if row["shot"] == 156785
     )
+    collapse = collapse_counts(
+        record["onset_physics"]["rows"],
+        pd.read_parquet(
+            out_dir / "slices.parquet", columns=["shot", "t_ms", "betan_over_li"]
+        ),
+    )
+    early, late = collapse["2014"], collapse["2018"]
     metadata = {
         "script": "scripts/labeler/rwm_figure.py",
         "model": "rwm-brf",
@@ -203,15 +238,31 @@ def main():
             "outputs/labeler/rwm/evaluation.json#/onset_physics/rows"
         ),
         "first_panel_onset_physics": first_onset,
+        "collapse_check": {
+            "definition": (
+                "n=1 onsets whose first cached slice in [o-20 ms, o) has beta_N/l_i "
+                f"below {COLLAPSE_FRACTION} of the largest finite beta_N/l_i of that "
+                "shot's cached slices before it"
+            ),
+            "fraction": COLLAPSE_FRACTION,
+            "by_campaign": collapse,
+            "source": "outputs/labeler/rwm/evaluation.json#/onset_physics/rows",
+        },
         "caption": (
-            "Held-out forest scores (blue) and βN/li (orange) on shots selected "
-            "by number. Vertical lines mark n=1 onsets; grey spans are 100 ms "
-            "forecast targets. Bottom panels are unlabelled comparisons centred "
-            "on matched Hanson onsets. The dotted βN/li=4 proxy uses the right "
-            "axis, aligning with score 0.5. 156785's onset is below this proxy; "
-            "unexplained collapses on 156796 and 158022 precede listed onsets "
-            "by about 400 ms. Neither physical duration nor warning skill "
-            "is established."
+            "Held-out scores of the equilibrium-scalar timing baseline rwm-brf (blue) "
+            "and βN/li (orange) on shots chosen by number, not by score. Vertical lines "
+            "mark n=1 onsets; grey spans are 100 ms forecast targets. Bottom panels "
+            "are unlabelled comparisons centred on matched Hanson onsets. The dotted "
+            "βN/li=4 proxy uses the right axis, aligning with score 0.5. Panels "
+            "156796 and 158022 show βN/li collapses well before the onset, which is "
+            "atypical: in the window just before the onset only "
+            f"{early['below']} of {early['eligible']} eligible 2014 onsets "
+            f"({', '.join(map(str, early['below_shots']))}) and "
+            f"{late['below']} of {late['eligible']} in 2018 have βN/li below "
+            f"{COLLAPSE_FRACTION:g} of its earlier maximum. The "
+            "score is not a precursor indicator: on 156785 it rises after the onset "
+            "and on 176077 it spikes at the onset. Neither physical duration nor "
+            "warning skill is established."
         ),
     }
     metadata["caption_words"] = len(metadata["caption"].split())

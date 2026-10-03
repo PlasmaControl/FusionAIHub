@@ -820,6 +820,7 @@ def phase_controlled_bootstrap(
     min_slices=PHASE_MIN_SLICES,
     replicates=1000,
     seed=0,
+    floor=metrics.MIN_FINITE_FRACTION,
 ):
     """Campaign-stratified shot CI, or a basic paired CI when second is supplied.
 
@@ -854,7 +855,7 @@ def phase_controlled_bootstrap(
 
     if second is None:
         return metrics.shot_bootstrap(
-            stratify(a), statistic, replicates=replicates, seed=seed
+            stratify(a), statistic, replicates=replicates, seed=seed, floor=floor
         )
     return metrics.paired_bootstrap(
         stratify(a),
@@ -863,7 +864,117 @@ def phase_controlled_bootstrap(
         replicates=replicates,
         seed=seed,
         method="basic",
+        floor=floor,
     )
+
+
+def phase_eligibility_audit(
+    records,
+    *,
+    bin_ms=PHASE_BIN_MS,
+    min_slices=PHASE_MIN_SLICES,
+    replicates=1000,
+    seed=0,
+):
+    """How the minimum-cell rule of `phase_controlled_auroc` behaves, scores unread.
+
+    The metric counts every resampled copy of a slice toward `min_slices`, so a cell
+    holding fewer than `min_slices` distinct slices can be scored in a resample that
+    draws one of its shots twice. This reports the observed cells, then replays the
+    campaign-stratified draws of `phase_controlled_bootstrap` (same seed and order)
+    and counts the cells scored only because of duplicated slices and the share of
+    cell pairs they carry. `records` are the Hanson shot records (`shot`, `campaign`,
+    `label`, `elapsed_time_ms`), in the order the bootstrap receives them.
+    """
+    records = list(records)
+    cells, per_record = {}, []
+    for r in records:
+        label = np.asarray(r["label"])
+        elapsed = np.asarray(r["elapsed_time_ms"], dtype=float)
+        keep = np.isin(label, [labels.NEGATIVE, labels.POSITIVE]) & np.isfinite(elapsed)
+        bins = (
+            np.zeros(keep.sum()) if bin_ms is None else np.floor(elapsed[keep] / bin_ms)
+        )
+        counts = {}
+        for time_bin, positive in zip(bins, label[keep] == labels.POSITIVE):
+            counts.setdefault((int(r["campaign"]), float(time_bin)), [0, 0])[
+                0 if positive else 1
+            ] += 1
+        per_record.append(counts)
+        for key in counts:
+            cells.setdefault(key, len(cells))
+    positive = np.zeros((len(records), len(cells)))
+    negative = np.zeros_like(positive)
+    for row, counts in enumerate(per_record):
+        for key, (n_pos, n_neg) in counts.items():
+            positive[row, cells[key]], negative[row, cells[key]] = n_pos, n_neg
+
+    def eligible(n_pos, n_neg):
+        return (n_pos > 0) & (n_neg > 0) & (n_pos + n_neg >= min_slices)
+
+    n_pos, n_neg = positive.sum(axis=0), negative.sum(axis=0)
+    both = (n_pos > 0) & (n_neg > 0)
+    kept = eligible(n_pos, n_neg)
+    point = {
+        "cells_with_both_classes": int(both.sum()),
+        "eligible_cells": int(kept.sum()),
+        "two_class_cells_below_minimum": int((both & ~kept).sum()),
+        "positive_slices": int(n_pos.sum()),
+        "positive_slices_in_eligible_cells": int(n_pos[kept].sum()),
+        "negative_slices": int(n_neg.sum()),
+        "negative_slices_in_eligible_cells": int(n_neg[kept].sum()),
+        "pairs_in_eligible_cells": int((n_pos[kept] * n_neg[kept]).sum()),
+        "pairs_in_cells_below_minimum": int(
+            (n_pos[both & ~kept] * n_neg[both & ~kept]).sum()
+        ),
+    }
+    strata = [
+        np.array([i for i, r in enumerate(records) if r["campaign"] == year])
+        for year in sorted({r["campaign"] for r in records})
+    ]
+    rng = np.random.default_rng(seed)
+    duplicate_only, pair_share = [], []
+    for _ in range(replicates):
+        copies = np.zeros(len(records))
+        for members in strata:
+            if len(members):
+                np.add.at(
+                    copies, members[rng.integers(0, len(members), len(members))], 1
+                )
+        counted = copies @ positive, copies @ negative
+        distinct = (
+            (copies > 0).astype(float) @ positive,
+            (copies > 0).astype(float) @ negative,
+        )
+        counted_ok, distinct_ok = eligible(*counted), eligible(*distinct)
+        extra = counted_ok & ~distinct_ok
+        pairs = counted[0] * counted[1]
+        duplicate_only.append(int(extra.sum()))
+        pair_share.append(
+            float(pairs[extra].sum() / pairs[counted_ok].sum())
+            if counted_ok.any()
+            else 0.0
+        )
+    return {
+        "bin_ms": bin_ms,
+        "min_slices": min_slices,
+        "point": point,
+        "bootstrap": {
+            "replicates": replicates,
+            "seed": seed,
+            "replicates_with_a_duplicate_only_cell": int(
+                np.sum(np.array(duplicate_only) > 0)
+            ),
+            "mean_duplicate_only_cells": float(np.mean(duplicate_only))
+            if replicates
+            else None,
+            "max_duplicate_only_cells": max(duplicate_only, default=0),
+            "mean_pair_share_in_duplicate_only_cells": float(np.mean(pair_share))
+            if replicates
+            else None,
+            "max_pair_share_in_duplicate_only_cells": max(pair_share, default=0.0),
+        },
+    }
 
 
 def paired_within_shot_auroc(first, second, *, replicates=1000, seed=0):

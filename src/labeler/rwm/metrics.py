@@ -68,35 +68,91 @@ def confusion(score, label, cutoff):
     return tpr, fpr, precision, f1
 
 
-def _interval(values, point, level, method="percentile"):
-    """`{"estimate", "low", "high"}` with a percentile or reflected basic interval."""
+#: A bootstrap interval is refused when fewer than this share of its draws are finite.
+MIN_FINITE_FRACTION = 0.9
+#: Dictionary-statistic keys that exist only on resamples holding the event they
+#: summarise (a matched warning), so a low finite count is expected: recorded, never
+#: floored.
+CONDITIONAL_KEYS = frozenset({"warning_ms_mean", "warning_ms_median"})
+
+
+def _interval(
+    values, point, level, method="percentile", *, floor=MIN_FINITE_FRACTION, name=None
+):
+    """`{"estimate", "low", "high", "n_finite"}` with a percentile or basic interval.
+
+    `n_finite` counts the finite draws behind the interval; the others are dropped.
+    A finite estimate whose draws are finite less often than `floor` raises, because a
+    percentile interval of the survivors would describe a conditioned resample. An
+    undefined estimate (NaN) gives a NaN interval, and `floor=None` records only.
+    """
     values = np.asarray(values, dtype=float)
+    n_draws = len(values)
     values = values[np.isfinite(values)]
-    if not len(values):
-        return {"estimate": point, "low": float("nan"), "high": float("nan")}
+    n_finite = len(values)
+    if (
+        floor is not None
+        and n_draws
+        and np.isfinite(point)
+        and n_finite < floor * n_draws
+    ):
+        raise ValueError(
+            f"only {n_finite} of {n_draws} bootstrap draws are finite"
+            + (f" for {name!r}" if name else "")
+            + f" (floor {floor:.0%}); the interval would condition the resample"
+        )
+    if not n_finite:
+        return {
+            "estimate": point,
+            "low": float("nan"),
+            "high": float("nan"),
+            "n_finite": 0,
+        }
     tail = 100 * (1 - level) / 2
     low, high = np.percentile(values, [tail, 100 - tail])
     if method == "basic":
         low, high = 2 * point - high, 2 * point - low
-    return {"estimate": point, "low": float(low), "high": float(high)}
+    return {
+        "estimate": point,
+        "low": float(low),
+        "high": float(high),
+        "n_finite": n_finite,
+    }
 
 
-def _summarise(estimate, draws, level, method="percentile"):
+def _summarise(estimate, draws, level, method="percentile", floor=MIN_FINITE_FRACTION):
     if isinstance(estimate, dict):
         return {
-            k: _interval([d[k] for d in draws], estimate[k], level, method)
+            k: _interval(
+                [d[k] for d in draws],
+                estimate[k],
+                level,
+                method,
+                floor=None if k in CONDITIONAL_KEYS else floor,
+                name=k,
+            )
             for k in estimate
         }
-    return _interval(draws, estimate, level, method)
+    return _interval(draws, estimate, level, method, floor=floor)
 
 
-def shot_bootstrap(groups, statistic, *, replicates=1000, seed=0, level=0.95):
+def shot_bootstrap(
+    groups,
+    statistic,
+    *,
+    replicates=1000,
+    seed=0,
+    level=0.95,
+    floor=MIN_FINITE_FRACTION,
+):
     """Percentile interval of `statistic` over shots resampled with replacement.
 
     `groups` maps a stratum name to a list of per-shot records; each stratum is
     resampled on its own, so the number of shots of each kind is the observed one.
     `statistic` takes `{stratum: [records]}` and returns a float or a dict of floats.
-    Returns `{"estimate", "low", "high"}`, or one such entry per key of a dict result.
+    Returns `{"estimate", "low", "high", "n_finite"}`, or one such entry per key of a
+    dict result. `n_finite` counts the finite draws; fewer than `floor` of them raises
+    (see `_interval`).
     """
     rng = np.random.default_rng(seed)
     estimate = statistic(groups)
@@ -108,7 +164,7 @@ def shot_bootstrap(groups, statistic, *, replicates=1000, seed=0, level=0.95):
             if records
         }
         draws.append(statistic(sample))
-    return _summarise(estimate, draws, level)
+    return _summarise(estimate, draws, level, floor=floor)
 
 
 def _difference(first, second):
@@ -126,13 +182,15 @@ def paired_bootstrap(
     seed=0,
     level=0.95,
     method="percentile",
+    floor=MIN_FINITE_FRACTION,
 ):
     """Interval of `statistic(a) - statistic(b)` over shared shot resamples.
 
     `groups_a` and `groups_b` score the same shots in the same order (two models on one
     cross-validation); every replicate draws one set of shots and applies it to both, so
     the interval is for the difference between the models, not for each on its own.
-    The result has the shape of `shot_bootstrap`'s, for the difference `a - b`.
+    The result has the shape of `shot_bootstrap`'s, for the difference `a - b`,
+    including `n_finite` and the finite-draw floor.
     `method="percentile"` preserves the default; `method="basic"` reflects the
     bootstrap percentile endpoints about the observed difference. Basic intervals
     can extend outside a metric's natural range and are not bias-corrected BCa.
@@ -154,4 +212,4 @@ def paired_bootstrap(
         sample_a = {n: [groups_a[n][i] for i in idx] for n, idx in picks.items()}
         sample_b = {n: [groups_b[n][i] for i in idx] for n, idx in picks.items()}
         draws.append(_difference(statistic(sample_a), statistic(sample_b)))
-    return _summarise(estimate, draws, level, method)
+    return _summarise(estimate, draws, level, method, floor)

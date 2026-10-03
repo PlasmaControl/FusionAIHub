@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 
 DETAIL_KEYS = ("per_shot", "shots", "alarm_shots")
-SUMMARY_MAX_BYTES = 500_000
+#: Raised from 500 kB when each bootstrap interval began to carry its finite count.
+SUMMARY_MAX_BYTES = 600_000
 
 
 def evaluation_details_path(
@@ -50,7 +51,7 @@ def load_evaluation(path: Path, *, details: bool = False) -> dict:
 
 
 def write_evaluation(record: dict, path: Path, details_path: Path) -> None:
-    """Preserve the full record externally and write a summary below 0.5 MB."""
+    """Preserve the full record externally and write a summary below 0.6 MB."""
     payload = (json.dumps(record, indent=2, allow_nan=False) + "\n").encode()
     summary = _summary(record)
     summary["external_details"] = {
@@ -63,7 +64,7 @@ def write_evaluation(record: dict, path: Path, details_path: Path) -> None:
     }
     small = (json.dumps(summary, indent=2, allow_nan=False) + "\n").encode()
     if len(small) >= SUMMARY_MAX_BYTES:
-        raise ValueError("evaluation summary must remain below 0.5 MB")
+        raise ValueError("evaluation summary must remain below 0.6 MB")
     if path.resolve() == details_path.resolve():
         raise ValueError("summary and external details need distinct paths")
     details_path.parent.mkdir(parents=True, exist_ok=True)

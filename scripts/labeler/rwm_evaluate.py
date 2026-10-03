@@ -534,6 +534,7 @@ def forecast_audit(_):
     positive, negative = primary & table.label.eq(1), primary & table.label.eq(0)
     efit = ["betan", "li", "q95", "qmin", "wmhd_mj"]
     missing = ~np.isfinite(table[efit]).all(axis=1)
+    no_time = ~np.isfinite(table[features.TIME_COLUMN])
     return {
         "scope": "primary Hanson 10 ms slices; after first merged n=1 onset",
         "negative_after_first": int((negative & ~before).sum()),
@@ -548,6 +549,15 @@ def forecast_audit(_):
                 & ~table.shot.isin(_STATE["onsets"])
             ).sum()
         ),
+        "primary_without_elapsed_time": {
+            "scope": (
+                "primary Hanson slices before the first |Ip| >= 0.5 MA sample: no "
+                "elapsed time, so absent from every phase-controlled cell"
+            ),
+            "negative": int((negative & no_time).sum()),
+            "positive": int((positive & no_time).sum()),
+            "negative_shots": int(table.shot[negative & no_time].nunique()),
+        },
         "efit_missing": {
             "scope": "at least one missing beta_N/li/q95/qmin/W_MHD input",
             "positive": int((missing & positive).sum()),
@@ -728,6 +738,9 @@ def main() -> None:
                 {year for row in campaigns_by_seed.values() for year in row}
             )
         }
+        eligibility = ev.phase_eligibility_audit(
+            kept["rwm-brf"]["hanson"], replicates=args.replicates, seed=SEED
+        )
         screen = pool.map(screen_audit, [None])[0]
         physics = pool.map(run_onset_physics, [None])[0]
         label_audit = pool.map(forecast_audit, [None])[0]
@@ -748,6 +761,11 @@ def main() -> None:
             else "nested CV fitting",
             "bootstrap_replicates": args.replicates,
             "bootstrap_strata": ["hanson", "comparison"],
+            "bootstrap_finite_draws": (
+                "every interval records n_finite; one is refused when fewer than "
+                f"{metrics.MIN_FINITE_FRACTION:.0%} of its draws are finite, except "
+                f"keys conditional on a matched warning ({sorted(metrics.CONDITIONAL_KEYS)})"
+            ),
             "forest": FOREST,
             "step_ms": features.STEP_MS,
             "primary_training": "Hanson positives and assumed negatives only",
@@ -838,6 +856,7 @@ def main() -> None:
         "screen_audit": screen,
         "onset_physics": physics,
         "forecast_label_audit": label_audit,
+        "phase_eligibility": eligibility,
     }
     write_evaluation(clean(record), args.out, details_path)
     print(f"wrote {args.out}")

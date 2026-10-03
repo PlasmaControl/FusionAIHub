@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """How the n = 1 magnetics and beta_N behave around Jeremy Hanson's RWM onsets.
 
-The 20 ms label window is a tau_w convention, not a measured growth interval.
+The 20 ms label window is a tau_w convention (tau_w ~ 5 ms is an assumption, not a
+cited value), not a measured growth interval.
 For every onset the 5 ms mean N1RMS is compared with its value a lag earlier.
 The SAME maximum trailing-slope search is applied around onsets and random flat-top
 times on n=1 Hanson shots (no onset within 170 ms either side). N1RMS is not an
