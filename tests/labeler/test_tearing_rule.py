@@ -42,6 +42,17 @@ def test_a_spike_is_not_a_mode_and_neither_is_a_mode_below_the_onset_level():
     assert rule.mode_intervals(T, small, rule.N1_RULE) == []
 
 
+def test_a_burst_on_a_lasting_mode_starts_the_interval_where_the_mode_does():
+    # a 6 G plateau of 250 ms with a 40 G burst on it: the burst alone is above the
+    # onset level for 8 ms, but the mode around it stays above a tenth of 40 G for the
+    # plateau
+    y = np.maximum(trace((1000, 100, 100, 100, 6.0)), trace((1150, 3, 6, 3, 40.0)))
+    (item,) = rule.mode_intervals(T, y, rule.N1_RULE)
+    assert item.peak_g == pytest.approx(40.0, abs=1.0)
+    assert item.start_ms == pytest.approx(1000 + 100 * (4.0 - 0.2) / 5.8, abs=5)
+    assert item.end_ms == pytest.approx(1200 + 100 * (6.0 - 4.0) / 5.8, abs=5)
+
+
 def test_a_ragged_mode_counts_but_a_train_of_short_spikes_does_not():
     ragged = trace()
     for a, b in ((1518, 1535), (1556, 1583), (1591, 1599), (1611, 1631)):
@@ -115,19 +126,45 @@ def test_n2_alone_is_found_at_its_own_threshold():
     assert item.peak_g == pytest.approx(8.0, abs=0.3)
 
 
-def test_locking_cuts_an_interval_at_the_detection_and_marks_it():
+def test_a_locking_in_the_last_stretch_of_an_interval_marks_it_locked():
     y = trace((1000, 50, 800, 50, 30.0))
     found = rule.tearing_intervals(T, y)
-    locked = rule.apply_locking(found, [1500.0])
+    end = found[0].end_ms
+    locked = rule.apply_locking(found, [end - 40.0])
     assert locked[0].locked and locked[0].ended == rule.LOCKED
-    assert locked[0].end_ms == 1500.0
-    # a detection after the decay, within the allowance, still marks it
-    late = rule.apply_locking(found, [found[0].end_ms + 60.0], after_ms=100.0)
-    assert late[0].locked and late[0].end_ms == found[0].end_ms
-    # a detection long after, or none, leaves it alone
-    assert not rule.apply_locking(found, [found[0].end_ms + 500.0])[0].locked
+    assert locked[0].end_ms == end
+    # a detection shortly after the decay, within the allowance, still marks it
+    assert rule.apply_locking(found, [end + 60.0])[0].locked
+    # one long before the end (the mode kept rotating), long after, or none, does not
+    assert not rule.apply_locking(found, [1200.0])[0].locked
+    assert not rule.apply_locking(found, [end + 500.0])[0].locked
     assert not rule.apply_locking(found, None)[0].locked
     assert not rule.apply_locking(found, [10.0])[0].locked
+    # by toroidal number: n = 2's locking is not n = 1's
+    assert not rule.apply_locking(found, {2: [end - 40.0]})[0].locked
+    assert rule.apply_locking(found, {1: [end - 40.0]})[0].locked
+
+
+def test_a_plasma_ended_interval_that_locked_keeps_its_end_reason():
+    y = trace((1000, 50, 5000, 50, 30.0))
+    found = rule.tearing_intervals(T, y, window=(100.0, 2500.0))
+    (item,) = rule.apply_locking(found, [2450.0])
+    assert item.locked and item.ended == rule.PLASMA_END
+
+
+def test_frequency_locks_find_a_mode_that_spun_down_and_not_one_born_slow():
+    f = np.full(T.shape, 6.0)
+    f[1800:] = 0.5
+    (lock,) = rule.frequency_locks(T, f)
+    assert lock == 1800.0
+    slow = np.full(T.shape, 0.5)
+    assert len(rule.frequency_locks(T, slow)) == 0
+    blip = np.full(T.shape, 6.0)
+    blip[1800:1805] = 0.5  # shorter than the hold
+    assert len(rule.frequency_locks(T, blip)) == 0
+    gap = np.full(T.shape, 6.0)
+    gap[1800:] = np.nan
+    assert len(rule.frequency_locks(T, gap)) == 0
 
 
 def test_present_mask_selects_by_toroidal_number():

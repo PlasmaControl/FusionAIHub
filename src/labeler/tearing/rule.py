@@ -1,32 +1,34 @@
-r"""The whole-interval tearing-mode label: where a mode is present, from its magnetic RMS.
+r"""The whole-interval tearing-mode label: where a mode is present, by magnetic RMS.
 
-The lab's tearing-mode labels so far were onsets: Seo's archive marks the growth phase of
-an n = 1 mode, and the survival labels (Farre-Kaga et al. 2025) the time the n = 1 RMS
-first reaches a tenth of a peak above 12 G that holds for 50 ms (Fu et al. 2020 used 10 G
-for 50 ms). This module keeps that rule and makes it a whole interval, the way the owner
-asked: a mode is present from its onset until it decays, locks or the plasma ends.
+The lab's tearing-mode labels so far were onsets: Seo's archive marks the growth phase
+of an n = 1 mode, and the survival labels (Farre-Kaga et al. 2025) the time the n = 1
+RMS first reaches a tenth of a peak above 12 G that holds for 50 ms (Fu et al. 2020 used
+10 G for 50 ms). This module keeps that rule and makes it a whole interval, the way the
+owner asked: a mode is present from its onset until it decays, locks or the plasma ends.
 
-One mode of toroidal number `n` is read off `\MHD::N<n>RMS` (gauss, 1 kHz) in four steps,
-each a number a `ModeRule` names:
+One mode of toroidal number `n` is read off `\MHD::N<n>RMS` (gauss, 1 kHz) in four
+steps, each a number a `ModeRule` names:
 
 1. The trace is smoothed by a running median of `smooth_ms`, so a spike of a few samples
    (an ELM, a sawtooth crash) is not a mode.
-2. A seed is a stretch of at least `hold_ms` where the smoothed trace is above `onset_g`
-   (Farre-Kaga's "peaks above 12 G for a continuous 50 ms"), dips of at most
-   `merge_gap_ms` allowed while it is above for half of the stretch (`min_duty`): a
-   locking mode's RMS is ragged.
-3. A seed grows both ways to where the trace falls to `release_fraction` of the seed's
+2. A seed is a stretch where the smoothed trace is above `onset_g` (Farre-Kaga's "peaks
+   above 12 G"); runs of it at most `merge_gap_ms` apart are one stretch, a locking
+   mode's RMS being ragged, if the runs fill `min_duty` of it (a train of ELM spikes
+   does not). Its peak sets the release level of step 3.
+3. The mode around the peak is the stretch that stays above `release_fraction` of the
    peak (Farre-Kaga's onset at 10 % of the peak), never below `release_floor_g`, the
-   magnetics' noise. Dips shorter than `merge_gap_ms` do not end it. This is the
+   magnetics' noise; dips shorter than `merge_gap_ms` do not end it. It is a mode, and
+   an interval, only if it lasts `hold_ms` (Farre-Kaga's 50 ms): a seed whose mode is
+   shorter, such as a burst the trace falls from at once, is not. This is the
    hysteresis: a high threshold to start an interval, a lower one to end it.
 4. Intervals closer than `merge_gap_ms` are one.
 
 An interval ends at decay (the trace fell below its release level), at the end of the
-plasma (the window's end), or at locking (`apply_locking`: a locked-mode detection inside
-the interval or just after its end). The onset is a point event (`iscrowd` 0) at the
-interval's start; the interval is a span (`iscrowd` 1). `shot_table` writes both in the
-catalog's interval schema with the rest of the window absent, the ramp-up uncertain where
-the rule fires in it, and what the record did not cover not observable.
+plasma (the window's end), or at locking (`apply_locking`: a locked-mode detection
+inside the interval or just after its end). The onset is a point event (`iscrowd` 0) at
+the interval's start; the interval is a span (`iscrowd` 1). `shot_table` writes both in
+the catalog's interval schema with the rest of the window absent, the ramp-up uncertain
+where the rule fires in it, and what the record did not cover not observable.
 """
 
 from __future__ import annotations
@@ -60,16 +62,16 @@ class ModeRule:
     #: A mode that starts less than this after the window opens was already there:
     #: its onset was not seen.
     onset_margin_ms: float = 20.0
-    #: A seed may be ragged: runs above `onset_g` at most `merge_gap_ms` apart count as
-    #: one stretch, which must be above it for this fraction of its length (1 would be
-    #: Farre-Kaga's continuous 50 ms). An ELM train of short spikes stays below it.
+    #: A seed's runs above `onset_g` must fill this fraction of the stretch they span,
+    #: so a train of short spikes (ELMs) bridged by `merge_gap_ms` is not one mode.
     min_duty: float = 0.5
     #: n = 2 only: the RMS counts where it exceeds this multiple of the n = 1 RMS, so
     #: the n = 2 harmonic of a large n = 1 mode is not a second mode.
     harmonic_ratio: float | None = None
 
 
-#: Farre-Kaga et al. 2025: above 12 G for 50 ms, onset at 10 % of the peak.
+#: Farre-Kaga et al. 2025: a peak above 12 G, the mode lasting 50 ms, onset at 10 % of
+#: the peak.
 N1_RULE = ModeRule(n=1, onset_g=12.0)
 #: No published n = 2 rule. Half the n = 1 onset: a mode's vacuum field falls off as
 #: r^-(m+1), and the 3/2 sits further in than the 2/1. Harmonics of an n = 1 mode reach
@@ -80,7 +82,7 @@ RULES = (N1_RULE, N2_RULE)
 
 @dataclass(frozen=True)
 class Interval:
-    """One mode's interval, in ms; `onset_seen` is False when it began with the window."""
+    """One mode's interval, in ms; `onset_seen` is False if it began with the window."""
 
     n: int
     start_ms: float
@@ -176,13 +178,14 @@ def mode_intervals(t_ms, rms, rule: ModeRule, window=None, *, reference=None):
             groups.append([int(a), int(b), int(b - a)])
     seeds = []
     for a, b, above in groups:
-        if b - a < hold or above < rule.min_duty * (b - a):
+        if above < rule.min_duty * (b - a):
             continue
         peak = a + int(np.argmax(xs[a:b]))
         release = max(rule.release_floor_g, rule.release_fraction * xs[peak])
         starts, stops = _bridge(*_runs(xs > release), gap)
         k = int(np.searchsorted(starts, peak, side="right")) - 1
-        seeds.append((int(starts[k]), int(stops[k]), peak, float(release)))
+        if stops[k] - starts[k] >= hold:
+            seeds.append((int(starts[k]), int(stops[k]), peak, float(release)))
     seeds.sort()
     merged: list[list] = []
     for a, b, peak, release in seeds:
@@ -223,22 +226,57 @@ def tearing_intervals(t_ms, n1, n2=None, window=None, rules=RULES):
     return found
 
 
-def apply_locking(intervals, lock_ms, *, after_ms: float = 100.0):
-    """The intervals, each that a locking at `lock_ms` ends marked `locked`.
+def frequency_locks(
+    t_ms,
+    freq_khz,
+    *,
+    lock_khz: float = 1.0,
+    hold_ms: float = 20.0,
+    spin_khz: float = 1.5,
+    lookback_ms: float = 300.0,
+) -> np.ndarray:
+    """Times (ms) a mode's frequency fell to `lock_khz` and stayed, once rotating.
 
-    A locked mode no longer rotates and leaves the RMS band, so an interval whose end
-    lies up to `after_ms` before a detection, or that holds one, ended by locking:
-    it is cut at the detection when that is inside it. `lock_ms` is the times the
-    locked-mode signal crossed its threshold (none: nothing changes).
+    `freq_khz` is `\\MHD::N<n>FREQ`, the toroidal mode's frequency (0.5 kHz steps). A
+    locking is the first sample of a stretch of at least `hold_ms` at or below
+    `lock_khz` that follows a frequency of at least `spin_khz` within `lookback_ms`: a
+    mode born slow is not one that locked.
     """
-    lock_ms = np.sort(np.asarray(lock_ms if lock_ms is not None else [], dtype=float))
+    t, f, dt = uniform(t_ms, freq_khz)
+    low = np.nan_to_num(f, nan=np.inf) <= lock_khz
+    hold = max(1, round(hold_ms / dt))
+    back = max(1, round(lookback_ms / dt))
+    spinning = np.nan_to_num(f, nan=0.0)
+    found = []
+    for a, b in zip(*_runs(low), strict=True):
+        if (
+            b - a >= hold
+            and spinning[max(0, a - back) : a].max(initial=0.0) >= spin_khz
+        ):
+            found.append(float(t[a]))
+    return np.asarray(found, dtype=float)
+
+
+def apply_locking(
+    intervals, lock_ms, *, tail_ms: float = 150.0, after_ms: float = 100.0
+):
+    """The intervals, each that ended by locking marked `locked`.
+
+    A locked mode no longer rotates and leaves the RMS band, so the RMS collapses at
+    locking. An interval is locked when a locking (`frequency_locks`) falls within its
+    last `tail_ms` or up to `after_ms` after its end. `lock_ms` is the locking times, or
+    a dict of them by toroidal number (none: nothing changes). An interval that the
+    plasma ended keeps saying so; its `locked` is still set.
+    """
     out = []
     for item in intervals:
-        k = int(np.searchsorted(lock_ms, item.start_ms, side="left"))
-        hit = lock_ms[k] if k < len(lock_ms) else None
-        if hit is not None and hit <= item.end_ms + after_ms:
-            end = min(item.end_ms, max(float(hit), item.start_ms))
-            item = replace(item, end_ms=end, ended=LOCKED, locked=True)
+        times = lock_ms.get(item.n) if isinstance(lock_ms, dict) else lock_ms
+        times = np.sort(np.asarray([] if times is None else times, dtype=float))
+        hit = (times >= item.end_ms - tail_ms) & (times <= item.end_ms + after_ms)
+        hit &= times >= item.start_ms
+        if hit.any():
+            ended = LOCKED if item.ended == DECAY else item.ended
+            item = replace(item, ended=ended, locked=True)
         out.append(item)
     return out
 
@@ -406,7 +444,7 @@ def shot_table(label: ShotLabel) -> pd.DataFrame:
 
 
 def intervals_frame(labels) -> pd.DataFrame:
-    """One row per interval across shots, with what the catalog schema has no place for."""
+    """One row per interval across shots, with what the catalog schema cannot hold."""
     rows = [
         {
             "shot": label.shot,
