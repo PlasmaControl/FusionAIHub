@@ -66,6 +66,9 @@ CATEGORY = {0: 2, 1: 1, 2: 3, 3: 4}
 MODE_BINS = 21
 MIN_SEGMENT_MS = 20
 BEAM_ON_W = 2e5
+#: Gaps in the beam-on mask up to this long are bridged: a modulated beam (blips of
+#: 10 ms) leaves the plasma in a regime the whole time.
+BEAM_GAP_MS = 50
 
 
 def wanted_shots() -> list[int]:
@@ -372,6 +375,18 @@ def mean_models(device, ids_needed: list[int] | None = None):
     return models
 
 
+def bridge_gaps(active: np.ndarray, gap: int) -> np.ndarray:
+    """``active`` with every run of False of at most ``gap`` bins that lies between two
+    runs of True set to True."""
+    out = active.copy()
+    edges = np.flatnonzero(np.diff(np.r_[False, active, False].astype(np.int8)))
+    # edges alternate: a run starts, ends, the next starts, ...
+    for end, start in zip(edges[1:-1:2], edges[2::2], strict=False):
+        if start - end <= gap:
+            out[end:start] = True
+    return out
+
+
 def segment_shot(
     prob: np.ndarray, active: np.ndarray
 ) -> list[tuple[int, int, int, float]]:
@@ -431,12 +446,17 @@ def apply(args: argparse.Namespace) -> None:
         else:
             probs = np.mean([unet.predict_shot(m, x, device) for m in models], axis=0)
             stats["ensemble"] += 1
-        active = np.nan_to_num(power, nan=0.0) >= BEAM_ON_W
+        active = bridge_gaps(np.nan_to_num(power, nan=0.0) >= BEAM_ON_W, BEAM_GAP_MS)
         if active.sum() < MIN_SEGMENT_MS:
             missing[shot] = "beam power never reaches the threshold"
             continue
         all_probs[f"s{shot}"] = probs.astype(np.float16)
-        for cls, lo, hi, conf in segment_shot(probs, active):
+        found = segment_shot(probs, active)
+        if not found:
+            missing[shot] = (
+                f"no segment of {MIN_SEGMENT_MS} ms or more while the beam is on"
+            )
+        for cls, lo, hi, conf in found:
             rows.append(
                 {
                     "shot": shot,
@@ -467,7 +487,8 @@ def apply(args: argparse.Namespace) -> None:
         "roster": str(ROSTER),
         "segmentation": {
             "bins_ms": 1.0,
-            "active": f"total beam power >= {BEAM_ON_W:.0f} W",
+            "active": f"total beam power >= {BEAM_ON_W:.0f} W, gaps of at most "
+            f"{BEAM_GAP_MS} ms bridged",
             "mode_filter_bins": MODE_BINS,
             "min_segment_ms": MIN_SEGMENT_MS,
             "confidence": "mean probability of the segment's class over its bins",
