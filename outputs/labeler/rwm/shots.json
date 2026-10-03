@@ -1,6 +1,6 @@
 {
   "script": "scripts/labeler/rwm_build.py",
-  "made_at": "2026-10-03T14:09:49+00:00",
+  "made_at": "2026-10-03T15:31:40+00:00",
   "pool": {
     "shots": 208,
     "usable": 207,
@@ -327,11 +327,13 @@
   },
   "windows": {
     "csv": "data/events/resistive_wall_mode/extend_rwm_growth/rwm_windows.csv",
-    "rows": 266,
+    "rows": 558,
     "conventional_weak_windows": 54,
-    "assumed_absent_spans": 84,
+    "assumed_absent_spans": 33,
     "verified_absent_spans": 0,
-    "candidate_spans_on_comparison_shots": 128,
+    "hanson_unassessed_spans": 87,
+    "comparison_unassessed_spans": 258,
+    "candidate_spans_on_comparison_shots": 126,
     "growth_ms": 20.0,
     "horizon_ms": 100.0,
     "post_ms": 100.0
@@ -339,7 +341,8 @@
   "evidence": {
     "verified": "Hanson listed onset points only; no verified negative coverage",
     "windows": "20 ms tau_w convention, not measured growth intervals",
-    "negative_assumption": "onset listing is complete on Hanson shots",
+    "negative_assumption": "onset listing is complete only before first onset precursor for physical category 0; not termination evidence",
+    "unassessed": "explicit category 4 for precursors and post-onset physical state through end of analysis; comparison time outside screen spans",
     "primary_scoring": "before last n=1 onset only; n=2-only shots excluded",
     "comparison": "unlabelled, never primary supervised negatives"
   },

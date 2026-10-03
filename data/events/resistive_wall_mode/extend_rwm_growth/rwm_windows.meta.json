@@ -2,7 +2,8 @@
   "categories": {
     "0": "absent",
     "1": "present",
-    "2": "uncertain"
+    "2": "uncertain",
+    "4": "unassessed"
   },
   "category": "resistive_wall_mode",
   "columns": [
@@ -14,20 +15,23 @@
     "attrs"
   ],
   "coverage": "Hanson shots only for categories 0 and 1; category 2 is the rwm_candidates screen on the matched comparison shots, which are unlabelled and not negatives. Only the raw onset points are verified; reviewed negative coverage is unknown even on Hanson shots.",
-  "made_at": "2026-10-03T14:09:49+00:00",
+  "made_at": "2026-10-03T15:31:40+00:00",
   "made_by": "scripts/labeler/rwm_build.py",
-  "n_rows": 266,
-  "n_shots": 70,
+  "n_rows": 558,
+  "n_shots": 165,
   "rules": {
     "present": "the 20 ms before each listed onset, of either mode number (conventional weak annotation motivated by tau_w, not a measured growth interval; see outputs/labeler/rwm/growth.json)",
-    "absent": "the high-current window (Ip at least half its peak) outside [onset - 100, onset + 100] ms of every listed onset; the precursor before a growth window and the aftermath carry no row (not assessed). Assumed absent: assumes complete onset listing on Hanson shots, without verified negative coverage",
-    "uncertain": "rwm_candidates screen spans, comparison shots only"
+    "absent": "high-current time only before the first listed onset minus 100 ms, assuming complete onset listing. No post-onset physical absence is inferred without mode termination evidence",
+    "uncertain": "rwm_candidates screen spans, comparison shots only",
+    "unassessed": "explicit precursor holes and physical post-onset time to analysis end, apart from later conventional weak windows; comparison time outside screen spans"
   },
   "evidence_tiers": {
     "conventional_weak": "20 ms pre-onset convention, not expert-verified extent",
-    "assumed_absent": "Hanson time away from onsets; completeness assumption",
-    "unlabelled_screen": "screen candidates on comparison shots; not negatives"
+    "assumed_absent": "Hanson time before first precursor; completeness assumption",
+    "unlabelled_screen": "screen candidates on comparison shots; not negatives",
+    "unassessed": "no assessed physical state or termination evidence"
   },
+  "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",
   "source": "data/events/resistive_wall_mode/raw/rwm_onsets_{2017,2024}.csv",
   "summary": "outputs/labeler/rwm/shots.json"
 }

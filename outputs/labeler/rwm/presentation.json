@@ -17,6 +17,12 @@
           "low": 0.12255501411878099,
           "high": 0.21989172028956308
         },
+        "slice_f1": {
+          "json_path": "configs.rwm-brf.metrics.slice_f1",
+          "estimate": 0.27489587277546385,
+          "low": 0.22652481957565895,
+          "high": 0.3366447880743131
+        },
         "high_beta_auroc": {
           "json_path": "configs.rwm-brf.metrics.high_beta_auroc",
           "estimate": 0.6021780297512571,
@@ -36,6 +42,12 @@
           "estimate": 0.22785363859801916,
           "low": 0.21216351902873304,
           "high": 0.30695559234855635
+        },
+        "slice_f1": {
+          "json_path": "configs.rule-time-since-flattop.metrics.slice_f1",
+          "estimate": 0.26720321931589536,
+          "low": 0.21690540005005843,
+          "high": 0.33135096496997535
         },
         "high_beta_auroc": {
           "json_path": "configs.rule-time-since-flattop.metrics.high_beta_auroc",
@@ -57,6 +69,12 @@
           "low": 0.1281706498450382,
           "high": 0.24642607838773417
         },
+        "slice_f1": {
+          "json_path": "configs.rule-betan.metrics.slice_f1",
+          "estimate": 0.24615384615384617,
+          "low": 0.19392559186526598,
+          "high": 0.3118434633873013
+        },
         "high_beta_auroc": {
           "json_path": "configs.rule-betan.metrics.high_beta_auroc",
           "estimate": 0.5627730548935749,
@@ -76,6 +94,12 @@
           "estimate": 0.15880887831181684,
           "low": 0.12736523472238975,
           "high": 0.2318260607893155
+        },
+        "slice_f1": {
+          "json_path": "configs.rule-betan-over-li.metrics.slice_f1",
+          "estimate": 0.26119126896041434,
+          "low": 0.21167225886867003,
+          "high": 0.32761739346218915
         },
         "high_beta_auroc": {
           "json_path": "configs.rule-betan-over-li.metrics.high_beta_auroc",
@@ -97,6 +121,12 @@
           "low": 0.0703560487145368,
           "high": 0.10202112345716674
         },
+        "slice_f1": {
+          "json_path": "configs.rule-rwm-candidates.metrics.slice_f1",
+          "estimate": 0.0,
+          "low": 0.0,
+          "high": 0.0
+        },
         "high_beta_auroc": {
           "json_path": "configs.rule-rwm-candidates.metrics.high_beta_auroc",
           "estimate": 0.5,
@@ -104,6 +134,40 @@
           "high": 0.5
         }
       }
+    },
+    "legacy": {
+      "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
+      "cells": {
+        "slice_auroc": {
+          "json_path": "legacy.slice_auroc",
+          "value": 0.918
+        },
+        "slice_tpr": {
+          "json_path": "legacy.slice_tpr",
+          "value": 0.924
+        },
+        "slice_fpr": {
+          "json_path": "legacy.slice_fpr",
+          "value": 0.214
+        },
+        "onsets_warned": {
+          "json_path": "legacy.onsets_warned",
+          "value": 10
+        },
+        "target_onsets": {
+          "json_path": "legacy.target_onsets",
+          "value": 11
+        },
+        "comparison_shots_with_an_alarm": {
+          "json_path": "legacy.comparison_shots_with_an_alarm",
+          "value": 2
+        },
+        "comparison_shots": {
+          "json_path": "legacy.comparison_shots",
+          "value": 17
+        }
+      },
+      "slice_f1": "not available in source digest"
     }
   },
   "markdown": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/tables.md",
@@ -112,19 +176,27 @@
     "Broader Hanson-negative sensitivity \u2014 same models and predictions",
     "High-beta conditional scores \u2014 all models",
     "Above no-wall-proxy conditional scores \u2014 all models",
+    "Campaign sensitivity \u2014 rwm-brf (95% shot CIs)",
+    "Leave-one-run-day-out \u2014 rwm-brf (95% shot CIs)",
+    "Leave-one-run-day-out \u2014 each held-out run day",
+    "Leave-one-run-day-out \u2014 F1 and alarms (95% shot CIs)",
+    "Leave-one-run-day-out \u2014 F1 and alarms by held-out run day",
     "Alarm counts \u2014 all models (n=1 targets)",
     "Alarm rates \u2014 all models (95% shot CIs)",
     "Warning times \u2014 all models (detected onsets only)",
+    "Piccione-style per-shot categories \u2014 primary alarm definition",
+    "Alarm definition sensitivity \u2014 rwm-brf",
+    "Legacy NSTX \u2014 separately sourced published reference",
     "Paired differences \u2014 rwm-brf versus rules, primary",
     "Paired differences \u2014 rwm-brf versus rules, high-beta",
     "Paired differences \u2014 rwm-brf versus rules, above-proxy",
-    "Paired alarm differences \u2014 rwm-brf versus rules",
+    "Paired alarm differences \u2014 rwm-brf versus rules (95% basic CIs)",
     "Split sensitivity \u2014 rwm-brf (fixed hyperparameters)"
   ],
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": ".................................................                        [100%]\n49 passed in 145.19s (0:02:25)"
+      "output": "........................................................................ [ 51%]\n...................................................................      [100%]\n139 passed in 152.09s (0:02:32)"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -132,11 +204,11 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "13 files already formatted"
+      "output": "11 files already formatted"
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/latex.log",
-      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n\nLaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.\n\n )</usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us\nr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi6.pfb></usr/share\n/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/texliv\ne/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texlive/texmf-dist/f\nonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/typ\ne1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pub\nlic/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/rwm_table_preview.pdf (1 page, 81640 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/rwm_table_preview.log."
+      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex) [1{/usr/sha\nre/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/rw\nm_table_preview.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsfont\ns/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pf\nb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></usr\n/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/\ntexlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/\ntexmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-\ndist/fonts/type1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/rwm_table_preview.pdf (1 page, 87420 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/rwm_table_preview.log."
     }
   }
 }
