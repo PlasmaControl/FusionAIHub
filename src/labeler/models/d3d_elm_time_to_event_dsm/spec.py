@@ -3,12 +3,14 @@ from a Deep Survival Machines model labeler fitted itself.
 
 The weights are **not** upstream's. Upstream's Keras graphs take 124 inputs and
 64 of them are BES, which the FAITH corpus fills on 2 of 24 sampled shots, so a
-model that needs BES cannot be served at corpus scale. Task 8a therefore fitted
-the same architecture (`hiro_scripts/model.cfg`: k=3, layers=[128], LogNormal,
+model that needs BES cannot be served at corpus scale. The native source uses
+124 inputs, [100, 1000] embedding layers and 1 ms rows. Task 8a instead fitted
+a smaller 128-unit embedding (`hiro_scripts/model.cfg`: k=3, layers=[128], LogNormal,
 lr 1e-3, batch 1024, dropout 0.2, seed 0) on upstream's own split,
 `/projects/EKOLEMEN/wpqh_elm_hiro/data/train_test_split_model10.pkl`, read as-is
 and never re-split, twice: once on all 124 columns and once on the 60 that are
-not BES. The 60-column fit is what this adapter serves
+not BES. This is a reduced-input architectural adaptation. The 60-column fit is
+what this adapter serves
 (`elm_dsm_no_bes.pkl`), and it is the BETTER of the two - see the card.
 
 Column order was the whole difficulty and it is settled by measurement rather

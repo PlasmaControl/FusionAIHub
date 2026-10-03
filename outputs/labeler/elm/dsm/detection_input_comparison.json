@@ -1,6 +1,6 @@
 {
- "git": "1a675d024fe209e1bb590e1798b00c94375b3983",
- "script_sha256": "ed5e1425724e965fa98b41bb2f17c24bb7c30a6c7e1e072d8c0b6539bc3b733b",
+ "git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
+ "script_sha256": "1e50d51ab0b08db7d39b2374cb390a4e463dcd19363d97a5c4880e38a7222b5d",
  "before_record": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/archive/dsm/evaluation_before_input_repair_bcf3638d953d.json",
  "before_record_sha256": "bcf3638d953d0627efa7c851ca2f7dcce55ac6824b397c80b5bc03b39be2f9d3",
  "after_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/evaluation.json",
@@ -3809,7 +3809,7 @@
      }
     },
     "replicates": 1000,
-    "display_name": "elm-dsm detection (isolated)",
+    "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
     "high_recall": false
    },
    "before_bins": 6527,
@@ -4052,7 +4052,7 @@
      }
     },
     "replicates": 1000,
-    "display_name": "elm-dsm detection (isolated)",
+    "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
     "high_recall": false
    },
    "before_bins": 11653,

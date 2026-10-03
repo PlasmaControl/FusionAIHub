@@ -37,6 +37,9 @@ CLOCK_CSV = Path(
 )
 #: the forecast row of a bin is the one ending where the bin starts
 FORECAST_LAG_ROWS = -int(methods.WINDOW_MS / methods.ROW_MS)
+# Float32 second timestamps can shift nominal bin edges by about 1e-5 ms.
+# This tolerance is 1000 times smaller than the diagnostic's 0.1 ms grid.
+COVER_BOUNDARY_TOL_MS = 1e-4
 NAME = {
     "ours": "elm-ours",
     "dsm": "elm-dsm",
@@ -49,9 +52,9 @@ NAME = {
 DISPLAY_NAME = {
     NAME["ours"]: "elm-ours",
     NAME["dsm"]: dsm.DISPLAY_NAME,
-    NAME["detect"]: "elm-dsm detection (isolated)",
-    NAME["exposed"]: "elm-dsm detection (exposed)",
-    NAME["init"]: "elm-dsm detection init",
+    NAME["detect"]: "elm-dsm (60-input 1×128 refit, detection)",
+    NAME["exposed"]: "elm-dsm (source statistics, detection)",
+    NAME["init"]: "elm-dsm (source weights and statistics, detection)",
     NAME["elmo"]: "ELM-O",
     NAME["clock"]: "elm-clock",
 }
@@ -70,6 +73,7 @@ class SetDef:
     bins: dict[int, labels.Bins]
     cover: dict[int, pd.DataFrame]
     has_elmo: bool = False
+    elmo_cover: dict[int, pd.DataFrame] = field(default_factory=dict)
 
 
 def own_coverage(paths: Paths, data: dict[int, ShotData]) -> dict[int, pd.DataFrame]:
@@ -78,22 +82,37 @@ def own_coverage(paths: Paths, data: dict[int, ShotData]) -> dict[int, pd.DataFr
         c0, c1 = inputs.valid_intervals(
             np.load(prepare.inputs_dir(paths) / f"{s}.npy")[inputs.VALID]
         )
-        out[s] = methods.cover_frame(*labels.merge_intervals(c0, c1))
+        out[s] = methods.cover_frame(
+            *labels.merge_intervals(c0, c1, tol=COVER_BOUNDARY_TOL_MS)
+        )
     return out
 
 
 def load_sets(paths: Paths, data: dict[int, ShotData]) -> dict[str, SetDef]:
     """`bes73` and `all119`."""
     all_shots = sorted(data)
+    input_cover = own_coverage(paths, data)
     cover = pd.read_csv(paths.root / ELMO_DIR / "review_coverage.csv")
     shots_bes = sorted(int(s) for s in cover.shot.unique())
-    elmo_cover = {
+    raw_elmo_cover = {
         s: methods.cover_frame(
             *labels.merge_intervals(
-                *(g.sort_values("t_start_ms")[c] for c in ("t_start_ms", "t_end_ms"))
+                *(g.sort_values("t_start_ms")[c] for c in ("t_start_ms", "t_end_ms")),
+                tol=COVER_BOUNDARY_TOL_MS,
             )
         )
         for s, g in cover.groupby("shot")
+    }
+    elmo_cover = {
+        s: methods.cover_frame(
+            *methods.intersect(
+                c.t_start_ms,
+                c.t_end_ms,
+                input_cover[s].t_start_ms,
+                input_cover[s].t_end_ms,
+            )
+        )
+        for s, c in raw_elmo_cover.items()
     }
     elmo_bins = {
         s: labels.scored_bins(
@@ -105,13 +124,18 @@ def load_sets(paths: Paths, data: dict[int, ShotData]) -> dict[str, SetDef]:
     }
     return {
         "bes73": SetDef(
-            "bes73", shots_bes, elmo_bins, {s: elmo_cover[s] for s in shots_bes}, True
+            "bes73",
+            shots_bes,
+            elmo_bins,
+            {s: elmo_cover[s] for s in shots_bes},
+            True,
+            raw_elmo_cover,
         ),
         "all119": SetDef(
             "all119",
             all_shots,
             {s: data[s].bins for s in all_shots},
-            own_coverage(paths, data),
+            input_cover,
         ),
     }
 
@@ -143,6 +167,7 @@ class DsmScores:
     risk: dict[int, np.ndarray]  # (240, 4): published risk at 5, 10, 20, 50 ms
     scores: dict[str, dict[int, np.ndarray]] = field(default_factory=dict)
     threshold: dict[str, dict[int, float]] = field(default_factory=dict)
+    detection_rows: dict[int, dsm.Rows] = field(default_factory=dict)
 
     def save(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=True)
@@ -178,7 +203,13 @@ class DsmScores:
         )
 
     @classmethod
-    def load(cls, directory: Path, rows: dict[int, dsm.Rows], variants=()):
+    def load(
+        cls,
+        directory: Path,
+        rows: dict[int, dsm.Rows],
+        variants=(),
+        detection_rows: dict[int, dsm.Rows] | None = None,
+    ):
         manifest = directory / "row_cache_manifest.json"
         actual = {str(s): dsm.rows_digest(r) for s, r in rows.items() if r is not None}
         saved = (
@@ -195,13 +226,77 @@ class DsmScores:
         for name in variants:
             with np.load(directory / f"scores_{name}.npz") as z:
                 scores[name] = {int(k[1:]): z[k] for k in z.files}
+        if NAME["detect"] in scores:
+            if detection_rows is None:
+                detection_rows = {
+                    s: dsm.load_rows(s, directory / "repaired_raw_rows" / f"{s}.npz")
+                    for s in scores[NAME["detect"]]
+                }
+            if any(detection_rows.get(s) is None for s in scores[NAME["detect"]]):
+                raise ValueError(
+                    "saved repaired detection rows are required to audit coverage"
+                )
         thr = json.loads((directory / "thresholds.json").read_text())
         return cls(
             rows,
             risk,
             scores,
             {n: {int(s): t for s, t in v.items()} for n, v in thr.items()},
+            detection_rows or {},
         )
+
+
+def covered_bin_mask(bins: labels.Bins, cover: pd.DataFrame) -> np.ndarray:
+    """Require all 50 ms of a bin to lie in analysed time; gaps stay unknown."""
+    lo, hi = labels.merge_intervals(
+        cover.t_start_ms, cover.t_end_ms, tol=COVER_BOUNDARY_TOL_MS
+    )
+    if not len(lo):
+        return np.zeros(len(bins.t0), bool)
+    index = np.searchsorted(lo, bins.t0 + COVER_BOUNDARY_TOL_MS, side="right") - 1
+    return (index >= 0) & (
+        hi[np.maximum(index, 0)] + COVER_BOUNDARY_TOL_MS >= bins.t0 + labels.BIN_MS
+    )
+
+
+def bin_support(shot, bins, cover, trace, dscores, *, include_detection=True):
+    """Per-method support before scoring, including repaired detection inputs.
+
+    A saved number on an unusable row is unsupported. A missing analysed sample
+    cannot be inferred to mean that a span detector called the bin negative.
+    """
+    first = (bins.t0 - inputs.GRID0_MS).astype(int)
+    width = int(labels.BIN_MS)
+    trace_ok = (first >= 0) & (first + width <= len(trace))
+    bad = np.r_[0, np.cumsum(~np.isfinite(trace))]
+    trace_ok[trace_ok] &= bad[first[trace_ok] + width] - bad[first[trace_ok]] == 0
+    masks = {
+        "analysed_time": covered_bin_mask(bins, cover),
+        NAME["ours"]: trace_ok,
+    }
+
+    def row_mask(values, usable, lag):
+        index = dsm.row_index(bins, lag)
+        ok = (index >= 0) & (index < len(values))
+        ok[ok] &= usable[index[ok]] & np.isfinite(values[index[ok]])
+        return ok
+
+    rows = dscores.rows[shot]
+    masks[NAME["dsm"]] = row_mask(
+        dscores.risk[shot][:, -1], rows.usable, FORECAST_LAG_ROWS
+    )
+    if include_detection:
+        for name, by_shot in dscores.scores.items():
+            if name == NAME["detect"] and shot not in dscores.detection_rows:
+                masks[name] = np.zeros(len(bins.t0), bool)
+                continue
+            usable = (
+                dscores.detection_rows[shot].usable
+                if name == NAME["detect"]
+                else rows.usable
+            )
+            masks[name] = row_mask(by_shot[shot], usable, 0)
+    return masks
 
 
 def shot_parts(
@@ -213,14 +308,27 @@ def shot_parts(
     dscores: DsmScores,
     elmo_spans: dict | None,
     clock_spans: dict,
+    elmo_cover: pd.DataFrame | None = None,
 ):
     """Every method's `ShotScore` on the shot's common bins, and those bins."""
     r = dscores.rows[shot]
-    bins = dsm.bins_with_rows(bins0, r.usable, lags=(FORECAST_LAG_ROWS, 0))
+    trace = oof.trace(shot)[0]
+    masks = bin_support(shot, bins0, cover0, trace, dscores)
+    if elmo_cover is not None:
+        masks[NAME["elmo"]] = covered_bin_mask(bins0, elmo_cover)
+    keep = np.logical_and.reduce(list(masks.values()))
+    bins = methods.restrict_bins(bins0, keep)
     cover = dsm.usable_cover(r.usable, cover0)
+    if NAME["detect"] in dscores.scores and shot in dscores.detection_rows:
+        cover = dsm.usable_cover(dscores.detection_rows[shot].usable, cover)
     out = {
         NAME["ours"]: methods.trace_part(
-            spans, shot, bins, cover, oof.trace(shot)[0], oof.threshold[shot]
+            spans,
+            shot,
+            bins,
+            cover,
+            np.nan_to_num(trace, nan=0.0, posinf=0.0, neginf=0.0),
+            oof.threshold[shot],
         ),
         NAME["dsm"]: methods.row_part(
             spans,
@@ -275,6 +383,7 @@ def common_parts(
             dscores,
             elmo_spans if sdef.has_elmo else None,
             clock_spans,
+            sdef.elmo_cover.get(shot),
         )
         if sdef.has_elmo and elmo_sweep is not None:
             one[NAME["elmo"]].score = swap.sweep_bin_scores(

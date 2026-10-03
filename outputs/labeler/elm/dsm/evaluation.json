@@ -1,6 +1,6 @@
 {
- "git": "1a675d024fe209e1bb590e1798b00c94375b3983",
- "created": "2026-10-03T20:26:40+00:00",
+ "git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
+ "created": "2026-10-03T21:13:51+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
  "cohort_test_shots_used": 0,
@@ -10,9 +10,9 @@
  "method_display_names": {
   "elm-ours": "elm-ours",
   "elm-dsm": "elm-dsm refit",
-  "elm-dsm-detect": "elm-dsm detection (isolated)",
-  "elm-dsm-detect-exposed": "elm-dsm detection (exposed)",
-  "elm-dsm-detect-init": "elm-dsm detection init",
+  "elm-dsm-detect": "elm-dsm (60-input 1\u00d7128 refit, detection)",
+  "elm-dsm-detect-exposed": "elm-dsm (source statistics, detection)",
+  "elm-dsm-detect-init": "elm-dsm (source weights and statistics, detection)",
   "elm-elmo": "ELM-O",
   "elm-clock": "elm-clock"
  },
@@ -229,19 +229,19 @@
   }
  },
  "evaluation_provenance": {
-  "producing_git": "1a675d024fe209e1bb590e1798b00c94375b3983",
+  "producing_git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
   "files": {
    "script": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_evaluate.py",
-    "sha256": "ed5e1425724e965fa98b41bb2f17c24bb7c30a6c7e1e072d8c0b6539bc3b733b"
+    "sha256": "1e50d51ab0b08db7d39b2374cb390a4e463dcd19363d97a5c4880e38a7222b5d"
    },
    "dsm_library": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/dsm.py",
-    "sha256": "f218bf0a0afd3dd6ca3ec7979d3ad77af17d69f11e0f9668ae55771defc11202"
+    "sha256": "ef65d7e6b3ca082e01220e5974ebc422f7dd0b1c060923d0225c87a97b743abf"
    },
    "compare_library": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/compare.py",
-    "sha256": "4a83ff6f72e90aaf1bba69b09f2646c557cc5a4af65629c891fb40b74928e3bd"
+    "sha256": "e93b10c0ff3ab7bb94ee1a16d8da07d4ed90a9884151e286c6b483781b1b796c"
    },
    "methods_library": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/methods.py",
@@ -445,14 +445,25 @@
  "prefetch_evaluation": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json",
  "model_context": {
   "original_input_columns": 124,
+  "native_architecture": [
+   100,
+   1000
+  ],
+  "native_trained_row_ms": 1.0,
+  "detection_display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
+  "detection_architecture": [
+   128
+  ],
+  "detection_input_columns": 60,
+  "detection_comparison_scope": "Reduced-input 60-column adaptation with one 128-unit embedding, trained on reviewed 50 ms means; not an objective-only retrain of the native 124-input [100, 1000] model",
   "refit_input_columns": 60,
   "refit_checkpoint_epochs": 1,
   "refit_run_epochs": 7,
   "refit_best_epoch": 0,
   "refit_checkpoint_note": "one-epoch checkpoint selected from a seven-epoch run",
-  "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
+  "photodiode_columns": "Survival refit and historical detectors mean-fill PCPHD02/03; current reduced-input detection uses repaired photodiodes or recorded FS02/03 substitutes",
   "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
-  "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; |z| clipped at 10",
+  "serving_changes": "Survival/historical paths: 50 ms-mean serving on a 25 ms grid of a 1 ms-trained model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; |z| clipped at 10",
   "training_resolution_note": "1 ms refers to the source survival fit; detection heads are refitted on reviewed 50 ms-mean rows.",
   "serving": {
    "interpretation": "offline risk score, not a causal forecast",
@@ -463,13 +474,23 @@
    "serving_grid_ms": 25.0,
    "nbi_boxcar_ms": 100.0,
    "nbi_lookahead_ms": 25.0,
-   "dalpha_input": "none; pcphd02/03 always mean-filled"
+   "dalpha_input": "Survival refit and historical detectors mean-fill PCPHD02/03; the source-isolated reduced-input detector uses repaired measured photodiodes or recorded FS02/03 substitutes (see detection_input_repair)",
+   "native_input_columns": 124,
+   "native_embedding_layers": [
+    100,
+    1000
+   ],
+   "native_trained_row_ms": 1.0,
+   "refit_input_columns": 60,
+   "refit_embedding_layers": [
+    128
+   ]
   },
   "preprocessing_exposure": {
    "applies_to": [
     "elm-dsm refit",
-    "elm-dsm detection exposed",
-    "elm-dsm detection init"
+    "elm-dsm (source statistics, detection)",
+    "elm-dsm (source weights and statistics, detection)"
    ],
    "scope": "upstream feature means/std computed before source split",
    "normalization_physical_shots": 365,
@@ -488,7 +509,7 @@
    "decision": "retain as supplemental; confirmatory detection refits preprocessing"
   },
   "temporal_interpretation": "Offline risk score with 25 ms centered-NBI lookahead (not a causal forecast)",
-  "normalization_exposure": "The confirmatory elm-dsm detection fits normalization only on optimizer-training shots in each fold and starts from independent random weights. Refit and historical detection exposed/init reuse upstream pre-split statistics including blind-cohort shots 190646 and 190532; historical init additionally reuses refit weights.",
+  "normalization_exposure": "elm-dsm (60-input 1\u00d7128 refit, detection) fits normalization only on optimizer-training shots in each fold and starts from independent random weights. Supplemental detectors reuse upstream pre-split statistics including blind-cohort shots 190646 and 190532; the model initialized from the source also reuses refit weights.",
   "normalization_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4406 (normalization before upstream split)",
   "scope": "This record scores the limited-input adaptation; the original 124-input native 1 ms checkpoint is evaluated separately in native_evaluation.json (four exact-export scored shots and a 33-shot reconstructed sensitivity panel).",
   "native_comparison_record": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/native_evaluation.json",
@@ -17502,13 +17523,23 @@
    "serving_grid_ms": 25.0,
    "nbi_boxcar_ms": 100.0,
    "nbi_lookahead_ms": 25.0,
-   "dalpha_input": "none; pcphd02/03 always mean-filled"
+   "dalpha_input": "Survival refit and historical detectors mean-fill PCPHD02/03; the source-isolated reduced-input detector uses repaired measured photodiodes or recorded FS02/03 substitutes (see detection_input_repair)",
+   "native_input_columns": 124,
+   "native_embedding_layers": [
+    100,
+    1000
+   ],
+   "native_trained_row_ms": 1.0,
+   "refit_input_columns": 60,
+   "refit_embedding_layers": [
+    128
+   ]
   },
   "preprocessing_exposure": {
    "applies_to": [
     "elm-dsm refit",
-    "elm-dsm detection exposed",
-    "elm-dsm detection init"
+    "elm-dsm (source statistics, detection)",
+    "elm-dsm (source weights and statistics, detection)"
    ],
    "scope": "upstream feature means/std computed before source split",
    "normalization_physical_shots": 365,
@@ -18023,6 +18054,7 @@
    "n_shots": 73,
    "bins": 6527,
    "bins_without_rows": 316,
+   "common_coverage_rule": "Full diagnostic coverage, finite model outputs and usable offline-risk and repaired detection rows for every method",
    "bins_before_restriction": 6843,
    "methods": {
     "elm-ours": {
@@ -18493,7 +18525,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection (isolated)",
+     "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
      "high_recall": false
     },
     "elm-dsm-detect-exposed": {
@@ -18650,7 +18682,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection (exposed)",
+     "display_name": "elm-dsm (source statistics, detection)",
      "high_recall": false
     },
     "elm-dsm-detect-init": {
@@ -18807,7 +18839,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection init",
+     "display_name": "elm-dsm (source weights and statistics, detection)",
      "high_recall": false
     },
     "elm-elmo": {
@@ -20766,7 +20798,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "elm-dsm detection (isolated)",
+      "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
       "point": {
        "precision": 0.6518254674977738,
        "recall": 0.8937728937728938,
@@ -20958,7 +20990,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "elm-dsm detection (isolated)",
+      "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
       "point": {
        "precision": 0.6929996089166992,
        "recall": 0.9326315789473684,
@@ -25886,6 +25918,7 @@
    "n_shots": 119,
    "bins": 11653,
    "bins_without_rows": 756,
+   "common_coverage_rule": "Full diagnostic coverage, finite model outputs and usable offline-risk and repaired detection rows for every method",
    "bins_before_restriction": 12409,
    "methods": {
     "elm-ours": {
@@ -26356,7 +26389,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection (isolated)",
+     "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
      "high_recall": false
     },
     "elm-dsm-detect-exposed": {
@@ -26513,7 +26546,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection (exposed)",
+     "display_name": "elm-dsm (source statistics, detection)",
      "high_recall": false
     },
     "elm-dsm-detect-init": {
@@ -26670,7 +26703,7 @@
       }
      },
      "replicates": 1000,
-     "display_name": "elm-dsm detection init",
+     "display_name": "elm-dsm (source weights and statistics, detection)",
      "high_recall": false
     },
     "elm-clock": {
@@ -28262,7 +28295,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "elm-dsm detection (isolated)",
+      "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
       "point": {
        "precision": 0.661501210653753,
        "recall": 0.8922273024167211,
@@ -28454,7 +28487,7 @@
       }
      },
      "elm-dsm-detect": {
-      "display_name": "elm-dsm detection (isolated)",
+      "display_name": "elm-dsm (60-input 1\u00d7128 refit, detection)",
       "point": {
        "precision": 0.6631016042780749,
        "recall": 0.8198347107438017,
@@ -32635,8 +32668,8 @@
  },
  "archived_records": {},
  "archive_provenance": {
-  "git": "1a675d024fe209e1bb590e1798b00c94375b3983",
-  "script_sha256": "ed5e1425724e965fa98b41bb2f17c24bb7c30a6c7e1e072d8c0b6539bc3b733b",
+  "git": "a2a483d5bae012b230f6f75dc8f9ddb2e7904ba6",
+  "script_sha256": "1e50d51ab0b08db7d39b2374cb390a4e463dcd19363d97a5c4880e38a7222b5d",
   "scientific_results_unchanged": true
  }
 }

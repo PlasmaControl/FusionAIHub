@@ -101,6 +101,6 @@ def test_table_preserves_high_recall_f1_and_interval_with_a_dagger():
 
     result = {"point": {"recall": 0.99, "f1": 0.4}, "ci95": {"f1": [0.2, 0.5]}}
     text = swap_tex.metric_cell(result, "f1")
-    assert "0.400" in text and "[0.20, 0.50]" in text and r"\dagger" in text
+    assert "0.400" in text and "[0.200, 0.500]" in text and r"\dagger" in text
     result["point"]["recall"] = 0.989
     assert r"\dagger" not in swap_tex.metric_cell(result, "f1")

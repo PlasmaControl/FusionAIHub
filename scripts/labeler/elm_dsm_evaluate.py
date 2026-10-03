@@ -15,11 +15,14 @@ described in `labeler.elm.dsm`:
    lookahead, not a causal forecast. The model is not retrained; the hard call
    uses the threshold that maximises F1 on the fold's inner-validation shots (the same
    shots `elm-ours` used), applied to the fold's held-out shots.
-3. **elm-dsm-detect, objective changed to detection**: the same inputs and embedding
-   with one logit head, trained on the reviewed spans to say whether the 50 ms ending
+3. **elm-dsm (60-input 1×128 refit, detection)**: a reduced-input adaptation with
+   one 128-unit embedding and one logit head, trained on the reviewed spans to say
+   whether the 50 ms ending
    at a row is present, on the same shot-grouped folds and inner-validation shots as
    `elm-ours`, a threshold per fold from its inner-validation shots. A variant starts
-   from the limited-input refit's embedding (`elm-dsm-detect-init`).
+   from the limited-input refit's embedding (`elm-dsm-detect-init`). The native
+   source used 124 inputs, [100, 1000] embedding layers and 1 ms rows; this is
+   not an objective-only retrain of that architecture.
 
 All are compared with `elm-ours`, ELM-O (where it runs) and the ELM clock on common
 bins (`labeler.elm.compare`); reviewed-label detector CV excludes cohort test shots.
@@ -183,6 +186,8 @@ def evaluate_set(
         "n_shots": len(sdef.shots),
         "bins": n_after,
         "bins_without_rows": n_before - n_after,
+        "common_coverage_rule": "Full diagnostic coverage, finite model outputs "
+        "and usable offline-risk and repaired detection rows for every method",
         "bins_before_restriction": n_before,
     }
     out.update(methods.summarise_methods(parts, boot, NAME["ours"]))
@@ -626,7 +631,19 @@ def main(argv=None) -> int:
     if args.rescore:
         # the scores, thresholds and training records of an earlier run, rescored
         fits = json.loads(fits_json.read_text())
-        dscores = compare.DsmScores.load(work, rows, variants=tuple(fits["detectors"]))
+        detection_rows = {
+            s: dsm.load_rows(s, work / "repaired_raw_rows" / f"{s}.npz") for s in shots
+        }
+        if any(r is None for r in detection_rows.values()):
+            raise ValueError(
+                "saved repaired detection rows are required to audit coverage"
+            )
+        dscores = compare.DsmScores.load(
+            work,
+            rows,
+            variants=tuple(fits["detectors"]),
+            detection_rows=detection_rows,
+        )
     else:
         print("own-target scoring of " + dsm.DISPLAY_NAME, flush=True)
         own = own_target(paths)
@@ -677,6 +694,7 @@ def main(argv=None) -> int:
             raw_rows, data, oof, cfg, work, lambda m: print(m, flush=True)
         )
         dscores = compare.DsmScores(rows, risk)
+        dscores.detection_rows = raw_rows
         dscores.threshold[NAME["dsm"]] = pub_thr
         for name, old_name in historical_sources.items():
             dscores.scores[name] = historical.scores[old_name]
@@ -761,14 +779,25 @@ def main(argv=None) -> int:
         "prefetch_evaluation": str(OUT / "prefetch_evaluation.json"),
         "model_context": {
             "original_input_columns": 124,
+            "native_architecture": [100, 1000],
+            "native_trained_row_ms": 1.0,
+            "detection_display_name": compare.DISPLAY_NAME[NAME["detect"]],
+            "detection_architecture": [128],
+            "detection_input_columns": dsm.N_COLUMNS,
+            "detection_comparison_scope": "Reduced-input 60-column adaptation "
+            "with one 128-unit embedding, trained on reviewed 50 ms means; not "
+            "an objective-only retrain of the native 124-input [100, 1000] model",
             "refit_input_columns": dsm.N_COLUMNS,
             "refit_checkpoint_epochs": refit_training["best_epoch"] + 1,
             "refit_run_epochs": refit_training["epochs_run"],
             "refit_best_epoch": refit_training["best_epoch"],
             "refit_checkpoint_note": "one-epoch checkpoint selected from a seven-epoch run",
-            "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
+            "photodiode_columns": "Survival refit and historical detectors "
+            "mean-fill PCPHD02/03; current reduced-input detection uses repaired "
+            "photodiodes or recorded FS02/03 substitutes",
             "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
-            "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained "
+            "serving_changes": "Survival/historical paths: 50 ms-mean serving "
+            "on a 25 ms grid of a 1 ms-trained "
             "model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; "
             "|z| clipped at 10",
             "training_resolution_note": "1 ms refers to the source survival fit; "
@@ -777,11 +806,12 @@ def main(argv=None) -> int:
             "preprocessing_exposure": dsm.PREPROCESSING_EXPOSURE,
             "temporal_interpretation": "Offline risk score with 25 ms centered-NBI "
             "lookahead (not a causal forecast)",
-            "normalization_exposure": "The confirmatory elm-dsm detection fits "
-            "normalization only on optimizer-training shots in each fold and starts "
-            "from independent random weights. Refit and historical detection exposed/"
-            "init reuse upstream pre-split statistics including blind-cohort shots "
-            "190646 and 190532; historical init additionally reuses refit weights.",
+            "normalization_exposure": compare.DISPLAY_NAME[NAME["detect"]]
+            + " fits normalization only on optimizer-training shots in each fold "
+            "and starts from independent random weights. Supplemental detectors "
+            "reuse upstream pre-split statistics including blind-cohort shots "
+            "190646 and 190532; the model initialized from the source also "
+            "reuses refit weights.",
             "normalization_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/"
             "data_processing.ipynb:4406 (normalization before upstream split)",
             "scope": MODEL_CONTEXT_SCOPE,

@@ -334,9 +334,7 @@ def compare_references(a: dict, b: dict) -> dict:
             continue
 
         def excludes_zero(interval):
-            return (
-                interval[0] > 0 or interval[1] < 0 if interval is not None else None
-            )
+            return interval[0] > 0 or interval[1] < 0 if interval is not None else None
 
         moves[key] = {
             "first": va["value"],
@@ -415,30 +413,44 @@ def all_covered_comparison(
     *,
     include_detection=False,
 ) -> dict:
-    """Finding 2 on all known legacy-covered majority bins, without reselection."""
+    """Finding 2 on known majority bins supported by every compared method."""
     parts, legacy, reviewed = {}, {}, {}
     row_validity, excluded_bins = {}, []
     for shot in shots:
         full, target, _ = swap.coverage_bins(table, shot, data[shot].spans)
         known = full.truth >= 0
         bins = methods.restrict_bins(full, known)
-        detection_indices = dsm.row_index(bins, 0)
-        has_row = (detection_indices >= 0) & (detection_indices < len(dsm.ROW_T_MS))
-        if include_detection:
-            excluded_bins.extend(
-                {
-                    "shot": shot,
-                    "t_start_ms": float(t),
-                    "t_end_ms": float(t + labels.BIN_MS),
-                    "reason": "No saved DSM detection row at the bin's end; "
-                    "serving grid stops at 5975 ms.",
-                }
-                for t in bins.t0[~has_row]
+        trace = oof.trace(shot)[0]
+        support = compare.bin_support(
+            shot,
+            bins,
+            base.cover[shot],
+            trace,
+            dscores,
+            include_detection=include_detection,
+        )
+        if base.has_elmo:
+            support[NAME["elmo"]] = compare.covered_bin_mask(
+                bins, base.elmo_cover[shot]
             )
-            target = target[known][has_row]
-            bins = methods.restrict_bins(bins, has_row)
-        else:
-            target = target[known]
+        supported = np.logical_and.reduce(list(support.values()))
+        excluded_bins.extend(
+            {
+                "shot": shot,
+                "t_start_ms": float(bins.t0[i]),
+                "t_end_ms": float(bins.t0[i] + labels.BIN_MS),
+                "reason": "Outside full coverage of at least one compared method",
+                "unsupported_methods": [
+                    name for name, ok in support.items() if not ok[i]
+                ],
+                "prediction_status": "unknown",
+            }
+            for i in np.flatnonzero(~supported)
+        )
+        candidate_count = len(bins.t0)
+        unsupported_counts = {name: int((~ok).sum()) for name, ok in support.items()}
+        target = target[known][supported]
+        bins = methods.restrict_bins(bins, supported)
         legacy[shot], reviewed[shot] = target, bins.truth
         cover = base.cover[shot]
         one = {
@@ -447,7 +459,7 @@ def all_covered_comparison(
                 shot,
                 bins,
                 cover,
-                oof.trace(shot)[0],
+                np.nan_to_num(trace, nan=0.0, posinf=0.0, neginf=0.0),
                 oof.threshold[shot],
             ),
             NAME["clock"]: methods.span_part(
@@ -481,7 +493,9 @@ def all_covered_comparison(
         indices = dsm.row_index(bins, 0)
         available = (indices >= 0) & (indices < len(dsm.ROW_T_MS))
         row_validity[str(shot)] = {
+            "known_majority_candidate_bins": candidate_count,
             "bins": len(bins.t0),
+            "unsupported_candidate_bins_by_method": unsupported_counts,
             "dsm_available_detection_rows": int(available.sum()),
             "dsm_usable_detection_rows": int(
                 dscores.rows[shot].usable[indices[available]].sum()
@@ -504,16 +518,18 @@ def all_covered_comparison(
     review_result = score_reference(parts, reviewed, boot)
     legacy_result = score_reference(parts, legacy, boot)
     return {
-        "definition": "All known majority-occupancy bins in the legacy-covered "
-        "review window, including boundary bins; predictions and thresholds "
-        "unchanged. No interior-bin, DSM-usability or diagnostic restriction. "
-        "Saved DSM row scores remain available even where serving inputs were "
-        "mean-filled. Unknown review-majority bins are excluded.",
+        "definition": "Known majority-occupancy bins in the legacy-covered review "
+        "window, including boundary bins, intersected with every compared method's "
+        "full diagnostic coverage, finite outputs and usable DSM rows, including "
+        "repaired detection inputs. Predictions and thresholds are unchanged. "
+        "Unknown review-majority bins and unsupported predictions are excluded; "
+        "a missing ELM-O sample is never scored as a negative prediction.",
         "detection_row_restriction": include_detection,
+        "coverage_boundary_tolerance_ms": compare.COVER_BOUNDARY_TOL_MS,
         "excluded_bins": excluded_bins,
-        "detection_scope": "Detection variants are included only in the common "
-        "bin panel that excludes cells without a saved bin-end row. Full-bin "
-        "rankings include only methods with outputs on every bin.",
+        "detection_scope": "Detection variants are included only in the panel "
+        "intersecting their usable bin-end rows. Both panels intersect actual "
+        "analysed coverage and usable offline-risk rows before comparison.",
         "shots": shots,
         "n_shots": len(shots),
         "has_elmo": base.has_elmo,
@@ -538,7 +554,14 @@ def main(argv=None) -> int:
     norm = dsm.load_norm(paths)
     shots_all = sorted(data)
     rows = {s: dsm.cached_rows(paths, s, norm, work) for s in shots_all}
-    dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
+    detection_rows = {
+        s: dsm.load_rows(s, work / "repaired_raw_rows" / f"{s}.npz") for s in shots_all
+    }
+    if any(r is None for r in detection_rows.values()):
+        raise ValueError("saved repaired detection rows are required to audit coverage")
+    dscores = compare.DsmScores.load(
+        work, rows, variants=compare.VARIANTS, detection_rows=detection_rows
+    )
     sets = compare.load_sets(paths, data)
     elmo_spans, clock_spans = compare.load_detected(paths)
     elmo_sweep = compare.load_elmo_sweep(paths)
@@ -640,13 +663,9 @@ def main(argv=None) -> int:
             "on measured usable labelled rows of its outer training partition "
             "and starts from independent random weights. Supplemental variants "
             "retain upstream normalization, including blind-cohort source shots "
-                "190646 and 190532 (feature-statistics exposure).",
+            "190646 and 190532 (feature-statistics exposure).",
             "isolated_detection": (
-                {
-                    key: value
-                    for key, value in repair.items()
-                    if key != "rows"
-                }
+                {key: value for key, value in repair.items() if key != "rows"}
                 if repair
                 else {
                     "inputs": "Historical detector with no D-alpha and missing "
@@ -683,6 +702,7 @@ def main(argv=None) -> int:
             {s: base.bins[s] for s in sel},
             {s: base.cover[s] for s in sel},
             base.has_elmo,
+            {s: base.elmo_cover[s] for s in sel} if base.has_elmo else {},
         )
         if not sel:
             record["swap"][tag] = {"shots": [], "note": "no shot"}
@@ -706,7 +726,8 @@ def main(argv=None) -> int:
                 else "includes original DSM fitting shots (in-sample)"
             ),
             "restriction_deviation": "Ranking uses bins wholly inside one known "
-            "review span and analysed time, with DSM offline-risk/detection rows; "
+            "review span and common diagnostic coverage, with usable DSM "
+            "offline-risk and repaired detection rows; "
             "unlike the AE all-frame audit. Full majority counts are interval_audit.",
             "reviewed": score_reference(parts, review, boot),
             "legacy": score_reference(parts, legacy, boot),

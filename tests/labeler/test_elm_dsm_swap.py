@@ -169,7 +169,12 @@ def test_dsm_scores_round_trip(tmp_path):
         {"elm-dsm": {1: 0.25}, "elm-dsm-detect": {1: 0.5}},
     )
     ds.save(tmp_path)
-    back = compare.DsmScores.load(tmp_path, {1: None}, variants=["elm-dsm-detect"])
+    row = dsm.Rows(
+        1, np.zeros((240, 60)), np.ones(240, bool), np.ones(240, bool), (), {}, ()
+    )
+    back = compare.DsmScores.load(
+        tmp_path, {1: None}, variants=["elm-dsm-detect"], detection_rows={1: row}
+    )
     assert np.allclose(back.risk[1], ds.risk[1])
     assert np.allclose(back.scores["elm-dsm-detect"][1], ds.scores["elm-dsm-detect"][1])
     assert back.threshold["elm-dsm"][1] == 0.25
@@ -292,7 +297,7 @@ def test_rankings_order_best_first_and_skip_missing_metrics():
 
 
 def test_swap_table_cells_and_layout():
-    assert swap_tex.cell(0.9824, [0.9612, 0.99]) == "0.982 {\\scriptsize[0.96, 0.99]}"
+    assert swap_tex.cell(0.9824, [0.9612, 0.99]) == "0.982 {\\scriptsize[0.961, 0.990]}"
     assert swap_tex.cell(float("nan"), None) == "--"
 
     def res(auroc, f1, prevalence=0.6):
@@ -316,7 +321,7 @@ def test_swap_table_cells_and_layout():
     )
     assert table.count("\\\\") >= 4 and "elm-ours & 0.900" in table
     assert "(60\\% present)" in table and "(20\\% present)" in table
-    assert "always present & 0.500 & 0.750 & 0.500 & 0.750" in table
+    assert "always-present & 0.500 & 0.750 & 0.500 & 0.750" in table
 
 
 def test_swap_f1_cell_shows_precision_recall_and_high_recall_number():
@@ -325,5 +330,5 @@ def test_swap_f1_cell_shows_precision_recall_and_high_recall_number():
         "ci95": {"f1": [0.33, 0.57]},
     }
     text = swap_tex.f1_with_pr(result)
-    assert "0.446" in text and "[0.33, 0.57]" in text
+    assert "0.446" in text and "[0.330, 0.570]" in text
     assert r"\dagger" in text and "P=0.287" in text and "R=1.000" in text

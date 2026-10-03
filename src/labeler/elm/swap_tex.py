@@ -25,21 +25,34 @@ NAME = compare.NAME
 ROWS = (
     (NAME["ours"], "elm-ours"),
     (NAME["elmo"], "elm-elmo"),
-    (NAME["detect"], "elm-dsm (detection)"),
+    (NAME["detect"], compare.DISPLAY_NAME[NAME["detect"]]),
     (NAME["clock"], "elm-clock"),
     (NAME["dsm"], "elm-dsm refit"),
-    ("elm-dsm-detect-exposed", "elm-dsm detection exposed"),
-    (NAME["init"], "elm-dsm detection init"),
+    (NAME["exposed"], compare.DISPLAY_NAME[NAME["exposed"]]),
+    (NAME["init"], compare.DISPLAY_NAME[NAME["init"]]),
 )
 ALWAYS = "always present"
 EXPOSED = {NAME["dsm"], NAME["init"], "elm-dsm-detect-exposed"}
 
 
-def method_label(key: str) -> str:
-    """Keep source exposure visible wherever a method's result is displayed."""
+def method_label(key: str, *, multiline: bool = False) -> str:
+    """Keep upstream reuse visible and wrap table labels at readable font sizes."""
     label = {ALWAYS: "always-present", "elm-feature-only": "elm-feature"}.get(
         key, dict(ROWS).get(key, key)
     )
+    label = label.replace("1×128", r"$1\times128$")
+    if multiline:
+        label = {
+            NAME["detect"]: (
+                r"\shortstack[l]{elm-dsm (60-input $1\times128$\\refit, detection)}"
+            ),
+            NAME["exposed"]: (
+                r"\shortstack[l]{elm-dsm (source statistics,\\detection)}"
+            ),
+            NAME["init"]: (
+                r"\shortstack[l]{elm-dsm (source weights\\and statistics, detection)}"
+            ),
+        }.get(key, label)
     if key in EXPOSED:
         label += r"$^{\ddagger}$"
     return label
@@ -49,11 +62,11 @@ def exposure_heading(columns: int) -> str:
     return (
         r"\midrule\multicolumn{"
         + str(columns)
-        + r"}{l}{\emph{Supplemental: DSM source exposure$^{\ddagger}$}} \\"
+        + r"}{l}{\emph{Supplemental: upstream data reused$^{\ddagger}$}} \\"
     )
 
 
-def cell(point: float, ci, digits=3, ci_digits=2) -> str:
+def cell(point: float, ci, digits=3, ci_digits=3) -> str:
     if math.isnan(point):
         return "--"
     out = f"{point:.{digits}f}"
@@ -117,7 +130,7 @@ def benchmark_table(res: dict, ref_a: str, ref_b: str, labels, record, source) -
         if key in EXPOSED and not exposed:
             lines.append(exposure_heading(5))
             exposed = True
-        label = method_label(key)
+        label = method_label(key, multiline=True)
         lines.append(
             f"{label} & {metric_cell(ra, 'auroc')} & {metric_cell(ra, 'f1')} & "
             f"{metric_cell(rb, 'auroc')} & {metric_cell(rb, 'f1')} \\\\"
@@ -158,7 +171,7 @@ def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
         header(record, source) + "\\begin{tabular}{lcccccc}",
         "\\toprule",
         (
-            "& \\multicolumn{3}{c}{Reference: expert dense labels} & "
+            "& \\multicolumn{3}{c}{Reference: Reviewed occupancy} & "
             f"\\multicolumn{{3}}{{c}}{{Reference: {legacy_label}}} \\\\"
         ),
         "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}",
@@ -171,13 +184,13 @@ def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
             if key in EXPOSED and not exposed:
                 lines.append(exposure_heading(7))
                 exposed = True
-            label = method_label(key)
+            label = method_label(key, multiline=True)
             lines.append(
                 f"{label} & {prf(a['methods'][key])} & {prf(b['methods'][key])} \\\\"
             )
     lines.append("\\midrule")
     lp = leg_vs_rev["point"]
-    identity = r"1.000 {\scriptsize[1.00, 1.00]}$^{\dagger}$"
+    identity = r"1.000 {\scriptsize[1.000, 1.000]}$^{\dagger}$"
     lines.append(
         f"{legacy_label} & {prf(leg_vs_rev)} & 1.000 & 1.000 & {identity} \\\\"
     )
@@ -189,7 +202,7 @@ def full_table(res: dict, record: dict, source: str, legacy_label=None) -> str:
     # precision against the review is the expert's recall against the legacy table
     oracle_f1 = cell(_f1(lp["recall"], lp["precision"]), leg_vs_rev["ci95"]["f1"], 3, 3)
     lines.append(
-        f"expert (oracle) & 1.000 & 1.000 & {identity} & {lp['recall']:.3f} & "
+        f"Reviewed occupancy (oracle) & 1.000 & 1.000 & {identity} & {lp['recall']:.3f} & "
         f"{lp['precision']:.3f} & {oracle_f1} \\\\"
     )
     lines += [
@@ -224,11 +237,18 @@ def write(
     for tag in ("overlap", "overlap_bes"):
         res = record["swap"][tag]
         panels.append(panel_heading(res) + main_table(res, record, source))
+    overlap = record["swap"]["overlap"]
+    refit_a = overlap["reviewed"]["methods"][NAME["dsm"]]["point"]["auroc"]
+    refit_b = overlap["legacy"]["methods"][NAME["dsm"]]["point"]["auroc"]
     caption = (
         "ELM reference swap: eight overlap shots and seven with BES; evidence "
         "is inconclusive. F1 uses review-tuned thresholds; AUROC compares "
-        "references. Source-unexposed subsets (3 shots; 2 with BES) are too small "
-        "for intervals; values are in the JSON. Brackets show shot-bootstrap intervals."
+        "references. Subsets outside original DSM fitting and checkpoint selection "
+        "(3 shots; 2 with BES) are too small for intervals. The refit$^{\\ddagger}$ "
+        "row is the AE Finding-2 analogue: its AUROC rises from "
+        f"{refit_a:.3f} to {refit_b:.3f} under the legacy reference. All eight overlap "
+        "shots use upstream \\texttt{dalpha\\_wpqh.pkl} PCPHD02/03 in the reduced-input "
+        "detection adaptation. Brackets show shot-bootstrap intervals."
     )
     tables = {
         "table_elm_swap.tex": wrap_table(
@@ -252,9 +272,10 @@ def write(
         "table_elm_swap_rankings.tex": wrap_table(
             ranking_table(record, source, "auroc"),
             "AUROC point orders with fixed predictions on strict interior bins "
-            "and known all-covered bins. Eight-shot evidence is inconclusive; "
+            "and known majority bins within every method's coverage. "
+            "Eight-shot evidence is inconclusive; "
             "point crossings cannot establish population ranking reversal. "
-            "Source-exposed variants are supplemental.",
+            "Methods reusing upstream weights or statistics are supplemental.",
             "tab:elm-swap-rankings",
         ),
     }
@@ -268,7 +289,7 @@ def panel_heading(res: dict) -> str:
     else:
         text = f"All {res['n_shots']} overlap shots"
     if not res.get("dsm_refit_training_shots"):
-        text += "; DSM source-unexposed subset"
+        text += "; outside original DSM fitting and selection"
     return f"\\textbf{{{text}: {res['reviewed']['bins']} bins}}\\par\\smallskip\n"
 
 
@@ -312,7 +333,7 @@ def sensitivity_table(record: dict, source: str) -> str:
             else f"All {res['n_shots']} overlap shots"
         )
         if "heldout" in tag:
-            scope += ", elm-dsm source held out"
+            scope += ", outside original DSM fitting and selection"
         groups.append((scope, refs))
     for scope, refs in groups:
         lines.append(r"\multicolumn{7}{l}{\textbf{" + scope + r"}} \\")
@@ -403,8 +424,9 @@ def swap_caption(res: dict, gap: int | None = None, full: bool = False) -> str:
             if full
             else "F1 retains review-tuned thresholds; only AUROC compares references. "
         )
-        + "Brackets show shot-bootstrap intervals; $^{\\ddagger}$ marks supplemental "
-        "source exposure and $^{\\dagger}$ marks recall $\\geq0.99$."
+        + "Brackets show shot-bootstrap intervals; $^{\\ddagger}$ marks methods "
+        "reusing upstream weights or statistics and $^{\\dagger}$ marks recall "
+        "$\\geq0.99$."
     )
 
 

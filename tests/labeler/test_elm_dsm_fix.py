@@ -118,8 +118,8 @@ def test_filter_share_and_risk_quantiles_use_only_usable_rows():
     exposure = out["preprocessing_exposure"]
     assert exposure["applies_to"] == [
         "elm-dsm refit",
-        "elm-dsm detection exposed",
-        "elm-dsm detection init",
+        "elm-dsm (source statistics, detection)",
+        "elm-dsm (source weights and statistics, detection)",
     ]
     assert exposure["blind_cohort_shots"] == [190532, 190646]
 

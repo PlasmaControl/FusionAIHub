@@ -13,11 +13,13 @@ served as 50 ms means on a 25 ms grid. Three things are done with it here.
   `labeler.models.d3d_elm_time_to_event_dsm` serves it (`shot_rows`), its 50 ms risk at
   a bin's start read as the bin's score. This is an offline risk score: centered
   NBI smoothing incorporates a row 25 ms later, so it is not a causal forecast.
-* **Detection** (`Detector`, `fit_fold`): the same inputs and embedding with a single
-  logit in place of the survival heads, trained with cross-entropy to say whether the
+* **elm-dsm (60-input 1×128 refit, detection)** (`Detector`, `fit_fold`): a
+  reduced-input adaptation with a single 128-unit embedding and one logit,
+  trained with cross-entropy to say whether the
   50 ms ending at a row's time stamp is present (ELMy) or absent in the review: the
-  objective changed from "time to the next ELM" to "is an ELM going on now", the
-  horizon 0 case. Trained by shot-grouped cross-validation on the same folds as
+  target is occupancy. The native source instead used 124 inputs, [100, 1000]
+  embedding layers and 1 ms rows; this adaptation is not its objective-only
+  retrain. Trained by shot-grouped cross-validation on the same folds as
   `elm-ours`; the threshold is chosen on each fold's inner-validation shots.
 
 **Rows.** Each row of the 25 ms grid summarises the 50 ms before its time stamp (a
@@ -27,11 +29,13 @@ start the bin before it.
 This is **elm-dsm refit, 60 of the original 124 inputs**, not the original
 124-input checkpoint. Missing `ip` and `bt` can be fetched into the isolated round-four
 store by `elm_dsm_fetch.py`; no corpus or production feature file is changed. Remaining
-missing columns, including the two photodiodes (`pcphd02/03`) on every shot, are filled
-at the training mean. Inputs outside the refit's row filter are clipped rather than
+missing columns, including the two photodiodes (`pcphd02/03`) in the survival and
+historical serving paths, are filled at the training mean. Repaired detection rows
+use measured PCPHD02/03, or the recorded FS02/03 substitutes, and repaired density.
+Inputs outside the refit's row filter are clipped rather than
 dropped; the evaluation records missingness, filter failures and the risk scale.
 
-Historical variants (elm-dsm refit, elm-dsm detection exposed, detection init)
+Historical variants (elm-dsm refit and detectors reusing source statistics or weights)
 use upstream feature means and standard deviations computed before its split.
 They inherit feature-statistics exposure to blind-cohort shots 190532 and 190646;
 this is not reviewed-label leakage. The confirmatory detection fit uses raw rows,
@@ -81,13 +85,20 @@ SERVING = {
     "serving_grid_ms": spec.DT_S * 1000.0,
     "nbi_boxcar_ms": spec.NBI_BOXCAR_MS,
     "nbi_lookahead_ms": spec.NBI_LOOKAHEAD_MS,
-    "dalpha_input": "none; pcphd02/03 always mean-filled",
+    "dalpha_input": "Survival refit and historical detectors mean-fill PCPHD02/03; "
+    "the source-isolated reduced-input detector uses repaired measured photodiodes "
+    "or recorded FS02/03 substitutes (see detection_input_repair)",
+    "native_input_columns": 124,
+    "native_embedding_layers": [100, 1000],
+    "native_trained_row_ms": 1.0,
+    "refit_input_columns": N_COLUMNS,
+    "refit_embedding_layers": [128],
 }
 PREPROCESSING_EXPOSURE = {
     "applies_to": [
         "elm-dsm refit",
-        "elm-dsm detection exposed",
-        "elm-dsm detection init",
+        "elm-dsm (source statistics, detection)",
+        "elm-dsm (source weights and statistics, detection)",
     ],
     "scope": "upstream feature means/std computed before source split",
     "normalization_physical_shots": len(spec.NORMALIZATION_SHOTS),
@@ -292,8 +303,8 @@ class Rows:
     """One shot's DSM inputs on the 25 ms grid."""
 
     shot: int
-    x: np.ndarray  # (240, 60) float32, normalised, mean-filled
-    usable: np.ndarray  # (240,) bool: the ECE record covers the row's 50 ms window
+    x: np.ndarray  # (240, 60): raw or normalised, according to source_signature
+    usable: np.ndarray  # full ECE window, plus measured repaired-input coverage
     in_filter: np.ndarray  # (240,) bool: upstream's |z| <= 10 row filter passes
     missing: tuple[str, ...]  # canonical features nothing served
     resolvers: dict[str, str]
