@@ -216,6 +216,18 @@ def threshold_sensitivity(bins, labels):
     return out
 
 
+def prad_votes_by_tier(labels):
+    """Cast Prad votes by TangTV tier, to show where attached votes can occur."""
+    names = {1: "attached", 2: "detached", 3: "marfe", core.ABSTAIN: "abstain"}
+    out = {}
+    for tier, rows in labels.groupby("tangtv_tier"):
+        counts = rows.prad_vote.value_counts()
+        out[str(tier)] = {
+            name: int(counts.get(code, 0)) for code, name in names.items()
+        }
+    return out
+
+
 def afrac_absence(bins):
     probes = {int(p.stem) for p in (ROOT / "processed_probes").glob("*.npz")}
     maps = set()
@@ -430,6 +442,7 @@ def main():
         "threshold_margins": threshold_margins(bins, labels),
         "threshold_sensitivity": threshold_sensitivity(bins, labels),
         "afrac_absence": afrac_absence(bins),
+        "prad_votes_by_tangtv_tier": prad_votes_by_tier(labels),
         "normalization_change": normalization_change(labels),
         "measurement_gate_audit": measurement_gate_audit(bins),
         "threshold_derivation": {

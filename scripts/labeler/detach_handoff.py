@@ -220,8 +220,9 @@ def main():
             "docs/labeler/figure2_detach.json now provides coverage and upper-shelf "
             "Prad–TangTV agreement. F1-vs-consensus rows were removed. "
             "Do not pass it to the former detector-benchmark row renderer. "
-            "Detachment has no independent benchmark. The authoritative schema "
-            f"description is embedded in the JSON: {dumps(schema.get('schema', {}))}. "
+            "Detachment has no independent benchmark; the JSON says so in "
+            "`independent_benchmark` and `scope`. "
+            f"Schema name: `{schema.get('schema')}`. "
             f"Top-level keys: {', '.join(schema)}."
         ),
         (

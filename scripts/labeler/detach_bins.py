@@ -497,9 +497,7 @@ def process(
     out["aux_greenwald_fraction"] = fg
     out["greenwald_source"] = np.full(
         n,
-        "BCI_DENV2_unit_confirmed_ellipse"
-        if "density_v2_si" in cache
-        else "none",
+        "BCI_DENV2_unit_confirmed_ellipse" if "density_v2_si" in cache else "none",
     )
     # the quantities behind the indicators, for the figure and the failure analysis
     out["aux_ip_a"] = core.bin_median(t_ip, ip, edges)[0].astype(np.float32)

@@ -42,10 +42,34 @@ def replace_block(path, name, text):
     path.write_text(doc[:a] + start + "\n\n" + text + "\n\n" + end + doc[b:])
 
 
+def sensitivity_sentence(rec):
+    """Plain statement of how far the certain composition moves with the cutoffs."""
+    rows = {round(e["shift"], 2): e for e in rec["threshold_sensitivity"]["prad"]}
+
+    def counts(shift):
+        e = rows[shift]["by_state"]
+        return "/".join(str(e[s]["bins"]) for s in ("attached", "detached", "marfe"))
+
+    return (
+        "The certain composition is set by the Prad cutoffs: attached/detached/MARFE "
+        f"bins are {counts(-0.1)} at -0.10, {counts(-0.05)} at -0.05, "
+        f"{counts(0.0)} as exported, {counts(0.05)} at +0.05 and {counts(0.1)} "
+        "at +0.10. Certainty therefore means a TangTV vote plus f_div on the "
+        "same side of one local, single-shot-derived cutoff; it is not a "
+        "threshold-independent state."
+    )
+
+
 def plain_summary(rec, bench):
     current, afrac = rec["current"], rec["afrac_absence"]
     certain, states = current["certain"], rec["composition"]["by_state"]
     pair = bench["paper_agreement"]
+    change = rec["normalization_change"]
+    prad_votes = rec["prad_votes_by_tangtv_tier"]
+    derivation = rec["threshold_derivation"]
+    conflict = bench["failure_analysis"]["prad_detached_where_tangtv_attached_by_tier"][
+        "upper_shelf"
+    ]
     marfe = rec["threshold_margins"]["by_certain_state"]["marfe"]
     lines = [
         (
@@ -67,22 +91,49 @@ def plain_summary(rec, bench):
             f"{afrac['probe_flux_unknown_bins']:,} bins have unknown probe flux. "
             f"No upper-shelf SOL probe passes the position/flux gate "
             f"({afrac['upper_shelf_sol_probe_valid_bins']} bins). The local Jsat proxy "
-            "is uncalibrated; its arbitrary 3000 ms reference minimum is absent. "
-            "Its lower-shelf votes remain provisional. The Snorkel model is vestigial: "
-            "no three-source upper-shelf anchors identify its accuracies, and it "
-            "never decides certainty."
+            "is uncalibrated and casts votes on "
+            f"{sum(afrac['valid_bins_by_tangtv_tier'].values())} bins only "
+            f"({afrac['valid_bins_by_tangtv_tier']['lower_shelf_window']} lower-shelf, "
+            f"{afrac['valid_bins_by_tangtv_tier']['none']} without TangTV). Its "
+            "former 3000 ms minimum-reference gate had no source and was removed. "
+            "The Snorkel model is vestigial: no three-source upper-shelf anchors "
+            "identify its accuracies, and it never decides certainty."
         ),
         (
             f"Upper-shelf Prad–TangTV agreement uses {pair['both_vote_bins']} cast "
             f"pairs on {pair['both_vote_shots']} shots: three-state κ "
             f"{metric(pair['kappa'])}; binary attached/not-attached κ "
             f"{metric(pair['binary_kappa'])}. The 95% intervals resample shots. "
-            "Every upper-shelf cast radiation vote is detached, so agreement "
-            "cannot establish discrimination between states. "
+            f"Raw agreement is {metric(pair['agreement'])}. Prad casts only "
+            "'detached' on the upper shelf, so κ is zero by construction and "
+            "agreement cannot establish discrimination between states; its "
+            f"{prad_votes['none']['attached']} attached votes all fall on bins "
+            "without TangTV, so none can make an attached label certain. In the "
+            f"{conflict['tangtv_attached_bins_with_cast_prad']} pairs where TangTV "
+            f"votes attached, Prad votes detached in {conflict['prad_detached_bins']} "
+            f"({conflict['prad_detached_bins'] / conflict['tangtv_attached_bins_with_cast_prad']:.0%}). "
             "Lower-shelf measurements are reported separately as provisional."
         ),
+        (
+            "Normalising Prad,div and P_in over a centered 250 ms window (instead of "
+            "the 50 ms bin) and repairing the missing-data and negative-radiation "
+            f"gates moved the certain set from {change['before_certain']} bins "
+            f"({change['before_by_state']['attached']['bins']} attached on "
+            f"{change['before_by_state']['attached']['shots']} shots, "
+            f"{change['before_by_state']['detached']['bins']} detached, "
+            f"{change['before_by_state']['marfe']['bins']} MARFE) to "
+            f"{change['after_certain']} ({states['attached']['bins']} attached, "
+            f"{states['detached']['bins']} detached, {states['marfe']['bins']} "
+            "MARFE). None of the earlier attached bins survives. The change combines "
+            "all repairs; it is not an isolated ablation."
+        ),
+        sensitivity_sentence(rec),
     ]
     if marfe["bins"]:
+        fg_cue = {
+            round(e["shift"], 2): e["by_state"]["marfe"]["bins"]
+            for e in rec["threshold_sensitivity"]["greenwald"]
+        }
         fg, f = marfe["greenwald_fraction"], marfe["f_div"]
         shots = ", ".join(str(s) for s in marfe["shot_ids"])
         lines.append(
@@ -90,9 +141,18 @@ def plain_summary(rec, bench):
             f"uncertainty** on {shots}: fG={fg['min']:.3f}–{fg['max']:.3f} "
             f"against a 0.8 cue and f_div={f['min']:.3f}–{f['max']:.3f} "
             "against 0.50. Chord-based fG has about 10–20% geometric uncertainty. "
-            "Published MARFE on 199166 is missed. Descriptive non-test sensitivity "
-            "in the protocol shifts Prad cutoffs by ±0.05/±0.1 and the fG cue by ±0.1; "
-            "no threshold is selected."
+            "The published MARFE on 199166 (3.705 s) is missed: its onset bin fails "
+            "the spatial gate and fG=0.721 is below the 0.8 cue. Shifting the fG "
+            f"cue by ±0.1 changes the MARFE bins from {marfe['bins']} to "
+            f"{fg_cue[-0.1]} (0.70) or {fg_cue[0.1]} (0.90); "
+            "no threshold is selected from this."
+        )
+        lines.append(
+            "The Prad cutoffs 0.36/0.50 come from one worked example in Chen 2026 "
+            f"(shot 201081; Chen reports {derivation['reported_nbi_mw']:g} MW NBI, "
+            f"while {derivation['local_total_heating_assumption_mw']:g} MW total "
+            "heating was assumed here and is unsourced). The 201081 `pinj` fetch "
+            "failure is a PTDATA client configuration error, not missing data."
         )
     return "\n\n".join(lines)
 
@@ -116,17 +176,27 @@ def cnn_tables(baselines):
                 ]
             )
             matrix = e["confusion_matrix"]
+            counts = matrix["counts"]
+            keep = [
+                k
+                for k in range(len(counts))
+                if sum(counts[k]) or sum(row[k] for row in counts)
+            ]
+            absent = [matrix["labels"][k] for k in range(len(counts)) if k not in keep]
             confusion.append(
-                f"{label}, {name} population: rows are reference, columns prediction."
+                f"{label}, {name} population: rows are reference, columns prediction"
+                + (
+                    f" ({', '.join(absent)}: no reference bins, never predicted)."
+                    if absent
+                    else "."
+                )
             )
             confusion.append(
                 table(
-                    ["Reference", *matrix["labels"]],
+                    ["Reference", *[matrix["labels"][k] for k in keep]],
                     [
-                        [state, *values]
-                        for state, values in zip(
-                            matrix["labels"], matrix["counts"], strict=True
-                        )
+                        [matrix["labels"][k], *[counts[k][j] for j in keep]]
+                        for k in keep
                     ],
                 )
             )
@@ -164,6 +234,7 @@ def cnn_tables(baselines):
 
 
 def results_text(rec, bench, reference, baselines):
+    widths = load("bin_sensitivity")
     current, states = rec["current"], rec["composition"]["by_state"]
     certain, survey = current["certain"], current["corpus_survey"]
     cov = json.loads((RECORDS / "coverage.json").read_text())
@@ -346,6 +417,28 @@ def results_text(rec, bench, reference, baselines):
                 "Certain bins / shots",
             ],
             sensitivity,
+        ),
+        sensitivity_sentence(rec),
+        (
+            "Bin-width sensitivity (descriptive; non-test shots with a "
+            "TangTV-eligible grid):"
+        ),
+        table(
+            ["Bin width (ms)", "Assessed bins / shots", "Certain bins / shots"],
+            [
+                [
+                    w,
+                    (
+                        f"{widths[f'{w}ms']['n_assessed_bins']} / "
+                        f"{widths[f'{w}ms']['n_assessed_shots']}"
+                    ),
+                    (
+                        f"{widths[f'{w}ms']['n_certain_bins']} / "
+                        f"{widths[f'{w}ms']['n_certain_shots']}"
+                    ),
+                ]
+                for w in (20, 50, 100)
+            ],
         ),
         (
             f"The vestigial Snorkel diagnostic has {model['fit']['anchor_bins']} "

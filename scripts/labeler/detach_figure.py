@@ -602,16 +602,16 @@ def main() -> None:
     inv = np.load(root() / "inversions" / f"{args.shot}.npz")
     video = read_video(args.shot)
     profiles, bolo_source = bolo_profiles(args.shot, times)
-    fig = plt.figure(figsize=(6.75, 5.05), constrained_layout=False)
+    fig = plt.figure(figsize=(6.75, 5.45), constrained_layout=False)
     outer = fig.add_gridspec(
         3,
         3,
         height_ratios=[1, 1.15, 0.9],
         left=0.095,
         right=0.965,
-        top=0.925,
-        bottom=0.135,
-        hspace=0.4,
+        top=0.93,
+        bottom=0.2,
+        hspace=0.42,
         wspace=0.42,
     )
     notes = []
@@ -752,7 +752,7 @@ def main() -> None:
         ],
         [r"EFIT $\psi_N$ and wall", "X-point", "outer strike point", "C-III height"],
         loc="lower center",
-        bbox_to_anchor=(0.5, 0.04),
+        bbox_to_anchor=(0.5, 0.045),
         ncol=4,
         frameon=False,
     )

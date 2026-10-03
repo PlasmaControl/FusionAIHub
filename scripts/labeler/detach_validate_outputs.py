@@ -35,12 +35,16 @@ def main():
     assert frame.confidence.isna().all()
     assert (valid.sum(axis=1) >= 2).all()
     assert (votes[~valid] == core.ABSTAIN).all()
-    assert frame.loc[frame.prad_valid, "aux_prad_divl_w"].ge(
-        -thresholds.RADIATION_NEGATIVE_TOL_W
-    ).all()
-    assert frame.loc[frame.prad_valid, "aux_prad_divl_native_w"].ge(
-        -thresholds.RADIATION_NEGATIVE_TOL_W
-    ).all()
+    assert (
+        frame.loc[frame.prad_valid, "aux_prad_divl_w"]
+        .ge(-thresholds.RADIATION_NEGATIVE_TOL_W)
+        .all()
+    )
+    assert (
+        frame.loc[frame.prad_valid, "aux_prad_divl_native_w"]
+        .ge(-thresholds.RADIATION_NEGATIVE_TOL_W)
+        .all()
+    )
     assert frame.loc[frame.prad_valid, "aux_p_in_w"].notna().all()
     assert frame.loc[frame.prad_valid, "aux_prad_elm_window_known"].all()
     assert frame.prad_averaging_ms.eq(250.0).all()

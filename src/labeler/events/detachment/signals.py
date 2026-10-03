@@ -314,7 +314,9 @@ def elm_mask(shot: int, cache=None):
     # Fill only for the running-filter calculation; restore unknown samples below.
     filtered_input = np.interp(t, t[available], x[available])
     step = float(np.median(np.diff(t)))
-    base = median_filter(filtered_input, size=max(3, round(50.0 / step)), mode="nearest")
+    base = median_filter(
+        filtered_input, size=max(3, round(50.0 / step)), mode="nearest"
+    )
     resid = x - base
     sigma = 1.4826 * np.nanmedian(np.abs(resid - np.nanmedian(resid)))
     flag = (resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)) & (
