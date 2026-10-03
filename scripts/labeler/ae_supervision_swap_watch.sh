@@ -29,7 +29,11 @@ read_queue() {
 
 while true; do
     date -Is
-    QUEUE=$(read_queue)
+    if ! QUEUE=$(read_queue); then
+        echo "queue query failed; keeping active training and retrying" >&2
+        sleep 60
+        continue
+    fi
     echo "$QUEUE"
     COMPLETE=0
     for TASK in {0..8}; do
