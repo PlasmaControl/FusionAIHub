@@ -1,4 +1,7 @@
-# Figure 1 — current state after fix round 4
+# Figure 1 — historical fix round 4
+
+This report is historical. Use [fix_round5.md](fix_round5.md) and
+`fix_round5_audit.json` for the current figures, records and verification.
 
 Status: **DONE**. Both `fig1-opus4.md` and `fig1-sol4.md` were read in full;
 all Important and Minor findings are addressed. This is the current report;

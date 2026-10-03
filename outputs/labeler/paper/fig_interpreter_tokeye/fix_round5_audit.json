@@ -1,0 +1,2257 @@
+{
+ "primary_shot": 201978,
+ "ae_threshold": 0.5,
+ "ae_threshold_source": "scripts/labeler/ae_baselines_evaluate.py, SELDnet",
+ "renders": [
+  {
+   "shot": 201978,
+   "split": "train",
+   "window_ms": [
+    1500.0,
+    3300.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
+   "record_sha256": "40dc0240cfb931923856b06c17530a83e94f05d0b965694231aa12e988f41000",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 319,
+    "neoclassical_tearing_mode": 11,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 49,
+   "caption_words": 104,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.856494945298435,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM (n=1/2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "absent",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6371620274200249,
+       0.6358564814814814,
+       0.655954049200328
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6131620274200249,
+       0.6744907407407408,
+       0.631954049200328
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.23095582329317269,
+       0.32666666666666666,
+       0.24974784507347572
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5955003718013381,
+       0.924474279835391,
+       0.6401620274200249
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5420003323442673,
+       0.9425761316872429,
+       0.5866619879629541
+      ]
+     },
+     {
+      "text": "NTM (n=1/2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5143699267255804,
+       0.973687242798354,
+       0.5331619485058834
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4652794364664772,
+       0.8403539094650206,
+       0.4829562041432448
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43764903084779033,
+       0.8403539094650206,
+       0.45532579852455796
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4100186252291035,
+       0.8403539094650206,
+       0.4276953929058711
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.38238821961041664,
+       0.8625761316872429,
+       0.4011802413907196
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.30245434298911944,
+       0.9099835390946502,
+       0.3212463647694225
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2748239373704326,
+       0.9159094650205762,
+       0.2936159591507356
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.43966820987654326,
+       0.015909090909090907,
+       0.494158950617284,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5589737654320988,
+       0.015909090909090907,
+       0.6078626543209876,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 325.6319853984378,
+    "n1_median_khz": 9.09634334969907,
+    "n2_median_khz": 18.46139555610238
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201978.json",
+     "sha256": "b659e2927436add70947e1274e0912ad3e8f5b1764f53355bd9e904ee4b799ba"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2309.0999434491773,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2309.0999434491773,
+     "end_ms": 2329.3999429689698,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 2329.3999429689698,
+     "end_ms": 2334.8999428388643,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2334.8999428388643,
+     "end_ms": 3196.1999224643546,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3196.1999224643546,
+     "end_ms": 3207.199922204144,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3207.199922204144,
+     "end_ms": 3234.799921551251,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3234.799921551251,
+     "end_ms": 3241.2999213974904,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3241.2999213974904,
+     "end_ms": 3300.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 1799.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1799.0,
+     "end_ms": 3300.0,
+     "category": 1,
+     "state": "present"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 832.0999429051008,
+    "unassessed": 967.9000570948992
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 20174,
+    "density_samples": 53880,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": {
+    "band_khz": [
+     109.8632861763747,
+     188.47657095146948
+    ],
+    "pixels": 18725,
+    "columns": 1019,
+    "first_time_ms": 3011.2326321770747,
+    "last_time_ms": 3271.8406204911626,
+    "minimum_duration_ms": 150.0,
+    "rule": "8-connected coherent components in the AE detector band; late ABSENT times after the last PRESENT AE interval; continuous component duration >=150 ms",
+    "reason": "AE detector absent; time coincidence is required"
+   },
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "410bb037baa2715a15a772f0e1c96bdbc9e66b414cd3c6f5bc7d3caa49a8aa29",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "7a36c52540ada76baad7c9131d9ca1b5632a0255bf776618fd119e65eadac060"
+   }
+  },
+  {
+   "shot": 201973,
+   "split": "val",
+   "window_ms": [
+    1600.0,
+    3350.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
+   "record_sha256": "50224460863f9ea46519167c24baf51783bdefb114b521ffe453e7a4be1ae13a",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 154,
+    "neoclassical_tearing_mode": 14,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 3,
+   "elm_peak_count": 65,
+   "caption_words": 143,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.815930079155673,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM (n=1/2, \u226430 kHz)",
+     "ECE-verified crashes",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "uncertain",
+     "absent",
+     "blank: unassessed / unobservable",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333",
+     "#D55E00"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6523100263852243,
+       0.6358564814814814,
+       0.6711020481655273
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6283100263852243,
+       0.6744907407407408,
+       0.6471020481655273
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.2471978891820581,
+       0.32666666666666666,
+       0.26598991096236113
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.6106483707665374,
+       0.924474279835391,
+       0.6553100263852243
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5571483313094667,
+       0.9425761316872429,
+       0.6018099869281536
+      ]
+     },
+     {
+      "text": "NTM (n=1/2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5295179256907798,
+       0.973687242798354,
+       0.5483099474710829
+      ]
+     },
+     {
+      "text": "ECE-verified crashes",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.3484164214914648,
+       0.9599603909465021,
+       0.3672084432717678
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4887673449743144,
+       0.8403539094650206,
+       0.5064441126510821
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4611369393556276,
+       0.8403539094650206,
+       0.47881370703239523
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43350653373694076,
+       0.8403539094650206,
+       0.4511833014137084
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.40587612811825385,
+       0.8625761316872429,
+       0.4246681498985569
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.31574623679489494,
+       0.9099835390946502,
+       0.334538258575198
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2881158311762081,
+       0.9159094650205762,
+       0.30690785295651113
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.21855709876543206,
+       0.015909090909090907,
+       0.2730478395061728,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "uncertain",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3378626543209876,
+       0.015909090909090907,
+       0.4074922839506172,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.47230709876543214,
+       0.015909090909090907,
+       0.5211959876543211,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5860108024691358,
+       0.015909090909090907,
+       0.8289737654320989,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 221.18400825169738,
+    "n1_median_khz": 6.549541522483164,
+    "n2_median_khz": 13.183593258159664
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
+     "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2093.5999485469442,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2093.5999485469442,
+     "end_ms": 3037.4999262184874,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3037.4999262184874,
+     "end_ms": 3193.099922537687,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3193.099922537687,
+     "end_ms": 3259.199920974056,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 3259.199920974056,
+     "end_ms": 3323.4999194530055,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3323.4999194530055,
+     "end_ms": 3350.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": true,
+   "sawtooth_display_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 2093.5999485469442,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2093.5999485469442,
+     "end_ms": 3037.4999262184874,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3037.4999262184874,
+     "end_ms": 3193.099922537687,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3193.099922537687,
+     "end_ms": 3259.199920974056,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 3259.199920974056,
+     "end_ms": 3323.4999194530055,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3323.4999194530055,
+     "end_ms": 3350.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1600.0,
+     "end_ms": 1793.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 1793.0,
+     "end_ms": 2224.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 2224.0,
+     "end_ms": 3013.0,
+     "category": 5,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3013.0,
+     "end_ms": 3350.0,
+     "category": 0,
+     "state": "absent"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 66.09999843636933,
+    "absent": 0,
+    "uncertain": 713.499943345093,
+    "unassessed": 970.4000582185377
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 9649,
+    "density_samples": 33680,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": {
+    "band_khz": [
+     177.24608713747992,
+     220.70311676622842
+    ],
+    "pixels": 26384,
+    "columns": 789,
+    "first_time_ms": 2450.081101039958,
+    "last_time_ms": 2651.8091085658248,
+    "minimum_duration_ms": 150.0,
+    "rule": "8-connected coherent components in the AE detector band; late ABSENT times after the last PRESENT AE interval; continuous component duration >=150 ms",
+    "reason": "AE detector absent; time coincidence is required"
+   },
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "e0383e6c52db0c8c63cd91c08ff58c113d764124c0ff66cb9d7edb0f2367bc38",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "82b82a2c6584f96f9081d1b0ef669b9b130a70e6774838e4212e9b01ff8859f4"
+   }
+  },
+  {
+   "shot": 203187,
+   "split": "train",
+   "window_ms": [
+    1700.0,
+    3150.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
+   "record_sha256": "7f66f9084c79b0a4a64f541cc2721e5a39316b0c2105d6fa0f8a62a161ee52cc",
+   "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
+   "tag_counts": {
+    "alfven_eigenmode": 262,
+    "neoclassical_tearing_mode": 8,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 6,
+   "caption_words": 72,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.856494945298435,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM (n=1/2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00",
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6371620274200249,
+       0.6358564814814814,
+       0.655954049200328
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6131620274200249,
+       0.6744907407407408,
+       0.631954049200328
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.23095582329317269,
+       0.32666666666666666,
+       0.24974784507347572
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5955003718013381,
+       0.924474279835391,
+       0.6401620274200249
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5420003323442673,
+       0.9425761316872429,
+       0.5866619879629541
+      ]
+     },
+     {
+      "text": "NTM (n=1/2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5143699267255804,
+       0.973687242798354,
+       0.5331619485058834
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4652794364664772,
+       0.8403539094650206,
+       0.4829562041432448
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43764903084779033,
+       0.8403539094650206,
+       0.45532579852455796
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4100186252291035,
+       0.8403539094650206,
+       0.4276953929058711
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.38238821961041664,
+       0.8625761316872429,
+       0.4011802413907196
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.30245434298911944,
+       0.9099835390946502,
+       0.3212463647694225
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2748239373704326,
+       0.9159094650205762,
+       0.2936159591507356
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.28577932098765424,
+       0.015909090909090907,
+       0.340270061728395,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.4050848765432098,
+       0.015909090909090907,
+       0.4539737654320987,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5187885802469137,
+       0.015909090909090907,
+       0.7617515432098767,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 44.032000235739815,
+    "n1_median_khz": 2.8442382660219985,
+    "n2_median_khz": 5.4931640330896965
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json",
+     "sha256": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 3052.799925856558,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3052.799925856558,
+     "end_ms": 3114.099924406474,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1700.0,
+     "end_ms": 2270.0,
+     "category": 0,
+     "state": "absent"
+    },
+    {
+     "start_ms": 2270.0,
+     "end_ms": 2793.0,
+     "category": 1,
+     "state": "present"
+    },
+    {
+     "start_ms": 2793.0,
+     "end_ms": 3114.0,
+     "category": 0,
+     "state": "absent"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1352.7999258565578,
+    "unassessed": 61.29999854991638
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 31080,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "a9250a6b006dd33a1bb21b4baf9a9ae78dd2b7a1d1bbbd4b9676256858b34981",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "70ddf622800e232e525e263365aa5cf68fb6e8e416a9c89b46dfc8d2061cf959"
+   }
+  },
+  {
+   "shot": 186636,
+   "split": "val",
+   "window_ms": [
+    1300.0,
+    3900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
+   "record_sha256": "c2ec1fb18f9ba51ff0837c95ce29f64866d32163c8205cc7bb273070df850c14",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 307,
+    "neoclassical_tearing_mode": 4,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 0,
+   "caption_words": 70,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.856494945298435,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "AE (detector band\n\u226580 kHz)",
+     "NTM (n=1/2, \u226430 kHz)",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "present",
+     "uncertain",
+     "absent",
+     "blank: unassessed / unobservable",
+     "expert ELM interval (one span for many ELMs)"
+    ],
+    "present_chip_colours": [
+     "#CC79A7",
+     "#E69F00"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6371620274200249,
+       0.6358564814814814,
+       0.655954049200328
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6131620274200249,
+       0.6744907407407408,
+       0.631954049200328
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.23095582329317269,
+       0.32666666666666666,
+       0.24974784507347572
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5955003718013381,
+       0.924474279835391,
+       0.6401620274200249
+      ]
+     },
+     {
+      "text": "AE (detector band\n\u226580 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5420003323442673,
+       0.9425761316872429,
+       0.5866619879629541
+      ]
+     },
+     {
+      "text": "NTM (n=1/2, \u226430 kHz)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5143699267255804,
+       0.973687242798354,
+       0.5331619485058834
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4652794364664772,
+       0.8403539094650206,
+       0.4829562041432448
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43764903084779033,
+       0.8403539094650206,
+       0.45532579852455796
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4100186252291035,
+       0.8403539094650206,
+       0.4276953929058711
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.38238821961041664,
+       0.8625761316872429,
+       0.4011802413907196
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.30245434298911944,
+       0.9099835390946502,
+       0.3212463647694225
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.21855709876543206,
+       0.015909090909090907,
+       0.2730478395061728,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "uncertain",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3378626543209876,
+       0.015909090909090907,
+       0.4074922839506172,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.47230709876543214,
+       0.015909090909090907,
+       0.5211959876543211,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5860108024691358,
+       0.015909090909090907,
+       0.8289737654320989,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "expert ELM interval (one span for many ELMs)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.3506622942386831,
+       0.04990909090909092,
+       0.6896669238683127,
+       0.06870111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 41.98400058090647,
+    "n1_median_khz": 9.526791648077122,
+    "n2_median_khz": 18.920898175707485
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/186636.json",
+     "sha256": "1f1f5a4a5ca8513e75c69f8e9dfef34ecc7b7bd934a4282113096a4016dcb318"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1300.0,
+     "end_ms": 3140.5999237796027,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3140.5999237796027,
+     "end_ms": 3900.0,
+     "category": 3,
+     "state": "unassessed"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1300.0,
+     "end_ms": 3900.0,
+     "category": 5,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1840.5999237796027,
+    "unassessed": 759.4000762203973
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_and_local_bt",
+    "cutoff_proxy": true,
+    "high_density_samples": 12802,
+    "density_samples": 61331,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "ca40a2c50009e0718fcf988d588cc05224350787d73c7b0c35bd81ebb0ceee4f",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "78d30fab39c6903f4828565af571b3bb42cec267aedcf9c31bfc67df4aeed04c"
+   }
+  },
+  {
+   "shot": 191376,
+   "split": "train",
+   "window_ms": [
+    1500.0,
+    2900.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191376.json",
+   "record_sha256": "9abbdf1478cbf52de657297c03f58531d43c3dc7ba608a6f3b97b9ccc850f122",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 2,
+   "caption_words": 32,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.856494945298435,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "ELM intervals",
+     "D-alpha peaks",
+     "present",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [
+     "#333333"
+    ],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6371620274200249,
+       0.6358564814814814,
+       0.655954049200328
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6131620274200249,
+       0.6744907407407408,
+       0.631954049200328
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.23095582329317269,
+       0.32666666666666666,
+       0.24974784507347572
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5955003718013381,
+       0.924474279835391,
+       0.640162027420025
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4652794364664772,
+       0.8403539094650206,
+       0.4829562041432448
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43764903084779033,
+       0.8403539094650206,
+       0.45532579852455796
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4100186252291035,
+       0.8403539094650206,
+       0.4276953929058711
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.38238821961041664,
+       0.8625761316872429,
+       0.4011802413907196
+      ]
+     },
+     {
+      "text": "ELM intervals",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.30245434298911944,
+       0.9099835390946502,
+       0.3212463647694225
+      ]
+     },
+     {
+      "text": "D-alpha peaks",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.2748239373704326,
+       0.9159094650205762,
+       0.2936159591507356
+      ]
+     },
+     {
+      "text": "present",
+      "font_pt": 7.0,
+      "bounds": [
+       0.28577932098765424,
+       0.015909090909090907,
+       0.340270061728395,
+       0.03358585858585859
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.4050848765432098,
+       0.015909090909090907,
+       0.4539737654320987,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.5187885802469137,
+       0.015909090909090907,
+       0.7617515432098767,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 0.0
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json",
+     "sha256": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2900.0,
+     "category": 2,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1500.0,
+     "end_ms": 2058.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2058.0,
+     "end_ms": 2065.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2065.0,
+     "end_ms": 2219.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2219.0,
+     "end_ms": 2503.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2503.0,
+     "end_ms": 2670.0,
+     "category": 1,
+     "state": "H-mode"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1400.0,
+    "unassessed": 0
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 53420,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "f168185065a2f7e848c6170fa974784f9aab40b581427b3fb3091dfa0a554cee",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "b90329e0e8907726ade213954fac9c970d0c12900a1a25a1ae685e01bb9d60dc"
+   }
+  },
+  {
+   "shot": 191782,
+   "split": "train",
+   "window_ms": [
+    1800.0,
+    3700.0
+   ],
+   "record": "outputs/labeler/paper/fig_interpreter_tokeye/191782.json",
+   "record_sha256": "6ab6418757b0b374cc2f1aa43a4609d97dfa25fc0b695170e599a27462cdf3a4",
+   "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
+   "tag_counts": {
+    "alfven_eigenmode": 0,
+    "neoclassical_tearing_mode": 0,
+    "sawtooth_oscillation": 0
+   },
+   "verified_crashes": 0,
+   "elm_peak_count": 0,
+   "caption_words": 26,
+   "projection_violations": 0,
+   "unmeasured_ntm_pixels": 0,
+   "measured_n3_outline_pixels": 0,
+   "layout": {
+    "n_panel_height_units": 1.3,
+    "n_panel_height_in": 0.856494945298435,
+    "n_panel_band_khz": [
+     0.0,
+     30.0
+    ],
+    "processed_omitted_band_khz": [
+     30.0,
+     55.0
+    ],
+    "legend_labels": [
+     "TokEye mask,\nn not measured",
+     "n=1",
+     "n=2",
+     "n=3",
+     "other n",
+     "absent",
+     "blank: unassessed / unobservable"
+    ],
+    "present_chip_colours": [],
+    "heading_and_legend_text_bounds": [
+     {
+      "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.9570000000000001,
+       0.5755555555555556,
+       0.975792021780303
+      ]
+     },
+     {
+      "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6371620274200249,
+       0.6358564814814814,
+       0.655954049200328
+      ]
+     },
+     {
+      "text": "mask \u2192 remove small objects / fill holes \u2192 components \u2192 time/band tags",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.6131620274200249,
+       0.6744907407407408,
+       0.631954049200328
+      ]
+     },
+     {
+      "text": "Labels; source at right",
+      "font_pt": 7.0,
+      "bounds": [
+       0.14,
+       0.23095582329317269,
+       0.32666666666666666,
+       0.24974784507347572
+      ]
+     },
+     {
+      "text": "TokEye mask,\nn not measured",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.5955003718013381,
+       0.924474279835391,
+       0.640162027420025
+      ]
+     },
+     {
+      "text": "n=1",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4652794364664772,
+       0.8403539094650206,
+       0.4829562041432448
+      ]
+     },
+     {
+      "text": "n=2",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.43764903084779033,
+       0.8403539094650206,
+       0.45532579852455796
+      ]
+     },
+     {
+      "text": "n=3",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.4100186252291035,
+       0.8403539094650206,
+       0.4276953929058711
+      ]
+     },
+     {
+      "text": "other n",
+      "font_pt": 7.0,
+      "bounds": [
+       0.810724279835391,
+       0.38238821961041664,
+       0.8625761316872429,
+       0.4011802413907196
+      ]
+     },
+     {
+      "text": "absent",
+      "font_pt": 7.0,
+      "bounds": [
+       0.345432098765432,
+       0.015909090909090907,
+       0.39432098765432094,
+       0.03470111268939394
+      ]
+     },
+     {
+      "text": "blank: unassessed / unobservable",
+      "font_pt": 7.0,
+      "bounds": [
+       0.45913580246913577,
+       0.015909090909090907,
+       0.7020987654320987,
+       0.03470111268939394
+      ]
+     }
+    ]
+   },
+   "regimes_shown": [
+    "H-mode",
+    "L-mode"
+   ],
+   "harmonic_support": {
+    "frequency_ratio_tolerance": 0.1,
+    "minimum_support_ms": 50.0,
+    "caption_frequency_step_khz": 1.0,
+    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
+    "support_ms": 0.0
+   },
+   "render_source_commit": "21e72826",
+   "sawtooth_source": [
+    {
+     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json",
+     "sha256": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5"
+    }
+   ],
+   "sawtooth_states": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 3700.0,
+     "category": 2,
+     "state": "uncertain"
+    }
+   ],
+   "sawtooth_track_shown": false,
+   "sawtooth_display_intervals_ms": [],
+   "sawtooth_display_merge": {
+    "minimum_duration_ms": 10.0,
+    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "changes": []
+   },
+   "confinement_intervals_ms": [
+    {
+     "start_ms": 1800.0,
+     "end_ms": 2127.0,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 2168.0,
+     "end_ms": 2189.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2200.072,
+     "end_ms": 2239.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2250.072,
+     "end_ms": 2289.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2300.072,
+     "end_ms": 2339.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2350.072,
+     "end_ms": 2389.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2400.072,
+     "end_ms": 2439.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2450.072,
+     "end_ms": 2482.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2482.0,
+     "end_ms": 2489.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2489.955,
+     "end_ms": 2500.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2500.072,
+     "end_ms": 2539.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2539.955,
+     "end_ms": 2550.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2550.072,
+     "end_ms": 2589.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2589.955,
+     "end_ms": 2600.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2600.072,
+     "end_ms": 2639.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2639.955,
+     "end_ms": 2650.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2650.072,
+     "end_ms": 2689.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2689.955,
+     "end_ms": 2700.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2700.072,
+     "end_ms": 2739.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2739.955,
+     "end_ms": 2750.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2750.072,
+     "end_ms": 2789.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2789.955,
+     "end_ms": 2800.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2800.072,
+     "end_ms": 2839.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2839.955,
+     "end_ms": 2850.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2850.072,
+     "end_ms": 2889.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2889.955,
+     "end_ms": 2900.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2900.072,
+     "end_ms": 2939.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2939.955,
+     "end_ms": 2950.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2950.072,
+     "end_ms": 2989.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 2989.955,
+     "end_ms": 3010.069,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3010.069,
+     "end_ms": 3039.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3039.955,
+     "end_ms": 3050.071,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3050.071,
+     "end_ms": 3089.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3089.955,
+     "end_ms": 3100.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3100.072,
+     "end_ms": 3139.955,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3139.955,
+     "end_ms": 3150.072,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3150.072,
+     "end_ms": 3178.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3178.0,
+     "end_ms": 3188.0,
+     "category": 1,
+     "state": "H-mode"
+    },
+    {
+     "start_ms": 3351.0,
+     "end_ms": 3389.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3389.954,
+     "end_ms": 3400.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3400.072,
+     "end_ms": 3439.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3439.954,
+     "end_ms": 3450.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3450.072,
+     "end_ms": 3489.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3489.954,
+     "end_ms": 3500.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3500.072,
+     "end_ms": 3539.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3539.954,
+     "end_ms": 3550.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3550.072,
+     "end_ms": 3589.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3589.954,
+     "end_ms": 3600.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3600.072,
+     "end_ms": 3639.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3639.954,
+     "end_ms": 3650.072,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3650.072,
+     "end_ms": 3689.954,
+     "category": 2,
+     "state": "L-mode"
+    },
+    {
+     "start_ms": 3689.954,
+     "end_ms": 3700.0,
+     "category": 2,
+     "state": "L-mode"
+    }
+   ],
+   "sawtooth_state_duration_ms": {
+    "present": 0,
+    "absent": 0,
+    "uncertain": 1900.0,
+    "unassessed": 0
+   },
+   "sawtooth_density_proxy": {
+    "status": "Thomson_90percentile_fixed_density_guard_bt_missing",
+    "cutoff_proxy": true,
+    "high_density_samples": 0,
+    "density_samples": 56230,
+    "fixed_density_guard_m3": 8e+19,
+    "margin": 0.9
+   },
+   "late_untagged_high_frequency": null,
+   "pdf_size_in": [
+    6.75,
+    5.5
+   ],
+   "figure_sha256": {
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "ec3c9df88e20e15a9cae225f985b372865eebf306f8673faafca55f0b1c2cc8e",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "6aea1d3720a9d81960cc58e4af6cb5ce4982ddb97455c7afb3c0429e61f8cb35"
+   }
+  }
+ ],
+ "checked_sources": {
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201978.json": "b659e2927436add70947e1274e0912ad3e8f5b1764f53355bd9e904ee4b799ba",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/201978.h5": "89ec0aea7414faeb1111127e2c93d050e0dbf6783ac1b623a23f2bc59821c217",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/201978.h5": "5fc8a98f5bc32f398afdea3327090b416fc36465b3d4b7ec3823f3682a16e50f",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/201978.h5": "703e87454e3b0e6a3542f4b80419a0e9efa3b611dcd551f89eaf14239d54f74b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/201978.h5": "776611e08d884fe08a3d5e2cbecc4b6d082a64feaa0c3dee26fb11dedb539a4d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.csv": "ea4e80d6cb4cfefa6f959b9065489fabf5b4225cfb90f0bef2eeaa9da55e58e1",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.meta.json": "abf8eee386a55866a2866e4a82d519da2ac5be06c3d0be6080c80d491024cf1f",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.csv": "5440c7cd5a3747656169d9b271ac7ff2879aaa22388d986fc828525cc4ab4957",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/ntm_frames/v2/neoclassical_tearing_mode_suggest_ntm_frames_v2.meta.json": "e1a6455f423bd6ed126b231aa49228c36193c3a82d3dafb72cae980d4ef8afa8",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.csv": "31dfaccbda8fabcb8ac503dba0a405af1e420b8687004cde6e6957c7dfdd58af",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/dalpha_lh/v1/confinement_suggest_dalpha_lh_v1.meta.json": "17cf7be88e2deac4213a5d42bb92d78855207b3166850d6661f5230dfaac8663",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/review/labels.csv": "6ae3497e921eadd134959b248aab93c6ca06511e7689041a52270e58cfdae380",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201978.meta.json": "af7bf10b3e0ed6c6597988b6962376aab3c1e843dead015242145d460d947f95",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/tokeye/big_tf_unet_251210.pt": "4afc3948ba53af40cb2787441b251757f8c77e764784e0aaa2602af0471229a9",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/201973.h5": "ea62fb08cc8e35d7ca04db770c4416a3d2b2860730ed452b616d17622e2d35b2",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/201973.h5": "a7ec797ef9b07fa26061a2387285165c09d1d5a6b22c495270335874d3c848c9",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/201973.h5": "e89d9a6e1d292e0a47eada17b23b7e8da3a8b59b87af0a884516a4eca1e3d4cb",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/201973.h5": "cbdf1d4ce3b8e3c8939bf4f0fdc6cbf8b663bff7998825bf720ef6a83cb56ff7",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.meta.json": "6db0a612123179497fdff8821db671dc0f92eadd63c0139b5a050baf5895f7f2",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.json": "f475f0183c35fccdb7238a85d83e86f83702848378097c48fbbe50b22a16024c",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/203187.h5": "1d168f8353b0b7e730ff6698cb784dd4c6cd39f6e6530bbf623b2ccd43b44d78",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/203187.h5": "e5c673e43d90719edcdeb98c397b62064d9bcbceb898e5f7c3c1a0452cd02e8a",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/203187.h5": "c29fe940892d74af82bc2a69c80d942ee5b686f6de0b115366478d1b6c917ddb",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/203187.h5": "c16003d7e8283e9d6123836c812147b3b34c8890b8601394e59b7a25bcb1e589",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/203187.meta.json": "00cc7ba35e801ec64eccdb15acd7524bf3c0410affb1022657d80d0c40143800",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/186636.json": "1f1f5a4a5ca8513e75c69f8e9dfef34ecc7b7bd934a4282113096a4016dcb318",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/186636.h5": "ecc2d9c351fd2fc3ab6900bac6397b882c6a9fee2bbba8907ad8d22a927d19a6",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/186636.h5": "337edc7722fd979309b6aae7157e71e98534e9ff2ebd29162bbd3224b538e15d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/186636.h5": "56d4ce16f5c6e238ef0de0991142f833151b1c1851c6dbadf17890f778ef88ff",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/186636.h5": "540b305c313ad4eb271657d10985143de9e6fe313a30b93ca3f86dea116a8f9b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/ae_xpower/v2/band80-mhd10/model.pt": "f4693f8304365ce39766360511155131c43a5b5a9ea4924bdb9ab764359d9024",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.csv": "f6d09fb6ccdffc8c8c84bd18698d612079bbb2d72b3e3313a657b0b815495a7b",
+  "/scratch/gpfs/nc1514/FusionAIHub/data/events/neoclassical_tearing_mode/format/neoclassical_tearing_mode_format_2026_v1.meta.json": "f9d40a20b1177379c4f8b25ac810784204e2ef529cae63aee49f3c5c53eebe82",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/186636.meta.json": "84f48a694a4c16dc903a3f55f80529651281b5ae8add3eb9a7009a8ae0961c43",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.json": "ed10cf833e6c0552aa4d65452abf24637704a60f7c6ba0c1461df000c86caced",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/191376.h5": "3cf057bc629e5aef16ec9c5e2682f43dcdd63e12e747dbe9aae6d91a1a90b542",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/191376.h5": "bd9ed005a162815566c6451aac25aac054e10fc038653c9af7e41614b502f2b1",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/191376.h5": "34d865089ce3bbc6d96619bd24f9fb6c622dd7d66b1c7c808e46bb714fd63cde",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/191376.h5": "f919adf0dec3a882cb24f63bae24245b92b6b47bda1dcb14e7beb3388d99b162",
+  "/scratch/gpfs/nc1514/FusionAIHub/runs/labeler/confinement/v1/merged_intervals.csv": "72de466aeae391cb06852d0cfcf6a322d185fe2557d6f5b3c36d6ff690f663f2",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.csv": "b63b93485b2320a6d27849a2f2d6b1e04b7c6a8c65373d55b3d2413dfc01de85",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_frames/v2/edge_localized_mode_suggest_elm_frames_v2.meta.json": "ba4e660688292c0668b7750debeeb50aaca5f232bfb212a4f43fa03a9b37da7d",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191376.meta.json": "bed985ee7eb313bf51b23e51ae213e1fce8c84f27b2f13e7ac2096ae7bd929ce",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.json": "dbd834e3fbfb0b583335e9740e3b5debb409bac0d03d33c3572fe7f05b4e94a5",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/edge_localized_mode/191782.h5": "4795671f52f609b9f0932faa788ec2f0b54e5d4bfbfa99be90b2cc7b2dba2926",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/neoclassical_tearing_mode/191782.h5": "f38b1cc609ec3e08e83c30cd53da5397c3eb5a66cc970676d9cb0a1b085f900b",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/high_confinement_mode/191782.h5": "243535cafa7653ec39e7b263a44221a9909c11e7cc20df7e760db076afa21eed",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/spectrograms/sawtooth_oscillation/191782.h5": "f7d5c543ff7349ede001c8311108357d47e5872d8501a775ac00f6e131fada60",
+  "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/191782.meta.json": "9301ff6da16cd2161ea6508d2de7b5ecb9791c210fef8b7aa6ad172ad36bff5f"
+ },
+ "blind_test_shots_used": 0,
+ "sawtooth_source_manifest": {
+  "path": "outputs/labeler/paper/fig_interpreter_tokeye/sawtooth_source_manifest.json",
+  "sha256": "49a5f689cdf551fefdd636aeb86d729b2ec46ce055984d0331474648b0142e60",
+  "original_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/saw/fix2/shots",
+  "snapshot_source": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots",
+  "completion_sha256": "79a2c18ed4aae29ba2f08aa8caaeff0c74c23cf7a24b4b150b6aa943500f10c4"
+ },
+ "reproducibility": {
+  "command": [
+   "pixi",
+   "run",
+   "--frozen",
+   "--no-install",
+   "--manifest-path",
+   "/scratch/gpfs/nc1514/FusionAIHub/pyproject.toml",
+   "-e",
+   "labelmaker",
+   "python",
+   "scripts/labeler/paper/fig_interpreter_tokeye.py",
+   "--shot",
+   "201978",
+   "--tmin",
+   "1500.0",
+   "--tmax",
+   "3300.0",
+   "--out",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit5-primary-rebuild",
+   "--ae-labels",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/ae_ours.csv",
+   "--sawtooth-source",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots"
+  ],
+  "before": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "410bb037baa2715a15a772f0e1c96bdbc9e66b414cd3c6f5bc7d3caa49a8aa29",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "7a36c52540ada76baad7c9131d9ca1b5632a0255bf776618fd119e65eadac060"
+  },
+  "after": {
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "410bb037baa2715a15a772f0e1c96bdbc9e66b414cd3c6f5bc7d3caa49a8aa29",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "7a36c52540ada76baad7c9131d9ca1b5632a0255bf776618fd119e65eadac060"
+  },
+  "identical": true,
+  "rebuild_files": [
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit5-primary-rebuild/fig_interpreter.pdf",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/audit5-primary-rebuild/fig_interpreter.png"
+  ]
+ }
+}
