@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
 
-from labeler.config import Paths, sha256_of
-from labeler.elm.net import ElmUNet
+from labeler.config import Paths, git_sha, sha256_of
+from labeler.elm import net
 
 REPO = Path(__file__).resolve().parents[2]
 OUTPUTS = REPO / "outputs/labeler/elm"
@@ -32,8 +33,10 @@ def metric(res, key):
     point = res["point"][key]
     if not math.isfinite(point):
         return "--"
-    lo, hi = res["ci95"][key]
-    value = f"{point:.3f} [{lo:.3f}, {hi:.3f}]"
+    ci = res.get("ci95", {}).get(key)
+    value = f"{point:.3f}"
+    if ci is not None and math.isfinite(ci[0]):
+        value += f" [{ci[0]:.3f}, {ci[1]:.3f}]"
     if key == "f1" and res["point"]["recall"] >= 0.99:
         value += "†"
     return value
@@ -306,648 +309,265 @@ def native_rows(record):
 
 def main():
     files = {
-        "ours": OUTPUTS / "ours/evaluation.json",
-        "dsm": OUTPUTS / "dsm/evaluation.json",
-        "swap": OUTPUTS / "swap/evaluation.json",
-        "repeats": OUTPUTS / "ours/seed_repeats.json",
-        "strata": OUTPUTS / "ours/annotation_strata.json",
-        "filterscopes": OUTPUTS / "filterscope_metadata.json",
-        "native": OUTPUTS / "dsm/native_evaluation.json",
-        "native_fetch": OUTPUTS / "dsm/native_fetch.json",
+        "ours": "ours/evaluation.json",
+        "dsm": "dsm/evaluation.json",
+        "swap": "swap/evaluation.json",
+        "feature": "ours/feature_only.json",
+        "strata": "ours/annotation_strata.json",
+        "smith": "smith/evaluation.json",
+        "smoothed": "ours/smoothed_selection.json",
     }
-    records = {key: json.loads(path.read_text()) for key, path in files.items()}
-    ours, dsm, swap, repeats = (
-        records[key] for key in ("ours", "dsm", "swap", "repeats")
-    )
-    parameter_count = sum(p.numel() for p in ElmUNet().parameters())
-    cohort = pd.read_csv(Paths.from_env().catalog / "cohort.csv")
-    cohort_counts = {
-        str(key): int(value) for key, value in cohort.split.value_counts().items()
+    records = {
+        key: json.loads((OUTPUTS / path).read_text())
+        for key, path in files.items()
+        if (OUTPUTS / path).exists()
     }
-    reviewed_counts = {
-        str(key): int(value)
-        for key, value in cohort[cohort.shot.isin(ours["sets"]["all119"]["shots"])]
-        .split.value_counts()
-        .items()
-    }
-    doc = """# ELMy-phase occupancy: current ELM protocol
-
-## What is measured
-
-The task is **ELMy-phase occupancy** from DIII-D diagnostics. About 97% of
-present scored bins are crowd bins (whole ELMing periods); aggregate F1 mainly
-measures that target. Non-crowd spans and mixed annotation modes are reported
-separately below. **The requested onset deliverable is incomplete:** there are
-no independently adjudicated physical onsets, and the onset head is withdrawn.
-Span-touch recall cannot establish event precision or millisecond timing accuracy.
-A reference swap compares fixed predictions with legacy onset bins and occupancy
-conversions of that source.
-
-## Data and splits
-
-There are 119 reviewed shots, all in the fixed cohort train or validation split.
-No cohort blind-test shot enters the U-Net or isolated DSM detector's fitting,
-normalization, checkpoint selection or threshold selection. Supplemental DSM
-source models retain upstream exposure described below. Primary all119 bins use
-fetched filterscope/interferometer
-coverage. The BES subset uses ELM-O chunks; common DSM panels additionally require
-both offline-risk and detection rows. All methods within a panel use identical
-shots and bins. Sources: `outputs/labeler/elm/ours/evaluation.json:sets` and
-`outputs/labeler/elm/dsm/evaluation.json:sets`.
-
-Five outer folds group entire physical shots. Each outer training side reserves
-14 inner-validation shots for checkpoint and threshold selection. Fixed
-partitions and every shot list are in `ours/seed_repeats.json:folds` and the
-large run records under `$LABELER_ROOT/round4/elm/cv/`. The original partition
-seed is 20261003; three repeats change only training randomness.
-
-## Models and inputs
-
-- **elm-ours:** a 1D U-Net with 401,714 parameters. It uses FS02–FS04 D-alpha,
-  DENV2F/DENV3F fast density and a validity mask; no BES. Samples are reduced to
-  0.1 ms cells (filterscope maximum, density mean), with log D-alpha level,
-  0.5 s median contrast, density and 0.2 s high-pass channels. FS01 was excluded
-  because the existing native-rate ELM-O cache contains FS02–FS04 only; it was
-  not trained or evaluated, rather than being universally unavailable. The
-  metadata and corpus-availability audit is `filterscope_metadata.json`.
-  See `src/labeler/elm/inputs.py` for scaling and source
-  ordinate provenance; no speculative density rescaling is applied.
-- **ELM-O:** the paper reimplementation, requiring BES, with hard-call eta 0.997.
-  Its rank scores use the saved nested eta sweep on the same evaluated bins.
-- **elm-clock:** the original rule that seeded the review; this reference is
-  therefore dependent on the clock. The clock has no continuous rank score.
-- **elm-dsm detection (isolated):** the fair detection baseline: the same
-  60-input, 128-unit embedding and one occupancy logit, trained for 40 epochs
-  in the fixed shot folds. It starts from independent random weights and fits
-  normalization using measured, usable, labelled rows of the outer training
-  partition only. Missing inputs are filled at that partition's mean.
-- **elm-dsm refit‡:** a **one-epoch**, 60/124-input survival refit, supplemental
-  offline forward-risk score, distinct from a native-checkpoint evaluation.
-  Its served checkpoint was selected after the first epoch of a seven-epoch run.
-- **elm-dsm detection (exposed), detection init‡:** historical 40-epoch
-  detection fits with upstream normalization; the initialized embedding also
-  inherits source-fitting and checkpoint-selection exposure. Supplemental only.
-- **always present:** the trivial baseline, retained in every table.
-
-FILTERSCOPE_AUDIT
-
-The 60-input deployment adaptations have **no D-alpha input (pcphd02/03
-mean-filled); CO2 missing on 75/119**. Survival refit inputs are served as 50 ms
-means although it was trained on 1 ms rows; detection fits train and serve on
-the reviewed 50 ms-mean rows. The survival refit is an
-**offline risk score with 25 ms centered-NBI lookahead (not a causal forecast)**.
-The 1 ms training describes the source survival refit; detection heads are
-refitted on the reviewed 50 ms-mean rows.
-Only the supplemental DSM variants use upstream normalization constants
-computed **before the upstream split**, including blind-cohort source shots
-**190646 and 190532**.
-This is feature-statistics exposure, separate from reviewed-label leakage. The
-historical scratch detection variant inherits it too; the new isolated detector
-does not load these constants or source weights. Sources:
-`dsm/evaluation.json:model_context`, `row_diagnostics`; source notebook
-`/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/data_processing.ipynb:4406`.
-
-Physical-shot fitting, selection and normalization membership is retained in
-`src/labeler/models/d3d_elm_time_to_event_dsm/training_membership.json`. The
-adapter's exposed-shot membership prevents general validation from labelling
-these shots held out. DSM source-validation scores used for early stopping are
-validation evidence. The supplemental models do not certify blind-cohort
-isolation. The serving risk scale is poorly calibrated, and out-of-filter rows
-are clipped to normalized ±10 instead of being discarded.
-
-Reviewers labelled from D-alpha after starting from the D-alpha clock. The
-U-Net therefore has direct input coupling to the review, while the adapted DSM
-inputs are D-alpha-free. Architecture, objective and input choice vary together;
-the U-Net–DSM gap cannot be attributed to architecture alone.
-
-## Training and metrics
-
-elm-ours trains 25 epochs per fold, 40 iterations per epoch, batch 16, 4096 ms
-crops, learning rate 0.002, weight decay 0.01 and dropout 0.1. Masked event loss
-uses present/crowd versus absent milliseconds; uncertain, unobservable and
-unlabelled time is ignored. The existing auxiliary span-start loss remains in
-the checkpoints, but the onset head is **withdrawn from paper outputs**, with no
-onset retraining: span starts are not adjudicated physical onsets and its
-agreement was weak. Only occupancy scores and detections are plotted/reported.
-Checkpoint selection maximizes finite inner-validation AUPRC; an all-NaN
-history now raises a clear error instead of returning an undefined best row.
-This single-epoch selection is noisy: original fold 3 selected epoch 2 during
-OneCycle warm-up, and fold 4 selected a single validation spike. Across four
-seeds thresholds span 0.11–0.91. Full histories and a three-epoch moving-average
-selection audit are reported below; rerunning all twenty U-Net fits is deferred
-because historical runs retained only the selected checkpoints. Reported scores
-retain their original selection rule without selecting a better seed.
-
-A scored 50 ms cell lies wholly inside one known reviewed span and analysed
-time; the span must have at least half its duration analysed. Scores are pooled
-bin AUROC, average precision (AUPRC), precision, recall and F1. elm-ours bin
-scores average the occupancy trace and call a bin present when its mean is
-≥ the fold threshold; thresholds maximize inner-validation F1. ELM-O and the
-clock use **any-touch** calls: one detected interval touching a bin suffices.
-ELM-O detects individual bursts, so an occupied crowd bin containing no detected
-burst counts against it under this phase-occupancy benchmark.
-Detected runs use a centered 50 ms moving mean. Non-crowd touch recall and absent
-touch rates count any interval overlap and do not establish onset accuracy.
-Every detected interval is intersected with the panel's analysed coverage before
-raw or guarded span counting; detections outside that coverage receive no credit.
-Intervals are 95% percentile physical-shot bootstraps with 1000 shared draws;
-paired differences use identical draws. † marks recall ≥0.99; numeric F1 and
-intervals remain visible, with precision/recall beside them. ‡ marks supplemental
-rows containing shots used in source fitting, preprocessing or checkpoint
-selection, even when reviewed-label fitting and threshold selection are out of fold.
-
-## Results
-
-### Primary reviewed bins
-
-"""
-    doc += benchmark_rows(ours)
-    doc += """
-
-Source: `outputs/labeler/elm/ours/evaluation.json:sets.<set>.methods`.
-The BES comparison has similar point estimates and no significant difference
-detected; this is not an equivalence result. Paired differences and intervals
-are in the same record's `paired` fields.
-
-### Crowd and non-crowd targets
-
-"""
-    counts = ours["sets"]["all119"]["methods"]["elm-ours"]["counts"]
-    positive = counts["tp"] + counts["fn"]
-    crowd = counts["crowd_bins"]
-    doc += (
-        f"Of {positive:,} present bins, {crowd:,} ({100 * crowd / positive:.2f}%) "
-        f"are crowd bins; only {positive - crowd} are non-crowd.\n\n"
+    ours, detector = (records[k] for k in ("ours", "dsm"))
+    primary = ours["sets"]["all119"]
+    cohort_path = Paths.from_env().catalog / "cohort.csv"
+    cohort = pd.read_csv(cohort_path).set_index("shot")
+    cohort_counts = cohort.split.value_counts().to_dict()
+    reviewed_counts = dict(Counter(cohort.loc[primary["shots"], "split"]))
+    parameters = net.n_parameters(net.ElmUNet())
+    pos = primary["methods"]["elm-ours"]["counts"]
+    crowd_share = pos["crowd_bins"] / (pos["tp"] + pos["fn"])
+    domain = (
+        "The DSM and legacy onset table were built on WPQH phases with "
+        "breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect "
+        "definition and domain shift (192721: 1 legacy bin versus 17 non-crowd "
+        "review spans)."
     )
-    doc += kind_rows(ours)
-    doc += "\n\n### Annotation-mode shot groups\n\n"
-    doc += mode_rows(ours)
-    doc += """
-
-Groups use each shot's complete reviewed annotation; metrics use covered bins.
-The disjoint counts are 56 crowd-only, 13 non-crowd-only, 20 mixed and 30 with
-no present span (119 total). Thus 33 shots contain non-crowd spans, 76 contain
-crowds, and 20 are in both. The earlier count of 29 no-present shots omitted
-shot 194600, which has absent/uncertain annotations but no scored bins. Thus 29
-no-present shots contribute bins while the complete group has 30. No-present
-F1/AUROC/recall are undefined; its absent-bin call fraction
-is the relevant metric. Every displayed interval resamples physical shots within
-its group. Non-crowd-only F1 near 0.42 shows that phase occupancy can fill the
-gaps between individually annotated spans. Sources: `ours/evaluation.json:
-annotation_modes,sets.<set>.annotation_modes` and `sets.<set>.methods`.
-
-### Common DSM bins
-
-"""
-    doc += benchmark_rows(dsm)
-    doc += """
-
-Source: `outputs/labeler/elm/dsm/evaluation.json:sets.<set>.methods`.
-Input availability, architecture and objective differ together; their effects
-cannot be separated causally. In-sample DSM source exposure is disclosed below.
-
-### Survival refit on its own target (supplemental)
-
-"""
-    doc += own_target_rows(dsm)
-    own = dsm["own_target"]
-    doc += (
-        f"\n\nThe **one-epoch** 60/124-input refit uses {own['rows']:,} original "
-        f"1 ms rows from {own['shots']} physical shots. These are early-stopping "
-        "validation rows (called test upstream), not untouched test evidence; "
-        "phase records of one shot occur on both source split sides. Intervals "
-        "group physical shots. The 40-epoch isolated detection retrain above is "
-        "the fair adapted DSM detection baseline. The one-epoch survival adaptation "
-        "must not be presented as the native 124-input checkpoint. Source: "
-        "`dsm/evaluation.json:own_target`.\n"
+    lines = [
+        "# ELM occupancy and onset evaluation",
+        "",
+        (
+            f"`elm-ours` is a {parameters:,}-parameter 1D U-Net over FS02--FS04 log "
+            "D-alpha and DENV2F/3F native density ordinates, without BES. The "
+            "reviewed target is occupancy of known ELMy intervals in 50 ms bins, "
+            f"with {100 * crowd_share:.2f}% of positive bins supplied by crowd spans. "
+            "Reviewed non-crowd starts are not independently verified physical onsets."
+        ),
+        "",
+        domain,
+        "",
+        (
+            f"The fixed cohort is {cohort_counts['train']} train / "
+            f"{cohort_counts['val']} validation / {cohort_counts['test']} blind test. "
+            f"The {primary['n_shots']} reviewed shots are {reviewed_counts['train']} "
+            f"train and {reviewed_counts['val']} validation; five fixed physical-shot "
+            "folds reserve 14 inner-validation shots for checkpoint and F1 threshold "
+            "selection. No blind-test shots enter fits, normalization or tuning. "
+            "These review results are development estimates: earlier development "
+            "included outer-fold predictions, and folds share run days. The original "
+            "cv2 recipe and thresholds remain frozen; independent Smith evaluation "
+            "uses its five-checkpoint ensemble. Smoothed selection is a sensitivity."
+        ),
+        "",
+        "## Reviewed occupancy",
+        "",
+        f"Original signal-coverage panel: {primary['n_shots']} shots / "
+        f"{primary['bins']:,} bins; AUROC "
+        + metric(primary["methods"]["elm-ours"], "auroc")
+        + "; F1 "
+        + metric(primary["methods"]["elm-ours"], "f1")
+        + ". "
+        "The main paper table uses identical DSM-covered bins for all core rows.",
+        "",
+        "| Panel / method | Bins | AUROC | AUPRC | F1 |",
+        "|---|---:|---|---|---|",
+    ]
+    model_lines = []
+    rows = (
+        ("elm-ours", "elm-ours"),
+        ("elm-elmo", "elm-elmo"),
+        ("elm-dsm-detect", "elm-dsm (detection)"),
+        ("elm-clock", "elm-clock"),
+        ("always present", "elm-always-present"),
+        ("elm-feature-only", "elm-feature-only"),
     )
-    doc += "\n### Native 124-input checkpoint and 1 ms coverage\n\n"
-    doc += native_rows(records["native"])
-    doc += """
-
-### Absent-span boundary sensitivity
-
-"""
-    doc += alarm_rows(ours)
-    counts = ours["sets"]["all119"]["methods"]["elm-ours"]["counts"]
-    doc += (
-        f"\n\nThe all119 raw denominator is {counts['absent_spans']} absent spans; "
-        f"{counts['absent_spans_guard25_empty']} have no interior after removing "
-        "25 ms at both edges. The guarded share retains the raw denominator; "
-        "the final column uses only nonempty interiors. Centered 50 ms smoothing "
-        "can spill detected runs across annotation edges, particularly short "
-        "inter-ELM gaps. A boundary touch can trigger the raw metric without "
-        "an interior alarm. Sources: `ours/evaluation.json:span_alarm_definition` "
-        "and `sets.<set>.methods.<method>.{point,ci95,counts}`.\n"
-    )
-    doc += """
-
-### Seed stability
-
-Three new full five-fold CV runs retain the original outer and inner shot
-partitions and all hyperparameters. Checkpoints and thresholds are selected
-independently within each fixed inner-validation fold. All four runs are
-reported; no best seed is selected. Shot intervals quantify sampling uncertainty;
-the seed range/SD quantify training variability and are not confidence intervals.
-
-"""
-    doc += repeat_rows(repeats)
-    doc += """
-
-Source: `outputs/labeler/elm/ours/seed_repeats.json:{results,seed_ranges}`;
-each entry points to its large evaluation, run record, hashes, selected epochs
-and fold thresholds. All predictions remain out of fold by physical shot.
-
-The checkpoint audit found that a prespecified trailing three-epoch mean after
-warm-up would select a different epoch in 15/20 folds. Fold 3's original epoch-2
-AUPRC was 0.961 versus 0.911 in its immediate neighborhood; fold 4's selected
-epoch-12 AUPRC was 0.936 versus 0.768 in its neighborhood. The saved artifacts
-contain only the selected weights. A smoothed result therefore needs all twenty
-folds retrained: observed training alone took 0.945 serial GPU-hours, before
-inference and artifact serialization. This is not a cheap checkpoint rescore.
-No improved smoothed-model result is claimed. Source: `ours/annotation_strata.json:
-checkpoint_selection_audit`.
-
-## Reference-swap protocol and results
-
-Legacy overlap is reported first: the **onset table has 576 shots / 8 reviewed
-overlaps**. The shot-level `elm_all_ground_truth` has **365 / 5**, all labelled
-yes; shot 192751 has no reviewed present span, so this is not bin truth. The
-independent Smith BES windows have **211 / 0** and cannot support this reference swap.
-Source: `swap/evaluation.json:overlap`.
-
-The **legacy onset table** uses the `wpqh_elm_hiro`
-annotations, compiled into 50 ms bins by `scripts/labeler/labels_format.py` and
-the category formatter (`labeler.events.source_formatters`), as described in
-`data/events/README.md`. It overlaps eight reviewed shots: 189885, 190637, 190643,
-192721, 192732, 192751, 196541 and 200385; seven have BES/ELM-O chunks.
-The all-covered audit includes every legacy-covered cell intersecting the
-review window, assigning review state by ≥25 ms occupancy. Unknown review time
-is listed separately. The ranking sets require complete known-span interior
-bins and DSM rows, a restriction relative to the all-covered audit.
-
-**Finding 1** is agreement of legacy reference with reviewed occupancy:
-M = reviewed-present/legacy-absent; P = legacy-present/reviewed-absent.
-The onset version is retained. Occupancy references merge legacy-positive
-50 ms intervals whose intervening gaps are ≤τ, at τ=100/200/300 ms. Missing
-legacy coverage is never bridged. No margin extends beyond first/last positive
-intervals, and no τ is chosen on performance. These are target-definition
-sensitivities, not counts of independently verified missing or false ELMs.
-
-"""
-    doc += audit_rows(swap)
-    doc += """
-
-Sources: `swap/evaluation.json:interval_audit.known_review_majority` and
-`interval_audit_occupancy.gap_<tau>ms.known_review_majority`. Uncertain positives
-on shot 192751 remain unknown rather than being treated as reviewed absent.
-
-**Finding 2** rescored identical saved predictions/calls under each reference;
-thresholds were not selected again. **Learned-method F1 operating points were
-tuned against the review** in inner validation, including the survival refit's
-risk threshold. Thus only **AUROC** supports cross-reference method comparisons;
-F1 orders describe fixed review-tuned operating points and favor that target.
-The review order and every reference's
-pair reversals are in `swap.<set>.{reviewed,legacy}.ranking`, `comparison`, and
-`occupancy.gap_<tau>ms.{legacy.ranking,comparison}`. The reference orders are:
-
-"""
-    doc += ranking_rows(swap)
-    doc += """
-
-The DSM refit trained on **190637, 190643, 192721, 192751 and 196541**,
-five of the eight overlap shots. Its refit row and initialized embedding are
-marked **in-sample with respect to source fitting**, even though reviewed-label
-threshold selection is out of fold. The three-source-unexposed-shot analysis
-(189885, 192732, 200385) is separately reported at
-`swap.overlap_dsm_heldout` and `swap.overlap_bes_dsm_heldout`, under every
-reference. Upstream feature-statistics exposure remains in supplemental models;
-the new isolated detector has no source weights or normalization. The small
-overlap gives broad intervals.
-Numerical AUROC/F1 with intervals and precision/recall for all variants are in
-the committed swap tables; no high-recall F1 is hidden.
-
-The legacy onset-bin reference misses **31%** of reviewed-present bins
-(M/P = 60/14 on 782 known bins); 200 ms occupancy misses **17%** (34/60).
-These are occupancy disagreements, not adjudicated missed physical ELMs.
-Across the complete eight-shot overlap, the historical AUROC order and leader
-remain unchanged under every conversion: no AUROC reversal was observed.
-F1 changes involve review-tuned operating points and the degenerate high-recall
-survival refit. With eight shots a reversal can be neither shown nor ruled out;
-the three-shot source-unexposed and two-shot BES subsets are still less precise.
-The evidence is **inconclusive** and does not establish the AE ranking-reversal
-result. Sources: `swap/evaluation.json:interval_audit,interval_audit_occupancy,
-swap.<set>.comparison`.
-
-The added isolated DSM arm preserves the complete eight-shot primary AUROC
-order as well. On the seven-shot BES companion, however, its AUROC point order
-with ELM-O crosses under the 100/200/300 ms occupancy conversions. This new
-point crossing does not alter the leader and does not establish a reversal
-with this small overlap; it must not be hidden by the historical-family result.
-Source: `swap/evaluation.json:swap.overlap_bes.occupancy.<gap>.comparison`.
-
-## Limitations
-
-- The annotations differ between shots: 33 contain non-crowd/per-ELM spans
-  and 76 contain whole ELMing-period crowds, with **20 shots in both**.
-  Short absent gaps between
-  per-ELM spans and sustained crowd occupancy are different targets. Their
-  starts are not verified physical ELM onsets. Source: `ours/evaluation.json:
-  annotation_modes`.
-- The clock seeded the review; clock scores and detector-derived proxies are
-  dependent-reference diagnostics. Raw absent-span touches are annotation
-  disagreements, not verified physical false alarms or annotation errors.
-- Shot CV does not group run days. Earlier development runs had outer-fold
-  predictions, so these results are development estimates. Same-day exposure
-  and historical provenance are recorded in `training_history.json`.
-- GroupNorm sees crops during training and whole shots during inference;
-  no separate effect-size study was performed. Three seed repeats do not
-  replace run-day validation or expert event adjudication.
-- DSM diagnostics, serving resolution, noncausal NBI preprocessing,
-  source normalization exposure, in-sample swap shots and poor calibration
-  limit interpretation.
-- The offline source-metadata audit cannot verify physical ordinate units for
-  DENV2F/DENV3F on any reviewed shot: the original fast-channel cache discarded
-  them, and accessible offline source files do not retain them. The unsupported
-  m⁻² declaration is removed. The scale is **10¹⁴ native source-ordinate units
-  (physical units unverified)**, with no numerical rescaling. Source paths,
-  channel names, cache/array hashes and metadata sidecars are preserved in
-  `density_units.json`. Round-three filterscope metadata fetching is authorized
-  and recorded separately; this does not establish fast-density ordinate units.
-
-## Artifacts and reproduction
-
-Committed tables: `outputs/labeler/elm/table_elm_benchmark.tex` and
-`outputs/labeler/elm/swap/table_elm_*.tex`. Large PDF/150 dpi PNG examples and
-table copies live under `$LABELER_ROOT/round4/elm/`; `figures/fig_elm_examples.json`
-specifies the selection rule, windows, source units and per-panel fold thresholds.
-Non-crowd shading and clock bars have distinct colors. Use the figure at its
-recorded two-column width. Source/table hashes are in `tables.json`.
-
-Run CPU Python through the mandated pixi wrapper with this worktree's PYTHONPATH,
-LABELER_ROOT, LABELER_LABEL_TABLES, LABELER_NO_FETCH=1 and the ELM TMPDIR. Arguments:
-
-```text
-scripts/labeler/elm_ours_evaluate.py --run cv2
-scripts/labeler/elm_annotation_strata.py --run cv2
-scripts/labeler/elm_dsm_evaluate.py --run cv2 --rescore --refresh-report
-scripts/labeler/elm_dsm_native.py
-scripts/labeler/elm_reference_swap.py --run cv2
-scripts/labeler/elm_seed_repeats.py --aggregate
-scripts/labeler/elm_paper_tables.py
-scripts/labeler/elm_table_proofs.py
-scripts/labeler/elm_table_proofs.py --record-viewed
-scripts/labeler/elm_example_figure.py --run cv2
-scripts/labeler/elm_protocol.py
-scripts/labeler/elm_fix3_verify.py
-scripts/labeler/elm_fix3_report.py
-```
-
-Inspect every rendered table PNG before running `--record-viewed`; the latter
-checks unchanged source/render hashes and records that completed inspection.
-Seed training uses `elm_seed_repeats.py --train` in the prescribed CUDA venv,
-CUDA_VISIBLE_DEVICES=0 with modest resources. Tests use only covering files via
-the required pt.sh wrapper; scoped Ruff and format checks are recorded in
-`fix_round3_verification.json`. No labels or production stores are modified.
-
-## Appendix: fix history
-
-Round one corrected physical DSM phase IDs, source-shot overlap, onset-proximity
-interpretation, diagnostic fetching and fit/rescore provenance. Round two adds
-occupancy references, explicit DSM exposures/serving conditions, visible high-recall
-F1, guarded alarm rates, three seeds, adapter membership and current-state artifacts.
-Superseded DSM snapshots are archived outside git with hashes at
-`round2_records.json:archived_records`; one current consolidated DSM record remains.
-The complete chronological history is in the stream's round-four report, not this
-protocol. Earlier elm-ours cv2 provenance is retrospective; new repeats capture
-provenance automatically. No external reviewer score is claimed here.
-
-Fix round 3 clips detections to panel coverage, adds annotation-mode intervals,
-fits a source-isolated 40-epoch DSM detector with fold-local normalization,
-audits native 124-input evaluation, and replaces table boilerplate with compact
-captions and a shared appendix note. The onset deliverable remains incomplete.
-"""
-    doc = doc.replace("401,714", f"{parameter_count:,}")
-    doc = doc.replace("FILTERSCOPE_AUDIT", filterscope_rows(records["filterscopes"]))
-    doc = doc.replace(
-        "There are 119 reviewed shots, all in the fixed cohort train or validation split.",
-        "The fixed cohort contains "
-        + ", ".join(f"{cohort_counts[tag]} {tag}" for tag in ("train", "val", "test"))
-        + ". The 119 reviewed shots contain "
-        + ", ".join(f"{reviewed_counts.get(tag, 0)} {tag}" for tag in ("train", "val"))
-        + "; these counts are recorded in `outputs/labeler/elm/protocol.json:metadata`.",
-    )
-    (REPO / "docs/labeler/elm_ours.md").write_text(doc)
+    for tag in ("all119", "bes73"):
+        subset = detector["sets"][tag]
+        for key, label in rows:
+            if key == "elm-feature-only":
+                res = records["feature"]["sets"]["common"][tag]["methods"][key]
+            else:
+                res = subset["methods"].get(key)
+            if res is None:
+                continue
+            cells = [metric(res, k) for k in ("auroc", "auprc", "f1")]
+            lines.append(
+                f"| {tag} / {label} | {subset['bins']:,} | " + " | ".join(cells) + " |"
+            )
+            if tag == "all119" or key == "elm-elmo":
+                model_lines.append(
+                    f"- {label} | 2026_10_03 | AUROC: {cells[0]} | "
+                    f"AUPRC: {cells[1]} | F1: {cells[2]} "
+                    f"({subset['n_shots']} shots / {subset['bins']:,} common bins)"
+                )
+    lines += [
+        "",
+        (
+            "Inputs are explicit in the main caption. The revised isolated DSM "
+            "detector uses real PCPHD02/03 where available (otherwise labelled FS "
+            "substitutes), and native DENV2F/3F means for CO2 v2/v3. Its remaining "
+            "60-column inputs are actuator, magnetic, slow CO2 and ECE diagnostics, "
+            "with fold-training-only normalization and mean fill. Native density "
+            "physical calibration remains unresolved; scale/paired-unit checks and "
+            "old/new DSM scores are in `dsm/evaluation.json`. Historical source-exposed "
+            "survival and detection variants are supplemental. Native 124-input "
+            "forecasts use forward presence and non-crowd onset targets in (t,t+h]. "
+            "The four exact-export shots appear only in the appendix JSON record."
+        ),
+        "",
+        (
+            "The clock seeded D-alpha review. Crowd-boundary identity within "
+            "1 ms is 56% of starts, 44% of ends and 33% of both; exact counts are in "
+            "`ours/annotation_strata.json`. D-alpha sightlines remain unverified. "
+            "Bin calls are U-Net mean score at its fold threshold, DSM bin-end score, "
+            "or any touching ELM-O/clock span. Detected spans are clipped to panel "
+            "coverage. Short inter-ELM gaps and centered 50 ms smoothing contribute "
+            "to occupancy disagreements. Per-kind, annotation-mode, guarded alarm, "
+            "review non-crowd tau-merge and seed diagnostics remain in appendix records."
+        ),
+        "",
+        (
+            "Intervals use 1000 physical-shot bootstrap replicates. Valid and "
+            "undefined counts are retained for each metric. Fewer than five shots "
+            "with positive targets yields descriptive estimates only, without a "
+            "population 95% interval; this includes the two-shot BES subset."
+        ),
+        "",
+        "## Independent Smith evaluation",
+        "",
+        (
+            "`smith/evaluation.json` records 2,316 hand-labelled windows on 211 "
+            "shots, exact shot/run-day overlap, frozen checkpoint hashes and "
+            "thresholds, 1 ms occupancy metrics and one-to-one event onset matching "
+            "at ±2/5 ms with timing errors. Window occupancy differs from 50 ms crowd "
+            "occupancy. `elm-ours-onset` is trained only on Smith shots with grouped "
+            "CV; review and cohort blind-test shots are excluded. ELM-O uses its "
+            "published fixed setting. Its previous 0.997 precision / 0.980 recall "
+            "are window-overlap reimplementation scores, not comparable onset "
+            "matching scores; the paper digest reports 0.995 / 0.976 on 972 tuning "
+            "ELMs. Poor onset agreement means the onset output is not delivered."
+        ),
+        "",
+        "## Reference swap",
+        "",
+        (
+            "The legacy WPQH onset table has 576 shots, eight overlapping review; "
+            "seven have BES. Finding 1 on 782 known all-covered bins gives M/P = "
+            "60/14 (onset bins) and 34/60 (200 ms covered-gap occupancy). Unknown "
+            "review time is excluded. These are definition disagreements, not "
+            "adjudicated missing physical events. Covered-gap merges at 100/200/300 "
+            "ms never bridge unavailable coverage. Finding 2 uses fixed predictions "
+            "on both 641 strict interior bins and 782 known all-covered bins. "
+            "Only AUROC supports cross-reference comparisons because F1 thresholds "
+            "were review-tuned. Eight-shot evidence is inconclusive; point crossings "
+            "do not establish a population ranking reversal. Full values and "
+            "bootstrap draw counts are in `swap/evaluation.json`."
+        ),
+        "",
+        "## Artifacts and reproduction",
+        "",
+        (
+            "Small canonical JSON records and the six-row, two-panel main table are "
+            "under `outputs/labeler/elm/`; supplemental tables are under `appendix/` "
+            "and `swap/`. Large checkpoints, predictions, vector PDF / 150 dpi PNG "
+            "figures and table proofs live under `$LABELER_ROOT/round4/elm/`. "
+            "Every PNG must be visually inspected; the figure record documents the "
+            "next-rank replacement for the ambiguous drop-shaped former panel (b)."
+        ),
+        "",
+        (
+            "Use the mandated pixi labelmaker wrapper for CPU scripts and the "
+            "phase3 CUDA interpreter for GPU training (CUDA_VISIBLE_DEVICES=1, "
+            "at most 12 GB). Set TMPDIR to the ELM scratch directory and "
+            "LABELER_NO_FETCH=1 except authorized fetches. Executable entry points:"
+        ),
+        "",
+        "```text",
+        "scripts/labeler/elm_ours_evaluate.py --run cv2",
+        "scripts/labeler/elm_feature_evaluate.py --run cv2",
+        "scripts/labeler/elm_annotation_strata.py --run cv2",
+        "scripts/labeler/elm_dsm_evaluate.py --run cv2 --rescore",
+        "scripts/labeler/elm_dsm_native.py",
+        "scripts/labeler/elm_reference_swap.py --run cv2 --no-tables",
+        "scripts/labeler/elm_smith_evaluate.py --help",
+        "scripts/labeler/elm_paper_tables.py",
+        "scripts/labeler/elm_example_figure.py --run cv2",
+        "scripts/labeler/elm_protocol.py",
+        "```",
+        "",
+        (
+            "Current code/record hashes identify evaluation provenance; historical "
+            "training metadata remains retrospective where noted. The stream report "
+            "contains fix history and detailed verification. No production labels "
+            "or blind-test splits are modified."
+        ),
+    ]
+    (REPO / "docs/labeler/elm_ours.md").write_text("\n".join(lines))
     readme = REPO / "data/events/edge_localized_mode/README.md"
     text = readme.read_text()
-    model_lines = [
+    begin, end = text.index("## Models"), text.index("## Inputs")
+    caveat = (
+        "Brackets are eligible 95% shot-bootstrap intervals. Review scores are "
+        "occupancy-development estimates (97% crowd positives; clock-seeded "
+        "D-alpha review), with shot-grouped fits excluding blind-cohort shots. "
+        "ELM-O requires BES; the DSM detector includes photodiodes and fast-density "
+        "substitutes with unresolved calibration. Historical source-exposed "
+        "DSM variants remain supplemental. The independent Smith onset and "
+        "occupancy evaluation, run-day overlap and limitations are in "
+        "[elm_ours.md](../../../docs/labeler/elm_ours.md); poor physical-onset "
+        "validation means no onset output is delivered. " + domain
+    )
+    section = [
         "## Models",
         "",
-        "**stable**: d3d_elm_time_to_event_dsm | 2026_09_06 (offline risk score)",
+        "**stable**: elm-dsm (offline survival adapter)",
         "",
-        "**latest**: elm-ours | 2026_10_03",
+        "**latest**: elm-ours",
         "",
-        "**all**:",
+        *model_lines,
         "",
-    ]
-    for name, source, tag in (
-        ("elm-ours", ours, "all119"),
-        ("elm-elmo", ours, "bes73"),
-        ("elm-clock", ours, "all119"),
-        ("elm-dsm", dsm, "all119"),
-        ("elm-dsm-detect", dsm, "all119"),
-        ("elm-dsm-detect-exposed", dsm, "all119"),
-        ("elm-dsm-detect-init", dsm, "all119"),
-        ("always present", ours, "all119"),
-    ):
-        subset = source["sets"][tag]
-        res = subset["methods"][name]
-        label = "BES subset, ELM-O chunks" if tag == "bes73" else "all reviewed shots"
-        slugs = {
-            "elm-elmo": "elmo",
-            "elm-clock": "elm_clock",
-            "elm-dsm": "d3d_elm_time_to_event_dsm‡",
-            "elm-dsm-detect-exposed": "elm-dsm-detect-exposed‡",
-            "elm-dsm-detect-init": "elm-dsm-detect-init‡",
-        }
-        dates = {
-            "elm-elmo": "2026_10_01",
-            "elm-clock": "2026_09_13",
-            "elm-dsm": "2026_09_06",
-        }
-        cells = [
-            f"{key.upper()}: {metric(res, key)}" for key in ("auroc", "auprc", "f1")
-        ]
-        role = ""
-        if name in ("elm-dsm", "elm-dsm-detect-exposed", "elm-dsm-detect-init"):
-            role = "; supplemental"
-        elif name == "elm-dsm-detect":
-            role = "; 40-epoch isolated detection"
-        model_lines.append(
-            f"- {slugs.get(name, name)} | {dates.get(name, '2026_10_03')} | "
-            + " | ".join(cells)
-            + f" ({subset['n_shots']} shots/{subset['bins']:,} 50 ms bins; {label}{role})"
-        )
-    model_lines += [
-        "",
-        (
-            "Brackets are 95% shot-bootstrap intervals; † marks recall ≥0.99; "
-            "‡ marks supplemental source fitting, preprocessing or selection exposure. "
-            "always present precision equals prevalence and recall is 1; full numeric "
-            "precision/recall and intervals are in the tables and protocol."
-        ),
-        "",
-        (
-            "The task is ELMy-phase occupancy: about 97% of present bins are crowds. "
-            "The U-Net and isolated 40-epoch DSM use five physical-shot-grouped folds "
-            "and exclude cohort blind-test shots from fitting/preprocessing/selection. "
-            "ELM-O needs BES; reviewers labelled from D-alpha after starting from "
-            "elm-clock. U-Net inputs share D-alpha with that reference; adapted DSM "
-            "inputs are D-alpha-free, so their gap also reflects input choice. "
-            "Primary and common DSM bin sets differ and are labelled "
-            "separately. Sources: `outputs/labeler/elm/{ours,dsm}/evaluation.json:sets`."
-        ),
-        "",
-        "Per-kind recall (95% shot-bootstrap intervals):",
-        "",
-        kind_rows(ours),
-        "",
-        "Annotation-mode groups, elm-ours (same group bootstrap):",
-        "",
-        mode_rows(ours),
-        "",
-        "Raw / 25 ms edge-guarded absent-span touch rates (same denominator):",
-        "",
-    ]
-    for tag, name in (
-        ("all119", "elm-ours"),
-        ("bes73", "elm-ours"),
-        ("bes73", "elm-elmo"),
-    ):
-        res = ours["sets"][tag]["methods"][name]
-        model_lines.append(
-            f"- {NAMES[name]}, {tag}: "
-            + metric(res, "absent_span_alarm_rate")
-            + " / "
-            + metric(res, "absent_span_alarm_rate_guard25")
-        )
-    model_lines += [
-        "",
-        (
-            "Centered 50 ms smoothing can spill detected runs across span edges. "
-            "Short empty guarded interiors are counted separately; the protocol also "
-            "gives the rate restricted to nonempty interiors. These are annotation "
-            "disagreements, not independently verified physical false alarms. "
-            "There are 33 shots with non-crowd spans and 76 with crowds; 20 are in "
-            "both (56 crowd-only, 13 non-crowd-only, 20 mixed, 30 no-present). "
-            "One no-present shot contributes no scored bins; 29 contribute bins. "
-            "Onset deliverable incomplete: no independently adjudicated onsets; "
-            "onset head withdrawn from paper outputs. Checkpoints retain its "
-            "auxiliary loss. Hard calls use bin-mean ≥ fold threshold for elm-ours "
-            "and any-touch for ELM-O/clock. The latter burst detector is penalized "
-            "when a crowd bin contains no burst."
-        ),
-        "",
-        (
-            "The adapted elm-dsm variants have no D-alpha input (pcphd02/03 "
-            "mean-filled); CO2 missing on 75/119. The survival adaptation is a "
-            "one-epoch 60/124-input refit (selected after the first of seven run "
-            "epochs), served on 50 ms means. "
-            "The 1 ms training describes the source survival refit; detection heads "
-            "train on reviewed 50 ms-mean rows. "
-            "The refit is an offline risk score with 25 ms centered-NBI lookahead "
-            "(not a causal forecast). Supplemental survival, historical scratch "
-            "and source-initialized detection use upstream normalization constants "
-            "computed before the upstream split, "
-            "including blind-cohort source shots 190646 and 190532 (feature-statistics "
-            "exposure). The isolated detector fits preprocessing within each outer "
-            "training partition and uses independent random initialization. "
-            "Refit and initialized detection also inherit source fitting; "
-            "five overlap shots (190637,190643,192721,192751,196541) are in-sample. "
-            "Physical membership is propagated to the adapter so exposed shots are "
-            "not called held out. Source: `dsm/evaluation.json:model_context,own_target`."
-        ),
-        "",
-        "Survival refit own-target AUROC (early-stopping validation; supplemental):",
-        "",
-        own_target_rows(dsm),
-        "",
-        "Native 124-input checkpoint, 1 ms evaluation (separate coverage):",
-        "",
-        native_rows(records["native"]),
-        "",
-        filterscope_rows(records["filterscopes"]),
-        "",
-        (
-            "Inner-validation checkpoint selection is noisy: epoch 2 during warm-up "
-            "in original fold 3, a single fold-4 spike, thresholds 0.11–0.91 across "
-            "seeds. A trailing three-epoch mean chooses different endpoints in 15/20 "
-            "folds; only selected weights were saved, so a smoothed result requires "
-            "20-fold retraining (observed training 0.945 GPU-hours). Source: "
-            "`ours/annotation_strata.json:checkpoint_selection_audit`."
-        ),
-        "",
-        (
-            "Legacy overlaps: onset table 576 shots/8 overlap; elm_all_ground_truth "
-            "365/5 (all yes; no reviewed present span on 192751); Smith BES windows 211/0. "
-            "The swap reports onset bins beside occupancy "
-            "conversion at 100/200/300 ms gap tolerances, with M/P/recall and rankings "
-            "under every reference. A separate three-shot DSM-source-unexposed analysis "
-            "retains supplemental normalization exposure. Legacy onset bins miss 31% "
-            "of reviewed-present bins, versus 17% at 200 ms occupancy (M/P 60/14 "
-            "and 34/60 on 782 known bins). Historical AUROC order and leader are "
-            "unchanged under every conversion; no reversal observed. F1 uses "
-            "review-tuned thresholds, so only AUROC compares across references. "
-            "With eight shots a reversal can be neither shown nor ruled out: "
-            "evidence inconclusive. The added isolated DSM arm also preserves "
-            "primary eight-shot AUROC order, but crosses ELM-O's point AUROC on "
-            "the seven-shot BES occupancy companions; leadership is unchanged "
-            "and a statistically supported reversal is not established. "
-            "Three full new-seed CV repeats "
-            "report spread without choosing a best seed. Sources: "
-            "`swap/evaluation.json` and `ours/seed_repeats.json`."
-        ),
-        "",
-        (
-            "Current protocol, all intervals, seed results, limitations and artifacts: "
-            "[elm_ours.md](../../../docs/labeler/elm_ours.md). "
-            "ELM-O's independent BES-window benchmark is described in "
-            "[elm_benchmark_elmo.md](../../../docs/labeler/elm_benchmark_elmo.md)."
-        ),
+        caveat,
         "",
         "",
     ]
-    begin, end = text.index("## Models"), text.index("## Inputs")
-    rendered = text[:begin] + "\n".join(model_lines) + text[end:]
+    rendered = text[:begin] + "\n".join(section) + text[end:]
     rendered = rendered.replace(
-        "Every variant uses upstream\nnormalization constants computed before its split, "
-        "including blind-cohort\nsource shots 190646 and 190532.",
-        "The survival adapter and supplemental historical detection variants use "
-        "upstream normalization including blind-cohort shots 190646 and 190532. "
-        "The isolated detection retrain fits preprocessing within each outer "
-        "training partition and uses independent random weights.",
+        "Each ELM is a burst on the divertor D-alpha signal 2-5 ms wide.",
+        "D-alpha pulse morphology and duration depend on diagnostic view, ELM "
+        "type and detachment; 2--5 ms bursts are a common diagnostic signature, "
+        "not a universal definition of an ELM.",
+    )
+    rendered = rendered.replace(
+        "`pcphd02`, `pcphd03` (always mean-filled)",
+        "`pcphd02`, `pcphd03` (detection: measured, otherwise FS substitutes)",
     )
     readme.write_text(rendered)
     manifest = {
-        "metadata": {
-            "elm_ours_parameters": parameter_count,
-            "cohort_split_counts": cohort_counts,
-            "reviewed_split_counts": reviewed_counts,
-            "cohort_source": str(Paths.from_env().catalog / "cohort.csv"),
-            "cohort_sha256": sha256_of(Paths.from_env().catalog / "cohort.csv"),
-        },
+        "git": git_sha(),
         "sources": {
-            key: {"path": str(path.relative_to(REPO)), "sha256": sha256_of(path)}
+            key: {"path": path, "sha256": sha256_of(OUTPUTS / path)}
             for key, path in files.items()
+            if (OUTPUTS / path).exists()
         },
         "artifacts": {
-            str(path.relative_to(REPO)): sha256_of(path)
-            for path in (REPO / "docs/labeler/elm_ours.md", readme)
+            str(p.relative_to(REPO)): sha256_of(p)
+            for p in (REPO / "docs/labeler/elm_ours.md", readme)
+        },
+        "metadata": {
+            "reviewed_shots": primary["n_shots"],
+            "reviewed_split_counts": reviewed_counts,
+            "cohort_split_counts": cohort_counts,
+            "cohort_sha256": sha256_of(cohort_path),
+            "elm_ours_parameters": parameters,
+            "crowd_positive_share": crowd_share,
         },
     }
-    (OUTPUTS / "protocol.json").write_text(json.dumps(manifest, indent=1))
-    print("protocol", "docs/labeler/elm_ours.md")
-    print("large artifacts", Paths.from_env().root / "round4/elm")
+    (OUTPUTS / "protocol.json").write_text(json.dumps(manifest, indent=1) + "\n")
+    print("protocol written")
 
 
 if __name__ == "__main__":

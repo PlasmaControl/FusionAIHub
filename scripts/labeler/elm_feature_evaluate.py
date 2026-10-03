@@ -80,7 +80,9 @@ def main(argv=None):
             record["sets"][scope][name] = {
                 "n_shots": len(subset.shots),
                 "bins": sum(len(p.truth) for p in parts),
-                "methods": {"elm-feature-only": score.summarise(parts)},
+                "methods": {
+                    "elm-feature-only": score.summarise(parts, score.draws(len(parts)))
+                },
             }
     out = REPO / "outputs/labeler/elm/ours/feature_only.json"
     out.write_text(json.dumps(record, indent=1) + "\n")

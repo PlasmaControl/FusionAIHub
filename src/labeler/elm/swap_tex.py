@@ -15,6 +15,13 @@ from pathlib import Path
 
 from . import compare
 
+DOMAIN_NOTE = (
+    "The DSM and legacy onset table were built on WPQH phases with "
+    "breakthrough-ELM targets; Finding 1 and low DSM AUROCs partly reflect "
+    "definition and domain shift (192721: 1 legacy bin versus 17 non-crowd "
+    "review spans)."
+)
+
 NAME = compare.NAME
 ROWS = (
     (NAME["ours"], "elm-ours"),
@@ -208,175 +215,49 @@ def _f1(p: float, r: float) -> float:
 def write(
     record: dict, out_dir: Path, source="outputs/labeler/elm/swap/evaluation.json"
 ):
+    """Four consolidated appendix tables; complete diagnostics remain in JSON."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    labels = ("dense labels", "legacy onset table")
-    for tag, name in (
-        ("overlap", "table_elm_swap_all.tex"),
-        ("overlap_bes", "table_elm_swap_bes.tex"),
-        ("overlap_dsm_heldout", "table_elm_swap_dsm_heldout.tex"),
-        ("overlap_bes_dsm_heldout", "table_elm_swap_bes_dsm_heldout.tex"),
-    ):
-        res = record["swap"].get(tag)
-        if not res or "finding_1" not in res:
-            continue
-        caption = swap_caption(res)
-        (out_dir / name).write_text(
-            wrap_table(
-                panel_heading(res)
-                + benchmark_table(res, "reviewed", "legacy", labels, record, source),
-                caption,
-                f"tab:elm-swap-{tag}",
-            )
-        )
-        if tag == "overlap":
-            (out_dir / "table_elm_swap_full.tex").write_text(
-                wrap_table(
-                    full_table(res, record, source),
-                    swap_caption(res, full=True),
-                    "tab:elm-swap-full",
-                )
-            )
-        for converted in res.get("occupancy", {}).values():
-            merged = {**res, **converted}
-            gap = converted["gap_ms"]
-            label = f"legacy occupancy, $\\tau={gap}$ ms"
-            (out_dir / f"table_elm_swap_{tag}_occupancy_{gap}ms.tex").write_text(
-                wrap_table(
-                    panel_heading(res)
-                    + benchmark_table(
-                        merged, "reviewed", "legacy", (labels[0], label), record, source
-                    ),
-                    swap_caption(res, gap=gap),
-                    f"tab:elm-swap-{tag}-occupancy-{gap}ms",
-                )
-            )
-            if tag == "overlap":
-                (out_dir / f"table_elm_swap_full_occupancy_{gap}ms.tex").write_text(
-                    wrap_table(
-                        full_table(merged, record, source, label),
-                        swap_caption(res, gap=gap, full=True),
-                        f"tab:elm-swap-full-occupancy-{gap}ms",
-                    )
-                )
-    for tag, res in record["proxy"].items():
-        text = benchmark_table(
-            res,
-            "reviewed",
-            "proxy",
-            ("dense labels", res["label"]),
-            record,
-            source,
-        )
-        caption = (
-            f"Detector-derived proxy comparison: {res['shots']} shots, "
-            f"{res['reviewed']['bins']} identical 50 ms interior bins. "
-            "The proxy producer is excluded. The proxy shares signal evidence "
-            "with the review and provides no independent validation. "
-            "F1 retains review-tuned thresholds; AUROC is the cross-reference "
-            "comparison. Brackets show shot-bootstrap intervals; "
-            "$^{\\ddagger}$ marks supplemental source exposure."
-        )
-        (out_dir / f"table_elm_proxy_{tag}.tex").write_text(
-            wrap_table(text, caption, f"tab:elm-proxy-{tag}")
-        )
     panels = []
     for tag in ("overlap", "overlap_bes"):
         res = record["swap"][tag]
         panels.append(panel_heading(res) + main_table(res, record, source))
-    overlap, bes = record["swap"]["overlap"], record["swap"]["overlap_bes"]
-    words = {2: "two", 3: "three", 8: "eight"}
-
-    def count(tag):
-        n = record["swap"][tag]["n_shots"]
-        return words.get(n, str(n))
-
-    stable_leaders = all(
-        ref["ranking"]["auroc"][0] == res["reviewed"]["ranking"]["auroc"][0]
-        for res in (overlap, bes)
-        for ref in (res["legacy"], *(r["legacy"] for r in res["occupancy"].values()))
-    )
-    auroc_finding = (
-        "The AUROC leader is unchanged. "
-        if stable_leaders
-        else "AUROC leadership changes across references. "
-    )
-    if bes_point_order_crosses(record):
-        auroc_finding += (
-            "Clean DSM/ELM-O point order crosses in BES occupancy sensitivities. "
-        )
     caption = (
-        "ELM reference swap on identical reviewed interior bins: "
-        f"{count('overlap')} overlap shots/{overlap['reviewed']['bins']} bins; "
-        f"{bes['n_shots']} BES shots/{bes['reviewed']['bins']} bins. "
-        "Evidence is inconclusive: DSM source-unexposed subsets contain only "
-        f"{count('overlap_dsm_heldout')} shots, or "
-        f"{count('overlap_bes_dsm_heldout')} with BES. "
-        + auroc_finding
-        + "F1 uses review-tuned thresholds; only AUROC is compared across references. "
-        "Companions retain P/R and $\\tau=100,200,300$ ms sensitivities. "
-        "$^{\\ddagger}$ marks supplemental source exposure; "
-        "$^{\\dagger}$ marks recall $\\geq0.99$."
+        "ELM reference swap: eight overlap shots and seven with BES; evidence "
+        "is inconclusive. F1 uses review-tuned thresholds; AUROC compares "
+        "references. Only three source-unexposed shots and two with BES are "
+        "descriptive only. Brackets show eligible shot-bootstrap intervals."
     )
-    (out_dir / "table_elm_swap.tex").write_text(
-        wrap_table("\n\\medskip\n".join(panels), caption, "tab:elm-swap")
-    )
-    for gap in (100, 200, 300):
-        panels = []
-        for tag in ("overlap", "overlap_bes"):
-            res = record["swap"][tag]
-            merged = {**res, **res["occupancy"][f"gap_{gap}ms"]}
-            panels.append(
-                panel_heading(res)
-                + benchmark_table(
-                    merged,
-                    "reviewed",
-                    "legacy",
-                    (labels[0], f"legacy occupancy, $\\tau={gap}$ ms"),
-                    record,
-                    source,
-                )
-            )
-        (out_dir / f"table_elm_swap_occupancy_{gap}ms.tex").write_text(
-            wrap_table(
-                "\n\\medskip\n".join(panels),
-                swap_caption(record["swap"]["overlap"], gap=gap),
-                f"tab:elm-swap-occupancy-{gap}ms",
-            )
-        )
-    (out_dir / "table_elm_swap_sensitivity.tex").write_text(
-        wrap_table(
+    tables = {
+        "table_elm_swap.tex": wrap_table(
+            "\n\\medskip\n".join(panels), caption, "tab:elm-swap"
+        ),
+        "table_elm_swap_full.tex": wrap_table(
+            full_table(record["swap"]["overlap"], record, source),
+            "Fixed-prediction precision, recall and F1 against both references. "
+            "Eight overlap shots; identity oracle results hold by definition. "
+            "Brackets show eligible shot-bootstrap intervals; F1 is review-tuned.",
+            "tab:elm-swap-full",
+        ),
+        "table_elm_swap_sensitivity.tex": wrap_table(
             sensitivity_table(record, source),
-            "Legacy-reference occupancy sensitivity, beside the original onset-bin "
-            "reference. All-covered counts use $\\geq25$ ms majority occupancy; strict "
-            "sets use identical benchmark bins. $|M|$ and $|P|$ are disagreement "
-            "counts against the reviewed occupancy. Positive legacy intervals "
-            "merge across covered gaps of at most $\\tau$; missing legacy coverage "
-            "is never bridged. Brackets show shot-bootstrap intervals.",
+            "Legacy onset bins and covered-gap occupancy sensitivities. "
+            "All-covered review states use at least 25 ms present occupancy. "
+            "Missing coverage is never bridged. Tiny positive-shot subsets are "
+            "descriptive only; eligible intervals use 1000 shot draws.",
             "tab:elm-swap-sensitivity",
-        )
-    )
-    ranking_tables = []
-    for metric in ("auroc", "f1"):
-        text = wrap_table(
-            ranking_table(record, source, metric),
-            f"{metric.upper()} point-metric rankings under reviewed occupancy, "
-            "original legacy onset bins and all occupancy sensitivities on identical "
-            "bins. Method predictions and thresholds are fixed. The always present "
-            "control is included in metric tables and omitted from these detector "
-            "rankings. $^{\\ddagger}$ marks supplemental source exposure. "
-            + (
-                "AUROC compares references without an operating threshold. "
-                "The small overlap makes the evidence inconclusive."
-                if metric == "auroc"
-                else "F1 uses review-tuned operating thresholds; its order cannot "
-                "establish a comparison across references."
-            ),
-            f"tab:elm-swap-rankings-{metric}",
-        )
-        ranking_tables.append(text)
-        (out_dir / f"table_elm_swap_rankings_{metric}.tex").write_text(text)
-    (out_dir / "table_elm_swap_rankings.tex").write_text("\n".join(ranking_tables))
+        ),
+        "table_elm_swap_rankings.tex": wrap_table(
+            ranking_table(record, source, "auroc"),
+            "AUROC point orders with fixed predictions on strict interior bins "
+            "and known all-covered bins. Eight-shot evidence is inconclusive; "
+            "point crossings cannot establish population ranking reversal. "
+            "Source-exposed variants are supplemental.",
+            "tab:elm-swap-rankings",
+        ),
+    }
+    for name, content in tables.items():
+        (out_dir / name).write_text(content)
 
 
 def panel_heading(res: dict) -> str:
@@ -458,20 +339,36 @@ def ranking_table(record: dict, source: str, metric: str) -> str:
         f"Reference & {metric.upper()}: methods, best first " + r"\\",
         r"\midrule",
     ]
-    for tag in ("overlap", "overlap_bes"):
-        res = record["swap"][tag]
+    scopes = [
+        (tag, res)
+        for tag, res in record["swap"].items()
+        if tag in ("overlap", "overlap_bes")
+    ]
+    scopes += [
+        ("all-covered " + tag, res)
+        for tag, res in record.get("all_covered_swap", {}).items()
+    ]
+    for tag, res in scopes:
         refs = [("reviewed", res["reviewed"]), ("onset bins", res["legacy"])] + [
             (f"$\\tau={r['gap_ms']}$ ms", r["legacy"])
-            for r in res["occupancy"].values()
+            for r in res.get("occupancy", {}).values()
         ]
         scope = (
             f"{res['n_shots']} BES shots, ELM-O chunks"
             if res["has_elmo"]
             else f"All {res['n_shots']} overlap shots"
         )
+        scope += f"; {res['reviewed']['bins']} bins"
+        if tag.startswith("all-covered"):
+            scope = tag + ": " + scope
         lines.append(r"\multicolumn{2}{l}{\textbf{" + scope + r"}} \\")
         for name, reference in refs:
-            order = " $>$ ".join(method_label(n) for n in reference["ranking"][metric])
+            # Historical initialization variants have their own numerical appendix.
+            order = " $>$ ".join(
+                method_label(n)
+                for n in reference["ranking"][metric]
+                if n not in (NAME["init"], "elm-dsm-detect-exposed")
+            )
             lines.append(f"{name} & {order} " + r"\\")
         lines.append(r"\midrule")
     lines[-1] = r"\bottomrule"
@@ -505,6 +402,8 @@ def swap_caption(res: dict, gap: int | None = None, full: bool = False) -> str:
 
 
 def wrap_table(body: str, caption: str, label: str) -> str:
+    if DOMAIN_NOTE not in caption:
+        caption += " " + DOMAIN_NOTE
     return (
         "\\begin{table*}[t]\n\\centering\n\\small\n"
         + body

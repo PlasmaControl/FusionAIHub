@@ -160,7 +160,7 @@ labelmaker:
     - "2026-09-05: the graph is structurally identical to d3d_tearing_time_to_event_dsm, so runners/dsm_pickle.survival() applies verbatim"
     - "The 1 ms-trained refit is served with 50 ms means on a 25 ms grid; risk is read at h + 1 ms. Centered NBI smoothing includes the row 25 ms later, so scores are offline."
     - "2026-09-06: the DSM head becomes a label series as 1 - S(h + 1) at four horizons, not as an expected time to event"
-    - "2026-09-06: BES is droppable after all - with the columns identified correctly the 60-column fit BEATS the 124-column one"
+    - "The 60-column refit and the native 124-column checkpoint use different validation sets and preprocessing; their reported AUROCs do not establish that either input set outperforms the other."
   blocked_on:
     - "the fit is a one-epoch model at lr 1e-3 and at lr 1e-4 alike; a model worth trusting numerically needs sub-epoch checkpointing (validate every N minibatches), which no run has done yet"
     - "the adapter still mean-fills pcphd02 / pcphd03; the separate native evaluation uses exported or fetched original photodiodes without changing this adapter"
