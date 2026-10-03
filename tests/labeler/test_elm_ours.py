@@ -278,6 +278,20 @@ def test_folds_partition_shots_and_balance_kinds():
     assert not set(rest) & set(val) and len(val) == 4
 
 
+def test_run_day_folds_keep_each_day_whole_and_balanced():
+    data = {s: _shot(s, ["absent", "crowd"]) for s in range(40)}
+    days = {s: f"d{s // 3}" for s in data}  # 14 days of up to 3 shots
+    folds = train.deal_group_folds(data, days, 5, seed=1)
+    flat = sorted(s for f in folds for s in f)
+    assert flat == sorted(data)
+    where = {s: k for k, f in enumerate(folds) for s in f}
+    for day in set(days.values()):
+        assert len({where[s] for s in data if days[s] == day}) == 1
+    sizes = [len(f) for f in folds]
+    assert max(sizes) - min(sizes) <= 3
+    assert train.deal_group_folds(data, days, 5, seed=1) == folds
+
+
 def test_test_shots_are_refused():
     cohort = pd.DataFrame({"shot": [1, 2, 3], "split": ["train", "val", "test"]})
     train.check_no_test([1, 2], cohort)

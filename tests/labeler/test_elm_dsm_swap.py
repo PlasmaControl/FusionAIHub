@@ -332,3 +332,23 @@ def test_swap_f1_cell_shows_precision_recall_and_high_recall_number():
     text = swap_tex.f1_with_pr(result)
     assert "0.446" in text and "[0.330, 0.570]" in text
     assert r"\dagger" in text and "P=0.287" in text and "R=1.000" in text
+
+
+def test_selection_criterion_raw_and_post_warmup_trailing_mean():
+    history = [{"val_auprc": v} for v in (0.9, 0.2, 0.3, 0.4)]
+    assert dsm.selection_criterion(history[:1], "raw", 2) == 0.9
+    assert dsm.selection_criterion(history, "raw", 2) == 0.4
+    # the trailing window must lie wholly at or after the warm-up epoch
+    assert dsm.selection_criterion(history, "post_warmup_trailing3", 2) is None
+    assert dsm.selection_criterion(history, "post_warmup_trailing3", 1) == (
+        pytest.approx(0.3)
+    )
+    # an early spike never enters a window that starts after the warm-up
+    assert dsm.selection_criterion(history[:3], "post_warmup_trailing3", 1) is None
+    assert dsm.selection_criterion(history[:3], "post_warmup_trailing3", 0) == (
+        pytest.approx((0.9 + 0.2 + 0.3) / 3)
+    )
+    nan = history[:3] + [{"val_auprc": float("nan")}]
+    assert dsm.selection_criterion(nan, "post_warmup_trailing3", 1) is None
+    with pytest.raises(ValueError):
+        dsm.selection_criterion(history, "best", 0)

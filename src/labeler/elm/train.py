@@ -131,6 +131,36 @@ def deal_folds(data: dict[int, ShotData], k: int = FOLDS, seed: int = SEED):
     return [sorted(f) for f in folds]
 
 
+def deal_group_folds(
+    data: dict[int, ShotData], groups: dict[int, str], k: int = FOLDS, seed: int = SEED
+):
+    """Folds that keep every group (a run day) whole.
+
+    Groups are dealt largest first, ties in random order, each to the fold holding
+    the fewest shots so far, so fold sizes stay within one group of each other.
+    Groups are not stratified by span kind; a fold's kind mix is reported, not forced.
+    """
+    rng = np.random.default_rng(seed)
+    members: dict[str, list[int]] = {}
+    for shot in sorted(data):
+        members.setdefault(str(groups[shot]), []).append(shot)
+    keys = sorted(members)
+    order = rng.permutation(len(keys))
+    units = sorted((keys[i] for i in order), key=lambda g: -len(members[g]))
+    folds: list[list[int]] = [[] for _ in range(k)]
+    for group in units:
+        smallest = min(len(f) for f in folds)
+        open_folds = [i for i, f in enumerate(folds) if len(f) == smallest]
+        folds[int(rng.choice(open_folds))].extend(members[group])
+    return [sorted(f) for f in folds]
+
+
+def run_days(paths: Paths, shots) -> dict[int, str]:
+    """Calendar run day (cohort `run_id`) of each shot."""
+    cohort = pd.read_csv(paths.catalog / "cohort.csv").set_index("shot")
+    return {int(s): str(int(cohort.loc[int(s), "run_id"])) for s in shots}
+
+
 def split_inner(train: list[int], n_val: int, seed: int):
     """`train` less `n_val` random shots, and those shots."""
     rng = np.random.default_rng(seed)
@@ -359,13 +389,18 @@ def run(args: argparse.Namespace) -> int:
     )
     device = torch.device(args.device)
     data = load(paths)
-    folds = deal_folds(data, args.folds, args.seed)
+    group_by = getattr(args, "group_by", "shot")
+    if group_by == "run_day":
+        folds = deal_group_folds(data, run_days(paths, data), args.folds, args.seed)
+    else:
+        folds = deal_folds(data, args.folds, args.seed)
     out = paths.root / "round4" / "elm" / "cv" / args.run
     out.mkdir(parents=True, exist_ok=True)
     (out / "pred").mkdir(exist_ok=True)
     record = {
         "config": asdict(cfg),
         "partition_seed": args.seed,
+        "fold_grouping": group_by,
         "git": git_sha(),
         "folds": folds,
         "shots": len(data),
@@ -450,6 +485,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--selection", choices=("raw", "trailing3"), default="raw")
+    ap.add_argument(
+        "--group-by",
+        choices=("shot", "run_day"),
+        default="shot",
+        help="`run_day` keeps all shots of a calendar run day in one outer fold",
+    )
     return run(ap.parse_args(argv))
 
 

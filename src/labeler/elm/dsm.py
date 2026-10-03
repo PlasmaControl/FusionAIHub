@@ -733,6 +733,23 @@ class FitConfig:
     dropout: float = 0.2
     seed: int = 20261003
     device: str = "cpu"
+    #: `raw` keeps the best inner-validation AUPRC epoch (the recipe of the reported
+    #: row); `post_warmup_trailing3` keeps the epoch ending the best three-epoch mean
+    #: AUPRC window that lies wholly at or after epoch `warmup`.
+    selection: str = "raw"
+    warmup: int = 0
+
+
+def selection_criterion(history: list[dict], rule: str, warmup: int) -> float | None:
+    """The checkpoint criterion after the last epoch in `history`, or None."""
+    if rule == "raw":
+        return history[-1]["val_auprc"]
+    if rule != "post_warmup_trailing3":
+        raise ValueError(f"unknown checkpoint selection rule: {rule}")
+    if len(history) < warmup + 3:
+        return None
+    values = [row["val_auprc"] for row in history[-3:]]
+    return float(np.mean(values)) if np.isfinite(values).all() else None
 
 
 def fit_detection_normalization(rows, spans, train) -> dict:
@@ -872,13 +889,18 @@ def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None)
                 "val_f1": f1,
             }
         )
+        criterion = selection_criterion(history, cfg.selection, cfg.warmup)
+        if cfg.selection != "raw":
+            history[-1]["selection_score"] = criterion
         if log:
             log(history[-1])
-        if ap > best:
-            best, best_thr = ap, thr
+        if criterion is not None and criterion > best:
+            best, best_thr = criterion, thr
             best_state = {
                 k: v.detach().cpu().clone() for k, v in model.state_dict().items()
             }
+    if best_state is None:
+        raise ValueError("no finite checkpoint-selection score; cannot select a fit")
     return best_state, best_thr, history
 
 
