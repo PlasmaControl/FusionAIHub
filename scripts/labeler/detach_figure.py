@@ -193,7 +193,7 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
             (),
         ),
         (
-            "front height\nZE (m)",
+            "ZE (m)",
             np.where(group.tangtv_valid, zx - (1.0 - dz) * (zx - zs), np.nan),
             (),
         ),

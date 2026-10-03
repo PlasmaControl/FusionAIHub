@@ -24,7 +24,9 @@ Two references. `combined` is the label model's state, which includes the indica
 being scored (circular, an upper bound). `loo` is the same fitted model with that
 indicator's vote withheld (leave-one-out): a state is certain only where both
 others are valid. The label model was fitted on non-test shots only; metrics are
-given on every shot, on the fitting shots and on the cohort's test split alone.
+given on every shot, on the fitting shots and on the cohort's test split alone, and
+for TangTV also by where its front height came from (`source_inversion`,
+`source_surrogate`: the owner's inversion or the regression from the raw frame).
 
 The label is also checked against divertor Thomson Te (`divertor_te_check`), which
 no indicator reads. Failure analysis follows: where the indicators go wrong, by ELM share and heating
@@ -190,18 +192,11 @@ def bootstrap(tables, counts, name, rng):
     return out
 
 
-def auroc_ci(frame, name, reference, rng) -> dict:
-    ok = np.isin(reference, STATES) & frame[f"{name}_valid"].to_numpy()
-    sub = frame[ok]
-    score = DIRECTION[name] * sub[f"{name}_value"].to_numpy(dtype=float)
-    positive = reference[ok] != 1
-    finite = np.isfinite(score)
-    score, positive, shots = (
-        score[finite],
-        positive[finite],
-        sub.shot.to_numpy()[finite],
-    )
-    point = auroc(score, positive)
+def auroc_boot(score, positive, shots, rng) -> dict:
+    """AUROC with a shot-bootstrap 95% interval."""
+    if not len(score):
+        nan = float("nan")
+        return {"value": nan, "ci95": [nan, nan], "n_bins": 0, "n_not_attached": 0}
     by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
     keys = list(by_shot)
     draws = []
@@ -209,13 +204,23 @@ def auroc_ci(frame, name, reference, rng) -> dict:
         pick = rng.integers(0, len(keys), len(keys))
         idx = np.concatenate([by_shot[keys[j]] for j in pick])
         draws.append(auroc(score[idx], positive[idx]))
-    lo, hi = np.nanpercentile(draws, [2.5, 97.5])
+    lo, hi = np.nanpercentile(draws, [2.5, 97.5]) if len(draws) else (np.nan, np.nan)
     return {
-        "value": point,
+        "value": auroc(score, positive),
         "ci95": [float(lo), float(hi)],
         "n_bins": len(score),
         "n_not_attached": int(positive.sum()),
+        "n_shots": len(keys),
     }
+
+
+def auroc_ci(frame, name, reference, rng) -> dict:
+    ok = np.isin(reference, STATES) & frame[f"{name}_valid"].to_numpy()
+    sub = frame[ok]
+    score = DIRECTION[name] * sub[f"{name}_value"].to_numpy(dtype=float)
+    positive = reference[ok] != 1
+    finite = np.isfinite(score)
+    return auroc_boot(score[finite], positive[finite], sub.shot.to_numpy()[finite], rng)
 
 
 #: Divertor electron temperature (eV) under which the plasma at the plate is cold
@@ -228,10 +233,11 @@ def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
 
     `aux_te_div` is the highest of the divertor Thomson real-time points in the
     bin (a plate cooler than 5 eV everywhere has none above it). Per state: the
-    bins with a Te, its quartiles and the share below `TE_DETACHED_EV`; and the
-    AUROC of Te (low = detached) for detached against attached bins, with a shot
-    bootstrap. A weak, independent check: the real-time points are sparse and the
-    peak over them is not the strike-point Te.
+    bins with a Te, its quartiles and the share below `TE_DETACHED_EV`; the AUROC
+    of Te (low = detached) for detached against attached bins; and, per indicator,
+    the AUROC of its value for the cold-plate bins (Te below the threshold), which
+    needs no label. All with a shot bootstrap. A weak, independent check: the
+    real-time points are sparse and the peak over them is not the strike-point Te.
     """
     te = frame.aux_te_div.to_numpy(dtype=float)
     out = {"threshold_ev": TE_DETACHED_EV, "by_state": {}}
@@ -244,22 +250,17 @@ def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
                 "share_below_threshold": float(np.mean(x < TE_DETACHED_EV)),
             }
     ok = np.isfinite(te) & np.isin(lm_state, (core.ATTACHED, core.DETACHED))
-    score, positive = -te[ok], lm_state[ok] == core.DETACHED
-    shots = frame.shot.to_numpy()[ok]
-    by_shot = {s: np.flatnonzero(shots == s) for s in np.unique(shots)}
-    keys = list(by_shot)
-    draws = []
-    for _ in range(REPLICATES):
-        pick = rng.integers(0, len(keys), len(keys))
-        idx = np.concatenate([by_shot[keys[j]] for j in pick])
-        draws.append(auroc(score[idx], positive[idx]))
-    lo, hi = np.nanpercentile(draws, [2.5, 97.5])
-    out["auroc_detached_vs_attached"] = {
-        "value": auroc(score, positive),
-        "ci95": [float(lo), float(hi)],
-        "n_bins": int(ok.sum()),
-        "n_shots": len(keys),
-    }
+    out["auroc_detached_vs_attached"] = auroc_boot(
+        -te[ok], lm_state[ok] == core.DETACHED, frame.shot.to_numpy()[ok], rng
+    )
+    # each indicator's value against the same cold-plate criterion, no label involved
+    out["indicator_auroc_cold_plate"] = {}
+    for name in LF_NAMES:
+        value = DIRECTION[name] * frame[f"{name}_value"].to_numpy(dtype=float)
+        ok = frame[f"{name}_valid"].to_numpy() & np.isfinite(value) & np.isfinite(te)
+        out["indicator_auroc_cold_plate"][name] = auroc_boot(
+            value[ok], te[ok] < TE_DETACHED_EV, frame.shot.to_numpy()[ok], rng
+        )
     return out
 
 
@@ -417,7 +418,13 @@ def main() -> None:
     result["model_accuracies"] = model.accuracies()
     for name in LF_NAMES:
         for ref_name, reference in (("combined", lm_state), ("loo", loo[name])):
-            for subset, mask in subsets.items():
+            masks = dict(subsets)
+            if name == "tangtv" and "tangtv_source" in frame:
+                for source in ("inversion", "surrogate"):
+                    masks[f"source_{source}"] = (
+                        frame.tangtv_source == source
+                    ).to_numpy()
+            for subset, mask in masks.items():
                 sub = frame[mask].reset_index(drop=True)
                 ref = reference[mask]
                 if not np.isin(ref, STATES).any():

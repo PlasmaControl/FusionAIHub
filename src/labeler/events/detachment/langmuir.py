@@ -6,7 +6,7 @@ rest). They are not processed Jsat: the processed `\\WALL::JSAT*` nodes hold no 
 on any shot tested, and no probe position or calibration is on disk.
 
 **Channel layout** (found from the data, not from documentation; the checks are in
-`tests/labeler/test_detachment_langmuir.py`): the channels come in adjacent pairs
+`tests/labeler/test_detachment_indicators.py`): the channels come in adjacent pairs
 `(I, V)` = `(c, c + 1)` for odd `c`: the odd channel is the probe current, the even
 one the bias voltage, swept at about 1.05 kHz and common to many probes. A
 characteristic plotted from such a pair shows the ion plateau at the negative end,

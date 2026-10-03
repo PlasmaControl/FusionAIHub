@@ -31,7 +31,16 @@ over vote configurations in which every invalid indicator abstains, so a pattern
 that rarely lets TangTV speak (most shots have no inversion) does not teach the model
 that TangTV is silent by choice.
 
-Neither uses the cohort test split: the model is fitted on the bins it is given.
+**Identification.** The accuracy of an LF is identified by how it agrees with the
+others, which needs three voters: from two the data fix only the product of the two
+accuracies. Most bins carry two voters (TangTV is valid on few shots) and in them the
+state is nearly constant (attached), so a fit on all bins can place the whole
+disagreement on one LF and give the other an accuracy near 1. `fit_anchored` therefore
+learns the accuracy and correlation weights from the bins where every LF is valid,
+fixes the class balance to uniform (Snorkel's default; nothing in the data identifies
+it across shots of different regimes) and fits only the propensities on all bins.
+
+Neither labeler uses the cohort test split: the model is fitted on the bins it is given.
 """
 
 from __future__ import annotations
@@ -62,6 +71,8 @@ COMPATIBLE = {
 WEIGHT_MAX = 4.0
 #: L2 penalty on the propensity and prior terms, per observation, for stability.
 RIDGE = 1e-6
+#: Fewest all-LF-valid bins `fit_anchored` will learn the accuracies from.
+MIN_ANCHOR_BINS = 300
 
 
 @dataclass
@@ -74,6 +85,7 @@ class LabelModel:
     theta: np.ndarray | None = None
     loglik: float | None = None
     n_obs: int = 0
+    anchor_bins: int = 0
 
     def __post_init__(self) -> None:
         if self.allowed is None:
@@ -177,6 +189,43 @@ class LabelModel:
             bounds=self._bounds(),
         )
         self.theta, self.loglik, self.n_obs = res.x, -res.fun, int(data[0].sum())
+        return self
+
+    def fit_anchored(self, votes: np.ndarray, valid: np.ndarray) -> LabelModel:
+        """Fit accuracies where all LFs are valid, then the propensities on every bin.
+
+        See "Identification" in the module docstring. The class balance is fixed to
+        uniform. With fewer than `MIN_ANCHOR_BINS` bins on which every LF is valid the
+        accuracies are not identified and the plain `fit` is used instead
+        (`self.anchor_bins` is then 0).
+        """
+        votes, valid = np.asarray(votes), np.asarray(valid, dtype=bool)
+        full = valid.all(axis=1)
+        self.anchor_bins = int(full.sum())
+        if self.anchor_bins < MIN_ANCHOR_BINS:
+            self.anchor_bins = 0
+            return self.fit(votes, valid)
+        self.fit(votes[full], valid[full])
+        base = self.theta.copy()
+        base[:3] = 0.0
+        data = self.config_counts(votes, valid)
+        free = np.arange(3, 3 + len(self.names))  # the propensity weights
+
+        def objective(x):
+            theta = base.copy()
+            theta[free] = x
+            value, grad = self.neg_loglik(theta, data)
+            return value, grad[free]
+
+        res = minimize(
+            objective,
+            base[free],
+            jac=True,
+            method="L-BFGS-B",
+            bounds=[(-20.0, 20.0)] * len(free),
+        )
+        base[free] = res.x
+        self.theta, self.loglik, self.n_obs = base, -res.fun, int(data[0].sum())
         return self
 
     def loglik_per_obs(self, votes: np.ndarray, valid: np.ndarray | None = None):

@@ -185,7 +185,9 @@ def cv_structure(votes, valid, shots, seed=0) -> dict:
         scores = []
         for k in range(CV_FOLDS):
             train, test = fold != k, fold == k
-            model = label_model.LabelModel(corr=corr).fit(votes[train], valid[train])
+            model = label_model.LabelModel(corr=corr).fit_anchored(
+                votes[train], valid[train]
+            )
             scores.append(model.loglik_per_obs(votes[test], valid[test]))
         result[name] = {
             "mean_heldout_loglik_per_bin": float(np.mean(scores)),
@@ -458,7 +460,7 @@ def main() -> None:
     shots_fit = work.shot.to_numpy()[fit_mask]
     structure = cv_structure(votes[fit_mask], valid[fit_mask], shots_fit)
     best = choose_structure(structure)
-    model = label_model.LabelModel(corr=STRUCTURES[best]).fit(
+    model = label_model.LabelModel(corr=STRUCTURES[best]).fit_anchored(
         votes[fit_mask], valid[fit_mask]
     )
     labelled, votes, valid = label_frame(work, model, args.threshold)
@@ -501,6 +503,13 @@ def main() -> None:
             "n_shots": len(np.unique(shots_fit)),
             "n_bins": int(fit_mask.sum()),
             "excluded_split": "test",
+            "method": "anchored: accuracies from the bins where every indicator is "
+            "valid, uniform class balance, propensities from all bins",
+            "anchor_bins": model.anchor_bins,
+            "anchor_shots": len(np.unique(shots_fit[valid[fit_mask].all(axis=1)])),
+            "all_bins_fit_for_comparison": label_model.LabelModel(corr=STRUCTURES[best])
+            .fit(votes[fit_mask], valid[fit_mask])
+            .accuracies(),
         },
         "structure_selection": {
             "cv_folds": CV_FOLDS,

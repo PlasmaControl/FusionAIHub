@@ -129,3 +129,52 @@ def test_despeckle_only_bridges_same_neighbours():
     assert lm.despeckle(s).tolist() == [1, 1, 1, 1, 1, 3, 4, 4]
     t = np.array([1, 1, 2, 3, 3])
     assert lm.despeckle(t).tolist() == t.tolist()
+
+
+def simulate_two_populations(seed=3):
+    """TangTV shots (all three LFs, balanced states) and plain shots (two LFs, one state).
+
+    In the plain shots the state is constant, so Afrac and Prad do not agree more than
+    their accuracies imply and the all-bin fit cannot tell which of them is wrong.
+    """
+    rng = np.random.default_rng(seed)
+    accuracy = {"afrac": 0.65, "prad": 0.7, "tangtv": 0.95}
+    n_tv, n_plain = 3000, 12000
+    state = np.r_[
+        rng.choice([1, 2, 3], size=n_tv, p=[0.4, 0.35, 0.25]), np.ones(n_plain, int)
+    ]
+    votes = np.full((len(state), 3), core.ABSTAIN)
+    valid = np.ones((len(state), 3), dtype=bool)
+    valid[n_tv:, 2] = False
+    for j, name in enumerate(NAMES):
+        for i in np.flatnonzero(valid[:, j]):
+            truth = state[i] if state[i] in ALLOWED[name] else 2
+            wrong = [s for s in ALLOWED[name] if s != truth]
+            right = rng.random() < accuracy[name]
+            votes[i, j] = truth if right else rng.choice(wrong)
+    return votes, valid
+
+
+def test_anchored_fit_recovers_accuracies_that_pairs_cannot_identify():
+    votes, valid = simulate_two_populations()
+    model = lm.LabelModel().fit_anchored(votes, valid)
+    acc = model.accuracies()
+    assert model.anchor_bins == 3000
+    assert acc["afrac"]["implied_accuracy"] == pytest.approx(0.65, abs=0.07)
+    assert acc["prad"]["implied_accuracy"] == pytest.approx(0.7, abs=0.07)
+    assert acc["tangtv"]["implied_accuracy"] == pytest.approx(0.95, abs=0.05)
+    assert np.all(model.theta[:3] == 0.0)  # uniform class balance
+
+
+def test_anchored_fit_falls_back_to_the_plain_fit_without_enough_anchor_bins():
+    votes, valid = simulate_two_populations()
+    valid = valid.copy()
+    valid[:, 2] = False  # no bin has all three LFs
+    votes = votes.copy()
+    votes[:, 2] = core.ABSTAIN
+    model = lm.LabelModel(names=("afrac", "prad")).fit_anchored(
+        votes[:, :2], valid[:, :2]
+    )
+    assert model.anchor_bins == 3000 + 12000  # every bin has both of these LFs
+    thin = lm.LabelModel().fit_anchored(votes, valid)
+    assert thin.anchor_bins == 0 and thin.theta is not None
