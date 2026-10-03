@@ -37,6 +37,7 @@ if str(REPO / "src") not in sys.path:
     sys.path.insert(0, str(REPO / "src"))
 
 from labeler.events.verify import NoDataError, fdp_signal
+from labeler.tearing.rule import LOCK_INVALID_RANGE, valid_lock_shot
 
 LABELER = Path(
     os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker")
@@ -47,17 +48,41 @@ CATALOG = REPO / "data/events/catalog"
 KINDS = {
     "rms": ((r"\MHD::N1RMS", r"\MHD::N2RMS"), ("n1rms", "n2rms"), "signals"),
     "freq": ((r"\MHD::N1FREQ", r"\MHD::N2FREQ"), ("n1freq", "n2freq"), "signals_freq"),
+    "lock": (("DUSBRADIAL",), ("bradial",), "signals_lock"),
 }
 #: What fdp says of a record the shot does not have, as against a fetch that failed.
 ABSENT_WORDS = ("NODATA", "NNF", "No data", "TreeNNF", "TreeNODATA")
-AUTH_WORDS = ("auth", "credential", "kerberos", "permission denied", "expired", "kinit")
+AUTH_WORDS = (
+    "auth",
+    "credential",
+    "kerberos",
+    "permission denied",
+    "expired",
+    "kinit",
+    "login failed",
+    "login required",
+    "not logged in",
+)
 MAX_CONSECUTIVE_FAILURES = 8
+LOCK_SOURCE = {
+    "point": "DUSBRADIAL",
+    "route": "ptdata",
+    "units": "V",
+    "local_source": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/"
+    "src/labeler/features/namespace.py:362-377",
+    "meaning": "n=1 locked or very slow radial-field voltage indicator, "
+    "not a gauss-calibrated magnetic amplitude",
+    "known_invalid_inclusive_range": list(LOCK_INVALID_RANGE),
+    "fallback": "ONSBRADIAL is mentioned in local disruption review conventions, "
+    "but no validated units/calibration locator was found; not guessed or fetched",
+}
 
 
 def catalog_shots(which: str) -> list[int]:
     """The cohort's, or the population's (a superset), shots."""
     name = {"cohort": "cohort.csv", "population": "population.csv"}[which]
-    return sorted(int(s) for s in pd.read_csv(CATALOG / name, usecols=["shot"]).shot)
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    return sorted(int(s) for s in pd.read_csv(CATALOG / name).shot if s not in blind)
 
 
 def fetch_shot(shot: int, kind: str = "rms") -> dict[str, np.ndarray]:
@@ -65,11 +90,18 @@ def fetch_shot(shot: int, kind: str = "rms") -> dict[str, np.ndarray]:
     exprs, names, _ = KINDS[kind]
     for attempt in (1, 2):
         try:
-            record = fdp_signal(shot, list(exprs), tree="mhd", via="mds")
+            record = fdp_signal(
+                shot,
+                list(exprs),
+                tree="mhd",
+                via="ptdata" if kind == "lock" else "mds",
+            )
             return {
                 "t_ms": np.asarray(record.x, dtype=np.float64),
-                names[0]: np.asarray(record.y[0], dtype=np.float32),
-                names[1]: np.asarray(record.y[1], dtype=np.float32),
+                **{
+                    name: np.asarray(record.y[i], dtype=np.float32)
+                    for i, name in enumerate(names)
+                },
             }
         except NoDataError:
             if attempt == 2 or any(
@@ -110,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     shots = sorted(set(args.shots)) if args.shots else catalog_shots(args.source)
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    shots = [shot for shot in shots if shot not in blind]
     if args.only_with:
         keep = set(pd.read_csv(args.only_with, usecols=["shot"]).shot.astype(int))
         shots = [s for s in shots if s in keep]
@@ -117,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
     k, n = (int(v) for v in args.part.split("/"))
     shots = shots[k::n]
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    if args.which == "lock":
+        (args.out_dir / "source.json").write_text(
+            json.dumps(LOCK_SOURCE, indent=2) + "\n"
+        )
     failures = 0
     for shot in shots:
         if args.stop_file.exists():
@@ -124,6 +162,19 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         done = args.out_dir / f"{shot}.npz"
         gone = args.out_dir / f"{shot}.missing.json"
+        if args.which == "lock" and not valid_lock_shot(shot):
+            gone.write_text(
+                json.dumps(
+                    {
+                        "shot": shot,
+                        "status": "invalid_campaign",
+                        "error": "DUSBRADIAL reported corrupted "
+                        "for inclusive shot range 176030-176912",
+                    }
+                )
+            )
+            print(json.dumps({"shot": shot, "status": "invalid_campaign"}), flush=True)
+            continue
         if done.exists() or gone.exists():
             continue
         started = time.time()

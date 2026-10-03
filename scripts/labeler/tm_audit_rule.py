@@ -1,362 +1,288 @@
 #!/usr/bin/env python
-"""Audit continuous seed holds and interval changes after a frozen TM rule fix.
+"""Audit current nonblind TM labels, coherent criterion rates and screening coverage.
 
-Change counts compare (shot,n,start,end) rounded to 1 microsecond. Attribute-only
-changes are counted separately. Changed original intervals include removed and
-modified spans; new non-overlapping spans are additionally reported. An independent
-seed audit uses the raw and 5 ms-median RMS, never joining above-threshold runs or
-acquisition gaps. The selected cohort review shots also list their final categories.
+No historical label or blind signal artifacts are opened. Sample rates use the
+uniform RMS grid and its median time step; interval durations use unioned spans.
+Uncertainty takes priority over presence; missing acquisition is unobservable.
+Frequency and Mirnov criterion rates condition on measured respective inputs;
+combined span/seed support rates condition on all valid RMS samples.
 """
 
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import os
 from datetime import UTC, datetime
-from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.ndimage import median_filter
+from tm_label import line_evidence
 
 from labeler.config import git_sha
-from labeler.tearing.magfeatures import FEATURE_NAMES
+from labeler.tearing import rule, scoring
 
 REPO = Path(__file__).resolve().parents[2]
-ROOT = Path(os.environ.get("LABELER_ROOT", "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker"))
-OUT = ROOT / "round4/tm"
-REVIEWED = (185953, 194410, 186561, 190790, 195040, 196494, 187072)
+OUT = Path(os.environ["LABELER_ROOT"]) / "round4/tm"
 
 
-def longest_run(t, mask):
-    """Largest continuous true duration, including one median-step sample width."""
-    if len(t) < 2:
-        return 0.0
+def longest(t, mask):
     dt = float(np.median(np.diff(t)))
-    edges = np.diff(np.r_[False, mask, False].astype(np.int8))
-    longest = 0.0
-    for a, b in zip(
-        np.flatnonzero(edges == 1), np.flatnonzero(edges == -1), strict=True
-    ):
-        cuts = np.r_[a, np.flatnonzero(np.diff(t[a:b]) > dt * 1.5) + a + 1, b]
-        for lo, hi in pairwise(cuts):
-            longest = max(longest, float(t[hi - 1] - t[lo] + dt))
-    return longest
+    return max((b - a for a, b in zip(*rule._runs(mask), strict=True)), default=0) * dt
 
 
-def key(row):
-    return (int(row.shot), int(row.n), round(row.t_start, 6), round(row.t_end, 6))
-
-
-def changes(old, new):
-    old_keys = {key(r): r for r in old.itertuples(index=False)}
-    new_keys = {key(r): r for r in new.itertuples(index=False)}
-    changed = []
-    removed, modified = 0, 0
-    for k, row in old_keys.items():
-        if k in new_keys:
-            continue
-        overlaps = new[
-            (new.shot == row.shot)
-            & (new.n == row.n)
-            & (new.t_start < row.t_end)
-            & (new.t_end > row.t_start)
-        ]
-        state = "removed" if overlaps.empty else "modified"
-        removed += state == "removed"
-        modified += state == "modified"
-        changed.append(
-            {
-                "old": list(k),
-                "change": state,
-                "overlapping_new": [
-                    list(key(r)) for r in overlaps.itertuples(index=False)
-                ],
-            }
-        )
-    added = []
-    for k, row in new_keys.items():
-        overlaps = old[
-            (old.shot == row.shot)
-            & (old.n == row.n)
-            & (old.t_start < row.t_end)
-            & (old.t_end > row.t_start)
-        ]
-        if overlaps.empty:
-            added.append(list(k))
-    common_cols = sorted(
-        set(old.columns)
-        & set(new.columns) - {"shot", "n", "t_start", "t_end", "duration_ms"}
-    )
-    attr_changed = 0
-    for k in set(old_keys) & set(new_keys):
-        attr_changed += any(
-            str(getattr(old_keys[k], col)) != str(getattr(new_keys[k], col))
-            for col in common_cols
-        )
-    return {
-        "n_old": len(old),
-        "n_new": len(new),
-        "n_exact_geometry_unchanged": len(set(old_keys) & set(new_keys)),
-        "n_old_geometry_changed": len(changed),
-        "n_old_removed": removed,
-        "n_old_modified": modified,
-        "n_new_nonoverlapping_added": len(added),
-        "n_unchanged_geometry_attributes_changed": attr_changed,
-        "changed_old_intervals": changed,
-        "added_intervals": added,
+def audit_set(name, intervals, table, shots):
+    details = []
+    totals = {str(n): {state: {} for state in ("absent", "present")} for n in (1, 2)}
+    coverage = {
+        "requested_shots": len(shots),
+        "labelled_shots": int(table.shot.nunique()),
+        "window_seconds": 0.0,
+        "absent_seconds": 0.0,
+        "present_seconds": 0.0,
+        "uncertain_seconds": 0.0,
+        "not_observable_seconds": 0.0,
+        "screened_seconds_by_n": {},
+        "unscreened_nonquiet_seconds_by_n": {},
     }
-
-
-def seed_audit(frame, signals):
-    details, missing = [], []
-    for shot, rows in frame.groupby("shot"):
-        path = signals / f"{int(shot)}.npz"
+    for n in (1, 2):
+        coverage["screened_seconds_by_n"][str(n)] = 0.0
+        coverage["unscreened_nonquiet_seconds_by_n"][str(n)] = 0.0
+    for row in shots.itertuples(index=False):
+        shot = int(row.shot)
+        path = OUT / "signals" / f"{shot}.npz"
         if not path.is_file():
-            missing.append(int(shot))
             continue
-        with np.load(path) as data:
-            t = data["t_ms"]
-            dt = float(np.median(np.diff(t)))
-            width = max(1, round(5 / dt)) | 1
-            for row in rows.itertuples(index=False):
-                y = data[f"n{int(row.n)}rms"]
-                smoothed = median_filter(y, width)
-                # Rule endpoints are inclusive t[b-1], not half-open bin edges.
-                # Include the final sample so an exact 50-sample seed is 50 ms.
-                tolerance = max(1e-7, abs(dt) * 1e-6)
-                inside = (t >= row.t_start - tolerance) & (t <= row.t_end + tolerance)
-                seed = 12.0 if row.n == 1 else 6.0
-                raw = longest_run(
-                    t[inside], (y[inside] >= seed) & np.isfinite(y[inside])
+        with np.load(path) as z:
+            rt = z["t_ms"]
+            t, n1, dt = rule.uniform(rt, z["n1rms"])
+            n2 = rule.uniform(rt, z["n2rms"])[1]
+        window = (t >= row.window_start_ms) & (t <= row.window_end_ms)
+        rows = table[table.shot.eq(shot)]
+        state = np.zeros(t.shape, int)
+        # Extension spans can overlap across n; category priority defines time.
+        for category in (1, 2, 3):
+            for r in rows[
+                rows.category.eq(category) & (rows.t_end > rows.t_start)
+            ].itertuples():
+                state[(t >= r.t_start) & (t <= r.t_end)] = category
+        busy = []
+        for key, category in (
+            ("not_observable", 3),
+            ("uncertain", 2),
+            ("present", 1),
+            ("absent", 0),
+        ):
+            spans = rule._union(
+                [
+                    (float(r.t_start), float(r.t_end))
+                    for r in rows[rows.category.eq(category)].itertuples()
+                    if r.t_end > r.t_start
+                ]
+            )
+            clean = rule._minus(spans, busy)
+            coverage[f"{key}_seconds"] += sum(b - a for a, b in clean) / 1000
+            busy = rule._union(busy + spans)
+        coverage["window_seconds"] += (
+            float(row.window_end_ms - row.window_start_ms) / 1000
+        )
+        coherent, weak, _, seed, _, screened = line_evidence(
+            shot, t, OUT / "signals_freq", OUT / "magfeatures"
+        )
+        frequency = {1: np.full(t.shape, np.nan), 2: np.full(t.shape, np.nan)}
+        fp = OUT / "signals_freq" / f"{shot}.npz"
+        if fp.is_file():
+            with np.load(fp) as z:
+                for n in (1, 2):
+                    frequency[n] = scoring.align_scores(z["t_ms"], z[f"n{n}freq"], t)
+        features = {}
+        mp = OUT / "magfeatures" / f"{shot}.npz"
+        if mp.is_file():
+            with np.load(mp) as z:
+                centres, values, names = (
+                    z["centres_ms"],
+                    z["features"],
+                    list(z["names"]),
                 )
-                smooth = longest_run(
-                    t[inside],
-                    (smoothed[inside] >= seed) & np.isfinite(smoothed[inside]),
+            idx = np.searchsorted(centres + 5, t)
+            inside = (idx < len(centres)) & (t >= centres[0] - 5)
+            for feature in ("fit1", "fit2", "line_prominence_db", "line_khz"):
+                features[feature] = np.full(t.shape, np.nan)
+                features[feature][inside] = values[idx[inside], names.index(feature)]
+        for n, y, mr in ((1, n1, rule.N1_RULE), (2, n2, rule.N2_RULE)):
+            valid = np.isfinite(y) & window
+            coverage["screened_seconds_by_n"][str(n)] += float(
+                (valid & screened[n]).sum() * dt / 1000
+            )
+            coverage["unscreened_nonquiet_seconds_by_n"][str(n)] += float(
+                (valid & ~screened[n] & (y > mr.weak_g)).sum() * dt / 1000
+            )
+            masks = {
+                "rms_above_seed": y > mr.onset_g,
+                "median5ms_above_seed": rule.smoothed(y, dt, 5) > mr.onset_g,
+                "rms_above_weak": y > mr.weak_g,
+                "frequency_in_range_legacy": (frequency[n] >= 1) & (frequency[n] <= 30),
+                "frequency_coherent50ms": rule.coherent_frequency(frequency[n], dt),
+                "mirnov_phase_fit": features.get(f"fit{n}", np.zeros(t.shape)) >= 0.9,
+                "mirnov_prominence": features.get(
+                    "line_prominence_db", np.zeros(t.shape)
                 )
+                >= 10,
+                "span_coherent_support": coherent[n],
+                "seed_coherent_support": seed[n],
+                "weak_mirnov_support": weak[n],
+                "screening_available": screened[n],
+            }
+            for category, title in ((0, "absent"), (1, "present")):
+                chosen = valid & (state == category)
+                for criterion, mask in masks.items():
+                    measured = chosen.copy()
+                    if criterion.startswith("frequency_"):
+                        measured &= np.isfinite(frequency[n])
+                    elif criterion == "mirnov_phase_fit":
+                        measured &= np.isfinite(
+                            features.get(f"fit{n}", np.full(t.shape, np.nan))
+                        )
+                    elif criterion in ("mirnov_prominence", "weak_mirnov_support"):
+                        measured &= np.isfinite(
+                            features.get("line_prominence_db", np.full(t.shape, np.nan))
+                        )
+                    counts = totals[str(n)][title].setdefault(
+                        criterion, {"total_ms": 0.0, "pass_ms": 0.0}
+                    )
+                    counts["total_ms"] += float(measured.sum() * dt)
+                    counts["pass_ms"] += float((measured & mask).sum() * dt)
+            for item in intervals[
+                intervals.shot.eq(shot) & intervals.n.eq(n)
+            ].itertuples():
+                inside = (t >= item.t_start - 1e-6) & (t <= item.t_end + 1e-6)
+                raw = longest(t, inside & (y > mr.onset_g))
+                median = longest(t, inside & (rule.smoothed(y, dt, 5) > mr.onset_g))
+                combined = (
+                    inside
+                    & (y > mr.onset_g)
+                    & (rule.smoothed(y, dt, 5) > mr.onset_g)
+                    & seed[n]
+                )
+                if n == 2:
+                    combined &= y > mr.harmonic_ratio * n1
+                supported = longest(t, combined)
                 details.append(
                     {
-                        "shot": int(shot),
-                        "n": int(row.n),
-                        "t_start": row.t_start,
-                        "t_end": row.t_end,
+                        "shot": shot,
+                        "n": n,
+                        "t_start": item.t_start,
+                        "t_end": item.t_end,
                         "raw_longest_seed_ms": raw,
-                        "median5ms_longest_seed_ms": smooth,
+                        "median5ms_longest_seed_ms": median,
+                        "supported_longest_seed_ms": supported,
+                        "span_support_fraction": float(coherent[n][inside].mean()),
                         "raw_seed_failure": raw < 50 - 1e-6,
-                        "median_seed_failure": smooth < 50 - 1e-6,
+                        "median_seed_failure": median < 50 - 1e-6,
+                        "supported_seed_failure": supported < 50 - 1e-6,
                     }
                 )
-    n = len(details)
-    return {
-        "n_intervals_audited": n,
-        "missing_signal_shots": missing,
-        "raw_failure_count": sum(r["raw_seed_failure"] for r in details),
-        "median_failure_count": sum(r["median_seed_failure"] for r in details),
-        "raw_failure_fraction": sum(r["raw_seed_failure"] for r in details) / n
-        if n
-        else None,
-        "median_failure_fraction": sum(r["median_seed_failure"] for r in details) / n
-        if n
-        else None,
-        "by_n": {
-            str(mode): {
-                "n_intervals": len(rows),
-                "raw_failure_count": sum(r["raw_seed_failure"] for r in rows),
-                "median_failure_count": sum(r["median_seed_failure"] for r in rows),
-            }
-            for mode in (1, 2)
-            if (rows := [r for r in details if r["n"] == mode])
-        },
-        "details": details,
-    }
-
-
-def locking_audit(frame, frequencies):
-    """Separate missing frequency records from unknown locked-mode confirmation."""
-    unknown, candidates = [], []
-    for shot, rows in frame.groupby("shot"):
-        path = frequencies / f"{int(shot)}.npz"
-        frequency_known = {1: False, 2: False}
-        if path.is_file():
-            with np.load(path) as data:
-                frequency_known = {
-                    n: np.isfinite(data[f"n{n}freq"]).any() for n in (1, 2)
-                }
-        for row in rows.itertuples(index=False):
-            common = {
-                "shot": int(shot),
-                "n": int(row.n),
-                "t_start": row.t_start,
-                "t_end": row.t_end,
-                "ended": row.ended,
-                "locked_known": bool(getattr(row, "locked_known", False)),
-            }
-            if not frequency_known[int(row.n)]:
-                unknown.append(common)
-            if bool(getattr(row, "locked_candidate", False)):
-                times = getattr(row, "lock_candidates_ms", "()")
-                times = ast.literal_eval(times) if isinstance(times, str) else times
-                candidates.append(
-                    {
-                        **common,
-                        "lock_time_ms": row.lock_time_ms,
-                        "lock_candidates_ms": list(times),
-                    }
+    for modes in totals.values():
+        for state in modes.values():
+            for value in state.values():
+                value["pass_rate"] = (
+                    value["pass_ms"] / value["total_ms"] if value["total_ms"] else None
                 )
-    known = frame.get("locked_known", pd.Series(False, index=frame.index)).astype(bool)
-    candidate = frame.get("locked_candidate", pd.Series(False, index=frame.index))
-    return {
-        "n_confirmed_locked": int(frame.locked.sum()),
-        "n_locked_candidates": int(candidate.sum()),
-        "n_lock_confirmation_unknown": int((~known).sum()),
-        "lock_confirmation_unknown_shots": sorted(
-            frame.loc[~known, "shot"].unique().astype(int).tolist()
-        ),
-        "n_intervals_without_frequency_record": len(unknown),
-        "frequency_unknown_shots": sorted({r["shot"] for r in unknown}),
-        "frequency_unknown_rows": unknown,
-        "n_unknown_frequency_incorrect_end": sum(
-            r["ended"] != "unknown" for r in unknown
-        ),
-        "n_unknown_frequency_incorrect_known_flag": sum(
-            r["locked_known"] for r in unknown
-        ),
-        "intervals_by_end": {
-            str(k): int(v) for k, v in frame.ended.value_counts().items()
+    unknown = ~intervals.locked_known.astype(bool)
+    abrupt = intervals.abrupt_collapse_ms.notna()
+    audit = {
+        "after_seed_audit": {
+            "n_intervals_audited": len(details),
+            "raw_failure_count": sum(r["raw_seed_failure"] for r in details),
+            "median_failure_count": sum(r["median_seed_failure"] for r in details),
+            "supported_failure_count": sum(
+                r["supported_seed_failure"] for r in details
+            ),
+            "details": details,
         },
-        "candidate_rows": candidates,
+        "locking_audit": {
+            "n_confirmed_locked": int(intervals.locked.sum()),
+            "n_locked_candidates": int(intervals.locked_candidate.sum()),
+            "n_lock_confirmation_unknown": int(unknown.sum()),
+            "n_abrupt_collapses": int(abrupt.sum()),
+            "n_abrupt_incorrect_decay": int(
+                (abrupt & intervals.ended.eq("decay")).sum()
+            ),
+            "intervals_by_end": intervals.ended.value_counts().to_dict(),
+        },
+        "screening_coverage": coverage,
     }
+    return audit, totals
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--original-dir", type=Path, default=OUT / "fix1_original")
-    parser.add_argument("--new-dir", type=Path, default=OUT / "labels")
-    parser.add_argument("--signals-dir", type=Path, default=OUT / "signals")
-    parser.add_argument("--freq-dir", type=Path, default=OUT / "signals_freq")
-    parser.add_argument("--mag-dir", type=Path, default=OUT / "magfeatures")
     parser.add_argument(
-        "--catalog-labels",
-        type=Path,
-        default=REPO
-        / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv",
+        "--out", type=Path, default=OUT / "labels/audit_fix2_current.json"
     )
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--criterion-out", type=Path, default=OUT / "labels/criterion_support_fix2.json"
+    )
+    parser.add_argument(
+        "--sets",
+        nargs="+",
+        choices=("cohort", "population"),
+        default=["cohort", "population"],
+    )
     args = parser.parse_args(argv)
-    record = {
+    cohort = pd.read_csv(REPO / "data/events/catalog/cohort.csv")
+    blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
+    audit = {
         "made_by": "scripts/labeler/tm_audit_rule.py",
-        "made_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "made_at": datetime.now(UTC).isoformat(),
         "git_sha": git_sha(),
         "policy": __doc__,
-        "original_dir": str(args.original_dir),
-        "new_dir": str(args.new_dir),
+        "excluded_blind_shots": len(blind),
         "source_sha256": {
-            str(path.relative_to(REPO)): hashlib.sha256(path.read_bytes()).hexdigest()
-            for path in (
+            str(p.relative_to(REPO)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in (
+                Path(__file__),
                 REPO / "src/labeler/tearing/rule.py",
                 REPO / "scripts/labeler/tm_label.py",
-                Path(__file__),
             )
         },
         "label_sha256": {},
     }
-    for name in ("cohort", "population"):
-        filename = f"tm_intervals_full_{name}.csv"
-        record["label_sha256"][name] = {
-            "original": hashlib.sha256(
-                (args.original_dir / filename).read_bytes()
-            ).hexdigest(),
-            "regenerated": hashlib.sha256(
-                (args.new_dir / filename).read_bytes()
-            ).hexdigest(),
-        }
-        old = pd.read_csv(args.original_dir / filename)
-        new = pd.read_csv(args.new_dir / filename)
-        record[name] = {
-            "changes": changes(old, new),
-            "before_seed_audit": seed_audit(old, args.signals_dir),
-            "after_seed_audit": seed_audit(new, args.signals_dir),
-            "locking_audit": locking_audit(new, args.freq_dir),
-        }
-    table = pd.read_csv(args.catalog_labels)
-    record["reviewed_shots"] = {
-        str(shot): json.loads(
-            table[(table.shot == shot) & (table.category.isin([1, 2]))].to_json(
-                orient="records"
-            )
-        )
-        for shot in REVIEWED
+    criteria = {
+        "made_by": audit["made_by"],
+        "policy": __doc__,
+        "source_sha256": audit["source_sha256"],
     }
-    # Fixed review examples distinguish the two early broadband pulses from the
-    # later rotating coherent line, independently of the regenerated label state.
-    with np.load(args.mag_dir / "190790.npz") as data:
-        t, features = data["centres_ms"], data["features"]
-    with np.load(args.freq_dir / "190790.npz") as data:
-        ft, frequency = data["t_ms"], data["n1freq"]
-    fit = features[:, FEATURE_NAMES.index("fit1")]
-    prominence = features[:, FEATURE_NAMES.index("line_prominence_db")]
-    line = features[:, FEATURE_NAMES.index("line_khz")]
-    record["physics_cases_190790"] = []
-    for start, end in ((1676, 1752), (2238, 2411), (3163, 5764)):
-        use = (t >= start) & (t < end)
-        coherent = use & (fit >= 0.9) & (prominence >= 10) & (line > 0) & (line <= 30)
-        f_use = (ft >= start) & (ft < end) & np.isfinite(frequency)
-        record["physics_cases_190790"].append(
-            {
-                "t_start": start,
-                "t_end": end,
-                "n_mirnov_bins": int(use.sum()),
-                "n_coherent_bins": int(coherent.sum()),
-                "coherent_fraction": float(coherent.sum() / use.sum()),
-                "continuous_coherent_ms": longest_run(t, coherent),
-                "phase_fit_quantiles": {
-                    str(q): float(np.quantile(fit[use], q)) for q in (0.1, 0.5, 0.9)
-                },
-                "prominence_quantiles_db": {
-                    str(q): float(np.quantile(prominence[use], q))
-                    for q in (0.1, 0.5, 0.9)
-                },
-                "n_frequency_bins": int(f_use.sum()),
-                "frequency_rotating_below30_fraction": float(
-                    ((frequency[f_use] > 0) & (frequency[f_use] <= 30)).mean()
-                )
-                if f_use.any()
-                else None,
-                "frequency_quantiles_khz": {
-                    str(q): float(np.quantile(frequency[f_use], q))
-                    for q in (0.1, 0.5, 0.9)
-                }
-                if f_use.any()
-                else {},
-            }
+    for name in args.sets:
+        shots = pd.read_csv(REPO / f"data/events/catalog/{name}.csv")
+        shots = shots[~shots.shot.isin(blind)]
+        ip = OUT / f"labels/tm_intervals_full_{name}.csv"
+        tp = (
+            REPO
+            / "data/events/neoclassical_tearing_mode/extend_tm_interval/tm_interval.csv"
+            if name == "cohort"
+            else OUT / "labels/tm_interval_population.csv"
         )
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(record, indent=2) + "\n")
+        intervals, table = pd.read_csv(ip), pd.read_csv(tp)
+        intervals, table = (
+            intervals[~intervals.shot.isin(blind)],
+            table[~table.shot.isin(blind)],
+        )
+        audit["label_sha256"][name] = {
+            "intervals": hashlib.sha256(ip.read_bytes()).hexdigest(),
+            "table": hashlib.sha256(tp.read_bytes()).hexdigest(),
+        }
+        audit[name], criteria[name] = audit_set(name, intervals, table, shots)
+    criteria["label_sha256"] = audit["label_sha256"]
+    args.out.write_text(json.dumps(audit, indent=2, default=lambda v: v.item()) + "\n")
+    args.criterion_out.write_text(json.dumps(criteria, indent=2) + "\n")
     print(
         json.dumps(
             {
-                name: {
-                    "changes": {
-                        k: v
-                        for k, v in record[name]["changes"].items()
-                        if not isinstance(v, list)
-                    },
-                    "after_seed_audit": {
-                        k: v
-                        for k, v in record[name]["after_seed_audit"].items()
-                        if k != "details"
-                    },
-                    "locking_audit": {
-                        k: v
-                        for k, v in record[name]["locking_audit"].items()
-                        if not isinstance(v, list)
-                    },
-                }
-                for name in ("cohort", "population")
+                name: {k: v for k, v in audit[name].items() if k != "after_seed_audit"}
+                for name in args.sets
             },
             indent=2,
         )

@@ -76,11 +76,16 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--shots", type=int, nargs="+")
+    ap.add_argument(
+        "--from", dest="source", choices=("cohort", "population"), default="cohort"
+    )
     args = ap.parse_args(argv)
     if args.workers > 8:
         raise SystemExit("at most 8 workers")
     OUT.mkdir(parents=True, exist_ok=True)
-    cohort = pd.read_csv(CATALOG / "cohort.csv")
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    cohort = pd.read_csv(CATALOG / f"{args.source}.csv")
+    cohort = cohort[~cohort.shot.isin(blind)]
     if args.shots:
         cohort = cohort[cohort.shot.isin(args.shots)]
     jobs = [

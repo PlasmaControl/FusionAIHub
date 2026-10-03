@@ -38,6 +38,12 @@ ABSENT, PRESENT, UNCERTAIN, NOT_OBSERVABLE = 0, 1, 2, 3
 CATEGORY = "neoclassical_tearing_mode"
 #: Why an interval ended.
 DECAY, PLASMA_END, LOCKED, UNKNOWN = "decay", "plasma_end", "locked", "unknown"
+LOCK_INVALID_RANGE = (176030, 176912)
+
+
+def valid_lock_shot(shot: int) -> bool:
+    """DUSBRADIAL is reported corrupted for this inclusive campaign range."""
+    return not LOCK_INVALID_RANGE[0] <= int(shot) <= LOCK_INVALID_RANGE[1]
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,7 @@ class Interval:
     #: Each merged component retains its own peak-relative release, not 10% of
     #: the largest merged peak. The displayed release is their minimum.
     release_components: tuple[tuple[float, float, float], ...] = ()
+    abrupt_collapse_ms: float | None = None
 
 
 def uniform(t_ms, y) -> tuple[np.ndarray, np.ndarray, float]:
@@ -222,6 +229,23 @@ def mode_intervals(
     found = []
     for a, b, peak, release, duration, seed_start, components in merged:
         touches_end = window is not None and b >= i1
+        collapse = None
+        # Inspect measured samples, not the median: a <=5 ms disappearance
+        # of a seeded rotating signal can be a lock, never established decay.
+        if not touches_end and b < len(t) and np.isfinite(y[b]):
+            steps = max(1, int(np.ceil(5.0 / dt)))
+            below = np.flatnonzero(y[b : min(i1, b + steps + 1)] < release)
+            if below.size:
+                end = b + int(below[0])
+                back = max(a, end - steps)
+                high = np.flatnonzero(y[back:end] > rule.onset_g)
+                if high.size:
+                    last_high = back + high[-1]
+                    if (
+                        t[end] - t[last_high] <= 5.0
+                        and np.isfinite(y[last_high : end + 1]).all()
+                    ):
+                        collapse = float(t[end])
         found.append(
             Interval(
                 n=rule.n,
@@ -229,12 +253,13 @@ def mode_intervals(
                 end_ms=float(min(t[b - 1], window[1])) if window else float(t[b - 1]),
                 peak_g=float(xs[peak]),
                 peak_ms=float(t[peak]),
-                ended=PLASMA_END if touches_end else DECAY,
+                ended=PLASMA_END if touches_end else UNKNOWN if collapse else DECAY,
                 onset_seen=window is None or (a - i0) * dt >= rule.onset_margin_ms,
                 release_g=release,
                 seed_duration_ms=float(duration * dt),
                 seed_start_ms=float(t[seed_start]),
                 release_components=tuple(components),
+                abrupt_collapse_ms=collapse,
             )
         )
     return found
@@ -452,6 +477,9 @@ def label_shot(
     seed_coherent=None,
     weak_coherent=None,
     weak_release_coherent=None,
+    screened=None,
+    lock_amplitude=None,
+    lock_threshold_v: float = 5.0,
     rules=RULES,
     gap_ms: float = 0.0,
     m_of=None,
@@ -466,6 +494,8 @@ def label_shot(
     """
     w0, w1 = float(window[0]), float(window[1])
     start = w0 if start_ms is None else min(max(float(start_ms), w0), w1)
+    if not valid_lock_shot(shot):
+        lock_amplitude = None
     plasma, uncertain = [], []
     t, first, dt = uniform(t_ms, n1)
     traces = {1: first}
@@ -478,6 +508,19 @@ def label_shot(
         y = traces[n]
         reference = first if n == 2 else None
         valid = np.isfinite(y)
+        if screened is not None:
+            assessed = np.asarray(screened.get(n, np.zeros(t.shape, bool)), bool)
+            nonquiet = valid & ~assessed & (y > mode_rule.weak_g)
+            nonquiet &= (t >= start) & (t <= w1)
+            uncertain.extend(
+                (
+                    float(t[a]),
+                    float(min(w1, t[b - 1] + dt)),
+                    "weak_screening_unavailable_nonquiet",
+                    n,
+                )
+                for a, b in zip(*_runs(nonquiet), strict=True)
+            )
         support = np.zeros(t.shape, bool)
         if coherent is not None and n in coherent:
             support = np.asarray(coherent[n], dtype=bool) & valid
@@ -540,6 +583,96 @@ def label_shot(
                     for lo, hi in _minus([(float(t[a]), float(t[b - 1]))], accepted)
                 )
     plasma = apply_locking(plasma, lock_ms, confirmed_ms=confirmed_lock_ms)
+    resolved = []
+    for item in plasma:
+        collapse = item.abrupt_collapse_ms
+        original_end = item.end_ms
+        times = [
+            time
+            for time in item.lock_candidates_ms
+            if (item.seed_start_ms or item.start_ms) + 50.0 <= time <= original_end
+        ]
+        if collapse is not None:
+            times.append(collapse)
+        if item.locked and item.lock_time_ms is not None:
+            times.append(item.lock_time_ms)
+        if not times:
+            resolved.append(item)
+            continue
+        amplitude = None if lock_amplitude is None else lock_amplitude.get(item.n)
+        earliest_confirmed = None
+        for time in sorted(set(times)):
+            tail_end = w1
+            confirmed = item.locked and time == item.lock_time_ms
+            if amplitude is not None:
+                amp = np.abs(np.asarray(amplitude, float))
+                # DUSBRADIAL is voltage, not calibrated field. Require a 20 ms
+                # high phase near each transition; scan every eligible drop.
+                nearby = (t >= time - 5.0) & (t <= time + 100.0)
+                high = None
+                for lo, hi in zip(
+                    *_runs(nearby & (amp >= lock_threshold_v)), strict=True
+                ):
+                    if (hi - lo) * dt >= 20.0:
+                        high = lo
+                        confirmed = True
+                        break
+                if high is not None:
+                    after = (t > t[high]) & (amp < lock_threshold_v)
+                    for lo, hi in zip(*_runs(after), strict=True):
+                        if (hi - lo) * dt >= 20.0:
+                            tail_end = min(w1, float(t[lo]))
+                            break
+            if confirmed:
+                earliest_confirmed = (
+                    time
+                    if earliest_confirmed is None
+                    else min(time, earliest_confirmed)
+                )
+                uncertain.append(
+                    (
+                        float(min(time, original_end)),
+                        tail_end,
+                        "confirmed_locked_phase",
+                        item.n,
+                    )
+                )
+            elif time == collapse:
+                uncertain.append(
+                    (
+                        float(min(time, original_end)),
+                        w1,
+                        "post_collapse_lock_unknown",
+                        item.n,
+                    )
+                )
+        if earliest_confirmed is not None:
+            item = replace(
+                item,
+                locked=True,
+                ended=LOCKED,
+                locked_known=True,
+                locked_candidate=False,
+                lock_time_ms=float(earliest_confirmed),
+                end_ms=min(item.end_ms, float(earliest_confirmed)),
+            )
+            # Any rotating remainder after a confirmed lock needs a new
+            # assessment; truncation must not turn seeded RMS into negatives.
+            if item.end_ms < original_end:
+                uncertain.append(
+                    (
+                        item.end_ms,
+                        original_end,
+                        "rotation_after_lock_unassessed",
+                        item.n,
+                    )
+                )
+        elif collapse is not None and not item.locked:
+            item = replace(
+                item, ended=UNKNOWN, locked_candidate=True, lock_time_ms=float(collapse)
+            )
+        resolved.append(item)
+    plasma = resolved
     if m_of is not None:
         plasma = [replace(i, m=m_of(i.n, i.start_ms, i.end_ms)) for i in plasma]
     ramp = ()
@@ -657,6 +790,7 @@ def intervals_frame(labels) -> pd.DataFrame:
             "seed_start_ms": item.seed_start_ms,
             "coherent_fraction": item.coherent_fraction,
             "release_components": item.release_components,
+            "abrupt_collapse_ms": item.abrupt_collapse_ms,
             "onset_seen": item.onset_seen,
             "m": item.m,
         }
@@ -684,6 +818,7 @@ def intervals_frame(labels) -> pd.DataFrame:
             "seed_start_ms",
             "coherent_fraction",
             "release_components",
+            "abrupt_collapse_ms",
             "onset_seen",
             "m",
         ],

@@ -12,10 +12,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from dataclasses import replace
 from pathlib import Path
 
+import h5py
 import numpy as np
+import pandas as pd
 
+from labeler.config import Paths
 from labeler.tearing import rule
 from labeler.tearing.magfeatures import FEATURE_NAMES
 
@@ -81,7 +85,74 @@ def main(argv=None):
         "--calibration", type=Path, default=TM / "labels/calibration_dev_fix1.json"
     )
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--island-inventory-shot", type=int)
+    parser.add_argument("--label-meta", type=Path)
     args = parser.parse_args(argv)
+    cohort = pd.read_csv(
+        Path(__file__).resolve().parents[2] / "data/events/catalog/cohort.csv"
+    )
+    blind = set(cohort.loc[cohort.split.eq("test"), "shot"])
+    args.shots = [shot for shot in args.shots if shot not in blind]
+    if args.island_inventory_shot is not None:
+        shot = args.island_inventory_shot
+        if shot in blind or shot not in set(cohort.shot):
+            raise ValueError("island inventory requires a nonblind development shot")
+        paths = Paths.from_env()
+        candidates = [paths.corpus / f"{shot}_processed.h5"]
+        candidates += [
+            replace(paths, root=root).features_file(shot)
+            for root in (TM / "lroot", ROOT)
+        ]
+        inventory = []
+        for path in candidates:
+            item = {"path": str(path), "exists": path.is_file(), "groups": {}}
+            if path.is_file():
+                with h5py.File(path, "r") as f:
+                    for name in f:
+                        if "ece" not in name.lower() and "qpsi" not in name.lower():
+                            continue
+                        group = f[name]
+                        item["groups"][name] = {
+                            "attrs": {
+                                key: str(value) for key, value in group.attrs.items()
+                            },
+                            "datasets": {
+                                key: {
+                                    "shape": list(value.shape),
+                                    "attrs": {
+                                        k: str(v) for k, v in value.attrs.items()
+                                    },
+                                }
+                                for key, value in group.items()
+                                if isinstance(value, h5py.Dataset)
+                            },
+                        }
+            inventory.append(item)
+        record = {
+            "made_by": "scripts/labeler/tm_weak_diagnostics.py",
+            "shot": shot,
+            "split": str(cohort.loc[cohort.shot.eq(shot), "split"].iloc[0]),
+            "inventory": inventory,
+            "m_supported": False,
+            "assessment": "Inventory-only island-radius attempt: ECE temperature "
+            "samples or channel coordinates alone do not establish a localized "
+            "tearing-related temperature flattening or calibrated island radius. "
+            "No validated island/flattening reconstruction is provided in these "
+            "local groups. EFIT q(rho) alone cannot assign m. Retain m empty; "
+            "no ECE fetch attempted.",
+        }
+        args.out.write_text(json.dumps(record, indent=2) + "\n")
+        if args.label_meta is not None:
+            meta = json.loads(args.label_meta.read_text())
+            meta["m"]["inventory"] = {
+                "record": str(args.out),
+                "made_by": record["made_by"],
+                "shot": shot,
+                "assessment": record["assessment"],
+            }
+            args.label_meta.write_text(json.dumps(meta, indent=2) + "\n")
+        print(json.dumps(record, indent=2))
+        return 0
     calibration = json.loads(args.calibration.read_text())
     record = {
         "made_by": "scripts/labeler/tm_weak_diagnostics.py",

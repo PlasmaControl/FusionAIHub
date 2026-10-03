@@ -46,6 +46,7 @@ OUT_ROOT = LABELER / "round4/tm"
 SIGNALS = OUT_ROOT / "signals"
 FREQUENCIES = OUT_ROOT / "signals_freq"
 MAGFEATURES = OUT_ROOT / "magfeatures"
+LOCK_SIGNALS = OUT_ROOT / "signals_lock"
 CATALOG = REPO / "data/events/catalog"
 COHORT_OUT = REPO / "data/events/neoclassical_tearing_mode/extend_tm_interval"
 
@@ -105,6 +106,7 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
     weak_mirnov = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     weak_release = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     seed_support = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
+    screened = {1: np.zeros(t.shape, bool), 2: np.zeros(t.shape, bool)}
     path = mag_dir / f"{shot}.npz"
     if path.is_file():
         with np.load(path) as z:
@@ -113,6 +115,7 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
         index = np.searchsorted(centres + 5.0, t)
         inside = (index < len(centres)) & (t >= centres[0] - 5.0)
         for n, floor in ((1, -0.2435681), (2, -0.6028450)):
+            screened[n][inside] = np.isfinite(features[index[inside]]).all(axis=1)
             amplitude = np.max(
                 features[
                     :, [i for i, name in enumerate(names) if name.startswith(f"a{n}_")]
@@ -156,7 +159,9 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
             for n in (1, 2):
                 freq = z[f"n{n}freq"]
                 aligned = scoring.align_scores(z["t_ms"], freq, t)
-                support[n] |= (aligned >= 1.0) & (aligned <= 30.0)
+                stable = rule.coherent_frequency(aligned, dt)
+                support[n] |= stable
+                screened[n] |= np.isfinite(aligned)
                 # Available processed frequency settles the rotating seed:
                 # a coherent rapid sweep or stationary pulse is only a candidate.
                 seed_support[n] = np.where(
@@ -168,7 +173,7 @@ def line_evidence(shot, t_ms, freq_dir, mag_dir=MAGFEATURES):
                 mirnov[n][aligned > 30.0] = False
                 if np.isfinite(freq).any():
                     locks[n] = rule.frequency_locks(z["t_ms"], freq)
-    return support, weak_mirnov, locks, seed_support, weak_release
+    return support, weak_mirnov, locks, seed_support, weak_release, screened
 
 
 def shot_label(
@@ -182,7 +187,14 @@ def shot_label(
     start, how = spans.plasma_start(shot, paths, window)
     t_ms, n1, _ = rule.uniform(t_ms, n1)
     _, n2, _ = rule.uniform(record[0], n2)
-    coherent, weak, locks, seed, weak_release = line_evidence(shot, t_ms, freq_dir)
+    coherent, weak, locks, seed, weak_release, screened = line_evidence(
+        shot, t_ms, freq_dir
+    )
+    amplitude = None
+    lock_path = LOCK_SIGNALS / f"{shot}.npz"
+    if rule.valid_lock_shot(shot) and lock_path.is_file():
+        with np.load(lock_path) as z:
+            amplitude = {1: scoring.align_scores(z["t_ms"], z["bradial"], t_ms)}
     label = rule.label_shot(
         shot,
         t_ms,
@@ -195,6 +207,8 @@ def shot_label(
         seed_coherent=seed,
         weak_coherent=weak,
         weak_release_coherent=weak_release,
+        screened=screened,
+        lock_amplitude=amplitude,
         m_of=surface_hook(shot, q_roots or (paths,)),
     )
     return label, how, locks is not None and all(i.n in locks for i in label.intervals)
@@ -282,13 +296,17 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "$LABELER_ROOT/round4/tm/labels/plasma_start_<set>.json",
         "missing_signal_shots": missing,
         "locked": {
-            "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz)",
+            "signal": "\\MHD::N1FREQ, \\MHD::N2FREQ (kHz); PTDATA DUSBRADIAL (V)",
             "rule": "Frequency <=1 kHz for 20 ms after >=1.5 kHz is only a "
             "locked_candidate, storing earliest lock_time_ms and every in-span "
             "drop in lock_candidates_ms (plus <=100 ms after the RMS end). "
-            "Only independent locked-mode "
-            "confirmation truncates the rotating span and sets locked=true. No "
-            "dedicated locked-mode diagnostic is resolved in this run. Without "
+            "An abrupt raw >seed to <release collapse within <=5 ms never "
+            "counts as decay: unknown unless DUSBRADIAL >=5 V continuously "
+            "for 20 ms within 100 ms confirms a locked/very-slow phase. "
+            "This voltage convention is local, not calibrated gauss. "
+            "Post-collapse time is uncertain until DUSBRADIAL <5 V for 20 ms "
+            "or discharge end; absent diagnostic leaves the entire tail uncertain. "
+            "Without "
             "frequency: ended=unknown and locked_known=false per row.",
             "intervals_without_a_frequency_record_shots": unlocked,
             "unknown_locking_shots": sorted(
@@ -308,6 +326,9 @@ def meta_for(which, frame, labels, missing, unlocked, shots, rules, extra=None):
         "along the coherent line at 10% of that amplitude floor; <=50 ms "
         "evidence interruptions can be joined, acquisition gaps cannot.",
         "calibration": str(OUT_ROOT / "labels/calibration_dev_fix1.json"),
+        "screening_missing": "All requested shots exclude blind cohort IDs before "
+        "input reads; unavailable line screening at RMS above frozen weak_g "
+        "is uncertain even without positive coherent-line evidence.",
         "test_exposure_correction": "Earlier harmonic_ratio=0.4 cited blind test "
         "shot 187043; replaced by development-only p99 rounded up to 0.57.",
         "m": {
@@ -339,6 +360,8 @@ def main(argv=None) -> int:
 
     paths = Paths.from_env()
     table = pd.read_csv(CATALOG / f"{args.source}.csv")
+    blind = set(pd.read_csv(CATALOG / "cohort.csv").query("split == 'test'").shot)
+    table = table[~table.shot.isin(blind)]
     shots = table[["shot", "window_start_ms", "window_end_ms"]]
     q_roots = [replace(paths, root=root) for root in args.features_root]
     rows, intervals, labels, missing, starts, unlocked = table_for(

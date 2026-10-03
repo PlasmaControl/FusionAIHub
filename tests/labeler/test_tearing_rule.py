@@ -175,7 +175,7 @@ def test_present_mask_selects_by_toroidal_number():
     assert not rule.present_mask(found, T, n=2).any()
 
 
-def test_shot_table_is_a_valid_catalog_table_with_onset_points_and_spans():
+def test_shot_table_validates_extension_intervals_with_onset_points_and_spans():
     y = trace((1000, 50, 400, 50, 30.0))
     label = rule.label_shot(
         185805,
@@ -417,13 +417,163 @@ def test_weak_hysteresis_extends_only_tracks_with_a_continuous_high_core():
     seed[1400:1500] = True
     release[1000:2000] = True
     label = rule.label_shot(
-        1, T, y, None, (0, 2999),
-        weak_coherent={1: seed}, weak_release_coherent={1: release},
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        weak_coherent={1: seed},
+        weak_release_coherent={1: release},
     )
     assert any(a == 1000 and b == 1999 for a, b, _, _ in label.uncertain)
     seed[1450:1460] = False
     label = rule.label_shot(
-        1, T, y, None, (0, 2999),
-        weak_coherent={1: seed}, weak_release_coherent={1: release},
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        weak_coherent={1: seed},
+        weak_release_coherent={1: release},
     )
     assert not label.uncertain
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_abrupt_collapse_is_unknown_or_locked_and_tail_never_absent(confirmed):
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    amplitude = np.zeros(T.shape)
+    amplitude[1500:2200] = 15.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: []},
+        lock_amplitude={1: amplitude} if confirmed else None,
+    )
+    (item,) = label.intervals
+    assert item.ended == (rule.LOCKED if confirmed else rule.UNKNOWN)
+    assert item.locked == confirmed
+    table = rule.shot_table(label)
+    tail = table[(table.t_start < 2100) & (table.t_end > 1600)]
+    assert tail.category.eq(rule.UNCERTAIN).all()
+    if confirmed:
+        assert table[(table.t_start < 2600) & (table.t_end > 2500)].category.eq(0).all()
+    else:
+        assert table[(table.t_start < 2600) & (table.t_end > 2500)].category.eq(2).all()
+
+
+def test_unscreened_nonquiet_samples_are_uncertain_even_without_a_line():
+    y = np.full(T.shape, 0.2)
+    y[1000:2000] = 3.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        screened={1: np.zeros(T.shape, bool)},
+    )
+    table = rule.shot_table(label)
+    assert table[(table.t_start < 1600) & (table.t_end > 1500)].category.eq(2).all()
+    assert table[(table.t_start < 600) & (table.t_end > 500)].category.eq(0).all()
+
+
+def test_brief_radial_spike_and_missing_release_do_not_confirm_decay():
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    amplitude = np.zeros(T.shape)
+    amplitude[1500:1510] = 15.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_amplitude={1: amplitude},
+    )
+    assert label.intervals[0].ended == rule.UNKNOWN
+    amplitude[1500:2000] = 15.0
+    amplitude[2000:] = np.nan
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_amplitude={1: amplitude},
+    )
+    assert label.intervals[0].locked
+    table = rule.shot_table(label)
+    assert table[(table.t_start < 2600) & (table.t_end > 2500)].category.eq(2).all()
+
+
+def test_n1_radial_confirmation_cannot_establish_n2_lock():
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 15.0
+    label = rule.label_shot(
+        1,
+        T,
+        np.full(T.shape, 0.1),
+        y,
+        (0, 2999),
+        coherent={2: np.ones(T.shape, bool)},
+        lock_amplitude={1: np.full(T.shape, 15.0)},
+    )
+    assert label.intervals[0].n == 2
+    assert label.intervals[0].ended == rule.UNKNOWN
+    assert not label.intervals[0].locked
+
+
+@pytest.mark.parametrize("shot", [176030, 176068, 176912])
+def test_corrupted_radial_campaign_cannot_confirm_a_lock(shot):
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    label = rule.label_shot(
+        shot,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_amplitude={1: np.full(T.shape, 15.0)},
+    )
+    assert label.intervals[0].ended == rule.UNKNOWN
+    assert not label.intervals[0].locked
+
+
+@pytest.mark.parametrize("drops", [[1300.0], [1020.0, 1300.0]])
+def test_all_frequency_drops_precede_collapse_for_independent_confirmation(drops):
+    y = np.full(T.shape, 0.2)
+    y[1000:1800] = 25.0
+    amplitude = np.zeros(T.shape)
+    amplitude[1300:1400] = 15.0
+    label = rule.label_shot(
+        1,
+        T,
+        y,
+        None,
+        (0, 2999),
+        coherent={1: np.ones(T.shape, bool)},
+        lock_ms={1: drops},
+        lock_amplitude={1: amplitude},
+    )
+    (item,) = label.intervals
+    assert item.locked and item.ended == rule.LOCKED
+    assert item.lock_time_ms == 1300.0
+    assert item.end_ms == 1300.0
+
+
+def test_abrupt_five_ms_collapse_can_touch_release_before_crossing_it():
+    y = np.full(T.shape, 0.2)
+    y[1000:1500] = 25.0
+    y[1500:1504] = [12.0, 9.0, 6.0, 2.5]
+    (item,) = rule.mode_intervals(T, y, rule.N1_RULE)
+    assert item.abrupt_collapse_ms == 1504.0
+    assert item.ended == rule.UNKNOWN
