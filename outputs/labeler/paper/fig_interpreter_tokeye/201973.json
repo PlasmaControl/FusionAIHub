@@ -28,6 +28,35 @@
   "probe": "mirnov row 15 (MPI66M322D)",
   "threshold": 0.2,
   "cache": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/cache/tokeye_201973_1500_3450.npz",
+  "cache_sha256": "12b9a6c0e8be99843f7bdf3998332c4fac4ed3477ec355ce6dcd1d665dba4b1c",
+  "fingerprints": {
+   "preprocessing": {
+    "code_sha256": {
+     "labeler/ae/labels.py": "ffd73c485fd75725403b7ad27a54da0471cb2b2f813cdd718f694739449dcfdc",
+     "labeler/ae/transform.py": "971819c5fc3a612cdf2282f9d7b686ac7476f59d788844010261f84f3a62bf2d",
+     "labeler/events/masks.py": "db4d3fc03cc367de6e536d4dff57083b03973152b825d634f15803a465650e3f",
+     "labeler/events/unet.py": "ea5e374c5811777df7c9696e19106df91eb5554e3617dc2f134ae8be993cd4ab"
+    },
+    "inference_sha256": "51c98c6edd781f0fd3187603d2bf5e46d0ac655c901be6a2cb08eb0a3cbb23e8",
+    "row_lit_threshold": 0.2,
+    "runtime_versions": {
+     "numpy": "1.26.4",
+     "scipy": "1.17.1",
+     "torch": "2.14.0+cpu"
+    },
+    "zoom_decimation": 4
+   },
+   "waveform": {
+    "dtype": "float32",
+    "end_s": 8.658075332641602,
+    "fs_hz": 499999.9813464998,
+    "group": "mirnov",
+    "row": 15,
+    "sample_sha256": "34d6b1514e635c23452482f81fdd437aa3d034415a7a05ab5428cf56ee728447",
+    "samples": 5079038,
+    "start_s": -1.4999990463256836
+   }
+  },
   "device": "cpu",
   "corpus": "/scratch/gpfs/EKOLEMEN/foundation_model/201973_processed.h5"
  },
@@ -42,7 +71,7 @@
   "components": "scipy.ndimage.label, 8-connected (3x3 structure)",
   "tag_rule": "component AND PRESENT time pixels AND event band; NTM dominant measured n in {1,2} AND pixel n in {1,2} <=30 kHz; sawtooth crash ticks, no mode tag",
   "ae_highlight_rule": "pixel tint only; no component bounding boxes",
-  "outline_display_rule": "max pool at 150-dpi axes resolution; one print pixel inner edge, alpha 0.45; re-intersect native n=1/2 mask; clip to raw time/band spans",
+  "outline_display_rule": "max pool measured n=1 or 2 support at 150-dpi axes resolution; opaque white dashed contour, 1.2 pt (2.5 print pixels), black 1.5-pt halo; clip to raw time/band spans; pixel audit covers outlined region support, not contour stroke",
   "projection_audit_rule": "enumerate projected coordinates against raw, end-exclusive intervals; independent of present_columns",
   "n_palette": {
    "1": "#0072B2",
@@ -325,7 +354,7 @@
   "sawtooth_oscillation": {
    "tier": "generated: automated labeler",
    "title": "sawtooth",
-   "what": "physics sawtooth states; independently ECE-verified crash ticks",
+   "what": "physics sawtooth states; separate ECE-supported crash candidates",
    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/fix2-79a2c18ed4aa/shots/201973.json",
    "sha256": "ad3270999c397bde99f9df5d294c6d1984ee0b5f39cb38624664f6627d3b2f73",
    "rows": 9,
@@ -460,7 +489,7 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/caption.tex",
-  "sha256": "2453a42e0d137bd4a689a8e1d3cbcad0d887fa95928ba4c0f46f67acd78a19ea"
+  "sha256": "65fcc0d5e8246b07df3be1aafc00d3556a1053efbdb984dd89e69f8065628d61"
  },
  "drawn": {
   "figure": [
@@ -468,8 +497,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "e0383e6c52db0c8c63cd91c08ff58c113d764124c0ff66cb9d7edb0f2367bc38",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "82b82a2c6584f96f9081d1b0ef669b9b130a70e6774838e4212e9b01ff8859f4"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "add4ccfe6e6939b14cf935f5406c915b39d2448af407fca5985ccd98e0dbcbd3",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "367a90ecfa3e2337db07a23ec709a6c0f9272c91e7d7abc868556c9cd817c876"
   },
   "blobs": {
    "wide_above_fold": 297,
@@ -549,6 +578,22 @@
    3094.8264598846436,
    3333.9507579803467
   ],
+  "first_large_peak_before_expert_ms": null,
+  "largest_dalpha_peak_ms": 2091.465711593628,
+  "elm_hmode_conflicts_ms": [
+   [
+    3013.0,
+    3045.0
+   ],
+   [
+    3077.0,
+    3124.0
+   ],
+   [
+    3313.0,
+    3350.0
+   ]
+  ],
   "elm_uncertain_spans_ms": [],
   "elm_crowd_spans_ms": [
    {
@@ -582,8 +627,8 @@
    "legend_labels": [
     "TokEye mask,\nn not measured",
     "AE (detector band\n\u226580 kHz)",
-    "NTM (n=1/2, \u226430 kHz)",
-    "ECE-verified crashes",
+    "NTM (n=1 or 2,\n\u226430 kHz)",
+    "ECE-supported\ncrash candidates",
     "n=1",
     "n=2",
     "n=3",
@@ -604,22 +649,22 @@
    ],
    "heading_and_legend_text_bounds": [
     {
-     "text": "Raw signals: magnetics spectrogram (Mirnov probe)",
+     "text": "Raw signals",
      "font_pt": 7.0,
      "bounds": [
       0.14,
       0.9570000000000001,
-      0.5755555555555556,
+      0.23777777777777778,
       0.975792021780303
      ]
     },
     {
-     "text": "TokEye-processed: measured n and label\u2013mode coincidence",
+     "text": "TokEye-processed: modes overlapping event labels",
      "font_pt": 7.0,
      "bounds": [
       0.14,
       0.6523100263852243,
-      0.6358564814814814,
+      0.5677083333333334,
       0.6711020481655273
      ]
     },
@@ -648,9 +693,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.6106483707665374,
+      0.6106483707665376,
       0.924474279835391,
-      0.6553100263852243
+      0.6553100263852244
      ]
     },
     {
@@ -658,29 +703,29 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5571483313094667,
+      0.5571483313094668,
       0.9425761316872429,
-      0.6018099869281536
+      0.6018099869281537
      ]
     },
     {
-     "text": "NTM (n=1/2, \u226430 kHz)",
+     "text": "NTM (n=1 or 2,\n\u226430 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5295179256907798,
-      0.973687242798354,
-      0.5483099474710829
+      0.5036482918523961,
+      0.9203539094650206,
+      0.548309947471083
      ]
     },
     {
-     "text": "ECE-verified crashes",
+     "text": "ECE-supported\ncrash candidates",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.3484164214914648,
-      0.9599603909465021,
-      0.3672084432717678
+      0.6790124868615244,
+      0.9351687242798354,
+      0.7236741424802112
      ]
     },
     {
@@ -798,15 +843,14 @@
   "catalog_sawtooth_frame_model_shown": false,
   "late_untagged_high_frequency": {
    "band_khz": [
-    177.24608713747992,
-    220.70311676622842
+    89.35546541641548,
+    249.5117094414662
    ],
-   "pixels": 26384,
-   "columns": 789,
+   "pixels": 69106,
+   "columns": 2499,
    "first_time_ms": 2450.081101039958,
-   "last_time_ms": 2651.8091085658248,
-   "minimum_duration_ms": 150.0,
-   "rule": "8-connected coherent components in the AE detector band; late ABSENT times after the last PRESENT AE interval; continuous component duration >=150 ms",
+   "last_time_ms": 3349.92113461029,
+   "rule": "all coherent pixels in the AE detector band during late ABSENT times after the last PRESENT AE interval; no duration cutoff",
    "reason": "AE detector absent; time coincidence is required"
   },
   "n2_harmonic_consistent": true,
@@ -816,11 +860,15 @@
    "caption_frequency_step_khz": 1.0,
    "ridge_rule": "per-column pixel-weighted frequency of each measured n",
    "support_ms": 221.18400825169738,
+   "joint_support_ms": 818.1760305236398,
+   "joint_columns": 799,
+   "passing_columns": 216,
+   "passing_fraction": 0.27033792240300375,
    "n1_median_khz": 6.549541522483164,
    "n2_median_khz": 13.183593258159664
   },
   "n3_components_unoutlined": 3,
-  "n3_outline_rule": "both dominant n and each outlined pixel must be n=1/2",
+  "n3_outline_rule": "both dominant n and outlined support must be n=1 or 2",
   "n_map": {
    "kept_share": 0.1596,
    "keys": [
@@ -911,7 +959,7 @@
    "zoom": {
     "outside_measured_n": 0,
     "above_n_view_band": 0,
-    "rendered_outline_pixels": 5483,
+    "rendered_outline_pixels": 6961,
     "measured_n3_outline_pixels": 0
    },
    "wide": {
@@ -944,11 +992,11 @@
    }
   }
  },
- "git": "21e72826",
+ "git": "d3c0519a",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "09140ca2bc4f72929a86265033353973c64113f67785ef06bd4af2fd3602fa3b",
-  "src/labeler/paper/figure_sources.py": "bbd4fe838935328e4ccf31bdb2c7323b022cb2e3f6d39168494eda4808a14f29",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "7aaa20200cff13bc8a6c25d1af94ff5e9dfe6e63dcf254203cd12cd2c61ad1e1",
+  "src/labeler/paper/figure_sources.py": "b8298e8a429caee5035883471600c645f1f891edfb7189e16cab5e4063dc1f8d",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }
