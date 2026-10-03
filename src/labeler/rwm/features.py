@@ -8,7 +8,7 @@ ZIPFIT cadence (20 ms or slower) and the n = 1 and n = 2 magnetic RMS at 1 kHz,
 so this module holds a value from its last sample (dropping stale values) and
 calculates rates over trailing windows. This does not establish real-time input
 availability: N1RMS/N2RMS are postprocessed magnetic amplitudes with uncertain
-upstream timing, and ZIPFIT's time smoothing is mildly acausal. Holding samples
+upstream timing, and ZIPFIT's time smoothing is acausal. Holding samples
 cannot remove that processing. The high-current analysis window also uses the
 whole-shot peak and is retrospective.
 

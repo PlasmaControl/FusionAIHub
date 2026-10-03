@@ -207,16 +207,18 @@ def main():
             "forecast target, not verified instability intervals. Bottom panels "
             "are unlabelled comparison shots; their zero is the matched Hanson "
             "onset time, not an onset on those shots. The dotted orange line is "
-            "the no-wall proxy beta_N/li=4. Examples were chosen by shot number, "
+            "the no-wall proxy beta_N/li=4 on the right axis, not a score "
+            "threshold (it aligns with score 0.5 on the left axis). "
+            "Examples were chosen by shot number, "
             "not model performance; this figure does not estimate warning skill. "
             "The first panel, 156785, has beta_N "
             f"{first_onset['onset_betan']:.2f} and beta_N/li "
             f"{first_onset['onset_betan_over_li']:.2f} at its listed onset, far below "
             "the conventional proxy, whose applicability is uncertain for "
             "high-qmin, low-li plasmas. On 156796 and 158022, beta_N/li "
-            "collapses about 400 ms before the "
-            "listed onset, within assumed-negative time, visibly limiting the "
-            "onset-list completeness assumption."
+            "collapses about 400 ms before the listed onset are of unidentified "
+            "cause, inside assumed-negative time; a reason for expert "
+            "timing/coverage review."
         ),
     }
     (OUT / "figure.json").write_text(json.dumps(metadata, indent=2) + "\n")

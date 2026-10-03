@@ -142,9 +142,10 @@ def campaign_pairs(record):
         "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals "
         "condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times "
         "the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 "
-        "high-beta AUROC is about chance or below across the five splits "
-        f"({split_range(ranges, 2)}; reference-split CI "
-        f"[{reference['low']:.2f}, {reference['high']:.2f}]) and below elapsed time "
+        "forest is below chance on the reference split "
+        f"({reference['estimate']:.3f} [{reference['low']:.2f}, "
+        f"{reference['high']:.2f}]); the scalar rules are near chance. "
+        f"Forest five-split range: {split_range(ranges, 3)}; below elapsed time "
         "on every split (point estimates; CI excludes zero on 2 of 5 seeds). "
         "Included 2018 run-record holdout CIs exclude zero: primary "
         + interval(
@@ -633,151 +634,79 @@ def write_latex(record, out_dir):
     }
     keys = (
         "slice_auroc",
+        "broad_auroc",
         "slice_auprc",
         "slice_f1",
         "slice_tpr",
         "slice_fpr",
-        "high_beta_auroc",
     )
     lines = [
         r"\begin{table*}[t]",
         r"\centering",
         r"\small",
-        r"\setlength{\tabcolsep}{4pt}",
-        r"\begin{tabular}{@{}lcccccc@{}}",
+        r"\setlength{\tabcolsep}{3pt}",
+        r"\begin{tabular}{@{}lccccccc@{}}",
         r"\toprule",
-        r"\multicolumn{7}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
+        r"\multicolumn{8}{@{}l}{Tokamak-SI (DIII-D): reference split (seed 0)} \\",
         r"\midrule",
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
+            r"\shortstack{Broad\\AUROC} & "
+            r"\shortstack{Within-shot mean\\AUROC (primary)} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
-            r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} & "
-            r"\shortstack{High-$\beta$ conditional\\AUROC} \\"
+            r"\shortstack{Slice\\TPR} & \shortstack{Slice\\FPR} \\"
         ),
         r"\midrule",
     ]
     provenance = {}
     for name in NAMES:
-        lines.append(
-            labels[name]
-            + " & "
-            + " & ".join(
-                latex_cell(configs[name]["metrics"][k], stacked=True) for k in keys
-            )
-            + r" \\"
-        )
+        config = configs[name]
+        cells = [
+            latex_cell(config["metrics"][k], stacked=True, bound_digits=3) for k in keys
+        ]
+        within = config["within_shot_auroc"]["primary"]
+        cells.insert(2, f"${within['mean']:.3f}$")
+        lines.append(labels[name] + " & " + " & ".join(cells) + r" \\")
         lines.append(r"\addlinespace[1.5pt]")
         provenance[name] = {
             k: {
                 "json_path": f"configs.{name}.metrics.{k}",
-                **configs[name]["metrics"][k],
+                **config["metrics"][k],
             }
             for k in keys
         }
+        provenance[name]["within_shot_primary_mean"] = {
+            "json_path": f"configs.{name}.within_shot_auroc.primary.mean",
+            "estimate": within["mean"],
+            "n_shots": within["n_shots"],
+        }
     lines += [
-        r"\bottomrule",
-        r"\end{tabular}",
-        r"\par\smallskip",
-        r"\begin{tabular}{@{}lccc@{}}",
-        r"\toprule",
-        r"Scope & Primary AUROC & High-$\beta$ conditional AUROC & Above-proxy conditional AUROC \\",
         r"\midrule",
-    ]
-    ranges = record["split_sensitivity"]["auroc_ranges"]
-    for campaign, row in ranges.items():
-        lines.append(
-            f"{campaign.capitalize()} (five splits) & "
-            + " & ".join(
-                latex_range(row[k])
-                for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
-            )
-            + r" \\"
-        )
-    holdout = record["leave_one_run_record_out"]
-    lines += [
-        "Run-record holdout & "
-        + " & ".join(
-            latex_cell(holdout["metrics"][k])
-            for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
-        )
-        + r" \\",
-        r"\bottomrule",
-        r"\end{tabular}",
-        r"\par\smallskip",
-        r"\begin{tabular}{@{}lc@{}}",
-        r"\toprule",
-        (r"\multicolumn{2}{@{}l}{Legacy (Piccione et al., NSTX)} \\"),
+        r"\multicolumn{8}{@{}l}{Legacy (Piccione et al., NSTX): not comparable} \\",
         r"\midrule",
-        f"Slice AUROC / F1 & {legacy['slice_auroc']:.3f} / --" + r" \\",
-        (
-            f"Slice TPR / FPR & {100 * legacy['slice_tpr']:.1f}"
-            + r"\% / "
-            + f"{100 * legacy['slice_fpr']:.1f}"
-            + r"\% \\"
-        ),
-        (
-            "Detected unstable shots & "
-            f"{legacy['onsets_warned']}/{legacy['target_onsets']}" + r" \\"
-        ),
-        (
-            "False-positive stable shots & "
-            f"{legacy['comparison_shots_with_an_alarm']}/"
-            f"{legacy['comparison_shots']}" + r" \\"
-        ),
+        r"Model & AUROC & -- & -- & AUPRC & F1 & TPR & FPR \\",
+        r"\midrule",
+        "NSTX RUS forest & "
+        f"${legacy['slice_auroc']:.3f}$ & -- & -- & -- & -- & "
+        f"${legacy['slice_tpr']:.3f}$ & ${legacy['slice_fpr']:.3f}$" + r" \\",
+        r"\multicolumn{8}{@{}l}{Detected unstable shots: "
+        f"{legacy['onsets_warned']}/{legacy['target_onsets']}; "
+        "stable shots with false alarms: "
+        f"{legacy['comparison_shots_with_an_alarm']}/"
+        f"{legacy['comparison_shots']}" + r"} \\",
         r"\bottomrule",
         r"\end{tabular}",
     ]
-    summary = record["split_sensitivity"]
-    campaign_range = ranges["2014"]["high_beta_auroc"]
-    campaign_reference = configs["rwm-brf"]["by_campaign"]["2014"]["metrics"][
-        "high_beta_auroc"
-    ]
-    n_hanson = configs["rwm-brf"]["counts"]["hanson_shots"]
-    n_bootstrap = record["protocol"]["bootstrap_replicates"]
-    within = configs["rule-elapsed-time"]["within_shot_auroc"]["primary"]
-    campaign_pairs = summary["paired_time_by_campaign"]["2014"]
-    n_exclude_zero = sum(
-        not (row["high_beta_auroc"]["low"] <= 0 <= row["high_beta_auroc"]["high"])
-        for row in campaign_pairs.values()
-    )
-    broad_time = record["paired"]["rwm-brf - rule-elapsed-time"]["broad_auroc"]
-    broad_ratio = record["paired"]["rwm-brf - rule-betan-over-li"]["broad_auroc"]
     caption = (
-        f"Retrospective DIII-D forecasting on {n_hanson} Hanson shots with offline ZIPFIT "
-        r"and postprocessed magnetic-RMS inputs, and unverified negative coverage. "
-        r"Positives precede listed $n=1$ "
-        r"onsets by at most 100 ms. Primary negatives end at the last onset, so "
-        r"elapsed time ranks within-shot almost perfectly (median AUROC "
-        f"{within['median']:.1f}, mean {within['mean']:.2f}, "
-        f"{within['n_shots']} shots). "
-        r"High-$\beta$ conditions on $\beta_N\geq0.8$ "
-        r"shot whole-window p95; above-proxy conditions on $\beta_N/l_i>4$. "
-        r"Brackets: 95\% "
-        f"shot-bootstrap intervals ({n_bootstrap:,} resamples), conditional on fixed fitted "
-        r"predictions. Between-model differences use basic paired intervals. "
-        r"Five-split forest-minus-elapsed-time AUROC ranges: primary "
-        + latex_range(summary["paired_time_ranges"]["slice_auroc"], 3)
-        + r"; high-$\beta$ "
-        + latex_range(summary["paired_time_ranges"]["high_beta_auroc"])
-        + r"; above-proxy "
-        + latex_range(summary["paired_time_ranges"]["above_proxy_auroc"])
-        + r". The primary seed-3 lower bound is borderline near zero. "
-        r"Campaign 2014 high-$\beta$ AUROC is about chance or below ("
-        + latex_range(campaign_range)
-        + f"; reference-split CI [{campaign_reference['low']:.2f}, "
-        + f"{campaign_reference['high']:.2f}]) and below elapsed time on every split "
-        + f"(point estimates; CI excludes zero on {n_exclude_zero} of 5 seeds). "
-        r"Under broad negatives, forest minus elapsed time is "
-        + latex_cell(broad_time, bound_digits=3)
-        + r" (run-record holdout "
-        + latex_cell(holdout["paired_time"]["broad_auroc"], bound_digits=3)
-        + r"); forest minus $\beta_N/l_i$ is "
-        + latex_cell(broad_ratio, bound_digits=3)
-        + r". The forest matches the best single scalar under either mask "
-        r"(elapsed time on primary, $\beta_N/l_i$ on broad); no onset-specific skill. "
-        r"Run-record holdout retains four records across three dates. "
-        r"Legacy uses different inputs and expert-reviewed stable shots; results "
-        r"are not comparable."
+        r"Positives: 100 ms before listed onsets. Primary assumed negatives "
+        r"end at the last $n=1$ "
+        r"onset; broad adds post-onset and $n=2$-only time, with unchanged "
+        r"exclusions. Brackets: 95\% shot-bootstrap intervals at fixed predictions. "
+        r"Within-shot means weight two-class shots equally. No AUROC advantage "
+        r"over the strongest scalar, or onset-specific warning skill, was "
+        r"established; within shot the forest ranks below both continuous plasma "
+        r"scalars on both masks (Supplement). Legacy uses different inputs and "
+        r"validation; results are not comparable."
     )
     lines += [
         r"\caption{" + caption + "}",
@@ -795,36 +724,6 @@ def write_latex(record, out_dir):
         "cells": provenance,
         "caption": caption,
         "caption_words": len(caption.split()),
-        "split_ranges": {
-            "json_path": "split_sensitivity.auroc_ranges",
-            "values": ranges,
-        },
-        "paired_time_ranges": {
-            "json_path": "split_sensitivity.paired_time_ranges",
-            "values": summary["paired_time_ranges"],
-        },
-        "within_shot_elapsed_time": {
-            "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary",
-            "values": within,
-        },
-        "broad_pairs": {
-            "paired.rwm-brf - rule-elapsed-time.broad_auroc": broad_time,
-            "paired.rwm-brf - rule-betan-over-li.broad_auroc": broad_ratio,
-            "leave_one_run_record_out.paired_time.broad_auroc": holdout["paired_time"][
-                "broad_auroc"
-            ],
-        },
-        "paired_time_by_campaign": {
-            "json_path": "split_sensitivity.paired_time_by_campaign",
-            "values": summary["paired_time_by_campaign"],
-        },
-        "run_record_cells": {
-            k: {
-                "json_path": f"leave_one_run_record_out.metrics.{k}",
-                **holdout["metrics"][k],
-            }
-            for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
-        },
         "legacy": {
             "source": legacy["source"],
             "cells": {
@@ -890,6 +789,149 @@ def write_supplemental_latex(record, out_dir):
         }
 
     keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+    summary = record["split_sensitivity"]
+    holdout = record["leave_one_run_record_out"]
+    rows = []
+    broad_ranges = {}
+    for campaign, ranges in summary["auroc_ranges"].items():
+        broad_values = {
+            seed: (run if campaign == "pooled" else run["by_campaign"][campaign])[
+                "metrics"
+            ]["broad_auroc"]["estimate"]
+            for seed, run in forest_runs(record).items()
+        }
+        broad_ranges[campaign] = {
+            "by_seed": broad_values,
+            "min": min(broad_values.values()),
+            "max": max(broad_values.values()),
+        }
+        rows.append(
+            [
+                campaign.capitalize(),
+                "Forest range",
+                latex_range(ranges[keys[0]], 3),
+                latex_range(broad_ranges[campaign], 3),
+                *(latex_range(ranges[k], 3) for k in keys[1:]),
+            ]
+        )
+        scores = holdout if campaign == "pooled" else holdout["by_campaign"][campaign]
+        rows.append(
+            [
+                campaign.capitalize(),
+                "Forest holdout",
+                *(
+                    latex_cell(scores["metrics"][k], stacked=True)
+                    for k in (keys[0], "broad_auroc", *keys[1:])
+                ),
+            ]
+        )
+    for seed, metrics in summary["paired_time_by_seed"].items():
+        rows.append(
+            [
+                "Pooled difference",
+                f"Seed {seed}",
+                latex_cell(
+                    metrics[keys[0]],
+                    stacked=True,
+                    bound_digits=4 if seed == "3" else 3,
+                ),
+                (
+                    latex_cell(
+                        record["paired"]["rwm-brf - rule-elapsed-time"]["broad_auroc"],
+                        stacked=True,
+                        bound_digits=3,
+                    )
+                    if seed == "0"
+                    else "--"
+                ),
+                *(
+                    latex_cell(metrics[k], stacked=True, bound_digits=3)
+                    for k in keys[1:]
+                ),
+            ]
+        )
+    rows.append(
+        [
+            "Pooled difference",
+            "Five-split range",
+            latex_range(summary["paired_time_ranges"][keys[0]], 3),
+            "--",
+            *(latex_range(summary["paired_time_ranges"][k], 3) for k in keys[1:]),
+        ]
+    )
+    rows.append(
+        [
+            "Pooled difference",
+            "Run-record holdout",
+            *(
+                latex_cell(holdout["paired_time"][k], stacked=True)
+                for k in (keys[0], "broad_auroc", *keys[1:])
+            ),
+        ]
+    )
+    write(
+        "split_summary",
+        "llcccc",
+        [
+            "Scope",
+            "Evaluation",
+            r"\shortstack{Primary\\AUROC}",
+            r"\shortstack{Broad\\AUROC}",
+            r"\shortstack{High-$\beta$ conditional\\AUROC}",
+            r"\shortstack{Above-proxy conditional\\AUROC}",
+        ],
+        rows,
+        r"Forest scores and forest-minus-elapsed-time differences. Ranges are "
+        r"point estimates across seeds 0--4, not confidence intervals. Brackets: "
+        r"95\% shot-bootstrap intervals at fixed predictions; individual scores "
+        r"use percentile intervals, paired differences use basic intervals. "
+        r"High-$\beta$: $\beta_N\geq0.8$ shot p95; above-proxy: $\beta_N/l_i>4$. "
+        r"Holdout retains four records across three dates; broad paired "
+        r"intervals are available for seed 0 and holdout only.",
+        {
+            "split_sensitivity.auroc_ranges": summary["auroc_ranges"],
+            "broad_ranges": broad_ranges,
+            "paired.rwm-brf - rule-elapsed-time.broad_auroc": record["paired"][
+                "rwm-brf - rule-elapsed-time"
+            ]["broad_auroc"],
+            "split_sensitivity.paired_time_by_seed": summary["paired_time_by_seed"],
+            "split_sensitivity.paired_time_ranges": summary["paired_time_ranges"],
+            "leave_one_run_record_out": {
+                "metrics": holdout["metrics"],
+                "by_campaign": {
+                    c: result["metrics"] for c, result in holdout["by_campaign"].items()
+                },
+                "paired_time": holdout["paired_time"],
+            },
+        },
+    )
+    rows = [
+        [
+            name,
+            *(
+                f"${record['configs'][name]['within_shot_auroc'][m]['mean']:.3f}$"
+                for m in ("primary", "broad")
+            ),
+        ]
+        for name in NAMES
+    ]
+    write(
+        "within_shot",
+        "lcc",
+        ["Model / rule", "Primary mean AUROC", "Broad mean AUROC"],
+        rows,
+        r"Within-shot AUROC means on the reference split; each of 30 two-class "
+        r"Hanson shots receives equal weight. The forest ranks below both "
+        r"continuous plasma scalars on both masks, and below elapsed time on "
+        r"primary only. One-class shots are omitted; comparisons are unlabelled.",
+        {
+            f"configs.{name}.within_shot_auroc": {
+                mask: {k: row[k] for k in ("mean", "median", "n_shots")}
+                for mask, row in record["configs"][name]["within_shot_auroc"].items()
+            }
+            for name in NAMES
+        },
+    )
     rows = []
     campaigns = record["split_sensitivity"]["paired_time_by_campaign"]
     for campaign, seeds in campaigns.items():
@@ -978,8 +1020,6 @@ def write_supplemental_latex(record, out_dir):
             *(latex_range(ranges[k], 0 if k == keys[2] else 3) for k in keys),
         ]
     )
-    betan = record["configs"]["rule-betan"]
-    n, m = betan["counts"], betan["metrics"]
     write(
         "alarms",
         "lcccc",
@@ -998,19 +1038,15 @@ def write_supplemental_latex(record, out_dir):
         r"No improvement "
         r"over the approximate rate-matched random reference was established: "
         r"all five difference intervals include zero; equivalence is not "
-        r"established. Warning medians condition on detected onsets. The "
-        r"reference-split $\beta_N$ rule warns "
-        f"{n['onsets_warned']}/{n['target_onsets']} onsets; detection minus "
-        "reference is "
-        + latex_cell(m["detection_minus_uniform_reference"], bound_digits=3)
-        + ". Its low detection coverage limits this result.",
+        r"established. Warning medians condition on detected onsets. All "
+        r"four rules were compared on the reference split only; their alarm "
+        r"results were not replayed over seeds 1--4.",
         {
             "configs.rwm-brf": {s: r["metrics"] for s, r in runs.items()},
             "split_sensitivity.alarm_ranges": ranges,
             "leave_one_run_record_out.metrics": record["leave_one_run_record_out"][
                 "metrics"
             ],
-            "configs.rule-betan": {"counts": n, "metrics": m},
         },
     )
     physics = record["onset_physics"]

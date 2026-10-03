@@ -431,9 +431,15 @@ def main() -> None:
         },
         "onset_time_provenance": onset_provenance,
         "evidence_tiers": {
-            "onset_window_uncertain": "20 ms pre-onset convention; ONSET_TIME meaning and physical extent unverified",
+            "onset_window_uncertain": (
+                "category 2 on Hanson shots: [o-20 ms, o) by convention; "
+                "ONSET_TIME meaning, physical direction and extent unknown"
+            ),
             "assumed_absent": "Hanson time before first precursor; completeness assumption",
-            "unlabelled_screen": "screen candidates on comparison shots; not negatives",
+            "unlabelled_screen": (
+                "category 2 on comparison shots: rwm_candidates screen spans, "
+                "not onset windows or verified negatives"
+            ),
             "unassessed": "no assessed physical state or termination evidence",
         },
         "reader_contract": "review reader preserves all explicit rows and attrs; tier-less saves of tiered sources are rejected",

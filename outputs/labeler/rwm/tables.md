@@ -40,7 +40,7 @@ Forest minus elapsed time; 95% basic paired shot-bootstrap intervals. Intervals 
 | 2018 | seed 4 | -0.012 [-0.041, 0.045] | -0.005 [-0.052, 0.080] | -0.014 [-0.084, 0.101] |
 | 2018 | run-record holdout | -0.049 [-0.073, -0.013] | -0.070 [-0.117, -0.010] | -0.057 [-0.109, 0.011] |
 
-Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 high-beta AUROC is about chance or below across the five splits (0.31–0.53; reference-split CI [0.22, 0.41]) and below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
+Forest minus elapsed time; 95% basic paired shot-bootstrap intervals condition on fixed fitted predictions. High-beta: beta_N >= 0.8 times the shot's beta_N p95; above-proxy: beta_N/li > 4. Campaign 2014 forest is below chance on the reference split (0.311 [0.22, 0.41]); the scalar rules are near chance. Forest five-split range: 0.311–0.527; below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Included 2018 run-record holdout CIs exclude zero: primary -0.049 [-0.073, -0.013]; high-beta -0.070 [-0.117, -0.010].
 
 ### Piccione-style primary scores — all models (reference split, seed 0)
 

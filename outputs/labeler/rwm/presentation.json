@@ -13,6 +13,12 @@
           "low": 0.7058712054691425,
           "high": 0.809161269108473
         },
+        "broad_auroc": {
+          "json_path": "configs.rwm-brf.metrics.broad_auroc",
+          "estimate": 0.7395949926583862,
+          "low": 0.6684464461630325,
+          "high": 0.7990014888281666
+        },
         "slice_auprc": {
           "json_path": "configs.rwm-brf.metrics.slice_auprc",
           "estimate": 0.16304825671489243,
@@ -37,11 +43,10 @@
           "low": 0.2614966232303802,
           "high": 0.42092874813984527
         },
-        "high_beta_auroc": {
-          "json_path": "configs.rwm-brf.metrics.high_beta_auroc",
-          "estimate": 0.6021780297512571,
-          "low": 0.4910802032725228,
-          "high": 0.6881463994312261
+        "within_shot_primary_mean": {
+          "json_path": "configs.rwm-brf.within_shot_auroc.primary.mean",
+          "estimate": 0.7836439827099465,
+          "n_shots": 30
         }
       },
       "rule-elapsed-time": {
@@ -50,6 +55,12 @@
           "estimate": 0.7587335474151602,
           "low": 0.7118506687957216,
           "high": 0.8148521262935791
+        },
+        "broad_auroc": {
+          "json_path": "configs.rule-elapsed-time.metrics.broad_auroc",
+          "estimate": 0.390047299248989,
+          "low": 0.33291810827721663,
+          "high": 0.4398378255138416
         },
         "slice_auprc": {
           "json_path": "configs.rule-elapsed-time.metrics.slice_auprc",
@@ -75,11 +86,10 @@
           "low": 0.24437115374446478,
           "high": 0.3681517415831221
         },
-        "high_beta_auroc": {
-          "json_path": "configs.rule-elapsed-time.metrics.high_beta_auroc",
-          "estimate": 0.6416995391060639,
-          "low": 0.5567491948316644,
-          "high": 0.7318311457640199
+        "within_shot_primary_mean": {
+          "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary.mean",
+          "estimate": 0.9309497992055623,
+          "n_shots": 30
         }
       },
       "rule-betan": {
@@ -88,6 +98,12 @@
           "estimate": 0.7070276324135744,
           "low": 0.6389341617487666,
           "high": 0.7717948860197866
+        },
+        "broad_auroc": {
+          "json_path": "configs.rule-betan.metrics.broad_auroc",
+          "estimate": 0.7150719718852301,
+          "low": 0.6407577550974536,
+          "high": 0.7759842125820196
         },
         "slice_auprc": {
           "json_path": "configs.rule-betan.metrics.slice_auprc",
@@ -113,11 +129,10 @@
           "low": 0.32276111912678007,
           "high": 0.45378258832394364
         },
-        "high_beta_auroc": {
-          "json_path": "configs.rule-betan.metrics.high_beta_auroc",
-          "estimate": 0.5627730548935749,
-          "low": 0.46823105654710007,
-          "high": 0.6505270191723881
+        "within_shot_primary_mean": {
+          "json_path": "configs.rule-betan.within_shot_auroc.primary.mean",
+          "estimate": 0.8144481602535586,
+          "n_shots": 30
         }
       },
       "rule-betan-over-li": {
@@ -126,6 +141,12 @@
           "estimate": 0.7234524659054868,
           "low": 0.6636812093487351,
           "high": 0.7840685911293114
+        },
+        "broad_auroc": {
+          "json_path": "configs.rule-betan-over-li.metrics.broad_auroc",
+          "estimate": 0.7522622099460813,
+          "low": 0.6875420800226769,
+          "high": 0.8153225046626771
         },
         "slice_auprc": {
           "json_path": "configs.rule-betan-over-li.metrics.slice_auprc",
@@ -151,11 +172,10 @@
           "low": 0.26864187796097494,
           "high": 0.4272105191201794
         },
-        "high_beta_auroc": {
-          "json_path": "configs.rule-betan-over-li.metrics.high_beta_auroc",
-          "estimate": 0.592778357213194,
-          "low": 0.5092425002123125,
-          "high": 0.6772308641290743
+        "within_shot_primary_mean": {
+          "json_path": "configs.rule-betan-over-li.within_shot_auroc.primary.mean",
+          "estimate": 0.8546671454496839,
+          "n_shots": 30
         }
       },
       "rule-rwm-candidates": {
@@ -164,6 +184,12 @@
           "estimate": 0.5,
           "low": 0.5,
           "high": 0.5
+        },
+        "broad_auroc": {
+          "json_path": "configs.rule-rwm-candidates.metrics.broad_auroc",
+          "estimate": 0.49776140958983245,
+          "low": 0.49538329515220875,
+          "high": 0.49951558676875607
         },
         "slice_auprc": {
           "json_path": "configs.rule-rwm-candidates.metrics.slice_auprc",
@@ -189,720 +215,15 @@
           "low": 0.0,
           "high": 0.0
         },
-        "high_beta_auroc": {
-          "json_path": "configs.rule-rwm-candidates.metrics.high_beta_auroc",
+        "within_shot_primary_mean": {
+          "json_path": "configs.rule-rwm-candidates.within_shot_auroc.primary.mean",
           "estimate": 0.5,
-          "low": 0.5,
-          "high": 0.5
+          "n_shots": 30
         }
       }
     },
-    "caption": "Retrospective DIII-D forecasting on 33 Hanson shots with offline ZIPFIT and postprocessed magnetic-RMS inputs, and unverified negative coverage. Positives precede listed $n=1$ onsets by at most 100 ms. Primary negatives end at the last onset, so elapsed time ranks within-shot almost perfectly (median AUROC 1.0, mean 0.93, 30 shots). High-$\\beta$ conditions on $\\beta_N\\geq0.8$ shot whole-window p95; above-proxy conditions on $\\beta_N/l_i>4$. Brackets: 95\\% shot-bootstrap intervals (1,000 resamples), conditional on fixed fitted predictions. Between-model differences use basic paired intervals. Five-split forest-minus-elapsed-time AUROC ranges: primary $0.001$ to $0.047$; high-$\\beta$ $-0.04$ to $0.05$; above-proxy $-0.05$ to $0.06$. The primary seed-3 lower bound is borderline near zero. Campaign 2014 high-$\\beta$ AUROC is about chance or below ($0.31$ to $0.53$; reference-split CI [0.22, 0.41]) and below elapsed time on every split (point estimates; CI excludes zero on 2 of 5 seeds). Under broad negatives, forest minus elapsed time is $0.350$ {\\scriptsize $[0.287, 0.414]$} (run-record holdout $0.362$ {\\scriptsize $[0.304, 0.428]$}); forest minus $\\beta_N/l_i$ is $-0.013$ {\\scriptsize $[-0.092, 0.072]$}. The forest matches the best single scalar under either mask (elapsed time on primary, $\\beta_N/l_i$ on broad); no onset-specific skill. Run-record holdout retains four records across three dates. Legacy uses different inputs and expert-reviewed stable shots; results are not comparable.",
-    "caption_words": 201,
-    "split_ranges": {
-      "json_path": "split_sensitivity.auroc_ranges",
-      "values": {
-        "pooled": {
-          "slice_auroc": {
-            "by_seed": {
-              "0": 0.7602021883920076,
-              "1": 0.787127339042182,
-              "2": 0.7726976292419917,
-              "3": 0.8057447272438947,
-              "4": 0.7929715746907707
-            },
-            "min": 0.7602021883920076,
-            "max": 0.8057447272438947
-          },
-          "high_beta_auroc": {
-            "by_seed": {
-              "0": 0.6021780297512571,
-              "1": 0.651469791344983,
-              "2": 0.6310203177895737,
-              "3": 0.6957441601650128,
-              "4": 0.6637979757957849
-            },
-            "min": 0.6021780297512571,
-            "max": 0.6957441601650128
-          },
-          "above_proxy_auroc": {
-            "by_seed": {
-              "0": 0.5455878667229984,
-              "1": 0.6032395505875445,
-              "2": 0.5722318097515915,
-              "3": 0.6571948241663027,
-              "4": 0.6141053641630086
-            },
-            "min": 0.5455878667229984,
-            "max": 0.6571948241663027
-          }
-        },
-        "2014": {
-          "slice_auroc": {
-            "by_seed": {
-              "0": 0.6627125506072874,
-              "1": 0.7152648448043185,
-              "2": 0.6983561066126855,
-              "3": 0.7349375843454791,
-              "4": 0.7219095816464237
-            },
-            "min": 0.6627125506072874,
-            "max": 0.7349375843454791
-          },
-          "high_beta_auroc": {
-            "by_seed": {
-              "0": 0.3112921561197423,
-              "1": 0.4538493116079323,
-              "2": 0.41890867752936717,
-              "3": 0.5274251610458507,
-              "4": 0.4697486421624353
-            },
-            "min": 0.3112921561197423,
-            "max": 0.5274251610458507
-          },
-          "above_proxy_auroc": {
-            "by_seed": {
-              "0": 0.27677304964539007,
-              "1": 0.4340022566086396,
-              "2": 0.38363958736299164,
-              "3": 0.5078255963894261,
-              "4": 0.43273694390715667
-            },
-            "min": 0.27677304964539007,
-            "max": 0.5078255963894261
-          }
-        },
-        "2018": {
-          "slice_auroc": {
-            "by_seed": {
-              "0": 0.8194866310160428,
-              "1": 0.832244461420932,
-              "2": 0.8243254392666157,
-              "3": 0.8484545454545455,
-              "4": 0.8321275783040489
-            },
-            "min": 0.8194866310160428,
-            "max": 0.8484545454545455
-          },
-          "high_beta_auroc": {
-            "by_seed": {
-              "0": 0.6979584182270692,
-              "1": 0.7226175983522404,
-              "2": 0.7070554243521323,
-              "3": 0.7471607614531053,
-              "4": 0.726857782199492
-            },
-            "min": 0.6979584182270692,
-            "max": 0.7471607614531053
-          },
-          "above_proxy_auroc": {
-            "by_seed": {
-              "0": 0.647018115561162,
-              "1": 0.667301762500438,
-              "2": 0.6491905813097866,
-              "3": 0.7061783874697782,
-              "4": 0.6765084621044886
-            },
-            "min": 0.647018115561162,
-            "max": 0.7061783874697782
-          }
-        }
-      }
-    },
-    "paired_time_ranges": {
-      "json_path": "split_sensitivity.paired_time_ranges",
-      "values": {
-        "slice_auroc": {
-          "min": 0.0014686409768474018,
-          "max": 0.047011179828734484,
-          "all_cis_include_zero": true
-        },
-        "high_beta_auroc": {
-          "min": -0.039521509354806805,
-          "max": 0.054044621058948916,
-          "all_cis_include_zero": true
-        },
-        "above_proxy_auroc": {
-          "min": -0.05109238161390339,
-          "max": 0.060514575829400896,
-          "all_cis_include_zero": true
-        }
-      }
-    },
-    "within_shot_elapsed_time": {
-      "json_path": "configs.rule-elapsed-time.within_shot_auroc.primary",
-      "values": {
-        "n_shots": 30,
-        "mean": 0.9309497992055623,
-        "median": 1.0,
-        "per_shot": [
-          {
-            "shot": 156785,
-            "n_positive": 10,
-            "n_negative": 31,
-            "auroc": 1.0
-          },
-          {
-            "shot": 156786,
-            "n_positive": 20,
-            "n_negative": 162,
-            "auroc": 0.9320987654320988
-          },
-          {
-            "shot": 156787,
-            "n_positive": 20,
-            "n_negative": 103,
-            "auroc": 0.8689320388349514
-          },
-          {
-            "shot": 156790,
-            "n_positive": 10,
-            "n_negative": 135,
-            "auroc": 1.0
-          },
-          {
-            "shot": 156791,
-            "n_positive": 10,
-            "n_negative": 78,
-            "auroc": 1.0
-          },
-          {
-            "shot": 156792,
-            "n_positive": 20,
-            "n_negative": 199,
-            "auroc": 0.7211055276381909
-          },
-          {
-            "shot": 156793,
-            "n_positive": 20,
-            "n_negative": 204,
-            "auroc": 0.8578431372549019
-          },
-          {
-            "shot": 156794,
-            "n_positive": 20,
-            "n_negative": 43,
-            "auroc": 1.0
-          },
-          {
-            "shot": 156795,
-            "n_positive": 20,
-            "n_negative": 141,
-            "auroc": 0.8475177304964538
-          },
-          {
-            "shot": 156796,
-            "n_positive": 10,
-            "n_negative": 127,
-            "auroc": 1.0
-          },
-          {
-            "shot": 156797,
-            "n_positive": 20,
-            "n_negative": 50,
-            "auroc": 0.8
-          },
-          {
-            "shot": 158012,
-            "n_positive": 10,
-            "n_negative": 73,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158013,
-            "n_positive": 20,
-            "n_negative": 220,
-            "auroc": 0.6772727272727272
-          },
-          {
-            "shot": 158014,
-            "n_positive": 10,
-            "n_negative": 119,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158015,
-            "n_positive": 0,
-            "n_negative": 0,
-            "auroc": null
-          },
-          {
-            "shot": 158018,
-            "n_positive": 10,
-            "n_negative": 158,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158019,
-            "n_positive": 10,
-            "n_negative": 118,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158021,
-            "n_positive": 10,
-            "n_negative": 65,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158022,
-            "n_positive": 10,
-            "n_negative": 254,
-            "auroc": 1.0
-          },
-          {
-            "shot": 158023,
-            "n_positive": 0,
-            "n_negative": 0,
-            "auroc": null
-          },
-          {
-            "shot": 176067,
-            "n_positive": 10,
-            "n_negative": 201,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176068,
-            "n_positive": 40,
-            "n_negative": 209,
-            "auroc": 0.9282296650717703
-          },
-          {
-            "shot": 176069,
-            "n_positive": 30,
-            "n_negative": 279,
-            "auroc": 0.8243727598566308
-          },
-          {
-            "shot": 176070,
-            "n_positive": 20,
-            "n_negative": 216,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176071,
-            "n_positive": 10,
-            "n_negative": 245,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176074,
-            "n_positive": 20,
-            "n_negative": 264,
-            "auroc": 0.8049242424242424
-          },
-          {
-            "shot": 176077,
-            "n_positive": 10,
-            "n_negative": 105,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176078,
-            "n_positive": 20,
-            "n_negative": 335,
-            "auroc": 0.9238805970149254
-          },
-          {
-            "shot": 176085,
-            "n_positive": 10,
-            "n_negative": 318,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176087,
-            "n_positive": 10,
-            "n_negative": 275,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176088,
-            "n_positive": 30,
-            "n_negative": 282,
-            "auroc": 0.7423167848699763
-          },
-          {
-            "shot": 176089,
-            "n_positive": 10,
-            "n_negative": 246,
-            "auroc": 1.0
-          },
-          {
-            "shot": 176092,
-            "n_positive": 0,
-            "n_negative": 0,
-            "auroc": null
-          }
-        ]
-      }
-    },
-    "broad_pairs": {
-      "paired.rwm-brf - rule-elapsed-time.broad_auroc": {
-        "estimate": 0.34954769340939723,
-        "low": 0.28685367671869855,
-        "high": 0.4143236212777892
-      },
-      "paired.rwm-brf - rule-betan-over-li.broad_auroc": {
-        "estimate": -0.012667217287695043,
-        "low": -0.09228155988188085,
-        "high": 0.07215373979683953
-      },
-      "leave_one_run_record_out.paired_time.broad_auroc": {
-        "estimate": 0.3620500252744078,
-        "low": 0.30433474588668763,
-        "high": 0.4277080079581293
-      }
-    },
-    "paired_time_by_campaign": {
-      "json_path": "split_sensitivity.paired_time_by_campaign",
-      "values": {
-        "2014": {
-          "0": {
-            "slice_auroc": {
-              "estimate": -0.046863191632928514,
-              "low": -0.12623859131719972,
-              "high": 0.05018200150728522
-            },
-            "slice_auprc": {
-              "estimate": -0.1318105599279223,
-              "low": -0.19271523030136978,
-              "high": -0.025471318414712396
-            },
-            "high_beta_auroc": {
-              "estimate": -0.25530503978779845,
-              "low": -0.42157131818567434,
-              "high": -0.06723275818709745
-            },
-            "high_beta_auprc": {
-              "estimate": -0.21101119117640305,
-              "low": -0.2822924715324051,
-              "high": -0.05071327575124879
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.2617746615087041,
-              "low": -0.45106136667837476,
-              "high": -0.04521429595804366
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.2074174985397181,
-              "low": -0.28550048691702956,
-              "high": -0.06595437231557699
-            }
-          },
-          "1": {
-            "slice_auroc": {
-              "estimate": 0.005689102564102599,
-              "low": -0.06570880883990247,
-              "high": 0.09057729293280006
-            },
-            "slice_auprc": {
-              "estimate": -0.09731169035720755,
-              "low": -0.16646293063848433,
-              "high": 0.014123771624151765
-            },
-            "high_beta_auroc": {
-              "estimate": -0.11274788429960847,
-              "low": -0.23069380143118265,
-              "high": 0.058629302391218
-            },
-            "high_beta_auprc": {
-              "estimate": -0.16348562436811764,
-              "low": -0.24369321639469668,
-              "high": 0.009194920050523914
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.10454545454545455,
-              "low": -0.2456724636466755,
-              "high": 0.062123178378199195
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.16048910107745656,
-              "low": -0.24712763507341076,
-              "high": -0.013613537817344867
-            }
-          },
-          "2": {
-            "slice_auroc": {
-              "estimate": -0.011219635627530367,
-              "low": -0.07805129794566236,
-              "high": 0.06778881217022215
-            },
-            "slice_auprc": {
-              "estimate": -0.11497019368514141,
-              "low": -0.17098058441228636,
-              "high": -0.014525181853235258
-            },
-            "high_beta_auroc": {
-              "estimate": -0.1476885183781736,
-              "low": -0.2472766909501727,
-              "high": -0.0021302277124777835
-            },
-            "high_beta_auprc": {
-              "estimate": -0.18754210869945864,
-              "low": -0.24804493638398395,
-              "high": -0.0401151432712229
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.15490812379110253,
-              "low": -0.2667237414682019,
-              "high": -0.0041687796831305635
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.18485749866476936,
-              "low": -0.25051448100267704,
-              "high": -0.06076544145630036
-            }
-          },
-          "3": {
-            "slice_auroc": {
-              "estimate": 0.025361842105263155,
-              "low": -0.03926207902109913,
-              "high": 0.11060274291779537
-            },
-            "slice_auprc": {
-              "estimate": -0.07165497251991604,
-              "low": -0.13200217115545407,
-              "high": 0.044922623079309526
-            },
-            "high_beta_auroc": {
-              "estimate": -0.039172034861690075,
-              "low": -0.1483747024822462,
-              "high": 0.12506992692662464
-            },
-            "high_beta_auprc": {
-              "estimate": -0.11676907475241063,
-              "low": -0.18188722449511183,
-              "high": 0.05434404549609151
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.030722114764668018,
-              "low": -0.1691195411393679,
-              "high": 0.15865649231349466
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.10877060432009364,
-              "low": -0.18826360391018546,
-              "high": 0.057876843194329064
-            }
-          },
-          "4": {
-            "slice_auroc": {
-              "estimate": 0.012333839406207803,
-              "low": -0.06092847956011142,
-              "high": 0.10994391465490971
-            },
-            "slice_auprc": {
-              "estimate": -0.10055908798165855,
-              "low": -0.16349175317806738,
-              "high": 0.0033905494942897685
-            },
-            "high_beta_auroc": {
-              "estimate": -0.09684855374510548,
-              "low": -0.22271712660002696,
-              "high": 0.11067944850778005
-            },
-            "high_beta_auprc": {
-              "estimate": -0.1687108084800885,
-              "low": -0.23143809494512166,
-              "high": -0.023622504339901873
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.1058107672469375,
-              "low": -0.24492287754693967,
-              "high": 0.08939401745830994
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.1699691918381881,
-              "low": -0.23892594249472965,
-              "high": -0.038851355513410346
-            }
-          }
-        },
-        "2018": {
-          "0": {
-            "slice_auroc": {
-              "estimate": -0.025133689839572204,
-              "low": -0.05694555774042758,
-              "high": 0.03349582518480043
-            },
-            "slice_auprc": {
-              "estimate": -0.03949151718457447,
-              "low": -0.08621760470902028,
-              "high": 0.11154189487314745
-            },
-            "high_beta_auroc": {
-              "estimate": -0.03343515284050991,
-              "low": -0.07759982375469643,
-              "high": 0.04762002659125959
-            },
-            "high_beta_auprc": {
-              "estimate": -0.05726229518182202,
-              "low": -0.11023193863501693,
-              "high": 0.09293774161911378
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.04378219278881523,
-              "low": -0.10862466563414484,
-              "high": 0.06475749481208004
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.061277742954946174,
-              "low": -0.1220818949379885,
-              "high": 0.09210844650958225
-            }
-          },
-          "1": {
-            "slice_auroc": {
-              "estimate": -0.012375859434683001,
-              "low": -0.03850699809593806,
-              "high": 0.03055369455016673
-            },
-            "slice_auprc": {
-              "estimate": -0.05427271301860928,
-              "low": -0.12759764769855358,
-              "high": 0.07417275000474116
-            },
-            "high_beta_auroc": {
-              "estimate": -0.008775972715338698,
-              "low": -0.04868215278905662,
-              "high": 0.05948985965222986
-            },
-            "high_beta_auprc": {
-              "estimate": -0.06887879603262256,
-              "low": -0.14768284110830168,
-              "high": 0.06010106229321896
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.023498545849539143,
-              "low": -0.08095479164869564,
-              "high": 0.06143949876082279
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.07803389159971325,
-              "low": -0.1745299575713902,
-              "high": 0.050201112492146455
-            }
-          },
-          "2": {
-            "slice_auroc": {
-              "estimate": -0.02029488158899928,
-              "low": -0.04999434414193434,
-              "high": 0.03577032327965275
-            },
-            "slice_auprc": {
-              "estimate": -0.06468832503847849,
-              "low": -0.12372382601081965,
-              "high": 0.06979603044664948
-            },
-            "high_beta_auroc": {
-              "estimate": -0.024338146715446762,
-              "low": -0.06844574063823845,
-              "high": 0.06604774967011375
-            },
-            "high_beta_auprc": {
-              "estimate": -0.08072674430818264,
-              "low": -0.14532251587459818,
-              "high": 0.05814852098862572
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.041609727040190614,
-              "low": -0.10553746213717682,
-              "high": 0.07452162811752591
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.08956587578401731,
-              "low": -0.16904014581770063,
-              "high": 0.045618869226470266
-            }
-          },
-          "3": {
-            "slice_auroc": {
-              "estimate": 0.003834224598930458,
-              "low": -0.020036262287688726,
-              "high": 0.04649689353699383
-            },
-            "slice_auprc": {
-              "estimate": 0.03677967845516439,
-              "low": -0.02229079642381876,
-              "high": 0.17185492587188872
-            },
-            "high_beta_auroc": {
-              "estimate": 0.01576719038552621,
-              "low": -0.015832886743283377,
-              "high": 0.08065848050617781
-            },
-            "high_beta_auprc": {
-              "estimate": 0.031080797874360633,
-              "low": -0.02529568935189573,
-              "high": 0.17367922913016343
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.015378079119801047,
-              "low": -0.03976321480476365,
-              "high": 0.10938976037307721
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.029470940477135554,
-              "low": -0.032632122002668365,
-              "high": 0.1719959036898796
-            }
-          },
-          "4": {
-            "slice_auroc": {
-              "estimate": -0.012492742551566072,
-              "low": -0.04142574843284453,
-              "high": 0.04485863350494279
-            },
-            "slice_auprc": {
-              "estimate": -0.03568923397654822,
-              "low": -0.09322894951101876,
-              "high": 0.09428068421816074
-            },
-            "high_beta_auroc": {
-              "estimate": -0.004535788868087032,
-              "low": -0.05189744505128749,
-              "high": 0.08012300099240877
-            },
-            "high_beta_auprc": {
-              "estimate": -0.04550522692355377,
-              "low": -0.11096990312841798,
-              "high": 0.0877253714881871
-            },
-            "above_proxy_auroc": {
-              "estimate": -0.014291846245488626,
-              "low": -0.08357643038507884,
-              "high": 0.1006705638239637
-            },
-            "above_proxy_auprc": {
-              "estimate": -0.04831583063665573,
-              "low": -0.12357681189697707,
-              "high": 0.09237172329369406
-            }
-          }
-        }
-      }
-    },
-    "run_record_cells": {
-      "slice_auroc": {
-        "json_path": "leave_one_run_record_out.metrics.slice_auroc",
-        "estimate": 0.7789200761179829,
-        "low": 0.7311668160793936,
-        "high": 0.8227504607236329
-      },
-      "high_beta_auroc": {
-        "json_path": "leave_one_run_record_out.metrics.high_beta_auroc",
-        "estimate": 0.6209266823211341,
-        "low": 0.5359219009637753,
-        "high": 0.7002918637249058
-      },
-      "above_proxy_auroc": {
-        "json_path": "leave_one_run_record_out.metrics.above_proxy_auroc",
-        "estimate": 0.5794699568203138,
-        "low": 0.47487570018579617,
-        "high": 0.6770970334398514
-      }
-    },
+    "caption": "Positives: 100 ms before listed onsets. Primary assumed negatives end at the last $n=1$ onset; broad adds post-onset and $n=2$-only time, with unchanged exclusions. Brackets: 95\\% shot-bootstrap intervals at fixed predictions. Within-shot means weight two-class shots equally. No AUROC advantage over the strongest scalar, or onset-specific warning skill, was established; within shot the forest ranks below both continuous plasma scalars on both masks (Supplement). Legacy uses different inputs and validation; results are not comparable.",
+    "caption_words": 74,
     "legacy": {
       "source": "/scratch/gpfs/nc1514/FusionAIHub/.tmp/label_papers/Piccione_2022_Nucl._Fusion_62_036002.md",
       "cells": {
@@ -939,6 +260,978 @@
     }
   },
   "supplemental_latex": {
+    "split_summary": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.tex",
+      "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_split_summary.tex",
+      "caption": "Forest scores and forest-minus-elapsed-time differences. Ranges are point estimates across seeds 0--4, not confidence intervals. Brackets: 95\\% shot-bootstrap intervals at fixed predictions; individual scores use percentile intervals, paired differences use basic intervals. High-$\\beta$: $\\beta_N\\geq0.8$ shot p95; above-proxy: $\\beta_N/l_i>4$. Holdout retains four records across three dates; broad paired intervals are available for seed 0 and holdout only.",
+      "source": {
+        "split_sensitivity.auroc_ranges": {
+          "pooled": {
+            "slice_auroc": {
+              "by_seed": {
+                "0": 0.7602021883920076,
+                "1": 0.787127339042182,
+                "2": 0.7726976292419917,
+                "3": 0.8057447272438947,
+                "4": 0.7929715746907707
+              },
+              "min": 0.7602021883920076,
+              "max": 0.8057447272438947
+            },
+            "high_beta_auroc": {
+              "by_seed": {
+                "0": 0.6021780297512571,
+                "1": 0.651469791344983,
+                "2": 0.6310203177895737,
+                "3": 0.6957441601650128,
+                "4": 0.6637979757957849
+              },
+              "min": 0.6021780297512571,
+              "max": 0.6957441601650128
+            },
+            "above_proxy_auroc": {
+              "by_seed": {
+                "0": 0.5455878667229984,
+                "1": 0.6032395505875445,
+                "2": 0.5722318097515915,
+                "3": 0.6571948241663027,
+                "4": 0.6141053641630086
+              },
+              "min": 0.5455878667229984,
+              "max": 0.6571948241663027
+            }
+          },
+          "2014": {
+            "slice_auroc": {
+              "by_seed": {
+                "0": 0.6627125506072874,
+                "1": 0.7152648448043185,
+                "2": 0.6983561066126855,
+                "3": 0.7349375843454791,
+                "4": 0.7219095816464237
+              },
+              "min": 0.6627125506072874,
+              "max": 0.7349375843454791
+            },
+            "high_beta_auroc": {
+              "by_seed": {
+                "0": 0.3112921561197423,
+                "1": 0.4538493116079323,
+                "2": 0.41890867752936717,
+                "3": 0.5274251610458507,
+                "4": 0.4697486421624353
+              },
+              "min": 0.3112921561197423,
+              "max": 0.5274251610458507
+            },
+            "above_proxy_auroc": {
+              "by_seed": {
+                "0": 0.27677304964539007,
+                "1": 0.4340022566086396,
+                "2": 0.38363958736299164,
+                "3": 0.5078255963894261,
+                "4": 0.43273694390715667
+              },
+              "min": 0.27677304964539007,
+              "max": 0.5078255963894261
+            }
+          },
+          "2018": {
+            "slice_auroc": {
+              "by_seed": {
+                "0": 0.8194866310160428,
+                "1": 0.832244461420932,
+                "2": 0.8243254392666157,
+                "3": 0.8484545454545455,
+                "4": 0.8321275783040489
+              },
+              "min": 0.8194866310160428,
+              "max": 0.8484545454545455
+            },
+            "high_beta_auroc": {
+              "by_seed": {
+                "0": 0.6979584182270692,
+                "1": 0.7226175983522404,
+                "2": 0.7070554243521323,
+                "3": 0.7471607614531053,
+                "4": 0.726857782199492
+              },
+              "min": 0.6979584182270692,
+              "max": 0.7471607614531053
+            },
+            "above_proxy_auroc": {
+              "by_seed": {
+                "0": 0.647018115561162,
+                "1": 0.667301762500438,
+                "2": 0.6491905813097866,
+                "3": 0.7061783874697782,
+                "4": 0.6765084621044886
+              },
+              "min": 0.647018115561162,
+              "max": 0.7061783874697782
+            }
+          }
+        },
+        "broad_ranges": {
+          "pooled": {
+            "by_seed": {
+              "0": 0.7395949926583862,
+              "1": 0.7715524504140189,
+              "2": 0.7569735551463509,
+              "3": 0.7976802456431735,
+              "4": 0.7708158067350279
+            },
+            "min": 0.7395949926583862,
+            "max": 0.7976802456431735
+          },
+          "2014": {
+            "by_seed": {
+              "0": 0.6928601723291218,
+              "1": 0.7493119112460378,
+              "2": 0.7330648131613019,
+              "3": 0.7796899415152462,
+              "4": 0.7388270681726863
+            },
+            "min": 0.6928601723291218,
+            "max": 0.7796899415152462
+          },
+          "2018": {
+            "by_seed": {
+              "0": 0.7762271943123007,
+              "1": 0.790301374875843,
+              "2": 0.7764833498876053,
+              "3": 0.8123160515447749,
+              "4": 0.7943263500444352
+            },
+            "min": 0.7762271943123007,
+            "max": 0.8123160515447749
+          }
+        },
+        "paired.rwm-brf - rule-elapsed-time.broad_auroc": {
+          "estimate": 0.34954769340939723,
+          "low": 0.28685367671869855,
+          "high": 0.4143236212777892
+        },
+        "split_sensitivity.paired_time_by_seed": {
+          "0": {
+            "slice_auroc": {
+              "estimate": 0.0014686409768474018,
+              "low": -0.049084839974529025,
+              "high": 0.05972509305794077
+            },
+            "slice_auprc": {
+              "estimate": -0.06480538188312673,
+              "low": -0.10021164501748131,
+              "high": 0.015555539879124808
+            },
+            "high_beta_auroc": {
+              "estimate": -0.039521509354806805,
+              "low": -0.1199631899380054,
+              "high": 0.06077445562013814
+            },
+            "high_beta_auprc": {
+              "estimate": -0.08729077986023787,
+              "low": -0.12839923387701804,
+              "high": 0.010656243617585687
+            },
+            "above_proxy_auroc": {
+              "estimate": -0.05109238161390339,
+              "low": -0.15734869628352496,
+              "high": 0.09235153634775986
+            },
+            "above_proxy_auprc": {
+              "estimate": -0.09146666601538903,
+              "low": -0.1378625793050931,
+              "high": 0.0023939945697040443
+            }
+          },
+          "1": {
+            "slice_auroc": {
+              "estimate": 0.028393791627021825,
+              "low": -0.022536048535018338,
+              "high": 0.08435346902298146
+            },
+            "slice_auprc": {
+              "estimate": -0.04576391845961683,
+              "low": -0.08528451887619778,
+              "high": 0.034230594532919406
+            },
+            "high_beta_auroc": {
+              "estimate": 0.00977025223891903,
+              "low": -0.06448693044014712,
+              "high": 0.10129262296196845
+            },
+            "high_beta_auprc": {
+              "estimate": -0.06628205166195539,
+              "low": -0.10916660567537967,
+              "high": 0.025600039818243464
+            },
+            "above_proxy_auroc": {
+              "estimate": 0.006559302250642718,
+              "low": -0.09133508297680513,
+              "high": 0.12930414673164597
+            },
+            "above_proxy_auprc": {
+              "estimate": -0.06991863378005198,
+              "low": -0.11616468948066985,
+              "high": 0.021845944887203816
+            }
+          },
+          "2": {
+            "slice_auroc": {
+              "estimate": 0.01396408182683151,
+              "low": -0.0323639679213953,
+              "high": 0.06460318284959017
+            },
+            "slice_auprc": {
+              "estimate": -0.05973795826486361,
+              "low": -0.09316551819187018,
+              "high": 0.015329374455640976
+            },
+            "high_beta_auroc": {
+              "estimate": -0.01067922131649024,
+              "low": -0.08678595973769834,
+              "high": 0.07229122053041923
+            },
+            "high_beta_auprc": {
+              "estimate": -0.08190360435181901,
+              "low": -0.12063901531088708,
+              "high": 0.006069491341844174
+            },
+            "above_proxy_auroc": {
+              "estimate": -0.024448438585310317,
+              "low": -0.11492591503662218,
+              "high": 0.08655249923635047
+            },
+            "above_proxy_auprc": {
+              "estimate": -0.08779644402969475,
+              "low": -0.1290000685399352,
+              "high": -0.0013345351689595941
+            }
+          },
+          "3": {
+            "slice_auroc": {
+              "estimate": 0.047011179828734484,
+              "low": -0.00010937891919560183,
+              "high": 0.0983804620316366
+            },
+            "slice_auprc": {
+              "estimate": 0.002262051736206583,
+              "low": -0.04108813156354469,
+              "high": 0.08527352090872217
+            },
+            "high_beta_auroc": {
+              "estimate": 0.054044621058948916,
+              "low": -0.012290956058285105,
+              "high": 0.12919177417629132
+            },
+            "high_beta_auprc": {
+              "estimate": 0.002386756219212749,
+              "low": -0.03862268548924257,
+              "high": 0.09175742654381179
+            },
+            "above_proxy_auroc": {
+              "estimate": 0.060514575829400896,
+              "low": -0.02484609635792659,
+              "high": 0.16856908718402802
+            },
+            "above_proxy_auprc": {
+              "estimate": 0.004739255824639299,
+              "low": -0.03985622480290524,
+              "high": 0.10244018390029154
+            }
+          },
+          "4": {
+            "slice_auroc": {
+              "estimate": 0.03423802727561054,
+              "low": -0.017031488960241883,
+              "high": 0.08832743448153996
+            },
+            "slice_auprc": {
+              "estimate": -0.044392578687392464,
+              "low": -0.08492013588549747,
+              "high": 0.037086430364410866
+            },
+            "high_beta_auroc": {
+              "estimate": 0.022098436689721,
+              "low": -0.05411983845927858,
+              "high": 0.10549846115699388
+            },
+            "high_beta_auprc": {
+              "estimate": -0.06274002293256362,
+              "low": -0.10093566949922901,
+              "high": 0.02560055851716561
+            },
+            "above_proxy_auroc": {
+              "estimate": 0.01742511582610684,
+              "low": -0.07581235552273595,
+              "high": 0.12810240911270415
+            },
+            "above_proxy_auprc": {
+              "estimate": -0.069446803558679,
+              "low": -0.11617011856714826,
+              "high": 0.019758288053535883
+            }
+          }
+        },
+        "split_sensitivity.paired_time_ranges": {
+          "slice_auroc": {
+            "min": 0.0014686409768474018,
+            "max": 0.047011179828734484,
+            "all_cis_include_zero": true
+          },
+          "high_beta_auroc": {
+            "min": -0.039521509354806805,
+            "max": 0.054044621058948916,
+            "all_cis_include_zero": true
+          },
+          "above_proxy_auroc": {
+            "min": -0.05109238161390339,
+            "max": 0.060514575829400896,
+            "all_cis_include_zero": true
+          }
+        },
+        "leave_one_run_record_out": {
+          "metrics": {
+            "slice_auroc": {
+              "estimate": 0.7789200761179829,
+              "low": 0.7311668160793936,
+              "high": 0.8227504607236329
+            },
+            "slice_auprc": {
+              "estimate": 0.18076195471167156,
+              "low": 0.14852647300685307,
+              "high": 0.24835572003550527
+            },
+            "broad_auroc": {
+              "estimate": 0.7520973245233968,
+              "low": 0.6900438666215677,
+              "high": 0.8050259074659749
+            },
+            "broad_auprc": {
+              "estimate": 0.06605145342974401,
+              "low": 0.046091235283349914,
+              "high": 0.10098807147303117
+            },
+            "high_beta_auroc": {
+              "estimate": 0.6209266823211341,
+              "low": 0.5359219009637753,
+              "high": 0.7002918637249058
+            },
+            "high_beta_auprc": {
+              "estimate": 0.17602305258439405,
+              "low": 0.1490877365885538,
+              "high": 0.23889467917829327
+            },
+            "above_proxy_auroc": {
+              "estimate": 0.5794699568203138,
+              "low": 0.47487570018579617,
+              "high": 0.6770970334398514
+            },
+            "above_proxy_auprc": {
+              "estimate": 0.18558675045498801,
+              "low": 0.15398957282638018,
+              "high": 0.2576373470228322
+            },
+            "slice_tpr": {
+              "estimate": 0.6833333333333333,
+              "low": 0.5539568181818183,
+              "high": 0.8115878378378378
+            },
+            "slice_fpr": {
+              "estimate": 0.28353948620361563,
+              "low": 0.21175914973491655,
+              "high": 0.36183356786354176
+            },
+            "slice_precision": {
+              "estimate": 0.18041804180418042,
+              "low": 0.14418161744313732,
+              "high": 0.23131618066163562
+            },
+            "slice_f1": {
+              "estimate": 0.2854656222802437,
+              "low": 0.23276695344129558,
+              "high": 0.3443386361602551
+            },
+            "onset_detection_rate": {
+              "estimate": 0.16666666666666666,
+              "low": 0.04875145180023232,
+              "high": 0.3091017316017316
+            },
+            "uniform_alarm_reference": {
+              "estimate": 0.15235317713459673,
+              "low": 0.05736234002683884,
+              "high": 0.2716242238009877
+            },
+            "detection_minus_uniform_reference": {
+              "estimate": 0.014313489532069928,
+              "low": -0.024752314192536207,
+              "high": 0.052776109779047196
+            },
+            "warning_ms_mean": {
+              "estimate": 230.13124999999997,
+              "low": 153.13812499999997,
+              "high": 288.75141666666656
+            },
+            "warning_ms_median": {
+              "estimate": 214.04999999999995,
+              "low": 139.5,
+              "high": 343.0
+            },
+            "hanson_shot_detection_rate": {
+              "estimate": 0.2,
+              "low": 0.06890804597701154,
+              "high": 0.35714285714285715
+            },
+            "hanson_shot_early_rate": {
+              "estimate": 0.03333333333333333,
+              "low": 0.0,
+              "high": 0.1072420634920634
+            },
+            "hanson_shot_miss_rate": {
+              "estimate": 0.7666666666666667,
+              "low": 0.6071428571428571,
+              "high": 0.896551724137931
+            },
+            "hanson_early_alarm_incidence": {
+              "estimate": 0.15151515151515152,
+              "low": 0.030303030303030304,
+              "high": 0.2727272727272727
+            },
+            "hanson_early_alarms_per_shot": {
+              "estimate": 0.8787878787878788,
+              "low": 0.09090909090909091,
+              "high": 2.000757575757575
+            },
+            "hanson_ignored_alarm_incidence": {
+              "estimate": 0.2727272727272727,
+              "low": 0.12121212121212122,
+              "high": 0.42424242424242425
+            },
+            "hanson_ignored_alarms_per_shot": {
+              "estimate": 1.5757575757575757,
+              "low": 0.42424242424242425,
+              "high": 3.394696969696969
+            },
+            "hanson_unexplained_alarm_incidence": {
+              "estimate": 0.2727272727272727,
+              "low": 0.15151515151515152,
+              "high": 0.42424242424242425
+            },
+            "hanson_unexplained_alarms_per_shot": {
+              "estimate": 1.393939393939394,
+              "low": 0.3939393939393939,
+              "high": 2.6666666666666665
+            },
+            "comparison_alarm_incidence": {
+              "estimate": null,
+              "low": null,
+              "high": null
+            },
+            "comparison_alarms_per_shot": {
+              "estimate": null,
+              "low": null,
+              "high": null
+            }
+          },
+          "by_campaign": {
+            "2014": {
+              "slice_auroc": {
+                "estimate": 0.7285349190283401,
+                "low": 0.672100615308563,
+                "high": 0.8141305377037342
+              },
+              "slice_auprc": {
+                "estimate": 0.17308871394808648,
+                "low": 0.13909529421486092,
+                "high": 0.291602350561118
+              },
+              "broad_auroc": {
+                "estimate": 0.7349940287512835,
+                "low": 0.6559703407280942,
+                "high": 0.8003847753484777
+              },
+              "broad_auprc": {
+                "estimate": 0.06430067369934342,
+                "low": 0.04146422521069524,
+                "high": 0.10873854485800667
+              },
+              "high_beta_auroc": {
+                "estimate": 0.4407288114184666,
+                "low": 0.3688679741972716,
+                "high": 0.5820776556488512
+              },
+              "high_beta_auprc": {
+                "estimate": 0.16673020673721897,
+                "low": 0.1347987866200446,
+                "high": 0.2777466161038341
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.4043359123146357,
+                "low": 0.32894560063179773,
+                "high": 0.5357499460411904
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.17181377681751214,
+                "low": 0.14042071846610307,
+                "high": 0.3038387677094819
+              },
+              "slice_tpr": {
+                "estimate": 0.8423076923076923,
+                "low": 0.7135839160839161,
+                "high": 0.9500431034482758
+              },
+              "slice_fpr": {
+                "estimate": 0.40657894736842104,
+                "low": 0.3006033460228191,
+                "high": 0.4985706823509568
+              },
+              "slice_precision": {
+                "estimate": 0.19109947643979058,
+                "low": 0.1462163672808573,
+                "high": 0.265603867944905
+              },
+              "slice_f1": {
+                "estimate": 0.31152204836415365,
+                "low": 0.24886125727720557,
+                "high": 0.4025066680973695
+              },
+              "onset_detection_rate": {
+                "estimate": 0.15384615384615385,
+                "low": 0.0,
+                "high": 0.3333333333333333
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.1423307774532238,
+                "low": 0.0,
+                "high": 0.31366875768986124
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.011515376392930043,
+                "low": 0.0,
+                "high": 0.02777675223167475
+              },
+              "warning_ms_mean": {
+                "estimate": 233.63749999999993,
+                "low": 146.44999999999982,
+                "high": 305.54999999999995
+              },
+              "warning_ms_median": {
+                "estimate": 214.04999999999995,
+                "low": 146.44999999999982,
+                "high": 305.54999999999995
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.16666666666666666,
+                "low": 0.0,
+                "high": 0.35
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.0,
+                "low": 0.0,
+                "high": 0.0
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.8333333333333334,
+                "low": 0.65,
+                "high": 1.0
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.15,
+                "low": 0.0,
+                "high": 0.3
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 1.3,
+                "low": 0.0,
+                "high": 2.8037499999999964
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.25,
+                "low": 0.05,
+                "high": 0.45
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 1.15,
+                "low": 0.2,
+                "high": 2.45
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.25,
+                "low": 0.1,
+                "high": 0.45
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 2.0,
+                "low": 0.44875000000000115,
+                "high": 3.85
+              },
+              "comparison_alarm_incidence": {
+                "estimate": null,
+                "low": null,
+                "high": null
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": null,
+                "low": null,
+                "high": null
+              }
+            },
+            "2018": {
+              "slice_auroc": {
+                "estimate": 0.7957860962566845,
+                "low": 0.7441452267061998,
+                "high": 0.8449014177907963
+              },
+              "slice_auprc": {
+                "estimate": 0.20631084498845623,
+                "low": 0.14988003582543297,
+                "high": 0.30061983498754147
+              },
+              "broad_auroc": {
+                "estimate": 0.7624849704636939,
+                "low": 0.6760743808002525,
+                "high": 0.8425766835590268
+              },
+              "broad_auprc": {
+                "estimate": 0.07489041432162394,
+                "low": 0.03879473078064664,
+                "high": 0.16148591227260817
+              },
+              "high_beta_auroc": {
+                "estimate": 0.6609299161816731,
+                "low": 0.5761205732955881,
+                "high": 0.7456492372472342
+              },
+              "high_beta_auprc": {
+                "estimate": 0.19813041424708983,
+                "low": 0.14587755526869253,
+                "high": 0.2954584358616152
+              },
+              "above_proxy_auroc": {
+                "estimate": 0.6334139248046533,
+                "low": 0.5445364325974164,
+                "high": 0.7292014387542826
+              },
+              "above_proxy_auprc": {
+                "estimate": 0.212503439887623,
+                "low": 0.1594565657892976,
+                "high": 0.3185236733846444
+              },
+              "slice_tpr": {
+                "estimate": 0.4954545454545455,
+                "low": 0.3,
+                "high": 0.6772853535353535
+              },
+              "slice_fpr": {
+                "estimate": 0.18924369747899158,
+                "low": 0.12672168055799954,
+                "high": 0.25944331649433106
+              },
+              "slice_precision": {
+                "estimate": 0.16220238095238096,
+                "low": 0.10654924998838991,
+                "high": 0.23673880548514978
+              },
+              "slice_f1": {
+                "estimate": 0.24439461883408073,
+                "low": 0.16423841059602648,
+                "high": 0.3298986427852407
+              },
+              "onset_detection_rate": {
+                "estimate": 0.18181818181818182,
+                "low": 0.0,
+                "high": 0.4090909090909091
+              },
+              "uniform_alarm_reference": {
+                "estimate": 0.164197831303492,
+                "low": 0.046773487788593845,
+                "high": 0.3334898928963567
+              },
+              "detection_minus_uniform_reference": {
+                "estimate": 0.017620350514689825,
+                "low": -0.06153292048932355,
+                "high": 0.09155327934598735
+              },
+              "warning_ms_mean": {
+                "estimate": 226.625,
+                "low": 139.5,
+                "high": 343.0
+              },
+              "warning_ms_median": {
+                "estimate": 241.25,
+                "low": 139.5,
+                "high": 343.0
+              },
+              "hanson_shot_detection_rate": {
+                "estimate": 0.25,
+                "low": 0.0,
+                "high": 0.5
+              },
+              "hanson_shot_early_rate": {
+                "estimate": 0.08333333333333333,
+                "low": 0.0,
+                "high": 0.2505681818181813
+              },
+              "hanson_shot_miss_rate": {
+                "estimate": 0.6666666666666666,
+                "low": 0.38461538461538464,
+                "high": 0.9166666666666666
+              },
+              "hanson_early_alarm_incidence": {
+                "estimate": 0.15384615384615385,
+                "low": 0.0,
+                "high": 0.38461538461538464
+              },
+              "hanson_early_alarms_per_shot": {
+                "estimate": 0.23076923076923078,
+                "low": 0.0,
+                "high": 0.6153846153846154
+              },
+              "hanson_ignored_alarm_incidence": {
+                "estimate": 0.3076923076923077,
+                "low": 0.07692307692307693,
+                "high": 0.5384615384615384
+              },
+              "hanson_ignored_alarms_per_shot": {
+                "estimate": 2.230769230769231,
+                "low": 0.07692307692307693,
+                "high": 5.923076923076923
+              },
+              "hanson_unexplained_alarm_incidence": {
+                "estimate": 0.3076923076923077,
+                "low": 0.07692307692307693,
+                "high": 0.5384615384615384
+              },
+              "hanson_unexplained_alarms_per_shot": {
+                "estimate": 0.46153846153846156,
+                "low": 0.1519230769230787,
+                "high": 0.9230769230769231
+              },
+              "comparison_alarm_incidence": {
+                "estimate": null,
+                "low": null,
+                "high": null
+              },
+              "comparison_alarms_per_shot": {
+                "estimate": null,
+                "low": null,
+                "high": null
+              }
+            }
+          },
+          "paired_time": {
+            "slice_auroc": {
+              "estimate": 0.02018652870282267,
+              "low": -0.03257246149711114,
+              "high": 0.07979945793328441
+            },
+            "slice_auprc": {
+              "estimate": -0.0470916838863476,
+              "low": -0.09934370343218753,
+              "high": 0.02920171971149539
+            },
+            "broad_auroc": {
+              "estimate": 0.3620500252744078,
+              "low": 0.30433474588668763,
+              "high": 0.4277080079581293
+            },
+            "broad_auprc": {
+              "estimate": 0.04095198318682471,
+              "low": 0.008772262663385516,
+              "high": 0.05744558199294308
+            },
+            "high_beta_auroc": {
+              "estimate": -0.020772856784929794,
+              "low": -0.09734822164445045,
+              "high": 0.06895109981469395
+            },
+            "high_beta_auprc": {
+              "estimate": -0.07912656729155165,
+              "low": -0.12080188928444827,
+              "high": 0.00860024373761853
+            },
+            "above_proxy_auroc": {
+              "estimate": -0.01721029151658804,
+              "low": -0.12250026354054298,
+              "high": 0.10530359213409132
+            },
+            "above_proxy_auprc": {
+              "estimate": -0.0819857171070762,
+              "low": -0.1341057831476517,
+              "high": 0.006533921290879263
+            },
+            "slice_tpr": {
+              "estimate": -0.008333333333333304,
+              "low": -0.24557196969696954,
+              "high": 0.19846698113207556
+            },
+            "slice_fpr": {
+              "estimate": -0.03482397716460511,
+              "low": -0.12294649145760081,
+              "high": 0.03190587857345986
+            },
+            "slice_precision": {
+              "estimate": 0.014832006891462218,
+              "low": -0.024806666344176657,
+              "high": 0.052681141248798816
+            },
+            "slice_f1": {
+              "estimate": 0.018262402964348334,
+              "low": -0.04657758870338907,
+              "high": 0.0782020247383366
+            },
+            "onset_detection_rate": {
+              "estimate": 0.10416666666666666,
+              "low": -0.020873397435897445,
+              "high": 0.1891025641025641
+            },
+            "uniform_alarm_reference": {
+              "estimate": 0.10589105085133865,
+              "low": -0.010350563919889505,
+              "high": 0.1981915026219673
+            },
+            "detection_minus_uniform_reference": {
+              "estimate": -0.0017243841846719954,
+              "low": -0.043392996048880125,
+              "high": 0.0465542247789215
+            },
+            "warning_ms_mean": {
+              "estimate": 91.31458333333336,
+              "low": -38.46800595238099,
+              "high": 188.12916666666672
+            },
+            "warning_ms_median": {
+              "estimate": 69.04999999999995,
+              "low": -76.55000000000018,
+              "high": 196.0999999999999
+            },
+            "hanson_shot_detection_rate": {
+              "estimate": 0.1,
+              "low": -0.02580645161290321,
+              "high": 0.2
+            },
+            "hanson_shot_early_rate": {
+              "estimate": -0.03333333333333333,
+              "low": -0.06666666666666667,
+              "high": 0.04047619047619047
+            },
+            "hanson_shot_miss_rate": {
+              "estimate": -0.06666666666666665,
+              "low": -0.16908068783068786,
+              "high": 0.06666666666666676
+            },
+            "hanson_early_alarm_incidence": {
+              "estimate": 0.09090909090909091,
+              "low": -0.06060606060606058,
+              "high": 0.21212121212121213
+            },
+            "hanson_early_alarms_per_shot": {
+              "estimate": 0.8181818181818181,
+              "low": -0.3333333333333335,
+              "high": 1.606060606060606
+            },
+            "hanson_ignored_alarm_incidence": {
+              "estimate": -0.36363636363636365,
+              "low": -0.5757575757575757,
+              "high": -0.1810606060606067
+            },
+            "hanson_ignored_alarms_per_shot": {
+              "estimate": 0.9393939393939393,
+              "low": -0.8492424242424239,
+              "high": 2.090909090909091
+            },
+            "hanson_unexplained_alarm_incidence": {
+              "estimate": 0.1515151515151515,
+              "low": -5.551115123125783e-17,
+              "high": 0.2727272727272727
+            },
+            "hanson_unexplained_alarms_per_shot": {
+              "estimate": 1.272727272727273,
+              "low": 4.440892098500626e-16,
+              "high": 2.2727272727272734
+            },
+            "comparison_alarm_incidence": {
+              "estimate": null,
+              "low": null,
+              "high": null
+            },
+            "comparison_alarms_per_shot": {
+              "estimate": null,
+              "low": null,
+              "high": null
+            }
+          }
+        }
+      }
+    },
+    "within_shot": {
+      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.tex",
+      "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_within_shot.tex",
+      "caption": "Within-shot AUROC means on the reference split; each of 30 two-class Hanson shots receives equal weight. The forest ranks below both continuous plasma scalars on both masks, and below elapsed time on primary only. One-class shots are omitted; comparisons are unlabelled.",
+      "source": {
+        "configs.rwm-brf.within_shot_auroc": {
+          "primary": {
+            "mean": 0.7836439827099465,
+            "median": 0.8302005206940208,
+            "n_shots": 30
+          },
+          "broad": {
+            "mean": 0.7188760518785681,
+            "median": 0.7604579989299091,
+            "n_shots": 30
+          }
+        },
+        "configs.rule-elapsed-time.within_shot_auroc": {
+          "primary": {
+            "mean": 0.9309497992055623,
+            "median": 1.0,
+            "n_shots": 30
+          },
+          "broad": {
+            "mean": 0.4167464276737933,
+            "median": 0.418884686257395,
+            "n_shots": 30
+          }
+        },
+        "configs.rule-betan.within_shot_auroc": {
+          "primary": {
+            "mean": 0.8144481602535586,
+            "median": 0.8840988626421697,
+            "n_shots": 30
+          },
+          "broad": {
+            "mean": 0.7393274123226601,
+            "median": 0.821346960019261,
+            "n_shots": 30
+          }
+        },
+        "configs.rule-betan-over-li.within_shot_auroc": {
+          "primary": {
+            "mean": 0.8546671454496839,
+            "median": 0.8998095512082853,
+            "n_shots": 30
+          },
+          "broad": {
+            "mean": 0.785614913350108,
+            "median": 0.8655014768721094,
+            "n_shots": 30
+          }
+        },
+        "configs.rule-rwm-candidates.within_shot_auroc": {
+          "primary": {
+            "mean": 0.5,
+            "median": 0.5,
+            "n_shots": 30
+          },
+          "broad": {
+            "mean": 0.49873122790816765,
+            "median": 0.5,
+            "n_shots": 30
+          }
+        }
+      }
+    },
     "campaign_pairs": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_campaign_pairs.tex",
@@ -1341,7 +1634,7 @@
     "alarms": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex",
       "source_path": "/scratch/gpfs/nc1514/FusionAIHub-r4-rwm/outputs/labeler/rwm/table_rwm_alarms.tex",
-      "caption": "Forest alarms across all five splits and the run-record holdout. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. The reference-split $\\beta_N$ rule warns 4/48 onsets; detection minus reference is $0.058$ {\\scriptsize $[0.014, 0.115]$}. Its low detection coverage limits this result.",
+      "caption": "Forest alarms across all five splits and the run-record holdout. Brackets: 95\\% percentile shot-bootstrap intervals, including detection-minus-reference, conditional on fixed fitted predictions. Between-model differences elsewhere use basic paired intervals. No improvement over the approximate rate-matched random reference was established: all five difference intervals include zero; equivalence is not established. Warning medians condition on detected onsets. All four rules were compared on the reference split only; their alarm results were not replayed over seeds 1--4.",
       "source": {
         "configs.rwm-brf": {
           "0": {
@@ -2293,181 +2586,6 @@
             "estimate": null,
             "low": null,
             "high": null
-          }
-        },
-        "configs.rule-betan": {
-          "counts": {
-            "hanson_shots": 33,
-            "comparison_shots": 132,
-            "positive_slices": 480,
-            "negative_slices": 5255,
-            "excluded_slices": 9184,
-            "comparison_slices": 68006,
-            "target_onsets": 48,
-            "onsets_warned": 4,
-            "hanson_target_shots": 30,
-            "hanson_detected_shots": 4,
-            "hanson_early_shots": 0,
-            "hanson_missed_shots": 26,
-            "hanson_no_target_shots": 3,
-            "hanson_shots_with_an_unexplained_alarm": 1,
-            "comparison_shots_with_an_alarm": 58,
-            "hanson_early_alarms": 1,
-            "hanson_shots_with_an_early_alarm": 1,
-            "hanson_ignored_alarms": 13,
-            "hanson_shots_with_an_ignored_alarm": 8,
-            "broad_positive_slices": 480,
-            "broad_negative_slices": 13848,
-            "broad_prevalence": 0.03350083752093802,
-            "high_beta_positive_slices": 365,
-            "high_beta_negative_slices": 2351,
-            "high_beta_prevalence": 0.13438880706921943,
-            "above_proxy_positive_slices": 365,
-            "above_proxy_negative_slices": 1913,
-            "above_proxy_prevalence": 0.16022827041264268,
-            "prevalence": 0.08369659982563209
-          },
-          "metrics": {
-            "slice_auroc": {
-              "estimate": 0.7070276324135744,
-              "low": 0.6389341617487666,
-              "high": 0.7717948860197866
-            },
-            "slice_auprc": {
-              "estimate": 0.1656533156078931,
-              "low": 0.1281706498450382,
-              "high": 0.24642607838773417
-            },
-            "broad_auroc": {
-              "estimate": 0.7150719718852301,
-              "low": 0.6407577550974536,
-              "high": 0.7759842125820196
-            },
-            "broad_auprc": {
-              "estimate": 0.06444180486518387,
-              "low": 0.04270944768973797,
-              "high": 0.09939524964056698
-            },
-            "high_beta_auroc": {
-              "estimate": 0.5627730548935749,
-              "low": 0.46823105654710007,
-              "high": 0.6505270191723881
-            },
-            "high_beta_auprc": {
-              "estimate": 0.1759388421080312,
-              "low": 0.13192982746108545,
-              "high": 0.2732946531546031
-            },
-            "above_proxy_auroc": {
-              "estimate": 0.5088500454711455,
-              "low": 0.38632899515586444,
-              "high": 0.6169664785314322
-            },
-            "above_proxy_auprc": {
-              "estimate": 0.18277442395894855,
-              "low": 0.1385348782503019,
-              "high": 0.2787749560742271
-            },
-            "slice_tpr": {
-              "estimate": 0.75,
-              "low": 0.6187357954545455,
-              "high": 0.8652696488294314
-            },
-            "slice_fpr": {
-              "estimate": 0.3967649857278782,
-              "low": 0.32276111912678007,
-              "high": 0.45378258832394364
-            },
-            "slice_precision": {
-              "estimate": 0.147239263803681,
-              "low": 0.11337151897571549,
-              "high": 0.19786871924086655
-            },
-            "slice_f1": {
-              "estimate": 0.24615384615384617,
-              "low": 0.19392559186526598,
-              "high": 0.3118434633873013
-            },
-            "onset_detection_rate": {
-              "estimate": 0.08333333333333333,
-              "low": 0.019230769230769232,
-              "high": 0.16326530612244897
-            },
-            "uniform_alarm_reference": {
-              "estimate": 0.025207463600314933,
-              "low": 0.005632208774900936,
-              "high": 0.0499559827624419
-            },
-            "detection_minus_uniform_reference": {
-              "estimate": 0.05812586973301839,
-              "low": 0.013506078092362924,
-              "high": 0.1145715420615326
-            },
-            "warning_ms_mean": {
-              "estimate": 117.36249999999995,
-              "low": 16.449999999999818,
-              "high": 385.0
-            },
-            "warning_ms_median": {
-              "estimate": 34.0,
-              "low": 16.449999999999818,
-              "high": 385.0
-            },
-            "hanson_shot_detection_rate": {
-              "estimate": 0.13333333333333333,
-              "low": 0.03225806451612903,
-              "high": 0.26666666666666666
-            },
-            "hanson_shot_early_rate": {
-              "estimate": 0.0,
-              "low": 0.0,
-              "high": 0.0
-            },
-            "hanson_shot_miss_rate": {
-              "estimate": 0.8666666666666667,
-              "low": 0.7333333333333333,
-              "high": 0.967741935483871
-            },
-            "hanson_early_alarm_incidence": {
-              "estimate": 0.030303030303030304,
-              "low": 0.0,
-              "high": 0.12121212121212122
-            },
-            "hanson_early_alarms_per_shot": {
-              "estimate": 0.030303030303030304,
-              "low": 0.0,
-              "high": 0.12121212121212122
-            },
-            "hanson_ignored_alarm_incidence": {
-              "estimate": 0.24242424242424243,
-              "low": 0.12121212121212122,
-              "high": 0.394696969696969
-            },
-            "hanson_ignored_alarms_per_shot": {
-              "estimate": 0.3939393939393939,
-              "low": 0.15151515151515152,
-              "high": 0.696969696969697
-            },
-            "hanson_unexplained_alarm_incidence": {
-              "estimate": 0.030303030303030304,
-              "low": 0.0,
-              "high": 0.12121212121212122
-            },
-            "hanson_unexplained_alarms_per_shot": {
-              "estimate": 0.030303030303030304,
-              "low": 0.0,
-              "high": 0.12121212121212122
-            },
-            "comparison_alarm_incidence": {
-              "estimate": 0.4393939393939394,
-              "low": 0.3560606060606061,
-              "high": 0.5151515151515151
-            },
-            "comparison_alarms_per_shot": {
-              "estimate": 1.0075757575757576,
-              "low": 0.7575757575757576,
-              "high": 1.2878787878787878
-            }
           }
         }
       }
@@ -4451,17 +4569,37 @@
     "main": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.pdf",
-        "sha256": "7426646e15d7d6e2e758e45c39e206578bc0fb900056c07d4137c6dc40e58706"
+        "sha256": "1b9a7d45a23dbd4d9db480ea1b64d2a6d1297a999f26c69aeb24681f726bab3d"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm-1.png",
-        "sha256": "ee75607dbae3c6fc93dee7dfae7ad2516224bc670b62b3f8b1caf4451a45c976"
+        "sha256": "86d23c9e115b2488ca546880c23a7e5ccc9f6295b86a71db6c9258b2679ffde2"
+      }
+    ],
+    "split_summary": [
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary.pdf",
+        "sha256": "9fc338a66a9662f22cc6559c273192a864190ca75d2ecffdaeaaf83e0e02c644"
+      },
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_split_summary-1.png",
+        "sha256": "03db58ccce2142f784d6e40aa50ad997e26b44d240f7e884da732a398d53a42c"
+      }
+    ],
+    "within_shot": [
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot.pdf",
+        "sha256": "e1d88514f43dfa4302a8b259dda269c6ea9a82148797f4a3ac42dad0839eadbf"
+      },
+      {
+        "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_within_shot-1.png",
+        "sha256": "29b06f85edc1882b2d0d30972e37b9833630fe5570bdff4b89b2eb3b78a7512b"
       }
     ],
     "campaign_pairs": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.pdf",
-        "sha256": "708e7293c2e56b5bb29426e0ed414e7898755a8f49342310130bdda411471f04"
+        "sha256": "8e07f65e7056cd97b7122d4f7d6c55c9bd746df0fdd18e23359cc10b5e744ce3"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs-1.png",
@@ -4471,17 +4609,17 @@
     "alarms": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.pdf",
-        "sha256": "061a1627e970ec33f96010992dcc2a6141d1dc6aec1643bba6b503fa43a83935"
+        "sha256": "b89c026b5cb6b8b443def23482f8a0c1e5c7bb68049e31d07b54d7a452650ecc"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms-1.png",
-        "sha256": "6ca98507f70f0f6b7c7b70777a50256c793c1562c08cd1e9ab75763f5900fee0"
+        "sha256": "94f39c4248d464f947b6d33cd16bc478522c36d934e3277628842ecf0eb42abe"
       }
     ],
     "onset_actual": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.pdf",
-        "sha256": "dec760e4017faf70373c3989ab5e2a5db4d7a788c2e11d8c77d3ab946243e56f"
+        "sha256": "2d7747345cae5813ac6bd84bb75944cd1eef5ad769281b57df76f72880989754"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual-1.png",
@@ -4491,7 +4629,7 @@
     "onset_window": [
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.pdf",
-        "sha256": "d056373cd0fa6a7224746b20a65ce5ddb98109a2fe42fdb1d90e3029684b8404"
+        "sha256": "aaaad10d4cfb286c9616fff6de49fd1048780bd005024b068d5e9c590780810e"
       },
       {
         "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window-1.png",
@@ -4502,7 +4640,7 @@
   "supplied_check_logs": {
     "covering_tests": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tests.log",
-      "output": "..................................................                       [100%]\n50 passed in 4.73s"
+      "output": "..................................................                       [100%]\n50 passed in 4.74s"
     },
     "ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ruff.log",
@@ -4510,7 +4648,7 @@
     },
     "ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/format.log",
-      "output": "10 files already formatted"
+      "output": "4 files already formatted"
     },
     "table_ruff_check": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-ruff.log",
@@ -4518,19 +4656,19 @@
     },
     "table_ruff_format": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-format.log",
-      "output": "10 files already formatted"
+      "output": "4 files already formatted"
     },
     "table_validation": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-validation.log",
-      "output": "PASS: every pre-existing score, alarm, interval, fold rule and prediction path is unchanged.\nPASS: all rules, forest seeds and holdout emit both-mask per-shot AUROC/counts and equal-shot summaries.\nPASS: qmin audit uses all primary labelled slices; missing and finite denominators are explicit.\nPASS: export/roster/labels unchanged except naming, timestamp and nine title repairs.\nPASS: five scoped table fragments match mirrors; all compile to one page with restored formatting and no warnings.\nPASS: percentile reference-difference and basic between-model captions are distinct; 2018 negative holdouts are reported.\nPASS: requested stale predictions removed only under round4/rwm; all committed outputs remain below 2 MB."
+      "output": "PASS: one aligned main table; caption 74 words; six-line glossary / eight-line lead.\nPASS: saved primary/broad/within-shot cells, README lines, supplementary ranges and wording/source checks.\nPASS: seven one-page PDF/PNG table pairs, mirror/hash checks, figure caption and unchanged physical window placement."
     },
     "latex_compile": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-latex.log",
-      "output": "This is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm.tex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/public/amsf\nonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi9.pfb></\nusr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texli\nve/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share/texlive/texmf\n-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/\nfonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texlive/texmf-dist/fonts/t\nype1/public/amsfonts/cm/cmtt9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_standalone.pdf (1 page, 108634 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_campaign_pairs.t\nex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_campaign_pairs_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/ty\npe1/public/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu\nblic/amsfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/am\nsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/\ncm/cmr10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></u\nsr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/sha\nre/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texl\nive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.pdf (1 page, 90583 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_campaign_pairs_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_alarms.tex)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_alarms_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type1/publ\nic/amsfonts/cm/cmmi10.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/ams\nfonts/cm/cmmi7.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/c\nm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10\n.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></u\nsr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr9.pfb></usr/share\n/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texliv\ne/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_alarms_standalone.pdf (1 page, 81461 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_alarms_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_actual.tex\n)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_actual_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_actual_standalone.pdf (1 page, 44825 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_actual_standalone.log.\nThis is pdfTeX, Version 3.14159265-2.6-1.40.19 (TeX Live 2018) (preloaded format=pdflatex)\n restricted \\write18 enabled.\nentering extended mode\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.tex\nLaTeX2e <2017-04-15>\nBabel <3.17> and hyphenation patterns for 3 language(s) loaded.\n(/usr/share/texlive/texmf-dist/tex/latex/base/article.cls\nDocument Class: article 2014/09/29 v1.4h Standard LaTeX document class\n(/usr/share/texlive/texmf-dist/tex/latex/base/size10.clo))\n(/usr/share/texlive/texmf-dist/tex/latex/geometry/geometry.sty\n(/usr/share/texlive/texmf-dist/tex/latex/graphics/keyval.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifpdf.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/oberdiek/ifvtex.sty)\n(/usr/share/texlive/texmf-dist/tex/generic/ifxetex/ifxetex.sty))\n(/usr/share/texlive/texmf-dist/tex/latex/booktabs/booktabs.sty)\n(/usr/share/texlive/texmf-dist/tex/latex/tools/longtable.sty)\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux)\n*geometry* driver: auto-detecting\n*geometry* detected driver: pdftex\n\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/rwm/table_rwm_onset_window.tex\n)\nRWM-FORMAT: size=10, tabcolsep=6.0pt\n[1{/usr/share/texlive/texmf-dist/fonts/map/pdftex/updmap/pdftex.map}]\n(/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/ta\nble_rwm_onset_window_standalone.aux) )</usr/share/texlive/texmf-dist/fonts/type\n1/public/amsfonts/cm/cmmi6.pfb></usr/share/texlive/texmf-dist/fonts/type1/publi\nc/amsfonts/cm/cmmi9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfo\nnts/cm/cmr9.pfb></usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/c\nmsy9.pfb>\nOutput written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242\ne53/r4/tmp/rwm/table_rwm_onset_window_standalone.pdf (1 page, 45104 bytes).\nTranscript written on /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-8\n9242e53/r4/tmp/rwm/table_rwm_onset_window_standalone.log."
+      "output": "table_rwm: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_alarms: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_campaign_pairs: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_actual: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_onset_window: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_split_summary: compiled twice and rendered at 150 dpi\nPages:           1\ntable_rwm_within_shot: compiled twice and rendered at 150 dpi\nPages:           1"
     },
     "visual_inspection": {
       "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/rwm/tables-visual.log",
-      "output": "Manual visual inspection via tools.view_image: table_rwm-1.png, table_rwm_campaign_pairs-1.png, table_rwm_alarms-1.png, table_rwm_onset_actual-1.png, table_rwm_onset_window-1.png, rwm_onset_scores.png under $LABELER_ROOT/round4/rwm. All row labels and values are readable and aligned; main caption is readable and fully inside the page; no clipping or overlap found. Main table and all supplements retain 9 pt body and 7 pt CI text in the standalone article."
+      "output": "Fix round 6: viewed all eight final PNGs with tools.view_image(detail=original).\ntable_rwm-1.png: one aligned table, primary/broad/within-shot columns readable, 3-digit CI bounds intact, short caption unclipped.\ntable_rwm_split_summary-1.png: ranges and paired cells aligned; seed 3 retains the -0.0001 bound.\ntable_rwm_within_shot-1.png: both mask means readable; elapsed-time exception explicit.\ntable_rwm_alarms-1.png: readable forest results; four-rule seed-0 scope explicit; betaN highlight removed.\ntable_rwm_campaign_pairs-1.png: all paired cells and caption intact.\ntable_rwm_onset_actual-1.png: all 48 onset rows and sampling caption readable.\ntable_rwm_onset_window-1.png: all 48 window rows and sampling caption readable.\nrwm_onset_scores.png: all eight panels, axes and legend readable; caption identifies proxy line as right-axis betaN/li=4, not score 0.5.\nNo clipping or overlap observed. Tables use 9 pt body / 7 pt CIs in 10 pt wrappers; figure labels >=7 pt at native column width."
     }
   }
 }
