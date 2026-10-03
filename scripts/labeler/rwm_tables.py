@@ -34,6 +34,66 @@ def point(metric, digits=3):
     return f"{metric:.{digits}f}"
 
 
+def split_range(values, digits=3, separator="–"):
+    return f"{values['min']:.{digits}f}{separator}{values['max']:.{digits}f}"
+
+
+def split_scores(record):
+    ranges = record["split_sensitivity"]["auroc_ranges"]
+    return (
+        table(
+            [
+                "campaign / scope",
+                "primary AUROC range",
+                "high-beta conditional AUROC range",
+                "above-proxy conditional AUROC range",
+            ],
+            [
+                [
+                    campaign,
+                    *(
+                        split_range(row[key])
+                        for key in (
+                            "slice_auroc",
+                            "high_beta_auroc",
+                            "above_proxy_auroc",
+                        )
+                    ),
+                ]
+                for campaign, row in ranges.items()
+            ],
+        )
+        + "\n\nRanges are min/max point estimates across seeds 0–4, not confidence intervals."
+    )
+
+
+def split_pairs(record):
+    summary = record["split_sensitivity"]
+    keys = ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+    return table(
+        [
+            "fold seed",
+            "primary AUROC difference",
+            "high-beta conditional AUROC difference",
+            "above-proxy conditional AUROC difference",
+        ],
+        [
+            [seed, *(interval(row[k]) for k in keys)]
+            for seed, row in summary["paired_time_by_seed"].items()
+        ]
+        + [
+            [
+                "point range",
+                *(split_range(summary["paired_time_ranges"][k]) for k in keys),
+            ]
+        ],
+    ) + (
+        "\n\nForest minus elapsed time; 95% basic paired shot-bootstrap intervals. "
+        "Elapsed-time ranks are fixed across splits. These three pooled strata "
+        "retain discharge-phase information."
+    )
+
+
 def table(header, rows):
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     return "\n".join(lines + ["| " + " | ".join(row) + " |" for row in rows])
@@ -147,8 +207,8 @@ def grouped_scores(groups, intervals=True):
     rows = []
     masks = (
         ("slice", "primary"),
-        ("high_beta", "high-beta"),
-        ("above_proxy", "above-proxy"),
+        ("high_beta", "high-beta conditional"),
+        ("above_proxy", "above-proxy conditional"),
     )
     formatter = interval if intervals else point
     for group, record in groups.items():
@@ -283,7 +343,8 @@ def alarm_sensitivity(config):
         rows,
     ) + (
         "\n\nThe primary alarm window ends 100 ms after the last n=1 or n=2 "
-        "explanation onset. This tolerance extends beyond the primary slice mask, "
+        "explanation onset on Hanson shots; comparison traces retain their full "
+        "span. This tolerance extends beyond the primary slice mask, "
         "which ends at the last n=1 target onset. Both alarm definitions are "
         "tuned within the inner folds; unlabelled comparisons never tune alarms."
     )
@@ -328,15 +389,7 @@ def latex_cell(m):
     point = f"{m['estimate']:.3f}"
     if m["low"] is None or m["high"] is None:
         return point
-    return (
-        r"\shortstack{"
-        + point
-        + r"\\{["
-        + f"{m['low']:.3f},"
-        + r"}\\{"
-        + f"{m['high']:.3f}]"
-        + "}}"
-    )
+    return point + r" {\scriptsize [" + f"{m['low']:.2f}, {m['high']:.2f}]" + "}"
 
 
 def write_latex(record, out_dir):
@@ -350,12 +403,14 @@ def write_latex(record, out_dir):
     }
     keys = ("slice_auroc", "slice_auprc", "slice_f1", "high_beta_auroc")
     lines = [
-        r"\begin{table}[t]",
+        r"\begin{table*}[t]",
         r"\centering",
         r"\small",
-        r"\setlength{\tabcolsep}{1.5pt}",
+        r"\setlength{\tabcolsep}{4pt}",
         r"\begin{tabular}{@{}lcccc@{}}",
         r"\toprule",
+        r"\multicolumn{5}{@{}l}{Tokamak-SI (DIII-D; split 0)} \\",
+        r"\midrule",
         (
             r"Model / rule & \shortstack{Primary\\AUROC} & "
             r"\shortstack{Primary\\AUPRC} & \shortstack{Primary\\F1} & "
@@ -383,12 +438,35 @@ def write_latex(record, out_dir):
         r"\bottomrule",
         r"\end{tabular}",
         r"\par\smallskip",
+        r"\begin{tabular}{@{}lccc@{}}",
+        r"\toprule",
+        r"Scope & Primary AUROC & High-$\beta$ conditional AUROC & Above-proxy conditional AUROC \\",
+        r"\midrule",
+    ]
+    ranges = record["split_sensitivity"]["auroc_ranges"]
+    for campaign, row in ranges.items():
+        lines.append(
+            f"{campaign.capitalize()} (five splits) & "
+            + " & ".join(
+                split_range(row[k], separator="--")
+                for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+            )
+            + r" \\"
+        )
+    holdout = record["leave_one_run_record_out"]
+    lines += [
+        "Run-record holdout & "
+        + " & ".join(
+            latex_cell(holdout["metrics"][k])
+            for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+        )
+        + r" \\",
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\par\smallskip",
         r"\begin{tabular}{@{}lc@{}}",
         r"\toprule",
-        (
-            r"\multicolumn{2}{@{}l}{\shortstack[l]{Legacy NSTX RUS forest\\"
-            r"Piccione et al. (2022)}} \\"
-        ),
+        (r"\multicolumn{2}{@{}l}{Legacy (Piccione et al., NSTX)} \\"),
         r"\midrule",
         f"Slice AUROC / F1 & {legacy['slice_auroc']:.3f} / --" + r" \\",
         (
@@ -408,30 +486,55 @@ def write_latex(record, out_dir):
         ),
         r"\bottomrule",
         r"\end{tabular}",
-        (
-            r"\caption{DIII-D onset forecasting on Hanson shots. Positives are "
-            r"within 100 ms before a listed $n=1$ onset; assumed negatives are "
-            r"earlier than the last onset, excluding event aftermath. Complete "
-            r"negative coverage is unverified. High-$\beta$ uses "
-            r"$\beta_N\geq0.8$ times the shot's 95th percentile. Brackets give "
-            r"95\% shot-bootstrap intervals from 1,000 resamples of held-out "
-            r"predictions. The forest's primary within-phase discrimination is not distinguishable "
-            r"from chance; reversed in 2014. The retrospective candidate screen "
-            r"never fires before a listed onset and is constant zero on primary "
-            r"slices. The separately sourced Legacy reference uses a different "
-            r"machine (NSTX), expert-reviewed stable shots, different inputs and "
-            r"validation; its published test results are not comparable to this "
-            r"DIII-D benchmark. Legacy F1 and intervals are not available in "
-            r"the source digest.}"
-        ),
+    ]
+    summary = record["split_sensitivity"]
+    if not all(
+        v["all_cis_include_zero"] for v in summary["paired_time_ranges"].values()
+    ):
+        raise ValueError(
+            "caption's paired claim requires all intervals to include zero"
+        )
+    caption = (
+        r"Retrospective DIII-D forecasting on 33 Hanson shots with acausal ZIPFIT "
+        r"inputs and unverified negative coverage. Positives precede listed $n=1$ "
+        r"onsets by at most 100 ms; high-$\beta$ conditions on $\beta_N\geq0.8$ "
+        r"shot p95. Brackets: 95\% shot-bootstrap intervals (1,000 resamples). "
+        r"Ranges span five splits: high-$\beta$ AUROC "
+        + split_range(ranges["pooled"]["high_beta_auroc"], 2, "--")
+        + r"; forest-minus-elapsed-time "
+        + split_range(summary["paired_time_ranges"]["high_beta_auroc"], 2, "--")
+        + r", with paired intervals including zero in all three pooled strata. "
+        r"Leave-one-run-record-out retains four records across three dates. "
+        r"Legacy uses different inputs and expert-reviewed stable shots; results "
+        r"are not comparable."
+    )
+    lines += [
+        r"\caption{" + caption + "}",
         r"\label{tab:rwm-baseline}",
-        r"\end{table}",
+        r"\end{table*}",
     ]
     target = out_dir / "table_rwm.tex"
     target.write_text("\n".join(lines) + "\n")
     return {
         "path": str(target),
         "cells": provenance,
+        "caption": caption,
+        "caption_words": len(caption.split()),
+        "split_ranges": {
+            "json_path": "split_sensitivity.auroc_ranges",
+            "values": ranges,
+        },
+        "paired_time_ranges": {
+            "json_path": "split_sensitivity.paired_time_ranges",
+            "values": summary["paired_time_ranges"],
+        },
+        "run_record_cells": {
+            k: {
+                "json_path": f"leave_one_run_record_out.metrics.{k}",
+                **holdout["metrics"][k],
+            }
+            for k in ("slice_auroc", "high_beta_auroc", "above_proxy_auroc")
+        },
         "legacy": {
             "source": legacy["source"],
             "cells": {
@@ -458,9 +561,11 @@ def main():
     record = json.loads((OUT / "evaluation.json").read_text())
     configs = record["configs"]
     c = configs["rwm-brf"]
-    day_out = record["leave_one_run_day_out"]
+    run_out = record["leave_one_run_record_out"]
     sections = {
-        "Piccione-style primary scores — all models": scores(configs),
+        "Five-split AUROC ranges — rwm-brf (seeds 0–4)": split_scores(record),
+        "Five-split paired AUROC — forest minus elapsed time": split_pairs(record),
+        "Piccione-style primary scores — all models (split 0)": scores(configs),
         "Broader Hanson-negative sensitivity — same models and predictions": scores(
             configs, "broad"
         ),
@@ -468,20 +573,20 @@ def main():
         "Above no-wall-proxy conditional scores — all models": scores(
             configs, "above_proxy", True
         ),
-        "Campaign sensitivity — rwm-brf (95% shot CIs)": grouped_scores(
+        "Campaign sensitivity — rwm-brf, split 0 (95% shot CIs)": grouped_scores(
             c["by_campaign"]
         ),
-        "Leave-one-run-day-out — rwm-brf (95% shot CIs)": grouped_scores(
-            {"pooled four-day holdout": day_out}
+        "Leave-one-run-record-out — rwm-brf (95% shot CIs)": grouped_scores(
+            {"pooled four-record holdout": run_out}
         ),
-        "Leave-one-run-day-out — each held-out run day": grouped_scores(
-            day_out["by_run_day"], intervals=False
+        "Leave-one-run-record-out — each held-out run record": grouped_scores(
+            run_out["by_run_record"], intervals=False
         ),
-        "Leave-one-run-day-out — F1 and alarms (95% shot CIs)": (
-            grouped_alarm_scores({"pooled four-day holdout": day_out})
+        "Leave-one-run-record-out — F1 and alarms (95% shot CIs)": (
+            grouped_alarm_scores({"pooled four-record holdout": run_out})
         ),
-        "Leave-one-run-day-out — F1 and alarms by held-out run day": (
-            grouped_alarm_scores(day_out["by_run_day"], intervals=False)
+        "Leave-one-run-record-out — F1 and alarms by held-out run record": (
+            grouped_alarm_scores(run_out["by_run_record"], intervals=False)
         ),
         **alarm_tables(configs),
         "Piccione-style per-shot categories — primary alarm definition": (
@@ -494,8 +599,8 @@ def main():
     }
     for prefix, label in (
         ("slice", "primary"),
-        ("high_beta", "high-beta"),
-        ("above_proxy", "above-proxy"),
+        ("high_beta", "high-beta conditional"),
+        ("above_proxy", "above-proxy conditional"),
     ):
         sections[f"Paired differences — rwm-brf versus rules, {label}"] = paired(
             record, prefix
@@ -533,7 +638,7 @@ def main():
                 "rwm-brf",
                 s,
                 *(
-                    f"{(m[k]['estimate'] if s == '0' else m[k]):.3f}"
+                    f"{m[k]['estimate']:.3f}"
                     for k in (
                         "slice_auroc",
                         "high_beta_auroc",
@@ -545,6 +650,13 @@ def main():
             for s, run in runs.items()
             for m in [run["metrics"]]
         ],
+    )
+    for seed, run in runs.items():
+        sections[f"Campaign sensitivity — rwm-brf, split {seed} (95% shot CIs)"] = (
+            grouped_scores(run["by_campaign"])
+        )
+    sections["Leave-one-run-record-out — by campaign (95% shot CIs)"] = grouped_scores(
+        run_out["by_campaign"]
     )
     text = (
         "\n\n".join(f"### {name}\n\n{body}" for name, body in sections.items()) + "\n"
