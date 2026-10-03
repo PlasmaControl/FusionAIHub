@@ -46,7 +46,6 @@ INK = "#222222"
 #: Top of the plotted inversion window (m): the divertor view, not the whole frame.
 VIEW_ZMAX = -0.85
 #: Afrac values above this are clipped at the top of its axis (density dips spike it).
-AFRAC_AXIS_MAX = 1.5
 
 
 def root() -> Path:
@@ -67,11 +66,13 @@ def pick_times(frame: pd.DataFrame, shot: int) -> dict[int, float]:
     out: dict[int, float] = {}
     for state in (1, 2, 3):
         rows = group[group.state_lm == state]
+        if not len(rows):
+            rows = group[group.tangtv_vote == state]
         if len(rows):
             best = rows.sort_values("confidence", ascending=False).iloc[0]
             out[state] = float(best.start_ms) + core.BIN_MS / 2
     if 3 not in out:
-        rows = group[group.state_lm == 2]
+        rows = group
         if len(rows):
             best = rows.sort_values("tangtv_value", ascending=False).iloc[0]
             out[3] = float(best.start_ms) + core.BIN_MS / 2
@@ -107,6 +108,7 @@ def efit_slice(shot: int, t_ms: float):
             "rb": f["rbbbs"][k],
             "zb": f["zbbbs"][k],
             "t_ms": float(f["gtime_ms"][k]),
+            "lim": f.get("lim", None),
         }
 
 
@@ -167,7 +169,7 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
     start = group.start_ms.to_numpy()
     votes = {
         "label": group.state_lm.to_numpy(),
-        "Afrac": np.where(group.afrac_valid, group.afrac_vote, 0),
+        "Jsat ratio": np.where(group.afrac_valid, group.afrac_vote, 0),
         "Prad,div": np.where(group.prad_valid, group.prad_vote, 0),
         "TangTV": np.where(group.tangtv_valid, group.tangtv_vote, 0),
     }
@@ -180,7 +182,7 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
     dz = group.tangtv_value.to_numpy(float)
     series = (
         (
-            "Afrac",
+            "Jsat ratio",
             np.where(group.afrac_valid, group.afrac_value, np.nan),
             (
                 (thresholds.AFRAC_ATTACHED_MIN, "--"),
@@ -203,8 +205,8 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
         for level, dash in lines:
             ax.axhline(level, color="#666666", lw=0.6, ls=dash)
         ax.set_ylabel(name)
-        if name == "Afrac":
-            ax.set_ylim(0, AFRAC_AXIS_MAX)
+        if name == "Jsat ratio":
+            ax.set_yscale("log")
     ref = group.aux_zvsod.to_numpy(float)
     ok = np.isfinite(ref) & group.tangtv_valid.to_numpy()
     if ok.any():
@@ -225,7 +227,6 @@ def timeline(fig, spec, group: pd.DataFrame, times: dict[int, float]) -> None:
     for ax in axes:
         ax.yaxis.set_label_coords(-0.075, 0.5)
     axes[6].set_xlabel("time (ms)")
-    axes[0].set_title("timeline (strips: label and the three indicators' votes)")
 
 
 def summary(ax, frame: pd.DataFrame, shot: int) -> None:
@@ -256,16 +257,10 @@ def summary(ax, frame: pd.DataFrame, shot: int) -> None:
         bottom += share[state].to_numpy()
     if shot in share.index:
         ax.axvline(list(share.index).index(shot), color=INK, lw=0.7)
-    total = table.sum()
-    pooled = total / total.sum()
     ax.set_xlim(-0.5, len(share) - 0.5)
     ax.set_ylim(0, 1)
     ax.set_xlabel(f"{len(share)} labelled shots, ordered by state mix")
     ax.set_ylabel("share of bins")
-    ax.set_title(
-        "assessed bins: "
-        + ", ".join(f"{pooled[s] * 100:.0f}% {STATE_NAME[s]}" for s in (1, 2, 3, 4))
-    )
     ax.legend(ncol=4, loc="upper center", bbox_to_anchor=(0.5, -0.42), frameon=False)
 
 
@@ -285,17 +280,17 @@ def main() -> None:
         times = dict(zip((1, 2, 3), args.times, strict=True))
     inv = np.load(root() / "inversions" / f"{args.shot}.npz")
     video = read_video(args.shot)
-    fig = plt.figure(figsize=(7.2, 9.4), constrained_layout=False)
+    fig = plt.figure(figsize=(6.75, 3.8), constrained_layout=False)
     outer = fig.add_gridspec(
-        5,
+        2,
         3,
-        height_ratios=[0.8, 1.3, 1.1, 3.4, 1.25],
-        left=0.135,
-        right=0.985,
-        top=0.93,
-        bottom=0.075,
-        hspace=0.62,
-        wspace=0.28,
+        height_ratios=[0.8, 1.7],
+        left=0.09,
+        right=0.99,
+        top=0.91,
+        bottom=0.13,
+        hspace=0.48,
+        wspace=0.34,
     )
     notes = []
     for col, state in enumerate((1, 2, 3)):
@@ -303,8 +298,10 @@ def main() -> None:
             continue
         t = times[state]
         label = STATE_NAME[state]
-        if state == 3 and not (group.state_lm == 3).any():
-            label = "deepest detached"
+        selected = group.iloc[int(np.argmin(np.abs(group.start_ms + 25 - t)))]
+        if int(selected.state_lm) != state:
+            label = "highest front" if state == 3 else STATE_NAME[state] + " front"
+            label += "\nlabel: " + STATE_NAME[int(selected.state_lm)]
         # raw frame
         ax = fig.add_subplot(outer[0, col])
         if video is not None:
@@ -348,6 +345,9 @@ def main() -> None:
                 colors="#56B4E9",
                 linewidths=0.4,
             )
+            if efit["lim"] is not None:
+                lim = efit["lim"]
+                ax.plot(lim[:, 0], lim[:, 1], color="#56B4E9", lw=1.0)
         else:
             notes.append("EFIT flux map not parked")
         if np.isfinite(row.aux_rxpt1):
@@ -365,26 +365,45 @@ def main() -> None:
         if col == 0:
             ax.set_ylabel("Z (m)")
         ax.set_title(f"inversion ({inv['times_ms'][j]:.0f} ms)")
-        # bolometer chords
-        ax = fig.add_subplot(outer[2, col])
-        prof = chord_profile(args.shot, t)
-        if prof is not None:
-            x = np.arange(1, 25)
-            ax.plot(x, prof[0], "-o", ms=2.5, lw=0.8, color="#009E73", label="L")
-            ax.plot(x, prof[1], "-s", ms=2.5, lw=0.8, color="#D55E00", label="U")
-            ax.axhline(0, color="#666666", lw=0.5)
-            ax.set_xlabel("chord")
-            if col == 0:
-                ax.set_ylabel("chord signal\nchange (raw)")
-                ax.legend(frameon=False, ncol=2, loc="upper right")
-        ax.set_title("bolometer chords")
-    timeline(fig, outer[3, :], group, times)
-    summary(fig.add_subplot(outer[4, :]), frame, args.shot)
-    fig.suptitle(f"DIII-D shot {args.shot}", fontsize=8.5, weight="bold", y=0.985)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     fig.savefig(out / "fig_detachment_views.pdf")
     fig.savefig(out / "fig_detachment_views.png", dpi=150)
+    plt.close(fig)
+    fig = plt.figure(figsize=(6.75, 5.4))
+    grid = fig.add_gridspec(
+        2,
+        1,
+        height_ratios=[3.5, 1],
+        left=0.14,
+        right=0.985,
+        top=0.98,
+        bottom=0.13,
+        hspace=0.55,
+    )
+    timeline(fig, grid[0], group, times)
+    summary(fig.add_subplot(grid[1]), frame, args.shot)
+    fig.savefig(out / "fig_detachment_timeline.pdf")
+    fig.savefig(out / "fig_detachment_timeline.png", dpi=150)
+    plt.close(fig)
+    import json
+
+    (out / "figure.json").write_text(
+        json.dumps(
+            {
+                "shot": args.shot,
+                "chosen_times_ms": times,
+                "width_in": 6.75,
+                "min_font_pt": 7,
+                "bolometer_row": "omitted: no chord endpoints/calibration in BOLOM node survey or local plasma_tv resources",
+                "irtv_row": "omitted: IRTV HEATFLUX node on 189057 has no data; corpus is a stub",
+                "raw_overlay": "no camera projection calibration available",
+                "efit_source": "EFIT02, or explicitly recorded EFIT01 fallback",
+                "notes": notes,
+            },
+            indent=1,
+        )
+    )
     for note in sorted(set(notes)):
         print("note:", note)
     print("chosen times (ms):", {STATE_NAME[s]: t for s, t in times.items()})

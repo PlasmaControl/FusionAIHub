@@ -67,6 +67,9 @@ def features(frames: np.ndarray, rx: np.ndarray) -> np.ndarray:
     n, h, w = x.shape
     x = x.reshape(n, h // BLOCK, BLOCK, w // BLOCK, BLOCK).mean(axis=(2, 4))
     x = np.sqrt(x).reshape(n, -1)
+    # ZE_Norm, Chen 2026: per-frame mean 0 and standard deviation 1.
+    scale = x.std(axis=1, keepdims=True)
+    x = (x - x.mean(axis=1, keepdims=True)) / np.maximum(scale, 1e-6)
     return np.concatenate([x, (RX_SCALE * rx)[:, None].astype(np.float32)], axis=1)
 
 
@@ -78,7 +81,7 @@ def nearest(t_ms: np.ndarray, at_ms: np.ndarray) -> np.ndarray:
 
 def geometry(shot: int, at_ms: np.ndarray):
     """EFIT geometry at the times, with the shelf gate: `(rx, zx, zs, valid)`."""
-    cache = signals.load_cache(shot)
+    cache, source = signals.tangtv_geometry(shot)
     need = ("rvsod", "zvsod", "rxpt1", "zxpt1")
     if any(k not in cache for k in need):
         return None
@@ -86,6 +89,7 @@ def geometry(shot: int, at_ms: np.ndarray):
     near = nearest(et, at_ms)
     rv, zv, rx, zx = (np.asarray(cache[k][1], float)[near] for k in need)
     valid, _ = tangtv.shelf_gate(rv, zv, rx, zx)
+    valid &= source == "EFIT02"
     return rx, zx, zv, valid
 
 
@@ -142,6 +146,8 @@ def load_training(shots: list[int]) -> dict[int, dict]:
             "zx": zx[ok],
             "zs": zs[ok],
             "rx": rx[ok],
+            "rv": np.interp(ft[ok], *signals.tangtv_geometry(shot)[0]["rvsod"]),
+            "brightness": np.mean(sav_frames, axis=(1, 2)),
             "x_sav": features(sav_frames, rx[ok]),
             "corpus": None,
         }
@@ -306,6 +312,79 @@ def frame_check(data: dict[int, dict]) -> dict:
 
 
 _MODEL: Ridge | None = None
+_DOMAIN = {}
+_VERIFIED_CAMERA = set()
+
+
+def domain(data):
+    """Envelope and brightness ranges from training inversion frames only."""
+    vectors = {
+        "leg": np.concatenate([d["zx"] - d["zs"] for d in data.values()]),
+        "rv": np.concatenate([d["rv"] for d in data.values()]),
+        "rx": np.concatenate([d["rx"] for d in data.values()]),
+        "brightness": np.concatenate([d["brightness"] for d in data.values()]),
+    }
+    return {k: [float(np.min(v)), float(np.max(v))] for k, v in vectors.items()}
+
+
+def select_alpha(data):
+    """Three shot-grouped inner folds; at most 20 frames/shot for selection."""
+    shots = sorted(data)
+    reduced = {
+        s: {
+            k: v[np.linspace(0, len(d["ze"]) - 1, min(20, len(d["ze"]))).astype(int)]
+            for k, v in d.items()
+            if k in ("x_sav", "ze")
+        }
+        for s, d in data.items()
+    }
+    errors = {a: [] for a in ALPHAS}
+    for held in np.array_split(shots, 3):
+        train = [s for s in shots if s not in held]
+        x = np.concatenate([reduced[s]["x_sav"] for s in train])
+        y = np.concatenate([reduced[s]["ze"] for s in train])
+        xe = np.concatenate([reduced[s]["x_sav"] for s in held])
+        ye = np.concatenate([reduced[s]["ze"] for s in held])
+        for alpha in ALPHAS:
+            errors[alpha].append(
+                float(np.mean(np.abs(Ridge().fit(x, y, alpha).predict(xe) - ye)))
+            )
+    return min(errors, key=lambda a: np.mean(errors[a]))
+
+
+def nested_loso(data):
+    """Outer held shot excluded from alpha selection, scaling and final fit."""
+    rows = {"x_sav": [], "x_corpus": []}
+    selection = {}
+    for held, d in data.items():
+        train = {s: v for s, v in data.items() if s != held}
+        alpha = select_alpha(train)
+        selection[str(held)] = {"alpha": alpha, "training_shots": sorted(train)}
+        model = Ridge().fit(
+            np.concatenate([v["x_sav"] for v in train.values()]),
+            np.concatenate([v["ze"] for v in train.values()]),
+            alpha,
+        )
+        for key, output in rows.items():
+            if key not in d:
+                continue
+            pred = model.predict(d[key])
+            output.append(
+                pd.DataFrame(
+                    {
+                        "shot": held,
+                        "t": d["t"],
+                        "ze": d["ze"],
+                        "ze_pred": pred,
+                        "zx": d["zx"],
+                        "zs": d["zs"],
+                        "vote_true": votes_of(d["ze"], d["zx"], d["zs"]),
+                        "vote_pred": votes_of(pred, d["zx"], d["zs"]),
+                    }
+                )
+            )
+        print("outer", held, "inner alpha", alpha, flush=True)
+    return {k: pd.concat(v, ignore_index=True) for k, v in rows.items() if v}, selection
 
 
 def predict_one(shot: int) -> tuple[int, str]:
@@ -317,11 +396,36 @@ def predict_one(shot: int) -> tuple[int, str]:
     geo = geometry(shot, t)
     if geo is None:
         return shot, "no_efit"
-    rx, _, _, gate = geo
+    rx, zx, zs, gate = geo
+    gcache, _ = signals.tangtv_geometry(shot)
+    rv = np.interp(t, *gcache["rvsod"])
+    brightness = frames.mean(axis=(1, 2))
+    in_envelope = gate.copy()
+    for key, vector in (("leg", zx - zs), ("rv", rv), ("rx", rx)):
+        lo, hi = _DOMAIN[key]
+        in_envelope &= (vector >= lo) & (vector <= hi)
+    lo, hi = _DOMAIN["brightness"]
+    exposure_ok = (
+        (brightness >= lo)
+        & (brightness <= hi)
+        & ((frames >= 255).mean(axis=(1, 2)) < 0.01)
+    )
+    # No camera/filter/exposure metadata accompanies corpus frames. Only shots
+    # with same-time SAV/corpus comparison have verified cam240perp provenance.
+    camera_ok = shot in _VERIFIED_CAMERA
+    gate = in_envelope & exposure_ok & camera_ok
     ze = np.full(len(t), np.nan)
     if gate.any():
         ze[gate] = _MODEL.predict(features(frames[gate], rx[gate]))
-    np.savez_compressed(root() / "tv_surrogate" / f"{shot}.npz", times_ms=t, ze=ze)
+    np.savez_compressed(
+        root() / "tv_surrogate" / f"{shot}.npz",
+        times_ms=t,
+        ze=ze,
+        valid=gate,
+        in_envelope=in_envelope,
+        exposure_ok=exposure_ok,
+        camera_ok=np.full(len(t), camera_ok),
+    )
     return shot, f"ok {int(gate.sum())} gated frames"
 
 
@@ -331,8 +435,10 @@ def predict_shots(
     """Predict every shot not in `skip`, `workers` processes sharing the model."""
     import multiprocessing as mp
 
-    global _MODEL
+    global _MODEL, _DOMAIN, _VERIFIED_CAMERA
     _MODEL = model
+    _DOMAIN = model.domain
+    _VERIFIED_CAMERA = set(model.camera_verified)
     (root() / "tv_surrogate").mkdir(parents=True, exist_ok=True)
     todo = [s for s in shots if s not in skip]
     status = {}
@@ -356,6 +462,8 @@ def predict_only(args) -> None:
     x = np.concatenate([d["x_sav"] for d in data.values()])
     y = np.concatenate([d["ze"] for d in data.values()])
     model = Ridge().fit(x, y, record["alpha"])
+    model.domain = domain(data)
+    model.camera_verified = [s for s, d in data.items() if d["corpus"]]
     shots = [int(s) for s in Path(args.shots_file).read_text().split()]
     record["predicted"] = predict_shots(model, shots, skip=set(inverted))
     Path(args.out).write_text(json.dumps(record, indent=1))
@@ -393,18 +501,20 @@ def main() -> None:
         "frame_check": frame_check(data),
         "alphas": {},
     }
-    folds = loso(data, ALPHAS)
-    best, best_mae = None, np.inf
-    for alpha in ALPHAS:
-        s = scores(folds[alpha]["x_sav"])
-        result["alphas"][str(alpha)] = s
-        print("alpha", alpha, s["ze_mae_cm"], s["vote_agreement"], s["vote_kappa"])
-        if s["ze_mae_cm"] < best_mae:
-            best, best_mae = alpha, s["ze_mae_cm"]
-    best_rows = folds[best]["x_sav"]
+    folds, selection = nested_loso(data)
+    best = select_alpha(data)
+    best_rows, corpus_rows = folds["x_sav"], folds["x_corpus"]
     result["alpha"] = best
+    result["selection"] = (
+        "nested LOSO, three shot-grouped inner folds; 20 frames/shot for inner selection"
+    )
+    result["outer_folds"] = selection
+    result["domain"] = domain(data)
+    result["camera_verified_shots"] = [s for s, d in data.items() if d["corpus"]]
+    result["deployment_note"] = (
+        "Unverified camera/filter metadata abstains; brightness and saturation filter exposure changes."
+    )
     result["loso_sav"] = {**scores(best_rows), "ci95": bootstrap(best_rows, rng)}
-    corpus_rows = folds[best]["x_corpus"]
     result["loso_corpus"] = {
         **scores(corpus_rows),
         "ci95": bootstrap(corpus_rows, rng),
@@ -418,6 +528,8 @@ def main() -> None:
         x = np.concatenate([d["x_sav"] for d in data.values()])
         y = np.concatenate([d["ze"] for d in data.values()])
         model = Ridge().fit(x, y, best)
+        model.domain = domain(data)
+        model.camera_verified = [s for s, d in data.items() if d["corpus"]]
         shots = [int(s) for s in Path(args.shots_file).read_text().split()]
         result["predicted"] = predict_shots(model, shots, skip=set(inverted))
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)

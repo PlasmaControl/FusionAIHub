@@ -90,7 +90,7 @@ def test_front_dz_definition():
 def test_dz_votes():
     dz = np.array([0.0, 0.34, 0.4, 0.5, 0.9, 1.0, 1.2, np.nan])
     v = tangtv.dz_vote(dz).tolist()
-    assert v == [1, 1, -1, 2, 2, 2, 3, -1]
+    assert v == [1, 1, -1, 2, 2, 2, -1, -1]
 
 
 def test_gate_accepts_the_shelf_and_rejects_the_floor():
@@ -145,3 +145,54 @@ def test_indicator_never_votes_on_the_floor():
     ind = make_run(False, -1.1)
     assert not ind.valid.any() and (ind.vote == core.ABSTAIN).all()
     assert set(ind.reason) == {"strike_on_floor"}
+
+
+def test_short_leg_abstains_even_when_emission_above_xpoint():
+    assert np.isnan(tangtv.front_dz(-0.95, -1.0, -1.03))
+    valid, why = tangtv.shelf_gate([1.5], [-1.25], [1.3], [-1.2])
+    assert not valid[0] and why[0] == "short_leg"
+
+
+def test_lower_shelf_window_drops_upper_shelf_emission():
+    radii = np.array([1.2, 1.3, 1.4, 1.5])
+    elev = np.array([-1.36, -1.1, -0.9])
+    frame = np.zeros((1, 3, 4))
+    frame[0, 0, 1] = 1
+    frame[0, 2, 3] = 10
+    ze = tangtv.outer_leg_ze(frame, radii, elev, np.array([1.25]), r_max=1.37)
+    assert ze[0] == pytest.approx(-1.36)
+
+
+def test_height_alone_is_a_marfe_candidate():
+    assert tangtv.dz_vote(np.array([1.25])).tolist() == [core.ABSTAIN]
+
+
+def test_marfe_requires_persistence_spatial_and_second_cue():
+    dz = np.array([1.3, 1.3, 0.6, 1.3, 1.3])
+    evidence = np.array([True, True, False, True, False])
+    vote, candidate = tangtv.evidence_votes(
+        dz, np.ones(5, bool), evidence, np.ones(5, bool)
+    )
+    assert vote.tolist() == [3, 3, 2, -1, -1]
+    assert candidate.tolist() == [True, True, False, True, True]
+
+
+def test_tangtv_elm_majority_abstains():
+    edges = np.array([0.0, 50.0, 100.0])
+    t = np.array([10.0, 30.0, 60.0, 80.0])
+    et = np.array([0.0, 50.0, 100.0])
+    ind = tangtv.tangtv_indicator(
+        edges,
+        t,
+        np.full(4, -1.2),
+        et,
+        np.full(3, 1.5),
+        np.full(3, -1.25),
+        np.full(3, 1.3),
+        np.full(3, -1.1),
+        elm_t_ms=np.arange(100.0),
+        elm_flag=np.ones(100, bool),
+    )
+    assert not ind.valid.any()
+    assert set(ind.reason) == {"elm_majority"}
+    assert (ind.vote == core.ABSTAIN).all()

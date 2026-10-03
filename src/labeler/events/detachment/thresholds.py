@@ -28,19 +28,12 @@ AFRAC_REFERENCE_QUANTILE = 0.90
 AFRAC_MIN_MS = 3000.0
 
 # --- Prad,div (Eldon 2019, NME 18 285; Chen 2026 NF 66 036014) ---------------------
-#: The indicator is f_div = Prad,div,L / P_in, the radiated power below the X-point
-#: (BOLOM PRAD_DIVL, calibrated post-shot) over the heating power (beams + ohmic +
-#: ECH). Normalised by input power, not by a baseline, because a baseline fails for
-#: a shot that starts detached, and Prad,div scales with the power fed to the
-#: boundary (Eldon 2019, 2.1). Chen 2026 quotes Prad,div,L 1.6 MW attached -> 2.2 MW
-#: detached across 201081 (P_in 4.4 MW incl. ohmic: f_div 0.36 -> 0.50) and 1.8 ->
-#: 2.4 MW for 201085. The thresholds are those two end states rounded outward, so a
-#: bin has to look at least as attached / detached as the published worked example:
-#: between them the indicator abstains. Prad is a radiation measure, not a detachment
-#: measure (it rises before the Te cliff and stays up after reattachment; the
-#: post-shot estimate is good to ~20 %), so it is a weak voter and abstains in a wide
-#: band. It never votes MARFE: the bolometer integrals carry no position.
-PRAD_ATTACHED_MAX = 0.35
+#: Local Prad,div,L/P_in thresholds initially motivated by Chen 2026 shot
+#: 201081 (1.6/4.4=0.36 attached; 2.2/4.4=0.50 detached). Eldon 2019
+#: defines the sensor, not universal classification thresholds. These are
+#: validated on fixed cohort TRAIN inversion bins by detach_fix_records.py;
+#: no test shot enters validation. They are not "Prad per Eldon" settings.
+PRAD_ATTACHED_MAX = 0.36
 PRAD_DETACHED_MIN = 0.50
 #: Below this input power the ratio is noise (the bolometer offset, ~0.05 MW, is a
 #: tenth of it), and Prad,div cannot be normalised.
@@ -53,9 +46,11 @@ MIN_INPUT_POWER_W = 0.5e6
 #: 2017: 2.5 ms jumps), so the indicator abstains rather than call it.
 DZ_ATTACHED_MAX = 0.35
 DZ_DETACHED_MIN = 0.5
-#: DZ > 1: the C-III emission centroid is above the X-point: MARFE territory (Chen
-#: 2026; Leonard 2018 stage 5).
-DZ_MARFE_MIN = 1.0
+#: Candidate MARFE margin above the X-point. A vote additionally requires
+#: persistence >=2 bins, psiN<1 at the inversion peak near/above X, and a
+#: second density-limit or confinement back-transition cue (owner's policy).
+DZ_MARFE_MIN = 1.2
+MIN_LEG_M = 0.10
 #: DZ below this is unphysical (Chen 2026: "DZ < 0 is unphysical"); half a leg of
 #: slack for the 5 mm grid and the EFIT strike-point error.
 DZ_UNPHYSICAL_MIN = -0.25
@@ -65,7 +60,7 @@ EMISSION_THRESHOLD = 0.1
 # --- Geometry gate for TangTV (Chen 2026; the owner's rule) ------------------------
 #: plasma_tv's regression and its Redge = 1.35 m correction were built on shots whose
 #: outer strike point is on the lower divertor SHELF (Z = -1.25 m, R > 1.37 m). The
-#: floor (Z = -1.363 m, R < 1.37 m) is another geometry; Victor & Scotti 2024 needed a
+#: lower shelf (Z = -1.363 m, R < 1.37 m) is another geometry; Victor & Scotti 2024 needed a
 #: separate model for it. SHELF_WALL_R is plasma_tv's own `SHELF_WALL_R`.
 SHELF_WALL_R = 1.37
 SHELF_Z = -1.25

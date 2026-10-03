@@ -31,8 +31,9 @@ over vote configurations in which every invalid indicator abstains, so a pattern
 that rarely lets TangTV speak (most shots have no inversion) does not teach the model
 that TangTV is silent by choice.
 
-**Identification.** The accuracy of an LF is identified by how it agrees with the
-others, which needs three voters: from two the data fix only the product of the two
+**Identification.** The model accuracy parameter can only be identified under its conditional
+independence assumptions; it is not identified physical accuracy. Agreement
+needs three voters: from two the data fix only the product of the two
 accuracies. Most bins carry two voters (TangTV is valid on few shots) and in them the
 state is nearly constant (attached), so a fit on all bins can place the whole
 disagreement on one LF and give the other an accuracy near 1. `fit_anchored` therefore
@@ -72,8 +73,7 @@ COMPATIBLE = {
 }
 #: Largest accuracy / correlation weight the fit may use. Without labelled data an LF
 #: that never disagrees on a finite sample would run to infinity; 4 caps the implied
-#: accuracy of a vote at 0.96 (three allowed votes) to 0.98 (two), the most a few
-#: thousand unlabelled bins from a few dozen shots can support.
+#: accuracy of a vote at 0.96 (three allowed votes) to 0.98 (two), a numerical bound, not evidence of physical accuracy or calibrated confidence.
 WEIGHT_MAX = 4.0
 #: Class balance of `fit_anchored`: attached 1/2, detached 1/4, marfe 1/4 (log).
 PRIOR_LOGIT = np.log(np.array([0.5, 0.25, 0.25]))
@@ -199,7 +199,12 @@ class LabelModel:
         self.theta, self.loglik, self.n_obs = res.x, -res.fun, int(data[0].sum())
         return self
 
-    def fit_anchored(self, votes: np.ndarray, valid: np.ndarray) -> LabelModel:
+    def fit_anchored(
+        self,
+        votes: np.ndarray,
+        valid: np.ndarray,
+        anchor_mask: np.ndarray | None = None,
+    ) -> LabelModel:
         """Fit accuracies where all LFs are valid, then the propensities on every bin.
 
         See "Identification" in the module docstring. The class balance is fixed to
@@ -211,6 +216,8 @@ class LabelModel:
         """
         votes, valid = np.asarray(votes), np.asarray(valid, dtype=bool)
         full = valid.all(axis=1)
+        if anchor_mask is not None:
+            full &= np.asarray(anchor_mask, bool)
         self.anchor_bins = int(full.sum())
         if self.anchor_bins < MIN_ANCHOR_BINS:
             self.anchor_bins = 0
@@ -259,6 +266,9 @@ class LabelModel:
             n_allowed = len(self.allowed[name])
             out[name] = {
                 "acc_weight": w,
+                "at_weight_bound": bool(np.isclose(w, WEIGHT_MAX)),
+                "physical_accuracy_identified": False,
+                "calibrated": False,
                 "propensity_weight": float(self.theta[3 + j]),
                 "implied_accuracy": float(np.exp(w) / (np.exp(w) + n_allowed - 1)),
             }
@@ -305,19 +315,50 @@ def decide(
 
 
 def rule(votes: np.ndarray, valid: np.ndarray) -> np.ndarray:
-    """The fallback: agreement of the votes, uncertain on conflict or no vote.
-
-    `votes` and `valid` are `(bins, LFs)`. No valid indicator: ABSENT. Valid
-    indicators but no vote, or two different votes: UNCERTAIN. Otherwise the vote.
-    """
-    votes = np.asarray(votes)
+    """Intersect COMPATIBLE sets, ignoring every invalid or abstaining vote."""
     out = np.full(len(votes), ABSENT, dtype=np.int8)
-    for i, (row, ok) in enumerate(zip(votes, np.asarray(valid), strict=True)):
-        if not ok.any():
+    for i, (row, ok) in enumerate(zip(votes, valid, strict=True)):
+        if not np.any(ok):
             continue
-        cast = {int(v) for v in row if v != ABSTAIN}
-        out[i] = cast.pop() if len(cast) == 1 else UNCERTAIN
+        cast = [
+            (name, int(v))
+            for name, v, good in zip(LF_NAMES, row, ok, strict=True)
+            if good and v > 0
+        ]
+        compatible = set(VOTE_STATES)
+        for name, vote in cast:
+            compatible &= set(COMPATIBLE[name].get(vote, (vote,)))
+        if not cast or not compatible:
+            out[i] = UNCERTAIN
+        else:
+            out[i] = min(compatible)
     return out
+
+
+def redundant_decide(posterior, votes, valid, threshold=0.7):
+    """Apply redundancy after the uncalibrated posterior; return state and tier.
+
+    Pair-only proxy agreement is exported as uncertain. A certain state needs a
+    valid TangTV vote and another compatible vote, no conflicting vote, and its
+    own posterior >= threshold. MARFE therefore requires a valid MARFE vote.
+    """
+    votes = np.where(valid, votes, ABSTAIN)
+    assessed = np.asarray(valid).sum(axis=1) >= 2
+    fallback = rule(votes, valid)
+    state = decide(posterior, assessed, (votes > 0).any(axis=1), threshold)
+    tier = np.full(len(state), "low_posterior", dtype=object)
+    tv = votes[:, 2]
+    support = (votes > 0).sum(axis=1) >= 2
+    conflict = (fallback == UNCERTAIN) & (votes > 0).any(axis=1)
+    pair = (tv <= 0) & support & ~conflict
+    permitted = (tv > 0) & support & ~conflict & (state == fallback)
+    tier[permitted & np.isin(state, VOTE_STATES)] = "certain"
+    state[~permitted & assessed] = UNCERTAIN
+    tier[pair] = "low_confidence_pair"
+    tier[conflict] = "conflict"
+    tier[~(votes > 0).any(axis=1)] = "no_vote"
+    tier[~assessed] = "not_assessed"
+    return state, tier
 
 
 def despeckle(state: np.ndarray, min_run: int = 2) -> np.ndarray:

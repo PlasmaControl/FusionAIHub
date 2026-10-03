@@ -1,4 +1,9 @@
-"""The Afrac indicator: divertor ion saturation current against its attached value.
+"""Uncalibrated Jsat ratio (local proxy), with optional Eldon calibration.
+
+The original raw fallback is not published Afrac. The processed path below
+selects the probe nearest EFIT and fits separate attached pre-puff references.
+
+The Afrac indicator: divertor ion saturation current against its attached value.
 
 Eldon 2022 defines `Afrac = Jsat / (C <ne>^2 q_par^(-3/7))`, the measured ion
 saturation current at the outer strike point over the value the two-point model
@@ -134,3 +139,32 @@ def afrac_indicator(
     reference = np.quantile(raw[ok], th.AFRAC_REFERENCE_QUANTILE)
     value = raw / reference
     return assemble("afrac", value, ok, reason, afrac_vote(value))
+
+
+def calibrated_ratio(
+    jsat, positions, strike, scaling, reference, regime, min_reference_bins=6
+):
+    """Nearest processed probe (<=2 cm), separate attached L/H C fits.
+
+    `jsat` is (probe,bin); `scaling` is the Eldon attached-density model.
+    reference requires an attached pre-puff bin. Unknown regime never fits C.
+    Returns ratio, validity, selected probe index; no extrapolated reference.
+    """
+    distance = np.linalg.norm(
+        np.asarray(positions)[:, None, :] - np.asarray(strike)[None, :, :], axis=2
+    )
+    distance = np.where(np.isfinite(distance), distance, np.inf)
+    which = distance.argmin(axis=0)
+    chosen = np.asarray(jsat)[which, np.arange(len(which))]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        raw = chosen / np.asarray(scaling)
+    good = (distance.min(axis=0) <= 0.02) & np.isfinite(raw) & (raw > 0)
+    value = np.full(len(which), np.nan)
+    valid = np.zeros(len(which), bool)
+    for mode in (1, 2):
+        fit = good & np.asarray(reference) & (np.asarray(regime) == mode)
+        use = good & (np.asarray(regime) == mode)
+        if fit.sum() >= min_reference_bins:
+            value[use] = raw[use] / np.median(raw[fit])
+            valid[use] = True
+    return value, valid, which

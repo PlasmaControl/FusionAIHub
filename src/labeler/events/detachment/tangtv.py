@@ -1,28 +1,13 @@
-"""The TangTV indicator: where the C-III emission sits on the outer divertor leg.
+"""Geometry-gated C-III front with explicit MARFE evidence requirements.
 
-Chen 2026 (Nucl. Fusion 66 036014) measures detachment by the height of the C-III
-(465 nm) emission front outboard of the X-point on a tomographic inversion of the
-lower-divertor camera, normalised to the leg:
-
-    DZ = 1 - (ZX - ZE) / (ZX - ZS)
-
-ZX is the X-point height, ZS the outer strike point height and ZE the
-sqrt-sum-of-squares-weighted emission height of the pixels at or outboard of the
-X-point's major radius. DZ = 0 is attached, about 0.5 is the Te cliff, above 1 is
-emission above the X-point (a MARFE). `outer_leg_ze` reimplements the recipe of
-plasma_tv's `make_labels_2026.py` (`ssa`, EMISSION_THRESHOLD 0.1) on the inverted
-frames.
-
-**It is only valid on the geometry it was built for.** The method (its regression,
-its Redge = 1.35 m correction, the trained frames) assumes the outer strike point on
-the lower divertor SHELF (Z = -1.25 m, R > 1.37 m). On the floor (Z = -1.363 m,
-R < 1.37 m) a different front-height rule is needed (Victor & Scotti 2024). The
-indicator therefore carries a gate from the EFIT strike point and X-point; outside the
-shelf geometry it is INVALID and casts no vote, whatever the frames show. Nothing
-here ever emits a state without passing `shelf_gate`.
+The upper shelf is Z=-1.25 m, R>=1.37 m. Lower-shelf inversions use the
+plasma_tv 2026 window rx<=R<1.37 m and their own lower-shelf strike height.
+Height alone is a candidate MARFE, never a MARFE vote.
 """
 
 from __future__ import annotations
+
+import itertools
 
 import numpy as np
 
@@ -43,6 +28,8 @@ def outer_leg_ze(
     radii: np.ndarray,
     elevation: np.ndarray,
     rx_m: np.ndarray,
+    *,
+    r_max: float | None = None,
 ) -> np.ndarray:
     """Weighted C-III height (m) outboard of the X-point, one per inverted frame.
 
@@ -65,7 +52,8 @@ def outer_leg_ze(
             continue
         column = int(np.clip(np.searchsorted(radii, rx), 0, len(radii) - 1))
         bright = np.where(frame > th.EMISSION_THRESHOLD, frame, 0.0)
-        weight = bright[:, column:].sum(axis=1)
+        stop = len(radii) if r_max is None else np.searchsorted(radii, r_max)
+        weight = bright[:, column:stop].sum(axis=1)
         denom = float(np.sum(weight**2))
         if denom <= 0.0:
             continue
@@ -75,12 +63,12 @@ def outer_leg_ze(
 
 
 def front_dz(ze: np.ndarray, zx: np.ndarray, zs: np.ndarray) -> np.ndarray:
-    """DZ = 1 - (ZX - ZE)/(ZX - ZS); NaN where the leg is shorter than 1 cm."""
+    """DZ = 1 - (ZX - ZE)/(ZX - ZS); NaN where the leg is shorter than 10 cm."""
     ze, zx, zs = (np.asarray(a, dtype=float) for a in (ze, zx, zs))
     leg = zx - zs
     with np.errstate(invalid="ignore", divide="ignore"):
         dz = 1.0 - (zx - ze) / leg
-    return np.where(np.abs(leg) > 0.01, dz, np.nan)
+    return np.where(leg >= th.MIN_LEG_M, dz, np.nan)
 
 
 def _is_real(x: np.ndarray, lo: float, hi: float) -> np.ndarray:
@@ -120,12 +108,13 @@ def shelf_gate(
         np.abs(zvsod - th.SHELF_Z) <= th.SHELF_Z_TOL
     )
     on_floor = (rvsod < th.SHELF_WALL_R) & (zvsod < th.SHELF_Z - th.SHELF_Z_TOL)
-    valid = lsn & on_shelf
+    valid = lsn & on_shelf & (zxpt1 - zvsod >= th.MIN_LEG_M)
     reason = np.full(rvsod.shape, "", dtype=object)
     reason[valid] = ""
     reason[have & ~lsn] = "not_lower_null"
     reason[have & lsn & ~on_shelf] = "strike_not_on_shelf"
     reason[have & lsn & on_floor] = "strike_on_floor"
+    reason[lsn & on_shelf & (zxpt1 - zvsod < th.MIN_LEG_M)] = "short_leg"
     reason[~have] = "efit_missing"
     return valid, reason
 
@@ -135,8 +124,8 @@ def dz_vote(dz: np.ndarray) -> np.ndarray:
     dz = np.asarray(dz, dtype=float)
     vote = np.full(dz.shape, ABSTAIN, dtype=np.int8)
     vote[dz < th.DZ_ATTACHED_MAX] = ATTACHED
-    vote[(dz >= th.DZ_DETACHED_MIN) & (dz <= th.DZ_MARFE_MIN)] = DETACHED
-    vote[dz > th.DZ_MARFE_MIN] = MARFE
+    vote[(dz >= th.DZ_DETACHED_MIN) & (dz < th.DZ_MARFE_MIN)] = DETACHED
+    # High fronts abstain until persistence, spatial evidence and a second cue.
     vote[~np.isfinite(dz)] = ABSTAIN
     return vote
 
@@ -152,6 +141,10 @@ def tangtv_indicator(
     zxpt1: np.ndarray,
     *,
     max_efit_gap_ms: float = 40.0,
+    lower_shelf: bool = False,
+    frame_valid: np.ndarray | None = None,
+    elm_t_ms: np.ndarray | None = None,
+    elm_flag: np.ndarray | None = None,
 ) -> Indicator:
     """TangTV indicator on a bin grid from per-frame ZE and the EFIT geometry.
 
@@ -187,8 +180,27 @@ def tangtv_indicator(
 
     rv, zv, rx, zx = take(rvsod), take(zvsod), take(rxpt1), take(zxpt1)
     gate, why = shelf_gate(rv, zv, rx, zx)
+    if lower_shelf:
+        lower = (
+            _is_real(rv, 0.8, th.SHELF_WALL_R)
+            & _is_real(zv, -1.45, -1.30)
+            & _is_real(rx, 0.8, 2.5)
+            & _is_real(zx, -1.3, th.LSN_ZX_MAX)
+            & (zx - zv >= th.MIN_LEG_M)
+        )
+        gate = lower
+        why = np.where(lower, "", "lower_shelf_geometry")
+    if frame_valid is not None:
+        why = np.where(~frame_valid, "surrogate_domain", why)
+        gate &= frame_valid
+
     why = np.where(have, why, "efit_gap")
     dz = front_dz(ze, zx, zv)
+    from .core import bin_fraction, elm_at
+
+    contaminated = elm_at(frame_t_ms, elm_t_ms, elm_flag)
+    why = np.where(contaminated, "elm_frame", why)
+    gate &= ~contaminated
     ok = gate & np.isfinite(dz) & (dz >= th.DZ_UNPHYSICAL_MIN)
     why = np.where(gate & ~np.isfinite(dz), "no_emission", why)
     why = np.where(gate & np.isfinite(dz) & ~ok, "dz_unphysical", why)
@@ -204,5 +216,26 @@ def tangtv_indicator(
         reason[b] = (
             max(set(reasons), key=reasons.count) if reasons else "minority_valid"
         )
+    if elm_t_ms is not None:
+        share = bin_fraction(elm_t_ms, elm_flag, edges)
+        bad = share > 0.5
+        valid &= ~bad
+        reason[bad] = "elm_majority"
     vote = dz_vote(value)
     return assemble("tangtv", value, valid, reason, vote)
+
+
+def evidence_votes(dz, valid, spatial, second_cue):
+    """DZ>=1.2 for >=2 adjacent valid bins, psiN<1 peak and independent cue."""
+    dz = np.asarray(dz)
+    candidate = np.asarray(valid) & (dz >= th.DZ_MARFE_MIN)
+    evidence = candidate & np.asarray(spatial) & np.asarray(second_cue)
+    edges = np.flatnonzero(np.r_[True, evidence[1:] != evidence[:-1], True])
+    sustained = np.zeros(len(dz), bool)
+    for start, end in itertools.pairwise(edges):
+        if evidence[start] and end - start >= 2:
+            sustained[start:end] = True
+    vote = dz_vote(dz)
+    vote[sustained] = MARFE
+    vote[~np.asarray(valid)] = ABSTAIN
+    return vote, candidate

@@ -147,7 +147,11 @@ def loo_state(frame: pd.DataFrame, drop: str, model, threshold: float):
     post = model.posterior(votes)
     resolves = votes[:, LF_NAMES.index("tangtv")] > 0
     post = label_model.pool_marfe(post, resolves)
-    return label_model.decide(post, both, (votes > 0).any(axis=1), threshold)
+    state = label_model.decide(post, both, (votes > 0).sum(axis=1) >= 2, threshold)
+    valid = np.stack([frame[f"{n}_valid"].to_numpy() for n in LF_NAMES], axis=1)
+    valid[:, LF_NAMES.index(drop)] = False
+    state[label_model.rule(votes, valid) == core.UNCERTAIN] = core.UNCERTAIN
+    return state
 
 
 def per_shot_tables(frame, name, reference) -> tuple[np.ndarray, list, np.ndarray]:
@@ -223,56 +227,6 @@ def auroc_ci(frame, name, reference, rng) -> dict:
     return auroc_boot(score[finite], positive[finite], sub.shot.to_numpy()[finite], rng)
 
 
-#: Divertor electron temperature (eV) under which the plasma at the plate is cold
-#: enough to be detached (the physical definition, Description in the README).
-TE_DETACHED_EV = 5.0
-
-
-def te_check(frame: pd.DataFrame, lm_state: np.ndarray, rng) -> dict:
-    """The label against divertor Thomson Te, which no indicator reads.
-
-    `aux_te_div` is the highest of the divertor Thomson real-time points in the
-    bin (a plate cooler than 5 eV everywhere has none above it). Per state: the
-    bins with a Te, its quartiles and the share below `TE_DETACHED_EV`; the AUROC
-    of Te (low = detached) for detached against attached bins; and, per indicator,
-    the AUROC of its value for the cold-plate bins (Te below the threshold), which
-    needs no label. All with a shot bootstrap. A weak, independent check: the
-    real-time points are sparse and the peak over them is not the strike-point Te.
-    An exact 0 eV (30 % of the bins) is a failed fit, not a cold plate, and is read
-    as missing.
-    """
-    te = frame.aux_te_div.to_numpy(dtype=float)
-    finite = np.isfinite(te)
-    out = {
-        "threshold_ev": TE_DETACHED_EV,
-        "bins_with_te_point": int(finite.sum()),
-        "bins_with_te_exactly_zero": int(np.sum(te[finite] == 0)),
-        "by_state": {},
-    }
-    te = np.where(te > 0, te, np.nan)
-    for state in (*STATES, core.UNCERTAIN):
-        x = te[(lm_state == state) & np.isfinite(te)]
-        if len(x):
-            out["by_state"][core.STATE_NAMES[state]] = {
-                "n_bins": len(x),
-                "te_quartiles_ev": [float(v) for v in np.percentile(x, [25, 50, 75])],
-                "share_below_threshold": float(np.mean(x < TE_DETACHED_EV)),
-            }
-    ok = np.isfinite(te) & np.isin(lm_state, (core.ATTACHED, core.DETACHED))
-    out["auroc_detached_vs_attached"] = auroc_boot(
-        -te[ok], lm_state[ok] == core.DETACHED, frame.shot.to_numpy()[ok], rng
-    )
-    # each indicator's value against the same cold-plate criterion, no label involved
-    out["indicator_auroc_cold_plate"] = {}
-    for name in LF_NAMES:
-        value = DIRECTION[name] * frame[f"{name}_value"].to_numpy(dtype=float)
-        ok = frame[f"{name}_valid"].to_numpy() & np.isfinite(value) & np.isfinite(te)
-        out["indicator_auroc_cold_plate"][name] = auroc_boot(
-            value[ok], te[ok] < TE_DETACHED_EV, frame.shot.to_numpy()[ok], rng
-        )
-    return out
-
-
 def conflicts_resolved(frame: pd.DataFrame) -> dict:
     """Bins where the rule says uncertain (conflict) and the model is certain.
 
@@ -290,10 +244,11 @@ def conflicts_resolved(frame: pd.DataFrame) -> dict:
     }
 
 
-def failure_analysis(frame, lm_state) -> dict:
+def failure_analysis(frame, references) -> dict:
     """Where each indicator goes wrong; every number is a count or a fraction."""
     out = {}
-    certain = np.isin(lm_state, STATES)
+    afrac_ref = references["afrac"]
+    certain = np.isin(afrac_ref, STATES)
     # Prad: radiation is not detachment
     tv = frame["tangtv_valid"].to_numpy() & (frame["tangtv_vote"].to_numpy() == 1)
     pr = frame["prad_valid"].to_numpy()
@@ -312,7 +267,7 @@ def failure_analysis(frame, lm_state) -> dict:
     # Afrac: a shot detached throughout is mis-called attached in its upper tail
     per_shot = {}
     for shot, idx in frame.groupby("shot").indices.items():
-        ref = lm_state[idx]
+        ref = afrac_ref[idx]
         known = np.isin(ref, STATES)
         if known.sum() < 20:
             continue
@@ -345,7 +300,7 @@ def failure_analysis(frame, lm_state) -> dict:
         rows = {}
         for name in ("afrac", "prad"):
             ok = (
-                certain
+                np.isin(references[name], STATES)
                 & frame[f"{name}_valid"].to_numpy()
                 & (frame[f"{name}_vote"].to_numpy() > 0)
             )
@@ -360,7 +315,7 @@ def failure_analysis(frame, lm_state) -> dict:
                     "binary_agreement": float(
                         np.mean(
                             (frame[f"{name}_vote"].to_numpy()[bin_ok] == 1)
-                            == (lm_state[bin_ok] == 1)
+                            == (references[name][bin_ok] == 1)
                         )
                     )
                     if bin_ok.any()
@@ -384,8 +339,22 @@ def failure_analysis(frame, lm_state) -> dict:
                 s,
                 float(
                     np.mean(
-                        (frame["afrac_vote"].to_numpy()[idx] == 1)
-                        == (lm_state[idx] == 1)
+                        (
+                            frame["afrac_vote"].to_numpy()[idx][
+                                certain[idx]
+                                & frame["afrac_valid"].to_numpy()[idx]
+                                & (frame["afrac_vote"].to_numpy()[idx] > 0)
+                            ]
+                            == 1
+                        )
+                        == (
+                            afrac_ref[idx][
+                                certain[idx]
+                                & frame["afrac_valid"].to_numpy()[idx]
+                                & (frame["afrac_vote"].to_numpy()[idx] > 0)
+                            ]
+                            == 1
+                        )
                     )
                 ),
             )
@@ -435,7 +404,7 @@ def main() -> None:
         "reference_note": (
             "combined = label-model state including the indicator scored "
             "(circular, an upper bound); loo = the same model with its vote "
-            "withheld, certain only where the other two are both valid"
+            "withheld; two compatible votes, both valid. TangTV LOO uses the low-confidence proxy pair and is diagnostic agreement, not expert truth"
         ),
     }
     model = load_model()
@@ -458,12 +427,22 @@ def main() -> None:
                 tables, _, counts = per_shot_tables(sub, name, ref)
                 entry = bootstrap(tables, counts, name, rng)
                 entry["auroc_attached_vs_not"] = auroc_ci(sub, name, ref, rng)
-                entry["n_shots"] = int(sub.shot.nunique())
+                entry["population_shots"] = int(sub.shot.nunique())
+                entry["n_shots"] = int(np.sum(tables.sum(axis=(1, 2)) > 0))
+                entry["reference_certain_bins"] = int(np.isin(ref, STATES).sum())
+                entry["valid_reference_bins"] = int(counts[:, 0].sum())
                 result["indicators"][name].setdefault(ref_name, {})[subset] = entry
-    result["failure_analysis"] = failure_analysis(frame, lm_state)
+    result["failure_analysis"] = failure_analysis(frame, loo)
     result["rule_conflicts_resolved_by_model"] = conflicts_resolved(frame)
-    if "aux_te_div" in frame:
-        result["divertor_te_check"] = te_check(frame, lm_state, rng)
+    result["divertor_te_check"] = {
+        "status": "withdrawn",
+        "reason": "Unlocalised real-time sample-and-hold points; no processed DTS/psiN chord check. No temperature accuracy claims.",
+    }
+    result["indicator_names"] = {
+        "afrac": "uncalibrated Jsat ratio (local proxy)",
+        "prad": "Prad,div/P_in (development-validated local thresholds)",
+        "tangtv": "Chen C-III front with geometry and MARFE gates",
+    }
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(result, indent=1))
     for name in LF_NAMES:

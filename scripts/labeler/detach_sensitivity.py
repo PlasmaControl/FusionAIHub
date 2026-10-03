@@ -86,9 +86,17 @@ def main() -> None:
     parser.add_argument("--out", default=str(RESULT))
     args = parser.parse_args()
     shots = {int(s) for s in Path(args.shots_file).read_text().split()}
+    split = dl.cohort_split(shots)
+    excluded = sorted(s for s in shots if split[s] == "test")
+    shots -= set(excluded)
     model = load_model()
     labelled = {}
-    result = {"shots_requested": len(shots), "model_record": "label_model.json"}
+    result = {
+        "shots_requested": len(shots),
+        "shots": sorted(shots),
+        "excluded_test": excluded,
+        "model_record": "label_model.json",
+    }
     for width in WIDTHS:
         frame = load_width(width, shots)
         votes, valid = dl.matrices(frame)

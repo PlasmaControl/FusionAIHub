@@ -196,3 +196,32 @@ def test_input_power_gate_constants_are_ordered():
     assert th.AFRAC_DETACHED_MAX < th.AFRAC_ATTACHED_MIN
     assert th.PRAD_ATTACHED_MAX < th.PRAD_DETACHED_MIN
     assert th.DZ_ATTACHED_MAX < th.DZ_DETACHED_MIN < th.DZ_MARFE_MIN
+
+
+def test_processed_afrac_selects_nearest_probe_and_separate_regime_references():
+    positions = np.array([[1.5, -1.25], [1.6, -1.25]])
+    strike = np.array([[1.5, -1.25], [1.6, -1.25], [1.5, -1.25], [1.6, -1.25]])
+    jsat = np.array([[4, 100, 8, 100], [100, 2, 100, 1]])
+    reference = np.array([True, True, True, False])
+    regime = np.array([1, 2, 2, 2])
+    value, valid, which = afrac.calibrated_ratio(
+        jsat, positions, strike, np.ones(4), reference, regime, min_reference_bins=1
+    )
+    assert which.tolist() == [0, 1, 0, 1]
+    # H attached C=4; L attached C=median(2,8)=5, not the H reference.
+    assert value.tolist() == pytest.approx([1, 0.4, 1.6, 0.2])
+    assert valid.all()
+
+
+def test_processed_afrac_rejects_distant_probe_and_missing_regime_reference():
+    value, valid, _ = afrac.calibrated_ratio(
+        np.ones((1, 3)),
+        np.array([[1.5, -1.25]]),
+        np.array([[1.5, -1.25], [1.7, -1.25], [1.5, -1.25]]),
+        np.ones(3),
+        np.array([True, False, False]),
+        np.array([1, 1, 2]),
+        min_reference_bins=1,
+    )
+    assert valid.tolist() == [True, False, False]
+    assert np.isnan(value[1:]).all()

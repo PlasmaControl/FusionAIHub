@@ -164,8 +164,8 @@ def elm_mask(shot: int):
     The median over the live corpus filterscope rows FS01-FS08 (each divided by its
     own median), against a 50 ms running median; a sample is in an ELM when it
     exceeds that baseline by `ELM_SIGMA` robust standard deviations of the residual
-    (MAD x 1.4826) and by `ELM_MIN_REL_RISE` of the baseline, widened by 1 ms each
-    side. None if the corpus has no record.
+    (MAD x 1.4826) and by `ELM_MIN_REL_RISE` of the baseline, widened by 17 ms before (half a 30 Hz integration) and 50 ms after
+    (integration plus conservative post-ELM recovery). None if the corpus has no record.
     """
     from scipy.ndimage import maximum_filter1d, median_filter
 
@@ -186,5 +186,29 @@ def elm_mask(shot: int):
     flag = (resid > thresholds.ELM_SIGMA * max(sigma, 1e-9)) & (
         resid > thresholds.ELM_MIN_REL_RISE * base
     )
-    widen = max(1, round(1.0 / step)) * 2 + 1
-    return t, maximum_filter1d(flag.astype(np.uint8), size=widen).astype(bool)
+    before, after = round(17.0 / step), round(50.0 / step)
+    widened = maximum_filter1d(
+        flag.astype(np.uint8),
+        size=before + after + 1,
+        origin=(after - before) // 2,
+        mode="constant",
+    )
+    return t, widened.astype(bool)
+
+
+def tangtv_geometry(shot, cache=None):
+    """EFIT02 for camera geometry; explicit EFIT01 fallback for missing records.
+
+    Heating/current remain EFIT01. The surrogate requires EFIT02 and does not
+    deploy across sources. Inversions can use a flagged EFIT01 fallback.
+    """
+    cache = load_cache(shot) if cache is None else dict(cache)
+    path = labeler_root() / "round4/detach/geometry02" / f"{shot}.npz"
+    if path.exists():
+        with np.load(path) as f:
+            if len(f["t_ms"]) < 2:
+                return cache, "EFIT01_fallback_EFIT02_sparse"
+            for name in ("rvsod", "zvsod", "rxpt1", "zxpt1"):
+                cache[name] = (f["t_ms"], f[name])
+        return cache, "EFIT02"
+    return cache, "EFIT01_fallback"

@@ -229,7 +229,6 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     """Both labelers' states on every bin of `frame`."""
     votes, valid = matrices(frame)
     assessed = valid.sum(axis=1) >= 2
-    has_vote = (votes > 0).any(axis=1)
     resolves = votes[:, LF_NAMES.index("tangtv")] > 0
     posterior = label_model.pool_marfe(model.posterior(votes), resolves)
     state_rule = label_model.rule(votes, valid)
@@ -237,11 +236,24 @@ def label_frame(frame, model, threshold, width_ms=core.BIN_MS):
     out = frame[["shot", "start_ms"]].copy()
     out["assessed"] = assessed
     out["post_attached"], out["post_detached"], out["post_marfe"] = posterior.T
-    out["state_lm"] = label_model.decide(posterior, assessed, has_vote, threshold)
+    out["state_lm"], out["tier"] = label_model.redundant_decide(
+        posterior, votes, valid, threshold
+    )
+    candidate = frame.get("tangtv_marfe_candidate", pd.Series(False, index=frame.index))
+    out.loc[candidate.to_numpy(bool) & (out.state_lm == core.UNCERTAIN), "tier"] = (
+        "candidate_marfe"
+    )
+    # The same certainty gates apply to the transparent rule.
+    support_state, _ = label_model.redundant_decide(
+        np.eye(3)[np.clip(state_rule - 1, 0, 2)], votes, valid, 0
+    )
+    state_rule = support_state
     out["state_rule"] = state_rule
-    # a flicker of one bin between two bins of the same state is not an event
+    # Temporal suggestions are separate; they never alter observed labels.
+    out["state_temporal_imputation"] = out["state_lm"]
+    # a flicker of one bin between two bins of the same state is a suggestion
     for idx in frame.groupby("shot").indices.values():
-        for key in ("state_lm", "state_rule"):
+        for key in ("state_temporal_imputation",):
             column = out.columns.get_loc(key)
             out.iloc[idx, column] = smooth_segments(
                 out[key].to_numpy()[idx], frame.start_ms.to_numpy()[idx], width_ms
@@ -260,12 +272,14 @@ def intervals(frame: pd.DataFrame, column: str, confidence=None) -> pd.DataFrame
         start = group.start_ms.to_numpy()
         state = group[column].to_numpy()
         conf = None if confidence is None else group[confidence].to_numpy()
+        tier = group.tier.to_numpy() if "tier" in group else np.full(len(group), "")
         i, n = 0, len(group)
         while i < n:
             j = i + 1
             while (
                 j < n
                 and state[j] == state[i]
+                and tier[j] == tier[i]
                 and start[j] == start[j - 1] + core.BIN_MS
             ):
                 j += 1
@@ -278,11 +292,12 @@ def intervals(frame: pd.DataFrame, column: str, confidence=None) -> pd.DataFrame
                         float(start[i]),
                         float(start[j - 1] + core.BIN_MS),
                         round(float(np.mean(conf[i:j])), 3) if known else None,
+                        json.dumps({"tier": str(tier[i])}),
                     ]
                 )
             i = j
     return pd.DataFrame(
-        rows, columns=["shot", "category", "t_start", "t_end", "confidence"]
+        rows, columns=["shot", "category", "t_start", "t_end", "confidence", "attrs"]
     )
 
 
@@ -324,6 +339,10 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
         table = pd.DataFrame(
             {
                 "t_ms": group.start_ms.to_numpy() + core.BIN_MS / 2,
+                "tier": group.tier.to_numpy(),
+                "state": group.state_lm.to_numpy(),
+                "tangtv_source": group.tangtv_source.to_numpy(),
+                "afrac_method": group.afrac_method.to_numpy(),
                 "afrac": group["afrac_value"].to_numpy(),
                 "afrac_valid": group["afrac_valid"].to_numpy().astype(int),
                 "prad_div": group["prad_value"].to_numpy(dtype=float) * p_in / 1e6,
@@ -334,7 +353,14 @@ def write_indicator_csvs(frame: pd.DataFrame, out_dir: Path) -> int:
                 .astype(int),
             }
         )
-        table.to_csv(out_dir / f"{int(shot)}.csv", index=False, float_format="%.5g")
+        target = out_dir / f"{int(shot)}.csv"
+        pending = target.with_suffix(".pending")
+        table.to_csv(pending, index=False, float_format="%.5g")
+        pending.replace(target)
+    written = set(frame.shot.astype(int))
+    for stale in out_dir.glob("*.csv"):
+        if stale.stem.isdecimal() and int(stale.stem) not in written:
+            stale.unlink()
     return int(frame.shot.nunique())
 
 
@@ -460,8 +486,9 @@ def main() -> None:
     shots_fit = work.shot.to_numpy()[fit_mask]
     structure = cv_structure(votes[fit_mask], valid[fit_mask], shots_fit)
     best = choose_structure(structure)
+    source = work.tangtv_source.to_numpy()
     model = label_model.LabelModel(corr=STRUCTURES[best]).fit_anchored(
-        votes[fit_mask], valid[fit_mask]
+        votes[fit_mask], valid[fit_mask], anchor_mask=source[fit_mask] == "inversion"
     )
     labelled, votes, valid = label_frame(work, model, args.threshold)
     for key in work.columns:
@@ -475,22 +502,18 @@ def main() -> None:
     labelled["confidence"] = np.where(
         certain, post[np.arange(len(post)), np.clip(final - 1, 0, 2)], np.nan
     )
-    labelled[labelled.assessed].to_csv(root() / "labels_bins.csv.gz", index=False)
+    pending = root() / "labels_bins.pending"
+    labelled[labelled.assessed].to_csv(pending, index=False, compression="gzip")
+    pending.replace(root() / "labels_bins.csv.gz")
 
     lm_state = labelled.state_lm.to_numpy()
     rule_state = labelled.state_rule.to_numpy()
     both = (lm_state != core.ABSENT) & (rule_state != core.ABSENT)
     posterior = labelled[["post_attached", "post_detached", "post_marfe"]].to_numpy()
-    has_vote = (votes > 0).any(axis=1)
     by_threshold = {
         str(t): {
             core.STATE_NAMES[k]: int(
-                np.sum(
-                    label_model.decide(
-                        posterior, labelled.assessed.to_numpy(), has_vote, t
-                    )
-                    == k
-                )
+                np.sum(label_model.redundant_decide(posterior, votes, valid, t)[0] == k)
             )
             for k in (1, 2, 3, 4)
         }
@@ -505,9 +528,19 @@ def main() -> None:
             "excluded_split": "test",
             "method": "anchored: accuracies from the bins where every indicator is "
             "valid, class balance fixed at attached 1/2, detached 1/4, marfe 1/4, "
-            "propensities from all bins",
+            "propensities from all bins; if fewer than 300 anchors, all-bin fallback (unidentified)",
+            "used_anchor": model.anchor_bins >= label_model.MIN_ANCHOR_BINS,
+            "physical_accuracy_identified": False,
             "anchor_bins": model.anchor_bins,
-            "anchor_shots": len(np.unique(shots_fit[valid[fit_mask].all(axis=1)])),
+            "anchor_shots": len(
+                np.unique(
+                    shots_fit[
+                        valid[fit_mask].all(axis=1) & (source[fit_mask] == "inversion")
+                    ]
+                )
+            ),
+            "anchor_source": "inversion_only",
+            "posterior_calibrated": False,
             "all_bins_fit_for_comparison": label_model.LabelModel(corr=STRUCTURES[best])
             .fit(votes[fit_mask], valid[fit_mask])
             .accuracies(),
@@ -545,6 +578,14 @@ def main() -> None:
         "uncertain_by_threshold": by_threshold,
         "primary_labeler": args.primary,
     }
+    report["tier_counts"] = {
+        str(k): int(v)
+        for k, v in labelled.loc[labelled.assessed, "tier"].value_counts().items()
+    }
+    labelled.loc[
+        labelled.state_temporal_imputation != labelled.state_lm,
+        ["shot", "start_ms", "state_lm", "state_temporal_imputation", "tier"],
+    ].to_csv(root() / "temporal_imputations.csv", index=False)
     (records / "label_model.json").write_text(json.dumps(report, indent=1))
     agreement = {
         "all_eligible_bins": pairwise_agreement(votes, valid),

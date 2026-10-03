@@ -189,3 +189,27 @@ def test_a_lone_vote_is_judged_as_hard_for_detached_as_for_attached():
     lone = np.array([[1, core.ABSTAIN, core.ABSTAIN], [2, core.ABSTAIN, core.ABSTAIN]])
     post = lm.pool_marfe(model.posterior(lone), np.array([False, False]))
     assert post[0, 0] == pytest.approx(post[1, 1], abs=0.02)
+
+
+def test_compatible_rule_and_invalid_votes():
+    votes = np.array([[2, 2, 3], [1, 2, 3], [1, -1, 2]])
+    valid = np.array([[1, 1, 1], [1, 1, 1], [1, 0, 0]], bool)
+    assert lm.rule(votes, valid).tolist() == [3, 4, 1]
+
+
+def test_redundancy_blocks_conflicts_and_proxy_only_certainty():
+    votes = np.array([[2, 2, -1], [1, 2, 2], [2, -1, 2], [2, 2, 3]])
+    valid = votes > 0
+    post = np.array(
+        [[0.01, 0.98, 0.01], [0.01, 0.98, 0.01], [0.01, 0.98, 0.01], [0.01, 0.01, 0.98]]
+    )
+    state, tier = lm.redundant_decide(post, votes, valid, threshold=0.7)
+    assert state.tolist() == [4, 4, 2, 3]
+    assert tier.tolist() == ["low_confidence_pair", "conflict", "certain", "certain"]
+
+
+def test_low_posterior_cannot_become_certain():
+    votes = np.array([[1, 1, 1]])
+    state, tier = lm.redundant_decide(np.array([[0.6, 0.3, 0.1]]), votes, votes > 0)
+    assert state.tolist() == [4]
+    assert tier.tolist() == ["low_posterior"]

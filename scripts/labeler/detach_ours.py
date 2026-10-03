@@ -52,10 +52,6 @@ CHANNELS = (
     "q95",
     "kappa",
     "bcentr",
-    "rxpt1",
-    "zxpt1",
-    "rvsod",
-    "zvsod",
 )
 EFIT_NODES = ("betan", "wmhd", "q95", "kappa", "bcentr")
 
@@ -116,7 +112,7 @@ def shot_channels(shot: int) -> np.ndarray | None:
 
 def prep() -> None:
     labels = pd.read_csv(root() / "labels_bins.csv.gz")
-    certain = labels[labels.state_lm.isin((1, 2, 3))]
+    certain = labels  # retain uncertain rows for independent LOO evaluation
     windows, target, shots, starts, split = [], [], [], [], []
     for shot, rows in certain.groupby("shot"):
         x = shot_channels(int(shot))
@@ -133,7 +129,7 @@ def prep() -> None:
             if i is None:
                 continue
             windows.append(padded[i : i + 2 * HALF + 1])
-            target.append(int(row.state_lm) - 1)
+            target.append(int(row.state_lm) - 1 if row.state_lm in (1, 2, 3) else -1)
             shots.append(int(shot))
             starts.append(float(row.start_ms))
             split.append(row.split)
@@ -174,6 +170,8 @@ def metrics(y: np.ndarray, pred: np.ndarray) -> dict:
 
 
 def with_ci(y, pred, shot, rng) -> dict:
+    if not len(y):
+        return {"n_bins": 0, "n_shots": 0}
     point = metrics(y, pred)
     by_shot = {s: np.flatnonzero(shot == s) for s in np.unique(shot)}
     keys = list(by_shot)
@@ -190,6 +188,38 @@ def with_ci(y, pred, shot, rng) -> dict:
         }
         for k in point
     }
+
+
+def baseline_strata(data, pred, rng):
+    """Independent proxy-pair LOO and inversion-source populations, exactly."""
+    import detach_benchmark as benchmark
+
+    labels = pd.read_csv(root() / "labels_bins.csv.gz").set_index(["shot", "start_ms"])
+    keys = list(zip(data["shot"], data["start_ms"], strict=True))
+    rows = labels.loc[keys].reset_index()
+    reference = benchmark.loo_state(rows, "tangtv", benchmark.load_model(), 0.7)
+    out = {}
+    split = rows.split.to_numpy()
+    sources = rows.tangtv_source.to_numpy()
+    for population in ("cv", "test"):
+        base = split != "test" if population == "cv" else split == "test"
+        for source in ("all", "inversion", "surrogate"):
+            selection = base & (
+                np.ones(len(rows), bool) if source == "all" else sources == source
+            )
+            for name, truth in (
+                ("combined", rows.state_lm.to_numpy()),
+                ("loo_tangtv", reference),
+            ):
+                keep = selection & np.isin(truth, (1, 2, 3))
+                entry = with_ci(truth[keep] - 1, pred[keep], data["shot"][keep], rng)
+                entry["n_bins"] = int(keep.sum())
+                entry["n_shots"] = len(np.unique(data["shot"][keep]))
+                out[f"{population}_{source}_{name}"] = entry
+    out["reference_note"] = (
+        "LOO TangTV is compatible Afrac/Prad proxy-pair agreement, low confidence; not independently reviewed truth."
+    )
+    return out
 
 
 def train() -> None:
@@ -261,19 +291,23 @@ def train() -> None:
     fit_shots = np.unique(shot[split != "test"])
     rng.shuffle(fit_shots)
     folds = np.array_split(fit_shots, FOLDS)
+    majority_pred = np.zeros(len(y), int)
     prob = np.full((len(y), 3), np.nan)
     for k, held in enumerate(folds):
         test_mask = np.isin(shot, held)
-        train_mask = (split != "test") & ~test_mask
+        train_mask = (split != "test") & (y >= 0) & ~test_mask
         prob[test_mask] = fit_predict(
             np.flatnonzero(train_mask), np.flatnonzero(test_mask), SEED + k
         )
+        majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
     if len(final):
-        prob[final] = fit_predict(np.flatnonzero(split != "test"), final, SEED + FOLDS)
+        prob[final] = fit_predict(
+            np.flatnonzero((split != "test") & (y >= 0)), final, SEED + FOLDS
+        )
     pred = prob.argmax(axis=1)
-    cv = np.flatnonzero(split != "test")
+    cv = np.flatnonzero((split != "test") & (y >= 0))
     boot = np.random.default_rng(1)
     result = {
         "inputs": list(CHANNELS),
@@ -287,8 +321,12 @@ def train() -> None:
             core.STATE_NAMES[k + 1]: int(np.sum(y == k)) for k in range(3)
         },
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
-        "cv_majority": metrics(y[cv], np.full(len(cv), np.bincount(y[cv]).argmax())),
+        "cv_majority": metrics(y[cv], majority_pred[cv]),
     }
+    result["n_cv_windows"] = len(cv)
+    result["n_cv_shots"] = len(np.unique(shot[cv]))
+    result["stratified"] = baseline_strata(data, pred, boot)
+    final = final[y[final] >= 0]
     if len(final):
         result["test_shots"] = with_ci(y[final], pred[final], shot[final], boot)
         result["test_majority"] = metrics(

@@ -44,7 +44,8 @@ def test_features_drop_the_black_level_and_append_the_x_point_radius(surrogate):
     feats = surrogate.features(frames, np.array([1.2, 1.3]))
     assert feats.shape == (2, 40 * 120 + 1)
     assert np.all(feats[0, :-1] == 0.0)
-    assert feats[1, 0] == pytest.approx(6.0)  # sqrt of the 6 x 6 block's mean (36)
+    assert feats[1, :-1].mean() == pytest.approx(0, abs=1e-5)
+    assert feats[1, :-1].std() == pytest.approx(1, abs=1e-5)
     assert feats[:, -1] == pytest.approx(surrogate.RX_SCALE * np.array([1.2, 1.3]))
 
 
@@ -77,12 +78,19 @@ def _cache(rvsod, zvsod, rxpt1, zxpt1):
 
 
 def _with_surrogate(bins, monkeypatch, ze):
+    monkeypatch.setattr(
+        bins.signals, "tangtv_geometry", lambda shot, cache: (cache, "EFIT02")
+    )
     frame_t = np.arange(0.0, 400.0, 20.0)
     monkeypatch.setattr(bins, "load_inversion", lambda shot: None)
     monkeypatch.setattr(
         bins,
         "load_surrogate",
-        lambda shot: {"times_ms": frame_t, "ze": np.full(frame_t.size, ze)},
+        lambda shot: {
+            "times_ms": frame_t,
+            "ze": np.full(frame_t.size, ze),
+            "valid": np.ones(frame_t.size, bool),
+        },
     )
     return core.bin_edges(0.0, 400.0)
 
@@ -107,6 +115,9 @@ def test_surrogate_never_votes_on_the_floor(bins, monkeypatch):
 
 
 def test_no_inversion_and_no_surrogate_is_invalid_and_says_so(bins, monkeypatch):
+    monkeypatch.setattr(
+        bins.signals, "tangtv_geometry", lambda shot, cache: (cache, "EFIT02")
+    )
     monkeypatch.setattr(bins, "load_inversion", lambda shot: None)
     monkeypatch.setattr(bins, "load_surrogate", lambda shot: None)
     edges = core.bin_edges(0.0, 400.0)
@@ -114,3 +125,12 @@ def test_no_inversion_and_no_surrogate_is_invalid_and_says_so(bins, monkeypatch)
     assert source == "none"
     assert not indicator.valid.any()
     assert set(indicator.reason) == {"no_inversion"}
+
+
+def test_features_ignore_global_brightness_after_black_subtraction(surrogate):
+    tv = surrogate
+    frame = np.arange(240 * 720, dtype=np.float32).reshape(1, 240, 720) % 100
+    rx = np.array([1.3])
+    a = tv.features(frame + tv.BLACK, rx)
+    b = tv.features(2 * frame + tv.BLACK, rx)
+    np.testing.assert_allclose(a, b, atol=1e-5)

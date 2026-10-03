@@ -60,7 +60,7 @@ def prep() -> None:
     import detach_tv_surrogate as tvs
 
     labels = pd.read_csv(root() / "labels_bins.csv.gz")
-    certain = labels[labels.state_lm.isin((1, 2, 3))]
+    certain = labels
     frames, target, shots, starts, split, voted = [], [], [], [], [], []
     for shot, rows in certain.groupby("shot"):
         got = tvs.corpus_frames(int(shot))
@@ -77,7 +77,9 @@ def prep() -> None:
         x = x.reshape(n, h // BLOCK, BLOCK, w // BLOCK, BLOCK).mean(axis=(2, 4))
         frames.append(np.sqrt(x).astype(np.float16))
         kept = rows[keep]
-        target += (kept.state_lm.to_numpy(int) - 1).tolist()
+        target += np.where(
+            kept.state_lm.isin((1, 2, 3)), kept.state_lm.to_numpy(int) - 1, -1
+        ).tolist()
         shots += [int(shot)] * len(kept)
         starts += kept.start_ms.tolist()
         split += kept.split.tolist()
@@ -99,14 +101,13 @@ def prep() -> None:
 
 def train() -> None:
     import torch
-    from detach_ours import metrics, with_ci
+    from detach_ours import baseline_strata, metrics, with_ci
     from torch import nn
 
     data = np.load(root() / "victor" / "dataset.npz")
     x, y, shot, split = data["x"], data["y"], data["shot"], data["split"]
     voted = data["tangtv_voted"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    scale = float(np.percentile(x[::7].astype(np.float32), 99.5))
 
     class Net(nn.Module):
         def __init__(self):
@@ -130,6 +131,9 @@ def train() -> None:
 
     def fit_predict(train_idx, test_idx, seed):
         torch.manual_seed(seed)
+        scale = max(
+            float(np.percentile(x[train_idx][::7].astype(np.float32), 99.5)), 1e-6
+        )
         yt = y[train_idx]
         weight = np.bincount(yt, minlength=3).astype(float)
         weight = np.where(weight > 0, weight.sum() / (3 * np.maximum(weight, 1)), 0)
@@ -157,19 +161,23 @@ def train() -> None:
 
     fit_shots = np.unique(shot[split != "test"])
     np.random.default_rng(SEED).shuffle(fit_shots)
+    majority_pred = np.zeros(len(y), int)
     prob = np.full((len(y), 3), np.nan)
     for k, held in enumerate(np.array_split(fit_shots, FOLDS)):
         test_mask = np.isin(shot, held)
-        train_mask = (split != "test") & ~test_mask
+        train_mask = (split != "test") & (y >= 0) & ~test_mask
         prob[test_mask] = fit_predict(
             np.flatnonzero(train_mask), np.flatnonzero(test_mask), SEED + k
         )
+        majority_pred[test_mask] = np.bincount(y[train_mask]).argmax()
         print("fold", k, int(test_mask.sum()), flush=True)
     final = np.flatnonzero(split == "test")
     if len(final):
-        prob[final] = fit_predict(np.flatnonzero(split != "test"), final, SEED + FOLDS)
+        prob[final] = fit_predict(
+            np.flatnonzero((split != "test") & (y >= 0)), final, SEED + FOLDS
+        )
     pred = prob.argmax(axis=1)
-    cv = np.flatnonzero(split != "test")
+    cv = np.flatnonzero((split != "test") & (y >= 0))
     boot = np.random.default_rng(1)
     major = np.bincount(y[cv]).argmax()
     result = {
@@ -180,8 +188,15 @@ def train() -> None:
         "n_shots": len(np.unique(shot)),
         "n_tangtv_voted": int(voted.sum()),
         "cv_shots": with_ci(y[cv], pred[cv], shot[cv], boot),
-        "cv_majority": metrics(y[cv], np.full(len(cv), major)),
+        "cv_majority": metrics(y[cv], majority_pred[cv]),
     }
+    result["n_cv_frames"] = len(cv)
+    result["n_cv_shots"] = len(np.unique(shot[cv]))
+    result["normalization"] = (
+        "99.5th percentile fitted on training frames within each fold"
+    )
+    result["stratified"] = baseline_strata(data, pred, boot)
+    final = final[y[final] >= 0]
     free = cv[~voted[cv]]
     if len(free) > 50 and len(np.unique(y[free])) > 1:
         result["cv_no_tangtv_vote"] = {
