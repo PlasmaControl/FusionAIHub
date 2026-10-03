@@ -50,6 +50,11 @@ REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "outputs" / "labeler" / "elm" / "dsm"
 NAME = compare.NAME
 RECORDED_TOL = 5e-4
+MODEL_CONTEXT_SCOPE = (
+    "This record scores the limited-input adaptation; the original 124-input "
+    "native 1 ms checkpoint is evaluated separately in native_evaluation.json "
+    "(four exact-export scored shots and a 33-shot reconstructed sensitivity panel)."
+)
 
 
 def own_target(paths: Paths) -> dict:
@@ -75,25 +80,33 @@ def load_rows(paths: Paths, shots, cache: Path, norm: dict):
     return dict(zip(shots, got, strict=True))
 
 
-def fit_detectors(rows, data, oof, graph, cfg, log):
-    """`{variant: ({shot: row scores}, {shot: threshold}, fold records)}`."""
+def fit_detectors(rows, data, oof, cfg, work, log):
+    """Confirmatory detector, with training-only normalization and random weights."""
     spans = {s: d.spans for s, d in data.items()}
     bins = {s: d.bins for s, d in data.items()}
     out = {}
-    for key, init in (("detect", None), ("init", graph)):
+    for key in ("detect",):
         scores, thr, records = {}, {}, []
         for k in range(len(oof.record["folds"])):
             info = json.loads((oof.dir / f"fold{k}" / "fold.json").read_text())
             fold_cfg = replace(cfg, seed=cfg.seed + 100 * k)
+            norm = dsm.fit_detection_normalization(rows, spans, info["train"])
+            fold_rows = {
+                s: dsm.normalize_detection_rows(r, norm) for s, r in rows.items()
+            }
             state, t, history = dsm.fit_fold(
-                rows, spans, bins, info["train"], info["inner_val"], fold_cfg, init
+                rows, spans, bins, info["train"], info["inner_val"], fold_cfg
             )
             model = dsm.Detector(dropout=cfg.dropout)
             model.load_state_dict(state)
             for s in info["test"]:
-                scores[s] = dsm.predict(model, rows[s].x)
+                scores[s] = dsm.predict(model, fold_rows[s].x)
                 thr[s] = float(t)
             best = max(history, key=lambda h: h["val_auprc"])
+            target = work / "isolated" / f"fold{k}"
+            target.mkdir(parents=True, exist_ok=True)
+            torch.save(state, target / "detector.pt")
+            (target / "normalization.json").write_text(json.dumps(norm, indent=1))
             records.append(
                 {
                     "fold": k,
@@ -107,10 +120,21 @@ def fit_detectors(rows, data, oof, graph, cfg, log):
                     "inner_val_shot_ids": info["inner_val"],
                     "test_shot_ids": info["test"],
                     "seed": fold_cfg.seed,
+                    "normalization": norm,
+                    "checkpoint": str(target / "detector.pt"),
+                    "checkpoint_sha256": sha256_of(target / "detector.pt"),
+                    "normalization_sha256": sha256_of(target / "normalization.json"),
+                    "raw_rows_sha256": {
+                        str(s): dsm.rows_digest(rows[s])
+                        for s in info["train"] + info["inner_val"] + info["test"]
+                    },
+                    "initialization": "independent seeded random weights; no source parameters",
+                    "source_parameters_reused": False,
+                    "source_normalization_reused": False,
                     "history": history,
                 }
             )
-            log(f"{NAME[key]} fold {k}: {records[-1]}")
+            log(f"{NAME[key]} fold {k}: epoch {best['epoch']}, threshold {t:.4f}")
         out[NAME[key]] = (scores, thr, records)
     return out
 
@@ -195,6 +219,12 @@ def evaluate_set(
         horizons[f"risk_{int(h)}ms"] = methods.areas_summary(alt, boot)
     out["published_horizons"] = horizons
     out["by_co2_served"] = by_co2(sdef, parts, dscores)
+    out["annotation_modes"] = methods.annotation_summary(
+        parts, {s: data[s].spans for s in sdef.shots}
+    )
+    out["kind_metrics"] = {
+        name: methods.kind_summary(part, boot) for name, part in parts.items()
+    }
     if sdef.has_elmo:
         out["elmo_score_source"] = (
             "maximum hit-eta threshold of an overlapping swept detection on each "
@@ -263,6 +293,7 @@ def provenance(paths, work, oof, rows):
         "cohort": paths.catalog / "cohort.csv",
         "refit_checkpoint": paths.models / dsm.SLUG / spec.ARTIFACTS[0],
         "normalization": paths.models / dsm.SLUG / spec.ARTIFACTS[1],
+        "refit_training_record": paths.models / dsm.SLUG / "training_no_bes.json",
         "fold_run": oof.dir / "run.json",
     }
     for k in range(len(oof.record["folds"])):
@@ -280,8 +311,10 @@ def provenance(paths, work, oof, rows):
                 "published_risk.npz",
                 "scores_elm-dsm-detect.npz",
                 "scores_elm-dsm-detect-init.npz",
+                "scores_elm-dsm-detect-exposed.npz",
                 "thresholds.json",
             )
+            if (work / name).exists()
         },
     }
 
@@ -425,11 +458,36 @@ def refresh_own_target(paths: Paths, out_dir: Path) -> int:
     return 0
 
 
+def refresh_context(out_dir: Path) -> int:
+    """Correct companion-record scope without recomputing any scientific result."""
+    correction = {
+        "scope": "metadata only: link the separate native checkpoint comparison",
+        "git": git_sha(full=True),
+        "script_sha256": sha256_of(__file__),
+        "created": datetime.now(UTC).isoformat(timespec="seconds"),
+        "scientific_results_unchanged": True,
+    }
+    for name in ("evaluation.json", "evaluation_trained.json"):
+        path = out_dir / name
+        if not path.exists():
+            continue
+        record = json.loads(path.read_text())
+        record["model_context"]["scope"] = MODEL_CONTEXT_SCOPE
+        record["model_context"]["native_comparison_record"] = str(
+            out_dir / "native_evaluation.json"
+        )
+        record["context_correction"] = correction
+        path.write_text(json.dumps(record, indent=1))
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--run", required=True, help="the `labeler.elm.train` run (folds)")
     ap.add_argument("--out-dir", type=Path, default=OUT)
     ap.add_argument("--epochs", type=int, default=dsm.FitConfig.epochs)
+    ap.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
+    ap.add_argument("--refresh-context", action="store_true")
     ap.add_argument(
         "--rescore",
         action="store_true",
@@ -447,6 +505,8 @@ def main(argv=None) -> int:
     )
     args = ap.parse_args(argv)
     paths = Paths.from_env()
+    if args.refresh_context:
+        return refresh_context(args.out_dir)
     if args.refresh_own_target:
         return refresh_own_target(paths, args.out_dir)
     if args.refresh_report and not args.rescore:
@@ -454,6 +514,10 @@ def main(argv=None) -> int:
     annotate_prefetch_record()
     work = paths.root / "round4" / "elm" / "dsm"
     torch.set_num_threads(4)
+    if args.device == "cuda":
+        torch.cuda.set_per_process_memory_fraction(
+            12 * 1024**3 / torch.cuda.get_device_properties(0).total_memory, 0
+        )
     data = train.load(paths)
     oof = methods.Oof(paths.root / "round4" / "elm" / "cv" / args.run)
     norm = dsm.load_norm(paths)
@@ -466,26 +530,40 @@ def main(argv=None) -> int:
     if args.rescore:
         # the scores, thresholds and training records of an earlier run, rescored
         fits = json.loads(fits_json.read_text())
-        dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
+        dscores = compare.DsmScores.load(work, rows, variants=tuple(fits["detectors"]))
     else:
         print("own-target scoring of " + dsm.DISPLAY_NAME, flush=True)
         own = own_target(paths)
         own.update(
             dsm.split_overlap(own, shots, pd.read_csv(paths.catalog / "cohort.csv"))
         )
-        cfg = dsm.FitConfig(epochs=args.epochs)
+        cfg = dsm.FitConfig(epochs=args.epochs, device=args.device)
         pub_thr, pub_records = published_thresholds(rows, risk, data, oof)
+        previous = json.loads(fits_json.read_text()) if fits_json.exists() else {}
+        historical_sources = dsm.historical_detector_sources(previous.get("detectors", {}))
+        historical = (
+            compare.DsmScores.load(work, rows, variants=tuple(historical_sources.values()))
+            if historical_sources else None
+        )
+        for path in (fits_json, args.out_dir / "evaluation.json"):
+            archive = path.with_name(path.stem + "_exposed.json")
+            if path.exists() and not archive.exists() and historical_sources:
+                archive.write_bytes(path.read_bytes())
+        raw_rows = load_rows(paths, shots, work / "raw_rows", None)
         trained = fit_detectors(
-            rows, data, oof, graph, cfg, lambda m: print(m, flush=True)
+            raw_rows, data, oof, cfg, work, lambda m: print(m, flush=True)
         )
         dscores = compare.DsmScores(rows, risk)
         dscores.threshold[NAME["dsm"]] = pub_thr
+        for name, old_name in historical_sources.items():
+            dscores.scores[name] = historical.scores[old_name]
+            dscores.threshold[name] = historical.threshold[old_name]
         for name, (scores, thr, _) in trained.items():
             dscores.scores[name] = scores
             dscores.threshold[name] = thr
         dscores.save(work)
         # Evaluate the same serialized arrays as --rescore, including risk precision.
-        dscores = compare.DsmScores.load(work, rows, variants=compare.VARIANTS)
+        dscores = compare.DsmScores.load(work, rows, variants=tuple(dscores.scores))
         fits = {
             "display_name": dsm.DISPLAY_NAME,
             "method_display_names": compare.DISPLAY_NAME,
@@ -494,12 +572,32 @@ def main(argv=None) -> int:
             "published_thresholds": pub_records,
             "detector_config": cfg.__dict__,
             "detectors": {
-                name: {"folds": records, "scores": str(work / f"scores_{name}.npz")}
+                name: {
+                    "folds": records,
+                    "scores": str(work / f"scores_{name}.npz"),
+                    "role": "confirmatory source-isolated detection baseline",
+                    "source_parameters_reused": False,
+                    "source_normalization_reused": False,
+                }
                 for name, (_, _, records) in trained.items()
             },
         }
+        for name, old_name in historical_sources.items():
+            fits["detectors"][name] = {
+                **previous["detectors"][old_name],
+                "scores": str(work / f"scores_{name}.npz"),
+                "role": "historical exposed supplemental comparison",
+                "source_normalization_reused": True,
+                "source_parameters_reused": name == NAME["init"],
+                "original_fit_provenance": previous["detectors"][old_name].get(
+                    "original_fit_provenance", previous.get("provenance")
+                ),
+            }
         fits_json.write_text(json.dumps(fits, indent=1))
     own = fits["own_target"]
+    refit_training = json.loads(
+        (paths.models / dsm.SLUG / "training_no_bes.json").read_text()
+    )
 
     sets = compare.load_sets(paths, data)
     elmo_spans, clock_spans = compare.load_detected(paths)
@@ -524,6 +622,10 @@ def main(argv=None) -> int:
         "model_context": {
             "original_input_columns": 124,
             "refit_input_columns": dsm.N_COLUMNS,
+            "refit_checkpoint_epochs": refit_training["best_epoch"] + 1,
+            "refit_run_epochs": refit_training["epochs_run"],
+            "refit_best_epoch": refit_training["best_epoch"],
+            "refit_checkpoint_note": "one-epoch checkpoint selected from a seven-epoch run",
             "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
             "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
             "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained "
@@ -535,13 +637,15 @@ def main(argv=None) -> int:
             "preprocessing_exposure": dsm.PREPROCESSING_EXPOSURE,
             "temporal_interpretation": "Offline risk score with 25 ms centered-NBI "
             "lookahead (not a causal forecast)",
-            "normalization_exposure": "EVERY DSM variant uses upstream normalization "
-            "constants computed before the upstream split, including blind-cohort "
-            "source shots 190646 and 190532. This is feature-statistics exposure; "
-            "reviewed-label detector folds exclude cohort test shots.",
+            "normalization_exposure": "The confirmatory elm-dsm detection fits "
+            "normalization only on optimizer-training shots in each fold and starts "
+            "from independent random weights. Refit and historical detection exposed/"
+            "init reuse upstream pre-split statistics including blind-cohort shots "
+            "190646 and 190532; historical init additionally reuses refit weights.",
             "normalization_source": "/projects/EKOLEMEN/wpqh_elm_hiro/hiro_scripts/"
             "data_processing.ipynb:4406 (normalization before upstream split)",
-            "scope": "limited-input refit; no original 124-input checkpoint evaluated",
+            "scope": MODEL_CONTEXT_SCOPE,
+            "native_comparison_record": str(args.out_dir / "native_evaluation.json"),
         },
         "own_target": own,
         "published_thresholds": fits["published_thresholds"],

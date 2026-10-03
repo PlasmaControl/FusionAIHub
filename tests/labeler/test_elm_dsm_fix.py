@@ -117,7 +117,9 @@ def test_filter_share_and_risk_quantiles_use_only_usable_rows():
     assert out["serving"]["nbi_lookahead_ms"] == 25.0
     exposure = out["preprocessing_exposure"]
     assert exposure["applies_to"] == [
-        "elm-dsm refit", "elm-dsm detection", "elm-dsm detection init"
+        "elm-dsm refit",
+        "elm-dsm detection exposed",
+        "elm-dsm detection init",
     ]
     assert exposure["blind_cohort_shots"] == [190532, 190646]
 
@@ -126,6 +128,75 @@ def test_risk_quantiles_record_nonfinite_values():
     out = dsm.risk_quantiles(np.array([np.nan, 0.1, 0.3, np.inf]))
     assert out["n"] == 4 and out["nonfinite"] == 2
     assert out["quantiles"]["0.5"] == 0.2
+
+
+def test_historical_detector_migration_never_relabels_isolated_scores():
+    first = {"elm-dsm-detect": {}, "elm-dsm-detect-init": {}}
+    assert dsm.historical_detector_sources(first) == {
+        "elm-dsm-detect-exposed": "elm-dsm-detect",
+        "elm-dsm-detect-init": "elm-dsm-detect-init",
+    }
+    rerun = {**first, "elm-dsm-detect-exposed": {}}
+    assert dsm.historical_detector_sources(rerun) == {
+        "elm-dsm-detect-exposed": "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init": "elm-dsm-detect-init",
+    }
+    assert dsm.historical_detector_sources({}) == {}
+    clean_only = {"elm-dsm-detect": {"source_normalization_reused": False}}
+    assert dsm.historical_detector_sources(clean_only) == {}
+
+
+def test_detector_normalization_excludes_validation_and_missing_columns():
+    """Held-out levels and mean-filled columns must not affect fitted statistics."""
+    rows = {}
+    spans = {}
+    for shot, levels in ((1, [2.0, 4.0]), (2, [1000.0, 2000.0])):
+        x = np.zeros((240, 60), np.float64)
+        x[2:4, 0] = levels
+        x[2:4, 1] = [8.0, 12.0]
+        usable = np.zeros(240, bool)
+        usable[2:4] = True
+        rows[shot] = dsm.Rows(
+            shot, x, usable, usable.copy(), (), {}, (dsm.spec.COLUMNS[1],)
+        )
+        spans[shot] = pd.DataFrame(
+            {"t_start": [0.0], "t_end": [100.0], "kind": ["absent"]}
+        )
+    norm = dsm.fit_detection_normalization(rows, spans, [1])
+    assert norm["fit_shots"] == [1]
+    assert norm["mean"][0] == 3.0 and norm["std"][0] == 1.0
+    assert norm["measured_rows_per_column"][0] == 2
+    assert norm["measured_rows_per_column"][1] == 0
+    normalized = dsm.normalize_detection_rows(rows[1], norm)
+    np.testing.assert_array_equal(normalized.x[2:4, 0], [-1.0, 1.0])
+    np.testing.assert_array_equal(normalized.x[2:4, 1], [0.0, 0.0])
+    heldout = dsm.normalize_detection_rows(rows[2], norm)
+    np.testing.assert_array_equal(heldout.x[2:4, 0], [10.0, 10.0])
+    assert not heldout.in_filter[2:4].any()
+
+
+def test_raw_detector_rows_do_not_use_source_normalization_or_clip(
+    tmp_path, monkeypatch
+):
+    """Raw extraction must preserve levels larger than the source z clipping limit."""
+    paths = Paths(root=tmp_path)
+    arrays = {
+        "ip": FeatureArray(
+            x=np.arange(6001) / 1000.0,
+            y=np.full((1, 6001), 20e6),
+            attrs={"resolver": "archive"},
+        ),
+        "ece": FeatureArray(
+            x=np.arange(6001) / 1000.0,
+            y=np.ones((48, 6001)),
+            attrs={"resolver": "corpus"},
+        ),
+    }
+    monkeypatch.setattr(dsm, "shot_features", lambda paths, shot: arrays)
+    monkeypatch.setattr(dsm.resolve_archive, "ARCHIVE_FILES", ())
+    rows = dsm.shot_rows(paths, 7, None)
+    assert rows.x[10, 0] == 20.0
+    assert rows.in_filter[10]
 
 
 def test_phase_ids_decode_before_review_and_blind_cohort_overlap():

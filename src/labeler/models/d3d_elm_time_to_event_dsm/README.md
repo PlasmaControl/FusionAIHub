@@ -12,7 +12,7 @@ datasets:
 metrics:
   - concordance_index
 model-index:
-  - name: elm-dsm
+  - name: d3d-elm-time-to-event-dsm
     results: []
 labelmaker:
   status: implemented
@@ -41,11 +41,19 @@ labelmaker:
     serving_grid_ms: 25.0
     centered_nbi_lookahead_ms: 25.0
   preprocessing_exposure:
-    applies_to: [elm-dsm refit, elm-dsm detection, elm-dsm detection init]
+    applies_to: [elm-dsm refit, elm-dsm detection exposed, elm-dsm detection init]
     scope: upstream means and standard deviations computed before the source split
     blind_cohort_shots: [190532, 190646]
     role: feature-statistics exposure, independent of reviewed-label CV
-    decision: disclose existing preprocessing; no retraining
+    decision: retain historical exposed fits as supplemental; isolated detection refits preprocessing
+  isolated_detection:
+    normalization: measured usable labeled optimizer-training rows within each fold
+    inner_validation_in_normalization: false
+    source_normalization_reused: false
+    initialization: independent seeded random weights
+    source_parameters_reused: false
+    epochs_per_fold: 40
+    folds: 5
   upstream:
     path: /scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm
     artifacts:
@@ -155,8 +163,8 @@ labelmaker:
     - "2026-09-06: BES is droppable after all - with the columns identified correctly the 60-column fit BEATS the 124-column one"
   blocked_on:
     - "the fit is a one-epoch model at lr 1e-3 and at lr 1e-4 alike; a model worth trusting numerically needs sub-epoch checkpointing (validate every N minibatches), which no run has done yet"
-    - "pcphd02 / pcphd03 have no corpus group, so 2 of 60 columns are mean-filled on every row of every shot; serving them would need an fdp/toksearch PTDATA fetch of the two photodiodes"
-    - "labeler's own validation (adapter fidelity, reconstruction fidelity, label quality) has not been run for this slug; the numbers below are upstream-population numbers only"
+    - "the adapter still mean-fills pcphd02 / pcphd03; the separate native evaluation uses exported or fetched original photodiodes without changing this adapter"
+    - "catalog-wide adapter and reconstruction validation remains incomplete; reviewed occupancy and native diagnostics are reported separately below with source-exposure limits"
     - "corpus coverage: only 6 of the 24 sampled corpus shots have all 11 inputs, so 18 produce labels with no valid row at all. co2 is corpus:SignalAbsent below shot 198279 (12 of 24) and pinj_total/tinj_total have no fdp source in namespace.py, only archive+corpus (11 of 24). Serving the corpus properly needs an fdp NBI fetch and a decision about pre-198279 CO2"
 ---
 
@@ -166,7 +174,8 @@ labelmaker:
 Deep Survival Machines refit. Serving uses 50 ms means on a 25 ms grid for a
 model trained on 1 ms rows. The centered NBI boxcar incorporates the row 25 ms
 later, so these scores do not support causal forecasting claims. The paper's
-short names are `elm-dsm refit`, `elm-dsm detection` and `elm-dsm detection init`;
+short names are `elm-dsm refit`, `elm-dsm detection` (isolated),
+`elm-dsm detection exposed` and `elm-dsm detection init` (historical supplemental);
 the existing adapter slug remains `d3d_elm_time_to_event_dsm` for compatibility.
 
 ## Model details
@@ -232,17 +241,19 @@ model.
 
 Offline label generation over the FAITH shot corpus, for comparison against
 IGNITE and against other models' labels. Not for real-time control and not for
-physics conclusions without the reliability numbers below - which, for this
-slug, are upstream-population numbers only.
+physics conclusions without further validation. Historical survival-target and
+ablation results describe the upstream population; reviewed occupancy and
+native-input development panels below have separate coverage and exposure limits.
 
 ## Bias, risks and limitations
 
 **Validity caveats, in the order they will bite:**
 
-1. **Wide-pedestal QH only.** Every training row is inside a wide-pedestal
+1. **Survival refit trained on wide-pedestal QH only.** Its training rows are
+   inside a wide-pedestal
    QH-mode phase
    (`WPQHphases-tau_min500-tau_inter250-pewid_max4.0-pewid_min3.0-tinj_wpqh2.1`).
-   The model has never seen an ELMing H-mode, an L-mode or a ramp. Labels on a
+   The survival refit has never seen an ELMing H-mode, an L-mode or a ramp. Labels on a
    corpus shot outside that regime are extrapolation, and nothing in the
    per-row `_valid` mask says so - the regime is a property of the shot, not of
    a row's inputs.
@@ -257,15 +268,20 @@ slug, are upstream-population numbers only.
    still written, so the series exists and says on its face where not to trust
    it.
 4. **One-epoch model.** See Evaluation.
-5. **Never validated on labeler's own pool.** `validate` has not been run
-   for this slug, so nothing here says how these labels behave on corpus shots.
-6. **Pre-split feature exposure in every DSM variant.** The normalization
+5. **Catalog-wide adapter validation remains incomplete.** The reviewed
+   occupancy benchmark and native-input audits below evaluate separate panels;
+   they do not establish fidelity across the full corpus.
+6. **Pre-split feature exposure in historical DSM variants.** The normalization
    constants were computed over all 365 source physical shots before the
    upstream split, including blind-cohort shots 190532 and 190646. The refit,
-   scratch detection model and initialized detection model all use them. This
-   is feature-statistics exposure, independent of reviewed-label CV. Existing
-   scores retain these constants and disclose the exposure; preprocessing has
-   not been retrained within folds.
+   historical scratch detection model and initialized detection model use them.
+   This is feature-statistics exposure, independent of reviewed-label CV. Their
+   scores remain supplemental. The confirmatory detector instead extracts raw
+   rows without source normalization or clipping, fits measured-column statistics
+   inside each optimizer-training partition, then fills missing columns and clips
+   with that fold's statistics. It initializes independent random weights and
+   reuses no source model parameters. Inner-validation and outer-test shots do
+   not enter its preprocessing fit.
 
 `training_membership.json` records source hashes and separate physical-shot
 roles: 300 weight-training shots, 80 early-stopping shots, 15 physical shots on
@@ -303,6 +319,75 @@ mode, and a stop at the first non-finite loss.
 
 ## Evaluation
 
+### Isolated reviewed-label detection
+
+The confirmatory detector completes 40 epochs in each of the five fixed,
+shot-grouped folds used by `elm-ours`. Inner-validation AUPRC selects the
+checkpoint and inner-validation F1 selects the threshold. The selected epochs
+(zero based) are 14, 34, 9, 30 and 1; thresholds are 0.207, 0.376, 0.544,
+0.017 and 0.451. This variability is development evidence, and the task is
+reviewed ELMy-phase occupancy rather than independently validated individual
+ELM onset detection. Source parameter reuse and source normalization reuse are
+both false for every fold, recorded with its fitting shot IDs, normalization
+constants, raw-row hashes and checkpoint hash.
+
+| Common panel | Shots | 50 ms bins | AUROC [95% shot CI] | F1 [95% shot CI] |
+|---|---:|---:|---|---|
+| All reviewed shots | 119 | 11,653 | 0.855 [0.813, 0.896] | 0.754 [0.696, 0.811] |
+| BES-covered shots | 73 | 6,527 | 0.856 [0.806, 0.902] | 0.780 [0.705, 0.842] |
+
+The source is [the detector evaluation JSON](../../../../outputs/labeler/elm/dsm/evaluation.json),
+`sets.{all119,bes73}.methods.elm-dsm-detect`, produced by
+`scripts/labeler/elm_dsm_evaluate.py --run cv2 --epochs 40 --device cuda`.
+The historical normalization-exposed scratch and source-initialized scores are
+retained as `elm-dsm-detect-exposed` and `elm-dsm-detect-init`; the latter also
+inherits survival-weight and source checkpoint-selection exposure.
+
+The limited-input survival refit's own-target AUROCs at 5, 10, 20 and 50 ms
+are 0.758 [0.700, 0.811], 0.764 [0.708, 0.817], 0.770 [0.716, 0.822] and
+0.777 [0.722, 0.830], on 80 physical early-stopping validation shots. These
+are selection-informed results. Its served checkpoint is **after one epoch**,
+selected as `best_epoch=0` from a **seven-epoch run**, rather than a run that
+stopped after one epoch. Exact values and physical-shot bootstrap intervals
+are in that JSON's `own_target.horizons`; the source training record is
+`training_no_bes.json` beside the installed checkpoint.
+
+### Native original-checkpoint audit
+
+`scripts/labeler/elm_dsm_native.py` evaluates parameter setting 1 from the
+original `hiro_scripts/models/model9.pkl`, identified by the upstream export
+notebook and verified against the shipped `wpqh1` embedding and head kernels.
+It retains all 124 inputs, including 64 BES channels and PCPHD02/03, at 1 ms,
+and uses the original PyTorch ReLU6 checkpoint. The Keras conversion contains
+unbounded ReLU activations, so it is not silently substituted for this checkpoint.
+
+Exact source exports exist on five reviewed shots. Four have scored review
+overlap (190637, 190643, 192721 and 196541), totaling 11,565 one-millisecond
+rows; 192751's exported phase rows do not overlap a scored review span.
+The exact-export 50 ms risk AUROC is 0.465 [0.139, 0.653]. Every shot in this
+small panel is source exposed: 196541 entered optimizer fitting and the other
+three entered checkpoint selection, and all entered source normalization.
+No threshold is tuned for this native panel. It is a separate continuous-score
+comparison with limited phase coverage, not a held-out confirmatory result.
+
+Original diagnostic H5 records plus existing or paced, isolated PCPHD02/03
+fetches make 45 reviewed shots reconstructable. The reconstruction is reported
+separately because the source smoothed concatenated filtered phase rows whereas
+serving smooths each shot's normalized NBI trace. It retains original 1 ms
+sampling and all 124 columns without mean filling or clipping. Per-column
+agreement with exact source exports, remaining missing columns for every
+reviewed shot, filter-domain failures and coverage are recorded in
+[the native evaluation JSON](../../../../outputs/labeler/elm/dsm/native_evaluation.json).
+The fetch record is [native_fetch.json](../../../../outputs/labeler/elm/dsm/native_fetch.json).
+
+The original checkpoint's own-target AUROCs at 5/10/20/50 ms are
+0.926 [0.915, 0.937], 0.931 [0.919, 0.941], 0.939 [0.927, 0.949] and
+0.955 [0.945, 0.964], on 326 physical source validation shots. The original
+trainer's reversed chronological partition is preserved: the last 10% of phase
+records train the model, and the first 90% select it. These are historical
+checkpoint-selection results, not untouched evaluation; exact values and
+row/case/control counts are in `native_evaluation.json:own_target.horizons`.
+
 ### BES ablation, refitted on the correct columns (2026-09-06)
 
 `all124` is upstream's input set; `no_bes` is the 60 columns of the split
@@ -316,8 +401,11 @@ controls `t > h`, rows censored inside `h` excluded; IPCW is
 
 | set | inputs | test NLL | AUROC 5 ms | 10 ms | 20 ms | 50 ms | IPCW AUC 20 ms |
 |---|---|---|---|---|---|---|---|
-| `all124` | 124 | 1.2553 | 0.7562 | 0.7624 | 0.7680 | 0.7807 | 0.7680 |
-| **`no_bes`** | **60** | **1.1542** | **0.7581** | **0.7643** | **0.7699** | **0.7771** | **0.7699** |
+| `all124`‡ | 124 | 1.2553 | 0.7562 | 0.7624 | 0.7680 | 0.7807 | 0.7680 |
+| **`no_bes`**‡ | **60** | **1.1542** | **0.7581** | **0.7643** | **0.7699** | **0.7771** | **0.7699** |
+
+‡ marks supplemental source exposure: these rows selected the checkpoints and
+input set, and were included in upstream normalization.
 
 **Decision rule, written before the run:** adopt `no_bes` if its test NLL is
 within 0.02 of `all124`'s *and* its 20 ms AUROC is within 0.02. It passes both

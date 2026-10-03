@@ -430,15 +430,18 @@ def main(argv=None) -> int:
         "created": datetime.now(UTC).isoformat(timespec="seconds"),
         "run": args.run,
         "cohort_test_shots_used": 0,
-        "cohort_test_shots_used_scope": "reviewed-label detector training/tuning; "
-        "the fixed DSM refit and initialized detector inherit prior pretraining "
-        "overlap. EVERY DSM variant uses upstream normalization computed before "
-        "the source split, including blind-cohort source shots 190646 and 190532; "
-        "this is feature-statistics exposure, not reviewed-label leakage.",
+        "cohort_test_shots_used_scope": "U-Net and confirmatory DSM detection "
+        "fitting, preprocessing and selection. Supplemental DSM refit, exposed "
+        "scratch and source-initialized models retain upstream normalization "
+        "including blind-cohort source shots 190646 and 190532; the refit and "
+        "source-initialized model also inherit source-fitting exposure.",
         "method_display_names": compare.DISPLAY_NAME,
         "fixed_prediction_provenance": {
             "note": "Saved predictions and selected thresholds are read only; "
-            "reference conversion never refits a model or selects a threshold.",
+            "reference conversion never refits a model or selects a threshold. "
+            "All learned-method thresholds were tuned against the review in inner "
+            "validation; only AUROC supports cross-reference comparisons. F1 is "
+            "a diagnostic of fixed review-tuned operating points.",
             "input_sha256": {
                 str(p): hashlib.sha256(p.read_bytes()).hexdigest()
                 for p in (
@@ -451,6 +454,7 @@ def main(argv=None) -> int:
                         for name in (
                             "published_risk.npz",
                             "scores_elm-dsm-detect.npz",
+                            "scores_elm-dsm-detect-exposed.npz",
                             "scores_elm-dsm-detect-init.npz",
                             "thresholds.json",
                         )
@@ -483,16 +487,18 @@ def main(argv=None) -> int:
             "swap_source_heldout_shots": sorted(set(shots_over) - source_used),
         },
         "dsm_serving_conditions": {
-            "applies_to": [NAME[k] for k in ("dsm", "detect", "init")],
+            "applies_to": [NAME[k] for k in ("dsm", "detect", "exposed", "init")],
             "inputs": "60 of 124 original inputs; no D-alpha: pcphd02/pcphd03 "
             "are mean-filled on every shot; CO2 missing on 75/119 shots",
             "time_resolution": "50 ms-mean serving inputs on a 25 ms grid; "
             "the source refit was trained on 1 ms rows",
             "temporal_interpretation": "offline risk score; centered NBI "
             "smoothing uses a row 25 ms later, so this is not a causal forecast",
-            "normalization": "EVERY variant applies upstream normalization "
-            "computed before the original source split, including blind-cohort "
-            "source shots 190646 and 190532 (feature-statistics exposure)",
+            "normalization": "Confirmatory detection fits normalization only "
+            "on measured usable labelled rows of its outer training partition "
+            "and starts from independent random weights. Supplemental variants "
+            "retain upstream normalization, including blind-cohort source shots "
+            "190646 and 190532 (feature-statistics exposure).",
         },
         "interval_audit": interval_coverage_audit(table, data, shots_over),
         "interval_audit_occupancy": {

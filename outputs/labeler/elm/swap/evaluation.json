@@ -1,19 +1,20 @@
 {
- "git": "eb4e3630",
- "created": "2026-10-03T16:20:28+00:00",
+ "git": "aa4ccbf2",
+ "created": "2026-10-03T17:47:34+00:00",
  "run": "cv2",
  "cohort_test_shots_used": 0,
- "cohort_test_shots_used_scope": "reviewed-label detector training/tuning; the fixed DSM refit and initialized detector inherit prior pretraining overlap. EVERY DSM variant uses upstream normalization computed before the source split, including blind-cohort source shots 190646 and 190532; this is feature-statistics exposure, not reviewed-label leakage.",
+ "cohort_test_shots_used_scope": "U-Net and confirmatory DSM detection fitting, preprocessing and selection. Supplemental DSM refit, exposed scratch and source-initialized models retain upstream normalization including blind-cohort source shots 190646 and 190532; the refit and source-initialized model also inherit source-fitting exposure.",
  "method_display_names": {
   "elm-ours": "elm-ours",
   "elm-dsm": "elm-dsm refit",
-  "elm-dsm-detect": "elm-dsm detection",
+  "elm-dsm-detect": "elm-dsm detection (isolated)",
+  "elm-dsm-detect-exposed": "elm-dsm detection (exposed)",
   "elm-dsm-detect-init": "elm-dsm detection init",
   "elm-elmo": "ELM-O",
   "elm-clock": "elm-clock"
  },
  "fixed_prediction_provenance": {
-  "note": "Saved predictions and selected thresholds are read only; reference conversion never refits a model or selects a threshold.",
+  "note": "Saved predictions and selected thresholds are read only; reference conversion never refits a model or selects a threshold. All learned-method thresholds were tuned against the review in inner validation; only AUROC supports cross-reference comparisons. F1 is a diagnostic of fixed review-tuned operating points.",
   "input_sha256": {
    "/scratch/gpfs/nc1514/FusionAIHub/data/events/edge_localized_mode/format/edge_localized_mode_format_2026_v1.csv": "e81df0c70cbfece4e056cc8f9b7d9339338154e3d43ed09cd842641e120b8e9f",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json": "800648123f5d445174436b0b7f9179bbe7890d0dd93fae783721778a632b3e0b",
@@ -142,9 +143,10 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/pred/204560.npz": "b0d0534370ca4f49453af8dd2378aea4cdc0e5031ba9ea72a5f34ab554472ffc",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/pred/204937.npz": "399e1e93c6345b120f65ffb021bd3bab1f6ab39f655a157eda7a4b9fa528afc6",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/published_risk.npz": "921decda965a167f4e62b0a71c7fa664270fc73d78d1e6cad9ff780c76fab86c",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect.npz": "3d1fa4fea27a66ab1cd8ef1d37488909736bd957d706db2b1fdfc99b041064cb",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect.npz": "ab7db9297cca416778329d7f5176785ba3e2b1b7fc64679c177265b9c59b8c12",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect-exposed.npz": "3d1fa4fea27a66ab1cd8ef1d37488909736bd957d706db2b1fdfc99b041064cb",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/scores_elm-dsm-detect-init.npz": "5d533697fab44045f7d7776cb0586a2d1c1d7c9e1b0de054000f2ed249c10917",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/thresholds.json": "69efbc7008eafe5407b68ab499a366d76e0de99c0c0b66b4a0998be67389348e",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/dsm/thresholds.json": "21329ef35e7668b38927e49e4d3e2475807985f6a34fc829bbf30689a7771965",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/review_elms.csv": "87e9942dfc79ef10f0579734a9d686de573add768f883a136785df4015d8cac0",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/benchmarks/elm/elmo/review_sweep.csv.gz": "2246dc30812ff1af3cd40893213b146281867544ae80ad27be1d1c9ce9409f83",
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/suggestions/elm_clock/v1/edge_localized_mode_suggest_elm_clock_v1.csv": "b5f3523133beeb90c4a3ad7ea2a7a9b75c584a98572258a65e142e2afbc83b4d"
@@ -392,7 +394,7 @@
     "203521": 0.015299390720917239,
     "203576": 0.015299390720917239
    },
-   "elm-dsm-detect": {
+   "elm-dsm-detect-exposed": {
     "187105": 0.177669495344162,
     "187328": 0.177669495344162,
     "189272": 0.177669495344162,
@@ -633,6 +635,127 @@
     "203470": 0.5655775964260101,
     "203521": 0.5655775964260101,
     "203576": 0.5655775964260101
+   },
+   "elm-dsm-detect": {
+    "187105": 0.2073930948972702,
+    "187328": 0.2073930948972702,
+    "189272": 0.2073930948972702,
+    "190637": 0.2073930948972702,
+    "190643": 0.2073930948972702,
+    "192003": 0.2073930948972702,
+    "192226": 0.2073930948972702,
+    "192232": 0.2073930948972702,
+    "194160": 0.2073930948972702,
+    "195066": 0.2073930948972702,
+    "195263": 0.2073930948972702,
+    "195279": 0.2073930948972702,
+    "195646": 0.2073930948972702,
+    "196332": 0.2073930948972702,
+    "198899": 0.2073930948972702,
+    "199790": 0.2073930948972702,
+    "199921": 0.2073930948972702,
+    "200127": 0.2073930948972702,
+    "200198": 0.2073930948972702,
+    "200636": 0.2073930948972702,
+    "203041": 0.2073930948972702,
+    "203629": 0.2073930948972702,
+    "204240": 0.2073930948972702,
+    "204560": 0.2073930948972702,
+    "185857": 0.3757091462612152,
+    "185945": 0.3757091462612152,
+    "186093": 0.3757091462612152,
+    "186945": 0.3757091462612152,
+    "187076": 0.3757091462612152,
+    "189061": 0.3757091462612152,
+    "189324": 0.3757091462612152,
+    "189559": 0.3757091462612152,
+    "189741": 0.3757091462612152,
+    "190218": 0.3757091462612152,
+    "194155": 0.3757091462612152,
+    "194608": 0.3757091462612152,
+    "195111": 0.3757091462612152,
+    "196541": 0.3757091462612152,
+    "200320": 0.3757091462612152,
+    "200385": 0.3757091462612152,
+    "200954": 0.3757091462612152,
+    "201395": 0.3757091462612152,
+    "201447": 0.3757091462612152,
+    "201973": 0.3757091462612152,
+    "203187": 0.3757091462612152,
+    "203778": 0.3757091462612152,
+    "204233": 0.3757091462612152,
+    "204256": 0.3757091462612152,
+    "185866": 0.5436690151691437,
+    "190094": 0.5436690151691437,
+    "190335": 0.5436690151691437,
+    "190695": 0.5436690151691437,
+    "191470": 0.5436690151691437,
+    "192015": 0.5436690151691437,
+    "192148": 0.5436690151691437,
+    "192229": 0.5436690151691437,
+    "192914": 0.5436690151691437,
+    "193022": 0.5436690151691437,
+    "193075": 0.5436690151691437,
+    "195016": 0.5436690151691437,
+    "195102": 0.5436690151691437,
+    "195786": 0.5436690151691437,
+    "199789": 0.5436690151691437,
+    "200917": 0.5436690151691437,
+    "200990": 0.5436690151691437,
+    "201270": 0.5436690151691437,
+    "201707": 0.5436690151691437,
+    "203764": 0.5436690151691437,
+    "203941": 0.5436690151691437,
+    "203959": 0.5436690151691437,
+    "204243": 0.5436690151691437,
+    "204530": 0.5436690151691437,
+    "185961": 0.01656252145767212,
+    "186569": 0.01656252145767212,
+    "186636": 0.01656252145767212,
+    "187035": 0.01656252145767212,
+    "187196": 0.01656252145767212,
+    "189004": 0.01656252145767212,
+    "189885": 0.01656252145767212,
+    "190177": 0.01656252145767212,
+    "190300": 0.01656252145767212,
+    "190991": 0.01656252145767212,
+    "191382": 0.01656252145767212,
+    "191677": 0.01656252145767212,
+    "192010": 0.01656252145767212,
+    "192425": 0.01656252145767212,
+    "192721": 0.01656252145767212,
+    "192732": 0.01656252145767212,
+    "192751": 0.01656252145767212,
+    "193276": 0.01656252145767212,
+    "195103": 0.01656252145767212,
+    "195186": 0.01656252145767212,
+    "196405": 0.01656252145767212,
+    "201494": 0.01656252145767212,
+    "203719": 0.01656252145767212,
+    "204937": 0.01656252145767212,
+    "186013": 0.4510462284088135,
+    "186427": 0.4510462284088135,
+    "189044": 0.4510462284088135,
+    "189688": 0.4510462284088135,
+    "190790": 0.4510462284088135,
+    "191326": 0.4510462284088135,
+    "192432": 0.4510462284088135,
+    "193008": 0.4510462284088135,
+    "194445": 0.4510462284088135,
+    "194600": 0.4510462284088135,
+    "195024": 0.4510462284088135,
+    "195959": 0.4510462284088135,
+    "198806": 0.4510462284088135,
+    "198971": 0.4510462284088135,
+    "199087": 0.4510462284088135,
+    "199909": 0.4510462284088135,
+    "200427": 0.4510462284088135,
+    "201978": 0.4510462284088135,
+    "203012": 0.4510462284088135,
+    "203132": 0.4510462284088135,
+    "203470": 0.4510462284088135,
+    "203521": 0.4510462284088135,
+    "203576": 0.4510462284088135
    }
   }
  },
@@ -754,12 +877,13 @@
   "applies_to": [
    "elm-dsm",
    "elm-dsm-detect",
+   "elm-dsm-detect-exposed",
    "elm-dsm-detect-init"
   ],
   "inputs": "60 of 124 original inputs; no D-alpha: pcphd02/pcphd03 are mean-filled on every shot; CO2 missing on 75/119 shots",
   "time_resolution": "50 ms-mean serving inputs on a 25 ms grid; the source refit was trained on 1 ms rows",
   "temporal_interpretation": "offline risk score; centered NBI smoothing uses a row 25 ms later, so this is not a causal forecast",
-  "normalization": "EVERY variant applies upstream normalization computed before the original source split, including blind-cohort source shots 190646 and 190532 (feature-statistics exposure)"
+  "normalization": "Confirmatory detection fits normalization only on measured usable labelled rows of its outer training partition and starts from independent random weights. Supplemental variants retain upstream normalization, including blind-cohort source shots 190646 and 190532 (feature-statistics exposure)."
  },
  "interval_audit": {
   "definition": "All legacy-covered 50 ms bins intersecting the review window; >=25 ms majority rule, no DSM/diagnostic restriction. M/P compare legacy onset bins or merged occupancy with reviewed interval occupancy, not physical ELM omissions.",
@@ -10200,6 +10324,88 @@
      "elm-dsm-detect": {
       "shots": 8,
       "counts": {
+       "tp": 47,
+       "fp": 174,
+       "fn": 100,
+       "tn": 320,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.21266968325791855,
+       "recall": 0.3197278911564626,
+       "f1": 0.2554347826086957,
+       "false_alarm_bin_rate": 0.3522267206477733,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.6493155966840177,
+       "auprc": 0.2716824317916745,
+       "prevalence": 0.22932917316692666
+      },
+      "ci95": {
+       "precision": [
+        0.09272086197021764,
+        0.3805480858553757
+       ],
+       "recall": [
+        0.10381571509327304,
+        0.8969204335183717
+       ],
+       "f1": [
+        0.10704225352112676,
+        0.4100880010277492
+       ],
+       "false_alarm_bin_rate": [
+        0.156528949045708,
+        0.5754663112522687
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.5505483492542316,
+        0.7760504655189422
+       ],
+       "auprc": [
+        0.10530750118402638,
+        0.5123884264347977
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 8,
+      "counts": {
        "tp": 76,
        "fp": 191,
        "fn": 71,
@@ -10276,7 +10482,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -10521,13 +10727,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.31413699082872015,
+      "ci95": [
+       0.1171725587934894,
+       0.41676926092535915
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.46414193696802386,
+      "ci95": [
+       0.04716478104964806,
+       0.7203941105440856
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.20211242391693518,
       "ci95": [
        0.04845551634245667,
        0.3143513068529582
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.35242696112261324,
       "ci95": [
        0.03928039010791806,
@@ -10562,15 +10782,17 @@
      "auroc": [
       "elm-ours",
       "elm-dsm",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm",
       "elm-clock",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ]
     }
    },
@@ -10743,6 +10965,88 @@
      "elm-dsm-detect": {
       "shots": 8,
       "counts": {
+       "tp": 30,
+       "fp": 191,
+       "fn": 81,
+       "tn": 339,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.13574660633484162,
+       "recall": 0.2702702702702703,
+       "f1": 0.18072289156626506,
+       "false_alarm_bin_rate": 0.360377358490566,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.6266190719020908,
+       "auprc": 0.20474954348574378,
+       "prevalence": 0.1731669266770671
+      },
+      "ci95": {
+       "precision": [
+        0.05583384183548939,
+        0.2500349162011173
+       ],
+       "recall": [
+        0.08260230179028133,
+        0.9210526315789473
+       ],
+       "f1": [
+        0.07405468295520651,
+        0.27416303499004957
+       ],
+       "false_alarm_bin_rate": [
+        0.16013324453558458,
+        0.5831739961759083
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.5460010520251484,
+        0.8272387459032285
+       ],
+       "auprc": [
+        0.11339960288096033,
+        0.37640638606050447
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 8,
+      "counts": {
        "tp": 59,
        "fp": 208,
        "fn": 52,
@@ -10819,7 +11123,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -11064,13 +11368,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.3280639129695734,
+      "ci95": [
+       0.016330275229357816,
+       0.4367674858223063
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.4333121961530332,
+      "ci95": [
+       0.03843273792613074,
+       0.6475488071971339
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.17910929797722253,
       "ci95": [
        0.008124727166937058,
        0.2935877973631228
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.3018657755499861,
       "ci95": [
        0.020893617853694726,
@@ -11105,15 +11423,17 @@
      "auroc": [
       "elm-ours",
       "elm-dsm",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-clock",
       "elm-dsm",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ]
     }
    },
@@ -11428,13 +11748,27 @@
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.31413699082872015,
+      "second": 0.3280639129695734,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.46414193696802386,
+      "second": 0.4333121961530332,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.20211242391693518,
       "second": 0.17910929797722253,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.35242696112261324,
       "second": 0.3018657755499861,
       "same_sign": true,
@@ -11475,6 +11809,11 @@
       "legacy_minus_review": 0.030976903455269156
      },
      "elm-dsm-detect": {
+      "review": 0.6493155966840177,
+      "legacy": 0.6266190719020908,
+      "legacy_minus_review": -0.022696524781926963
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.7613401635958027,
       "legacy": 0.7755736868944416,
       "legacy_minus_review": 0.014233523298638917
@@ -11658,6 +11997,88 @@
        "elm-dsm-detect": {
         "shots": 8,
         "counts": {
+         "tp": 43,
+         "fp": 178,
+         "fn": 97,
+         "tn": 323,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.19457013574660634,
+         "recall": 0.30714285714285716,
+         "f1": 0.23822714681440443,
+         "false_alarm_bin_rate": 0.35528942115768464,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6708297690333619,
+         "auprc": 0.27906088196948486,
+         "prevalence": 0.21840873634945399
+        },
+        "ci95": {
+         "precision": [
+          0.08312312282837007,
+          0.33058017861903494
+         ],
+         "recall": [
+          0.08928571428571429,
+          0.9444940476190475
+         ],
+         "f1": [
+          0.09385999548736462,
+          0.38656817565735974
+         ],
+         "false_alarm_bin_rate": [
+          0.15694337616505294,
+          0.5786369906621393
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5837638633773938,
+          0.8517465426478679
+         ],
+         "auprc": [
+          0.16200892573106465,
+          0.5122008234298573
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 8,
+        "counts": {
          "tp": 72,
          "fp": 195,
          "fn": 68,
@@ -11734,7 +12155,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -11979,13 +12400,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.2985315084117479,
+        "ci95": [
+         0.007749977320021205,
+         0.3944414066996662
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.4625814785225228,
+        "ci95": [
+         0.019694846869937097,
+         0.7354232117354321
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.19020530367835764,
         "ci95": [
          -0.013770529570431287,
          0.2959779535760193
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.34700027152857343,
         "ci95": [
          0.008467441139598856,
@@ -12020,15 +12455,17 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-clock",
         "elm-dsm",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -12343,13 +12780,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.31413699082872015,
+        "second": 0.2985315084117479,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.46414193696802386,
+        "second": 0.4625814785225228,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.20211242391693518,
         "second": 0.19020530367835764,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.35242696112261324,
         "second": 0.34700027152857343,
         "same_sign": true,
@@ -12390,6 +12841,11 @@
         "legacy_minus_review": 0.028157351330553748
        },
        "elm-dsm-detect": {
+        "review": 0.6493155966840177,
+        "legacy": 0.6708297690333619,
+        "legacy_minus_review": 0.021514172349344163
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7613401635958027,
         "legacy": 0.7791559737667522,
         "legacy_minus_review": 0.017815810170949464
@@ -12573,6 +13029,88 @@
        "elm-dsm-detect": {
         "shots": 8,
         "counts": {
+         "tp": 49,
+         "fp": 172,
+         "fn": 97,
+         "tn": 323,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.22171945701357465,
+         "recall": 0.3356164383561644,
+         "f1": 0.2670299727520436,
+         "false_alarm_bin_rate": 0.3474747474747475,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6853466168534662,
+         "auprc": 0.3004154849420489,
+         "prevalence": 0.22776911076443057
+        },
+        "ci95": {
+         "precision": [
+          0.08762352166138596,
+          0.40359172077922056
+         ],
+         "recall": [
+          0.09995098039215687,
+          0.9545788770053476
+         ],
+         "f1": [
+          0.10328796830709334,
+          0.46240645161290317
+         ],
+         "false_alarm_bin_rate": [
+          0.14565583366139692,
+          0.5698968576036626
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5901201117926254,
+          0.8573160177262561
+         ],
+         "auprc": [
+          0.16381749613518393,
+          0.5489665215049954
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 8,
+        "counts": {
          "tp": 78,
          "fp": 189,
          "fn": 68,
@@ -12649,7 +13187,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -12894,13 +13432,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.2832018818320188,
+        "ci95": [
+         0.005674832698857907,
+         0.39042983996877445
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.4491503986007415,
+        "ci95": [
+         0.020694033787167297,
+         0.7207786212869334
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.18051750380517506,
         "ci95": [
          -0.01422697184543128,
          0.2931372797908286
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.3384564004084752,
         "ci95": [
          0.009327463955609515,
@@ -12935,15 +13487,17 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm",
         "elm-clock",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -13253,13 +13807,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.31413699082872015,
+        "second": 0.2832018818320188,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.46414193696802386,
+        "second": 0.4491503986007415,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.20211242391693518,
         "second": 0.18051750380517506,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.35242696112261324,
         "second": 0.3384564004084752,
         "same_sign": true,
@@ -13300,6 +13868,11 @@
         "legacy_minus_review": 0.022079345449414478
        },
        "elm-dsm-detect": {
+        "review": 0.6493155966840177,
+        "legacy": 0.6853466168534662,
+        "legacy_minus_review": 0.03603102016944848
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7613401635958027,
         "legacy": 0.7880309948803099,
         "legacy_minus_review": 0.02669083128450722
@@ -13483,6 +14056,88 @@
        "elm-dsm-detect": {
         "shots": 8,
         "counts": {
+         "tp": 55,
+         "fp": 166,
+         "fn": 97,
+         "tn": 323,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.248868778280543,
+         "recall": 0.3618421052631579,
+         "f1": 0.2949061662198391,
+         "false_alarm_bin_rate": 0.3394683026584867,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.7011085997201593,
+         "auprc": 0.3253074110947199,
+         "prevalence": 0.23712948517940718
+        },
+        "ci95": {
+         "precision": [
+          0.0887071253572887,
+          0.4322214758164531
+         ],
+         "recall": [
+          0.10474872033503956,
+          0.9583614864864864
+         ],
+         "f1": [
+          0.10804392783284605,
+          0.49730694993815316
+         ],
+         "false_alarm_bin_rate": [
+          0.1435730069546747,
+          0.5593130024338078
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.6123117032390124,
+          0.8665475088820953
+         ],
+         "auprc": [
+          0.18099346688603477,
+          0.5582773346716345
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 8,
+        "counts": {
          "tp": 84,
          "fp": 183,
          "fn": 68,
@@ -13559,7 +14214,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -13804,13 +14459,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.2472150468195028,
+        "ci95": [
+         -0.0588012661712084,
+         0.3456591685985355
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.41005466928929923,
+        "ci95": [
+         -0.03331038769368942,
+         0.696744339426181
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.14913626089764287,
         "ci95": [
          -0.07806042706333968,
          0.25947254044231294
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.30400618157119086,
         "ci95": [
          -0.042979781980732344,
@@ -13845,15 +14514,17 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm",
         "elm-clock",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -14163,13 +14834,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.31413699082872015,
+        "second": 0.2472150468195028,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.46414193696802386,
+        "second": 0.41005466928929923,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.20211242391693518,
         "second": 0.14913626089764287,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.35242696112261324,
         "second": 0.30400618157119086,
         "same_sign": true,
@@ -14210,6 +14895,11 @@
         "legacy_minus_review": 0.018150403650196045
        },
        "elm-dsm-detect": {
+        "review": 0.6493155966840177,
+        "legacy": 0.7011085997201593,
+        "legacy_minus_review": 0.05179300303614154
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7613401635958027,
         "legacy": 0.7991873856420192,
         "legacy_minus_review": 0.03784722204621649
@@ -14418,6 +15108,88 @@
      "elm-dsm-detect": {
       "shots": 7,
       "counts": {
+       "tp": 34,
+       "fp": 153,
+       "fn": 100,
+       "tn": 239,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.18181818181818182,
+       "recall": 0.2537313432835821,
+       "f1": 0.2118380062305296,
+       "false_alarm_bin_rate": 0.3903061224489796,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.5780726469692354,
+       "auprc": 0.2613383418134728,
+       "prevalence": 0.25475285171102663
+      },
+      "ci95": {
+       "precision": [
+        0.05969902144904616,
+        0.32896544245228454
+       ],
+       "recall": [
+        0.05746890898812888,
+        0.831044600938967
+       ],
+       "f1": [
+        0.06391515151515152,
+        0.3474588094605368
+       ],
+       "false_alarm_bin_rate": [
+        0.1641234700533323,
+        0.6231527093596059
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.45290822333987296,
+        0.712434044226181
+       ],
+       "auprc": [
+        0.07445424523755438,
+        0.5296970741481747
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 7,
+      "counts": {
        "tp": 63,
        "fp": 174,
        "fn": 71,
@@ -14494,7 +15266,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -14821,13 +15593,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.3866699664940604,
+      "ci95": [
+       0.17810775722168126,
+       0.5043389935762854
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.5246889398772548,
+      "ci95": [
+       0.04714285714285714,
+       0.796071651746936
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.24859122753579044,
       "ci95": [
        0.05499655756810632,
        0.3835285285285285
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.3969043045983505,
       "ci95": [
        0.02843559781401339,
@@ -14876,17 +15662,19 @@
      "auroc": [
       "elm-ours",
       "elm-dsm",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
-      "elm-elmo"
+      "elm-elmo",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-elmo",
       "elm-dsm",
       "elm-clock",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ]
     }
    },
@@ -15059,6 +15847,88 @@
      "elm-dsm-detect": {
       "shots": 7,
       "counts": {
+       "tp": 25,
+       "fp": 162,
+       "fn": 81,
+       "tn": 258,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.13368983957219252,
+       "recall": 0.2358490566037736,
+       "f1": 0.17064846416382254,
+       "false_alarm_bin_rate": 0.38571428571428573,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.5750673854447439,
+       "auprc": 0.2136714773460435,
+       "prevalence": 0.20152091254752852
+      },
+      "ci95": {
+       "precision": [
+        0.04368678060690617,
+        0.25266714082503555
+       ],
+       "recall": [
+        0.06181530244690101,
+        0.8966379310344827
+       ],
+       "f1": [
+        0.057692307692307696,
+        0.27654185875334136
+       ],
+       "false_alarm_bin_rate": [
+        0.16338915128095033,
+        0.6135261149216685
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.48286519837269587,
+        0.8119222168206123
+       ],
+       "auprc": [
+        0.10738666347079932,
+        0.4065392833010048
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 7,
+      "counts": {
        "tp": 54,
        "fp": 183,
        "fn": 52,
@@ -15135,7 +16005,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -15462,13 +16332,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.3760557053009883,
+      "ci95": [
+       -0.005932137454665498,
+       0.4967522947850707
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.48294630707800756,
+      "ci95": [
+       0.038877509135749035,
+       0.7001791788932458
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.20471698113207537,
       "ci95": [
        -0.014937343358395916,
        0.33659189071336665
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.338725966577107,
       "ci95": [
        0.01994662139857472,
@@ -15517,17 +16401,19 @@
      "auroc": [
       "elm-ours",
       "elm-dsm",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
-      "elm-elmo"
+      "elm-elmo",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-elmo",
       "elm-clock",
       "elm-dsm",
-      "elm-dsm-detect",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-exposed",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ]
     }
    },
@@ -15832,13 +16718,27 @@
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.3866699664940604,
+      "second": 0.3760557053009883,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": false
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.5246889398772548,
+      "second": 0.48294630707800756,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.24859122753579044,
       "second": 0.20471698113207537,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": false
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.3969043045983505,
       "second": 0.338725966577107,
       "same_sign": true,
@@ -15893,6 +16793,11 @@
       "legacy_minus_review": 0.013472970151169439
      },
      "elm-dsm-detect": {
+      "review": 0.5780726469692354,
+      "legacy": 0.5750673854447439,
+      "legacy_minus_review": -0.0030052615244915426
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.7161513859275054,
       "legacy": 0.7464061096136568,
       "legacy_minus_review": 0.030254723686151452
@@ -16081,6 +16986,88 @@
        "elm-dsm-detect": {
         "shots": 7,
         "counts": {
+         "tp": 37,
+         "fp": 150,
+         "fn": 97,
+         "tn": 242,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.19786096256684493,
+         "recall": 0.27611940298507465,
+         "f1": 0.23052959501557632,
+         "false_alarm_bin_rate": 0.3826530612244898,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6255140115747791,
+         "auprc": 0.2931655815775317,
+         "prevalence": 0.25475285171102663
+        },
+        "ci95": {
+         "precision": [
+          0.06910085881860076,
+          0.3482245249017038
+         ],
+         "recall": [
+          0.06881759192501802,
+          0.9412834224598929
+         ],
+         "f1": [
+          0.08084097035040431,
+          0.39485560966531214
+         ],
+         "false_alarm_bin_rate": [
+          0.15979283503416997,
+          0.6109806199159832
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5223683516327852,
+          0.8417959213363749
+         ],
+         "auprc": [
+          0.15853899528112136,
+          0.563396037666895
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 7,
+        "counts": {
          "tp": 66,
          "fp": 171,
          "fn": 68,
@@ -16157,7 +17144,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -16484,13 +17471,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.3429409077063661,
+        "ci95": [
+         -0.02144793512750574,
+         0.46586618697543086
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.5119853750443039,
+        "ci95": [
+         0.005185820316934323,
+         0.7952486532267828
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.22068230277185497,
         "ci95": [
          -0.039288897705682474,
          0.34353952499113793
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.3867198218119018,
         "ci95": [
          0.006272627164772815,
@@ -16539,8 +17540,9 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm-detect-init",
+        "elm-dsm-detect",
         "elm-elmo"
        ],
        "f1": [
@@ -16548,8 +17550,9 @@
         "elm-elmo",
         "elm-dsm",
         "elm-clock",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -16826,11 +17829,16 @@
      },
      "comparison": {
       "order_changes": {
-       "auroc": false,
+       "auroc": true,
        "f1": false
       },
       "order_flips": {
-       "auroc": [],
+       "auroc": [
+        [
+         "elm-dsm-detect",
+         "elm-elmo"
+        ]
+       ],
        "f1": []
       },
       "paired_differences": {
@@ -16849,13 +17857,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.3866699664940604,
+        "second": 0.3429409077063661,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.5246889398772548,
+        "second": 0.5119853750443039,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.24859122753579044,
         "second": 0.22068230277185497,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.3969043045983505,
         "second": 0.3867198218119018,
         "same_sign": true,
@@ -16910,6 +17932,11 @@
         "legacy_minus_review": 0.0067011879378616745
        },
        "elm-dsm-detect": {
+        "review": 0.5780726469692354,
+        "legacy": 0.6255140115747791,
+        "legacy_minus_review": 0.04744136460554371
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7161513859275054,
         "legacy": 0.7477726165092903,
         "legacy_minus_review": 0.0316212305817849
@@ -17098,6 +18125,88 @@
        "elm-dsm-detect": {
         "shots": 7,
         "counts": {
+         "tp": 43,
+         "fp": 144,
+         "fn": 97,
+         "tn": 242,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.22994652406417113,
+         "recall": 0.30714285714285716,
+         "f1": 0.26299694189602446,
+         "false_alarm_bin_rate": 0.37305699481865284,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6427091043671355,
+         "auprc": 0.3167007144132422,
+         "prevalence": 0.2661596958174905
+        },
+        "ci95": {
+         "precision": [
+          0.07512278680572398,
+          0.4485449900299103
+         ],
+         "recall": [
+          0.07428571428571429,
+          0.9559578968573731
+         ],
+         "f1": [
+          0.08921495471387403,
+          0.4678381598240468
+         ],
+         "false_alarm_bin_rate": [
+          0.1479313825987016,
+          0.6091827808776558
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5269845067894957,
+          0.8458757208593924
+         ],
+         "auprc": [
+          0.1623949582658395,
+          0.6103256569936121
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 7,
+        "counts": {
          "tp": 72,
          "fp": 165,
          "fn": 68,
@@ -17174,7 +18283,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -17501,13 +18610,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.3241672834937084,
+        "ci95": [
+         -0.027865521208483398,
+         0.4595162464429886
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.4958265875157402,
+        "ci95": [
+         0.00626503328298933,
+         0.7851330730852912
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.20927091043671353,
         "ci95": [
          -0.04014766472445749,
          0.3421489163360646
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.3768606646902793,
         "ci95": [
          0.006442995207040142,
@@ -17556,8 +18679,9 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm-detect-init",
+        "elm-dsm-detect",
         "elm-elmo"
        ],
        "f1": [
@@ -17565,8 +18689,9 @@
         "elm-dsm",
         "elm-elmo",
         "elm-clock",
-        "elm-dsm-detect",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-exposed",
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -17843,11 +18968,16 @@
      },
      "comparison": {
       "order_changes": {
-       "auroc": false,
+       "auroc": true,
        "f1": true
       },
       "order_flips": {
-       "auroc": [],
+       "auroc": [
+        [
+         "elm-dsm-detect",
+         "elm-elmo"
+        ]
+       ],
        "f1": [
         [
          "elm-dsm",
@@ -17871,13 +19001,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.3866699664940604,
+        "second": 0.3241672834937084,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.5246889398772548,
+        "second": 0.4958265875157402,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.24859122753579044,
         "second": 0.20927091043671353,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.3969043045983505,
         "second": 0.3768606646902793,
         "same_sign": true,
@@ -17932,6 +19076,11 @@
         "legacy_minus_review": -0.002350505587742857
        },
        "elm-dsm-detect": {
+        "review": 0.5780726469692354,
+        "legacy": 0.6427091043671355,
+        "legacy_minus_review": 0.06463645739790003
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7161513859275054,
         "legacy": 0.7576054774241303,
         "legacy_minus_review": 0.041454091496624934
@@ -18120,6 +19269,88 @@
        "elm-dsm-detect": {
         "shots": 7,
         "counts": {
+         "tp": 49,
+         "fp": 138,
+         "fn": 97,
+         "tn": 242,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.2620320855614973,
+         "recall": 0.3356164383561644,
+         "f1": 0.29429429429429427,
+         "false_alarm_bin_rate": 0.3631578947368421,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6614816149963951,
+         "auprc": 0.3444752812225951,
+         "prevalence": 0.27756653992395436
+        },
+        "ci95": {
+         "precision": [
+          0.08069570477918936,
+          0.48531260269470916
+         ],
+         "recall": [
+          0.0784313725490196,
+          0.9595236058843652
+         ],
+         "f1": [
+          0.09158570437196391,
+          0.5193874748214613
+         ],
+         "false_alarm_bin_rate": [
+          0.14712153440286593,
+          0.5990410339570753
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.558431784003236,
+          0.8561242678889738
+         ],
+         "auprc": [
+          0.1872626079485051,
+          0.6112303226050835
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 7,
+        "counts": {
          "tp": 78,
          "fp": 159,
          "fn": 68,
@@ -18196,7 +19427,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": false
        },
        "elm-dsm-detect-init": {
@@ -18523,13 +19754,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.28412040374909875,
+        "ci95": [
+         -0.07004342486790968,
+         0.40804948249741146
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.4513704455900988,
+        "ci95": [
+         -0.05856081764269934,
+         0.767084659070782
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.17518024513338137,
         "ci95": [
          -0.09843795682306034,
          0.2990905026163028
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.3383540349235576,
         "ci95": [
          -0.05307695711718723,
@@ -18578,17 +19823,19 @@
        "auroc": [
         "elm-ours",
         "elm-dsm",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm-detect-init",
+        "elm-dsm-detect",
         "elm-elmo"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm",
         "elm-elmo",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-clock",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ]
       }
      },
@@ -18865,15 +20112,20 @@
      },
      "comparison": {
       "order_changes": {
-       "auroc": false,
+       "auroc": true,
        "f1": true
       },
       "order_flips": {
-       "auroc": [],
+       "auroc": [
+        [
+         "elm-dsm-detect",
+         "elm-elmo"
+        ]
+       ],
        "f1": [
         [
          "elm-clock",
-         "elm-dsm-detect"
+         "elm-dsm-detect-exposed"
         ],
         [
          "elm-dsm",
@@ -18897,13 +20149,27 @@
         "second_ci_excludes_zero": true
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.3866699664940604,
+        "second": 0.28412040374909875,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.5246889398772548,
+        "second": 0.4513704455900988,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.24859122753579044,
         "second": 0.17518024513338137,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.3969043045983505,
         "second": 0.3383540349235576,
         "same_sign": true,
@@ -18958,6 +20224,11 @@
         "legacy_minus_review": -0.008903143303830241
        },
        "elm-dsm-detect": {
+        "review": 0.5780726469692354,
+        "legacy": 0.6614816149963951,
+        "legacy_minus_review": 0.08340896802715969
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.7161513859275054,
         "legacy": 0.7704217736121125,
         "legacy_minus_review": 0.054270387684607124
@@ -19162,6 +20433,88 @@
      "elm-dsm-detect": {
       "shots": 3,
       "counts": {
+       "tp": 23,
+       "fp": 26,
+       "fn": 28,
+       "tn": 171,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.46938775510204084,
+       "recall": 0.45098039215686275,
+       "f1": 0.46,
+       "false_alarm_bin_rate": 0.1319796954314721,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.6948342788892207,
+       "auprc": 0.3404692279912925,
+       "prevalence": 0.2056451612903226
+      },
+      "ci95": {
+       "precision": [
+        0.0,
+        0.6666666666666666
+       ],
+       "recall": [
+        0.0,
+        1.0
+       ],
+       "f1": [
+        0.0,
+        0.5909090909090909
+       ],
+       "false_alarm_bin_rate": [
+        0.03125,
+        0.4864864864864865
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.24479166666666666,
+        0.8813025210084033
+       ],
+       "auprc": [
+        0.01974050046339203,
+        0.6622609943257785
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 3,
+      "counts": {
        "tp": 49,
        "fp": 71,
        "fn": 2,
@@ -19238,7 +20591,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -19483,13 +20836,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.2426595003483627,
+      "ci95": [
+       -0.09221679938350891,
+       0.39583333333333337
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.20233766233766232,
+      "ci95": [
+       -0.19088319088319083,
+       0.5309200603318251
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.04349557081715938,
       "ci95": [
        -0.003991596638655448,
        0.328125
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.089238247132984,
       "ci95": [
        0.038171106132271204,
@@ -19523,13 +20890,15 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
-      "elm-dsm"
+      "elm-dsm",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm-detect-init",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect",
       "elm-dsm",
       "elm-clock"
@@ -19705,6 +21074,88 @@
      "elm-dsm-detect": {
       "shots": 3,
       "counts": {
+       "tp": 13,
+       "fp": 36,
+       "fn": 26,
+       "tn": 173,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.2653061224489796,
+       "recall": 0.3333333333333333,
+       "f1": 0.29545454545454547,
+       "false_alarm_bin_rate": 0.1722488038277512,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.6328057907005276,
+       "auprc": 0.19093621454300722,
+       "prevalence": 0.15725806451612903
+      },
+      "ci95": {
+       "precision": [
+        0.0,
+        0.5333333333333333
+       ],
+       "recall": [
+        0.23529411764705882,
+        1.0
+       ],
+       "f1": [
+        0.0,
+        0.32653061224489793
+       ],
+       "false_alarm_bin_rate": [
+        0.030612244897959183,
+        0.5777777777777777
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.5894701392007184,
+        0.9136929460580913
+       ],
+       "auprc": [
+        0.11977830517939411,
+        0.5701494208075292
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 3,
+      "counts": {
        "tp": 39,
        "fp": 81,
        "fn": 0,
@@ -19781,7 +21232,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": true
      },
      "elm-dsm-detect-init": {
@@ -20026,13 +21477,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.33676849466323144,
+      "ci95": [
+       -0.2340248962655601,
+       0.4031207903008531
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.2538412291933419,
+      "ci95": [
+       -0.14285714285714285,
+       0.5682062298603652
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.04244877929088453,
       "ci95": [
        -0.012448132780082943,
        0.21777777777777785
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.05872973691203831,
       "ci95": [
        -0.014652014652014655,
@@ -20066,15 +21531,17 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm-detect-init",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm",
+      "elm-dsm-detect",
       "elm-clock"
      ]
     }
@@ -20313,7 +21780,7 @@
    "comparison": {
     "order_changes": {
      "auroc": true,
-     "f1": false
+     "f1": true
     },
     "order_flips": {
      "auroc": [
@@ -20322,7 +21789,12 @@
        "elm-dsm-detect-init"
       ]
      ],
-     "f1": []
+     "f1": [
+      [
+       "elm-dsm",
+       "elm-dsm-detect"
+      ]
+     ]
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
@@ -20340,13 +21812,27 @@
       "second_ci_excludes_zero": false
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.2426595003483627,
+      "second": 0.33676849466323144,
+      "same_sign": true,
+      "first_ci_excludes_zero": false,
+      "second_ci_excludes_zero": false
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.20233766233766232,
+      "second": 0.2538412291933419,
+      "same_sign": true,
+      "first_ci_excludes_zero": false,
+      "second_ci_excludes_zero": false
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.04349557081715938,
       "second": 0.04244877929088453,
       "same_sign": true,
       "first_ci_excludes_zero": false,
       "second_ci_excludes_zero": false
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.089238247132984,
       "second": 0.05872973691203831,
       "same_sign": true,
@@ -20387,6 +21873,11 @@
       "legacy_minus_review": 0.12364793091168602
      },
      "elm-dsm-detect": {
+      "review": 0.6948342788892207,
+      "legacy": 0.6328057907005276,
+      "legacy_minus_review": -0.06202848818869311
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.893998208420424,
       "legacy": 0.9271255060728745,
       "legacy_minus_review": 0.03312729765245048
@@ -20570,6 +22061,88 @@
        "elm-dsm-detect": {
         "shots": 3,
         "counts": {
+         "tp": 14,
+         "fp": 35,
+         "fn": 26,
+         "tn": 173,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.2857142857142857,
+         "recall": 0.35,
+         "f1": 0.3146067415730337,
+         "false_alarm_bin_rate": 0.16826923076923078,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6432692307692308,
+         "auprc": 0.20218693551191758,
+         "prevalence": 0.16129032258064516
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          1.0
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.030612244897959183,
+          0.5681818181818182
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5894701392007184,
+          0.9201388888888888
+         ],
+         "auprc": [
+          0.13002823241102796,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 3,
+        "counts": {
          "tp": 40,
          "fp": 80,
          "fn": 0,
@@ -20646,7 +22219,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -20891,13 +22464,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.3221153846153846,
+        "ci95": [
+         -0.24097222222222214,
+         0.4031207903008531
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.24483381786752578,
+        "ci95": [
+         -0.16586222027204914,
+         0.5682062298603652
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.0427884615384615,
         "ci95": [
          -0.026388888888888906,
          0.18939393939393934
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05944055944055948,
         "ci95": [
          -0.017227235438884325,
@@ -20931,15 +22518,17 @@
       "ranking": {
        "auroc": [
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -21178,7 +22767,7 @@
      "comparison": {
       "order_changes": {
        "auroc": true,
-       "f1": false
+       "f1": true
       },
       "order_flips": {
        "auroc": [
@@ -21187,7 +22776,12 @@
          "elm-dsm-detect-init"
         ]
        ],
-       "f1": []
+       "f1": [
+        [
+         "elm-dsm",
+         "elm-dsm-detect"
+        ]
+       ]
       },
       "paired_differences": {
        "elm-ours - elm-dsm: auroc": {
@@ -21205,13 +22799,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.2426595003483627,
+        "second": 0.3221153846153846,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.20233766233766232,
+        "second": 0.24483381786752578,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.04349557081715938,
         "second": 0.0427884615384615,
         "same_sign": true,
         "first_ci_excludes_zero": false,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.089238247132984,
         "second": 0.05944055944055948,
         "same_sign": true,
@@ -21252,6 +22860,11 @@
         "legacy_minus_review": 0.10646733190542912
        },
        "elm-dsm-detect": {
+        "review": 0.6948342788892207,
+        "legacy": 0.6432692307692308,
+        "legacy_minus_review": -0.051565048119989854
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.893998208420424,
         "legacy": 0.9225961538461539,
         "legacy_minus_review": 0.02859794542572991
@@ -21435,6 +23048,88 @@
        "elm-dsm-detect": {
         "shots": 3,
         "counts": {
+         "tp": 14,
+         "fp": 35,
+         "fn": 26,
+         "tn": 173,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.2857142857142857,
+         "recall": 0.35,
+         "f1": 0.3146067415730337,
+         "false_alarm_bin_rate": 0.16826923076923078,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6432692307692308,
+         "auprc": 0.20218693551191758,
+         "prevalence": 0.16129032258064516
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          1.0
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.030612244897959183,
+          0.5681818181818182
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5894701392007184,
+          0.9201388888888888
+         ],
+         "auprc": [
+          0.13002823241102796,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 3,
+        "counts": {
          "tp": 40,
          "fp": 80,
          "fn": 0,
@@ -21511,7 +23206,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -21756,13 +23451,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.3221153846153846,
+        "ci95": [
+         -0.24097222222222214,
+         0.4031207903008531
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.24483381786752578,
+        "ci95": [
+         -0.16586222027204914,
+         0.5682062298603652
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.0427884615384615,
         "ci95": [
          -0.026388888888888906,
          0.18939393939393934
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05944055944055948,
         "ci95": [
          -0.017227235438884325,
@@ -21796,15 +23505,17 @@
       "ranking": {
        "auroc": [
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -22043,7 +23754,7 @@
      "comparison": {
       "order_changes": {
        "auroc": true,
-       "f1": false
+       "f1": true
       },
       "order_flips": {
        "auroc": [
@@ -22052,7 +23763,12 @@
          "elm-dsm-detect-init"
         ]
        ],
-       "f1": []
+       "f1": [
+        [
+         "elm-dsm",
+         "elm-dsm-detect"
+        ]
+       ]
       },
       "paired_differences": {
        "elm-ours - elm-dsm: auroc": {
@@ -22070,13 +23786,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.2426595003483627,
+        "second": 0.3221153846153846,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.20233766233766232,
+        "second": 0.24483381786752578,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.04349557081715938,
         "second": 0.0427884615384615,
         "same_sign": true,
         "first_ci_excludes_zero": false,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.089238247132984,
         "second": 0.05944055944055948,
         "same_sign": true,
@@ -22117,6 +23847,11 @@
         "legacy_minus_review": 0.10646733190542912
        },
        "elm-dsm-detect": {
+        "review": 0.6948342788892207,
+        "legacy": 0.6432692307692308,
+        "legacy_minus_review": -0.051565048119989854
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.893998208420424,
         "legacy": 0.9225961538461539,
         "legacy_minus_review": 0.02859794542572991
@@ -22300,6 +24035,88 @@
        "elm-dsm-detect": {
         "shots": 3,
         "counts": {
+         "tp": 14,
+         "fp": 35,
+         "fn": 26,
+         "tn": 173,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.2857142857142857,
+         "recall": 0.35,
+         "f1": 0.3146067415730337,
+         "false_alarm_bin_rate": 0.16826923076923078,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.6432692307692308,
+         "auprc": 0.20218693551191758,
+         "prevalence": 0.16129032258064516
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          1.0
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.030612244897959183,
+          0.5681818181818182
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5894701392007184,
+          0.9201388888888888
+         ],
+         "auprc": [
+          0.13002823241102796,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 3,
+        "counts": {
          "tp": 40,
          "fp": 80,
          "fn": 0,
@@ -22376,7 +24193,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -22621,13 +24438,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.3221153846153846,
+        "ci95": [
+         -0.24097222222222214,
+         0.4031207903008531
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.24483381786752578,
+        "ci95": [
+         -0.16586222027204914,
+         0.5682062298603652
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.0427884615384615,
         "ci95": [
          -0.026388888888888906,
          0.18939393939393934
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05944055944055948,
         "ci95": [
          -0.017227235438884325,
@@ -22661,15 +24492,17 @@
       "ranking": {
        "auroc": [
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -22908,7 +24741,7 @@
      "comparison": {
       "order_changes": {
        "auroc": true,
-       "f1": false
+       "f1": true
       },
       "order_flips": {
        "auroc": [
@@ -22917,7 +24750,12 @@
          "elm-dsm-detect-init"
         ]
        ],
-       "f1": []
+       "f1": [
+        [
+         "elm-dsm",
+         "elm-dsm-detect"
+        ]
+       ]
       },
       "paired_differences": {
        "elm-ours - elm-dsm: auroc": {
@@ -22935,13 +24773,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.2426595003483627,
+        "second": 0.3221153846153846,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.20233766233766232,
+        "second": 0.24483381786752578,
+        "same_sign": true,
+        "first_ci_excludes_zero": false,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.04349557081715938,
         "second": 0.0427884615384615,
         "same_sign": true,
         "first_ci_excludes_zero": false,
         "second_ci_excludes_zero": false
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.089238247132984,
         "second": 0.05944055944055948,
         "same_sign": true,
@@ -22982,6 +24834,11 @@
         "legacy_minus_review": 0.10646733190542912
        },
        "elm-dsm-detect": {
+        "review": 0.6948342788892207,
+        "legacy": 0.6432692307692308,
+        "legacy_minus_review": -0.051565048119989854
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.893998208420424,
         "legacy": 0.9225961538461539,
         "legacy_minus_review": 0.02859794542572991
@@ -23179,6 +25036,88 @@
      "elm-dsm-detect": {
       "shots": 2,
       "counts": {
+       "tp": 10,
+       "fp": 8,
+       "fn": 28,
+       "tn": 131,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.5555555555555556,
+       "recall": 0.2631578947368421,
+       "f1": 0.35714285714285715,
+       "false_alarm_bin_rate": 0.05755395683453238,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.5683453237410072,
+       "auprc": 0.22500272019166223,
+       "prevalence": 0.21468926553672316
+      },
+      "ci95": {
+       "precision": [
+        0.0,
+        0.6666666666666666
+       ],
+       "recall": [
+        0.0,
+        0.2777777777777778
+       ],
+       "f1": [
+        0.0,
+        0.39215686274509803
+       ],
+       "false_alarm_bin_rate": [
+        0.03614457831325301,
+        0.08928571428571429
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.12650602409638553,
+        0.8293650793650794
+       ],
+       "auprc": [
+        0.01974050046339203,
+        0.6622609943257785
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 2,
+      "counts": {
        "tp": 36,
        "fp": 54,
        "fn": 2,
@@ -23255,7 +25194,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -23582,13 +25521,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.4002271866717152,
+      "ci95": [
+       0.17063492063492058,
+       0.45783132530120485
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.2980295566502463,
+      "ci95": [
+       0.0975609756097561,
+       0.567843137254902
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.047709201060204376,
       "ci95": [
        0.047709201060204376,
        0.3795180722891567
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.09267241379310343,
       "ci95": [
        0.09267241379310343,
@@ -23637,16 +25590,18 @@
      "auroc": [
       "elm-ours",
       "elm-dsm",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-elmo",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-elmo",
       "elm-ours",
       "elm-dsm-detect-init",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm",
+      "elm-dsm-detect",
       "elm-clock"
      ]
     }
@@ -23820,6 +25775,88 @@
      "elm-dsm-detect": {
       "shots": 2,
       "counts": {
+       "tp": 8,
+       "fp": 10,
+       "fn": 26,
+       "tn": 133,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.4444444444444444,
+       "recall": 0.23529411764705882,
+       "f1": 0.3076923076923077,
+       "false_alarm_bin_rate": 0.06993006993006994,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.5828877005347594,
+       "auprc": 0.20742396628345755,
+       "prevalence": 0.192090395480226
+      },
+      "ci95": {
+       "precision": [
+        0.0,
+        0.5333333333333333
+       ],
+       "recall": [
+        0.23529411764705882,
+        0.23529411764705882
+       ],
+       "f1": [
+        0.0,
+        0.32653061224489793
+       ],
+       "false_alarm_bin_rate": [
+        0.03529411764705882,
+        0.1206896551724138
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.5828877005347594,
+        0.7976673427991886
+       ],
+       "auprc": [
+        0.20742396628345755,
+        0.5701494208075292
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 2,
+      "counts": {
        "tp": 34,
        "fp": 56,
        "fn": 0,
@@ -23896,7 +25933,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": true
      },
      "elm-dsm-detect-init": {
@@ -24223,13 +26260,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.4103249691484986,
+      "ci95": [
+       0.2023326572008114,
+       0.4103249691484986
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.2994505494505494,
+      "ci95": [
+       0.0,
+       0.6049762370701706
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.04689428218839986,
       "ci95": [
        0.04689428218839986,
        0.11916835699797157
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.05875576036866359,
       "ci95": [
        0.0,
@@ -24278,16 +26329,18 @@
      "auroc": [
       "elm-dsm",
       "elm-ours",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-elmo",
-      "elm-dsm-detect-init"
+      "elm-dsm-detect-init",
+      "elm-dsm-detect"
      ],
      "f1": [
       "elm-elmo",
       "elm-ours",
       "elm-dsm-detect-init",
-      "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm",
+      "elm-dsm-detect",
       "elm-clock"
      ]
     }
@@ -24543,13 +26596,27 @@
       "second_ci_excludes_zero": false
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.4002271866717152,
+      "second": 0.4103249691484986,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.2980295566502463,
+      "second": 0.2994505494505494,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": false
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.047709201060204376,
       "second": 0.04689428218839986,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.09267241379310343,
       "second": 0.05875576036866359,
       "same_sign": true,
@@ -24604,6 +26671,11 @@
       "legacy_minus_review": 0.038811056418023515
      },
      "elm-dsm-detect": {
+      "review": 0.5683453237410072,
+      "legacy": 0.5828877005347594,
+      "legacy_minus_review": 0.014542376793752143
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.920863309352518,
       "legacy": 0.9463183874948581,
       "legacy_minus_review": 0.02545507814234005
@@ -24792,6 +26864,88 @@
        "elm-dsm-detect": {
         "shots": 2,
         "counts": {
+         "tp": 8,
+         "fp": 10,
+         "fn": 26,
+         "tn": 133,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.4444444444444444,
+         "recall": 0.23529411764705882,
+         "f1": 0.3076923076923077,
+         "false_alarm_bin_rate": 0.06993006993006994,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.5828877005347594,
+         "auprc": 0.20742396628345755,
+         "prevalence": 0.192090395480226
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          0.23529411764705882
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.03529411764705882,
+          0.1206896551724138
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5828877005347594,
+          0.7976673427991886
+         ],
+         "auprc": [
+          0.20742396628345755,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 2,
+        "counts": {
          "tp": 34,
          "fp": 56,
          "fn": 0,
@@ -24868,7 +27022,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -25195,13 +27349,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.4103249691484986,
+        "ci95": [
+         0.2023326572008114,
+         0.4103249691484986
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.2994505494505494,
+        "ci95": [
+         0.0,
+         0.6049762370701706
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.04689428218839986,
         "ci95": [
          0.04689428218839986,
          0.11916835699797157
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05875576036866359,
         "ci95": [
          0.0,
@@ -25250,16 +27418,18 @@
        "auroc": [
         "elm-dsm",
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-elmo",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-elmo",
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -25515,13 +27685,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.4002271866717152,
+        "second": 0.4103249691484986,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.2980295566502463,
+        "second": 0.2994505494505494,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.047709201060204376,
         "second": 0.04689428218839986,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": true
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.09267241379310343,
         "second": 0.05875576036866359,
         "same_sign": true,
@@ -25576,6 +27760,11 @@
         "legacy_minus_review": 0.038811056418023515
        },
        "elm-dsm-detect": {
+        "review": 0.5683453237410072,
+        "legacy": 0.5828877005347594,
+        "legacy_minus_review": 0.014542376793752143
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.920863309352518,
         "legacy": 0.9463183874948581,
         "legacy_minus_review": 0.02545507814234005
@@ -25764,6 +27953,88 @@
        "elm-dsm-detect": {
         "shots": 2,
         "counts": {
+         "tp": 8,
+         "fp": 10,
+         "fn": 26,
+         "tn": 133,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.4444444444444444,
+         "recall": 0.23529411764705882,
+         "f1": 0.3076923076923077,
+         "false_alarm_bin_rate": 0.06993006993006994,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.5828877005347594,
+         "auprc": 0.20742396628345755,
+         "prevalence": 0.192090395480226
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          0.23529411764705882
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.03529411764705882,
+          0.1206896551724138
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5828877005347594,
+          0.7976673427991886
+         ],
+         "auprc": [
+          0.20742396628345755,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 2,
+        "counts": {
          "tp": 34,
          "fp": 56,
          "fn": 0,
@@ -25840,7 +28111,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -26167,13 +28438,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.4103249691484986,
+        "ci95": [
+         0.2023326572008114,
+         0.4103249691484986
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.2994505494505494,
+        "ci95": [
+         0.0,
+         0.6049762370701706
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.04689428218839986,
         "ci95": [
          0.04689428218839986,
          0.11916835699797157
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05875576036866359,
         "ci95": [
          0.0,
@@ -26222,16 +28507,18 @@
        "auroc": [
         "elm-dsm",
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-elmo",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-elmo",
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -26487,13 +28774,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.4002271866717152,
+        "second": 0.4103249691484986,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.2980295566502463,
+        "second": 0.2994505494505494,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.047709201060204376,
         "second": 0.04689428218839986,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": true
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.09267241379310343,
         "second": 0.05875576036866359,
         "same_sign": true,
@@ -26548,6 +28849,11 @@
         "legacy_minus_review": 0.038811056418023515
        },
        "elm-dsm-detect": {
+        "review": 0.5683453237410072,
+        "legacy": 0.5828877005347594,
+        "legacy_minus_review": 0.014542376793752143
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.920863309352518,
         "legacy": 0.9463183874948581,
         "legacy_minus_review": 0.02545507814234005
@@ -26736,6 +29042,88 @@
        "elm-dsm-detect": {
         "shots": 2,
         "counts": {
+         "tp": 8,
+         "fp": 10,
+         "fn": 26,
+         "tn": 133,
+         "crowd_bins": 0,
+         "crowd_hit": 0,
+         "non_crowd_spans": 0,
+         "non_crowd_span_hit": 0,
+         "absent_spans": 0,
+         "absent_span_alarm": 0,
+         "crowd_spans": 0,
+         "absent_spans_guard25_eligible": 0,
+         "absent_span_alarm_guard25": 0,
+         "absent_spans_guard25_empty": 0
+        },
+        "point": {
+         "precision": 0.4444444444444444,
+         "recall": 0.23529411764705882,
+         "f1": 0.3076923076923077,
+         "false_alarm_bin_rate": 0.06993006993006994,
+         "crowd_bin_recall": NaN,
+         "non_crowd_span_touch_recall": NaN,
+         "absent_span_alarm_rate": NaN,
+         "absent_span_alarm_rate_guard25": NaN,
+         "absent_span_interior_alarm_rate_guard25": NaN,
+         "auroc": 0.5828877005347594,
+         "auprc": 0.20742396628345755,
+         "prevalence": 0.192090395480226
+        },
+        "ci95": {
+         "precision": [
+          0.0,
+          0.5333333333333333
+         ],
+         "recall": [
+          0.23529411764705882,
+          0.23529411764705882
+         ],
+         "f1": [
+          0.0,
+          0.32653061224489793
+         ],
+         "false_alarm_bin_rate": [
+          0.03529411764705882,
+          0.1206896551724138
+         ],
+         "crowd_bin_recall": [
+          NaN,
+          NaN
+         ],
+         "non_crowd_span_touch_recall": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate": [
+          NaN,
+          NaN
+         ],
+         "absent_span_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "absent_span_interior_alarm_rate_guard25": [
+          NaN,
+          NaN
+         ],
+         "auroc": [
+          0.5828877005347594,
+          0.7976673427991886
+         ],
+         "auprc": [
+          0.20742396628345755,
+          0.5701494208075292
+         ]
+        },
+        "replicates": 1000,
+        "display_name": "elm-dsm detection (isolated)",
+        "high_recall": false
+       },
+       "elm-dsm-detect-exposed": {
+        "shots": 2,
+        "counts": {
          "tp": 34,
          "fp": 56,
          "fn": 0,
@@ -26812,7 +29200,7 @@
          ]
         },
         "replicates": 1000,
-        "display_name": "elm-dsm detection",
+        "display_name": "elm-dsm detection (exposed)",
         "high_recall": true
        },
        "elm-dsm-detect-init": {
@@ -27139,13 +29527,27 @@
         ]
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "value": 0.4103249691484986,
+        "ci95": [
+         0.2023326572008114,
+         0.4103249691484986
+        ]
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "value": 0.2994505494505494,
+        "ci95": [
+         0.0,
+         0.6049762370701706
+        ]
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "value": 0.04689428218839986,
         "ci95": [
          0.04689428218839986,
          0.11916835699797157
         ]
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "value": 0.05875576036866359,
         "ci95": [
          0.0,
@@ -27194,16 +29596,18 @@
        "auroc": [
         "elm-dsm",
         "elm-ours",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-elmo",
-        "elm-dsm-detect-init"
+        "elm-dsm-detect-init",
+        "elm-dsm-detect"
        ],
        "f1": [
         "elm-elmo",
         "elm-ours",
         "elm-dsm-detect-init",
-        "elm-dsm-detect",
+        "elm-dsm-detect-exposed",
         "elm-dsm",
+        "elm-dsm-detect",
         "elm-clock"
        ]
       }
@@ -27459,13 +29863,27 @@
         "second_ci_excludes_zero": false
        },
        "elm-ours - elm-dsm-detect: auroc": {
+        "first": 0.4002271866717152,
+        "second": 0.4103249691484986,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": true
+       },
+       "elm-ours - elm-dsm-detect: f1": {
+        "first": 0.2980295566502463,
+        "second": 0.2994505494505494,
+        "same_sign": true,
+        "first_ci_excludes_zero": true,
+        "second_ci_excludes_zero": false
+       },
+       "elm-ours - elm-dsm-detect-exposed: auroc": {
         "first": 0.047709201060204376,
         "second": 0.04689428218839986,
         "same_sign": true,
         "first_ci_excludes_zero": true,
         "second_ci_excludes_zero": true
        },
-       "elm-ours - elm-dsm-detect: f1": {
+       "elm-ours - elm-dsm-detect-exposed: f1": {
         "first": 0.09267241379310343,
         "second": 0.05875576036866359,
         "same_sign": true,
@@ -27520,6 +29938,11 @@
         "legacy_minus_review": 0.038811056418023515
        },
        "elm-dsm-detect": {
+        "review": 0.5683453237410072,
+        "legacy": 0.5828877005347594,
+        "legacy_minus_review": 0.014542376793752143
+       },
+       "elm-dsm-detect-exposed": {
         "review": 0.920863309352518,
         "legacy": 0.9463183874948581,
         "legacy_minus_review": 0.02545507814234005
@@ -27717,6 +30140,88 @@
      "elm-dsm-detect": {
       "shots": 119,
       "counts": {
+       "tp": 3862,
+       "fp": 1831,
+       "fn": 694,
+       "tn": 5266,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6783769541542245,
+       "recall": 0.8476733977172959,
+       "f1": 0.7536345009269197,
+       "false_alarm_bin_rate": 0.2579963364802029,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8549335571065096,
+       "auprc": 0.7780879339501328,
+       "prevalence": 0.3909722818158414
+      },
+      "ci95": {
+       "precision": [
+        0.6012222038962778,
+        0.7502960768323103
+       ],
+       "recall": [
+        0.7766691638634841,
+        0.9133156683436398
+       ],
+       "f1": [
+        0.6964210318555024,
+        0.8106803520055768
+       ],
+       "false_alarm_bin_rate": [
+        0.19870041515057868,
+        0.3173003469910341
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.8129413518074086,
+        0.8957129513956588
+       ],
+       "auprc": [
+        0.6958438862386871,
+        0.8438053697534071
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 119,
+      "counts": {
        "tp": 3814,
        "fp": 1899,
        "fn": 742,
@@ -27793,7 +30298,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -27967,13 +30472,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.0838943435645253,
+      "ci95": [
+       0.044586265371115416,
+       0.12122300321353681
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.08005833772709237,
+      "ci95": [
+       0.022889779280243557,
+       0.13531703582721982
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.08861324072803756,
       "ci95": [
        0.04532792722148659,
        0.13275271632047492
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.09087464798306066,
       "ci95": [
        0.03910332870310707,
@@ -28002,11 +30521,13 @@
       "elm-ours",
       "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
       "elm-dsm"
      ]
@@ -28181,6 +30702,88 @@
      "elm-dsm-detect": {
       "shots": 119,
       "counts": {
+       "tp": 2778,
+       "fp": 2915,
+       "fn": 755,
+       "tn": 5205,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.48796767960653437,
+       "recall": 0.7863005943956977,
+       "f1": 0.6022111424235855,
+       "false_alarm_bin_rate": 0.3589901477832512,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.7745972177875318,
+       "auprc": 0.5218868293300675,
+       "prevalence": 0.30318372951171374
+      },
+      "ci95": {
+       "precision": [
+        0.39128127968573556,
+        0.5839969390629477
+       ],
+       "recall": [
+        0.707582065665011,
+        0.8586951054889685
+       ],
+       "f1": [
+        0.5191482177922242,
+        0.6768889608198476
+       ],
+       "false_alarm_bin_rate": [
+        0.288000650903572,
+        0.42591932427998025
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.715072448685763,
+        0.8257571845293529
+       ],
+       "auprc": [
+        0.40341646070576165,
+        0.663133084832983
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 119,
+      "counts": {
        "tp": 2824,
        "fp": 2889,
        "fn": 709,
@@ -28257,7 +30860,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -28431,13 +31034,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.06314333608942568,
+      "ci95": [
+       0.012804669495915647,
+       0.11461990543166185
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.08005337448755523,
+      "ci95": [
+       0.028358586217827927,
+       0.1314403034704641
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.06928281062857033,
       "ci95": [
        0.018137625266437824,
        0.12239997257147751
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.07140576718152791,
       "ci95": [
        0.024757113055627007,
@@ -28464,12 +31081,14 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect-exposed",
       "elm-dsm"
      ],
      "f1": [
       "elm-ours",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect",
       "elm-dsm-detect-init",
       "elm-dsm"
@@ -28478,12 +31097,22 @@
    },
    "comparison": {
     "order_changes": {
-     "auroc": false,
-     "f1": false
+     "auroc": true,
+     "f1": true
     },
     "order_flips": {
-     "auroc": [],
-     "f1": []
+     "auroc": [
+      [
+       "elm-dsm-detect",
+       "elm-dsm-detect-init"
+      ]
+     ],
+     "f1": [
+      [
+       "elm-dsm-detect",
+       "elm-dsm-detect-exposed"
+      ]
+     ]
     },
     "paired_differences": {
      "elm-ours - elm-dsm: auroc": {
@@ -28501,13 +31130,27 @@
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.0838943435645253,
+      "second": 0.06314333608942568,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.08005833772709237,
+      "second": 0.08005337448755523,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.08861324072803756,
       "second": 0.06928281062857033,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.09087464798306066,
       "second": 0.07140576718152791,
       "same_sign": true,
@@ -28541,6 +31184,11 @@
       "legacy_minus_review": -0.06549690575190115
      },
      "elm-dsm-detect": {
+      "review": 0.8549335571065096,
+      "legacy": 0.7745972177875318,
+      "legacy_minus_review": -0.08033633931897788
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.8502146599429974,
       "legacy": 0.7684577432483871,
       "legacy_minus_review": -0.08175691669461027
@@ -28729,6 +31377,88 @@
      "elm-dsm-detect": {
       "shots": 73,
       "counts": {
+       "tp": 2437,
+       "fp": 1090,
+       "fn": 282,
+       "tn": 2718,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6909554862489368,
+       "recall": 0.8962853990437661,
+       "f1": 0.7803394172270253,
+       "false_alarm_bin_rate": 0.2862394957983193,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.8555644743185984,
+       "auprc": 0.7672100756397484,
+       "prevalence": 0.4165772943159185
+      },
+      "ci95": {
+       "precision": [
+        0.595905350356442,
+        0.7765261634143762
+       ],
+       "recall": [
+        0.8242229165882368,
+        0.9473715146015509
+       ],
+       "f1": [
+        0.7046020995429759,
+        0.8423224328498632
+       ],
+       "false_alarm_bin_rate": [
+        0.20865481676541586,
+        0.36886960686626263
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.8064279974330921,
+        0.9015528248669704
+       ],
+       "auprc": [
+        0.6683780812715336,
+        0.8612877508726061
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 73,
+      "counts": {
        "tp": 2414,
        "fp": 1200,
        "fn": 305,
@@ -28805,7 +31535,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -29050,13 +31780,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.08361903744579846,
+      "ci95": [
+       0.03676617428322336,
+       0.13391895279568478
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.06804767954716828,
+      "ci95": [
+       0.0025090203821405512,
+       0.14208686858708422
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.09594611796539143,
       "ci95": [
        0.04486387920765865,
        0.15478287505542584
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.08603118330506354,
       "ci95": [
        0.02744392114234413,
@@ -29090,13 +31834,15 @@
     "ranking": {
      "auroc": [
       "elm-ours",
-      "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-init",
+      "elm-dsm-detect-exposed",
       "elm-dsm"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
       "elm-clock",
       "elm-dsm"
@@ -29272,6 +32018,88 @@
      "elm-dsm-detect": {
       "shots": 73,
       "counts": {
+       "tp": 2389,
+       "fp": 1138,
+       "fn": 342,
+       "tn": 2658,
+       "crowd_bins": 0,
+       "crowd_hit": 0,
+       "non_crowd_spans": 0,
+       "non_crowd_span_hit": 0,
+       "absent_spans": 0,
+       "absent_span_alarm": 0,
+       "crowd_spans": 0,
+       "absent_spans_guard25_eligible": 0,
+       "absent_span_alarm_guard25": 0,
+       "absent_spans_guard25_empty": 0
+      },
+      "point": {
+       "precision": 0.6773461865608166,
+       "recall": 0.8747711461003296,
+       "f1": 0.7635027165228507,
+       "false_alarm_bin_rate": 0.29978925184404637,
+       "crowd_bin_recall": NaN,
+       "non_crowd_span_touch_recall": NaN,
+       "absent_span_alarm_rate": NaN,
+       "absent_span_alarm_rate_guard25": NaN,
+       "absent_span_interior_alarm_rate_guard25": NaN,
+       "auroc": 0.840135880857454,
+       "auprc": 0.7422485406401471,
+       "prevalence": 0.41841581124559524
+      },
+      "ci95": {
+       "precision": [
+        0.5900869204736815,
+        0.7515460749475045
+       ],
+       "recall": [
+        0.821124525454636,
+        0.9205377460259306
+       ],
+       "f1": [
+        0.694763791223958,
+        0.8185392019151841
+       ],
+       "false_alarm_bin_rate": [
+        0.2282577865799137,
+        0.37555545577237687
+       ],
+       "crowd_bin_recall": [
+        NaN,
+        NaN
+       ],
+       "non_crowd_span_touch_recall": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate": [
+        NaN,
+        NaN
+       ],
+       "absent_span_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "absent_span_interior_alarm_rate_guard25": [
+        NaN,
+        NaN
+       ],
+       "auroc": [
+        0.7979200261898417,
+        0.8769780610264678
+       ],
+       "auprc": [
+        0.6581363912812478,
+        0.8211270726736595
+       ]
+      },
+      "replicates": 1000,
+      "display_name": "elm-dsm detection (isolated)",
+      "high_recall": false
+     },
+     "elm-dsm-detect-exposed": {
+      "shots": 73,
+      "counts": {
        "tp": 2412,
        "fp": 1202,
        "fn": 319,
@@ -29348,7 +32176,7 @@
        ]
       },
       "replicates": 1000,
-      "display_name": "elm-dsm detection",
+      "display_name": "elm-dsm detection (exposed)",
       "high_recall": false
      },
      "elm-dsm-detect-init": {
@@ -29593,13 +32421,27 @@
       ]
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "value": 0.07566040145555908,
+      "ci95": [
+       0.033430403354223315,
+       0.11989290451570195
+      ]
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "value": 0.05230558104510352,
+      "ci95": [
+       -0.0033008253991398586,
+       0.10381825462572625
+      ]
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "value": 0.08358164021639691,
       "ci95": [
        0.038128399828054965,
        0.13515751018044417
       ]
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "value": 0.055524609624691856,
       "ci95": [
        0.0031700425269264817,
@@ -29635,11 +32477,13 @@
       "elm-ours",
       "elm-dsm-detect-init",
       "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm"
      ],
      "f1": [
       "elm-ours",
       "elm-dsm-detect",
+      "elm-dsm-detect-exposed",
       "elm-dsm-detect-init",
       "elm-clock",
       "elm-dsm"
@@ -29648,11 +32492,16 @@
    },
    "comparison": {
     "order_changes": {
-     "auroc": false,
+     "auroc": true,
      "f1": false
     },
     "order_flips": {
-     "auroc": [],
+     "auroc": [
+      [
+       "elm-dsm-detect",
+       "elm-dsm-detect-init"
+      ]
+     ],
      "f1": []
     },
     "paired_differences": {
@@ -29671,13 +32520,27 @@
       "second_ci_excludes_zero": true
      },
      "elm-ours - elm-dsm-detect: auroc": {
+      "first": 0.08361903744579846,
+      "second": 0.07566040145555908,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": true
+     },
+     "elm-ours - elm-dsm-detect: f1": {
+      "first": 0.06804767954716828,
+      "second": 0.05230558104510352,
+      "same_sign": true,
+      "first_ci_excludes_zero": true,
+      "second_ci_excludes_zero": false
+     },
+     "elm-ours - elm-dsm-detect-exposed: auroc": {
       "first": 0.09594611796539143,
       "second": 0.08358164021639691,
       "same_sign": true,
       "first_ci_excludes_zero": true,
       "second_ci_excludes_zero": true
      },
-     "elm-ours - elm-dsm-detect: f1": {
+     "elm-ours - elm-dsm-detect-exposed: f1": {
       "first": 0.08603118330506354,
       "second": 0.055524609624691856,
       "same_sign": true,
@@ -29718,6 +32581,11 @@
       "legacy_minus_review": -0.03833050568109897
      },
      "elm-dsm-detect": {
+      "review": 0.8555644743185984,
+      "legacy": 0.840135880857454,
+      "legacy_minus_review": -0.015428593461144335
+     },
+     "elm-dsm-detect-exposed": {
       "review": 0.8432373937990054,
       "legacy": 0.8322146420966162,
       "legacy_minus_review": -0.0110227517023892

@@ -60,16 +60,21 @@ def span_counts(
     `spans` (columns `t_start_ms`, `t_end_ms`) are the method's detected spans, sorted
     and not overlapping; `shot_spans` the shot's review rows. A labelled span with less
     than half its length analysed (`cover`) is skipped; an non-crowd or absent span
-    counts as hit when any detected span touches it.
+    counts as hit when a detected span touches it inside analysed time. Detections
+    are intersected with this panel's coverage before both raw and guarded counts.
 
     Guarded alarms require a touch in [start + 25, end - 25). The guarded
     share retains the raw denominator; spans without an interior are counted
     separately, and an additional rate uses only nonempty interiors.
     """
-    starts = spans.t_start_ms.to_numpy(float)
-    stops = spans.t_end_ms.to_numpy(float)
     cov0, cov1 = labels.merge_intervals(
         cover.t_start_ms.to_numpy(float), cover.t_end_ms.to_numpy(float)
+    )
+    starts, stops = intersect(
+        spans.t_start_ms.to_numpy(float),
+        spans.t_end_ms.to_numpy(float),
+        cov0,
+        cov1,
     )
     out = dict.fromkeys(score.SPAN_KEYS, 0)
     for row in shot_spans.itertuples():
@@ -262,6 +267,100 @@ def areas_summary(parts: list[score.ShotScore], boot: np.ndarray) -> dict:
         "auprc": point[1],
         "ci95": {"auroc": score._ci(reps[:, 0]), "auprc": score._ci(reps[:, 1])},
     }
+
+
+def kind_summary(parts: list[score.ShotScore], boot: np.ndarray) -> dict:
+    """Crowd/non-crowd bin and non-crowd span recall with shot-bootstrap CIs."""
+    per = []
+    for part in parts:
+        crowd, non_crowd = part.kind == "crowd", part.kind == "non_crowd"
+        per.append(
+            [
+                int((crowd & part.call).sum()),
+                int(crowd.sum()),
+                int((non_crowd & part.call).sum()),
+                int(non_crowd.sum()),
+                part.spans.get("non_crowd_span_hit", 0),
+                part.spans.get("non_crowd_spans", 0),
+            ]
+        )
+    per = np.asarray(per, dtype=int)
+    total = per.sum(axis=0)
+    sampled = per[boot].sum(axis=1)
+    out = {}
+    for i, metric in enumerate(
+        ("crowd_bin_recall", "non_crowd_bin_recall", "non_crowd_span_touch_recall")
+    ):
+        hit, count = total[2 * i : 2 * i + 2]
+        numerator, denominator = sampled[:, 2 * i], sampled[:, 2 * i + 1]
+        values = np.full(len(boot), np.nan)
+        np.divide(numerator, denominator, out=values, where=denominator > 0)
+        out[metric] = {
+            "point": float(hit / count) if count else float("nan"),
+            "ci95": score._ci(values),
+            "numerator": int(hit),
+            "denominator": int(count),
+        }
+    return out
+
+
+def annotation_summary(
+    parts: dict[str, list[score.ShotScore]],
+    reviews: dict[int, pd.DataFrame],
+    *,
+    replicates: int = score.REPLICATES,
+    seed: int = score.SEED,
+) -> dict:
+    """Disjoint shot groups defined by present kinds in the complete review.
+
+    Group membership uses all reviewed rows, including those outside a panel's
+    coverage or too short to contribute a scored bin. Each group's metrics use
+    that panel's existing bins, spans and thresholds. Resamples draw whole shots
+    within a group and are shared by methods, never individual bins or spans.
+    """
+    shot_lists = [[part.shot for part in values] for values in parts.values()]
+    if not shot_lists or any(shots != shot_lists[0] for shots in shot_lists):
+        raise ValueError("all methods must have the same shots in the same order")
+    groups = {key: [] for key in ("crowd_only", "non_crowd_only", "mixed", "no_present")}
+    for i, shot in enumerate(shot_lists[0]):
+        kinds = set(reviews[shot].kind)
+        if {"crowd", "non_crowd"} <= kinds:
+            group = "mixed"
+        elif "crowd" in kinds:
+            group = "crowd_only"
+        elif "non_crowd" in kinds:
+            group = "non_crowd_only"
+        else:
+            group = "no_present"
+        groups[group].append(i)
+    out = {}
+    first = next(iter(parts.values()))
+    for group, indices in groups.items():
+        selected = {name: [values[i] for i in indices] for name, values in parts.items()}
+        summaries = {}
+        if indices:
+            boot = score.draws(len(indices), replicates=replicates, seed=seed)
+            summaries = {
+                name: score.summarise(values, boot) for name, values in selected.items()
+            }
+        if group == "no_present":
+            for summary in summaries.values():
+                for field in ("point", "ci95"):
+                    summary[field]["no_present_false_positive_fraction"] = summary[
+                        field
+                    ]["false_alarm_bin_rate"]
+        out[group] = {
+            "shots": [first[i].shot for i in indices],
+            "n_shots": len(indices),
+            "bins": sum(len(first[i].truth) for i in indices),
+            "applicable_metrics": (
+                ["no_present_false_positive_fraction"]
+                if group == "no_present"
+                else ["precision", "recall", "f1", "auroc", "auprc"]
+            ),
+            "methods": summaries,
+        }
+    return out
 
 
 PAIRED_METRICS = (

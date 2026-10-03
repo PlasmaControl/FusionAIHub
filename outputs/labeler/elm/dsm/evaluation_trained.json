@@ -1,11 +1,11 @@
 {
  "git": "aa4ccbf2b5d53ac4097774dfa3e7fda2b6f5dd5c",
- "created": "2026-10-03T17:51:05+00:00",
+ "created": "2026-10-03T17:38:12+00:00",
  "run": "cv2",
  "reference": "expert-reviewed spans (review/labels.csv)",
  "cohort_test_shots_used": 0,
  "cohort_test_shots_used_scope": "reviewed-label detector CV only; original-refit overlap is reported separately",
- "rescored_from_saved_scores": true,
+ "rescored_from_saved_scores": false,
  "display_name": "elm-dsm refit",
  "method_display_names": {
   "elm-ours": "elm-ours",
@@ -229,11 +229,11 @@
   "files": {
    "script": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/scripts/labeler/elm_dsm_evaluate.py",
-    "sha256": "b71eb3d76a60da981b925cee18e1009fcaeba9d4b6c48c6a81349d332551c63c"
+    "sha256": "d6a6258db18edf232e380d2d8c2576986a4c6da49e58953c3ff25ebba805a79f"
    },
    "dsm_library": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/dsm.py",
-    "sha256": "85772b3de1d19708f7daf7fcdb806b689176f67dcb7231575613fe81db677322"
+    "sha256": "892fd094d51c0467c36938aea83f0c3cdc4579dcaf3a7848840f15d4f36a0d73"
    },
    "compare_library": {
     "path": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/src/labeler/elm/compare.py",
@@ -262,10 +262,6 @@
    "normalization": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/normalization.json",
     "sha256": "0d3e99e3e2e7f1aee5bb3aa9d40a9393d81e12789428b3e1ae9c23ab1598e45e"
-   },
-   "refit_training_record": {
-    "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/models/d3d_elm_time_to_event_dsm/training_no_bes.json",
-    "sha256": "3ec0b64ea91546c27b7845aed5f3f1704632cb6b25e0323d789f61ffc583d30e"
    },
    "fold_run": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/elm/cv/cv2/run.json",
@@ -436,16 +432,12 @@
    }
   }
  },
- "evaluation_role": "saved-score rescore",
+ "evaluation_role": "fresh fit",
  "own_target_correction": null,
  "prefetch_evaluation": "/scratch/gpfs/nc1514/FusionAIHub-r4-elm/outputs/labeler/elm/dsm/prefetch_evaluation.json",
  "model_context": {
   "original_input_columns": 124,
   "refit_input_columns": 60,
-  "refit_checkpoint_epochs": 1,
-  "refit_run_epochs": 7,
-  "refit_best_epoch": 0,
-  "refit_checkpoint_note": "one-epoch checkpoint selected from a seven-epoch run",
   "photodiode_columns": "pcphd02 and pcphd03 mean-filled on every shot",
   "legacy_training_source": "wpqh_elm_hiro legacy onset/survival labels",
   "serving_changes": "50 ms-mean serving on a 25 ms grid of a 1 ms-trained model; no D-alpha input (pcphd02/03 mean-filled); CO2 missing on 75/119; |z| clipped at 10",

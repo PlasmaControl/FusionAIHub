@@ -31,10 +31,11 @@ missing columns, including the two photodiodes (`pcphd02/03`) on every shot, are
 at the training mean. Inputs outside the refit's row filter are clipped rather than
 dropped; the evaluation records missingness, filter failures and the risk scale.
 
-All three variants (elm-dsm refit, elm-dsm detection, elm-dsm detection init)
+Historical variants (elm-dsm refit, elm-dsm detection exposed, detection init)
 use upstream feature means and standard deviations computed before its split.
 They inherit feature-statistics exposure to blind-cohort shots 190532 and 190646;
-this is not reviewed-label leakage. We disclose it rather than retrain preprocessing.
+this is not reviewed-label leakage. The confirmatory detection fit uses raw rows,
+training-partition statistics and independent random weights, with no source reuse.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pickle
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
@@ -81,13 +82,17 @@ SERVING = {
     "dalpha_input": "none; pcphd02/03 always mean-filled",
 }
 PREPROCESSING_EXPOSURE = {
-    "applies_to": ["elm-dsm refit", "elm-dsm detection", "elm-dsm detection init"],
+    "applies_to": [
+        "elm-dsm refit",
+        "elm-dsm detection exposed",
+        "elm-dsm detection init",
+    ],
     "scope": "upstream feature means/std computed before source split",
     "normalization_physical_shots": len(spec.NORMALIZATION_SHOTS),
     "blind_cohort_shots": spec.MEMBERSHIP["blind_cohort_normalization_shots"],
     "source": spec.MEMBERSHIP["normalization_source"],
     "role": "feature-statistics exposure, independent of reviewed-label CV",
-    "decision": "disclose existing preprocessing; no retraining",
+    "decision": "retain as supplemental; confirmatory detection refits preprocessing",
 }
 ROWS_SCHEMA = 2
 ROW_T_MS = ns.GRID_S * 1000.0
@@ -156,9 +161,7 @@ def split_identity(train_phase_ids, test_phase_ids) -> dict:
 def split_overlap(identity: dict, reviewed_shots, cohort: pd.DataFrame) -> dict:
     """Review and fixed-cohort membership of the original refit's physical shots."""
     split_shots = identity["split_shots"]
-    review = {
-        k: sorted(set(reviewed_shots) & set(v)) for k, v in split_shots.items()
-    }
+    review = {k: sorted(set(reviewed_shots) & set(v)) for k, v in split_shots.items()}
     return {
         "reviewed_shots_in_published_split": {k: len(v) for k, v in review.items()},
         "reviewed_shot_ids_in_published_split": review,
@@ -314,7 +317,7 @@ def fetched_features(paths: Paths, shot: int) -> dict[str, FeatureArray]:
     return arrays
 
 
-def source_signature(paths: Paths, shot: int, norm: dict) -> str:
+def source_signature(paths: Paths, shot: int, norm: dict | None) -> str:
     """Cache key that changes when Ip/Bt is fetched, inputs change, or norms change.
 
     Large read-only source files use metadata; the small fetched feature file uses a
@@ -324,7 +327,9 @@ def source_signature(paths: Paths, shot: int, norm: dict) -> str:
     records = []
     for path in files:
         st = path.stat() if path.exists() else None
-        records.append((str(path), None if st is None else (st.st_size, st.st_mtime_ns)))
+        records.append(
+            (str(path), None if st is None else (st.st_size, st.st_mtime_ns))
+        )
     fetched = fetched_features_dir(paths) / f"{shot}.npz"
     key = {
         "schema": ROWS_SCHEMA,
@@ -420,16 +425,24 @@ def shot_features(paths: Paths, shot: int, names=None):
     return arrays
 
 
-def shot_rows(paths: Paths, shot: int, norm: dict) -> Rows:
-    """`Rows` of one shot, built as the adapter builds them."""
+def shot_rows(paths: Paths, shot: int, norm: dict | None) -> Rows:
+    """Adapter rows, or unnormalized, unclipped rows when ``norm`` is None.
+
+    Raw rows use only fixed input conversion/smoothing. Identity constants do not
+    import any source statistics; missing columns remain flagged for fold fitting.
+    """
     arrays = shot_features(paths, shot)
     built = spec.INPUT_SPEC.build(arrays, ns.GRID_S)
-    x, in_filter = spec.preprocess(built, norm)
+    identity = {"mean": [0.0] * N_COLUMNS, "std": [1.0] * N_COLUMNS}
+    x, in_filter = spec.preprocess(built, identity if norm is None else norm)
     # Upstream dropped training rows with any |z| > 10; many rows of these shots are
     # that far out (a different era's ECE and actuator levels), and a benchmark that
     # drops them would score a different set of bins. The inputs are clipped to the
     # filter's limit instead and `in_filter` records which rows it would have dropped.
-    x = np.clip(x, -spec.Z_LIMIT, spec.Z_LIMIT)
+    if norm is None:
+        in_filter = np.ones(len(x), dtype=bool)
+    else:
+        x = np.clip(x, -spec.Z_LIMIT, spec.Z_LIMIT)
     ece = arrays.get("ece")
     usable = np.ones(len(ns.GRID_S), dtype=bool)
     if ece is None:
@@ -449,7 +462,7 @@ def shot_rows(paths: Paths, shot: int, norm: dict) -> Rows:
                 filled.append(f.model_name)
     return Rows(
         shot,
-        x.astype(np.float32),
+        x.astype(np.float64 if norm is None else np.float32),
         usable,
         in_filter,
         tuple(built.missing),
@@ -494,7 +507,7 @@ def load_rows(shot: int, path: Path, signature: str | None = None) -> Rows | Non
         )
 
 
-def cached_rows(paths: Paths, shot: int, norm: dict, cache_dir: Path) -> Rows:
+def cached_rows(paths: Paths, shot: int, norm: dict | None, cache_dir: Path) -> Rows:
     """The shot's `Rows`, read from `cache_dir` or built from the corpus and saved."""
     path = Path(cache_dir) / f"{shot}.npz"
     rows = load_rows(shot, path, source_signature(paths, shot, norm))
@@ -586,6 +599,74 @@ class FitConfig:
     batch: int = 512
     dropout: float = 0.2
     seed: int = 20261003
+    device: str = "cpu"
+
+
+def fit_detection_normalization(rows, spans, train) -> dict:
+    """Fit measured-column statistics on usable labeled optimizer-training rows.
+
+    Inner-validation and outer-test shots never enter these statistics. Missing
+    columns contribute no values; columns with no measurements or zero variance
+    get unit scale. Each fold records its exact fitting shots and row counts.
+    """
+    values = [[] for _ in spec.COLUMNS]
+    for shot in train:
+        row = rows[shot]
+        keep = row.usable & (window_labels(spans[shot]) >= 0)
+        filled = set(row.filled)
+        for j, name in enumerate(spec.COLUMNS):
+            if name not in filled:
+                v = row.x[keep, j]
+                values[j].append(v[np.isfinite(v)])
+    mean, std, count = [], [], []
+    for parts in values:
+        v = np.concatenate(parts) if parts else np.array([], dtype=float)
+        count.append(len(v))
+        mean.append(float(v.mean()) if len(v) else 0.0)
+        scale = float(v.std()) if len(v) else 0.0
+        std.append(scale if scale > 0 else 1.0)
+    return {
+        "columns": list(spec.COLUMNS),
+        "mean": mean,
+        "std": std,
+        "measured_rows_per_column": count,
+        "fit_shots": sorted(map(int, train)),
+        "scope": "usable labeled optimizer-training rows; inner validation excluded",
+        "source_parameters_reused": False,
+    }
+
+
+def normalize_detection_rows(rows: Rows, norm: dict) -> Rows:
+    """Mean-fill and clip using only the supplied detection fold's statistics."""
+    if list(norm["columns"]) != list(spec.COLUMNS):
+        raise ValueError("detection normalization column order does not match inputs")
+    x = (rows.x - np.asarray(norm["mean"])) / np.asarray(norm["std"])
+    filled = [j for j, name in enumerate(spec.COLUMNS) if name in rows.filled]
+    x[:, filled] = 0.0
+    in_filter = np.isfinite(x).all(axis=1) & (np.abs(x) <= spec.Z_LIMIT).all(axis=1)
+    x = np.clip(np.nan_to_num(x), -spec.Z_LIMIT, spec.Z_LIMIT).astype(np.float32)
+    return replace(rows, x=x, in_filter=in_filter)
+
+
+def historical_detector_sources(detectors: dict) -> dict[str, str]:
+    """Map retained historical artifacts without reclassifying a later clean fit.
+
+    The first migration predates the explicit exposed name. Every subsequent fit
+    must prefer the already retained artifact; a fresh store has no supplemental
+    historical rows to preserve.
+    """
+    out = {}
+    exposed = "elm-dsm-detect-exposed"
+    if exposed in detectors:
+        out[exposed] = exposed
+    elif (
+        "elm-dsm-detect" in detectors
+        and detectors["elm-dsm-detect"].get("source_normalization_reused") is not False
+    ):
+        out[exposed] = "elm-dsm-detect"
+    if "elm-dsm-detect-init" in detectors:
+        out["elm-dsm-detect-init"] = "elm-dsm-detect-init"
+    return out
 
 
 def rows_for(rows: Rows, spans: pd.DataFrame):
@@ -603,7 +684,8 @@ def bin_end_scores(rows_score: np.ndarray, bins: labels.Bins) -> np.ndarray:
 @torch.no_grad()
 def predict(model: Detector, x: np.ndarray) -> np.ndarray:
     model.eval()
-    return torch.sigmoid(model(torch.from_numpy(x))).numpy()
+    device = next(model.parameters()).device
+    return torch.sigmoid(model(torch.from_numpy(x).to(device))).cpu().numpy()
 
 
 def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None):
@@ -612,13 +694,17 @@ def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None)
     `rows`, `spans` and `bins` are dicts by shot. Returns the best state, the
     F1-maximising threshold on the inner-validation bins at that epoch, and the history.
     """
+    if set(train) & set(val):
+        raise ValueError("optimizer-training and inner-validation shots overlap")
+    if init is not None:
+        raise ValueError("confirmatory detection cannot reuse source model parameters")
+    norm = fit_detection_normalization(rows, spans, train)
+    rows = {s: normalize_detection_rows(r, norm) for s, r in rows.items()}
     torch.manual_seed(cfg.seed)
     rng = np.random.default_rng(cfg.seed)
     xs, ys = zip(*(rows_for(rows[s], spans[s]) for s in train))
     x, y = np.concatenate(xs), np.concatenate(ys)
-    model = Detector(dropout=cfg.dropout)
-    if init is not None:
-        model.load_published(init)
+    model = Detector(dropout=cfg.dropout).to(cfg.device)
     opt = torch.optim.AdamW(
         model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay
     )
@@ -630,7 +716,8 @@ def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None)
         for i in range(0, len(x), cfg.batch):
             idx = order[i : i + cfg.batch]
             loss = F.binary_cross_entropy_with_logits(
-                model(torch.from_numpy(x[idx])), torch.from_numpy(y[idx])
+                model(torch.from_numpy(x[idx]).to(cfg.device)),
+                torch.from_numpy(y[idx]).to(cfg.device),
             )
             opt.zero_grad(set_to_none=True)
             loss.backward()
@@ -656,7 +743,9 @@ def fit_fold(rows, spans, bins, train, val, cfg: FitConfig, init=None, log=None)
             log(history[-1])
         if ap > best:
             best, best_thr = ap, thr
-            best_state = {k: v.clone() for k, v in model.state_dict().items()}
+            best_state = {
+                k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+            }
     return best_state, best_thr, history
 
 

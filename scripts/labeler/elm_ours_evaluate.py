@@ -90,6 +90,12 @@ def evaluate_set(
     }
     named = {NAMES[m]: plist for m, plist in parts.items()}
     out.update(methods.summarise_methods(named, boot, NAMES["ours"]))
+    out["per_kind"] = {
+        method: methods.kind_summary(values, boot) for method, values in named.items()
+    }
+    out["annotation_modes"] = methods.annotation_summary(
+        named, {shot: data[shot].spans for shot in shots}
+    )
     if elmo_spans is not None:
         counts = out["methods"][NAMES["elmo"]]["counts"]
         out["elmo_counts_match_published"] = all(
@@ -155,7 +161,9 @@ def main(argv: list[str] | None = None) -> int:
         "verified physical ELM onsets and the auxiliary head has weak agreement. "
         "Existing checkpoints retain it; no onset retraining was performed.",
         "span_alarm_definition": {
-            "raw": "Any detected-span touch on a sufficiently analysed absent span.",
+            "raw": "Any detected-span touch inside panel coverage on a sufficiently "
+            "analysed absent span. Detections are intersected with panel coverage "
+            "before raw and guarded span metrics.",
             "guard25": "Touch in [start+25ms,end-25ms), with the same raw denominator; "
             "empty interiors counted separately. A conditional nonempty-interior "
             "rate is also reported.",
@@ -170,6 +178,10 @@ def main(argv: list[str] | None = None) -> int:
             reviewed[reviewed.kind == "non_crowd"].shot.nunique()
         ),
         "crowd_present_shots": int(reviewed[reviewed.kind == "crowd"].shot.nunique()),
+        "group_definition": "Disjoint groups use the complete reviewed annotation "
+        "of each shot; metrics use only the panel's covered scored bins and spans.",
+        "ci_method": "95% percentile bootstrap of physical shots within each group, "
+        "1000 replicates, seed 20261003; the same draws are used across methods.",
         "note": "Per-ELM annotations and whole ELMing-period crowds define different "
         "occupancy targets across shots; non-crowd spans are not verified onsets.",
     }

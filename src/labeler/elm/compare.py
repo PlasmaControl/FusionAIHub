@@ -41,6 +41,7 @@ NAME = {
     "ours": "elm-ours",
     "dsm": "elm-dsm",
     "detect": "elm-dsm-detect",
+    "exposed": "elm-dsm-detect-exposed",
     "init": "elm-dsm-detect-init",
     "elmo": "elm-elmo",
     "clock": "elm-clock",
@@ -48,15 +49,16 @@ NAME = {
 DISPLAY_NAME = {
     NAME["ours"]: "elm-ours",
     NAME["dsm"]: dsm.DISPLAY_NAME,
-    NAME["detect"]: "elm-dsm detection",
+    NAME["detect"]: "elm-dsm detection (isolated)",
+    NAME["exposed"]: "elm-dsm detection (exposed)",
     NAME["init"]: "elm-dsm detection init",
     NAME["elmo"]: "ELM-O",
     NAME["clock"]: "elm-clock",
 }
 
 
-#: the two detection retrains of the DSM (from scratch; from the refit embedding)
-VARIANTS = (NAME["detect"], NAME["init"])
+#: Confirmatory fold-isolated detection and historical exposed supplemental fits.
+VARIANTS = (NAME["detect"], NAME["exposed"], NAME["init"])
 
 
 @dataclass
@@ -232,7 +234,7 @@ def shot_parts(
             ahead=True,
         ),
     }
-    for key in ("detect", "init"):
+    for key in ("detect", "exposed", "init"):
         if NAME[key] in dscores.scores:
             out[NAME[key]] = methods.row_part(
                 spans,

@@ -10,12 +10,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 import re
 import time
 from datetime import UTC, datetime
 from multiprocessing import Pool
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pandas as pd
 
@@ -78,15 +80,84 @@ def fetch_one(task):
     return row
 
 
+def fetch_native_photodiodes(paths, out, pace):
+    """Paced native-input feasibility fetch; stop every request on any auth error."""
+    from labeler.events.verify import fdp_signal
+
+    source = Path("/projects/EKOLEMEN/wpqh_elm_hiro/data/dalpha_wpqh.pkl")
+    with source.open("rb") as fh:
+        existing = pickle.load(fh)
+    review = labels.review_table(prepare.review_csv(paths))
+    cohort = pd.read_csv(paths.catalog / "cohort.csv").set_index("shot")
+    if any(cohort.split.get(int(s)) == "test" for s in review.shot.unique()):
+        raise ValueError("cohort test shots may not be fetched for native evaluation")
+    target = paths.root / "round4/elm/dsm/native_photodiodes"
+    target.mkdir(parents=True, exist_ok=True)
+    groups = (
+        "ip",
+        "mag_pcb_coil",
+        "gas",
+        "p_inj",
+        "t_inj",
+        "ech",
+        "ece_slow",
+        "co2_density_slow",
+        "bes_slow",
+    )
+    record = {
+        "rows": [],
+        "pace_seconds": pace,
+        "workers": 1,
+        "stopped_on_auth_error": False,
+        "store": str(target),
+    }
+    for shot in sorted(map(int, review.shot.unique())):
+        path = Path("/scratch/gpfs/EKOLEMEN/hackathon/raw_h5_files") / f"{shot}_slow.h5"
+        if not path.exists():
+            continue
+        with h5py.File(path) as h:
+            complete = all(
+                g in h and np.prod(h[g]["block0_values"].shape) > 1 for g in groups
+            )
+        if not complete:
+            continue
+        for name in ("pcphd02", "pcphd03"):
+            value = existing.get(str(shot), {}).get(name, {})
+            if np.asarray(value.get("data", [])).size > 2:
+                continue
+            cache = target / f"{shot}_{name}.npz"
+            row = {"shot": shot, "column": name, "path": str(cache)}
+            try:
+                arr = fdp_signal(shot, [name.upper()], via="ptdata", cache=cache)
+                row["samples"] = int(arr.y.size)
+                row["sha256"] = sha256_of(cache)
+            except Exception as exc:  # noqa: BLE001 - preserve authentication failures
+                cause = f"{type(exc).__name__}: {exc}"
+                row["error"] = cause
+                if AUTH.search(cause):
+                    record["stopped_on_auth_error"] = True
+            record["rows"].append(row)
+            print(json.dumps(row), flush=True)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(record, indent=1))
+            if record["stopped_on_auth_error"]:
+                return 1
+            time.sleep(pace)
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--workers", type=int, choices=(1, 2, 3), default=1)
     ap.add_argument("--pace", type=float, default=1.0)
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--native-photodiodes", action="store_true")
     args = ap.parse_args(argv)
     if args.pace < 1:
         ap.error("--pace must be at least 1 second")
     paths = Paths.from_env()
+    if args.native_photodiodes:
+        return fetch_native_photodiodes(paths, args.out, args.pace)
     table = labels.review_table(prepare.review_csv(paths))
     shots = sorted(int(s) for s in table.shot.unique())
     cohort = pd.read_csv(paths.catalog / "cohort.csv").set_index("shot")
