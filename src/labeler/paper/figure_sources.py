@@ -457,7 +457,8 @@ def caption(shot: int, records: dict, drawn: dict) -> str:
         )
     if drawn.get("n3_components_unoutlined"):
         sentences.append(
-            "Components dominated by n=3 are unoutlined; NTM requires dominant n=1/2."
+            "Components dominated by n=3 are unoutlined; "
+            "NTM requires dominant n=1 or n=2."
         )
     if drawn.get("sawtooth_omission_reason") == "ECE density guard":
         sentences.append(
