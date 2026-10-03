@@ -12,7 +12,7 @@
  },
  "annotations": {
   "path": "docs/labeler/fig1_annotations.json",
-  "sha256": "4b1365ba255727b271546bde47ef5758bd6211f4cfa495240ebcc6a7452c7579",
+  "sha256": "754c5e859e2347a808f7e4b2437c2c41d9cedb42f8aedc3eedc8addbe6f43006",
   "shot": {
    "publication_suitability": {
     "suitable_alternate": false,
@@ -3991,8 +3991,8 @@
     }
    ],
    "display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    }
   }
@@ -4016,11 +4016,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/caption.tex",
-  "sha256": "25c2e61e508b8ca1a11af5cd56358e1bd762f4244b3b32d3f0fdc5416e710355"
+  "sha256": "925f4a386b0663cb0a2014cc1b218401882974a2909215f190c0bddebdc59a05"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/appendix.txt",
-  "sha256": "f56bd59215a5b44f00ce0d5b5e1e196513fb451310a0d7bcc983e1a6e5859840"
+  "sha256": "c245d5d444a8593b269ecf030830baa1b8e46fb4d98a1ce5ee57551e50b544ce"
  },
  "drawn": {
   "figure": [
@@ -4028,8 +4028,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "181b3bdfc3560b42c0b99eff93ecd40be795a21277c962a27762851984f75c89",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "feee81892eeecd36b07215b82126c815a2ad4afb3b9646eff7538a2856ef7473"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "9e7785b40573945f010ffc6e06c40c3b756ace5db584eb23fbdb47c44f6ef744",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "d749ea530026600ffdc3bed46fefe4315da8dfb3879963a97532e45a02f629cb"
   },
   "blobs": {
    "wide_above_fold": 323,
@@ -4070,6 +4070,7 @@
     0.0,
     30.0
    ],
+   "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
    "processed_omitted_band_khz": [],
    "processed_restored_strip_khz": [
     30.0,
@@ -4335,7 +4336,14 @@
     }
    ],
    "ntm_key_black_swatch": false,
+   "n_key_bounds": [
+    0.792,
+    0.29399239732570415,
+    0.9679722222222222,
+    0.38507648034338093
+   ],
    "ae_in_panel_label": null,
+   "ae_margin_label": null,
    "elm_box_bounds": [
     [
      0.4142857142857143,
@@ -4411,6 +4419,16 @@
      ]
     },
     {
+     "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+     "font_pt": 7.0,
+     "bounds": [
+      0.784535439755055,
+      0.797310834870046,
+      0.9669666666666666,
+      0.8866341461074196
+     ]
+    },
+    {
      "text": "TokEye mask,\nn not measured",
      "font_pt": 7.0,
      "bounds": [
@@ -4424,40 +4442,40 @@
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.49440329218107,
-      0.20996751387475476,
-      0.5240329218106996,
-      0.22764428155152244
+      0.8363647119341564,
+      0.3172036110251991,
+      0.8659943415637861,
+      0.33488037870196674
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.5441975308641975,
-      0.20996751387475476,
-      0.5738271604938271,
-      0.22764428155152244
+      0.8363647119341564,
+      0.29399239732570415,
+      0.8659943415637861,
+      0.31166916500247177
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.5939917695473251,
-      0.20996751387475476,
-      0.6236213991769548,
-      0.22764428155152244
+      0.8861589506172839,
+      0.3172036110251991,
+      0.9157885802469136,
+      0.33488037870196674
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.6437860082304526,
-      0.20996751387475476,
-      0.6956378600823045,
-      0.2287595356550578
+      0.8861589506172839,
+      0.29399239732570415,
+      0.9380108024691358,
+      0.3127844191060072
      ]
     },
     {
@@ -4475,9 +4493,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.23221575424182542,
+      0.23575110777717895,
       0.9159094650205762,
-      0.2510077760221285
+      0.254543129557482
      ]
     },
     {
@@ -4485,9 +4503,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.36836874302313055,
+      0.7288799126651168,
       0.8699835390946503,
-      0.38716076480343353
+      0.7476719344454198
      ]
     },
     {
@@ -4495,9 +4513,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.3407383374044437,
+      0.7047848605817835,
       0.8667659465020577,
-      0.3595303591847467
+      0.7235768823620865
      ]
     },
     {
@@ -4538,6 +4556,16 @@
       0.015909090909090907,
       0.8289737654320989,
       0.03470111268939394
+     ]
+    },
+    {
+     "text": "toroidal mode number n\n(Mirnov array)",
+     "font_pt": 7.0,
+     "bounds": [
+      0.792,
+      0.3404148247246941,
+      0.9679722222222222,
+      0.38507648034338093
      ]
     }
    ]
@@ -4704,11 +4732,11 @@
    }
   }
  },
- "git": "a04b1c28",
+ "git": "c7cb0acd",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "42ef2f51aaaa89017151f965e241a8bf6a92845fd76f7c85b6b14811729ca772",
-  "src/labeler/paper/figure_sources.py": "7df681af488af6cc6b9a826293f8aa2ca467b8b03171b4a1aeb5ac1baa654b03",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "74a6a2996b10958f9b8ee14675332342beee1f02dff807d218eeaec1f83b62d1",
+  "src/labeler/paper/figure_sources.py": "5bc8234a3c5613c23866bb5e04f7c3201e2300975c20b9ea2db78336d8698150",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

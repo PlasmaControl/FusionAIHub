@@ -11,7 +11,7 @@
     3300.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/201978.json",
-   "record_sha256": "a73bae55cf62e909b16d2eea645d4f06f62df71be85fb66102b56e30372bb4d4",
+   "record_sha256": "771177dc27b13b0ec66a8dc576128d3b8639ec82dc9429b34b93c685a1ba7fdf",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 319,
@@ -20,10 +20,10 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 49,
-   "caption_words": 67,
+   "caption_words": 90,
    "projection_violations": 0,
    "raster_ae_audit": {
-    "pink_pixels": 5273,
+    "pink_pixels": 6050,
     "outside_present": 0,
     "below_detector_band": 0,
     "boundary_tolerance_pixels": 1,
@@ -40,6 +40,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -305,11 +306,24 @@
      }
     ],
     "ntm_key_black_swatch": true,
-    "ae_in_panel_label": {
-     "text": "AE (detector-positive time)",
-     "position_ms_khz": [
-      2000,
+    "n_key_bounds": [
+     0.792,
+     0.29399239732570415,
+     0.9679722222222222,
+     0.38507648034338093
+    ],
+    "ae_in_panel_label": null,
+    "ae_margin_label": {
+     "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+     "leader_anchor_ms_khz": [
+      2775,
       180
+     ],
+     "bounds": [
+      0.810724279835391,
+      0.46332377885042797,
+      0.9653539094650206,
+      0.5303162622784583
      ]
     },
     "elm_box_bounds": [
@@ -323,8 +337,8 @@
     "dalpha_peak_box_gap_pt": 1.1063915715540018,
     "legend_labels": [
      "TokEye mask,\nn not measured",
-     "AE (detector band\n\u226580 kHz)",
-     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+     "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
      "n=1",
      "n=2",
      "n=3",
@@ -384,6 +398,16 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.784535439755055,
+       0.797310834870046,
+       0.9669666666666666,
+       0.8866341461074196
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
@@ -394,63 +418,63 @@
       ]
      },
      {
-      "text": "AE (detector band\n\u226580 kHz)",
+      "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4821192531244179,
-       0.9425761316872429,
-       0.5267809087431047
+       0.46332377885042797,
+       0.9653539094650206,
+       0.5303162622784583
       ]
      },
      {
-      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "text": "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4286192136673472,
+       0.3910282651193674,
        0.9559094650205762,
-       0.47328086928603397
+       0.45802074854739766
       ]
      },
      {
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20996751387475476,
-       0.5240329218106996,
-       0.22764428155152244
+       0.8363647119341564,
+       0.3172036110251991,
+       0.8659943415637861,
+       0.33488037870196674
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20996751387475476,
-       0.5738271604938271,
-       0.22764428155152244
+       0.8363647119341564,
+       0.29399239732570415,
+       0.8659943415637861,
+       0.31166916500247177
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20996751387475476,
-       0.6236213991769548,
-       0.22764428155152244
+       0.8861589506172839,
+       0.3172036110251991,
+       0.9157885802469136,
+       0.33488037870196674
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20996751387475476,
-       0.6956378600823045,
-       0.2287595356550578
+       0.8861589506172839,
+       0.29399239732570415,
+       0.9380108024691358,
+       0.3127844191060072
       ]
      },
      {
@@ -468,9 +492,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.23221575424182542,
+       0.23575110777717895,
        0.9159094650205762,
-       0.2510077760221285
+       0.254543129557482
       ]
      },
      {
@@ -521,6 +545,16 @@
        0.04990909090909092,
        0.6896669238683127,
        0.06870111268939394
+      ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.3404148247246941,
+       0.9679722222222222,
+       0.38507648034338093
       ]
      }
     ]
@@ -626,7 +660,7 @@
     "role": "primary"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201978.json",
@@ -4443,7 +4477,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/appendix.txt",
-    "sha256": "91969d1a548f4007e7360e8d1a2b59d184a36877d2083b92cd0130ae65e58c7f"
+    "sha256": "10264869c32d5e559044fe8bf94415aa8ae0abbcad2d29df71edeb99b30ce721"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -4454,6 +4488,18 @@
     },
     {
      "start_ms": 2309.0999434491773,
+     "end_ms": 2329.3999429689698,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 2329.3999429689698,
+     "end_ms": 2334.8999428388643,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2334.8999428388643,
      "end_ms": 3196.1999224643546,
      "category": 3,
      "state": "unassessed"
@@ -4466,28 +4512,27 @@
     },
     {
      "start_ms": 3207.199922204144,
+     "end_ms": 3234.799921551251,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3234.799921551251,
+     "end_ms": 3241.2999213974904,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3241.2999213974904,
      "end_ms": 3300.0,
      "category": 3,
      "state": "unassessed"
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
-    "changes": [
-     {
-      "start_ms": 2329.3999429689698,
-      "end_ms": 2334.8999428388643,
-      "from": 2,
-      "to": 3
-     },
-     {
-      "start_ms": 3234.799921551251,
-      "end_ms": 3241.2999213974904,
-      "from": 2,
-      "to": 3
-     }
-    ]
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
+    "changes": []
    },
    "confinement_intervals_ms": [
     {
@@ -4534,8 +4579,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "2ae90c9e83b8da6821c307968e77726253b1547b6cdbf7c28dd6e2d4d640f00c",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "44e3c4d4c3834d457faa220532d0e9a901d214fe3cd041df9eb34c14b889376d"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
    }
   },
   {
@@ -4546,7 +4591,7 @@
     3350.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/201973.json",
-   "record_sha256": "0470e6632a7d37ad270cb6a5a910c947a65f3feaccf93c3aabecbec9453bc415",
+   "record_sha256": "43d0bde3798b90821a9b3256def51edd00b1a5af49b8a6ef482965f6e1093d36",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 154,
@@ -4555,7 +4600,7 @@
    },
    "verified_crashes": 3,
    "elm_peak_count": 65,
-   "caption_words": 67,
+   "caption_words": 58,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 3987,
@@ -4575,6 +4620,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -4840,7 +4886,14 @@
      }
     ],
     "ntm_key_black_swatch": true,
+    "n_key_bounds": [
+     0.792,
+     0.3072962792320847,
+     0.9679722222222222,
+     0.3983803622497615
+    ],
     "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [
      [
       0.3137142857142858,
@@ -4876,8 +4929,8 @@
     "dalpha_peak_box_gap_pt": 1.0470085795996034,
     "legend_labels": [
      "TokEye mask,\nn not measured",
-     "AE (detector band\n\u226580 kHz)",
-     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+     "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
      "n=1",
      "n=2",
      "n=3",
@@ -4938,73 +4991,83 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.7845354456115399,
+       0.8005695169265942,
+       0.9669666666666666,
+       0.8898928281639679
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.5442706608732101,
+       0.54427066087321,
        0.924474279835391,
-       0.5889323164918969
+       0.5889323164918968
       ]
      },
      {
-      "text": "AE (detector band\n\u226580 kHz)",
+      "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.49077062141613936,
-       0.9425761316872429,
-       0.5354322770348262
+       0.47197514714214933,
+       0.9653539094650206,
+       0.5389676305701796
       ]
      },
      {
-      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "text": "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.43727058195906865,
+       0.39967963341108875,
        0.9559094650205762,
-       0.48193223757775555
+       0.46667211683911897
       ]
      },
      {
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20735287812436787,
-       0.5240329218106996,
-       0.22502964580113555
+       0.8363647119341564,
+       0.33050749293157966,
+       0.8659943415637861,
+       0.3481842606083473
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20735287812436787,
-       0.5738271604938271,
-       0.22502964580113555
+       0.8363647119341564,
+       0.3072962792320847,
+       0.8659943415637861,
+       0.3249730469088523
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20735287812436787,
-       0.6236213991769548,
-       0.22502964580113555
+       0.8861589506172839,
+       0.33050749293157966,
+       0.9157885802469136,
+       0.3481842606083473
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20735287812436787,
-       0.6956378600823045,
-       0.2261448999046709
+       0.8861589506172839,
+       0.3072962792320847,
+       0.9380108024691358,
+       0.3260883010123877
       ]
      },
      {
@@ -5022,9 +5085,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.2286014048221729,
+       0.2321367583575264,
        0.9159094650205762,
-       0.24739342660247593
+       0.25092878013782943
       ]
      },
      {
@@ -5075,6 +5138,16 @@
        0.04990909090909092,
        0.6896669238683127,
        0.06870111268939394
+      ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.35371870663107463,
+       0.9679722222222222,
+       0.3983803622497615
       ]
      }
     ]
@@ -5193,7 +5266,7 @@
      3350.0
     ]
    ],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/201973.json",
@@ -8998,7 +9071,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/appendix.txt",
-    "sha256": "f6204b14bd1f0e461fecf7cfc3aabc30236bc246d364ebe59f07c4b0c0ccff78"
+    "sha256": "c727fd685ff5b63a04345380c5f2f6235ea3556d56afe8218b7f8def9ac241c9"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -9039,8 +9112,8 @@
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    },
    "confinement_intervals_ms": [
@@ -9100,8 +9173,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "d09408cf983159e77b376475d69251013173b7689238b8ed87910b072e99259e",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "24cf9d519ee13349f9bdd60f4832ce40463c9852ffea2c39774a1b8c9f6ca992"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "95f47bcdf93a3fa4886be29709e7bb5fe0047d1d1c6b970cdbc0461058be1d9c",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "ec322b2b20e8499d0d2c90babf991247f38d9b6e92ee4ace475e908559d05d10"
    }
   },
   {
@@ -9112,7 +9185,7 @@
     3150.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/203187.json",
-   "record_sha256": "ad6f78ea8efd54eb92d2b33ab9fe0f5a0b994cfa721b4164d132b533fef22c92",
+   "record_sha256": "c62ec202358378f6d233d052c69ec3bf82d72ba88626121418d40874f7be5200",
    "ae_source": "ae-ours, CO2 activity predictions, p>=0.5",
    "tag_counts": {
     "alfven_eigenmode": 262,
@@ -9121,7 +9194,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 6,
-   "caption_words": 67,
+   "caption_words": 65,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 6062,
@@ -9141,6 +9214,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -9406,7 +9480,14 @@
      }
     ],
     "ntm_key_black_swatch": true,
+    "n_key_bounds": [
+     0.792,
+     0.29399239732570415,
+     0.9679722222222222,
+     0.38507648034338093
+    ],
     "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [
      [
       0.5072275862068966,
@@ -9424,8 +9505,8 @@
     "dalpha_peak_box_gap_pt": 1.1063915715540018,
     "legend_labels": [
      "TokEye mask,\nn not measured",
-     "AE (detector band\n\u226580 kHz)",
-     "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+     "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
      "n=1",
      "n=2",
      "n=3",
@@ -9484,6 +9565,16 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.784535439755055,
+       0.797310834870046,
+       0.9669666666666666,
+       0.8866341461074196
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
@@ -9494,63 +9585,63 @@
       ]
      },
      {
-      "text": "AE (detector band\n\u226580 kHz)",
+      "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4821192531244179,
-       0.9425761316872429,
-       0.5267809087431047
+       0.46332377885042797,
+       0.9653539094650206,
+       0.5303162622784583
       ]
      },
      {
-      "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+      "text": "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4286192136673472,
+       0.3910282651193674,
        0.9559094650205762,
-       0.47328086928603397
+       0.45802074854739766
       ]
      },
      {
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20996751387475476,
-       0.5240329218106996,
-       0.22764428155152244
+       0.8363647119341564,
+       0.3172036110251991,
+       0.8659943415637861,
+       0.33488037870196674
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20996751387475476,
-       0.5738271604938271,
-       0.22764428155152244
+       0.8363647119341564,
+       0.29399239732570415,
+       0.8659943415637861,
+       0.31166916500247177
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20996751387475476,
-       0.6236213991769548,
-       0.22764428155152244
+       0.8861589506172839,
+       0.3172036110251991,
+       0.9157885802469136,
+       0.33488037870196674
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20996751387475476,
-       0.6956378600823045,
-       0.2287595356550578
+       0.8861589506172839,
+       0.29399239732570415,
+       0.9380108024691358,
+       0.3127844191060072
       ]
      },
      {
@@ -9568,9 +9659,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.23221575424182542,
+       0.23575110777717895,
        0.9159094650205762,
-       0.2510077760221285
+       0.254543129557482
       ]
      },
      {
@@ -9611,6 +9702,16 @@
        0.015909090909090907,
        0.8289737654320989,
        0.03470111268939394
+      ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.3404148247246941,
+       0.9679722222222222,
+       0.38507648034338093
       ]
      }
     ]
@@ -9725,7 +9826,7 @@
      3080.0
     ]
    ],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/203187.json",
@@ -13506,7 +13607,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/appendix.txt",
-    "sha256": "37388c9d44cf56d2d5b4fa33781397ed9d7fc162f4da96a1061a4f2b39c5c250"
+    "sha256": "a93ca7fd717709499920772988a9f82692d7963a3a663dbc6c37a4ff2cf717c4"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -13523,8 +13624,8 @@
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    },
    "confinement_intervals_ms": [
@@ -13567,8 +13668,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "dd5378f188c49ea65a602e80e8dd5e7c65784f3061698c99f9052bf965f22a3f",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "ca5b5d7ed2a803c012c7ef6c1b9d7272f9e7f11a7c698c05c7591fabef588329"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.pdf": "0a3165b59cd400607b8d2e79bd902d750416390d0a8adb311f2f650ac1671d98",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_203187/fig_interpreter.png": "4e492e72e9e03fa9a2f0d8ffe5a20ce534b4a85aa4ec9d11fe31daa9b9ca1c3a"
    }
   },
   {
@@ -13579,7 +13680,7 @@
     3900.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/186636.json",
-   "record_sha256": "98f69eb0be2cf56276289cb38738c34a76ee375d61f53458f553176e0d72d44f",
+   "record_sha256": "f3569e4e30fbb74aa30701c3725f8347664645ba2957d269c16d62ba92d8bd9e",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 307,
@@ -13588,7 +13689,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 0,
-   "caption_words": 61,
+   "caption_words": 53,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 2080,
@@ -13608,6 +13709,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -13846,7 +13948,14 @@
     },
     "regime_text_bounds": [],
     "ntm_key_black_swatch": true,
+    "n_key_bounds": [
+     0.792,
+     0.29399239732570415,
+     0.9679722222222222,
+     0.38507648034338093
+    ],
     "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [
      [
       0.16313846153846154,
@@ -13858,7 +13967,7 @@
     "dalpha_peak_box_gap_pt": null,
     "legend_labels": [
      "TokEye mask,\nn not measured",
-     "AE (detector band\n\u226580 kHz)",
+     "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
      "NTM labels\n(n=1 or 2, \u226430 kHz)",
      "n=1",
      "n=2",
@@ -13918,6 +14027,16 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.784535439755055,
+       0.797310834870046,
+       0.9669666666666666,
+       0.8866341461074196
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
@@ -13928,13 +14047,13 @@
       ]
      },
      {
-      "text": "AE (detector band\n\u226580 kHz)",
+      "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4821192531244179,
-       0.9425761316872429,
-       0.5267809087431047
+       0.46332377885042797,
+       0.9653539094650206,
+       0.5303162622784583
       ]
      },
      {
@@ -13942,49 +14061,49 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.4286192136673472,
+       0.4133590929287108,
        0.9559094650205762,
-       0.47328086928603397
+       0.45802074854739766
       ]
      },
      {
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20996751387475476,
-       0.5240329218106996,
-       0.22764428155152244
+       0.8363647119341564,
+       0.3172036110251991,
+       0.8659943415637861,
+       0.33488037870196674
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20996751387475476,
-       0.5738271604938271,
-       0.22764428155152244
+       0.8363647119341564,
+       0.29399239732570415,
+       0.8659943415637861,
+       0.31166916500247177
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20996751387475476,
-       0.6236213991769548,
-       0.22764428155152244
+       0.8861589506172839,
+       0.3172036110251991,
+       0.9157885802469136,
+       0.33488037870196674
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20996751387475476,
-       0.6956378600823045,
-       0.2287595356550578
+       0.8861589506172839,
+       0.29399239732570415,
+       0.9380108024691358,
+       0.3127844191060072
       ]
      },
      {
@@ -14046,6 +14165,16 @@
        0.6896669238683127,
        0.06870111268939394
       ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.3404148247246941,
+       0.9679722222222222,
+       0.38507648034338093
+      ]
      }
     ]
    },
@@ -14106,7 +14235,7 @@
     "role": "imported-NTM alternate; possible pickup"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/186636.json",
@@ -14148,7 +14277,7 @@
    "detector_training": {},
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/appendix.txt",
-    "sha256": "26eca6cf7eb0599384c4bec9c4ea9451ac908ac6a128556f01954e4304ba38fc"
+    "sha256": "4ebb89c9cb7853c3b606f82065f2e794e80dd8aea66201046c178ead54e0bcee"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -14177,8 +14306,8 @@
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    },
    "confinement_intervals_ms": [
@@ -14213,8 +14342,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "42b052be5b8f843d5420bdf3afd03406fc7e7d2a9e5589c2443b58a63b74d3fd",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "6e2893d71cbf9a984d3d3b032806a26b553960e9dc2f37d2928f90b25194c161"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.pdf": "f20cf68aafb853227904c3e91c8c9a66851a49193991a7dd20cdf0ae3eb63509",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_186636/fig_interpreter.png": "f2ba0e02d84941df092344356203238b3b779dd06c69fcdeb32b8ea802ad4bfd"
    }
   },
   {
@@ -14225,7 +14354,7 @@
     2900.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/191376.json",
-   "record_sha256": "7f613ff2adce6502a2164458a6de8f5b7bd095c3794d78425871e97fa313427d",
+   "record_sha256": "26d3b911d80820ed56518738555ee3dd9fd86c4c2e3fe095cce70fce750747b9",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 0,
@@ -14234,7 +14363,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 2,
-   "caption_words": 35,
+   "caption_words": 28,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 0,
@@ -14254,6 +14383,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -14519,7 +14649,14 @@
      }
     ],
     "ntm_key_black_swatch": false,
+    "n_key_bounds": [
+     0.792,
+     0.29399239732570415,
+     0.9679722222222222,
+     0.38507648034338093
+    ],
     "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [
      [
       0.4142857142857143,
@@ -14595,6 +14732,16 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.784535439755055,
+       0.797310834870046,
+       0.9669666666666666,
+       0.8866341461074196
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
@@ -14608,40 +14755,40 @@
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20996751387475476,
-       0.5240329218106996,
-       0.22764428155152244
+       0.8363647119341564,
+       0.3172036110251991,
+       0.8659943415637861,
+       0.33488037870196674
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20996751387475476,
-       0.5738271604938271,
-       0.22764428155152244
+       0.8363647119341564,
+       0.29399239732570415,
+       0.8659943415637861,
+       0.31166916500247177
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20996751387475476,
-       0.6236213991769548,
-       0.22764428155152244
+       0.8861589506172839,
+       0.3172036110251991,
+       0.9157885802469136,
+       0.33488037870196674
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20996751387475476,
-       0.6956378600823045,
-       0.2287595356550578
+       0.8861589506172839,
+       0.29399239732570415,
+       0.9380108024691358,
+       0.3127844191060072
       ]
      },
      {
@@ -14659,9 +14806,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.23221575424182542,
+       0.23575110777717895,
        0.9159094650205762,
-       0.2510077760221285
+       0.254543129557482
       ]
      },
      {
@@ -14669,9 +14816,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.36836874302313055,
+       0.7288799126651168,
        0.8699835390946503,
-       0.38716076480343353
+       0.7476719344454198
       ]
      },
      {
@@ -14679,9 +14826,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.3407383374044437,
+       0.7047848605817835,
        0.8667659465020577,
-       0.3595303591847467
+       0.7235768823620865
       ]
      },
      {
@@ -14722,6 +14869,16 @@
        0.015909090909090907,
        0.8289737654320989,
        0.03470111268939394
+      ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.3404148247246941,
+       0.9679722222222222,
+       0.38507648034338093
       ]
      }
     ]
@@ -14825,7 +14982,7 @@
     "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191376.json",
@@ -18410,7 +18567,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/appendix.txt",
-    "sha256": "f56bd59215a5b44f00ce0d5b5e1e196513fb451310a0d7bcc983e1a6e5859840"
+    "sha256": "c245d5d444a8593b269ecf030830baa1b8e46fb4d98a1ce5ee57551e50b544ce"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -18421,8 +18578,8 @@
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    },
    "confinement_intervals_ms": [
@@ -18477,8 +18634,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "181b3bdfc3560b42c0b99eff93ecd40be795a21277c962a27762851984f75c89",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "feee81892eeecd36b07215b82126c815a2ad4afb3b9646eff7538a2856ef7473"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.pdf": "9e7785b40573945f010ffc6e06c40c3b756ace5db584eb23fbdb47c44f6ef744",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191376/fig_interpreter.png": "d749ea530026600ffdc3bed46fefe4315da8dfb3879963a97532e45a02f629cb"
    }
   },
   {
@@ -18489,7 +18646,7 @@
     3700.0
    ],
    "record": "outputs/labeler/paper/fig_interpreter_tokeye/191782.json",
-   "record_sha256": "53c610ec74ebb421503ace73770ea331daeffbeeb3dcd0203e0fd6d3ddc961b5",
+   "record_sha256": "3c81f2328ebbf19ac34564807b30b1ad9ab19cb479c803034ebd17ed65e36dd7",
    "ae_source": "the AE frame model (v2) run on the shot's CO2, the raw cache's CO2",
    "tag_counts": {
     "alfven_eigenmode": 0,
@@ -18498,7 +18655,7 @@
    },
    "verified_crashes": 0,
    "elm_peak_count": 0,
-   "caption_words": 35,
+   "caption_words": 28,
    "projection_violations": 0,
    "raster_ae_audit": {
     "pink_pixels": 0,
@@ -18518,6 +18675,7 @@
      0.0,
      30.0
     ],
+    "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
     "processed_omitted_band_khz": [],
     "processed_restored_strip_khz": [
      30.0,
@@ -18783,7 +18941,14 @@
      }
     ],
     "ntm_key_black_swatch": false,
+    "n_key_bounds": [
+     0.792,
+     0.29399239732570415,
+     0.9679722222222222,
+     0.38507648034338093
+    ],
     "ae_in_panel_label": null,
+    "ae_margin_label": null,
     "elm_box_bounds": [],
     "dalpha_peak_box_gap_pt": null,
     "legend_labels": [
@@ -18841,6 +19006,16 @@
       ]
      },
      {
+      "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+      "font_pt": 7.0,
+      "bounds": [
+       0.784535439755055,
+       0.797310834870046,
+       0.9669666666666666,
+       0.8866341461074196
+      ]
+     },
+     {
       "text": "TokEye mask,\nn not measured",
       "font_pt": 7.0,
       "bounds": [
@@ -18854,40 +19029,40 @@
       "text": "n=1",
       "font_pt": 7.0,
       "bounds": [
-       0.49440329218107,
-       0.20996751387475476,
-       0.5240329218106996,
-       0.22764428155152244
+       0.8363647119341564,
+       0.3172036110251991,
+       0.8659943415637861,
+       0.33488037870196674
       ]
      },
      {
       "text": "n=2",
       "font_pt": 7.0,
       "bounds": [
-       0.5441975308641975,
-       0.20996751387475476,
-       0.5738271604938271,
-       0.22764428155152244
+       0.8363647119341564,
+       0.29399239732570415,
+       0.8659943415637861,
+       0.31166916500247177
       ]
      },
      {
       "text": "n=3",
       "font_pt": 7.0,
       "bounds": [
-       0.5939917695473251,
-       0.20996751387475476,
-       0.6236213991769548,
-       0.22764428155152244
+       0.8861589506172839,
+       0.3172036110251991,
+       0.9157885802469136,
+       0.33488037870196674
       ]
      },
      {
       "text": "other n",
       "font_pt": 7.0,
       "bounds": [
-       0.6437860082304526,
-       0.20996751387475476,
-       0.6956378600823045,
-       0.2287595356550578
+       0.8861589506172839,
+       0.29399239732570415,
+       0.9380108024691358,
+       0.3127844191060072
       ]
      },
      {
@@ -18895,9 +19070,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.36836874302313055,
+       0.7288799126651168,
        0.8699835390946503,
-       0.38716076480343353
+       0.7476719344454198
       ]
      },
      {
@@ -18905,9 +19080,9 @@
       "font_pt": 7.0,
       "bounds": [
        0.810724279835391,
-       0.3407383374044437,
+       0.7047848605817835,
        0.8667659465020577,
-       0.3595303591847467
+       0.7235768823620865
       ]
      },
      {
@@ -18938,6 +19113,16 @@
        0.015909090909090907,
        0.7693209876543211,
        0.03470111268939394
+      ]
+     },
+     {
+      "text": "toroidal mode number n\n(Mirnov array)",
+      "font_pt": 7.0,
+      "bounds": [
+       0.792,
+       0.3404148247246941,
+       0.9679722222222222,
+       0.38507648034338093
       ]
      }
     ]
@@ -19041,7 +19226,7 @@
     "role": "unsuitable diagnostic: no AE and n=1 mode with NTM absent"
    },
    "elm_hmode_conflicts_ms": [],
-   "render_source_commit": "a04b1c28",
+   "render_source_commit": "c7cb0acd",
    "sawtooth_source": [
     {
      "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots/191782.json",
@@ -22626,7 +22811,7 @@
    },
    "appendix": {
     "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/appendix.txt",
-    "sha256": "1d31ca49aaa6237beddfd1c0a04dc36f83e097a06ff6f61dca38fab5cdcb18f4"
+    "sha256": "47d70a1cc972fa11ddb74fcdf1385d240d7da54522875bc2d693a652ae526c6a"
    },
    "sawtooth_display_intervals_ms": [
     {
@@ -22637,8 +22822,8 @@
     }
    ],
    "sawtooth_display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    },
    "confinement_intervals_ms": [
@@ -22975,8 +23160,8 @@
     5.5
    ],
    "figure_sha256": {
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "9d10cdcbbc9758fc1978abbc710aedbaf983867382dd71c69cc0a9d2699b04b1",
-    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "ce2ec6dd151ff5ccb72217c8faeaea17fdcec606523b4adc5ee3246c5da0cfb0"
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.pdf": "ec7b47a28620727f10a304cf8baa681057d2722f8b382a5195c540efa4263eef",
+    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_191782/fig_interpreter.png": "298d45f897afab436473b7a5148979f3ee9c50eebea362b884758b6bc9e01d3d"
    }
   }
  ],
@@ -23675,7 +23860,7 @@
    "--tmax",
    "3300.0",
    "--out",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix8-primary-rebuild",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild",
    "--annotations",
    "docs/labeler/fig1_annotations.json",
    "--ae-labels",
@@ -23684,17 +23869,18 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/saw_source/ad0ca40f-ad0ca40f1a7e/shots"
   ],
   "before": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "2ae90c9e83b8da6821c307968e77726253b1547b6cdbf7c28dd6e2d4d640f00c",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "44e3c4d4c3834d457faa220532d0e9a901d214fe3cd041df9eb34c14b889376d"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
   },
   "after": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "2ae90c9e83b8da6821c307968e77726253b1547b6cdbf7c28dd6e2d4d640f00c",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "44e3c4d4c3834d457faa220532d0e9a901d214fe3cd041df9eb34c14b889376d"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
   },
   "identical": true,
   "rebuild_files": [
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix8-primary-rebuild/fig_interpreter.pdf",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix8-primary-rebuild/fig_interpreter.png"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild/fig_interpreter.pdf",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/scratch/claude-89242e53/r4/tmp/fig1/fix9-primary-rebuild/fig_interpreter.png"
   ]
- }
+ },
+ "scientific_data_unchanged_from": "41ba206779910882b9a826fe668970da848f38af"
 }

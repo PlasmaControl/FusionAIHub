@@ -12,7 +12,7 @@
  },
  "annotations": {
   "path": "docs/labeler/fig1_annotations.json",
-  "sha256": "4b1365ba255727b271546bde47ef5758bd6211f4cfa495240ebcc6a7452c7579",
+  "sha256": "754c5e859e2347a808f7e4b2437c2c41d9cedb42f8aedc3eedc8addbe6f43006",
   "shot": {
    "publication_suitability": {
     "suitable_alternate": true,
@@ -4279,8 +4279,8 @@
     }
    ],
    "display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
     "changes": []
    }
   }
@@ -4301,11 +4301,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/caption.tex",
-  "sha256": "a1475ce3edf3686b8c2e6694a7b38abd6125e8650c776f56228b0fd9997efb2f"
+  "sha256": "b1d8d4dcfe3099901a0f124307db56a23d52e906b5fd6cd8b2575cc7094ce679"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/appendix.txt",
-  "sha256": "f6204b14bd1f0e461fecf7cfc3aabc30236bc246d364ebe59f07c4b0c0ccff78"
+  "sha256": "c727fd685ff5b63a04345380c5f2f6235ea3556d56afe8218b7f8def9ac241c9"
  },
  "drawn": {
   "figure": [
@@ -4313,8 +4313,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "d09408cf983159e77b376475d69251013173b7689238b8ed87910b072e99259e",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "24cf9d519ee13349f9bdd60f4832ce40463c9852ffea2c39774a1b8c9f6ca992"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.pdf": "95f47bcdf93a3fa4886be29709e7bb5fe0047d1d1c6b970cdbc0461058be1d9c",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/alt_201973/fig_interpreter.png": "ec322b2b20e8499d0d2c90babf991247f38d9b6e92ee4ace475e908559d05d10"
   },
   "blobs": {
    "wide_above_fold": 297,
@@ -4439,6 +4439,7 @@
     0.0,
     30.0
    ],
+   "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
    "processed_omitted_band_khz": [],
    "processed_restored_strip_khz": [
     30.0,
@@ -4704,7 +4705,14 @@
     }
    ],
    "ntm_key_black_swatch": true,
+   "n_key_bounds": [
+    0.792,
+    0.3072962792320847,
+    0.9679722222222222,
+    0.3983803622497615
+   ],
    "ae_in_panel_label": null,
+   "ae_margin_label": null,
    "elm_box_bounds": [
     [
      0.3137142857142858,
@@ -4740,8 +4748,8 @@
    "dalpha_peak_box_gap_pt": 1.0470085795996034,
    "legend_labels": [
     "TokEye mask,\nn not measured",
-    "AE (detector band\n\u226580 kHz)",
-    "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+    "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+    "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
     "n=1",
     "n=2",
     "n=3",
@@ -4802,73 +4810,83 @@
      ]
     },
     {
+     "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+     "font_pt": 7.0,
+     "bounds": [
+      0.7845354456115399,
+      0.8005695169265942,
+      0.9669666666666666,
+      0.8898928281639679
+     ]
+    },
+    {
      "text": "TokEye mask,\nn not measured",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.5442706608732101,
+      0.54427066087321,
       0.924474279835391,
-      0.5889323164918969
+      0.5889323164918968
      ]
     },
     {
-     "text": "AE (detector band\n\u226580 kHz)",
+     "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.49077062141613936,
-      0.9425761316872429,
-      0.5354322770348262
+      0.47197514714214933,
+      0.9653539094650206,
+      0.5389676305701796
      ]
     },
     {
-     "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "text": "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.43727058195906865,
+      0.39967963341108875,
       0.9559094650205762,
-      0.48193223757775555
+      0.46667211683911897
      ]
     },
     {
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.49440329218107,
-      0.20735287812436787,
-      0.5240329218106996,
-      0.22502964580113555
+      0.8363647119341564,
+      0.33050749293157966,
+      0.8659943415637861,
+      0.3481842606083473
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.5441975308641975,
-      0.20735287812436787,
-      0.5738271604938271,
-      0.22502964580113555
+      0.8363647119341564,
+      0.3072962792320847,
+      0.8659943415637861,
+      0.3249730469088523
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.5939917695473251,
-      0.20735287812436787,
-      0.6236213991769548,
-      0.22502964580113555
+      0.8861589506172839,
+      0.33050749293157966,
+      0.9157885802469136,
+      0.3481842606083473
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.6437860082304526,
-      0.20735287812436787,
-      0.6956378600823045,
-      0.2261448999046709
+      0.8861589506172839,
+      0.3072962792320847,
+      0.9380108024691358,
+      0.3260883010123877
      ]
     },
     {
@@ -4886,9 +4904,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.2286014048221729,
+      0.2321367583575264,
       0.9159094650205762,
-      0.24739342660247593
+      0.25092878013782943
      ]
     },
     {
@@ -4939,6 +4957,16 @@
       0.04990909090909092,
       0.6896669238683127,
       0.06870111268939394
+     ]
+    },
+    {
+     "text": "toroidal mode number n\n(Mirnov array)",
+     "font_pt": 7.0,
+     "bounds": [
+      0.792,
+      0.35371870663107463,
+      0.9679722222222222,
+      0.3983803622497615
      ]
     }
    ]
@@ -5095,11 +5123,11 @@
    }
   }
  },
- "git": "a04b1c28",
+ "git": "c7cb0acd",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "42ef2f51aaaa89017151f965e241a8bf6a92845fd76f7c85b6b14811729ca772",
-  "src/labeler/paper/figure_sources.py": "7df681af488af6cc6b9a826293f8aa2ca467b8b03171b4a1aeb5ac1baa654b03",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "74a6a2996b10958f9b8ee14675332342beee1f02dff807d218eeaec1f83b62d1",
+  "src/labeler/paper/figure_sources.py": "5bc8234a3c5613c23866bb5e04f7c3201e2300975c20b9ea2db78336d8698150",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

@@ -12,14 +12,14 @@
  },
  "annotations": {
   "path": "docs/labeler/fig1_annotations.json",
-  "sha256": "4b1365ba255727b271546bde47ef5758bd6211f4cfa495240ebcc6a7452c7579",
+  "sha256": "754c5e859e2347a808f7e4b2437c2c41d9cedb42f8aedc3eedc8addbe6f43006",
   "shot": {
    "publication_suitability": {
     "suitable_alternate": true,
     "role": "primary"
    },
    "ae_label": {
-    "time_ms": 2000,
+    "time_ms": 2775,
     "frequency_khz": 180
    }
   }
@@ -4248,6 +4248,18 @@
     },
     {
      "start_ms": 2309.0999434491773,
+     "end_ms": 2329.3999429689698,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 2329.3999429689698,
+     "end_ms": 2334.8999428388643,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 2334.8999428388643,
      "end_ms": 3196.1999224643546,
      "category": 3,
      "state": "unassessed"
@@ -4260,28 +4272,27 @@
     },
     {
      "start_ms": 3207.199922204144,
+     "end_ms": 3234.799921551251,
+     "category": 3,
+     "state": "unassessed"
+    },
+    {
+     "start_ms": 3234.799921551251,
+     "end_ms": 3241.2999213974904,
+     "category": 2,
+     "state": "uncertain"
+    },
+    {
+     "start_ms": 3241.2999213974904,
      "end_ms": 3300.0,
      "category": 3,
      "state": "unassessed"
     }
    ],
    "display_merge": {
-    "minimum_duration_ms": 10.0,
-    "rule": "shortest sliver first, merge into longer touching neighbour; ties prefer earlier; source unchanged; crash ticks unchanged",
-    "changes": [
-     {
-      "start_ms": 2329.3999429689698,
-      "end_ms": 2334.8999428388643,
-      "from": 2,
-      "to": 3
-     },
-     {
-      "start_ms": 3234.799921551251,
-      "end_ms": 3241.2999213974904,
-      "from": 2,
-      "to": 3
-     }
-    ]
+    "minimum_duration_ms": 0.0,
+    "rule": "exact source states clipped to view; no smoothing; crash ticks unchanged",
+    "changes": []
    }
   }
  },
@@ -4301,11 +4312,11 @@
  },
  "caption": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/caption.tex",
-  "sha256": "c17fa8298c0539fa952a99df4deae439b447f21e6ef1cb04ab4f82624403824e"
+  "sha256": "32145ea6204edadd0f1974d524a8a5eed71eb7fcc69a42287a70489c2e57408e"
  },
  "appendix": {
   "path": "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/appendix.txt",
-  "sha256": "91969d1a548f4007e7360e8d1a2b59d184a36877d2083b92cd0130ae65e58c7f"
+  "sha256": "10264869c32d5e559044fe8bf94415aa8ae0abbcad2d29df71edeb99b30ce721"
  },
  "drawn": {
   "figure": [
@@ -4313,8 +4324,8 @@
    "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png"
   ],
   "figure_sha256": {
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "2ae90c9e83b8da6821c307968e77726253b1547b6cdbf7c28dd6e2d4d640f00c",
-   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "44e3c4d4c3834d457faa220532d0e9a901d214fe3cd041df9eb34c14b889376d"
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.pdf": "189166b2823f8f4393f84b3700f97432d865e881d9f2510e346c01cce2612e69",
+   "/scratch/gpfs/EKOLEMEN/nc1514/labelmaker/round4/fig1/fig_interpreter.png": "9f375da2f5b8d7e304b616d7982386a8716c5ba01d505032cb34d6f447265364"
   },
   "blobs": {
    "wide_above_fold": 565,
@@ -4415,6 +4426,7 @@
     0.0,
     30.0
    ],
+   "scale_note": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
    "processed_omitted_band_khz": [],
    "processed_restored_strip_khz": [
     30.0,
@@ -4680,11 +4692,24 @@
     }
    ],
    "ntm_key_black_swatch": true,
-   "ae_in_panel_label": {
-    "text": "AE (detector-positive time)",
-    "position_ms_khz": [
-     2000,
+   "n_key_bounds": [
+    0.792,
+    0.29399239732570415,
+    0.9679722222222222,
+    0.38507648034338093
+   ],
+   "ae_in_panel_label": null,
+   "ae_margin_label": {
+    "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+    "leader_anchor_ms_khz": [
+     2775,
      180
+    ],
+    "bounds": [
+     0.810724279835391,
+     0.46332377885042797,
+     0.9653539094650206,
+     0.5303162622784583
     ]
    },
    "elm_box_bounds": [
@@ -4698,8 +4723,8 @@
    "dalpha_peak_box_gap_pt": 1.1063915715540018,
    "legend_labels": [
     "TokEye mask,\nn not measured",
-    "AE (detector band\n\u226580 kHz)",
-    "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+    "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
+    "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
     "n=1",
     "n=2",
     "n=3",
@@ -4759,6 +4784,16 @@
      ]
     },
     {
+     "text": "0\u201355 kHz: higher-\nresolution spectrogram;\n0\u201330 stretched,\n30\u201355 compressed",
+     "font_pt": 7.0,
+     "bounds": [
+      0.784535439755055,
+      0.797310834870046,
+      0.9669666666666666,
+      0.8866341461074196
+     ]
+    },
+    {
      "text": "TokEye mask,\nn not measured",
      "font_pt": 7.0,
      "bounds": [
@@ -4769,63 +4804,63 @@
      ]
     },
     {
-     "text": "AE (detector band\n\u226580 kHz)",
+     "text": "AE (detector-positive\ntime; detector band\n\u226580 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.4821192531244179,
-      0.9425761316872429,
-      0.5267809087431047
+      0.46332377885042797,
+      0.9653539094650206,
+      0.5303162622784583
      ]
     },
     {
-     "text": "NTM suggestions\n(n=1 or 2, \u226430 kHz)",
+     "text": "NTM candidate\nsuggestions\n(n=1 or 2, \u226430 kHz)",
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.4286192136673472,
+      0.3910282651193674,
       0.9559094650205762,
-      0.47328086928603397
+      0.45802074854739766
      ]
     },
     {
      "text": "n=1",
      "font_pt": 7.0,
      "bounds": [
-      0.49440329218107,
-      0.20996751387475476,
-      0.5240329218106996,
-      0.22764428155152244
+      0.8363647119341564,
+      0.3172036110251991,
+      0.8659943415637861,
+      0.33488037870196674
      ]
     },
     {
      "text": "n=2",
      "font_pt": 7.0,
      "bounds": [
-      0.5441975308641975,
-      0.20996751387475476,
-      0.5738271604938271,
-      0.22764428155152244
+      0.8363647119341564,
+      0.29399239732570415,
+      0.8659943415637861,
+      0.31166916500247177
      ]
     },
     {
      "text": "n=3",
      "font_pt": 7.0,
      "bounds": [
-      0.5939917695473251,
-      0.20996751387475476,
-      0.6236213991769548,
-      0.22764428155152244
+      0.8861589506172839,
+      0.3172036110251991,
+      0.9157885802469136,
+      0.33488037870196674
      ]
     },
     {
      "text": "other n",
      "font_pt": 7.0,
      "bounds": [
-      0.6437860082304526,
-      0.20996751387475476,
-      0.6956378600823045,
-      0.2287595356550578
+      0.8861589506172839,
+      0.29399239732570415,
+      0.9380108024691358,
+      0.3127844191060072
      ]
     },
     {
@@ -4843,9 +4878,9 @@
      "font_pt": 7.0,
      "bounds": [
       0.810724279835391,
-      0.23221575424182542,
+      0.23575110777717895,
       0.9159094650205762,
-      0.2510077760221285
+      0.254543129557482
      ]
     },
     {
@@ -4896,6 +4931,16 @@
       0.04990909090909092,
       0.6896669238683127,
       0.06870111268939394
+     ]
+    },
+    {
+     "text": "toroidal mode number n\n(Mirnov array)",
+     "font_pt": 7.0,
+     "bounds": [
+      0.792,
+      0.3404148247246941,
+      0.9679722222222222,
+      0.38507648034338093
      ]
     }
    ]
@@ -5036,11 +5081,11 @@
    }
   }
  },
- "git": "a04b1c28",
+ "git": "c7cb0acd",
  "render_started_from_clean_head": true,
  "render_code_sha256": {
-  "scripts/labeler/paper/fig_interpreter_tokeye.py": "42ef2f51aaaa89017151f965e241a8bf6a92845fd76f7c85b6b14811729ca772",
-  "src/labeler/paper/figure_sources.py": "7df681af488af6cc6b9a826293f8aa2ca467b8b03171b4a1aeb5ac1baa654b03",
+  "scripts/labeler/paper/fig_interpreter_tokeye.py": "74a6a2996b10958f9b8ee14675332342beee1f02dff807d218eeaec1f83b62d1",
+  "src/labeler/paper/figure_sources.py": "5bc8234a3c5613c23866bb5e04f7c3201e2300975c20b9ea2db78336d8698150",
   "src/labeler/paper/mode_tags.py": "936d0db4f2fae613018d0c6d73f9d88eb808106663ed1f780e67be3bc616bfb2"
  }
 }

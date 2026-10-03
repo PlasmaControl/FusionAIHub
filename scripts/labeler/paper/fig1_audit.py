@@ -384,7 +384,8 @@ def main():
         appendix = appendix_file.read_text()
         assert appendix.strip() == fs.appendix_notes(shot, record["tracks"], drawn)
         assert fs.sawtooth_caption(saw) in appendix
-        assert "TokEye 0.2; AE 0.5; NTM 0.63" in appendix
+        ae_threshold = record["tracks"][mt.AE]["decision_threshold"] or AE_THRESHOLD
+        assert f"TokEye 0.2; AE {ae_threshold:g}; NTM 0.63" in appendix
         assert "shorter than 10 ms, with no state smoothing" in appendix
         assert "magnetics-only" not in appendix
         assert "Bt unavailable" not in appendix
