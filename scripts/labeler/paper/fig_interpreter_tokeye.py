@@ -628,7 +628,7 @@ def draw_frequency_panels(ax, low: Band, high: Band) -> None:
         hi, mid, lo = (f"{prefix}_{part}" for part in ("hi", "mid", "lo"))
         for name, limits, ticks in (
             (hi, (FOLD_KHZ, TOP_KHZ), [100, 150, 200, 250]),
-            (mid, (N_VIEW_KHZ, FOLD_KHZ), [40, 55]),
+            (mid, (N_VIEW_KHZ, FOLD_KHZ), [55]),
             (lo, (0, N_VIEW_KHZ), [0, 10, 20, 30]),
         ):
             ax[name].set_ylim(*limits)
@@ -941,10 +941,10 @@ def draw(
     n_read, n_kept = roster.gated(n_sig.rows[0], gate) if n_sig.rows else (None, None)
 
     layout = {
-        "h_raw": 0.32, "raw_hi": 0.85, "raw_mid": 0.25, "raw_lo": 1.60,
+        "h_raw": 0.32, "raw_hi": 0.85, "raw_mid": 0.45, "raw_lo": 1.70,
         "g1": 0.1, "da_raw": 0.38,
         "g2": 0.07, "nbi": 0.38, "h_proc": 0.52,
-        "pr_hi": 0.85, "pr_mid": 0.25, "pr_lo": 1.60,
+        "pr_hi": 0.85, "pr_mid": 0.45, "pr_lo": 1.70,
         "crashes": 0.16 if len(crashes) else 0.001,
         "g3": 0.1, "da_pr": 0.52, "h_lab": 0.36,
     }  # fmt: skip
@@ -1124,7 +1124,7 @@ def draw(
         if da_sig.rows:
             trace(da, da_sig.rows[0])
             top = float(np.max(da_sig.rows[0].values[1]))
-            da.set_ylim(0, top * 1.65)
+            da.set_ylim(0, top * 2.0)
             peaks = elm_peaks(da_sig.rows[0], elm_spans)
             if len(peaks):
                 da.plot(peaks, np.full(len(peaks), top * 1.14), "v",
@@ -1177,6 +1177,7 @@ def draw(
         shown = set()
         lmode_inferred = False
         regime_texts = []
+        regime_regions = {}
         for r in by_key["confinement"].rows:
             category = r.category
             label = regime_names.get(category)
@@ -1189,22 +1190,39 @@ def draw(
                 )
                 if later_h:
                     category = 2
-                    label = "L-mode (inferred)"
+                    label = "L (inferred)"
                     lmode_inferred |= r.t_end > t0 and r.t_start < t1
             if category in regime_names:
                 da.axvspan(r.t_start, r.t_end, color=REGIME_GREYS[category],
                            alpha=0.2, lw=0, zorder=0)  # fmt: skip
-                if r.t_end > t0 and r.t_start < t1 and category not in shown:
+                if r.t_end > t0 and r.t_start < t1:
                     shown.add(category)
-                    regime_texts.append(
-                        da.text(max(r.t_start, t0) + 20, 0.94, label,
-                                transform=da.get_xaxis_transform(), fontsize=FONT,
-                                color="#444444", va="top", ha="left")
-                    )  # fmt: skip
-        if elm_chip is not None and regime_texts:
-            clear_of(elm_chip, regime_texts)
-        for i, text in enumerate(regime_texts):
-            clear_of(text, regime_texts[i + 1 :])
+                    a, b = max(r.t_start, t0), min(r.t_end, t1)
+                    regime_regions.setdefault(category, []).append((a, b, label))
+        for regions in regime_regions.values():
+            # Adjacent source rows shade one continuous region; merge only
+            # their label-placement bounds, preserving all original rows.
+            continuous = []
+            for a, b, label in sorted(regions):
+                if continuous and a <= continuous[-1][1] + 1e-6:
+                    continuous[-1][1] = max(continuous[-1][1], b)
+                else:
+                    continuous.append([a, b, label])
+            a, b, label = max(continuous, key=lambda r: r[1] - r[0])
+            text = da.text(
+                (a + b) / 2, 0.94, label,
+                transform=da.get_xaxis_transform(), fontsize=FONT,
+                color="#444444", va="top", ha="center",
+            )  # fmt: skip
+            fig.draw_without_rendering()
+            region_width = (
+                da.transData.transform((b, 0))[0] - (da.transData.transform((a, 0))[0])
+            )
+            if text.get_window_extent().width + 4 * fig.dpi / 72 > region_width:
+                text.set_text(label.replace(" (inferred)", "\ninferred"))
+            regime_texts.append((text, a, b))
+            if elm_chip is not None:
+                clear_of(text, [elm_chip])
 
         # ---- label tracks
         titles = {
@@ -1265,6 +1283,37 @@ def draw(
                 }
                 for name in ("raw_hi", "raw_mid", "raw_lo", "pr_hi", "pr_mid", "pr_lo")
             },
+            "lower_frequency_tick_bounds": {
+                prefix: [
+                    {
+                        "text": text.get_text(),
+                        "bounds": list(
+                            text.get_window_extent()
+                            .transformed(fig.transFigure.inverted())
+                            .extents
+                        ),
+                    }
+                    for part in ("lo", "mid")
+                    for text in ax[f"{prefix}_{part}"].get_yticklabels()
+                ]
+                for prefix in ("raw", "pr")
+            },
+            "regime_text_bounds": [
+                {
+                    "text": text.get_text(),
+                    "bounds": list(
+                        text.get_window_extent()
+                        .transformed(fig.transFigure.inverted())
+                        .extents
+                    ),
+                    "region_x_bounds": [
+                        (da.transData.transform((x, 0))[0] - fig.bbox.x0)
+                        / fig.bbox.width
+                        for x in (a, b)
+                    ],
+                }
+                for text, a, b in regime_texts
+            ],
             "ntm_key_black_swatch": bool(projected["zoom"][mode_tags.NTM].any()),
             "ae_fixed_callout_shown": False,
             "legend_labels": [t.get_text() for key in fig.legends for t in key.texts],

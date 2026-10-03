@@ -12,6 +12,7 @@ import json
 import os
 import re
 import subprocess
+from itertools import pairwise
 from pathlib import Path
 
 import fig_interpreter_tokeye as renderer
@@ -205,7 +206,28 @@ def main():
             assert raw_panel["band_khz"] == processed["band_khz"] == limits
             assert abs(raw_panel["height_in"] - processed["height_in"]) < 1e-9
             assert raw_panel["ticks_khz"] == processed["ticks_khz"]
-        assert 55 in panels["pr_mid"]["ticks_khz"]
+        for prefix in ("raw", "pr"):
+            assert panels[f"{prefix}_mid"]["ticks_khz"] == [55]
+            assert panels[f"{prefix}_lo"]["ticks_khz"] == [0, 10, 20, 30]
+            ticks = sorted(
+                geometry["lower_frequency_tick_bounds"][prefix],
+                key=lambda tick: tick["bounds"][1],
+            )
+            for lower, upper in pairwise(ticks):
+                a, b = lower["bounds"], upper["bounds"]
+                assert b[1] - a[3] >= max(a[3] - a[1], b[3] - b[1]), (
+                    shot,
+                    prefix,
+                    lower["text"],
+                    upper["text"],
+                )
+        for label in geometry["regime_text_bounds"]:
+            a, b = label["bounds"], label["region_x_bounds"]
+            padding = 2 / (72 * record["print_layout"]["width_in"])
+            assert b[0] + padding <= a[0] < a[2] <= b[1] - padding, (
+                shot,
+                label["text"],
+            )
         assert not geometry["ae_fixed_callout_shown"]
         for text in geometry["heading_and_legend_text_bounds"]:
             assert text["font_pt"] >= 7
